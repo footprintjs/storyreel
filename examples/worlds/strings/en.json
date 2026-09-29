@@ -1,0 +1,8 @@
+{
+  "board.title": "Counting with pebbles",
+  "valley.question": "How many sheep went out?",
+  "valley.answer": "Three!",
+  "valley.caption": "three sheep · three pebbles",
+  "rule.footer": "One pebble for every sheep.",
+  "again.rule": "one sheep · one pebble"
+}

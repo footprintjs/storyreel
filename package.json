@@ -1,0 +1,128 @@
+{
+  "name": "footprint-storyreel",
+  "version": "0.2.0",
+  "description": "Teaching films from a storyboard and a recipe: every drawing tied to a spoken phrase, one seekable timeline, pixel-pinned frames, director notes, a local preview studio, and a making-of record for every film.",
+  "keywords": [
+    "video",
+    "animation",
+    "explainer",
+    "teaching",
+    "narration",
+    "whiteboard",
+    "storyboard",
+    "canvas",
+    "footprintjs"
+  ],
+  "homepage": "https://github.com/footprintjs/storyreel#readme",
+  "bugs": {
+    "url": "https://github.com/footprintjs/storyreel/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/footprintjs/storyreel.git"
+  },
+  "license": "MIT",
+  "author": "Sanjay Krishna Anbalagan",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./src/index.mjs"
+    },
+    "./clock": {
+      "types": "./types/sub/clock.d.ts",
+      "default": "./src/clock.mjs"
+    },
+    "./pacing": {
+      "types": "./types/sub/pacing.d.ts",
+      "default": "./src/pacing.mjs"
+    },
+    "./sound": "./src/sound.mjs",
+    "./pen": "./src/pen.mjs",
+    "./theme": {
+      "types": "./types/sub/theme.d.ts",
+      "default": "./src/theme.mjs"
+    },
+    "./ground": "./src/ground.mjs",
+    "./film": {
+      "types": "./types/sub/film.d.ts",
+      "default": "./src/film.mjs"
+    },
+    "./render": {
+      "types": "./types/sub/render.d.ts",
+      "default": "./src/render.mjs"
+    },
+    "./pipeline": {
+      "types": "./types/sub/pipeline.d.ts",
+      "default": "./src/pipeline.mjs"
+    },
+    "./pins": {
+      "types": "./types/sub/pins.d.ts",
+      "default": "./src/pins.mjs"
+    },
+    "./strings": {
+      "types": "./types/sub/strings.d.ts",
+      "default": "./src/strings.mjs"
+    },
+    "./kits/whiteboard": {
+      "types": "./types/sub/whiteboard.d.ts",
+      "default": "./src/kits/whiteboard/index.mjs"
+    },
+    "./kits/whiteboard/board": "./src/kits/whiteboard/board.mjs",
+    "./kits/paper": "./src/kits/paper/paper.mjs",
+    "./kits/paper/code": "./src/kits/paper/code.mjs",
+    "./kits/cartoon": {
+      "types": "./types/sub/cartoon.d.ts",
+      "default": "./src/kits/cartoon/index.mjs"
+    },
+    "./regions": {
+      "types": "./types/sub/regions.d.ts",
+      "default": "./src/regions.mjs"
+    },
+    "./studio": {
+      "types": "./types/studio.d.ts",
+      "default": "./src/studio/server.mjs"
+    },
+    "./notes": "./src/notes.mjs",
+    "./sheet": {
+      "types": "./types/sub/sheet.d.ts",
+      "default": "./src/sheet.mjs"
+    },
+    "./reading": {
+      "types": "./types/sub/reading.d.ts",
+      "default": "./src/reading.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./types/index.d.ts",
+  "files": [
+    "src",
+    "types",
+    "themes",
+    "fonts",
+    "examples/*.mjs",
+    "examples/*/*.mjs",
+    "examples/*/*.json",
+    "examples/*/*.ts",
+    "examples/*/strings/*.json",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.9",
+    "perfect-freehand": "^1.2.3",
+    "roughjs": "^4.6.6",
+    "shiki": "^3.23.0",
+    "footprintjs": "^9.27.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

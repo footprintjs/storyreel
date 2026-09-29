@@ -1,0 +1,33 @@
+{
+  "story": {
+    "kit": "whiteboard",
+    "defaultErase": null,
+    "erasers": {},
+    "items": [
+      {"at": ["story", "a shepherd"], "dur": 1.2, "draw": [["figure", 300, 620, 1.1]], "seed": 1},
+      {"at": ["story", "before people wrote numbers down"], "dur": 0.9, "write": "no written numbers", "x": 300, "y": 360, "size": 40, "align": "center", "color": "red"},
+      {"at": ["story", "for every sheep"], "dur": 0.8, "draw": [["ellipse", 700, 560, 60, 38], ["ellipse", 760, 520, 22, 20]], "seed": 2},
+      {"at": ["story", "for every sheep", 0.5], "dur": 0.8, "draw": [["ellipse", 880, 600, 60, 38], ["ellipse", 940, 560, 22, 20]], "seed": 3},
+      {"at": ["story", "for every sheep", 1.0], "dur": 0.8, "draw": [["ellipse", 1060, 560, 60, 38], ["ellipse", 1120, 520, 22, 20]], "seed": 4},
+      {"at": ["story", "he dropped one pebble"], "dur": 0.9, "draw": [["rect", 1240, 430, 240, 280]], "seed": 5},
+      {"at": ["story", "one pebble in his bag"], "dur": 0.4, "draw": [["ellipse", 1300, 640, 16, 12]], "color": "blue", "size": 8, "seed": 6},
+      {"at": ["story", "one pebble in his bag", 0.4], "dur": 0.4, "draw": [["ellipse", 1360, 640, 16, 12]], "color": "blue", "size": 8, "seed": 7},
+      {"at": ["story", "one pebble in his bag", 0.8], "dur": 0.4, "draw": [["ellipse", 1420, 640, 16, 12]], "color": "blue", "size": 8, "seed": 8},
+      {"at": ["story", "came home"], "eureka": [1360, 360]}
+    ],
+    "spots": [{"from": ["story", "one pebble came out"], "to": ["story", "came home", 1.5], "at": [1360, 570], "r": 220}]
+  },
+  "pushIn": {"after": "story", "rest": 0.3, "turn": 1.8, "zoom": 2.2, "caption": "Now the rule."},
+  "card": {
+    "prop": [1240, 430, 1480, 710], "rings": [], "ringR": 8, "labelX": 1262, "header": "THE BAG", "aside": {"at": [380, 490], "scale": 0.8},
+    "rows": [{"key": "a", "label": "sheep 1", "by": 500}, {"key": "b", "label": "sheep 2", "by": 560}, {"key": "c", "label": "sheep 3", "by": 620}],
+    "template": {"a": {"value": "pebble", "tone": "available"}, "b": {"value": "pebble", "tone": "available"}, "c": {"value": "pebble", "tone": "available"}}
+  },
+  "stages": [
+    {"type": "code", "scene": "rule", "chip": "THE RULE", "chipDark": true, "title": "One pebble for one sheep", "file": "rule.ts", "label": "TYPESCRIPT",
+     "code": {"file": "rule.ts", "emphasis": {"'pebble'": "known"}},
+     "reveal": [[0, ["rule", "One pebble for one sheep"]], [1, ["rule", "If a pebble is left over"]], [2, ["rule", "That is the idea"]]],
+     "focus": [{"lines": [1, 1], "tone": "unknown", "from": ["rule", "If a pebble is left over"], "to": ["rule", "That is the idea"]}],
+     "footer": {"text": "Counting began as matching.", "at": ["rule", "That is the idea"]}}
+  ]
+}

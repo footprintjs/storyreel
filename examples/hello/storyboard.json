@@ -1,0 +1,7 @@
+{
+  "title": "One pebble for one sheep",
+  "scenes": [
+    {"id": "story", "title": "Long ago", "narration": "Long ago, before people wrote numbers down, a shepherd kept count with pebbles. Each morning, for every sheep that went out, he dropped one pebble in his bag. Each evening, one pebble came out for every sheep that came home."},
+    {"id": "rule", "title": "The rule", "narration": "One pebble for one sheep. If a pebble is left over, a sheep is missing. That is the idea behind counting."}
+  ]
+}

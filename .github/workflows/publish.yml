@@ -1,0 +1,52 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+
+# Least privilege: publish power (OIDC) only in the `publish` job, which takes the tarball packed
+# and tested in `build` and resolves no dependencies of its own.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: npm ci
+      - run: npm test
+      - run: npx publint
+      - run: npx @arethetypeswrong/cli --pack --profile esm-only --entrypoints . clock pacing pins sheet render pipeline film strings theme reading regions kits/whiteboard kits/cartoon studio  # the typed entry points (README: the drawing internals are untyped)
+      - name: Pack the publishable tarball
+        run: |
+          npm pack
+          mv ./*.tgz package.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-tarball
+          path: package.tgz
+          retention-days: 1
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC trusted publishing — this job only
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-tarball
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      # npm 11 line: trusted publishing needs >= 11.5.1; 12.0.0 broke provenance.
+      - run: npm install -g npm@11
+      - name: Publish to npm
+        run: npm publish ./package.tgz --provenance --access public

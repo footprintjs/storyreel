@@ -1,0 +1,9 @@
+{
+  "title": "Two worlds",
+  "scenes": [
+    {"id": "board", "title": "The board", "narration": "Here is our board. Today we count with pebbles, the way a shepherd did long ago."},
+    {"id": "valley", "title": "The valley", "narration": "Now we are in the valley. The shepherd lets the sheep out, one by one. How many sheep went out? Three sheep went out. In the evening, they all come home."},
+    {"id": "rule", "title": "The rule", "narration": "Here is the rule, written as code. One pebble for every sheep that goes out."},
+    {"id": "again", "title": "Back to the board", "narration": "Back on the board: one sheep, one pebble. That is counting."}
+  ]
+}

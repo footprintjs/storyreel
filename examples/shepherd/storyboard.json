@@ -1,0 +1,7 @@
+{
+  "title": "One sheep, one pebble",
+  "scenes": [
+    {"id": "morning", "title": "Morning", "narration": "Long, long ago, before people wrote numbers down, a shepherd had sheep, and he needed to know: did they all come home? So each morning, when a sheep went out through the gate, he dropped a pebble in his bag. One sheep, one pebble."},
+    {"id": "evening", "title": "Evening", "narration": "Each evening, when a sheep came home, he took one pebble out. One sheep, one pebble. But wait! One pebble is still in the bag. A sheep is missing!"}
+  ]
+}

@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: npm ci
+      - run: npm test
+      - run: npx publint
+      - run: npx @arethetypeswrong/cli --pack --profile esm-only --entrypoints . clock pacing pins sheet render pipeline film strings theme reading regions kits/whiteboard kits/cartoon studio  # the typed entry points (README: the drawing internals are untyped)

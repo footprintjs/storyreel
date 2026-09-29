@@ -1,0 +1,362 @@
+# Footprint StoryReel
+
+**Teaching films from a script and a recipe.** You write what is said (the storyboard) and what is
+drawn when each phrase is said (the recipe, plain JSON). StoryReel turns them into one film you can
+seek to any moment, renders the MP4 with its sound, and writes a **making-of record**: which words
+triggered which drawing, the pacing, the tools and versions.
+
+It is built for explainers and lessons: a whiteboard story, a push into a typed card, code that
+appears line by line as the voice names it, pause-and-guess questions, a recap drawn from the
+film's own frames. A cartoon world and a storybook look ship too, and the look is a plug-in.
+
+```
+a lesson:   story (a world, a problem, a eureka) → push-in to one prop → paper stages on one page → recap → teaser
+an episode: world → world → paper → world → recap …   each scene a shot: a fade, a wipe, an iris, a page turn or a cut
+```
+
+## Why StoryReel
+
+- **Pictures follow the words, not the clock.** Every drawing is tied to a spoken phrase. Record the
+  voice again, slower or in another language, and the film follows; a phrase that is not in the
+  script refuses the recipe instead of drifting.
+- **Honest by construction.** Values on screen can be read from real data (a recorded run), a line
+  too short to read is reported (or refused), and every film says how it was made.
+- **The same frames every time.** `frame(ctx, t)` is a pure function of time. Pixel pins catch any
+  change that moves a pixel, so a film you approved stays the film you approved.
+- **Direct it like a director.** Camera words as data (`speed`, `cut`, `push`), and a local studio
+  where you scrub, play with the voice, and click a drawing to find the line of the recipe that drew it.
+
+## Install
+
+```bash
+npm i footprint-storyreel
+```
+
+- **Node 22 or later.**
+- **FFmpeg on your PATH** to render MP4s (`brew install ffmpeg`, `apt install ffmpeg`, …). Compiling,
+  drawing frames, the studio and the checks need no FFmpeg.
+- Drawing is native (`@napi-rs/canvas`, prebuilt for macOS, Linux and Windows). The handwriting font
+  (Caveat, SIL OFL) is bundled.
+
+## Your first film
+
+The package ships three examples; `examples/hello` is the smallest complete film (a whiteboard
+story, a push-in to a card, one code stage). Its two input files:
+
+```json
+// storyboard.json — what is said, by scene
+{"title": "One pebble for one sheep", "scenes": [
+  {"id": "story", "title": "Long ago", "narration": "Long ago, before people wrote numbers down, a shepherd kept count with pebbles. …"},
+  {"id": "rule", "title": "The rule", "narration": "One pebble for one sheep. If a pebble is left over, a sheep is missing. That is the idea behind counting."}]}
+```
+
+```json
+// recipe.json — what is drawn when each phrase is said (excerpt)
+{"story": {"kit": "whiteboard", "items": [
+   {"at": ["story", "a shepherd"], "dur": 1.2, "draw": [["figure", 300, 620, 1.1]]},
+   {"at": ["story", "came home"], "eureka": [1360, 360]}]},
+ "pushIn": {"after": "story", "rest": 0.3, "turn": 1.8, "zoom": 2.2, "caption": "Now the rule."},
+ "stages": [{"type": "code", "scene": "rule", "title": "One pebble for one sheep", "code": {"file": "rule.ts"},
+             "reveal": [[0, ["rule", "One pebble for one sheep"]], [1, ["rule", "If a pebble is left over"]]]}]}
+```
+
+```js
+import {readFileSync} from 'node:fs';
+import {makeFilm, evenTimings} from 'footprint-storyreel';
+
+const read = f => JSON.parse(readFileSync(f, 'utf8'));
+const storyboard = read('storyboard.json'), recipe = read('recipe.json');
+const result = await makeFilm({
+  storyboard, recipe, root: '.',                  // root: where the recipe's code files live
+  timings: evenTimings(storyboard, {tail: 4}),    // silent: evenly spaced words (or narrationDir: your voice)
+  out: 'out/film.mp4',
+});
+console.log(result.out, result.makingOf);         // the film, and making-of.json beside it
+```
+
+From a clone of the package: `node examples/hello/make.mjs`, `node examples/shepherd/make.mjs`
+(the cartoon kit), `node examples/worlds/make.mjs` (worlds as shots, a pause-and-guess, a string table).
+
+**See it before you render it:** `node examples/studio.mjs hello` opens the preview studio (below).
+
+## A voice
+
+Any text-to-speech works, as long as you can give each word its time. The timings are one entry per
+scene — `{id, duration, words: [{text, start, end}], alignment: {status: 'available'}, audio}` — written
+beside the scene audio as `timings.json`; pass the folder as `narrationDir`. Forced alignment gives the
+word times for any voice (the AgentFootprint course uses Chatterbox with torchaudio MMS_FA; Kokoro
+reports its own). **Pacing** — `{sceneTail, holds: [{scene, after: 'a phrase', seconds}], tails}` —
+inserts silence after phrases so the pictures can land; with a voice it is cut into the audio, and in a
+silent cut `paceTimings` shifts the word times the same way.
+
+## The recipe
+
+A recipe is data only, never code. Every beat names what is SAID: `["scene", "phrase", plus?]`.
+A phrase that is not in the narration refuses the recipe.
+
+```json
+{
+  "story":  {"kit": "whiteboard", "items": [{"at": ["story", "a shepherd"], "dur": 1.2, "draw": [["figure", 300, 620, 1.1]]}], "erasers": {}, "spots": []},
+  "pushIn": {"after": "story", "rest": 0.3, "turn": 1.8, "zoom": 2.2, "caption": "Now the rule."},
+  "card":   {"prop": [1240, 430, 1480, 710], "rows": [...], "template": {...}, "aside": {"at": [380, 490], "scale": 0.8}},
+  "stages": [{"type": "code", "scene": "rule", "title": "One pebble for one sheep", "code": {"file": "rule.ts"}, "reveal": [[0, ["rule", "One pebble"]]]}],
+  "recalls": {"name": ["scene", "phrase", 1.0]}
+}
+```
+
+- `story.kit: "whiteboard"` — items drawn stroke by stroke (`figure`, `robot`, `rect`, `line`,
+  `ellipse`, `bubble`, `tick`, `arrow`, `poly`), handwriting (`write`), a eureka (`eureka: [x, y]`:
+  light bulb + chime), named erasers, spotlights with a camera push.
+- `pushIn` — after the story, the camera pushes into `card.prop` and it becomes a typed card.
+- `card` — rows of `{value, tone, note, source, tags}`; tones: `available` (known), `unknown`, `dim`.
+  `source` is the SOURCE chip; `tags: [{label: 'WHEN', text: 'last night'}]` are small chips under the row.
+- `stages` built in: `code` (a real file's on-screen block, tokenized by Shiki; `code.size` for a wider block (default 23 px); `reveal`, `focus`,
+  `glows` that link a code line to a card row, `footer`), `api` (code + a list of values read
+  from `data`), `recap` (the film's own frames on a story strip, then an optional `teaser`),
+  `summary` (cards), `world` (below). Any stage takes `chrome: false` to drop its chip and title.
+
+### Signs that tie the story to the code
+
+Three whiteboard shapes — `tag`, `clock`, `flashlight` (`["flashlight", x, y, scale, -1]` points left) — can
+stand for ideas a film must keep apart (in the AgentFootprint course: source · when · coverage). The same
+signs follow the idea onto paper:
+
+```json
+{"type": "code", "scene": "build", "code": {"file": "…"},
+ "marks":   [{"line": 2, "icon": "tag", "from": ["build", "Its source"]}],
+ "columns": [{"key": "source", "from": ["build", "Its source"], "to": ["build", "When it was checked"]},
+             {"key": "WHEN",   "from": ["build", "When it was checked"], "to": ["build", "And what it covers"]}]}
+```
+
+`marks` put the sign beside a code line from the phrase on; `columns` ring the card's SOURCE chips
+(`source`) or its tags with that label (`WHEN`, …) while the voice names them. `card.sourceIcon` puts a
+sign in every SOURCE chip, and a row tag may carry one (`{"label": "WHEN", "text": "last night", "icon": "clock"}`).
+
+### An episode: worlds as scenes
+
+Leave out `pushIn` and `card`, and every stage is a **shot** that fills the frame. A `world` stage
+draws any story kit, full screen, in its scene; paper stages have the page to themselves (the code
+panel is centred) and hand over to each other on it. A shot enters with `enter`:
+`"fade"` (the default), `"wipe"` (left to right) or `"iris"` (a circle opening; `{"type": "iris",
+"at": [x, y], "seconds": 0.8}`). Three quarters of the change happens in the silence before the
+scene's first word. `"page"` is a page turn: the old shot lifts from its right edge and folds over to
+the left, uncovering the new one (default 1.1 s) — for storybook films.
+
+```json
+{"story": {"kit": "whiteboard", "items": [ … ]},
+ "stages": [
+   {"type": "world", "scene": "valley", "enter": "fade", "world": {"kit": "cartoon", "flock": { … }}},
+   {"type": "code", "scene": "rule", "enter": "wipe", "chrome": false, "code": {"file": "count.ts"}, "reveal": [ … ]},
+   {"type": "world", "scene": "again", "enter": {"type": "iris", "at": [800, 420]}, "world": {"kit": "whiteboard", "items": [ … ]}}]}
+```
+
+### Pause and guess
+
+```json
+"guesses": [{"after": ["valley", "How many sheep went out"], "question": "How many sheep went out?", "answer": "Three!", "place": "top"}]
+```
+
+The card appears when the phrase ends, a ring runs out over the pause the narration holds there,
+and the card FLIPS as the voice gives the answer: it closes on the question and opens on the answer,
+so the two never overlap, then a tick and a chime. A theme sets the card's look in its `guess` section:
+`{"look": "storybook", "card": "#fbf2dc", "ink": "#3b2b1a", "answer": "#2f6b3a"}` draws a paper card with
+an inked, hand-drawn border (the package ships a `storybook` theme with it: `theme: 'storybook'`). The pause IS the pacing hold
+(`holds: [{"scene": "valley", "after": "How many sheep went out", "seconds": 3}]`): a guess with
+no hold of at least 1 s after its phrase refuses the recipe — a countdown never runs while the
+narrator keeps talking. `place`: `top` (default), `center` or `bottom`, so the picture the
+question is about stays in view; `until` (a phrase) sets when the answer leaves (default: 2.6 s,
+and before its scene hands over). The answer is given in the question's own scene: a pause that
+ends less than 1.9 s before its scene does refuses the recipe (say the answer after the pause).
+
+### Director notes
+
+Watching a draft, a director speaks in camera words: *the zooms feel rushed*, *hard cut into the loop*,
+*push in on the card at the order line*. A recipe's `notes` say exactly that, over the film, without
+touching its beats — so a note can be tried, kept or dropped in one line:
+
+```json
+"notes": [
+  {"note": "The zooms feel rushed", "speed": 0.7},
+  {"note": "Hard cut into the loop", "cut": "inside"},
+  {"note": "Push in on the card at the order line",
+   "push": {"at": [380, 490], "zoom": 1.3, "from": ["build", "The order line"], "to": ["build", "The policy line"]}}
+]
+```
+
+Each note carries its words (`note`) and exactly one camera word:
+
+- **`speed`** (0.25–4) — every camera move takes its seconds divided by it: the push-in, spotlights,
+  a story kit's camera moves, the pushes. One speed per film. A world drawn by a kit that cannot follow
+  it (below: `motion`) refuses the note, and so does a push-in that would still be running when the card
+  moves aside for the first stage (lengthen the tail of the scene before it).
+- **`cut`** (a scene id) — that scene's stage arrives on its first frame, whole, instead of by its
+  hand-over or entrance. Not into the story (it is one continuous world) or the first stage of a
+  lesson (it arrives with the push-in). A recipe may also write the entrance itself: `"enter": "cut"`.
+- **`push`** — the camera pushes in on `at` (a point on the 1600×900 frame; the studio gives it to you)
+  by `zoom` (default 1.25), easing in (`seconds`, default 1) from the phrase `from` and out from `to`.
+  The picture always covers the frame; guess cards stay where they are. A push stays on one picture:
+  one that runs across a hand-over, an entrance, a cut, the push-in or the teaser refuses, and so does
+  one over a spotlight or another push — one camera move at a time.
+
+The film returns the notes as applied (`film.notes`: what each one changed, and when), and the
+making-of record lists them.
+
+### The string table
+
+Write an on-screen word as `{"$string": "key"}` anywhere in the recipe, and pass the language's
+table (`strings: {"key": "text"}`). (The older spelling `{"string": "key"}` is refused with this one as
+the fix when the table has that key.) A key the table lacks refuses the recipe, and so does a key
+with no table; the making-of record lists the language and the keys used. (A second language
+also needs its own narration; the recipe's phrases are its English cues for now.)
+
+
+## Checking a film
+
+- **Reading time.** Every line meant to be read — titles, footers, list lines, captions, the board's
+  writing, guess questions and answers, the push-in caption — must stay up, whole, about **0.3 s a word**
+  (at least a second), counted from when it is fully shown until it starts to leave. `film.reading`
+  lists the lines that are too short (the making-of record and the studio show them); a recipe with
+  `"reading": "refuse"` is refused while any line is. Code is left out: it is studied, not read in a beat.
+- **Stills.** `film.moments()` gives each scene's picture once it has settled and each change of
+  picture half way through; `contactSheet(film)` puts them on one PNG (the studio's *Stills sheet*).
+  A muddy double exposure, a collision or text caught mid-flight shows up in the half-way stills.
+- **A poster.** `"poster": ["summary", "What to keep", 1]` names the film's best settled frame. The
+  renderer writes it beside the video (`poster.jpg`) and makes it the video's first frame, so every
+  platform's thumbnail shows it; the length and the sound's sync do not change.
+- **Pixel pins.** `frameHashes(film)` hashes frames across the film; store them beside a test and compare
+  with `changedFrames(pinned, now)`. Hashes depend on the machine's fonts: record them again on a new
+  machine, and otherwise only for a change you meant.
+- **The making-of record** (`making-of.json`, written by `makeFilm`): every phrase → the recipe entry it
+  triggered and when, the director's notes as applied, the lines too short to read, the pacing, the
+  poster, the tools and versions — the film's own footprintjs run.
+
+## The preview studio
+
+A local page for directing a film: the picture at the playhead, a timeline with the scenes, a tick for
+every spoken phrase (coloured by the part of the recipe that named it) and the notes, the transcript
+with the word being said, and the voice. **Click the picture** and it says what drew that spot — the
+recipe entry (`story.items[3]`, `stages[2].reveal[1]`, `card.rows[0]`, `guesses[0]`), its line in the
+recipe file (a link that opens it in VS Code), and the coordinates you need for a new item or a push.
+Save the recipe and the film is compiled again; a recipe that refuses shows why, and the last good
+film stays on screen.
+
+```js
+import {startStudio} from 'footprint-storyreel/studio';
+const studio = await startStudio({
+  load: async () => ({film, storyboard, recipe, source: {file: 'recipe.json'}, audio: 'voice.wav'}),
+  watch: ['recipe.json'],          // compiled again when these change
+  port: 4321,
+});
+```
+
+Keys: space plays; ← → step a frame (shift: a second); `[` `]` the previous and next phrase; `,` `.`
+the previous and next scene. It listens on 127.0.0.1 only, answers only requests addressed to that
+name, only reads (GET), and runs nothing from the recipe. The engine side is `film.regionsAt(t)`
+(what is drawn where, each box naming its recipe entry) and `film.pointAt(t, x, y)` (a click in the
+recipe's coordinates); every `film.beats[i].path` names the entry that asked for that phrase.
+
+## Built-in kits
+
+- **whiteboard** (story) — a board hanging on paper; marker props, handwriting, eraser, eureka, spotlights.
+- **cartoon** (story) — a flat, friendly world drawn in code (no image files): morning-to-evening
+  sky, hills, a stone pen and gate, a shepherd, sheep that walk with a bounce, a bag of pebbles;
+  captions; camera moves (`camera: [{at, to: [x, y], zoom}]`, the frame always stays covered).
+  `node examples/shepherd/make.mjs` renders its first scene.
+
+```json
+{"story": {"kit": "cartoon", "evening": ["evening", "Each evening"],
+  "flock": {"count": 4, "missing": 1, "out": {"at": ["morning", "when a sheep went out"], "every": 1.3}, "home": {"at": ["evening", "when a sheep came home"], "every": 1.3}},
+  "eureka": {"at": ["evening", "But wait"], "text": "One is missing!"},
+  "captions": [{"at": ["morning", "One sheep one pebble"], "until": ["morning", "One sheep one pebble", 3], "text": "one sheep · one pebble"}],
+  "camera": [{"at": ["morning", "A shepherd had sheep"], "to": [560, 640], "zoom": 1.35}]}}
+```
+
+## Kits
+
+```js
+// A story kit draws the opening world on a 1600×900 sheet.
+const myKit = {name: 'cartoon', story: {
+  motion: ['cameraSpeed'],                    // it follows a director's speed note (below)
+  compile(spec, clock, motion) {
+    return {
+      hang: 1,                                // 1 = full frame; 0.9 = a board hanging on the paper
+      draw(ctx, t, spot) { /* draw the world at t */ },
+      spotAt(t) { return null; },             // optional spotlight {cx, cy, r, zoom, w}
+      regionsAt(t) { return []; },            // optional, for the studio: [{box: [x0, y0, x1, y1] on the sheet, path: 'items[3]', label}]
+      texts() { return []; },                 // optional, for the reading check: [{text, from, to, path}]
+      sounds: [{time: clock.at(['story', 'But wait']), type: 'chime'}],
+    };
+  }}};
+
+// A stage kit adds a stage type. `keys` lists its own spec keys (besides type, scene, chip,
+// chipDark, title, enter, chrome); any other key refuses. cardBox is null in a film without a card.
+const loopKit = {name: 'agent-loop', stages: {loop: {
+  keys: ['loop'],
+  compile(spec, {clock, data}) { … }, draw(ctx, P, theme, handle, t, cardBox) { … },
+  card(handle, t) { return {rows, glow, pop}; },   // optional: drive the card
+  place(handle) { return {at: [800, 600], scale: .58}; }, // optional: take the card into the scene
+  sounds(handle) { return [{time, type}]; },
+}}};
+
+await compileFilm({storyboard, timings, recipe, kits: [myKit, loopKit]});
+```
+
+`motion.cameraSpeed` is the film's camera speed (1 unless a note sets it): a kit that lists
+`motion: ['cameraSpeed']` divides the seconds of its camera moves and spotlights by it. A kit that does
+not list it still draws, but a speed note on a film with one of its worlds refuses (the note says
+*every* camera move). A stage kit's `compile` gets `{clock, data, motion}`, and may add
+`regions(handle, t, cardBox)` for the studio (boxes on the frame, paths relative to its stage).
+
+Sound accents: `tap`, `slide`, `settle`, `question`, `chime` (procedural, no samples; at most 64 per scene).
+
+
+## API
+
+| import | what it does |
+|---|---|
+| `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `reading`, `moments()`, `regionsAt(t)`, `pointAt(t, x, y)`, `posterAt` |
+| `renderFilm({film, storyboard, timings, narrationDir?, out, width?, height?, fps?, intro?, stamp?, from?, to?, poster?})` | the MP4 (FFmpeg), its chapters, its poster |
+| `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?})` | compile + render as a footprintjs pipeline, with `making-of.json` |
+| `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |
+| `makeClock(storyboard, timings)` | phrases → seconds |
+| `contactSheet(film, {moments?, columns?, width?})` | a PNG of stills |
+| `frameHashes(film)` · `changedFrames(pinned, now)` | pixel pins |
+| `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
+| `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
+
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/pins`, `/sheet`, `/render`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/regions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+
+
+## Laws
+
+1. **Data only.** A recipe names shapes, phrases and numbers; an unknown key refuses. Nothing in a recipe runs.
+2. **Phrases, not seconds.** Pictures follow the voice; change the voice and the film follows.
+3. **Pure function of time.** `frame(ctx, t)` draws any moment in any order, the same way every time.
+4. **Every frame restores the canvas** (no leaked alpha or transform).
+5. **One focal point at a time**: speech is a bubble, data is a pill, the old stage leaves before the new one arrives, one camera move at a time.
+6. **Long enough to read.** A line meant to be read stays up about 0.3 s a word.
+7. **Notes change the camera, never the beats.** Every note says what was asked; one the film cannot honour refuses.
+8. **Say what made it.** The making-of record lists every phrase → drawing, every note, every tool.
+9. **Pinned pixels.** An approved film stays the approved film until a change is meant.
+
+## Not in this package
+
+StoryReel is for teaching and story films. **Product advertisements** — launch videos, brand kits,
+polished UI shots, HTML scenes — are left out on purpose. For those, a launch-video tool such as
+[`/brag`](https://github.com/latent-spaces/brag) (a Claude Code skill, MIT) fits better; StoryReel's
+clock and pipeline can be borrowed if a separate ads framework is ever built.
+
+## What it uses
+
+| library | licence | for |
+|---|---|---|
+| footprintjs | MIT | the pipeline and its making-of record |
+| @napi-rs/canvas | MIT | drawing |
+| perfect-freehand | MIT | marker strokes |
+| roughjs | MIT | sketched shapes |
+| shiki | MIT | code tokens |
+| Caveat (font, bundled) | SIL OFL 1.1 | handwriting |
+| FFmpeg (separate program, on PATH) | LGPL/GPL | encoding and mixing |
+
+Node 22+. Licence: MIT (the bundled Caveat font: SIL OFL 1.1, `fonts/caveat/OFL.txt`).
+First user: the AgentFootprint video course.

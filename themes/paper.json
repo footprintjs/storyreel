@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "id": "paper",
+  "description": "Warm engineering paper: pale stock with a faint grid and grain, printed-ink colours, cards that cast soft shadows. Same facts, cues and causal order as every other style.",
+  "canvas": {
+    "width": 1600,
+    "height": 900,
+    "safeMargin": 56
+  },
+  "palette": {
+    "bg": "#f3eee3",
+    "glow": "#fffdf7",
+    "panel": "#fbf8f1",
+    "edge": "#cdc3ae",
+    "ink": "#23211c",
+    "dim": "#6c665a",
+    "faint": "#a2998a",
+    "available": "#2c7a58",
+    "unknown": "#b4650c",
+    "reject": "#b33f36",
+    "accent": "#2d5c9a",
+    "llm": "#6a4db0",
+    "card": "#fffdf8",
+    "well": "#e5dccb",
+    "lid": "#cbbfa8",
+    "figure": "#dce6f1",
+    "figureBody": "#c9d8ea",
+    "shade": "#efe8daee"
+  },
+  "inputColors": [
+    "#2d5c9a",
+    "#2c7a58",
+    "#b4650c",
+    "#6a4db0"
+  ],
+  "type": {
+    "sans": "\"Avenir Next\",Arial,sans-serif",
+    "mono": "Menlo,monospace",
+    "display": "\"Iowan Old Style\",Charter,Georgia,serif",
+    "title": 46,
+    "body": 26,
+    "label": 19,
+    "small": 15,
+    "minimumReadable": 15
+  },
+  "sound": {
+    "density": "sparse",
+    "peakCeilingDBFS": -28
+  },
+  "music": {
+    "bed": "none",
+    "levelDB": -18,
+    "duckDB": 8,
+    "chordSeconds": 8
+  },
+  "mastering": {
+    "targetLUFS": -16,
+    "truePeakDB": -1.5
+  },
+  "surface": {
+    "kind": "paper"
+  },
+  "background": {
+    "kind": "paper",
+    "gridSize": 40,
+    "grain": 0.05
+  }
+}

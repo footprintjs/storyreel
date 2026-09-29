@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "id": "storybook",
+  "description": "A storybook: warm paper, inked lines, handwritten display type. Pause-and-guess cards are paper cards with an inked border.",
+  "canvas": {
+    "width": 1600,
+    "height": 900,
+    "safeMargin": 56
+  },
+  "palette": {
+    "bg": "#f6ecd8",
+    "glow": "#fff8ea",
+    "panel": "#fbf3e2",
+    "edge": "#d8c7a4",
+    "ink": "#3b2b1a",
+    "dim": "#7a6a52",
+    "faint": "#b3a282",
+    "available": "#2f6b3a",
+    "unknown": "#b4650c",
+    "reject": "#a8362c",
+    "accent": "#35568f",
+    "llm": "#6a4db0",
+    "card": "#fbf2dc",
+    "well": "#e9dcc0",
+    "lid": "#d2c19c",
+    "figure": "#e2e8ee",
+    "figureBody": "#cfd9e4",
+    "shade": "#efe3cbee"
+  },
+  "type": {
+    "sans": "\"Avenir Next\",Arial,sans-serif",
+    "mono": "Menlo,monospace",
+    "display": "Caveat,\"Comic Sans MS\",cursive",
+    "title": 46,
+    "body": 26,
+    "label": 19
+  },
+  "background": {
+    "kind": "paper",
+    "gridSize": 0,
+    "grain": 0.05
+  },
+  "surface": {
+    "kind": "paper"
+  },
+  "guess": {
+    "look": "storybook",
+    "card": "#fbf2dc",
+    "ink": "#3b2b1a",
+    "answer": "#2f6b3a"
+  }
+}

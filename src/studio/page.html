@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StoryReel Studio</title>
+<link rel="stylesheet" href="/studio.css">
+<script src="/studio.js" defer></script>
+</head>
+<body>
+<header class="bar">
+  <h1 id="title">StoryReel Studio</h1>
+  <span id="status" class="status">loading…</span>
+</header>
+<div id="error" class="error" hidden></div>
+<main>
+  <section class="work">
+    <div class="screen" id="screen">
+      <img id="frame" alt="The film at the playhead">
+      <div id="box" class="box" hidden></div>
+      <div id="dot" class="dot" hidden></div>
+    </div>
+    <div class="transport">
+      <button id="play" type="button" aria-label="Play">Play</button>
+      <span id="time" class="time">0:00.0</span>
+      <span id="scene" class="scene-name"></span>
+      <a href="/api/sheet" target="_blank" rel="noopener">Stills sheet</a>
+      <span class="keys">space: play · ← →: step · [ ]: phrase · , .: scene · click the picture: what drew it</span>
+    </div>
+    <div class="timeline-wrap">
+      <canvas id="timeline" aria-label="Timeline: scenes, spoken phrases and director's notes"></canvas>
+      <div id="tip" class="tip" hidden></div>
+    </div>
+    <p id="transcript" class="transcript"></p>
+  </section>
+  <aside class="side">
+    <section>
+      <h2>Here</h2>
+      <div id="here" class="muted">Click the picture to see which recipe entry drew that spot.</div>
+    </section>
+    <section>
+      <h2>Recipe entry</h2>
+      <div id="entry" class="muted">Pick a drawing, or a phrase on the timeline.</div>
+    </section>
+    <section>
+      <h2>Phrases near the playhead</h2>
+      <ol id="now" class="list"></ol>
+    </section>
+    <section>
+      <h2>Too short to read</h2>
+      <ol id="reading" class="list"></ol>
+    </section>
+    <section>
+      <h2>Director's notes</h2>
+      <ol id="notes" class="list"></ol>
+    </section>
+  </aside>
+</main>
+<audio id="voice" preload="auto"></audio>
+</body>
+</html>

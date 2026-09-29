@@ -1,0 +1,124 @@
+{
+ "story": {
+  "kit": "cartoon",
+  "evening": [
+   "evening",
+   "Each evening"
+  ],
+  "flock": {
+   "count": 4,
+   "missing": 1,
+   "out": {
+    "at": [
+     "morning",
+     "when a sheep went out"
+    ],
+    "every": 1.3
+   },
+   "home": {
+    "at": [
+     "evening",
+     "when a sheep came home"
+    ],
+    "every": 1.3
+   }
+  },
+  "eureka": {
+   "at": [
+    "evening",
+    "But wait"
+   ],
+   "text": "One is missing!"
+  },
+  "spots": [
+   {
+    "from": [
+     "evening",
+     "One pebble is still"
+    ],
+    "to": [
+     "evening",
+     "A sheep is missing",
+     3
+    ],
+    "at": [
+     680,
+     720
+    ],
+    "r": 210,
+    "zoom": 1.15
+   }
+  ],
+  "captions": [
+   {
+    "at": [
+     "morning",
+     "One sheep one pebble"
+    ],
+    "until": [
+     "morning",
+     "One sheep one pebble",
+     3
+    ],
+    "text": "one sheep \u00b7 one pebble"
+   },
+   {
+    "at": [
+     "evening",
+     "One sheep one pebble"
+    ],
+    "until": [
+     "evening",
+     "But wait"
+    , 0.1],
+    "text": "one sheep \u00b7 one pebble"
+   }
+  ],
+  "camera": [
+   {
+    "at": [
+     "morning",
+     "A shepherd had sheep"
+    ],
+    "to": [
+     560,
+     640
+    ],
+    "zoom": 1.35
+   },
+   {
+    "at": [
+     "morning",
+     "through the gate"
+    ],
+    "to": [
+     700,
+     650
+    ],
+    "zoom": 1.2
+   },
+   {
+    "at": [
+     "evening",
+     "Each evening"
+    ],
+    "to": [
+     640,
+     650
+    ],
+    "zoom": 1.3
+   },
+   {
+    "at": [
+     "evening",
+     "But wait"
+    ],
+    "to": [
+     640,
+     560
+    ],
+    "zoom": 1.45
+   }
+  ]
+ }
+}
