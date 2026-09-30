@@ -107,6 +107,7 @@
     "examples/*/strings/*.json",
     "README.md",
     "CHANGELOG.md",
+    "BACKLOG.md",
     "LICENSE"
   ],
   "engines": {

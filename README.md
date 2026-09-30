@@ -341,10 +341,11 @@ TypeScript types ship with the package: the main entry, `/studio`, and the docum
 
 ## Not in this package
 
-StoryReel is for teaching and story films. **Product advertisements** — launch videos, brand kits,
-polished UI shots, HTML scenes — are left out on purpose. For those, a launch-video tool such as
-[`/brag`](https://github.com/latent-spaces/brag) (a Claude Code skill, MIT) fits better; StoryReel's
-clock and pipeline can be borrowed if a separate ads framework is ever built.
+StoryReel is for teaching and story films. **Product advertisements** — launch videos, brand
+campaigns, polished UI shots, HTML scenes — are left out on purpose; a launch-video tool such as
+[`/brag`](https://github.com/latent-spaces/brag) (a Claude Code skill, MIT) fits better. What comes
+next here — recipe kinds, a library explainer generated from a repository, vertical teasers — is in
+[BACKLOG.md](BACKLOG.md).
 
 ## What it uses
 
