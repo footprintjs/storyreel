@@ -565,6 +565,18 @@ root folder, the same rule as the recipe's own files: a sibling folder or a link
 has no way to draw the film. A kit that does not declare it keeps `compile(spec, clock, motion)`, and the
 speed-note rule above is the same for both.
 
+**Characters that talk.** A storyboard scene may name who says it — `{"id": "no", "speaker": "robot",
+"narration": "No, it was not shipped."}` — and the clock a kit is compiled with answers who is speaking at any
+moment: `clock.speaking(t)` is `{scene, speaker, word, start, end}` while a word is being said and `null`
+between words, so a mouth opens and closes with the voice (and only the speaker's mouth moves).
+`clock.words(scene)` lists a scene's said words on the film's clock. What a speaker sounds like is the voice
+step's business (the starter maps a speaker to a voice profile); a silent scene says nothing.
+
+```js
+const open = (t, who) => { const w = clock.speaking(t); if (w?.speaker !== who) return 0;
+  return Math.abs(Math.sin(Math.PI * (t - w.start) / (w.end - w.start))); };   // 0..1: how far the mouth is open
+```
+
 **Ready.** A world may return `ready`, a Promise that settles once it can draw (its images decoded).
 `compileFilm` waits for every world's `ready` before it draws the recipe's `recalls` and before it
 returns, so a recall never catches a half-loaded picture. A `ready` that rejects refuses the film, naming

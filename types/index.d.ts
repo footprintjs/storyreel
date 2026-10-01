@@ -10,7 +10,7 @@ export type Beat = [scene: string, phrase: string] | [scene: string, phrase: str
 export type Direction = [text: string, seconds: number];
 
 /** A scene is spoken (`narration`) or silent (`silent`: directions), never both. */
-export type StoryboardScene = {id: string; title?: string; [key: string]: unknown}
+export type StoryboardScene = {id: string; title?: string; /** Who says the scene: a name the voice step maps to a voice; kits read it through clock.speaking(t). */ speaker?: string; [key: string]: unknown}
   & ({narration: string; silent?: never} | {silent: Direction[]; narration?: never});
 
 export interface Storyboard {
@@ -121,6 +121,10 @@ export interface Clock {
   at(beat: Beat): number;
   pauseAfter(beat: Beat): {start: number; end: number};
   locate(t: number): {index: number; id: string; time: number};
+  /** The words said in a scene, on the whole-lesson clock (none in a silent scene). */
+  words(scene: string): {text: string; start: number; end: number}[];
+  /** Who is saying a word at t (the scene's `speaker`, or null), or null between words: for a talking mouth. */
+  speaking(t: number): {scene: string; speaker: string | null; word: string; start: number; end: number} | null;
 }
 
 /** What is drawn where: a box on the 1600×900 frame and the recipe entry that drew it. */

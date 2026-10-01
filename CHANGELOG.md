@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Characters that talk** (`clock.mjs · makeClock`): a storyboard scene may name its `speaker` (`"speaker":
+  "robot"`: a word; anything else refuses). The clock — the one a story kit is compiled with — answers
+  `clock.speaking(t)`: `{scene, speaker, word, start, end}` while a word is being said, `null` between words
+  and in a silent scene, so a kit moves the right character's mouth with the voice; `clock.words(scene)` lists a
+  scene's said words on the film's clock. The voice step decides what `speaker` sounds like (the starter maps it
+  to a voice profile); the engine reads it only here. Types: `StoryboardScene.speaker`, `Clock.words`,
+  `Clock.speaking`.
 - **Transitions: a collection, like a video editor's** (`src/transitions.mjs`, `footprint-storyreel/transitions`):
   a shot's `enter` names one of twelve — `cut`; dissolve `fade` · `dip` (`color`); wipe `wipe` (`from`) · `split`
   (`line`) · `clock`; `iris` (`at`); motion `push` · `slide` · `whip` (`from`); `zoom` (`at`); `page` — each with

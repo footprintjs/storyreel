@@ -174,3 +174,24 @@ test('a voiced cut with a silent opening renders: paced (generated silence in th
   const missing = {...timings, scenes: timings.scenes.map((s, i) => i === 1 ? {...s, audio: undefined} : s)};
   await assert.rejects(renderFilm({film, storyboard, timings: missing, narrationDir: unpaced, out: path.join(tmp(), 'x.mp4'), ...small, from: 0, to: 1}), /scene story has no audio in its timing: only a silent scene's audio is generated/);
 });
+
+test('who is speaking: the clock knows each scene\'s said words and its speaker, so a kit can move the right mouth', async () => {
+  const {makeClock, evenTimings} = await import('../src/clock.mjs');
+  const board = {scenes: [
+    {id: 'ask', silent: [['a customer asks', 1.5]]},
+    {id: 'no', speaker: 'robot', narration: 'No, it was not shipped.'},
+    {id: 'wait', speaker: 'analyst', narration: 'Wait. Only seven days.'},
+    {id: 'end', narration: 'Watch the full video.'},
+  ]};
+  const clock = makeClock(board, evenTimings(board));
+  assert.deepEqual(clock.words('ask'), [], 'a silent scene says nothing');
+  const said = clock.words('no');
+  assert.deepEqual(said.map(w => w.text), ['No,', 'it', 'was', 'not', 'shipped.']);
+  assert.ok(said[0].start >= clock.start('no') && said.at(-1).end <= clock.end('no'), 'on the whole-lesson clock');
+  assert.deepEqual(clock.speaking(said[1].start + .01), {scene: 'no', speaker: 'robot', word: 'it', start: said[1].start, end: said[1].end});
+  assert.equal(clock.speaking(clock.start('ask') + .5), null, 'nobody speaks a direction');
+  assert.equal(clock.speaking(said.at(-1).end + .05), null, 'between words, nobody');
+  assert.equal(clock.speaking(clock.words('wait')[0].start + .01).speaker, 'analyst');
+  assert.equal(clock.speaking(clock.words('end')[0].start + .01).speaker, null, 'a scene with no speaker names none');
+  assert.throws(() => makeClock({scenes: [{id: 'x', speaker: 3, narration: 'Hi.'}]}, evenTimings({scenes: [{id: 'x', narration: 'Hi.'}]})), /speaker must name who says the scene/);
+});

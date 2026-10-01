@@ -21,6 +21,7 @@ export function checkScene(scene, i = 0) {
   const name = `storyboard scene ${scene.id ?? i}`, spoken = scene.narration !== undefined, silent = scene.silent !== undefined;
   if (spoken && silent) throw new Error(`${name} has both narration and silent: a scene is spoken or silent, not both (directions inside a spoken scene are not supported yet); move the directions into a silent scene of their own`);
   if (!spoken && !silent) throw new Error(`${name} has no narration and no silent: give "narration": "what is said", or "silent": [["the door opens", 1.0], …]`);
+  if (scene.speaker !== undefined && !(typeof scene.speaker === 'string' && scene.speaker.trim())) throw new TypeError(`${name}: speaker must name who says the scene (a word, e.g. "robot"), not ${JSON.stringify(scene.speaker)}`);
   if (spoken) {
     if (typeof scene.narration !== 'string') throw new TypeError(`${name}: narration must be the words said, as one string`);
     return 'spoken';
@@ -120,6 +121,9 @@ export function makeClock(board, timings) {
   });
   const total = at;
   const sceneIndex = id => { if (!(id in byId)) throw new Error(`Unknown scene ${id}`); return byId[id]; };
+  // Each scene's said words on the whole-lesson clock (a silent scene's directions are seen, never said).
+  const said = board.scenes.map((scene, i) => scene.silent !== undefined ? []
+    : timings.scenes[i].words.filter(w => w.text.replace(/[^\p{L}\p{N}]/gu, '')).map(w => Object.freeze({text: w.text, start: offsets[i] + w.start, end: offsets[i] + w.end})));
   return {
     total, offsets,
     /** Whole-lesson seconds where scene `id` starts. */
@@ -153,6 +157,18 @@ export function makeClock(board, timings) {
     locate(t) {
       let i = offsets.length - 1; while (i > 0 && t < offsets[i]) i--;
       return {index: i, id: board.scenes[i].id, time: t - offsets[i]};
+    },
+    /** The words said in scene `id`, on the whole-lesson clock: [{text, start, end}] (none in a silent scene). */
+    words: id => said[sceneIndex(id)].slice(),
+    /**
+     * Who is saying a word at t: {scene, speaker, word, start, end} (speaker: the storyboard scene's `speaker`,
+     * or null; start/end: the word's, on the whole-lesson clock), or null between words and in silent scenes —
+     * so a kit can move the right character's mouth with the voice.
+     */
+    speaking(t) {
+      let i = offsets.length - 1; while (i > 0 && t < offsets[i]) i--;
+      const w = said[i].find(x => t >= x.start && t < x.end);
+      return w ? {scene: board.scenes[i].id, speaker: board.scenes[i].speaker ?? null, word: w.text, start: w.start, end: w.end} : null;
     },
   };
 }
