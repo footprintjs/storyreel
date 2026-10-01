@@ -1,4 +1,5 @@
 // Types for footprint-storyreel (the code is plain JavaScript; these describe its public surface).
+import type {CombinedNarrativeEntry, RuntimeSnapshot} from 'footprintjs';
 
 /** A spoken phrase: [scene, phrase] or [scene, phrase, plus seconds], or the object form. */
 export type Beat = [scene: string, phrase: string] | [scene: string, phrase: string, plus: number]
@@ -103,6 +104,22 @@ export interface Film {
   moments(): {t: number; kind: 'settled' | 'moving'; label: string}[];
   regionsAt(t: number): Region[];
   pointAt(t: number, x: number, y: number): {frame: [number, number]; world?: {path: string; at: [number, number]}};
+  /** Only with compileFilm({…, record: true}): the compile as a footprintjs run. */
+  record?: CompileRecord;
+}
+
+/**
+ * The compile, recorded with footprintjs (compileFilm's `record: true`). Five stages: read inputs, build worlds
+ * and stages, guesses and notes, checks, resolve lines. Scope keys: `recipe`, `lines`, `notes`, `strings`,
+ * `world.<path>`, `stage.stages[i]`, `guess.guesses[n]`, `note.notes[i]`, `checks.reading|sounds|ready`, and
+ * `when.<recipe path>` (seconds) for every line resolved. Detached: it survives structuredClone. Read a
+ * slice with footprintjs/trace: `sliceForKey(snapshot.commitLog, key, keysReadFromExecutionTree(snapshot.executionTree))`.
+ */
+export interface CompileRecord {
+  /** The footprintjs narrative, without its live raw values. */
+  narrative: Omit<CombinedNarrativeEntry, 'rawValue'>[];
+  /** getSnapshot() of the run, written with writeProvenance 'reads-prefix'. */
+  snapshot: RuntimeSnapshot;
 }
 
 /** What a story kit's compile returns: a world the engine hangs on the paper and draws at any t. */
@@ -171,6 +188,8 @@ export interface CompileFilmOptions<K = Kit | ContextKit> {
   theme?: string | Record<string, unknown>; root?: string; strings?: Record<string, string> | null;
   /** Top-level recipe keys the host application reads itself: allowed, and ignored by the engine. */
   hostKeys?: string[];
+  /** true: the compile runs as a footprintjs flowchart and the film carries `record` (default false: no record). */
+  record?: boolean;
 }
 // Two signatures, so a kit written inline on today's contract keeps its contextual types (a list that
 // mixes both contracts cannot give them: TypeScript cannot tell an unmarked story kit apart from the union).

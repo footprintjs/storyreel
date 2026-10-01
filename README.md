@@ -324,7 +324,42 @@ also needs its own narration; the recipe's phrases are its English cues for now.
   ```
 - **The making-of record** (`making-of.json`, written by `makeFilm`): every phrase → the recipe entry it
   triggered and when, the director's notes as applied, the lines too short to read, the pacing, the
-  poster, the loudness as measured and set, the tools and versions — the film's own footprintjs run.
+  poster, the loudness as measured and set, the tools and versions — the film's own footprintjs run —
+  and, under `compile`, the compile stage by stage (the narrative of its record, below).
+
+## The compile record
+
+`compileFilm({…, record: true})` runs the compile as a footprintjs flowchart and returns the film with
+`film.record = {narrative, snapshot}`. Off (the default) nothing changes: the same return keys, the same
+pixels. Drawing a frame is never recorded; the compile is, in five stages, each running its own part of
+the compile and then writing small values about it (numbers, words, recipe paths — never a canvas):
+
+| stage | reads | writes |
+|---|---|---|
+| read inputs | – | `recipe` (its top-level keys), `lines` (each scene's start and end, seconds), `notes`, `strings` |
+| build worlds and stages | `recipe`, `lines` | `world.story` and `stage.stages[i]`: kit, scene, recipe path |
+| guesses and notes | `lines`, `notes`, `stage.*` | `guess.guesses[n]` (the pause, when the card is gone), `note.notes[i]` (as applied) |
+| checks | `world.*`, `stage.*`, `guess.*`, `note.*` | `checks.reading`, `checks.sounds`, `checks.ready` |
+| resolve lines | `lines` | `when.<recipe path>` = seconds, for every line the build resolved |
+
+Lines are resolved while the build asks for them; the clock is a pure function of the paced word times,
+so *resolve lines* writes them all once the build is done (a line no recipe entry named is written as
+`when.(no entry) <the phrase>`). The run keeps, for every write, the keys its stage read first
+(footprintjs `writeProvenance: 'reads-prefix'`), so a slice walks back from any value:
+
+```js
+import {sliceForKey, formatSlice, keysReadFromExecutionTree} from 'footprintjs/trace';
+const film = await compileFilm({storyboard, timings, recipe, record: true});
+const {snapshot} = film.record;
+console.log(formatSlice(sliceForKey(snapshot.commitLog, 'when.story.items[0].at', keysReadFromExecutionTree(snapshot.executionTree))));
+// SLICE for 'when.story.items[0].at' — reads via: execution-tree
+// resolve lines (resolve-lines#4) [wrote: when.story.items[0].at, …]
+//   read inputs (read-inputs#0) ← via lines [wrote: recipe, lines, notes]
+```
+
+The record is detached (it survives `structuredClone` and JSON). A refused build keeps its record: the
+error carries `error.record`, whose narrative names the stage that refused. `record` other than true or
+false refuses. `makeFilm` always records and puts the narrative in `making-of.json` under `compile`.
 
 ## The preview studio
 
@@ -463,7 +498,7 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 
 | import | what it does |
 |---|---|
-| `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?, hostKeys?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `reading`, `moments()`, `regionsAt(t)`, `pointAt(t, x, y)`, `posterAt` |
+| `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?, hostKeys?, record?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `reading`, `moments()`, `regionsAt(t)`, `pointAt(t, x, y)`, `posterAt`; with `record: true`, `record` (the compile as a footprintjs run) |
 | `renderFilm({film, storyboard, timings, narrationDir?, out, width?, height?, fps?, intro?, stamp?, from?, to?, poster?, loudness?})` | the MP4 (FFmpeg), its chapters, its poster, its loudness (two passes) |
 | `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?})` | compile + render as a footprintjs pipeline, with `making-of.json` |
 | `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |
@@ -487,7 +522,7 @@ TypeScript types ship with the package: the main entry, `/studio`, and the docum
 5. **One focal point at a time**: speech is a bubble, data is a pill, the old stage leaves before the new one arrives, one camera move at a time.
 6. **Long enough to read.** A line meant to be read stays up about 0.3 s a word.
 7. **Notes change the camera, never the beats.** Every note says what was asked; one the film cannot honour refuses.
-8. **Say what made it.** The making-of record lists every phrase → drawing, every note, every tool.
+8. **Say what made it.** The making-of record lists every phrase → drawing, every note, every tool, and the compile stage by stage.
 9. **Pinned pixels.** An approved film stays the approved film until a change is meant.
 
 ## Not in this package

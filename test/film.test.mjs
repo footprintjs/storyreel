@@ -82,6 +82,9 @@ test('makeFilm: a footprintjs pipeline writes the film and its making-of record'
   assert.deepEqual(record.beats[0].said, {scene: 'story', phrase: 'a shepherd', plus: 0});
   assert.ok(record.pipeline.some(e => /check-inputs/.test(e.text ?? '')) && record.pipeline.some(e => /render-film/.test(e.text ?? '')), 'the stages are in the footprintjs narrative');
   assert.ok(record.tools.every(t => t.name && t.license));
+  // The compile, stage by stage (compileFilm's record): its five stages, and every line as when.<recipe path>.
+  assert.deepEqual(record.compile.filter(e => e.type === 'stage').map(e => e.stageId), ['read-inputs', 'build-worlds-and-stages', 'guesses-and-notes', 'checks', 'resolve-lines']);
+  assert.ok(record.compile.some(e => e.key === 'when.story.items[0].at'), 'a resolved line is in the compile record');
   // Loudness in two passes: the type FFmpeg reported is recorded. The hello film is silence and a few quiet
   // taps (a measured range above FFmpeg's default 7); with no LRA set the range target follows the
   // measurement (render.mjs · effectiveTarget), so one fixed gain is kept and nothing is flagged.

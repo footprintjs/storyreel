@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **The compile record** (`record.mjs · recordSteps`, `film.mjs · compileSteps`): `compileFilm({…, record:
+  true})` runs the compile as a footprintjs flowchart of five stages — read inputs, build worlds and stages,
+  guesses and notes, checks, resolve lines — each running its own segment of the existing compile (the
+  segments are one generator; with the record off they are simply drained, in the same order). Stages write
+  small values only: `recipe`, `lines`, `world.<path>`, `stage.stages[i]`, `guess.guesses[n]`,
+  `note.notes[i]`, `checks.*`, and `when.<recipe path>` = seconds for every line resolved. The run uses
+  `writeProvenance: 'reads-prefix'`, so `sliceForKey` (footprintjs/trace) walks back from a line to the stage
+  that read the scenes' seconds. The film carries `record: {narrative, snapshot}` (detached; survives
+  structuredClone); a refused build's error carries `record` too. `record` other than true/false refuses.
+  Off (the default) the return keys and the pixels are unchanged (the pixel pins are unchanged). The
+  director's notes as applied are now computed just after the push notes are placed (before the reading
+  check); nothing they read changed. `makeFilm` records the compile and writes its narrative to
+  `making-of.json` under `compile`. Types: `CompileRecord`, `Film.record`, `CompileFilmOptions.record`. A
+  benchmark: `node bench/compile.mjs [runs]` (median milliseconds per example, record off and on).
+
 - **The kit context** (`film.mjs · kitContext`): a story kit that declares `context: true` is compiled as
   `compile(spec, context)`, one frozen object `{clock, motion, theme, root, library, labels, insideRoot,
   readFile}` (`library` and `labels` are empty until a recipe carries them). `readFile(path)` loads only from

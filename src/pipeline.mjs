@@ -1,8 +1,9 @@
 /**
  * Make a film as a footprintjs flowchart. Each stage is recorded as it runs, so every film comes
  * with its making-of record (making-of.json): the stages and how long they took, every phrase
- * that triggered a drawing and when (and the recipe entry that asked for it), the director's notes
- * as applied, the pacing, the loudness as measured and set, the tools and versions used.
+ * that triggered a drawing and when (and the recipe entry that asked for it), the compile stage by
+ * stage (compileFilm's record: its footprintjs narrative), the director's notes as applied, the
+ * pacing, the loudness as measured and set, the tools and versions used.
  *
  * Heavy things (the compiled film, canvases) never enter the flowchart's tracked scope; stages
  * pass small values and file paths, as footprintjs expects.
@@ -83,7 +84,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       scope.pacing = paced.pacing ?? null;
     },
     'compile-film': async scope => {
-      film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings, hostKeys});
+      film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings, hostKeys, record: true});
       scope.beats = film.beats.length; scope.sounds = film.sounds.length; scope.total = +film.total.toFixed(3);
     },
     'render-film': async scope => {
@@ -109,6 +110,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     loudness: loudnessRecord(result.loudness),
     tools: TOOLS(),
     pipeline: trace.getEntries(),
+    // The compile, stage by stage (record.mjs · recordSteps): what each stage read and wrote, every line as when.<recipe path>.
+    compile: film.record.narrative,
   };
   const makingOf = path.join(dir, 'making-of.json');
   writeFileSync(makingOf, JSON.stringify(record, null, 2));

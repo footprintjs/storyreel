@@ -32,6 +32,7 @@ import {readNotes, placePushes, pushAt} from './notes.mjs';
 import {view, then, about, through, back} from './regions.mjs';
 import {tooShortToRead, readingMode} from './reading.mjs';
 import {checkSound, soundsByScene, MAX_SOUNDS_PER_SCENE} from './sound.mjs';
+import {step, drainSteps, recordSteps} from './record.mjs';
 
 /** The recipe's own top-level keys: anything else refuses, unless the host application names it in `hostKeys`. */
 const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'notes', 'recalls', 'poster', 'reading', 'paperStyle'];
@@ -145,11 +146,24 @@ async function readyWorlds(readies) {
  * @param root       directory that recipe file paths (code excerpts) are relative to (default cwd)
  * @param strings    the string table for the film's language ({key: text}), when the recipe names strings
  * @param hostKeys   top-level recipe keys the host application reads itself (allowed, ignored); any other unknown key refuses
+ * @param record     true → the compile runs as a footprintjs flowchart and the film carries `record`
+ *                   {narrative, snapshot} (record.mjs · recordSteps); false (default) → no record, nothing else changes
  * @returns {total, clock, timings, sounds, frame(ctx, t), beats: [{ref, t, path}] (every phrase resolved, and the
  *          recipe entry that named it), strings: [keys used], notes: [the director's notes as applied],
- *          regionsAt(t) → [{box, path, label}] (what is drawn where), pointAt(t, x, y) → {frame, world?}}
+ *          regionsAt(t) → [{box, path, label}] (what is drawn where), pointAt(t, x, y) → {frame, world?}, record?}
  */
-export async function compileFilm({storyboard, board, timings, recipe, data, capture, kits = [], theme, root = process.cwd(), strings = null, hostKeys = []}) {
+export async function compileFilm(options) {
+  const {record = false, ...rest} = options;
+  if (typeof record !== 'boolean') throw new Error(`compileFilm: record must be true (the compile is recorded with footprintjs: film.record) or false (the default), not ${JSON.stringify(record)}`);
+  return record ? recordSteps(compileSteps(rest)) : drainSteps(compileSteps(rest));
+}
+
+/**
+ * The compile in five segments, one per record.mjs · COMPILE_STAGES entry: each ends in a `yield step(id,
+ * summary)`, where `summary()` (called only when recording) says what the segment read and wrote.
+ * The segments run the same code in the same order whether or not the compile is recorded.
+ */
+async function* compileSteps({storyboard, board, timings, recipe, data, capture, kits = [], theme, root = process.cwd(), strings = null, hostKeys = []}) {
   storyboard ??= board; data ??= capture ?? null;
   checkRecipeKeys(recipe, hostKeys);
   const used = new Set(); recipe = withStrings(recipe, strings, used);
@@ -184,6 +198,7 @@ export async function compileFilm({storyboard, board, timings, recipe, data, cap
   };
   /** A world on its sheet: hung on the paper at scale S (1 = full frame). */
   const hung = (instance, hang) => { const S = hang ?? instance.hang ?? .9; return {instance, S, BX: 1600 * (1 - S) / 2, BY: 900 * (1 - S) / 2 + 7.5 * (S < 1 ? 1 : 0)}; };
+  yield step('read-inputs', () => inputsSummary({recipe, storyboard, clock: base, notes, strings: strings ? [...used] : null}));
 
   // The story: its kit draws the opening world on a sheet (1600×900) that hangs on the paper.
   const storySpec = recipe.story ?? {kit: 'whiteboard', ...recipe.whiteboard};
@@ -250,6 +265,7 @@ export async function compileFilm({storyboard, board, timings, recipe, data, cap
   const namedAt = card.named ? clock.at(card.named.at) : Infinity;
   // The push-in (the camera, then the page typed over it) is done before the card moves aside for the first stage.
   if (push && buildStage && boardEnd + TURN * .9 > MOVE0) throw new Error(`The push-in ends at ${(boardEnd + TURN * .9).toFixed(2)} s${notes.speed !== 1 ? ` (at camera speed ${notes.speed} it takes ${TURN.toFixed(2)} s)` : ''}, after the card moves aside for the first stage at ${MOVE0.toFixed(2)} s: give the scene before ${buildStage.scene} a longer tail (pacing.tails), or the push-in a shorter turn`);
+  yield step('build-worlds-and-stages', () => buildSummary(recipe.story ? 'story' : 'whiteboard', storySpec.kit, stages, stageKitNames));
 
   // Director's cuts: the scene's stage arrives on a hard cut instead of its hand-over or entrance.
   for (const [scene, n] of notes.cuts) {
@@ -573,6 +589,14 @@ export async function compileFilm({storyboard, board, timings, recipe, data, cap
   }
   const pushes = placePushes(notes.pushes, {clock, speed: notes.speed, changes: pictureChanges(), spotlight: spotlightAt, total: clock.total});
 
+  // The notes as applied, in the order written: the making-of record says what each one changed.
+  const applied = new Map();
+  if (notes.speedNote) applied.set(notes.speedNote, {note: notes.speedNote.note, speed: notes.speed, ...(push ? {pushIn: {seconds: +TURN.toFixed(3), was: push.turn ?? 1}} : {}), worlds: [...worldKits], pushes: pushes.length});
+  for (const st of stages) if (st.cutNote) applied.set(st.cutNote, {note: st.cutNote.note, cut: st.scene, at: +st.start.toFixed(3), was: st.cutWas});
+  for (const p of pushes) applied.set(p.given, {note: p.note, push: {at: p.at, zoom: p.zoom}, from: +p.a.toFixed(3), to: +p.b.toFixed(3), seconds: +p.seconds.toFixed(3)});
+  const notesApplied = (recipe.notes ?? []).map(n => applied.get(n));
+  yield step('guesses-and-notes', () => notesSummary(guesses, notesApplied));
+
   // Reading time (reading.mjs): every line meant to be read stays up, whole, long enough to read.
   const readingRule = readingMode(recipe.reading), reading = tooShortToRead(readableLines());
   if (readingRule === 'refuse' && reading.length) throw new Error(`Too short to read (the recipe says reading: "refuse"): ${reading.slice(0, 3).map(l => `"${l.text}" (${l.path}) is up ${l.seconds} s and needs ${l.needs} s`).join('; ')}${reading.length > 3 ? `; and ${reading.length - 3} more` : ''}`);
@@ -708,20 +732,48 @@ export async function compileFilm({storyboard, board, timings, recipe, data, cap
   // A poster: the recipe's chosen frame (a phrase), for the thumbnail (renderFilm bakes it in as frame 0).
   const posterAt = recipe.poster === undefined ? null : clock.at(recipe.poster);
 
-  // The notes as applied, in the order written: the making-of record says what each one changed.
-  const applied = new Map();
-  if (notes.speedNote) applied.set(notes.speedNote, {note: notes.speedNote.note, speed: notes.speed, ...(push ? {pushIn: {seconds: +TURN.toFixed(3), was: push.turn ?? 1}} : {}), worlds: [...worldKits], pushes: pushes.length});
-  for (const st of stages) if (st.cutNote) applied.set(st.cutNote, {note: st.cutNote.note, cut: st.scene, at: +st.start.toFixed(3), was: st.cutWas});
-  for (const p of pushes) applied.set(p.given, {note: p.note, push: {at: p.at, zoom: p.zoom}, from: +p.a.toFixed(3), to: +p.b.toFixed(3), seconds: +p.seconds.toFixed(3)});
-  const notesApplied = (recipe.notes ?? []).map(n => applied.get(n));
-
   // Recall images: the film's own frames, reused in the recap so the viewer sees what they saw. Every
   // world is ready first (its images decoded), so a recall keeps the loaded picture and so does the film.
   await readyWorlds(readies);
   for (const [name, ref] of Object.entries(recipe.recalls ?? {})) {
     const c = createCanvas(1600, 900); frame(c.getContext('2d'), clock.at(ref)); recalls[name] = c;
   }
+  yield step('checks', () => checksSummary({readingRule, reading, sounds, byScene: soundsByScene(sounds, clock.offsets, timings.scenes.map(s => s.duration)), worlds: readies.filter(Boolean).length, recalls: Object.keys(recipe.recalls ?? {})}));
+  // Every line the build resolved (the clock is a pure function of the paced word times, so the order it was asked in changes no second).
+  yield step('resolve-lines', () => linesSummary(beats));
   return {total: clock.total, clock, timings, sounds, frame, beats, strings: [...used], notes: notesApplied, reading, posterAt, moments, regionsAt, pointAt};
+}
+
+/** What reading the inputs gave (record.mjs): the recipe's top-level keys, each scene's seconds, the notes, the strings used. */
+function inputsSummary({recipe, storyboard, clock, notes, strings}) {
+  const lines = Object.fromEntries(storyboard.scenes.map(sc => [sc.id, {start: +clock.start(sc.id).toFixed(3), end: +clock.end(sc.id).toFixed(3)}]));
+  return {reads: [], writes: {recipe: Object.keys(recipe), lines, notes: {written: (recipe.notes ?? []).length, speed: notes.speed}, ...(strings ? {strings} : {})}};
+}
+/** One key per world and per stage: its kit, its scene and its recipe path (a built-in stage is drawn by the paper kit). */
+function buildSummary(storyPath, storyKit, stages, stageKitNames) {
+  const writes = {[`world.${storyPath}`]: {kit: storyKit, path: storyPath}};
+  stages.forEach((st, i) => { writes[`stage.stages[${i}]`] = {type: st.type, kit: st.world?.kit ?? stageKitNames[st.type] ?? 'paper', scene: st.scene, path: `stages[${i}]`}; });
+  return {reads: ['recipe', 'lines'], writes};
+}
+/** Each guess's pause and when its card is gone, and each director's note as applied. */
+function notesSummary(guesses, notesApplied) {
+  const writes = {}, s = n => +n.toFixed(3);
+  guesses.forEach((g, n) => { writes[`guess.guesses[${n}]`] = {start: s(g.start), end: s(g.end), until: s(g.until)}; });
+  notesApplied.forEach((a, i) => { if (a) writes[`note.notes[${i}]`] = a; });
+  return {reads: ['lines', 'notes', 'stage.'], writes};
+}
+/** What the checks found: the reading rule and the lines too short to read, the busiest scene's sounds, the worlds waited for. */
+function checksSummary({readingRule, reading, sounds, byScene, worlds, recalls}) {
+  return {reads: ['world.', 'stage.', 'guess.', 'note.'], writes: {
+    'checks.reading': {rule: readingRule, tooShort: reading.map(l => l.path)},
+    'checks.sounds': {count: sounds.length, busiest: Math.max(0, ...byScene.map(l => l.length)), limit: MAX_SOUNDS_PER_SCENE},
+    'checks.ready': {worlds, recalls}}};
+}
+/** A resolved line's key: when.<the recipe entry that named it>, or the phrase itself when no entry did. */
+const beatKey = b => `when.${b.path ?? `(no entry) ${JSON.stringify(b.ref)}`}`;
+/** Every beat as when.<path> = seconds, read from the scenes' seconds. */
+function linesSummary(beats) {
+  return {reads: ['lines'], writes: Object.fromEntries(beats.map(b => [beatKey(b), b.t]))};
 }
 
 /** Every list and object in the recipe → its path ("story.items[3].at"), so a beat can name the entry that asked for it. */

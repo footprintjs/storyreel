@@ -13,10 +13,18 @@ export const seconds = (film: Film): number => film.total + film.moments().lengt
 export type Studio = typeof startStudio;
 export const doorKit: Kit = {name: 'door', story: {compile: () => ({draw: () => {}, sounds: [{time: 1, type: 'door', gain: .45}]})}};
 export type HostKeys = Parameters<typeof compileFilm>[0]['hostKeys'];
+// The compile record: its narrative and snapshot are footprintjs's own types.
+export const firstStage = (film: Film): string | undefined => film.record?.narrative.find(e => e.type === 'stage')?.stageId;
+export const commits = (film: Film): number => film.record?.snapshot.commitLog.length ?? 0;
+export const recorded = (film: typeof compileFilm, board: Storyboard, timings: Parameters<typeof compileFilm>[0]['timings']) => film({storyboard: board, timings, recipe: {}, record: true});
 export const atMoments = (film: Film, hash: typeof frameHashes) => hash(film, {times: film.moments().map(m => m.t), width: 320});
 
 export const silent: Loudness = {type: 'skipped', target: {I: -16, TP: -1.5}, measured: {I: null, TP: null, LRA: 0, thresh: -70, offset: null}, reason: 'the audio is silent'};
 
+// @ts-expect-error record is true or false
+export const recordWord = (film: typeof compileFilm, board: Storyboard, timings: Parameters<typeof compileFilm>[0]['timings']) => film({storyboard: board, timings, recipe: {}, record: 'yes'});
+// @ts-expect-error a narrative entry keeps no live raw value
+export const raw = (film: Film) => film.record?.narrative[0].rawValue;
 // @ts-expect-error a note needs its words
 export const noWords: DirectorNote = {cut: 'inside'};
 // @ts-expect-error reading is 'report' or 'refuse'

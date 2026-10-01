@@ -16,12 +16,12 @@ export const FILMS = {
   recap: {tail: 2.6, kits: []},
 };
 
-/** An example compiled as pinned; `recipe` replaces its recipe (e.g. one with an extra note). */
-export async function compileExample(name, {recipe} = {}) {
+/** An example compiled as pinned; `recipe` replaces its recipe (e.g. one with an extra note); `record` as compileFilm's. */
+export async function compileExample(name, {recipe, record = false} = {}) {
   const {tail, kits, pacing, strings} = FILMS[name], dir = fileURLToPath(new URL(`../examples/${name}/`, import.meta.url));
   const read = file => JSON.parse(readFileSync(dir + file, 'utf8')), storyboard = read('storyboard.json');
   const even = evenTimings(storyboard, {tail}), timings = pacing ? paceTimings(storyboard, even, read(pacing)) : even;
-  return compileFilm({storyboard, timings, recipe: recipe ?? read('recipe.json'), kits, root: dir, strings: strings ? read(strings) : null});
+  return compileFilm({storyboard, timings, recipe: recipe ?? read('recipe.json'), kits, root: dir, strings: strings ? read(strings) : null, record});
 }
 
 export async function hashFilms() {
