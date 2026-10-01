@@ -39,7 +39,7 @@ const TOOLS = () => [
 export function loudnessRecord(loudness) {
   if (loudness.type === 'linear') return loudness;
   const flag = loudness.type === 'skipped' ? `not normalised: ${loudness.reason}`
-    : `normalised "${loudness.type}", not "linear": loudnorm varied the gain (the true-peak limit, a loudness range above its target, or a film under 3 s blocks one fixed gain), so quiet moments may be raised`;
+    : `normalised "${loudness.type}", not "linear": loudnorm varied the gain (the true-peak limit, a film under 3 s, or a measured range above the LRA you set blocks one fixed gain), so quiet moments may be raised`;
   return {...loudness, flag};
 }
 const sha = text => createHash('sha256').update(text).digest('hex').slice(0, 16);

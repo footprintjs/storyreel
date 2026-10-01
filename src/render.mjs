@@ -13,10 +13,11 @@ import {createMotionSound, soundsByScene} from './sound.mjs';
  * Loudness in two passes (FFmpeg's loudnorm): measure the whole mixed film, then set it with ONE fixed
  * gain (`linear=true`) from what was measured, so a quiet opening stays quiet instead of being raised to
  * the voice's level. A film with no measurable loudness (pure silence: FFmpeg reports -inf) is left as
- * it is; loudnorm's varying mode turns silence into NaN and the AAC encoder refuses it. FFmpeg falls back
- * to that varying mode when one gain would break the true-peak limit, the range is above its target, the
- * film is under 3 s, or the measured range is exactly 0 (its option's default, read as "not measured");
- * the type it reports says so, and the making-of record flags it (pipeline.mjs · loudnessRecord).
+ * it is; loudnorm's varying mode turns silence into NaN and the AAC encoder refuses it. In linear mode
+ * loudnorm reads the range target only as a gate (measured range above it → varying mode), so when the
+ * caller set no LRA the second pass raises it to the measured range (render.mjs · effectiveTarget); what
+ * can still force the varying mode is the true-peak limit, a film under 3 s, or an LRA the caller set.
+ * The type it reports says so, and the making-of record flags it (pipeline.mjs · loudnessRecord).
  */
 const LOUDNESS_FORMAT = 'aformat=channel_layouts=stereo';
 const finite = s => { const n = Number(s); return Number.isFinite(n) ? n : null; };
@@ -34,40 +35,85 @@ export function measuredLoudness(report) {
 }
 
 /** The second pass's filter: the target, what the first pass measured, one fixed gain, a report. */
+// measured_LRA=0 is FFmpeg's "not measured" sentinel (the option's default), answered with the varying
+// mode; a steady film really measures 0, the easiest case for one gain, so it is sent as 0.1 (the range
+// only gates linear mode). loudness.measured keeps the true value.
 export function linearLoudnorm(target, m) {
-  return `loudnorm=${loudnormTarget(target)}:measured_I=${m.I}:measured_TP=${m.TP}:measured_LRA=${m.LRA}:measured_thresh=${m.thresh}:offset=${m.offset}:linear=true:print_format=json`;
+  return `loudnorm=${loudnormTarget(target)}:measured_I=${m.I}:measured_TP=${m.TP}:measured_LRA=${Math.max(m.LRA, 0.1)}:measured_thresh=${m.thresh}:offset=${m.offset}:linear=true:print_format=json`;
 }
 
-/** Run FFmpeg and keep what it reports (loudnorm prints its JSON at the info level, on stderr). */
+/**
+ * The second pass's target: the caller's, and when the caller set no LRA, the measured range rounded up
+ * (at least FFmpeg's 7, at most its 50) — linear mode reads LRA only to decide whether to stay linear, so
+ * raising it changes no sound; it only stops a quiet stretch from forcing the varying gain.
+ */
+export function effectiveTarget(target, m) {
+  return target.LRA !== undefined ? target : {...target, LRA: Math.min(50, Math.max(7, Math.ceil(m.LRA)))};
+}
+
+/** Run FFmpeg and keep what it reports (loudnorm prints its JSON at the info level, on stderr); a missing or killed FFmpeg fails here. */
 function runReporting(ffmpeg, args) {
   const r = spawnSync(ffmpeg, ['-y', '-hide_banner', '-nostats', '-loglevel', 'info', ...args], {encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
-  if (r.status) throw new Error(`ffmpeg failed: ${args.join(' ').slice(0, 200)}\n${String(r.stderr).slice(-800)}`);
+  if (r.error || r.status !== 0) {
+    const why = r.error ? r.error.message : r.status === null ? `killed by ${r.signal}` : `exit ${r.status}`;
+    throw new Error(`ffmpeg failed (${why}): ${args.join(' ').slice(0, 200)}\n${String(r.stderr ?? '').slice(-800)}`);
+  }
   return r.stderr;
 }
 
-/** Pass 1: measure the mixed film's loudness (render.mjs · measuredLoudness); `unusable` when there is none to use. */
+/** Why a measurement cannot drive the second pass, or null: silence (no integrated loudness), else the fields FFmpeg left unreadable. */
+export function unusableReason(m) {
+  if (m.I === null) return 'the audio is silent: there is no loudness to measure';
+  const missing = Object.keys(m).filter(k => m[k] === null);
+  return missing.length ? `could not read: ${missing.join(', ')}` : null;
+}
+
+/** Pass 1: measure the mixed film's loudness (render.mjs · measuredLoudness), and why it is unusable, if it is. */
 function measureFilm(ffmpeg, wav, target) {
   const report = parseLoudnormReport(runReporting(ffmpeg, ['-i', wav, '-af', `${LOUDNESS_FORMAT},loudnorm=${loudnormTarget(target)}:print_format=json`, '-f', 'null', '-']));
   if (!report) throw new Error('ffmpeg loudnorm printed no measurement (print_format=json); is this FFmpeg built with loudnorm?');
   const measured = measuredLoudness(report);
-  return Object.values(measured).every(v => v !== null) ? {measured} : {measured, unusable: true};
+  return {measured, reason: unusableReason(measured)};
 }
 
 /**
  * Pass 2, while the video and sound are muxed: one fixed gain from the measurement, or none for a silent
  * film. Returns {type, target, measured, reason?}: type is FFmpeg's reported normalization type
- * ('linear' when one fixed gain was kept, 'dynamic' when loudnorm fell back to varying it) or 'skipped'.
+ * ('linear' when one fixed gain was kept, 'dynamic' when loudnorm fell back to varying it) or 'skipped';
+ * target is what the second pass asked for (render.mjs · effectiveTarget).
  */
 function muxWithLoudness({ffmpeg, video, wav, out, target}) {
-  const {measured, unusable} = measureFilm(ffmpeg, wav, target);
+  const {measured, reason} = measureFilm(ffmpeg, wav, target);
   const mux = af => ['-i', video, '-i', wav, '-map', '0:v', '-map', '1:a', '-af', af, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-shortest', '-movflags', '+faststart', out];
-  if (unusable) {
+  if (reason) {
     runReporting(ffmpeg, mux(`${LOUDNESS_FORMAT},aresample=48000`));
-    return {type: 'skipped', target, measured, reason: 'the audio is silent: there is no loudness to measure'};
+    return {type: 'skipped', target, measured, reason};
   }
-  const report = parseLoudnormReport(runReporting(ffmpeg, mux(`${LOUDNESS_FORMAT},${linearLoudnorm(target, measured)},aresample=48000`)));
+  const asked = effectiveTarget(target, measured);
+  const report = parseLoudnormReport(runReporting(ffmpeg, mux(`${LOUDNESS_FORMAT},${linearLoudnorm(asked, measured)},aresample=48000`)));
   if (!report?.normalization_type) throw new Error('ffmpeg loudnorm did not report its normalization type in the second pass');
-  return {type: report.normalization_type, target, measured};
+  return {type: report.normalization_type, target: asked, measured};
+}
+
+const LOUDNESS_KEYS = {I: 'integrated loudness, LUFS, -70..-5', TP: 'true peak, dBTP, -9..0', LRA: 'loudness range, LU, 1..50'};
+const LOUDNESS_RANGE = {I: [-70, -5], TP: [-9, 0], LRA: [1, 50]};
+
+/** The `loudness` render option: I and TP required, LRA optional, each a finite number in FFmpeg's range; anything else refuses with the fix. */
+export function checkLoudnessTarget(loudness) {
+  const all = 'loudness takes {I, TP, LRA?}: ' + Object.entries(LOUDNESS_KEYS).map(([k, v]) => `${k} (${v})`).join(', ');
+  if (!loudness || typeof loudness !== 'object' || Array.isArray(loudness)) throw new Error(`loudness must be an object, e.g. {I: -16, TP: -1.5}; ${all}`);
+  for (const key of Object.keys(loudness)) {
+    if (LOUDNESS_KEYS[key]) continue;
+    const near = Object.keys(LOUDNESS_KEYS).find(k => k.toLowerCase() === key.toLowerCase());
+    throw new Error(near ? `loudness.${key} is not a key: use ${near} (${LOUDNESS_KEYS[near]})` : `loudness.${key} is not a key; ${all}`);
+  }
+  for (const [key, [lo, hi]] of Object.entries(LOUDNESS_RANGE)) {
+    const v = loudness[key];
+    if (v === undefined && key === 'LRA') continue;
+    if (v === undefined) throw new Error(`loudness.${key} is missing: give ${key} (${LOUDNESS_KEYS[key]}), e.g. {I: -16, TP: -1.5}`);
+    if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`loudness.${key} must be a finite number (${LOUDNESS_KEYS[key]}), not ${JSON.stringify(v)}`);
+    if (v < lo || v > hi) throw new Error(`loudness.${key} = ${v} is outside FFmpeg's range: use ${lo}..${hi} (${LOUDNESS_KEYS[key]})`);
+  }
 }
 
 const clock = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -89,6 +135,7 @@ const clock = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(
  */
 export async function renderFilm({film, storyboard, timings, narrationDir = null, out, width = 1280, height = 720, fps = 30, intro = null, stamp = null,
   from = intro ? -intro.seconds : 0, to = film.total, poster = film.posterAt ?? null, peakCeilingDBFS = -20, loudness = {I: -16, TP: -1.5}, ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg'}) {
+  checkLoudnessTarget(loudness);
   const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
   const k = width / 1600, canvas = createCanvas(width, height), ctx = canvas.getContext('2d');
   to = Math.min(to, film.total);

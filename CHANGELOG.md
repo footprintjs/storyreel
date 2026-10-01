@@ -11,6 +11,14 @@
   takes an optional `LRA`.
 - **A render of only a silent opening works** (the BACKLOG bug): when the measurement finds no loudness
   (pure silence, `-inf`), normalisation is skipped instead of handing the AAC encoder NaN.
+- **One fixed gain is kept for a wide range** (review round): with no `LRA` set, the second pass asks for
+  the measured loudness range (rounded up, 7..50; `render.mjs · effectiveTarget`) — in linear mode
+  `loudnorm` reads it only as a gate, so the hello film now comes back `linear` instead of `dynamic`. A
+  perfectly steady sound (range 0, FFmpeg's "not measured") is sent as 0.1 and stays linear. A skipped
+  pass names its real reason (silence, or `could not read: <fields>`); a missing or killed FFmpeg fails
+  with its own error instead of "is this FFmpeg built with loudnorm?". The `loudness` option is checked
+  (`render.mjs · checkLoudnessTarget`): I and TP required, LRA optional, each finite and in FFmpeg's
+  range; any other key refuses with the fix (`loudness.lra is not a key: use LRA …`).
 - **The recipe's top level is checked** (`film.mjs · checkRecipeKeys`): `story`, `whiteboard`, `pushIn`,
   `card`, `stages`, `guesses`, `notes`, `recalls`, `poster`, `reading`, `paperStyle`; any other key
   refuses with the list and the fix. A host application names the keys it reads itself in the new

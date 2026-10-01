@@ -270,16 +270,22 @@ also needs its own narration; the recipe's phrases are its English cues for now.
 - **Loudness, in two passes.** `renderFilm` measures the whole mixed film first (FFmpeg's `loudnorm`),
   then sets it with **one fixed gain** from that measurement (`linear=true`), so a quiet opening stays
   quiet instead of being raised to the voice's level. The target is `loudness: {I: -16, TP: -1.5}` (LUFS,
-  dBTP; add `LRA` for a loudness range other than FFmpeg's 7). The result says what happened —
-  `result.loudness.type` is FFmpeg's reported normalization type: `linear` (one gain), `dynamic` (loudnorm
-  varied the gain because the true-peak limit, a range above the target or a film under 3 s blocked one
-  gain; a perfectly steady sound, whose range measures 0, lands here too) or `skipped` (pure silence:
-  nothing to measure, so the sound is left as it is — a render of only a silent opening works). The
-  making-of record keeps it and **flags every type that is not `linear`**:
+  dBTP; `LRA` in LU is optional). It is checked before anything renders: I and TP are required, each a
+  finite number in FFmpeg's range (I -70..-5, TP -9..0, LRA 1..50), and any other key refuses with the fix
+  (`loudness.lra is not a key: use LRA (loudness range, LU, 1..50)`). With one gain, `loudnorm` reads the
+  range target only to decide whether to stay linear, so **when you set no `LRA` the second pass asks for
+  the measured range** (rounded up, at least 7, at most 50) — a quiet stretch beside a louder voice no
+  longer forces the varying gain, and the sound is the same. `result.loudness.target` is what the second
+  pass asked for. `result.loudness.type` is FFmpeg's reported normalization type: `linear` (one gain),
+  `dynamic` (loudnorm varied the gain: the true-peak limit, a film under 3 s, or a measured range above an
+  `LRA` you set still blocks one gain) or `skipped` (nothing usable to measure, so the sound is left as it
+  is: `reason` says "the audio is silent" for pure silence — a render of only a silent opening works —
+  or names the fields FFmpeg left unread). A perfectly steady sound measures a range of exactly 0, which
+  FFmpeg reads as "not measured"; it is sent as 0.1 and `measured` keeps the 0. The making-of record keeps
+  it all and **flags every type that is not `linear`**:
   ```json
-  "loudness": {"type": "dynamic", "target": {"I": -16, "TP": -1.5},
-    "measured": {"I": -37.97, "TP": -25.21, "LRA": 14.2, "thresh": -50.36, "offset": 21.5},
-    "flag": "normalised \"dynamic\", not \"linear\": loudnorm varied the gain (…), so quiet moments may be raised"}
+  "loudness": {"type": "linear", "target": {"I": -16, "TP": -1.5, "LRA": 15},
+    "measured": {"I": -37.97, "TP": -25.21, "LRA": 14.2, "thresh": -50.36, "offset": 21.5}}
   ```
 - **The making-of record** (`making-of.json`, written by `makeFilm`): every phrase → the recipe entry it
   triggered and when, the director's notes as applied, the lines too short to read, the pacing, the

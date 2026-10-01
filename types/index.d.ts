@@ -135,11 +135,11 @@ export function compileFilm(options: {
 export interface Loudness {
   /** FFmpeg's reported normalization type: 'linear' (one fixed gain), 'dynamic' (loudnorm varied the gain), or 'skipped' (silence: nothing to measure). */
   type: 'linear' | 'dynamic' | 'skipped';
-  /** The target: integrated loudness (LUFS), true peak (dBTP), loudness range (LU, FFmpeg's default when absent). */
+  /** What the second pass asked for: integrated loudness (LUFS), true peak (dBTP), loudness range (LU; when the caller set none, the measured range rounded up, 7..50). A skipped pass keeps the caller's target. */
   target: {I: number; TP: number; LRA?: number};
   /** The first pass's measurement of the whole mixed film; -inf (silence) is null. */
   measured: {I: number | null; TP: number | null; LRA: number | null; thresh: number | null; offset: number | null};
-  /** Why the pass was skipped. */
+  /** Why the pass was skipped: 'the audio is silent: …' for pure silence, else 'could not read: <fields>'. */
   reason?: string;
 }
 
@@ -147,6 +147,7 @@ export function renderFilm(options: {
   film: Film; storyboard: Storyboard; timings: Timings; narrationDir?: string | null; out: string;
   width?: number; height?: number; fps?: number; stamp?: string | null; from?: number; to?: number; poster?: number | null;
   intro?: {seconds: number; title?: string; wav?: Uint8Array; draw(ctx: any, t: number, info: {width: number; height: number; handoff: unknown}): void} | null;
+  /** Checked before rendering: I -70..-5 (LUFS), TP -9..0 (dBTP), LRA 1..50 (LU, optional); other keys refuse. */
   peakCeilingDBFS?: number; loudness?: {I: number; TP: number; LRA?: number}; ffmpeg?: string;
 }): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness}>;
 
