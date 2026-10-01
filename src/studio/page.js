@@ -24,7 +24,7 @@ async function loadFilm() {
   showStatus(film.error, film.loadedAt);
   const voice = $('voice');
   if (film.audio) voice.src = `/api/audio?v=${film.version}`; else voice.removeAttribute('src');
-  renderNotes(); renderReading();
+  renderNotes(); renderReading(); renderShots(); renderWatching();
   seek(Math.min(state.t, film.total));
 }
 function showStatus(error, loadedAt) {
@@ -167,7 +167,7 @@ function renderNotes() {
   const notes = state.film.notes;
   if (!notes.length) { $('notes').replaceChildren(el('li', {className: 'muted empty', textContent: 'None yet. A recipe\'s notes can say: speed, cut, push.'})); return; }
   $('notes').replaceChildren(...notes.map(n => {
-    const what = n.speed !== undefined ? `camera speed ${n.speed}×` : n.cut ? `cut into ${n.cut} (was ${n.was})` : `push ×${n.push.zoom} at [${n.push.at.join(', ')}]`;
+    const what = n.speed !== undefined ? `camera speed ${n.speed}×` : n.cut ? `cut into ${n.cut} (was ${n.was})` : n.push.on ? `push ${n.push.size} on ${n.push.on} (×${n.push.zoom})` : `push ×${n.push.zoom} at [${n.push.at.join(', ')}]`;
     const at = n.cut ? n.at : n.push ? n.from : 0;
     const li = el('li', {}, el('span', {className: 'at', textContent: n.speed !== undefined ? 'film' : clockText(at)}), el('span', {}, el('strong', {textContent: what}), el('br'), el('span', {className: 'label', textContent: n.note})));
     li.addEventListener('click', () => seek(at));
@@ -181,6 +181,29 @@ function renderReading() {
   $('reading').replaceChildren(...short.map(l => {
     const li = el('li', {}, el('span', {className: 'at', textContent: clockText(l.at)}), el('span', {}, `“${l.text.slice(0, 60)}” `, el('span', {className: 'label', textContent: `${l.seconds} s of ${l.needs} s`}), el('br'), el('span', {className: 'path', textContent: l.path})));
     li.addEventListener('click', () => { seek(l.at + .05); showEntry(l.path.replace(/\.(question|answer)$/, '')); });
+    return li;
+  }));
+}
+
+function renderShots() {
+  const shots = state.film.shots ?? [];
+  $('shots').replaceChildren(...shots.map(s => {
+    const facts = (side, f) => f && Object.keys(f).length ? `${side} ${Object.entries(f).map(([k, v]) => `${k} = ${v}`).join(', ')}` : '';
+    const said = [`${s.moments} moments`, facts('starts:', s.start), facts('ends:', s.end)].filter(Boolean).join(' · ');
+    const li = el('li', {}, el('span', {className: 'at', textContent: clockText(s.from)}), el('span', {},
+      el('strong', {textContent: s.intent ?? '(no intent)'}), el('br'), el('span', {className: 'path', textContent: s.path}), said ? el('span', {className: 'label', textContent: ` ${said}`}) : ''));
+    if (!s.intent) li.classList.add('muted');
+    li.addEventListener('click', () => { seek(s.from + .05); showEntry(s.path); });
+    return li;
+  }));
+}
+function renderWatching() {
+  const found = state.film.watching ?? [];
+  if (!found.length) { $('watching').replaceChildren(el('li', {className: 'muted empty', textContent: 'No burst: no shot shows more than 4 moments in 2 s.'})); return; }
+  $('watching').replaceChildren(...found.map(w => {
+    const what = `${w.moments} moments in ${w.seconds} s`;
+    const li = el('li', {}, el('span', {className: 'at', textContent: clockText(w.at)}), el('span', {}, el('strong', {textContent: what}), el('br'), el('span', {className: 'path', textContent: w.path})));
+    li.addEventListener('click', () => { seek(w.at + .05); showEntry(w.path); });
     return li;
   }));
 }

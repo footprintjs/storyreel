@@ -99,6 +99,10 @@
       "types": "./types/sub/reading.d.ts",
       "default": "./src/reading.mjs"
     },
+    "./shots": {
+      "types": "./types/sub/shots.d.ts",
+      "default": "./src/shots.mjs"
+    },
     "./captions": {
       "types": "./types/sub/captions.d.ts",
       "default": "./src/captions.mjs"

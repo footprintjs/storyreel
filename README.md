@@ -156,7 +156,7 @@ A phrase that is not in the narration refuses the recipe.
   from `data`), `recap` (the film's own frames on a story strip, then an optional `teaser`),
   `summary` (cards), `world` (below). Any stage takes `chrome: false` to drop its chip and title.
 - **The top level is checked.** A recipe takes `story` (or the older `whiteboard`), `pushIn`, `card`,
-  `stages`, `guesses`, `notes`, `recalls`, `poster`, `reading` and `paperStyle`; any other key refuses,
+  `stages`, `guesses`, `notes`, `recalls`, `poster`, `reading`, `watching` and `paperStyle`; any other key refuses,
   so a misspelling (`"stage"`) is never silently ignored. An application that keeps its own data in the
   recipe names those keys in `hostKeys`: they are allowed, and the engine never reads them.
   `compileFilm({…, recipe: {story, stages, terms}})` refuses `"terms"` with the fix;
@@ -319,6 +319,14 @@ Each note carries its words (`note`) and exactly one camera word:
 - **`cut`** (a scene id) — that scene's stage arrives on its first frame, whole, instead of by its
   hand-over or entrance. Not into the story (it is one continuous world) or the first stage of a
   lesson (it arrives with the push-in). A recipe may also write the entrance itself: `"enter": "cut"`.
+- **`push` on a named thing** — `{"on": "robot", "size": "close", "from": …, "to": …}` frames a thing the world's
+  kit names (its regions carry `name`), the way a crew frames a subject: **`medium`** (it fills half the frame),
+  **`close`** (about three quarters) or **`insert`** (a detail, nearly all of it). The zoom follows from how big
+  the thing is when the push starts (its worlds ready, before any other push), so a director says *close on the
+  robot* instead of guessing a number. A name nothing in the picture has refuses, listing the names there, and so
+  does a name two things share; a thing that already fills the frame refuses, naming the framings that would push
+  in (or none); a thing so small a framing would need more than ×3 refuses too (push at a point with `at` and
+  `zoom`), so a framing word always means what it says. `on` takes `size`, never `zoom` ("wide" is the shot itself).
 - **`push`** — the camera pushes in on `at` (a point on the 1600×900 frame; the studio gives it to you)
   by `zoom` (default 1.25), easing in (`seconds`, default 1) from the phrase `from` and out from `to`.
   The picture always covers the frame; guess cards stay where they are. A push stays on one picture:
@@ -336,6 +344,50 @@ the fix when the table has that key.) A key the table lacks refuses the recipe, 
 with no table; the making-of record lists the language and the keys used. (A second language
 also needs its own narration; the recipe's phrases are its English cues for now.)
 
+
+## Planning the shots
+
+A film crew plans every shot before it rolls: what the shot is FOR, what is true when it starts and when it
+ends, and how much it asks the viewer to take in. StoryReel keeps the same plan as data, beside the story and
+each stage, so a film can say what each shot does, and the compile can catch a story that contradicts itself.
+
+```json
+{"type": "world", "scene": "race", "enter": "push",
+ "intent": "Show the app refusing an offer the person made stale.",
+ "continuity": {"start": {"order": "none", "size": "M"}, "end": {"order": "none", "size": "L"}},
+ "world": {"kit": "shop", …}}
+```
+
+- **`intent`** — what the shot is for, in **one sentence** (at most 140 characters): one shot, one clear beat.
+  A second sentence refuses ("give the second idea a shot of its own"); abbreviations and initials ("Mr. Robot",
+  "e.g. Here", "U.S.", "3 p.m.") are not sentence ends. The check reads punctuation, so its refusal says where
+  it saw a second sentence and how to spell an abbreviation out.
+  `film.shots` lists every shot — the story, then each stage — with its intent and when it is on screen, and
+  the studio's *Shots* list shows them.
+- **`continuity`** — the facts true when the shot starts and when it ends: `{start: {…}, end: {…}}`, each fact
+  a word, a number or true/false. The film walks the shots in order, carrying the facts forward: a shot's
+  `start` must agree with what the shots before it left, or the recipe is refused, naming both shots:
+  `Continuity: stage race starts with order = "none", but stage second left it "placed". Show the change …`.
+  A shot may change anything between its own start and end (that is what it shows). The facts are your
+  words: the check compares what you declared, and never pretends to see the pictures.
+- **Where they go.** On a stage (beside `world` for a world stage — inside `world` they refuse, because that
+  is the kit's own spec) and on the story (`"story": {"kit": "…", "intent": "…", …}`; the engine reads them
+  and hands the kit the rest).
+- **Too much, too fast.** The moments of a shot are the phrases the recipe names while it is on screen;
+  moments closer than a quarter of a second count as one, and phrases that are nothing to see are left out
+  (a push's camera words, a teaser's rewind, the poster, the recalls). More than **4 moments in 2 s** is a
+  burst — too fast to take in. `film.watching` lists the bursts (the studio's *Too much, too fast*, and the
+  making-of record); `"watching": "refuse"` refuses. How many moments a shot carries is information, never a
+  verdict — `film.shots[i].moments` — because a list revealed one item per spoken word is many moments and
+  one beat. Whether a shot is one beat is what its one-sentence intent says.
+- **Film order.** The shots are listed and checked in the order they play, whatever order the recipe lists
+  its stages in.
+
+```js
+const film = await compileFilm({storyboard, timings, recipe, kits});
+film.shots.map(s => `${s.where}: ${s.intent ?? '(no intent)'}`);   // what each shot is for
+film.watching;                                                      // [{kind: 'burst', where, at, moments, seconds}]
+```
 
 ## Checking a film
 
@@ -532,7 +584,8 @@ const myKit = {name: 'cartoon', story: {
       hang: 1,                                // 1 = full frame; 0.9 = a board hanging on the paper
       draw(ctx, t, spot) { /* draw the world at t */ },
       spotAt(t) { return null; },             // optional spotlight {cx, cy, r, zoom, w}
-      regionsAt(t) { return []; },            // optional, for the studio: [{box: [x0, y0, x1, y1] on the sheet, path: 'items[3]', label}]
+      regionsAt(t) { return []; },            // optional, for the studio: [{box: [x0, y0, x1, y1] on the sheet, path: 'items[3]', label, name?}]
+                                              // a `name` ('robot') is what a director's push can frame: {on: 'robot', size: 'close'}
       texts() { return []; },                 // optional, for the reading check: [{text, from, to, path}]
       sounds: [{time: clock.at(['story', 'But wait']), type: 'chime'}],
     };
@@ -573,6 +626,18 @@ moment: `clock.speaking(t)` is `{scene, speaker, word, start, end}` while a word
 between words, so a mouth opens and closes with the voice (and only the speaker's mouth moves).
 `clock.words(scene)` lists a scene's said words on the film's clock. What a speaker sounds like is the voice
 step's business (the starter maps a speaker to a voice profile); a silent scene says nothing.
+
+Listeners look at the speaker. `clock.gaze(t, who)` says where `who` looks: at the character speaking, as
+`{at: 'robot', amount: 0..1}` — turning toward them 0.3 s before their first word and back 0.5 s after their last
+(`{turn, hold}` to change it) — or `null` when nobody else speaks. A speaker never looks at itself, and a narrator
+(a scene with no speaker) is nobody on screen. One speaker's turns in a row hold the look between them; when one
+speaker hands over to another, the stronger look wins and `also: {at, amount}` names the other, so a kit can
+blend the two instead of jumping. `clock.turns()` lists every turn: `[{scene, speaker, start, end}]`.
+
+```js
+const g = clock.gaze(t, 'user');                                   // she looks at whoever talks
+const eyes = g?.at === 'robot' ? g.amount : 0;                     // 0 = at her screen, 1 = at the robot
+```
 
 ```js
 const open = (t, who) => { const w = clock.speaking(t); if (w?.speaker !== who) return 0;
@@ -633,7 +698,7 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 
 | import | what it does |
 |---|---|
-| `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?, hostKeys?, record?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `reading`, `moments()`, `regionsAt(t)`, `pointAt(t, x, y)`, `posterAt`, `theme`; with `record: true`, `record` (the compile as a footprintjs run) |
+| `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?, hostKeys?, record?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `reading`, `shots` (each shot's intent, facts and moments), `watching`, `moments()`, `regionsAt(t)`, `pointAt(t, x, y)`, `posterAt`, `theme`; with `record: true`, `record` (the compile as a footprintjs run) |
 | `renderFilm({film, storyboard, timings, narrationDir?, out, width?, height?, fps?, intro?, stamp?, from?, to?, poster?, loudness?, layout?, motionBlur?, captionFiles?})` | the MP4 (FFmpeg), its chapters, its poster, its loudness (two passes); a version for a platform, motion blur, caption files |
 | `compileLayout(film, layout)` · `FORMAT_NAMES` | a format's picture and bands, drawn at any t (`footprint-storyreel/layout` adds `formatOf`, `cropWindow`) |
 | `captionChunks(film, {maxWords?, maxChars?, breaks?})` · `captionFile(chunks, 'vtt' \| 'srt', {offset?, from?, to?})` | the spoken words in caption chunks; a WebVTT or SRT file (`footprint-storyreel/captions` adds `captionAt`, `drawCaption`) |
@@ -641,14 +706,15 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?})` | compile + render as a footprintjs pipeline, with `making-of.json` |
 | `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |
 | `directionTimings(scene, {tail?})` · `withDirections(storyboard, timings)` · `sceneText(scene)` | a silent scene's timing; a voice's timings completed with the silent scenes; a scene's text |
-| `makeClock(storyboard, timings)` | phrases → seconds |
+| `makeClock(storyboard, timings)` | phrases → seconds; `speaking(t)`, `turns()`, `gaze(t, who)` |
+| `footprint-storyreel/shots` → `readIntent` · `readContinuity` · `checkContinuity` · `tooMuchTooFast` · `distinctMoments` · `WATCHING` | the shot plan's checks, on their own |
 | `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `inOut` | the one ease table (`linear in out inOut back walk jump spring`) |
 | `contactSheet(film, {moments?, columns?, width?})` | a PNG of stills |
 | `frameHashes(film, {count?, width?, times?})` · `changedFrames(pinned, now)` | pixel pins |
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/pins`, `/sheet`, `/render`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/pins`, `/sheet`, `/render`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws

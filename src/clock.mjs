@@ -124,6 +124,8 @@ export function makeClock(board, timings) {
   // Each scene's said words on the whole-lesson clock (a silent scene's directions are seen, never said).
   const said = board.scenes.map((scene, i) => scene.silent !== undefined ? []
     : timings.scenes[i].words.filter(w => w.text.replace(/[^\p{L}\p{N}]/gu, '')).map(w => Object.freeze({text: w.text, start: offsets[i] + w.start, end: offsets[i] + w.end})));
+  // Each character's turns: a scene with a speaker, from its first said word to its last.
+  const turns = board.scenes.flatMap((scene, i) => scene.speaker && said[i].length ? [Object.freeze({scene: scene.id, speaker: scene.speaker, start: said[i][0].start, end: said[i].at(-1).end})] : []);
   return {
     total, offsets,
     /** Whole-lesson seconds where scene `id` starts. */
@@ -170,10 +172,43 @@ export function makeClock(board, timings) {
       const w = said[i].find(x => t >= x.start && t < x.end);
       return w ? {scene: board.scenes[i].id, speaker: board.scenes[i].speaker ?? null, word: w.text, start: w.start, end: w.end} : null;
     },
+    /** Every character's turn to speak: [{scene, speaker, start, end}] on the whole-lesson clock, in order. */
+    turns: () => turns.slice(),
+    /**
+     * Where `who` looks at t: at the character who is speaking (a listener looks at the speaker), as
+     * {at: the speaker's name, amount: 0..1} — turning toward them `turn` seconds before their first word
+     * and back `hold` seconds after their last — or null when nobody else is speaking. A speaker never
+     * looks at itself, and a narrator (a scene with no speaker) is nobody on screen. A speaker who talks
+     * twice in a row holds the look between the turns; when one speaker hands over to another, the one
+     * looked at more wins and `also` names the other ({at, amount}), so a kit can blend the two instead
+     * of jumping. A kit turns its character's eyes or head toward `at` by `amount`.
+     */
+    gaze(t, who, {turn = .3, hold = .5} = {}) {
+      // A speaker's turns in a row whose looks would meet are one span: the listener holds the look between them.
+      const spans = [];
+      for (const g of turns) {
+        const last = spans.at(-1);
+        if (last && last.speaker === g.speaker && g.start - turn <= last.end + hold) last.end = g.end;
+        else spans.push({speaker: g.speaker, start: g.start, end: g.end});
+      }
+      const by = new Map();
+      for (const g of spans) {
+        if (g.speaker === who || t < g.start - turn || t > g.end + hold) continue;
+        const amount = Math.min(ramp(t, g.start - turn, turn), 1 - ramp(t, g.end, hold));
+        const was = by.get(g.speaker);
+        if (amount > 0 && (!was || amount > was.amount || (amount === was.amount && g.start > was.start))) by.set(g.speaker, {amount, start: g.start});
+      }
+      const ranked = [...by].map(([at, {amount, start}]) => ({at, amount: easeTurn(amount), start})).sort((a, b) => b.amount - a.amount || b.start - a.start);
+      if (!ranked.length) return null;
+      const [first, second] = ranked;
+      return {at: first.at, amount: first.amount, ...(second ? {also: {at: second.at, amount: second.amount}} : {})};
+    },
   };
 }
 
 export const ramp = (t, at, d = .5) => Math.max(0, Math.min(1, (t - at) / d));
+/** A head turning: slow, fast, slow. */
+const easeTurn = u => (u < .5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2);
 
 /**
  * Evenly spaced word times for a storyboard — for a silent film, a test, or a first cut before

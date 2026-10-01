@@ -40,28 +40,50 @@ export interface Pacing {
 export type DirectorNote =
   | {note: string; speed: number}
   | {note: string; cut: string}
-  | {note: string; push: {at: [number, number]; zoom?: number; from: Beat; to: Beat; seconds?: number}};
+  | {note: string; push: {at: [number, number]; zoom?: number; on?: never; size?: never; from: Beat; to: Beat; seconds?: number}}
+  /** A push on a thing the world's kit NAMES in its regions, framed medium (half the frame), close or insert (a detail): the zoom follows from its size. */
+  | {note: string; push: {on: string; size?: Framing; at?: never; zoom?: never; from: Beat; to: Beat; seconds?: number}};
+/** How much of the frame a pushed-on thing fills (notes.mjs · FRAMINGS): medium ½, close ~¾, insert nearly all. */
+export type Framing = 'medium' | 'close' | 'insert';
+/** A fact a shot states: a word, a number or true/false. */
+export type Fact = string | number | boolean;
+/**
+ * What a shot says about itself (shots.mjs): `intent` — what it is for, one sentence of at most 140 characters;
+ * `continuity` — the facts true when it starts and when it ends. A shot's start must agree with what the shots
+ * before it left (the film refuses a contradiction, naming both shots and the fact).
+ */
+export interface ShotPlan {
+  intent?: string;
+  continuity?: {start?: Record<string, Fact>; end?: Record<string, Fact>};
+}
 
 /**
  * A recipe is data: see the README for every key. At run time an unknown top-level key refuses, unless the
  * host application names it in compileFilm's `hostKeys` (keys it reads itself; the engine ignores them).
  */
 export interface Recipe {
-  story?: {kit: string; [key: string]: unknown};
+  /** The opening world; its `intent` and `continuity` are the engine's (read, then left out of what the kit gets). */
+  story?: {kit: string; [key: string]: unknown} & ShotPlan;
   /** The older spelling of a whiteboard story: {items, erasers, spots…} without `kit`. */
   whiteboard?: Record<string, unknown>;
   /** The built-in theme's name when compileFilm gets no `theme`. */
   paperStyle?: string;
   pushIn?: {after: string; rest: number; turn?: number; zoom?: number; hang?: number; caption: string};
   card?: Record<string, unknown>;
-  stages?: {type: string; scene: string; enter?: Enter; [key: string]: unknown}[];
+  /** A world stage's `intent` and `continuity` sit on the stage, beside `world` (inside `world` they refuse). */
+  stages?: ({type: string; scene: string; enter?: Enter; [key: string]: unknown} & ShotPlan)[];
   guesses?: {after: Beat; question: string; answer?: string; place?: 'top' | 'center' | 'bottom'; until?: Beat}[];
   notes?: DirectorNote[];
   recalls?: Record<string, Beat>;
   poster?: Beat;
   reading?: 'report' | 'refuse';
+  /** Too much, too fast (shots.mjs · WATCHING): 'report' (the default: film.watching lists it) or 'refuse'. */
+  watching?: 'report' | 'refuse';
   [key: string]: unknown;
 }
+
+/** One finding of the watching check (shots.mjs · tooMuchTooFast). */
+export type Watching = {kind: 'burst'; path: string; where: string; at: number; moments: number; seconds: number};
 
 /** The built-in transitions (transitions.mjs · TRANSITIONS). */
 export type TransitionName = 'cut' | 'fade' | 'dip' | 'wipe' | 'split' | 'clock' | 'iris' | 'push' | 'slide' | 'whip' | 'zoom' | 'page';
@@ -125,10 +147,19 @@ export interface Clock {
   words(scene: string): {text: string; start: number; end: number}[];
   /** Who is saying a word at t (the scene's `speaker`, or null), or null between words: for a talking mouth. */
   speaking(t: number): {scene: string; speaker: string | null; word: string; start: number; end: number} | null;
+  /** Every character's turn to speak (a scene with a `speaker`, first said word to last), in order. */
+  turns(): {scene: string; speaker: string; start: number; end: number}[];
+  /**
+   * Where `who` looks at t: at the character speaking (a listener looks at the speaker), turning `turn` seconds
+   * (default 0.3) before their first word and back `hold` seconds (default 0.5) after their last; null when nobody
+   * else speaks. A speaker never looks at itself; a narrator is nobody on screen. One speaker's turns in a row hold the
+   * look; at a hand-over the stronger look wins and `also` names the other, so a kit can blend.
+   */
+  gaze(t: number, who: string, options?: {turn?: number; hold?: number}): {at: string; amount: number; also?: {at: string; amount: number}} | null;
 }
 
-/** What is drawn where: a box on the 1600×900 frame and the recipe entry that drew it. */
-export interface Region { box: [number, number, number, number]; path: string; label: string }
+/** What is drawn where: a box on the 1600×900 frame and the recipe entry that drew it; `name`, when a kit gives one, is what a push can frame (`on`). */
+export interface Region { box: [number, number, number, number]; path: string; label: string; name?: string }
 
 export type SoundType = 'tap' | 'slide' | 'settle' | 'question' | 'chime' | 'door' | 'step' | 'click' | 'whoosh' | 'crumble';
 /**
@@ -152,6 +183,10 @@ export interface Film {
   notes: Record<string, unknown>[];
   /** Lines shown for less time than they need to be read. */
   reading: {path: string; text: string; at: number; seconds: number; needs: number}[];
+  /** Every shot — the story, then each stage — on screen from `from` to `to`, with what it says it is for and the facts it starts and ends with (null when it states none). */
+  shots: {path: string; where: string; scene: string; from: number; to: number; intent: string | null; start: Record<string, Fact> | null; end: Record<string, Fact> | null; moments: number}[];
+  /** Bursts: more than 4 moments in 2 s of one shot — too fast to take in. */
+  watching: Watching[];
   /** The recipe's poster frame (seconds), or null. */
   posterAt: number | null;
   /** Stills worth checking: each settled picture and each change half way. */
@@ -167,7 +202,7 @@ export interface Film {
 /**
  * The compile, recorded with footprintjs (compileFilm's `record: true`). Five stages: read inputs, build worlds
  * and stages, guesses and notes, checks, resolve lines. Scope keys: `recipe`, `lines`, `notes`, `strings`,
- * `world.<path>`, `stage.stages[i]`, `guess.guesses[n]`, `note.notes[i]`, `checks.reading|sounds|ready`, and
+ * `world.<path>`, `stage.stages[i]`, `guess.guesses[n]`, `note.notes[i]`, `checks.reading|watching|continuity|sounds|ready`, and
  * `when.<recipe path>` (seconds) for every line resolved. Detached: it survives structuredClone. Read a
  * slice with footprintjs/trace: `sliceForKey(snapshot.commitLog, key, keysReadFromExecutionTree(snapshot.executionTree))`.
  */

@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Planning the shots (borrowed from how a film crew plans a shot)
+- **`intent`** on the story and on every stage: what the shot is for, in one sentence (at most 140 characters;
+  a second sentence refuses — one shot, one beat; abbreviations and initials are not sentence ends).
+- **`continuity: {start, end}`**: the facts true when a shot starts and ends. The compile carries them forward
+  in film order and refuses a shot whose start contradicts the story so far, naming the shot that last
+  stated the fact and a fix that works (end the shot before it with the new fact).
+- **Too much, too fast** (`film.watching`, the studio's list, `"watching": "refuse"`): more than 4 moments in
+  2 s is a burst. Each shot's moment count is information (`film.shots[i].moments`), never a verdict.
+- **Framing by name**: a director's push may aim `on` a thing the kit names (`regionsAt → {name}`), with
+  `size` medium, close or insert; the zoom follows from the thing's size, and a framing that cannot be honoured
+  (already too big, or too small for ×3) refuses, naming the framings that would work. Every world is ready
+  before a push reads its regions. `Region.name` is new.
+- **Listeners look at the speaker**: `clock.gaze(t, who)` (with `also` at a hand-over) and `clock.turns()`.
+- `film` gains `shots` (in film order) and `watching`; the recipe gains `watching` (so `watching` can no longer
+  be a host key); the new entry point is `footprint-storyreel/shots`. The engine now reads `intent` and
+  `continuity` on the story spec and leaves them out of what the story kit gets; inside a world stage's
+  `world` they refuse (they belong on the stage).
+
+### Earlier, unreleased
 - **The loudness flag says what to ask for** (`pipeline.mjs · loudnessRecord`): when one fixed gain was
   blocked by the true-peak limit, the making-of record's flag names the loudest target one gain can reach
   here (`I + (TP limit − measured peak)`, rounded down): "ask for loudness I -18.6 or lower to keep one fixed

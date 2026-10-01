@@ -87,7 +87,7 @@ test('65 sounds in one scene refuse when the film is built; 64 compile', async (
 });
 
 test('the recipe top level is checked: an unknown key refuses, a host key named in hostKeys is allowed and ignored', async () => {
-  await assert.rejects(film({recipe: {terms: {pebble: 'a small stone'}}}), /The recipe has unsupported key "terms"\. A recipe takes story, whiteboard, pushIn, card, stages, guesses, notes, recalls, poster, reading, paperStyle\. If your application reads "terms" itself, name it: compileFilm\(\{…, hostKeys: \["terms"\]\}\)/);
+  await assert.rejects(film({recipe: {terms: {pebble: 'a small stone'}}}), /The recipe has unsupported key "terms"\. A recipe takes story, whiteboard, pushIn, card, stages, guesses, notes, recalls, poster, reading, watching, paperStyle\. If your application reads "terms" itself, name it: compileFilm\(\{…, hostKeys: \["terms"\]\}\)/);
   await assert.rejects(film({recipe: {stage: []}}), /unsupported key "stage"/);
   const hosted = await film({recipe: {terms: {pebble: 'a small stone'}}, hostKeys: ['terms']}), plain = await film();
   assert.deepEqual(hosted.beats, plain.beats, 'the engine never reads a host key');

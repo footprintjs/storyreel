@@ -31,22 +31,25 @@ import {tokenize, excerpt} from './kits/paper/code.mjs';
 import {readNotes, placePushes, pushAt} from './notes.mjs';
 import {view, then, about, through, back} from './regions.mjs';
 import {tooShortToRead, readingMode} from './reading.mjs';
+import {readIntent, readContinuity, checkContinuity, tooMuchTooFast, distinctMoments, watchingMode, watchingText, WATCHING} from './shots.mjs';
 import {checkSound, soundsByScene, MAX_SOUNDS_PER_SCENE} from './sound.mjs';
 import {step, drainSteps, recordSteps} from './record.mjs';
 import {readEntrance, transitionCatalog, ghostPainter, CUT} from './transitions.mjs';
 
 /** The recipe's own top-level keys: anything else refuses, unless the host application names it in `hostKeys`. */
-const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'notes', 'recalls', 'poster', 'reading', 'paperStyle'];
-const STAGE_KEYS = new Set(['type', 'scene', 'chip', 'chipDark', 'title', 'file', 'label', 'code', 'lh', 'reveal', 'focus', 'glows', 'footer', 'list', 'loop', 'cards', 'closing', 'hero', 'frames', 'keys', 'teaser', 'enter', 'chrome', 'marks', 'columns', 'card']);
+const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'notes', 'recalls', 'poster', 'reading', 'watching', 'paperStyle'];
+/** What every shot may say about itself (shots.mjs): what it is for, and what is true when it starts and ends. */
+const PLAN_KEYS = ['intent', 'continuity'];
+const STAGE_KEYS = new Set(['type', 'scene', 'chip', 'chipDark', 'title', 'file', 'label', 'code', 'lh', 'reveal', 'focus', 'glows', 'footer', 'list', 'loop', 'cards', 'closing', 'hero', 'frames', 'keys', 'teaser', 'enter', 'chrome', 'marks', 'columns', 'card', ...PLAN_KEYS]);
 /** What every stage may carry; a stage kit that lists its own `keys` accepts these plus its own. */
-const COMMON_KEYS = ['type', 'scene', 'chip', 'chipDark', 'title', 'enter', 'chrome', 'card'];
+const COMMON_KEYS = ['type', 'scene', 'chip', 'chipDark', 'title', 'enter', 'chrome', 'card', ...PLAN_KEYS];
 /**
  * The engine's stage features (code, reveal, focus, glows, marks, columns, list, cards…) are read on
  * the BUILT-IN stage types only. A kit stage gets the common keys and the footer; every key a kit
  * declares is the kit's own, and the engine never reads it (a kit's `marks` may mean tally marks).
  */
 const KIT_STAGE_ENGINE_KEYS = new Set(['footer']);
-const WORLD_KEYS = new Set(['type', 'scene', 'world', 'enter']);
+const WORLD_KEYS = new Set(['type', 'scene', 'world', 'enter', ...PLAN_KEYS]);
 const BUILT_IN_STAGES = new Set(['code', 'api', 'recap', 'summary', 'world']);
 const GUESS_KEYS = new Set(['after', 'question', 'answer', 'place', 'until']);
 
@@ -188,7 +191,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   yield step('read-inputs', () => inputsSummary({recipe, storyboard, clock: base, notes, strings: strings ? [...used] : null}));
 
   // The story: its kit draws the opening world on a sheet (1600×900) that hangs on the paper.
-  const storySpec = recipe.story ?? {kit: 'whiteboard', ...recipe.whiteboard};
+  const {intent: storyIntent, continuity: storyContinuity, ...storySpec} = recipe.story ?? {kit: 'whiteboard', ...recipe.whiteboard};
   const story = compileWorld(storySpec, 'the story');
   // A film may be story only (no push-in, no card, no paper stages).
   const push = recipe.pushIn ?? null;
@@ -217,7 +220,10 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (spec.card !== undefined && spec.card !== false) throw new Error(`${where}: card may only be false (the stage takes the whole page)`);
     const st = {...spec, start: clock.start(spec.scene)};
     if (!push) st.entrance = readEntrance(spec.enter, where, transitions);
-    if (spec.type === 'world') st.world = {...hung(compileWorld(spec.world, where)), kit: spec.world.kit};
+    if (spec.type === 'world') {
+      for (const key of PLAN_KEYS) if (spec.world && Object.hasOwn(spec.world, key)) throw new Error(`${where}: ${key} belongs on the stage, beside world (the engine reads it there), not inside world (the kit's own spec)`);
+      st.world = {...hung(compileWorld(spec.world, where)), kit: spec.world.kit};
+    }
     if (reads('code') && spec.code) {
       const source = excerpt(within(spec.code.file), {elide: spec.code.elide ?? []});
       st.lines = await tokenize(source, spec.code.emphasis ?? {});
@@ -252,7 +258,18 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const namedAt = card.named ? clock.at(card.named.at) : Infinity;
   // The push-in (the camera, then the page typed over it) is done before the card moves aside for the first stage.
   if (push && buildStage && boardEnd + TURN * .9 > MOVE0) throw new Error(`The push-in ends at ${(boardEnd + TURN * .9).toFixed(2)} s${notes.speed !== 1 ? ` (at camera speed ${notes.speed} it takes ${TURN.toFixed(2)} s)` : ''}, after the card moves aside for the first stage at ${MOVE0.toFixed(2)} s: give the scene before ${buildStage.scene} a longer tail (pacing.tails), or the push-in a shorter turn`);
-  yield step('build-worlds-and-stages', () => buildSummary(recipe.story ? 'story' : 'whiteboard', storySpec.kit, stages, stageKitNames));
+  // The plan of the shots (shots.mjs): what each is for, and what is true when it starts and ends — one
+  // shot's start must agree with what the shots before it left.
+  const storyPathName = recipe.story ? 'story' : 'whiteboard';
+  const plan = [{path: storyPathName, where: 'the story', scene: storyboard.scenes[0]?.id, from: 0,
+    intent: readIntent(storyIntent, 'the story'), continuity: readContinuity(storyContinuity, 'the story')},
+  ...stages.map((st, i) => ({path: `stages[${i}]`, where: `stage ${st.scene}`, scene: st.scene, from: st.start,
+    intent: readIntent(st.intent, `stage ${st.scene}`), continuity: readContinuity(st.continuity, `stage ${st.scene}`)}))];
+  // Film order is time order: a recipe may list its stages in any order, the plan never does.
+  plan.sort((a, b) => a.from - b.from);
+  plan.forEach((u, i) => { u.to = plan[i + 1]?.from ?? clock.total; });
+  const facts = checkContinuity(plan);
+  yield step('build-worlds-and-stages', () => buildSummary(storyPathName, storySpec.kit, stages, stageKitNames, plan));
 
   // Director's cuts: the scene's stage arrives on a hard cut instead of its hand-over or entrance.
   for (const [scene, n] of notes.cuts) {
@@ -526,15 +543,114 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     const j = shotAt(t), w = shots[j].world;
     return w && spotOf(w, t) ? (j === 0 ? 'the story' : `the world in ${stages.find(s => s.world === w).scene}`) : null;
   }
-  const pushes = placePushes(notes.pushes, {clock, speed: notes.speed, changes: pictureChanges(), spotlight: spotlightAt, total: clock.total});
+  // What is drawn where, for the preview studio (regions.mjs): each box names the recipe entry that drew it.
+  const storyPath = recipe.story ? 'story' : 'whiteboard', stagePath = st => `stages[${stages.indexOf(st)}]`;
+  const measure = makePen(createCanvas(8, 8).getContext('2d'), paper, {baseScale: 1});
+  /** A world's view on the frame: its sheet hung on the paper, then the push-in's and the spotlight's cameras. */
+  function worldView(w, spot, camera = null) {
+    let v = view(w.S, w.BX, w.BY);
+    if (camera) v = then(about(camera), v);
+    if (spot) v = then(about(spotCamera(w, spot)), v);
+    return v;
+  }
+  /** The world on screen at t (the part of the recipe that draws it, and its view), or null on paper. */
+  function worldOnScreen(t) {
+    if (push) {
+      if (t >= boardEnd && ease((t - boardEnd - TURN * .45) / (TURN * .45)) >= .5) return null;
+      return {w: storyWorld, path: storyPath, until: boardEnd, view: worldView(storyWorld, t < boardEnd ? spotOf(storyWorld, t) : null, t >= boardEnd ? pushInCamera(t) : null)};
+    }
+    const shot = shots[shotAt(t)], st = shot.world && stages.find(s => s.world === shot.world);
+    return shot.world ? {w: shot.world, path: st ? `${stagePath(st)}.world` : storyPath, until: Infinity, view: worldView(shot.world, spotOf(shot.world, t))} : null;
+  }
+  /** Which reveal made a code line appear: its recipe entry. */
+  const lineEntry = (st, i) => st.code?.allAt ? `${stagePath(st)}.code.allAt` : (k => k >= 0 ? `${stagePath(st)}.reveal[${k}]` : `${stagePath(st)}.code`)((st.reveal ?? []).findIndex(([n]) => n === i));
+  function stageRegions(st, t) {
+    const sp = stagePath(st), out = [], spec = stageSpec(st, t);
+    // A stage that draws the whole page itself (a kit's, a recap, a summary) answers for the page; a kit may say more (kit.regions).
+    if (spec.panel === false) out.push({box: [0, 0, 1600, 900], path: sp, label: `the ${st.type} stage`});
+    const say = {title: () => [`${sp}.title`, st.title], panel: () => [sp, st.file ?? st.title], footer: () => [`${sp}.footer`, st.footer?.text],
+      line: i => [lineEntry(st, i), st.lines[i].map(([text]) => text).join('').trim()], mark: k => [`${sp}.marks[${k}]`, st.marks[k].icon],
+      focus: k => [`${sp}.focus[${k}]`, `lines ${st.focus[k].lines.join('–')}`], list: n => [`${sp}.list[${n}]`, st.list[n].what]};
+    for (const b of stageBoxes(spec)) { const [path, label] = say[b.part](b.index); out.push({box: b.box, path, label: String(label ?? '')}); }
+    for (const r of st.kit?.regions?.(st.handle, t, push ? kitCardBox() : null) ?? []) out.push({box: r.box, path: `${sp}.${r.path}`, label: r.label ?? '', ...(r.name ? {name: r.name} : {})});
+    return out;
+  }
+  function cardRegions(t, now) {
+    const move = Math.max(0, Math.min(1, (t - MOVE0) / (MOVE1 - MOVE0))), {box, camera} = cardPlacement(geo, card, {move, center: now.centre, aside: moveTo, loop: centrePlace}), v = about(camera);
+    return [{box: through(v, box), path: 'card', label: card.header ?? 'the card'}, ...cardRowBoxes(geo, card).map(r => ({box: through(v, r.box), path: `card.rows[${r.index}]`, label: r.label}))];
+  }
+  function guessBox(g, t) {
+    const text = g.answer && t >= g.end + GUESS_FLIP ? g.answer : g.question, w = Math.min(1440, measure.measure(text, 54, {display: true, weight: 700}) + 230), cy = GUESS_PLACES[g.place];
+    return [800 - w / 2, cy - 75, 800 + w / 2, cy + 75];
+  }
+  /** What is drawn where at t: [{box: [x0, y0, x1, y1], path, label}] on the frame, in drawing order. */
+  function regionsAt(t) {
+    if (teaser && t >= teaser.at) return [{box: [0, 0, 1600, 900], path: `${stagePath(recapStage)}.teaser`, label: 'the teaser'}];
+    const out = regionsUnder(t);
+    const cam = pushAt(pushes, t), seen = cam ? out.map(r => ({...r, box: through(about(cam), r.box)})) : out;
+    guesses.forEach((g, n) => { if (t >= g.start && t <= g.until + .5) seen.push({box: guessBox(g, t), path: `guesses[${n}]`, label: g.question}); });
+    return seen;
+  }
+  /** What is drawn where at t before any director's push: the world's (or the page's) regions, on the frame. */
+  function regionsUnder(t) {
+    if (teaser && t >= teaser.at) return [{box: [0, 0, 1600, 900], path: `${stagePath(recapStage)}.teaser`, label: 'the teaser'}];
+    const out = [], world = worldOnScreen(t);
+    if (world) {
+      out.push({box: through(world.view, [0, 0, 1600, 900]), path: world.path, label: `the ${world.w.kit} world`});
+      for (const r of world.w.instance.regionsAt?.(Math.min(t, world.until)) ?? []) out.push({box: through(world.view, r.box), path: `${world.path}.${r.path}`, label: r.label ?? '', ...(r.name ? {name: r.name} : {})});
+    } else if (push) {
+      const now = stateAt(t);
+      if (now.fade > 0) out.push(...cardRegions(t, now));
+      for (const [st] of now.shown) out.push(...stageRegions(st, t));
+    } else {
+      const shot = shots[shotAt(t)];
+      shot.stages.forEach((st, k) => { const next = shot.stages[k + 1]; if (Math.min(k === 0 ? 1 : into(st, t, .2, .45), next ? 1 - into(next, t, .65, .45) : 1) > 0) out.push(...stageRegions(st, t)); });
+    }
+    return out;
+  }
+  /**
+   * The box of the one thing called `name` at t (a kit names things in its regions: regionsAt → {name}),
+   * for a push that frames it (notes.mjs · FRAMINGS). Nothing by that name, or two, refuses.
+   */
+  function named(name, t) {
+    const regions = regionsUnder(t), hits = regions.filter(r => r.name === name);
+    if (hits.length === 1) return hits[0].box;
+    if (hits.length > 1) throw new Error(`${hits.length} things are called "${name}" at ${t.toFixed(2)} s; a name frames one thing`);
+    const names = [...new Set(regions.map(r => r.name).filter(Boolean))];
+    throw new Error(`nothing in the picture is called "${name}" at ${t.toFixed(2)} s; ${names.length ? `the names there are ${names.join(', ')}` : 'nothing there has a name (a kit names things in regionsAt: {box, path, label, name})'}`);
+  }
+  /**
+   * A point on the frame at t in the recipe's own coordinates: `frame` (as a push note's `at` means it:
+   * before any push) and, over a world, `world` {path, at} (the sheet's, as its items are placed).
+   */
+  function pointAt(t, x, y) {
+    const cam = teaser && t >= teaser.at ? null : pushAt(pushes, t), [fx, fy] = cam ? back(about(cam), [x, y]) : [x, y], world = !(teaser && t >= teaser.at) && worldOnScreen(t);
+    const round = n => Math.round(n);
+    return {frame: [round(fx), round(fy)], ...(world ? {world: {path: world.path, at: back(world.view, [fx, fy]).map(round)}} : {})};
+  }
+
+  // A push on a named thing reads the worlds' regions, so every world is ready first (its images decoded).
+  await readyWorlds(readies);
+  const pushes = placePushes(notes.pushes, {clock, speed: notes.speed, changes: pictureChanges(), spotlight: spotlightAt, total: clock.total, named});
 
   // The notes as applied, in the order written: the making-of record says what each one changed.
   const applied = new Map();
   if (notes.speedNote) applied.set(notes.speedNote, {note: notes.speedNote.note, speed: notes.speed, ...(push ? {pushIn: {seconds: +TURN.toFixed(3), was: push.turn ?? 1}} : {}), worlds: [...worldKits], pushes: pushes.length});
   for (const st of stages) if (st.cutNote) applied.set(st.cutNote, {note: st.cutNote.note, cut: st.scene, at: +st.start.toFixed(3), was: st.cutWas});
-  for (const p of pushes) applied.set(p.given, {note: p.note, push: {at: p.at, zoom: p.zoom}, from: +p.a.toFixed(3), to: +p.b.toFixed(3), seconds: +p.seconds.toFixed(3)});
+  for (const p of pushes) applied.set(p.given, {note: p.note, push: {at: p.at, zoom: p.zoom, ...(p.on ? {on: p.on, size: p.size} : {})}, from: +p.a.toFixed(3), to: +p.b.toFixed(3), seconds: +p.seconds.toFixed(3)});
   const notesApplied = (recipe.notes ?? []).map(n => applied.get(n));
   yield step('guesses-and-notes', () => notesSummary(guesses, notesApplied));
+
+  // Watching time (shots.mjs): each shot's moments — the phrases the recipe names while it is on screen —
+  // never too many, too close together. Phrases that are not something to see are left out, by identity:
+  // a push's camera words, a teaser's rewind (it names the past), the poster and the recalls.
+  const notMoments = new Set([...notes.pushes.flatMap(n => [n.push.from, n.push.to]), ...stages.flatMap(st => st.teaser ? [st.teaser.rewind.from, st.teaser.rewind.to] : []),
+    ...(recipe.poster ? [recipe.poster] : []), ...Object.values(recipe.recalls ?? {})]);
+  const momentsOf = u => beats.filter(b => !notMoments.has(b.ref) && b.t >= u.from && b.t < u.to).map(b => b.t);
+  const watchingRule = watchingMode(recipe.watching);
+  const watching = tooMuchTooFast(plan.map(u => ({path: u.path, where: u.where, moments: momentsOf(u)})), WATCHING);
+  if (watchingRule === 'refuse' && watching.length) throw new Error(`Too much, too fast (the recipe says watching: "refuse"): ${watching.slice(0, 3).map(watchingText).join('; ')}${watching.length > 3 ? `; and ${watching.length - 3} more` : ''}`);
+  const shotsPlanned = plan.map(u => ({path: u.path, where: u.where, scene: u.scene, from: +u.from.toFixed(3), to: +u.to.toFixed(3), intent: u.intent, start: u.continuity?.start ?? null, end: u.continuity?.end ?? null, moments: distinctMoments(momentsOf(u)).length}));
 
   // Reading time (reading.mjs): every line meant to be read stays up, whole, long enough to read.
   const readingRule = readingMode(recipe.reading), reading = tooShortToRead(readableLines());
@@ -583,75 +699,6 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   sounds.sort((a, b) => a.time - b.time);
   checkSoundCounts(sounds, clock, storyboard, timings);
 
-  // What is drawn where, for the preview studio (regions.mjs): each box names the recipe entry that drew it.
-  const storyPath = recipe.story ? 'story' : 'whiteboard', stagePath = st => `stages[${stages.indexOf(st)}]`;
-  const measure = makePen(createCanvas(8, 8).getContext('2d'), paper, {baseScale: 1});
-  /** A world's view on the frame: its sheet hung on the paper, then the push-in's and the spotlight's cameras. */
-  function worldView(w, spot, camera = null) {
-    let v = view(w.S, w.BX, w.BY);
-    if (camera) v = then(about(camera), v);
-    if (spot) v = then(about(spotCamera(w, spot)), v);
-    return v;
-  }
-  /** The world on screen at t (the part of the recipe that draws it, and its view), or null on paper. */
-  function worldOnScreen(t) {
-    if (push) {
-      if (t >= boardEnd && ease((t - boardEnd - TURN * .45) / (TURN * .45)) >= .5) return null;
-      return {w: storyWorld, path: storyPath, until: boardEnd, view: worldView(storyWorld, t < boardEnd ? spotOf(storyWorld, t) : null, t >= boardEnd ? pushInCamera(t) : null)};
-    }
-    const shot = shots[shotAt(t)], st = shot.world && stages.find(s => s.world === shot.world);
-    return shot.world ? {w: shot.world, path: st ? `${stagePath(st)}.world` : storyPath, until: Infinity, view: worldView(shot.world, spotOf(shot.world, t))} : null;
-  }
-  /** Which reveal made a code line appear: its recipe entry. */
-  const lineEntry = (st, i) => st.code?.allAt ? `${stagePath(st)}.code.allAt` : (k => k >= 0 ? `${stagePath(st)}.reveal[${k}]` : `${stagePath(st)}.code`)((st.reveal ?? []).findIndex(([n]) => n === i));
-  function stageRegions(st, t) {
-    const sp = stagePath(st), out = [], spec = stageSpec(st, t);
-    // A stage that draws the whole page itself (a kit's, a recap, a summary) answers for the page; a kit may say more (kit.regions).
-    if (spec.panel === false) out.push({box: [0, 0, 1600, 900], path: sp, label: `the ${st.type} stage`});
-    const say = {title: () => [`${sp}.title`, st.title], panel: () => [sp, st.file ?? st.title], footer: () => [`${sp}.footer`, st.footer?.text],
-      line: i => [lineEntry(st, i), st.lines[i].map(([text]) => text).join('').trim()], mark: k => [`${sp}.marks[${k}]`, st.marks[k].icon],
-      focus: k => [`${sp}.focus[${k}]`, `lines ${st.focus[k].lines.join('–')}`], list: n => [`${sp}.list[${n}]`, st.list[n].what]};
-    for (const b of stageBoxes(spec)) { const [path, label] = say[b.part](b.index); out.push({box: b.box, path, label: String(label ?? '')}); }
-    for (const r of st.kit?.regions?.(st.handle, t, push ? kitCardBox() : null) ?? []) out.push({box: r.box, path: `${sp}.${r.path}`, label: r.label ?? ''});
-    return out;
-  }
-  function cardRegions(t, now) {
-    const move = Math.max(0, Math.min(1, (t - MOVE0) / (MOVE1 - MOVE0))), {box, camera} = cardPlacement(geo, card, {move, center: now.centre, aside: moveTo, loop: centrePlace}), v = about(camera);
-    return [{box: through(v, box), path: 'card', label: card.header ?? 'the card'}, ...cardRowBoxes(geo, card).map(r => ({box: through(v, r.box), path: `card.rows[${r.index}]`, label: r.label}))];
-  }
-  function guessBox(g, t) {
-    const text = g.answer && t >= g.end + GUESS_FLIP ? g.answer : g.question, w = Math.min(1440, measure.measure(text, 54, {display: true, weight: 700}) + 230), cy = GUESS_PLACES[g.place];
-    return [800 - w / 2, cy - 75, 800 + w / 2, cy + 75];
-  }
-  /** What is drawn where at t: [{box: [x0, y0, x1, y1], path, label}] on the frame, in drawing order. */
-  function regionsAt(t) {
-    if (teaser && t >= teaser.at) return [{box: [0, 0, 1600, 900], path: `${stagePath(recapStage)}.teaser`, label: 'the teaser'}];
-    const out = [], world = worldOnScreen(t);
-    if (world) {
-      out.push({box: through(world.view, [0, 0, 1600, 900]), path: world.path, label: `the ${world.w.kit} world`});
-      for (const r of world.w.instance.regionsAt?.(Math.min(t, world.until)) ?? []) out.push({box: through(world.view, r.box), path: `${world.path}.${r.path}`, label: r.label ?? ''});
-    } else if (push) {
-      const now = stateAt(t);
-      if (now.fade > 0) out.push(...cardRegions(t, now));
-      for (const [st] of now.shown) out.push(...stageRegions(st, t));
-    } else {
-      const shot = shots[shotAt(t)];
-      shot.stages.forEach((st, k) => { const next = shot.stages[k + 1]; if (Math.min(k === 0 ? 1 : into(st, t, .2, .45), next ? 1 - into(next, t, .65, .45) : 1) > 0) out.push(...stageRegions(st, t)); });
-    }
-    const cam = pushAt(pushes, t), seen = cam ? out.map(r => ({...r, box: through(about(cam), r.box)})) : out;
-    guesses.forEach((g, n) => { if (t >= g.start && t <= g.until + .5) seen.push({box: guessBox(g, t), path: `guesses[${n}]`, label: g.question}); });
-    return seen;
-  }
-  /**
-   * A point on the frame at t in the recipe's own coordinates: `frame` (as a push note's `at` means it:
-   * before any push) and, over a world, `world` {path, at} (the sheet's, as its items are placed).
-   */
-  function pointAt(t, x, y) {
-    const cam = teaser && t >= teaser.at ? null : pushAt(pushes, t), [fx, fy] = cam ? back(about(cam), [x, y]) : [x, y], world = !(teaser && t >= teaser.at) && worldOnScreen(t);
-    const round = n => Math.round(n);
-    return {frame: [round(fx), round(fy)], ...(world ? {world: {path: world.path, at: back(world.view, [fx, fy]).map(round)}} : {})};
-  }
-
   /**
    * The moments worth a still (sheet.mjs): each scene's picture once it has settled, and each change of
    * picture half way through — [{t, kind: 'settled' | 'moving', label}], in time order.
@@ -672,15 +719,14 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const posterAt = recipe.poster === undefined ? null : clock.at(recipe.poster);
 
   // Recall images: the film's own frames, reused in the recap so the viewer sees what they saw. Every
-  // world is ready first (its images decoded), so a recall keeps the loaded picture and so does the film.
-  await readyWorlds(readies);
+  // world was made ready before the pushes were placed (its images decoded), so a recall keeps the loaded picture.
   for (const [name, ref] of Object.entries(recipe.recalls ?? {})) {
     const c = createCanvas(1600, 900); frame(c.getContext('2d'), clock.at(ref)); recalls[name] = c;
   }
-  yield step('checks', () => checksSummary({readingRule, reading, sounds, byScene: soundsByScene(sounds, clock.offsets, timings.scenes.map(s => s.duration)), worlds: readies.filter(Boolean).length, recalls: Object.keys(recipe.recalls ?? {})}));
+  yield step('checks', () => checksSummary({readingRule, reading, watchingRule, watching, facts, sounds, byScene: soundsByScene(sounds, clock.offsets, timings.scenes.map(s => s.duration)), worlds: readies.filter(Boolean).length, recalls: Object.keys(recipe.recalls ?? {})}));
   // Every line the build resolved (the clock is a pure function of the paced word times, so the order it was asked in changes no second).
   yield step('resolve-lines', () => linesSummary(beats));
-  return {total: clock.total, clock, timings, sounds, frame, beats, strings: [...used], notes: notesApplied, reading, posterAt, moments, regionsAt, pointAt, theme: paper};
+  return {total: clock.total, clock, timings, sounds, frame, beats, strings: [...used], notes: notesApplied, reading, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching};
 }
 
 /** What reading the inputs gave (record.mjs): the recipe's top-level keys, each scene's seconds, the notes, the strings used. */
@@ -689,9 +735,12 @@ function inputsSummary({recipe, storyboard, clock, notes, strings}) {
   return {reads: [], writes: {recipe: Object.keys(recipe), lines, notes: {written: (recipe.notes ?? []).length, speed: notes.speed}, ...(strings ? {strings} : {})}};
 }
 /** One key per world and per stage: its kit, its scene and its recipe path (a built-in stage is drawn by the paper kit). */
-function buildSummary(storyPath, storyKit, stages, stageKitNames) {
-  const writes = {[`world.${storyPath}`]: {kit: storyKit, path: storyPath}};
-  stages.forEach((st, i) => { writes[`stage.stages[${i}]`] = {type: st.type, kit: st.world?.kit ?? stageKitNames[st.type] ?? 'paper', scene: st.scene, path: `stages[${i}]`}; });
+function buildSummary(storyPath, storyKit, stages, stageKitNames, plan) {
+  // A shot's intent and its facts ride with it (absent when it states none), so a slice from a stage says what it was for.
+  // The plan is in film order; each entry is found by its recipe path, so a recipe that lists its stages out of order still records each stage's own.
+  const said = path => { const u = plan.find(x => x.path === path); return {...(u?.intent ? {intent: u.intent} : {}), ...(u?.continuity ? {continuity: u.continuity} : {})}; };
+  const writes = {[`world.${storyPath}`]: {kit: storyKit, path: storyPath, ...said(storyPath)}};
+  stages.forEach((st, i) => { writes[`stage.stages[${i}]`] = {type: st.type, kit: st.world?.kit ?? stageKitNames[st.type] ?? 'paper', scene: st.scene, path: `stages[${i}]`, ...said(`stages[${i}]`)}; });
   return {reads: ['recipe', 'lines'], writes};
 }
 /** Each guess's pause and when its card is gone, and each director's note as applied. */
@@ -702,9 +751,11 @@ function notesSummary(guesses, notesApplied) {
   return {reads: ['lines', 'notes', 'stage.'], writes};
 }
 /** What the checks found: the reading rule and the lines too short to read, the busiest scene's sounds, the worlds waited for. */
-function checksSummary({readingRule, reading, sounds, byScene, worlds, recalls}) {
+function checksSummary({readingRule, reading, watchingRule, watching, facts, sounds, byScene, worlds, recalls}) {
   return {reads: ['world.', 'stage.', 'guess.', 'note.'], writes: {
     'checks.reading': {rule: readingRule, tooShort: reading.map(l => l.path)},
+    'checks.watching': {rule: watchingRule, found: watching.map(w => ({kind: w.kind, path: w.path, at: w.at, moments: w.moments}))},
+    'checks.continuity': {facts},
     'checks.sounds': {count: sounds.length, busiest: Math.max(0, ...byScene.map(l => l.length)), limit: MAX_SOUNDS_PER_SCENE},
     'checks.ready': {worlds, recalls}}};
 }

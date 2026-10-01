@@ -107,3 +107,23 @@ export const north: Enter = {type: 'push', from: 'north'};
 export const wobble: Transition = {...curtain, ease: 'wobble'};
 // @ts-expect-error a transition draws
 export const noDraw: Transition = {family: 'x', seconds: 1, ease: 'inOut', sound: null};
+
+// The shot plan: what each shot is for, and the facts it starts and ends with; framing by name; gaze.
+export const planned: Recipe = {
+  story: {kit: 'whiteboard', items: [], intent: 'Open on the question.', continuity: {end: {order: 'none'}}},
+  stages: [{type: 'world', scene: 'race', intent: 'Show the app refusing a stale offer.', continuity: {start: {order: 'none', size: 'M'}, end: {size: 'L'}}, world: {kit: 'second'}}],
+  watching: 'refuse',
+};
+export const closeOn: DirectorNote = {note: 'Close on the robot', push: {on: 'robot', size: 'close', from: ['click', 'How do I know'], to: ['click', 'done']}};
+export const looking = (film: Film): string | null => film.clock.gaze(1, 'user')?.at ?? null;
+export const firstIntent = (film: Film): string | null => film.shots[0].intent;
+export const bursts = (film: Film): number => film.watching.filter(w => w.kind === 'burst').length;
+// @ts-expect-error a framing is medium, close or insert
+export const wide: DirectorNote = {note: 'wide', push: {on: 'robot', size: 'wide', from: ['a', 'b'], to: ['a', 'c']}};
+// @ts-expect-error a fact is a word, a number or true/false
+export const listFact: Recipe = {stages: [{type: 'world', scene: 'x', continuity: {start: {sizes: ['M']}}}]};
+// @ts-expect-error watching is 'report' or 'refuse'
+export const loud: Recipe = {watching: 'loud'};
+// @ts-expect-error a push aims at a point or a named thing, not both
+export const both: DirectorNote = {note: 'both', push: {at: [1, 2], on: 'robot', from: ['a', 'b'], to: ['a', 'c']}};
+export const blend = (film: Film): number => film.clock.gaze(1, 'user')?.also?.amount ?? 0;

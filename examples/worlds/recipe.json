@@ -1,6 +1,6 @@
 {
   "story": {
-    "kit": "whiteboard", "defaultErase": null, "erasers": {}, "spots": [],
+    "kit": "whiteboard", "intent": "Set the question: how did a shepherd count without numbers?", "defaultErase": null, "erasers": {}, "spots": [],
     "items": [
       {"at": ["board", "Here is our board"], "dur": 1.0, "write": {"$string": "board.title"}, "x": 800, "y": 220, "size": 64, "align": "center"},
       {"at": ["board", "count with pebbles"], "dur": 0.4, "draw": [["ellipse", 700, 500, 22, 16]], "color": "blue", "size": 8, "seed": 1},
@@ -9,16 +9,18 @@
     ]
   },
   "stages": [
-    {"type": "world", "scene": "valley", "enter": "fade", "world": {
+    {"type": "world", "scene": "valley", "enter": "fade", "intent": "Show the sheep going out, one pebble each.",
+     "continuity": {"start": {"sheep out": 0}, "end": {"sheep out": 3}}, "world": {
       "kit": "cartoon", "evening": ["valley", "In the evening"],
       "flock": {"count": 3, "missing": 0, "out": {"at": ["valley", "lets the sheep out"], "every": 1.2}, "home": {"at": ["valley", "they all come home"], "every": 1.0}},
       "captions": [{"at": ["valley", "they all come home"], "until": ["valley", "they all come home", 3], "text": {"$string": "valley.caption"}}],
       "camera": [{"at": ["valley", "lets the sheep out"], "to": [560, 640], "zoom": 1.25}]}},
-    {"type": "code", "scene": "rule", "enter": "wipe", "chrome": false, "file": "count.ts", "label": "TYPESCRIPT",
+    {"type": "code", "scene": "rule", "enter": "wipe", "intent": "Turn the shepherd’s habit into a rule written as code.", "chrome": false, "file": "count.ts", "label": "TYPESCRIPT",
      "code": {"file": "count.ts", "emphasis": {"'pebble'": "known"}},
      "reveal": [[0, ["rule", "Here is the rule"]], [1, ["rule", "One pebble for every sheep"]]],
      "footer": {"text": {"$string": "rule.footer"}, "at": ["rule", "One pebble for every sheep"]}},
-    {"type": "world", "scene": "again", "enter": {"type": "iris", "at": [800, 420]}, "world": {
+    {"type": "world", "scene": "again", "enter": {"type": "iris", "at": [800, 420]}, "intent": "Bring the rule back to the board where the story began.",
+     "continuity": {"start": {"sheep out": 3}}, "world": {
       "kit": "whiteboard", "defaultErase": null, "erasers": {}, "spots": [],
       "items": [
         {"at": ["again", "one sheep, one pebble"], "dur": 1.0, "write": {"$string": "again.rule"}, "x": 800, "y": 440, "size": 72, "align": "center", "color": "blue"},

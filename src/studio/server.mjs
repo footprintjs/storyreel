@@ -75,6 +75,9 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
       beats: film.beats.map(b => ({t: b.t, said: Array.isArray(b.ref) ? {scene: b.ref[0], phrase: b.ref[1], plus: b.ref[2] ?? 0} : b.ref, path: b.path, line: b.path ? lineOf(b.path) : null})),
       notes: film.notes ?? [],
       reading: (film.reading ?? []).map(l => ({...l, line: l.path ? lineOf(l.path) : null})),
+      // Each shot: what it is for and the facts it starts and ends with; and what asks too much, too fast.
+      shots: (film.shots ?? []).map(s => ({...s, line: lineOf(s.path)})),
+      watching: (film.watching ?? []).map(w => ({...w, line: lineOf(w.path)})),
     };
   }
 

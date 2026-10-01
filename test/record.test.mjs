@@ -11,7 +11,7 @@ import {COMPILE_STAGES} from '../src/record.mjs';
 
 const golden = JSON.parse(readFileSync(new URL('./golden.json', import.meta.url), 'utf8'));
 const recipeOf = name => JSON.parse(readFileSync(new URL(`../examples/${name}/recipe.json`, import.meta.url), 'utf8'));
-const FILM_KEYS = ['total', 'clock', 'timings', 'sounds', 'frame', 'beats', 'strings', 'notes', 'reading', 'posterAt', 'moments', 'regionsAt', 'pointAt', 'theme'];
+const FILM_KEYS = ['total', 'clock', 'timings', 'sounds', 'frame', 'beats', 'strings', 'notes', 'reading', 'posterAt', 'moments', 'regionsAt', 'pointAt', 'theme', 'shots', 'watching'];
 /** A slice from a key in a record, its reads taken from the record's own execution tree. */
 const sliceOf = (record, key) => sliceForKey(record.snapshot.commitLog, key, keysReadFromExecutionTree(record.snapshot.executionTree));
 /** The stages a slice walked through (sliceToJSON keys its nodes by runtimeStageId). */
@@ -37,8 +37,13 @@ test('the record holds small values only, and survives structuredClone and JSON'
   assert.ok(film.record.narrative.every(e => !('rawValue' in e)), 'the narrative keeps no live values');
   // One key per world and per stage, with its kit, scene and recipe path; the notes as applied; the checks.
   const state = copy.snapshot.sharedState, recipe = recipeOf('worlds');
-  assert.deepEqual(state['world.story'], {kit: recipe.story.kit, path: 'story'});
-  recipe.stages.forEach((st, i) => assert.deepEqual(state[`stage.stages[${i}]`], {type: st.type, kit: st.world?.kit ?? 'paper', scene: st.scene, path: `stages[${i}]`}));
+  // A shot's intent and facts ride with it (shots.mjs), so a slice from a stage says what the stage was for.
+  const plan = st => ({...(st.intent ? {intent: st.intent} : {}), ...(st.continuity ? {continuity: {start: st.continuity.start ?? {}, end: st.continuity.end ?? {}}} : {})});
+  assert.deepEqual(state['world.story'], {kit: recipe.story.kit, path: 'story', ...plan(recipe.story)});
+  recipe.stages.forEach((st, i) => assert.deepEqual(state[`stage.stages[${i}]`], {type: st.type, kit: st.world?.kit ?? 'paper', scene: st.scene, path: `stages[${i}]`, ...plan(st)}));
+  assert.ok(recipe.stages.some(st => st.continuity) && recipe.story.intent, 'the worlds example states intents and facts, so this reaches them');
+  assert.deepEqual(state['checks.continuity'].facts, {'sheep out': 3});
+  assert.equal(state['checks.watching'].rule, 'report');
   assert.deepEqual(state.recipe, Object.keys(recipe));
   assert.equal(state['checks.reading'].rule, 'report');
   assert.ok(state['checks.sounds'].busiest <= state['checks.sounds'].limit);
