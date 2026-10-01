@@ -82,6 +82,11 @@ test('makeFilm: a footprintjs pipeline writes the film and its making-of record'
   assert.deepEqual(record.beats[0].said, {scene: 'story', phrase: 'a shepherd', plus: 0});
   assert.ok(record.pipeline.some(e => /check-inputs/.test(e.text ?? '')) && record.pipeline.some(e => /render-film/.test(e.text ?? '')), 'the stages are in the footprintjs narrative');
   assert.ok(record.tools.every(t => t.name && t.license));
+  // Loudness in two passes: the type FFmpeg reported is recorded, and anything not 'linear' is flagged. The
+  // hello film is silence and a few quiet taps (a loudness range above the target), so it may come back 'dynamic'.
+  assert.ok(['linear', 'dynamic'].includes(record.loudness.type), `loudness type ${record.loudness.type}`);
+  assert.ok(Object.values(record.loudness.measured).every(Number.isFinite), 'the whole film was measured');
+  assert.equal(record.loudness.type === 'linear', record.loudness.flag === undefined, 'flagged exactly when not linear');
 });
 
 test('the cartoon kit: a full-frame world, deterministic, and every frame restores the canvas', async () => {

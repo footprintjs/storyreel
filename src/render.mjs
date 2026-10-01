@@ -1,6 +1,6 @@
 /**
  * Render a compiled film to an MP4: frames from film.frame(ctx, t), the paced narration scene by
- * scene, the sound accents per scene (at most 64 each), one loudness pass. FFmpeg must be on PATH.
+ * scene, the sound accents per scene (at most 64 each), loudness in two passes. FFmpeg must be on PATH.
  */
 import {writeFileSync, mkdirSync} from 'node:fs';
 import path from 'node:path';
@@ -8,6 +8,67 @@ import {spawn, spawnSync} from 'node:child_process';
 import {once} from 'node:events';
 import {createCanvas} from '@napi-rs/canvas';
 import {createMotionSound, soundsByScene} from './sound.mjs';
+
+/**
+ * Loudness in two passes (FFmpeg's loudnorm): measure the whole mixed film, then set it with ONE fixed
+ * gain (`linear=true`) from what was measured, so a quiet opening stays quiet instead of being raised to
+ * the voice's level. A film with no measurable loudness (pure silence: FFmpeg reports -inf) is left as
+ * it is; loudnorm's varying mode turns silence into NaN and the AAC encoder refuses it. FFmpeg falls back
+ * to that varying mode when one gain would break the true-peak limit, the range is above its target, the
+ * film is under 3 s, or the measured range is exactly 0 (its option's default, read as "not measured");
+ * the type it reports says so, and the making-of record flags it (pipeline.mjs · loudnessRecord).
+ */
+const LOUDNESS_FORMAT = 'aformat=channel_layouts=stereo';
+const finite = s => { const n = Number(s); return Number.isFinite(n) ? n : null; };
+const loudnormTarget = ({I, TP, LRA}) => `I=${I}:TP=${TP}${LRA === undefined ? '' : `:LRA=${LRA}`}`;
+
+/** The last JSON report loudnorm printed on stderr (print_format=json), or null. */
+export function parseLoudnormReport(stderr) {
+  const found = String(stderr).match(/\{[^{}]*"input_i"[^{}]*\}/g);
+  return found ? JSON.parse(found[found.length - 1]) : null;
+}
+
+/** A report's input measurement as numbers; -inf (silence) and anything unreadable become null. */
+export function measuredLoudness(report) {
+  return {I: finite(report.input_i), TP: finite(report.input_tp), LRA: finite(report.input_lra), thresh: finite(report.input_thresh), offset: finite(report.target_offset)};
+}
+
+/** The second pass's filter: the target, what the first pass measured, one fixed gain, a report. */
+export function linearLoudnorm(target, m) {
+  return `loudnorm=${loudnormTarget(target)}:measured_I=${m.I}:measured_TP=${m.TP}:measured_LRA=${m.LRA}:measured_thresh=${m.thresh}:offset=${m.offset}:linear=true:print_format=json`;
+}
+
+/** Run FFmpeg and keep what it reports (loudnorm prints its JSON at the info level, on stderr). */
+function runReporting(ffmpeg, args) {
+  const r = spawnSync(ffmpeg, ['-y', '-hide_banner', '-nostats', '-loglevel', 'info', ...args], {encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
+  if (r.status) throw new Error(`ffmpeg failed: ${args.join(' ').slice(0, 200)}\n${String(r.stderr).slice(-800)}`);
+  return r.stderr;
+}
+
+/** Pass 1: measure the mixed film's loudness (render.mjs · measuredLoudness); `unusable` when there is none to use. */
+function measureFilm(ffmpeg, wav, target) {
+  const report = parseLoudnormReport(runReporting(ffmpeg, ['-i', wav, '-af', `${LOUDNESS_FORMAT},loudnorm=${loudnormTarget(target)}:print_format=json`, '-f', 'null', '-']));
+  if (!report) throw new Error('ffmpeg loudnorm printed no measurement (print_format=json); is this FFmpeg built with loudnorm?');
+  const measured = measuredLoudness(report);
+  return Object.values(measured).every(v => v !== null) ? {measured} : {measured, unusable: true};
+}
+
+/**
+ * Pass 2, while the video and sound are muxed: one fixed gain from the measurement, or none for a silent
+ * film. Returns {type, target, measured, reason?}: type is FFmpeg's reported normalization type
+ * ('linear' when one fixed gain was kept, 'dynamic' when loudnorm fell back to varying it) or 'skipped'.
+ */
+function muxWithLoudness({ffmpeg, video, wav, out, target}) {
+  const {measured, unusable} = measureFilm(ffmpeg, wav, target);
+  const mux = af => ['-i', video, '-i', wav, '-map', '0:v', '-map', '1:a', '-af', af, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-shortest', '-movflags', '+faststart', out];
+  if (unusable) {
+    runReporting(ffmpeg, mux(`${LOUDNESS_FORMAT},aresample=48000`));
+    return {type: 'skipped', target, measured, reason: 'the audio is silent: there is no loudness to measure'};
+  }
+  const report = parseLoudnormReport(runReporting(ffmpeg, mux(`${LOUDNESS_FORMAT},${linearLoudnorm(target, measured)},aresample=48000`)));
+  if (!report?.normalization_type) throw new Error('ffmpeg loudnorm did not report its normalization type in the second pass');
+  return {type: report.normalization_type, target, measured};
+}
 
 const clock = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
@@ -23,7 +84,8 @@ const clock = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(
  * @param poster     the film second to use as the poster (default: the recipe's `poster`, film.posterAt): it is
  *                   written beside the video (poster.jpg) and REPLACES the video's first frame, so every
  *                   platform's thumbnail shows it (the length and the sound's sync are unchanged)
- * @returns {out, seconds, chapters, poster?}
+ * @param loudness   the target {I, TP, LRA?} (LUFS, dBTP, LU) for the two loudness passes (render.mjs · muxWithLoudness)
+ * @returns {out, seconds, chapters, poster?, loudness: {type, target, measured, reason?}}
  */
 export async function renderFilm({film, storyboard, timings, narrationDir = null, out, width = 1280, height = 720, fps = 30, intro = null, stamp = null,
   from = intro ? -intro.seconds : 0, to = film.total, poster = film.posterAt ?? null, peakCeilingDBFS = -20, loudness = {I: -16, TP: -1.5}, ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg'}) {
@@ -81,10 +143,10 @@ export async function renderFilm({film, storyboard, timings, narrationDir = null
   run(['-ss', String(start), '-t', String(to - start), '-i', path.join(dir, 'film-lesson.wav'), path.join(dir, 'film-part.wav')]); parts.push(path.join(dir, 'film-part.wav'));
   writeFileSync(path.join(dir, 'film-audio.txt'), parts.map(p => `file '${p}'`).join('\n') + '\n');
   run(['-f', 'concat', '-safe', '0', '-i', path.join(dir, 'film-audio.txt'), '-ar', '48000', '-ac', '1', path.join(dir, 'film-audio.wav')]);
-  run(['-i', video, '-i', path.join(dir, 'film-audio.wav'), '-map', '0:v', '-map', '1:a', '-af', `aformat=channel_layouts=stereo,loudnorm=I=${loudness.I}:TP=${loudness.TP},aresample=48000`, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-shortest', '-movflags', '+faststart', path.resolve(out)]);
+  const loudnessSet = muxWithLoudness({ffmpeg, video, wav: path.join(dir, 'film-audio.wav'), out: path.resolve(out), target: loudness});
   // Chapters on the output's clock, for review and YouTube.
   const lead = withIntro ? intro.seconds : 0;
   const chapters = [...(withIntro ? [[0, intro.title ?? 'Title']] : []), ...storyboard.scenes.map((s, i) => [lead + film.clock.offsets[i] - start, s.title ?? s.id])].filter(([t]) => t >= 0);
   writeFileSync(path.join(dir, 'chapters.txt'), chapters.map(([t, n]) => `${clock(t)} ${n}`).join('\n') + '\n');
-  return {out: path.resolve(out), seconds: lead + to - start, chapters: chapters.map(([t, n]) => `${clock(t)} ${n}`), ...(posterFile ? {poster: posterFile} : {})};
+  return {out: path.resolve(out), seconds: lead + to - start, chapters: chapters.map(([t, n]) => `${clock(t)} ${n}`), loudness: loudnessSet, ...(posterFile ? {poster: posterFile} : {})};
 }

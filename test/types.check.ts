@@ -1,5 +1,5 @@
 // Checked by test/types.test.mjs with tsc: what the types accept, and what they refuse.
-import type {Recipe, DirectorNote, Film, Kit, frameHashes, compileFilm} from '../types/index.js';
+import type {Recipe, DirectorNote, Film, Kit, Loudness, frameHashes, compileFilm} from '../types/index.js';
 import type {startStudio} from '../types/studio.js';
 
 const notes: DirectorNote[] = [
@@ -15,6 +15,8 @@ export const doorKit: Kit = {name: 'door', story: {compile: () => ({draw: () => 
 export type HostKeys = Parameters<typeof compileFilm>[0]['hostKeys'];
 export const atMoments = (film: Film, hash: typeof frameHashes) => hash(film, {times: film.moments().map(m => m.t), width: 320});
 
+export const silent: Loudness = {type: 'skipped', target: {I: -16, TP: -1.5}, measured: {I: null, TP: null, LRA: 0, thresh: -70, offset: null}, reason: 'the audio is silent'};
+
 // @ts-expect-error a note needs its words
 export const noWords: DirectorNote = {cut: 'inside'};
 // @ts-expect-error reading is 'report' or 'refuse'
@@ -27,6 +29,9 @@ export const bothKinds = (film: Film, hash: typeof frameHashes) => hash(film, {c
 export const boomKit: Kit = {name: 'boom', story: {compile: () => ({draw: () => {}, sounds: [{time: 1, type: 'boom'}]})}};
 // @ts-expect-error a push needs from and to
 export const halfPush: DirectorNote = {note: 'push', push: {at: [1, 2]}};
+
+// @ts-expect-error the normalization type is linear, dynamic or skipped
+export const loud: Loudness = {type: 'loud', target: {I: -16, TP: -1.5}, measured: {I: -20, TP: -3, LRA: 4, thresh: -30, offset: 0}};
 
 // The documented subpaths carry types too.
 import type {makeClock, normSpeech} from '../types/sub/clock.js';

@@ -267,9 +267,23 @@ also needs its own narration; the recipe's phrases are its English cues for now.
   `examples/recap` carries all three (`"notes": [{"note": "Go straight to the code", "cut": "code"}]`,
   then a `summary` stage handed over to on the page, whose closing line is up too briefly) — and a test
   says so if an edit to the examples drops one.
+- **Loudness, in two passes.** `renderFilm` measures the whole mixed film first (FFmpeg's `loudnorm`),
+  then sets it with **one fixed gain** from that measurement (`linear=true`), so a quiet opening stays
+  quiet instead of being raised to the voice's level. The target is `loudness: {I: -16, TP: -1.5}` (LUFS,
+  dBTP; add `LRA` for a loudness range other than FFmpeg's 7). The result says what happened —
+  `result.loudness.type` is FFmpeg's reported normalization type: `linear` (one gain), `dynamic` (loudnorm
+  varied the gain because the true-peak limit, a range above the target or a film under 3 s blocked one
+  gain; a perfectly steady sound, whose range measures 0, lands here too) or `skipped` (pure silence:
+  nothing to measure, so the sound is left as it is — a render of only a silent opening works). The
+  making-of record keeps it and **flags every type that is not `linear`**:
+  ```json
+  "loudness": {"type": "dynamic", "target": {"I": -16, "TP": -1.5},
+    "measured": {"I": -37.97, "TP": -25.21, "LRA": 14.2, "thresh": -50.36, "offset": 21.5},
+    "flag": "normalised \"dynamic\", not \"linear\": loudnorm varied the gain (…), so quiet moments may be raised"}
+  ```
 - **The making-of record** (`making-of.json`, written by `makeFilm`): every phrase → the recipe entry it
   triggered and when, the director's notes as applied, the lines too short to read, the pacing, the
-  poster, the tools and versions — the film's own footprintjs run.
+  poster, the loudness as measured and set, the tools and versions — the film's own footprintjs run.
 
 ## The preview studio
 
@@ -370,7 +384,7 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | import | what it does |
 |---|---|
 | `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?, hostKeys?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `reading`, `moments()`, `regionsAt(t)`, `pointAt(t, x, y)`, `posterAt` |
-| `renderFilm({film, storyboard, timings, narrationDir?, out, width?, height?, fps?, intro?, stamp?, from?, to?, poster?})` | the MP4 (FFmpeg), its chapters, its poster |
+| `renderFilm({film, storyboard, timings, narrationDir?, out, width?, height?, fps?, intro?, stamp?, from?, to?, poster?, loudness?})` | the MP4 (FFmpeg), its chapters, its poster, its loudness (two passes) |
 | `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?})` | compile + render as a footprintjs pipeline, with `making-of.json` |
 | `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |
 | `makeClock(storyboard, timings)` | phrases → seconds |

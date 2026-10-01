@@ -24,11 +24,6 @@ name the **kind** of film a recipe is, so each kind brings its own defaults, che
 - **The teaser** is drawn from the same recipe with a vertical layout: the hook in the first three
   seconds (the question, not the title), then the one moment that matters.
 
-## 2. Smaller items
-
-- A silent render of only the first seconds of a film fails at the loudness pass (FFmpeg `loudnorm` on
-  pure silence); full-length renders work.
-
 ## In scope, and still not in this package
 
 **In scope:** a screenshot shown as evidence in a teaching film — a real screen, a real result — so the

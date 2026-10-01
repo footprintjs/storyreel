@@ -131,18 +131,30 @@ export function compileFilm(options: {
   hostKeys?: string[];
 }): Promise<Film>;
 
+/** What the two loudness passes measured and did (render.mjs · muxWithLoudness). */
+export interface Loudness {
+  /** FFmpeg's reported normalization type: 'linear' (one fixed gain), 'dynamic' (loudnorm varied the gain), or 'skipped' (silence: nothing to measure). */
+  type: 'linear' | 'dynamic' | 'skipped';
+  /** The target: integrated loudness (LUFS), true peak (dBTP), loudness range (LU, FFmpeg's default when absent). */
+  target: {I: number; TP: number; LRA?: number};
+  /** The first pass's measurement of the whole mixed film; -inf (silence) is null. */
+  measured: {I: number | null; TP: number | null; LRA: number | null; thresh: number | null; offset: number | null};
+  /** Why the pass was skipped. */
+  reason?: string;
+}
+
 export function renderFilm(options: {
   film: Film; storyboard: Storyboard; timings: Timings; narrationDir?: string | null; out: string;
   width?: number; height?: number; fps?: number; stamp?: string | null; from?: number; to?: number; poster?: number | null;
   intro?: {seconds: number; title?: string; wav?: Uint8Array; draw(ctx: any, t: number, info: {width: number; height: number; handoff: unknown}): void} | null;
-  peakCeilingDBFS?: number; loudness?: {I: number; TP: number}; ffmpeg?: string;
-}): Promise<{out: string; seconds: number; chapters: string[]; poster?: string}>;
+  peakCeilingDBFS?: number; loudness?: {I: number; TP: number; LRA?: number}; ffmpeg?: string;
+}): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness}>;
 
 export function makeFilm(options: {
   storyboard: Storyboard; recipe: Recipe; data?: unknown; kits?: Kit[]; theme?: string | Record<string, unknown>; root?: string; hostKeys?: string[];
   narrationDir?: string | null; timings?: Timings | null; pacing?: Pacing | null; strings?: Record<string, string> | null; lang?: string | null;
   out: string; render?: Record<string, unknown>;
-}): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; makingOf: string}>;
+}): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;
 
 export function makeClock(storyboard: Storyboard, timings: Timings): Clock;
 export function evenTimings(storyboard: Storyboard, options?: {wordSeconds?: number; lead?: number; tail?: number}): Timings;

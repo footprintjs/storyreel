@@ -2,7 +2,7 @@
  * Make a film as a footprintjs flowchart. Each stage is recorded as it runs, so every film comes
  * with its making-of record (making-of.json): the stages and how long they took, every phrase
  * that triggered a drawing and when (and the recipe entry that asked for it), the director's notes
- * as applied, the pacing, the tools and versions used.
+ * as applied, the pacing, the loudness as measured and set, the tools and versions used.
  *
  * Heavy things (the compiled film, canvases) never enter the flowchart's tracked scope; stages
  * pass small values and file paths, as footprintjs expects.
@@ -32,6 +32,16 @@ const TOOLS = () => [
   {name: 'Caveat', license: 'SIL OFL 1.1', detail: 'handwriting font'},
   {name: 'FFmpeg', license: 'LGPL/GPL (separate program)', detail: 'encoding and mixing'},
 ];
+/**
+ * The loudness for the making-of record (render.mjs · muxWithLoudness): kept as measured, and flagged
+ * whenever the type is not 'linear' — a varying gain raises a quiet opening; a skipped pass set nothing.
+ */
+export function loudnessRecord(loudness) {
+  if (loudness.type === 'linear') return loudness;
+  const flag = loudness.type === 'skipped' ? `not normalised: ${loudness.reason}`
+    : `normalised "${loudness.type}", not "linear": loudnorm varied the gain (the true-peak limit, a loudness range above its target, or a film under 3 s blocks one fixed gain), so quiet moments may be raised`;
+  return {...loudness, flag};
+}
 const sha = text => createHash('sha256').update(text).digest('hex').slice(0, 16);
 
 /**
@@ -76,7 +86,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     },
     'render-film': async scope => {
       result = await renderFilm({film, storyboard, timings: paced, narrationDir: scope.narration, out, ...render});
-      scope.out = result.out; scope.chapters = result.chapters;
+      scope.out = result.out; scope.chapters = result.chapters; scope.loudness = result.loudness.type;
     },
   };
   const ids = Object.keys(stages), trace = narrative();
@@ -94,6 +104,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     beats: film.beats.map(({ref, t, path}) => ({said: Array.isArray(ref) ? {scene: ref[0], phrase: ref[1], plus: ref[2] ?? 0} : ref, at: t, ...(path ? {entry: path} : {})})),
     ...(film.notes.length ? {notes: film.notes} : {}),
     sounds: film.sounds.length,
+    loudness: loudnessRecord(result.loudness),
     tools: TOOLS(),
     pipeline: trace.getEntries(),
   };

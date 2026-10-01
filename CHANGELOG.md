@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Loudness in two passes** (`render.mjs · muxWithLoudness`): `renderFilm` measures the whole mixed film
+  (`loudnorm` with `print_format=json`), then sets it with one fixed gain from what was measured
+  (`measured_I/TP/LRA/thresh`, `offset`, `linear=true`), so a quiet opening is no longer raised to the
+  voice's level. `renderFilm`'s result carries `loudness: {type, target, measured, reason?}` — `type` is the
+  normalization type FFmpeg reports for the second pass (`linear` or `dynamic`), or `skipped` — and
+  `makeFilm` writes it into `making-of.json`, with a `flag` whenever the type is not `linear`. The target
+  takes an optional `LRA`.
+- **A render of only a silent opening works** (the BACKLOG bug): when the measurement finds no loudness
+  (pure silence, `-inf`), normalisation is skipped instead of handing the AAC encoder NaN.
 - **The recipe's top level is checked** (`film.mjs · checkRecipeKeys`): `story`, `whiteboard`, `pushIn`,
   `card`, `stages`, `guesses`, `notes`, `recalls`, `poster`, `reading`, `paperStyle`; any other key
   refuses with the list and the fix. A host application names the keys it reads itself in the new
