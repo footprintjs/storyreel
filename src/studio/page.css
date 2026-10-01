@@ -37,6 +37,7 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; pa
 .transcript span:hover { background: var(--band-b); }
 .transcript span.said { color: var(--muted); }
 .transcript span.now { background: #f5b400; color: #1f2328; }
+.transcript span[data-direction] { font-style: italic; opacity: .6; }
 .side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .side section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-width: 0; }
 .side h2 { margin: 0 0 6px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }

@@ -1,5 +1,5 @@
 // Checked by test/types.test.mjs with tsc: what the types accept, and what they refuse.
-import type {Recipe, DirectorNote, Film, Kit, Loudness, frameHashes, compileFilm} from '../types/index.js';
+import type {Recipe, DirectorNote, Film, Kit, Loudness, Storyboard, frameHashes, compileFilm} from '../types/index.js';
 import type {startStudio} from '../types/studio.js';
 
 const notes: DirectorNote[] = [
@@ -32,6 +32,13 @@ export const halfPush: DirectorNote = {note: 'push', push: {at: [1, 2]}};
 
 // @ts-expect-error the normalization type is linear, dynamic or skipped
 export const loud: Loudness = {type: 'loud', target: {I: -16, TP: -1.5}, measured: {I: -20, TP: -3, LRA: 4, thresh: -30, offset: 0}};
+
+// A scene is spoken or silent (directions: [text, seconds]), never both.
+export const board: Storyboard = {scenes: [{id: 'open', silent: [['the door opens', 1], ['Mia walks to the stall', 3]]}, {id: 'stall', narration: 'Mia counts her cups.'}]};
+// @ts-expect-error a scene with narration cannot carry directions too
+export const both: Storyboard = {scenes: [{id: 'open', narration: 'Hello.', silent: [['the door opens', 1]]}]};
+// @ts-expect-error a direction is [text, seconds], not an object
+export const objectDirection: Storyboard = {scenes: [{id: 'open', silent: [{text: 'the door opens', seconds: 1}]}]};
 
 // The documented subpaths carry types too.
 import type {makeClock, normSpeech} from '../types/sub/clock.js';

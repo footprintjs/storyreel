@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **Silent scenes with directions** (`clock.mjs · directionTimings`): a storyboard scene may carry
+  `"silent": [["the door opens", 1.0], ["Mia walks to the stall", 3.0]]` in place of `narration`. The clock
+  treats a direction like a spoken phrase (`["open", "the door opens"]`, with `plus`, `edge`, `nth`);
+  directions are never spoken. `directionTimings(scene, {tail?})` spreads each direction's words evenly
+  over its seconds (alignment method `directions`); `evenTimings` uses it for silent scenes;
+  `withDirections(storyboard, timings)` fills in the silent scenes a voice left out (used by `makeFilm`,
+  `paceTimings` and `applyPacing`); `speechIndex` and `makeClock` read a silent scene's directions as its
+  text (`sceneText`). A scene with both `narration` and `silent`, or neither, or a direction that is not
+  `[words, 0.2..20 seconds]`, refuses with the fix (`clock.mjs · checkScene`). Pacing refuses a hold in a
+  silent scene, naming it; the scene's tail still applies. `applyPacing` writes a generated silence
+  (`silent-<scene>.wav`, at the voice's rate) when the voice folder has no audio for a silent scene, and
+  `renderFilm` generates it when there is no pacing (`render.mjs · joinVoice`; a spoken scene with no
+  audio refuses). The studio's transcript marks direction words `spoken: false` and shows them dim and
+  slanted. `types/index.d.ts · Storyboard` allows `silent` (`Direction`, `StoryboardScene`). Existing
+  films are untouched: the pixel pins are unchanged.
+
 - **Loudness in two passes** (`render.mjs · muxWithLoudness`): `renderFilm` measures the whole mixed film
   (`loudnorm` with `print_format=json`), then sets it with one fixed gain from what was measured
   (`measured_I/TP/LRA/thresh`, `offset`, `linear=true`), so a quiet opening is no longer raised to the

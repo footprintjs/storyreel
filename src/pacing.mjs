@@ -8,10 +8,14 @@
  * binding.pacing = {voiceSpeed, sceneTail, holds: [{scene, after, seconds}], tails?: {sceneId: seconds}}
  *   after = a phrase of that scene's narration; the hold goes in the pause after it.
  *   tails = a longer settle for one scene (the silence a transition to the next scene plays over).
+ *
+ * A silent scene (clock.mjs · directionTimings) takes no hold: its directions already say how long
+ * each moment lasts, so a hold after a direction refuses, naming the scene. Its tail still applies, and
+ * a voiced cut gets a generated silence of the right length when the voice folder has no audio for it.
  */
 import {readFile, writeFile, copyFile, access} from 'node:fs/promises';
 import path from 'node:path';
-import {speechIndex, phraseMatches} from './clock.mjs';
+import {speechIndex, phraseMatches, withDirections} from './clock.mjs';
 
 const FADE = .015; // seconds of fade either side of an insertion (no clicks)
 
@@ -30,6 +34,7 @@ export function validatePacing(pacing, board) {
     if (typeof hold.after !== 'string' || !hold.after.trim()) throw new TypeError(`holds[${i}].after must be a phrase`);
     const scene = board?.scenes.find(s => s.id === hold.scene);
     if (board && !scene) throw new TypeError(`holds[${i}].scene is not a storyboard scene`);
+    if (scene?.silent !== undefined) refuseSilentHold(scene, hold, `holds[${i}]`);
   }
   if (pacing.tails !== undefined) {
     if (!pacing.tails || typeof pacing.tails !== 'object' || Array.isArray(pacing.tails)) throw new TypeError('pacing.tails must be an object of scene id → seconds');
@@ -40,6 +45,11 @@ export function validatePacing(pacing, board) {
   }
   return pacing;
 }
+/** A hold cannot follow a direction: the direction's own seconds are its length (pacing.mjs header). */
+function refuseSilentHold(scene, hold, where) {
+  throw new Error(`pacing ${where}: scene ${scene.id} is silent, and a hold cannot follow a direction ("${hold.after}"); lengthen that direction's seconds in the storyboard instead (its tail still applies: pacing.tails.${scene.id})`);
+}
+
 /** The settle after a scene's last word: its own tail if the binding gives one, else the shared one. */
 export const tailFor = (pacing, sceneId) => pacing.tails?.[sceneId] ?? pacing.sceneTail;
 
@@ -67,6 +77,9 @@ function writePcm16({rate, samples}) {
   return Buffer.concat([header, body]);
 }
 
+/** A PCM16 mono WAV of `seconds` of silence at `rate`: a silent scene's audio when no voice made one. */
+const silentWav = (seconds, rate) => writePcm16({rate, samples: new Int16Array(Math.round(seconds * rate))});
+
 /**
  * The quietest 10 ms inside [from, to] seconds — where a pause is least audible. Never past `to`
  * (the next word's start): a pause cut into the next word would leave that word's time unshifted.
@@ -87,6 +100,7 @@ function quietestPoint({rate, samples}, from, to) {
  * Returns [{after, seconds, sample, time}] sorted by time; throws on an unmatched phrase.
  */
 export function planHolds(scene, timing, holds, wav) {
+  if (scene.silent !== undefined) { const hold = holds.find(h => h.scene === scene.id); if (hold) refuseSilentHold(scene, hold, 'hold'); }
   const speech = speechIndex(scene, timing);
   if (!speech) throw new Error(`Pacing needs complete token timings for ${scene.id}`);
   return holds.filter(h => h.scene === scene.id).map(hold => {
@@ -131,6 +145,7 @@ export function shiftWords(words, plan) {
  */
 export function paceTimings(board, timings, pacing) {
   validatePacing({voiceSpeed: 1, ...pacing}, board);
+  timings = withDirections(board, timings);
   const scenes = board.scenes.map((scene, index) => {
     const timing = timings.scenes[index];
     if (timing?.id !== scene.id) throw new Error('Pacing scene identity mismatch');
@@ -144,21 +159,48 @@ export function paceTimings(board, timings, pacing) {
     // Like applyPacing: the last word's end plus EVERY hold (one after the last phrase shifts no word) plus the tail.
     const words = shiftWords(timing.words, plan), last = timing.words.filter(w => w.text.replace(/[^\p{L}\p{N}]/gu, '')).at(-1).end;
     return {...timing, words, duration: +(last + plan.reduce((n, h) => n + h.seconds, 0) + tailFor(pacing, scene.id)).toFixed(5),
-      pacing: {holds: plan.map(({after, seconds, time}) => ({after, seconds, at: +time.toFixed(3)})), sceneTail: tailFor(pacing, scene.id), method: 'silent cut: word times shifted by each hold; no audio'}};
+      pacing: {holds: plan.map(({after, seconds, time}) => ({after, seconds, at: +time.toFixed(3)})), sceneTail: tailFor(pacing, scene.id), method: scene.silent ? 'silent scene: the directions\' seconds, then the tail; no audio' : 'silent cut: word times shifted by each hold; no audio'}};
   });
   return {...timings, scenes, pacing: {sceneTail: pacing.sceneTail, holds: pacing.holds.length, silent: true}};
 }
 
+const exists = file => access(file).then(() => true, () => false);
+
+/** The sample rate of the run's first voiced scene that has audio (a generated silence must match it to be joined), else 48 kHz. */
+async function voiceRate(runDir, board, timings) {
+  for (const [index, scene] of board.scenes.entries()) {
+    const audio = timings.scenes[index]?.audio;
+    if (scene.silent === undefined && audio && await exists(path.join(runDir, audio))) return readPcm16(await readFile(path.join(runDir, audio))).rate;
+  }
+  return 48000;
+}
+
+/**
+ * A silent scene's audio in the run: the voice folder's own file when it has one, else a generated
+ * silence of the scene's unpaced length (`silent-<id>.wav`, at the voice's rate), named in timing.audio.
+ */
+async function silentAudio(runDir, scene, timing, rate) {
+  if (timing.audio && await exists(path.join(runDir, timing.audio))) return false;
+  const name = `silent-${String(scene.id).replace(/[^\w-]/g, '_')}.wav`, file = path.join(runDir, name);
+  if (await exists(file.replace(/\.wav$/, '.unpaced.wav'))) throw new Error(`Pacing already applied to ${scene.id}`);
+  await writeFile(file, silentWav(timing.duration, rate));
+  timing.audio = name;
+  return true;
+}
+
 /**
  * Apply pacing to a run's narration in place (the unpaced WAV is kept beside it).
- * Mutates and returns `timings` with shifted words, new durations and a pacing record.
+ * Mutates and returns `timings` with shifted words, new durations and a pacing record; a silent scene
+ * the voice left out is filled in first (clock.mjs · withDirections) and given generated silence.
  */
 export async function applyPacing({runDir, board, timings, pacing}) {
   validatePacing(pacing, board);
-  const records = [];
+  timings.scenes = withDirections(board, timings).scenes;
+  const records = [], rate = await voiceRate(runDir, board, timings);
   for (const [index, scene] of board.scenes.entries()) {
     const timing = timings.scenes[index];
     if (timing.id !== scene.id) throw new Error('Pacing scene identity mismatch');
+    const generated = scene.silent !== undefined && await silentAudio(runDir, scene, timing, rate);
     const file = path.join(runDir, timing.audio), original = file.replace(/\.wav$/, '.unpaced.wav');
     await access(original).then(() => { throw new Error(`Pacing already applied to ${scene.id}`); }, () => {});
     const wav = readPcm16(await readFile(file));
@@ -174,7 +216,8 @@ export async function applyPacing({runDir, board, timings, pacing}) {
     timing.words = shiftWords(timing.words, plan);
     timing.duration = +(paced.samples.length / wav.rate).toFixed(5);
     timing.pacing = {holds: plan.map(({after, seconds, time}) => ({after, seconds, at: +time.toFixed(3)})),
-      sceneTail: tailFor(pacing, scene.id), unpacedDuration: before, unpacedAudio: path.relative(runDir, original), method: 'silence inserted at the quietest 10 ms between words; 15 ms fades; token timings shifted by the inserted samples'};
+      sceneTail: tailFor(pacing, scene.id), unpacedDuration: before, unpacedAudio: path.relative(runDir, original),
+      method: scene.silent ? `silent scene: ${generated ? 'generated silence' : 'the voice folder\'s audio'} for the directions' seconds, then the tail` : 'silence inserted at the quietest 10 ms between words; 15 ms fades; token timings shifted by the inserted samples'};
     records.push({scene: scene.id, before, after: timing.duration, holds: plan.length});
   }
   timings.pacing = {voiceSpeed: pacing.voiceSpeed, sceneTail: pacing.sceneTail, scenes: records};

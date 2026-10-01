@@ -3,7 +3,7 @@
  * on which spoken phrase). See README.md.
  */
 export {compileFilm} from './film.mjs';
-export {makeClock, ramp, speechIndex, phraseMatches, evenTimings} from './clock.mjs';
+export {makeClock, ramp, speechIndex, phraseMatches, evenTimings, directionTimings, withDirections, sceneText} from './clock.mjs';
 export {renderFilm} from './render.mjs';
 export {makeFilm} from './pipeline.mjs';
 export {applyPacing, validatePacing, tailFor, paceTimings} from './pacing.mjs';

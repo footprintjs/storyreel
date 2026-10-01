@@ -90,6 +90,41 @@ reports its own). **Pacing** — `{sceneTail, holds: [{scene, after: 'a phrase',
 inserts silence after phrases so the pictures can land; with a voice it is cut into the audio, and in a
 silent cut `paceTimings` shifts the word times the same way.
 
+## Silent scenes
+
+A scene with no voice — the door opens, a character walks in — is written in the storyboard with
+**directions** in place of `narration`: script lines, each with how long it lasts. The clock treats a
+direction exactly like a spoken phrase, so a recipe names it the same way (`plus`, `edge` and `nth` as
+usual), and **a direction is never spoken**: the voice skips it, a voiced cut plays silence there, and
+the studio shows its words dim and slanted (`spoken: false` in the transcript).
+
+```json
+{"scenes": [
+  {"id": "open", "title": "Morning", "silent": [["the door opens", 1.0], ["Mia walks to the stall", 3.0]]},
+  {"id": "stall", "narration": "Mia counts the cups she sold."}]}
+```
+
+```json
+{"at": ["open", "Mia walks to the stall"], "dur": 1.0, "draw": [["figure", 200, 620, 1]]}
+```
+
+- **One function owns the timing:** `directionTimings(scene, {tail?})` spreads each direction's words
+  evenly over its seconds (here "Mia walks to the stall" starts at 1.0 s); the scene lasts the sum of
+  the seconds, plus the tail; alignment `{status: 'available', method: 'directions'}`. `evenTimings` uses
+  it for every silent scene (with its own tail), and `withDirections(storyboard, timings)` fills in the
+  silent scenes a voice's `timings.json` leaves out (`makeFilm` and the pacing do this for you, so a
+  voice step needs to know only the spoken scenes).
+- **A scene is spoken or silent, never both.** A scene with `narration` and `silent`, or neither, is
+  refused; so is a direction that is not `[text, seconds]` (`{"text", "seconds"}` refuses with the fix),
+  one with no words, or one shorter than 0.2 s or longer than 20 s. (Directions inside a spoken scene
+  are not supported yet.)
+- **No hold after a direction.** A pacing hold in a silent scene is refused, naming the scene — make
+  that direction longer instead. The scene's tail still applies (`"tails": {"open": 1.2}`).
+- **The sound.** With a voice and pacing, `applyPacing` writes `silent-<scene>.wav` into the run's copy
+  of the voice folder (at the voice's sample rate, the directions' length plus the tail) when the voice
+  has no audio for the scene. Without pacing, `renderFilm` generates the silence itself, in its own
+  folder; a *spoken* scene with no audio still refuses.
+
 ## The recipe
 
 A recipe is data only, never code. Every beat names what is SAID: `["scene", "phrase", plus?]`.
@@ -393,6 +428,7 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `renderFilm({film, storyboard, timings, narrationDir?, out, width?, height?, fps?, intro?, stamp?, from?, to?, poster?, loudness?})` | the MP4 (FFmpeg), its chapters, its poster, its loudness (two passes) |
 | `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?})` | compile + render as a footprintjs pipeline, with `making-of.json` |
 | `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |
+| `directionTimings(scene, {tail?})` · `withDirections(storyboard, timings)` · `sceneText(scene)` | a silent scene's timing; a voice's timings completed with the silent scenes; a scene's text |
 | `makeClock(storyboard, timings)` | phrases → seconds |
 | `contactSheet(film, {moments?, columns?, width?})` | a PNG of stills |
 | `frameHashes(film, {count?, width?, times?})` · `changedFrames(pinned, now)` | pixel pins |
@@ -405,7 +441,7 @@ TypeScript types ship with the package: the main entry, `/studio`, and the docum
 ## Laws
 
 1. **Data only.** A recipe names shapes, phrases and numbers; an unknown key refuses. Nothing in a recipe runs.
-2. **Phrases, not seconds.** Pictures follow the voice; change the voice and the film follows.
+2. **Phrases, not seconds.** Pictures follow the voice; change the voice and the film follows. Seconds appear only where the storyboard declares a silent scene, as each direction's length.
 3. **Pure function of time.** `frame(ctx, t)` draws any moment in any order, the same way every time.
 4. **Every frame restores the canvas**: no leaked transform, alpha, compositing, shadow, filter or clip (the test fills the whole frame after each one and reads its corners).
 5. **One focal point at a time**: speech is a bubble, data is a pill, the old stage leaves before the new one arrives, one camera move at a time.

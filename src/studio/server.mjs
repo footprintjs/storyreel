@@ -66,8 +66,10 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
     return {
       version: state.version, error: state.error, loadedAt: state.loadedAt, title: title ?? storyboard.title ?? 'Untitled film', total: film.total,
       recipeFile: source?.file ?? null, audio: Boolean(audio),
+      // A silent scene's words are its directions (clock.mjs · directionTimings): shown, never spoken.
       scenes: storyboard.scenes.map((s, i) => ({id: s.id, title: s.title ?? s.id, start: clock.offsets[i], end: clock.end(s.id), narration: s.narration,
-        words: (film.timings?.scenes?.[i]?.words ?? []).map(w => ({text: w.text, start: clock.offsets[i] + w.start, end: clock.offsets[i] + w.end}))})),
+        ...(s.silent ? {silent: s.silent} : {}),
+        words: (film.timings?.scenes?.[i]?.words ?? []).map(w => ({text: w.text, start: clock.offsets[i] + w.start, end: clock.offsets[i] + w.end, spoken: !s.silent}))})),
       beats: film.beats.map(b => ({t: b.t, said: Array.isArray(b.ref) ? {scene: b.ref[0], phrase: b.ref[1], plus: b.ref[2] ?? 0} : b.ref, path: b.path, line: b.path ? lineOf(b.path) : null})),
       notes: film.notes ?? [],
       reading: (film.reading ?? []).map(l => ({...l, line: l.path ? lineOf(l.path) : null})),

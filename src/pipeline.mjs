@@ -13,6 +13,7 @@ import {createRequire} from 'node:module';
 import path from 'node:path';
 import {flowChart, narrative} from 'footprintjs';
 import {applyPacing, validatePacing, paceTimings} from './pacing.mjs';
+import {withDirections} from './clock.mjs';
 import {compileFilm} from './film.mjs';
 import {renderFilm} from './render.mjs';
 
@@ -70,12 +71,13 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       if (narrationDir) {
         const copy = path.join(dir, 'narration'); rmSync(copy, {recursive: true, force: true}); cpSync(narrationDir, copy, {recursive: true});
         const raw = JSON.parse(readFileSync(path.join(copy, 'timings.json'), 'utf8'));
-        paced = pacing ? await applyPacing({runDir: copy, board: storyboard, timings: raw, pacing}) : raw;
+        // A voice knows only the spoken scenes: a silent scene it left out gets its directions' timing (clock.mjs · withDirections).
+        paced = pacing ? await applyPacing({runDir: copy, board: storyboard, timings: raw, pacing}) : withDirections(storyboard, raw);
         writeFileSync(path.join(copy, 'timings.json'), JSON.stringify(paced, null, 2));
         scope.narration = copy;
       } else {
         if (!timings) throw new Error('A silent film needs timings (word times per scene)');
-        paced = pacing ? paceTimings(storyboard, timings, pacing) : timings; scope.narration = null;
+        paced = pacing ? paceTimings(storyboard, timings, pacing) : withDirections(storyboard, timings); scope.narration = null;
       }
       scope.seconds = +paced.scenes.reduce((n, s) => n + s.duration, 0).toFixed(3);
       scope.pacing = paced.pacing ?? null;

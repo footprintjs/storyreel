@@ -151,7 +151,9 @@ function renderNear() {
 function renderTranscript() {
   const s = state.film.scenes[state.sceneIndex];
   $('transcript').replaceChildren(...(s?.words ?? []).flatMap(w => {
+    // A direction's words (a silent scene) are shown dim and slanted: they are seen, never spoken.
     const span = el('span', {textContent: w.text}); span.dataset.start = w.start; span.dataset.end = w.end;
+    if (w.spoken === false) { span.dataset.direction = ''; span.title = 'a direction: shown, not spoken'; }
     span.addEventListener('click', () => seek(w.start + .001));
     return [span, ' '];
   }));

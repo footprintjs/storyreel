@@ -4,9 +4,16 @@
 export type Beat = [scene: string, phrase: string] | [scene: string, phrase: string, plus: number]
   | {scene: string; phrase: string; edge?: 'start' | 'end'; plus?: number; nth?: number};
 
+/** A silent scene's direction: what happens, and how long it lasts (0.2..20 s). Never spoken. */
+export type Direction = [text: string, seconds: number];
+
+/** A scene is spoken (`narration`) or silent (`silent`: directions), never both. */
+export type StoryboardScene = {id: string; title?: string; [key: string]: unknown}
+  & ({narration: string; silent?: never} | {silent: Direction[]; narration?: never});
+
 export interface Storyboard {
   title?: string;
-  scenes: {id: string; title?: string; narration: string; [key: string]: unknown}[];
+  scenes: StoryboardScene[];
   [key: string]: unknown;
 }
 
@@ -159,6 +166,12 @@ export function makeFilm(options: {
 
 export function makeClock(storyboard: Storyboard, timings: Timings): Clock;
 export function evenTimings(storyboard: Storyboard, options?: {wordSeconds?: number; lead?: number; tail?: number}): Timings;
+/** A silent scene's timing: its directions' words spread evenly over their seconds; alignment method 'directions'. */
+export function directionTimings(scene: StoryboardScene, options?: {tail?: number}): SceneTiming;
+/** The timings with every silent scene a voice left out filled in by directionTimings; a missing spoken scene refuses. */
+export function withDirections(storyboard: Storyboard, timings: Timings): Timings;
+/** A scene's text: its narration, or its directions joined (checked: one of the two, well formed). */
+export function sceneText(scene: StoryboardScene): string;
 export function paceTimings(storyboard: Storyboard, timings: Timings, pacing: Pacing): Timings;
 export function applyPacing(options: {runDir: string; board: Storyboard; timings: Timings; pacing: Pacing}): Promise<Timings>;
 export function validatePacing(pacing: Pacing, board: Storyboard): void;

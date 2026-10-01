@@ -1,6 +1,7 @@
 /**
  * Render a compiled film to an MP4: frames from film.frame(ctx, t), the paced narration scene by
- * scene, the sound accents per scene (at most 64 each), loudness in two passes. FFmpeg must be on PATH.
+ * scene (a silent scene with no audio plays generated silence), the sound accents per scene (at most
+ * 64 each), loudness in two passes. FFmpeg must be on PATH.
  */
 import {writeFileSync, mkdirSync} from 'node:fs';
 import path from 'node:path';
@@ -116,12 +117,34 @@ export function checkLoudnessTarget(loudness) {
   }
 }
 
+/**
+ * The voice, scene by scene, into `voice`: each scene's audio from narrationDir, and generated silence
+ * of its duration for a silent scene whose timing names no audio (clock.mjs · directionTimings). FFmpeg's
+ * concat joins only files of one format, so when any silence is generated every part is first made
+ * 48 kHz mono; a film with audio for every scene is joined as it always was.
+ */
+function joinVoice(run, {dir, storyboard, timings, narrationDir, voice}) {
+  const given = timings.scenes.map((s, i) => {
+    if (s.audio) return path.resolve(narrationDir, s.audio);
+    if (storyboard.scenes[i]?.silent === undefined) throw new Error(`scene ${s.id} has no audio in its timing: only a silent scene's audio is generated`);
+    return null;
+  });
+  const parts = !given.includes(null) ? given : given.map((file, i) => {
+    const part = path.join(dir, `film-voice-${i}.wav`);
+    run(file ? ['-i', file, '-ar', '48000', '-ac', '1', part] : ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', String(timings.scenes[i].duration), part]);
+    return part;
+  });
+  writeFileSync(path.join(dir, 'film-narration.txt'), parts.map(f => `file '${f}'`).join('\n') + '\n');
+  run(['-f', 'concat', '-safe', '0', '-i', path.join(dir, 'film-narration.txt'), '-ar', '48000', '-ac', '1', voice]);
+}
+
 const clock = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 /**
  * @param film       from compileFilm
  * @param storyboard the storyboard (scene titles become chapters)
  * @param timings    the PACED timings ({scenes: [{id, duration, audio}]}); audio paths relative to narrationDir
+ *                   (a silent scene may name none: render.mjs · joinVoice generates its silence)
  * @param narrationDir where the paced scene audio lives (null → a silent film)
  * @param out        the .mp4 to write (its folder receives the working files)
  * @param intro      optional {seconds, draw(ctx, t, {width, height, handoff}), wav?: Buffer} — a title before the film
@@ -167,10 +190,8 @@ export async function renderFilm({film, storyboard, timings, narrationDir = null
   // Audio: narration end to end (or silence), the accents on the same clock, the intro's sound first.
   const run = args => { const r = spawnSync(ffmpeg, ['-y', '-loglevel', 'error', ...args], {stdio: 'inherit'}); if (r.status) throw new Error(`ffmpeg failed: ${args.join(' ').slice(0, 200)}`); };
   const voice = path.join(dir, 'film-voice.wav');
-  if (narrationDir) {
-    writeFileSync(path.join(dir, 'film-narration.txt'), timings.scenes.map(s => `file '${path.resolve(narrationDir, s.audio)}'`).join('\n') + '\n');
-    run(['-f', 'concat', '-safe', '0', '-i', path.join(dir, 'film-narration.txt'), '-ar', '48000', '-ac', '1', voice]);
-  } else run(['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', String(film.total), voice]);
+  if (narrationDir) joinVoice(run, {dir, storyboard, timings, narrationDir, voice});
+  else run(['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', String(film.total), voice]);
   // Each scene's sounds on its own clock (sound.mjs · soundsByScene, the rule compileFilm counted them by).
   const byScene = soundsByScene(film.sounds, film.clock.offsets, timings.scenes.map(s => s.duration));
   const sfxParts = timings.scenes.map((s, i) => {

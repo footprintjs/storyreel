@@ -1,14 +1,82 @@
 /**
  * The lesson clock: one timeline from the paced narration timings. A beat names what is SAID
  * ({scene, phrase}); the clock turns it into seconds on the whole-lesson timeline. A phrase the
- * narration does not contain refuses the recipe (no silent fallback to a guessed time).
+ * narration does not contain refuses the recipe (no silent fallback to a guessed time). A silent
+ * scene's directions are its "narration" here: a beat names a direction the way it names a phrase,
+ * and the directions are never spoken (clock.mjs · directionTimings).
  */
 /** Letters and digits only, lower case: how narration text and spoken words are compared. */
 export const normSpeech = text => String(text).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 
+/** How long one direction may last, in seconds: long enough to see, short enough to stay a beat. */
+export const DIRECTION_SECONDS = Object.freeze([.2, 20]);
+
 /**
- * Index a scene's measured words against its narration, or null when the timings are not
- * complete (every word timed, in order, and together spelling the narration exactly).
+ * A storyboard scene is spoken (`narration`: what is said) or silent (`silent`: directions, each
+ * [text, seconds]), never both: a direction inside a spoken scene waits for the shared beat (design
+ * section 10). Anything else refuses, naming the fix. Returns 'spoken' or 'silent'.
+ */
+export function checkScene(scene, i = 0) {
+  if (!scene || typeof scene !== 'object' || Array.isArray(scene)) throw new TypeError(`storyboard scene ${i} must be an object: {"id", "narration"} or {"id", "silent": [["a direction", seconds], …]}`);
+  const name = `storyboard scene ${scene.id ?? i}`, spoken = scene.narration !== undefined, silent = scene.silent !== undefined;
+  if (spoken && silent) throw new Error(`${name} has both narration and silent: a scene is spoken or silent, not both (directions inside a spoken scene are not supported yet); move the directions into a silent scene of their own`);
+  if (!spoken && !silent) throw new Error(`${name} has no narration and no silent: give "narration": "what is said", or "silent": [["the door opens", 1.0], …]`);
+  if (spoken) {
+    if (typeof scene.narration !== 'string') throw new TypeError(`${name}: narration must be the words said, as one string`);
+    return 'spoken';
+  }
+  if (!Array.isArray(scene.silent) || !scene.silent.length) throw new TypeError(`${name}: silent must list its directions, e.g. "silent": [["the door opens", 1.0]]`);
+  const [lo, hi] = DIRECTION_SECONDS;
+  scene.silent.forEach((direction, k) => {
+    if (!Array.isArray(direction) || direction.length !== 2) throw new TypeError(`${name}: silent[${k}] must be [text, seconds], e.g. ["the door opens", 1.0], not ${JSON.stringify(direction)}`);
+    const [text, seconds] = direction;
+    if (typeof text !== 'string' || !normSpeech(text)) throw new TypeError(`${name}: silent[${k}] must start with the direction's words (letters or digits), not ${JSON.stringify(text)}`);
+    if (typeof seconds !== 'number' || !(seconds >= lo && seconds <= hi)) throw new RangeError(`${name}: silent[${k}] "${text}" must last ${lo}..${hi} seconds, not ${JSON.stringify(seconds)}`);
+  });
+  return 'silent';
+}
+
+/** A scene's text, checked (clock.mjs · checkScene): its narration, or its directions joined — what its words spell. */
+export const sceneText = (scene, i) => checkScene(scene, i) === 'silent' ? scene.silent.map(([text]) => text).join(' ') : scene.narration;
+
+/**
+ * A silent scene's timing, in the shape a voice aligner writes: each direction's words spread evenly
+ * over its seconds (a word's start is its share's start, its end the next word's start), the duration
+ * the sum of the seconds plus `tail`, alignment method 'directions'. No audio: the pacing and the
+ * render make the silence (pacing.mjs · applyPacing, render.mjs · renderFilm).
+ */
+export function directionTimings(scene, {tail = 0} = {}) {
+  if (checkScene(scene) !== 'silent') throw new Error(`directionTimings takes a silent scene; ${scene.id} has narration`);
+  if (!(Number.isFinite(tail) && tail >= 0)) throw new RangeError(`directionTimings: tail must be seconds, 0 or more, not ${JSON.stringify(tail)}`);
+  let at = 0; const words = [];
+  for (const [text, seconds] of scene.silent) {
+    const parts = text.split(/\s+/).filter(w => normSpeech(w)), share = seconds / parts.length;
+    parts.forEach((w, k) => words.push({text: w, start: +(at + k * share).toFixed(3), end: +(at + (k + 1) * share).toFixed(3)}));
+    at += seconds;
+  }
+  return {id: scene.id, duration: +(at + tail).toFixed(3), words, alignment: {status: 'available', method: 'directions'}};
+}
+
+/**
+ * Timings for every storyboard scene: a voice knows only the spoken scenes, so each silent scene its
+ * timings leave out is filled in by directionTimings (no tail; pacing adds it). A spoken scene left out
+ * refuses. Pure: returns new timings, the given ones untouched.
+ */
+export function withDirections(board, timings) {
+  const given = timings?.scenes ?? []; let j = 0;
+  const scenes = board.scenes.map((scene, i) => {
+    if (given[j]?.id === scene.id) return given[j++];
+    if (checkScene(scene, i) === 'silent') return directionTimings(scene);
+    throw new Error(`Timing ${j} is ${given[j]?.id ?? 'missing'}, expected ${scene.id} (only a silent scene may be left out of the timings)`);
+  });
+  if (j !== given.length) throw new Error(`The timings have ${given.length - j} scene(s) the storyboard does not: ${given.slice(j).map(s => s.id).join(', ')}`);
+  return {...timings, scenes};
+}
+
+/**
+ * Index a scene's measured words against its text (clock.mjs · sceneText: the narration, or a silent
+ * scene's directions), or null when the timings are not complete (every word timed, in order, and
+ * together spelling the text exactly).
  */
 export function speechIndex(scene, timing) {
   if (timing?.alignment?.status !== 'available' || !Array.isArray(timing.words) || !timing.words.length) return null;
@@ -18,7 +86,7 @@ export function speechIndex(scene, timing) {
     if (!Number.isFinite(word.start) || !Number.isFinite(word.end) || word.start < previous - .025 || word.end < word.start || word.end > timing.duration + .025) return null;
     words.push({...word, from: content.length, to: content.length + text.length}); content += text; previous = word.end;
   }
-  if (content !== normSpeech(scene.narration)) return null;
+  if (content !== normSpeech(sceneText(scene))) return null;
   return {content, words};
 }
 
@@ -36,10 +104,11 @@ export function phraseMatches(index, phrase) {
 }
 
 export function makeClock(board, timings) {
-  if (timings.scenes.length !== board.scenes.length) throw new Error('Scene timing count mismatch');
+  if (timings.scenes.length !== board.scenes.length) throw new Error(`Scene timing count mismatch${board.scenes.some(s => s?.silent) ? ' (a voice that leaves out the silent scenes: fill them with withDirections(storyboard, timings))' : ''}`);
   const offsets = [], speech = {}, spoken = {}, byId = {};
   let at = 0;
   board.scenes.forEach((scene, i) => {
+    checkScene(scene, i);
     const timing = timings.scenes[i];
     if (timing.id !== scene.id) throw new Error(`Timing ${i} is ${timing.id}, expected ${scene.id}`);
     offsets.push(at); byId[scene.id] = i;
@@ -92,10 +161,12 @@ export const ramp = (t, at, d = .5) => Math.max(0, Math.min(1, (t - at) / d));
 
 /**
  * Evenly spaced word times for a storyboard — for a silent film, a test, or a first cut before
- * any voice exists. Returns timings in the same shape a voice aligner writes.
+ * any voice exists. Returns timings in the same shape a voice aligner writes. A silent scene keeps
+ * its directions' own seconds (clock.mjs · directionTimings), with the same tail.
  */
 export function evenTimings(storyboard, {wordSeconds = .38, lead = .3, tail = .8} = {}) {
-  return {provider: 'even', scenes: storyboard.scenes.map(scene => {
+  return {provider: 'even', scenes: storyboard.scenes.map((scene, i) => {
+    if (checkScene(scene, i) === 'silent') return directionTimings(scene, {tail});
     let at = lead;
     const words = scene.narration.split(/\s+/).filter(Boolean).map(text => { const w = {text, start: +at.toFixed(3), end: +(at + wordSeconds * .9).toFixed(3)}; at += wordSeconds; return w; });
     return {id: scene.id, duration: +(at + tail).toFixed(3), words, alignment: {status: 'available', method: 'even-spacing'}};
