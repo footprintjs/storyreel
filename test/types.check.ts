@@ -77,5 +77,33 @@ import type {paceTimings, shiftWords} from '../types/sub/pacing.js';
 import type {EASES, easeNamed, Ease, EaseName} from '../types/sub/ease.js';
 export type Subpaths = [typeof makeClock, typeof normSpeech, typeof hitTest, View, typeof tooShortToRead, typeof compileWhiteboard, Board, typeof compileCartoon, typeof paceTimings, typeof shiftWords, typeof EASES, typeof easeNamed, Ease, EaseName];
 export const backEase = (table: typeof EASES): Ease => table.back;
-// @ts-expect-error spring is not in the table yet
 export const springEase = (table: typeof EASES): Ease => table.spring;
+// @ts-expect-error bounce is not in the table yet
+export const bounceEase = (table: typeof EASES): Ease => table.bounce;
+
+// Formats: a layout per platform; caption files beside the video.
+import type {Layout, Enter, Transition, renderFilm as RenderFilm, transitionCatalog as Catalog} from '../types/index.js';
+export const shorts: Layout = {format: 'vertical', header: {title: 'Yes, No, or Not Enough Evidence', sub: 'a talk'}, captions: {maxWords: 4}, crop: [{at: ['agent', 'answers yes'], x: 1200}, {at: ['title', 'Yes'], x: 800, width: 1600}]};
+export const feed: Layout = {format: 'square', captions: true, background: '#f3eee3'};
+export const versions = (render: typeof RenderFilm, film: Film, board: Storyboard) => render({film, storyboard: board, timings: film.timings, out: 'out/shorts.mp4', layout: shorts, motionBlur: {subframes: 6}, captionFiles: ['vtt']});
+export const paper = (film: Film): unknown => film.theme;
+// @ts-expect-error the formats are landscape, square, portrait and vertical
+export const tiktok: Layout = {format: 'tiktok'};
+// @ts-expect-error a crop key is {at, x}
+export const cropAt: Layout = {format: 'vertical', crop: [{at: ['a', 'b'], y: 300}]};
+// @ts-expect-error caption files are vtt or srt
+export const ass = (render: typeof RenderFilm, film: Film, board: Storyboard) => render({film, storyboard: board, timings: film.timings, out: 'x.mp4', captionFiles: ['ass']});
+
+// Transitions: a name, or a name with settings; a kit adds its own.
+export const entrances: Enter[] = ['push', {type: 'wipe', from: 'top', seconds: .6}, {type: 'whip', sound: false}, {type: 'iris', at: [800, 420]}, 'curtain'];
+const curtain: Transition = {family: 'theatre', seconds: 1.2, ease: 'inOut', sound: 'whoosh', params: {color: {color: true, default: '#7a1020'}},
+  draw: (ctx, {e, from, to, p}) => { (e < .5 ? from : to)(ctx); void p.color; }};
+export const stageKit: Kit = {name: 'stage', transitions: {curtain}};
+export const names = (catalog: typeof Catalog): string[] => Object.keys(catalog([stageKit]));
+export const withEnter: Recipe = {story: {kit: 'red'}, stages: [{type: 'world', scene: 'b', enter: {type: 'push', from: 'left'}, world: {kit: 'blue'}}]};
+// @ts-expect-error a push comes from left, right, top or bottom
+export const north: Enter = {type: 'push', from: 'north'};
+// @ts-expect-error a transition's ease is a name from the ease table
+export const wobble: Transition = {...curtain, ease: 'wobble'};
+// @ts-expect-error a transition draws
+export const noDraw: Transition = {family: 'x', seconds: 1, ease: 'inOut', sound: null};

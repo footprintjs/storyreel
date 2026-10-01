@@ -15,8 +15,11 @@
  *           speed is a trapezoid); never overshoots, so `reach` may use it
  *   jump    no in-between: the start value until the change ends, then the end value (Flash's hold
  *           keyframe; not called `hold`, which keeps its pacing.json meaning, a pause after a line)
+ *   spring  a closed-form damped spring (damping 0.7): arrives fast, overshoots about 4% and settles,
+ *           exact at both ends — the "pop" motion designers reach for; a formula of u, so any moment
+ *           draws the same pixels (the first real film that needed it: a talk teaser, 2026-10)
  *
- * `spring` (kits/paper/paper.mjs · spring), `bounce` and four-number curves are on the later list.
+ * `bounce` and four-number curves are on the later list.
  */
 
 const clamp01 = n => Math.max(0, Math.min(1, n));
@@ -44,6 +47,16 @@ function back(u) {
   return 1 + (BACK + 1) * v ** 3 + BACK * v ** 2;
 }
 
+const SPRING = {zeta: .7, omega: 7};
+/** The damped spring x(u) = 1 − e^(−ζωu)(cos ω_d u + (ζω/ω_d) sin ω_d u), nudged so x(1) is exactly 1. */
+function spring(u) {
+  u = clamp01(u);
+  if (u === 0 || u === 1) return u;
+  const {zeta: z, omega: w} = SPRING, wd = w * Math.sqrt(1 - z * z);
+  const raw = v => 1 - Math.exp(-z * w * v) * (Math.cos(wd * v) + (z * w / wd) * Math.sin(wd * v));
+  return raw(u) + (1 - raw(1)) * u;
+}
+
 /** The table, by name. */
 export const EASES = Object.freeze({
   linear: u => clamp01(u),
@@ -53,10 +66,11 @@ export const EASES = Object.freeze({
   back,
   walk,
   jump: u => (u >= 1 ? 1 : 0),
+  spring,
 });
 
 /** The curve named `name`, or a refusal that names the eases there are; `where` says which entry asked. */
 export function easeNamed(name, where = 'ease') {
   if (typeof name === 'string' && Object.hasOwn(EASES, name)) return EASES[name];
-  throw new Error(`${where}: "${name}" is not an ease; the eases are ${Object.keys(EASES).join(', ')} (spring, bounce and four-number curves are not offered yet)`);
+  throw new Error(`${where}: "${name}" is not an ease; the eases are ${Object.keys(EASES).join(', ')} (bounce and four-number curves are not offered yet)`);
 }

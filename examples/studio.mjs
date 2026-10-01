@@ -26,7 +26,7 @@ async function load() {
   const storyboard = read('storyboard.json'), recipe = read('recipe.json'), even = evenTimings(storyboard, {tail: how.tail});
   const timings = how.pacing ? paceTimings(storyboard, even, read(how.pacing)) : even;
   const film = await compileFilm({storyboard, timings, recipe, kits: how.kits, root: dir, strings: how.strings ? read(how.strings) : null});
-  return {film, storyboard, recipe, source: {file}};
+  return {film, storyboard, recipe, source: {file}, kits: how.kits};
 }
 const studio = await startStudio({load, watch: [file, dir + 'storyboard.json'], port: Number(process.env.PORT ?? 4321)});
 console.log(`StoryReel Studio · ${name}: ${studio.url}\nLocal only (127.0.0.1). Ctrl+C stops it.`);

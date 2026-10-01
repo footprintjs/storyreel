@@ -21,8 +21,10 @@ name the **kind** of film a recipe is, so each kind brings its own defaults, che
   the run, every line can be read in time, every film says how it was made.
 - **A brand kit for explainers**: a logo, colours and fonts in, a theme out (the library's own site
   tokens), so a library's video looks like its docs.
-- **The teaser** is drawn from the same recipe with a vertical layout: the hook in the first three
-  seconds (the question, not the title), then the one moment that matters.
+- **The teaser** is drawn from the same recipe: the hook in the first three seconds (the question, not
+  the title), then the one moment that matters. The vertical shape itself exists now (`layout.mjs`: the
+  four formats, with captions and crop keys); what remains is the *cut* — choosing which moments of a
+  longer film a 30–45 s teaser keeps.
 
 ## In scope, and still not in this package
 

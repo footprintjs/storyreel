@@ -71,6 +71,7 @@ The full map stays here so a studio can grow into it. The last column says when 
 | carry | shape tween | View Transitions | the same name in two pictures morphs from one to the other | later |
 | voice, cue | stream sound, event sound | EPUB Media Overlays | the narration is the clock; a cue is a one-shot sound | 0 |
 | device | Motion Preset + component | `.mogrt` | an audience device with knobs | 1c |
+| transition (`enter`) | – (Premiere's Video Transitions, Final Cut's Transitions browser) | CSS View Transitions | how one SHOT becomes the next: a named entry in an open collection (family, length, ease, sound, settings); a kit adds its own | shipped after phase 0 (`transitions.mjs`) |
 
 ## 4. The grammar
 
@@ -225,7 +226,7 @@ The same thing as plain channel keys:
   - They live in one table in the core.
   - `inOut` is exactly today's `kits/whiteboard/board.mjs · ease`.
   - `jump` is Flash's hold keyframe. It is not called `hold`, because `hold` keeps its `pacing.json` meaning: a pause after a line.
-  - `spring` (`kits/paper/paper.mjs · spring`), `bounce` and four-number curves are on the later list.
+  - `spring` is in the table now (a closed-form damped spring, `ease.mjs · spring`; the paper kit's own `kits/paper/paper.mjs · spring` is a different, older curve); `bounce` and four-number curves are on the later list.
 - **Stays**: before its first key, an item shows the first key's values. After its last key, it keeps the last key's values.
 - Two keys on the same channel may not overlap in time. An instant key takes no time, so it may share a moment with the tween after it. Keys at the same moment apply in the order written.
 - **The one deliberate break from Flash:** a Flash tween stretched to fill the gap until the next keyframe. Here a tween lasts `seconds` and then stays, because the speaker decides how long the gap is.
@@ -764,11 +765,17 @@ Each phase lands with its rules written into the section's README, pinned tests,
 - the verbs `say` and `replay`; the ways `rise grow draw wipe type sweep shrink fly pan`;
 - ways and devices written in a recipe (after the studio);
 - the channels `rotate`, `pivot` and `tint`;
-- the eases `spring` and `bounce`, and four-number curves;
+- the ease `bounce` and four-number curves (`spring` shipped with the talk teaser);
 - clips of `scene:<id>`, and the clip plays `loop`, `still` and `reverse`;
 - limiting each sound's volume on its own;
 - masks made of any drawing (with a benchmark);
 - a browser pen for storydeck (with pixel parity).
+
+**Shipped after phase 0 (2026-10, ahead of phase 1, because a real film needed them — decision 6):** shot
+transitions became an open collection (`src/transitions.mjs`: twelve built-in, kit-added ones, one draw
+contract — the shot-level twin of a verb's ways, and the first thing a studio's Library panel can list);
+platform formats with burned-in captions and crop keys (`src/layout.mjs`, `src/captions.mjs`); motion blur;
+the `spring` ease. Their first film: the talk teaser.
 
 ## 13. Decisions (the owner delegated them, 2026-09-30)
 

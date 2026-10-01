@@ -11,7 +11,8 @@ film's own frames. A cartoon world and a storybook look ship too, and the look i
 
 ```
 a lesson:   story (a world, a problem, a eureka) → push-in to one prop → paper stages on one page → recap → teaser
-an episode: world → world → paper → world → recap …   each scene a shot: a fade, a wipe, an iris, a page turn or a cut
+an episode: world → world → paper → world → recap …   each scene a shot, entering by one of a dozen transitions
+then:       one film → a version for every place it is posted: 16:9, 1:1, 4:5, 9:16, captions burned in
 ```
 
 ## Why StoryReel
@@ -23,8 +24,12 @@ an episode: world → world → paper → world → recap …   each scene a sho
   too short to read is reported (or refused), and every film says how it was made.
 - **The same frames every time.** `frame(ctx, t)` is a pure function of time. Pixel pins catch any
   change that moves a pixel, so a film you approved stays the film you approved.
-- **Direct it like a director.** Camera words as data (`speed`, `cut`, `push`), and a local studio
-  where you scrub, play with the voice, and click a drawing to find the line of the recipe that drew it.
+- **Direct it like a director.** Camera words as data (`speed`, `cut`, `push`), a collection of
+  transitions to cut between shots, and a local studio where you scrub, play with the voice, and click a
+  drawing to find the line of the recipe that drew it.
+- **One film, every platform.** The same film renders as a YouTube video, a square feed post and a
+  vertical Short or Reel — with a title band, captions burned in from the voice's own word times, and a
+  crop that follows the action — or with caption files for players that show their own.
 
 ## Install
 
@@ -202,11 +207,9 @@ sign in every SOURCE chip, and a row tag may carry one (`{"label": "WHEN", "text
 
 Leave out `pushIn` and `card`, and every stage is a **shot** that fills the frame. A `world` stage
 draws any story kit, full screen, in its scene; paper stages have the page to themselves (the code
-panel is centred) and hand over to each other on it. A shot enters with `enter`:
-`"fade"` (the default), `"wipe"` (left to right) or `"iris"` (a circle opening; `{"type": "iris",
-"at": [x, y], "seconds": 0.8}`). Three quarters of the change happens in the silence before the
-scene's first word. `"page"` is a page turn: the old shot lifts from its right edge and folds over to
-the left, uncovering the new one (default 1.1 s) — for storybook films.
+panel is centred) and hand over to each other on it. A shot enters with `enter`, a transition from the
+collection below (a fade when it is left out). Three quarters of the change happens in the silence
+before the scene's first word.
 
 ```json
 {"story": {"kit": "whiteboard", "items": [ … ]},
@@ -215,6 +218,64 @@ the left, uncovering the new one (default 1.1 s) — for storybook films.
    {"type": "code", "scene": "rule", "enter": "wipe", "chrome": false, "code": {"file": "count.ts"}, "reveal": [ … ]},
    {"type": "world", "scene": "again", "enter": {"type": "iris", "at": [800, 420]}, "world": {"kit": "whiteboard", "items": [ … ]}}]}
 ```
+
+### Transitions
+
+A video editor keeps a collection of transitions — Premiere's *Video Transitions*, Final Cut's
+*Transitions browser*, DaVinci Resolve's *Effects library* — many looks for the one behaviour, grouped in
+families, each with a default length and a few settings. StoryReel keeps the same collection, as data a
+recipe names:
+
+![Every transition, a row each: picture A becoming picture B at a fifth, two fifths, three fifths and four fifths of the change](https://raw.githubusercontent.com/footprintjs/storyreel/main/docs/transitions.png)
+
+| family | transition | what it does | settings (default) | length | sound |
+|---|---|---|---|---|---|
+| cut | `cut` | the new shot, whole, on the scene's first frame | – | 0 | – |
+| dissolve | `fade` | a cross-fade (the default entrance) | – | 0.8 s | – |
+| | `dip` | out to a colour, then in from it: the two pictures never show at once | `color` (`#000000`) | 1 s | – |
+| wipe | `wipe` | an edge crosses the frame | `from`: `left` · `right` · `top` · `bottom` (`left`) | 0.8 s | slide |
+| | `split` | doors open from the middle | `line`: `vertical` · `horizontal` (`vertical`) | 0.8 s | slide |
+| | `clock` | a clock hand sweeps from twelve | – | 0.9 s | slide |
+| iris | `iris` | a circle opens from a point | `at`: `[x, y]` (the centre) | 0.8 s | slide |
+| motion | `push` | the new picture pushes the old one out | `from` (`right`) | 0.7 s | slide |
+| | `slide` | the new picture slides over the old one, which stays | `from` (`right`) | 0.7 s | slide |
+| | `whip` | a fast push that streaks, as a camera turned quickly blurs | `from` (`right`) | 0.4 s | whoosh |
+| zoom | `zoom` | the old picture rushes forward and fades while the new one settles | `at` (the centre) | 0.6 s | whoosh |
+| page | `page` | the old picture is a page that lifts from its right edge and turns over | – | 1.1 s | slide |
+
+```json
+"enter": "push"
+"enter": {"type": "push", "from": "left", "seconds": 0.5}
+"enter": {"type": "dip", "color": "#ffffff"}                  a dip to white
+"enter": {"type": "whip", "sound": false}                     no sound
+"enter": {"type": "slide", "ease": "spring"}                  slides in, overshoots a little and settles
+```
+
+Every entrance also takes `seconds` (0.2–3), `ease` (a name from the ease table) and `sound` (a sound's
+name, or `false`). An ease that goes past the end (`back`, `spring`) is refused where the frame's edge
+would show — only `slide` takes one. An unknown name, key or setting refuses, naming what the transition
+takes: `enter has unsupported key at (a push takes seconds, ease, sound, from)`.
+
+**A kit adds its own**, as Final Cut takes Motion templates and Premiere takes `.mogrt` files, and a recipe
+names it like a built-in one. Every transition — built in or not — draws through one contract:
+
+```js
+const stageKit = {name: 'stage', transitions: {curtain: {
+  family: 'theatre', seconds: 1.2, ease: 'inOut', sound: 'whoosh',
+  params: {color: {color: true, default: '#7a1020'}},          // settings: {oneOf}, {point}, {color} or {number: [min, max]}, each with a default
+  draw(ctx, {e, from, to, p, ghost, theme}) {                 // e: 0..1, eased; from(c) / to(c) draw the two pictures
+    (e < .5 ? from : to)(ctx);                                // cover the whole frame at every e
+    const closed = 1 - Math.abs(1 - 2 * e);
+    ctx.fillStyle = p.color; ctx.fillRect(0, 0, 800 * closed, 900); ctx.fillRect(1600 - 800 * closed, 0, 800 * closed, 900);
+  }}}};
+// "enter": {"type": "curtain", "color": "#000000"}
+```
+
+`ghost(alpha, paint)` paints a picture whole into a scratch picture and lays it over at that alpha (a
+see-through picture must be drawn whole: canvas alpha on its parts shows the seams). A kit's transition
+may not take a built-in name or another kit's. `transitionSheet({catalog})` draws any collection on one
+PNG (`node examples/transitions.mjs` wrote the picture above), and the studio shows it under
+**Transitions**.
 
 ### Pause and guess
 
@@ -325,7 +386,62 @@ also needs its own narration; the recipe's phrases are its English cues for now.
 - **The making-of record** (`making-of.json`, written by `makeFilm`): every phrase → the recipe entry it
   triggered and when, the director's notes as applied, the lines too short to read, the pacing, the
   poster, the loudness as measured and set, the tools and versions — the film's own footprintjs run —
-  and, under `compile`, the compile stage by stage (the narrative of its record, below).
+  and, under `compile`, the compile stage by stage (the narrative of its record, below). A version made
+  for a platform says so: `"version": {"format": "vertical", "motionBlur": 4, "captionFiles": ["captions.vtt"]}`.
+
+## One film, every platform
+
+Most people meet a film in a feed, on a phone, with the sound off. `renderFilm({…, layout})` renders the
+same film in the shape each place plays — the film is always drawn on its 1600×900 frame, and the
+layout puts that frame into an output picture of another shape, with a title band and a caption band
+where the shape leaves room:
+
+| format | size | where it is posted | the picture |
+|---|---|---|---|
+| `landscape` | 1920×1080 | YouTube, X, LinkedIn | the whole frame; captions over its foot |
+| `square` | 1080×1080 | LinkedIn, X and Facebook feeds | title band · the whole frame · captions |
+| `portrait` | 1080×1350 | Instagram and Facebook feeds | title band · a 4:3 crop · captions |
+| `vertical` | 1080×1920 | YouTube Shorts, Instagram Reels, TikTok | title band · a 4:3 crop · captions |
+
+```js
+await renderFilm({film, storyboard, timings, narrationDir, out: 'out/shorts/teaser.mp4', motionBlur: 4,
+  layout: {format: 'vertical',
+    header: {title: 'Yes, no, or not enough evidence', sub: 'a talk'},
+    captions: true,
+    crop: [{at: ['story', 'a shepherd'], x: 330}, {at: ['story', 'for every sheep'], x: 900}]}});
+```
+
+- **Captions** are the voice's own word times (the forced alignment, or the even times of a silent cut),
+  so they say exactly what is spoken, when: short chunks broken after punctuation (a chunk takes one word
+  more rather than leave a word alone), the word being said in yellow. A silent scene's directions are
+  never captioned, and the poster (the thumbnail) shows the title band without a caption. `captions: {maxWords, size, box}` changes the chunk length, the type size and the band.
+- **The bands sit where the apps leave room.** A phone's full-screen player covers its top ~250 px with
+  its own bar, the bottom ~420 px with the account name and the post's text, and the right ~120 px from
+  the middle down with its buttons; Instagram shows a vertical video in its feed cut to 4:5. So in the
+  vertical format the title, the film and the captions all sit between y 285 and 1460, inside what Shorts,
+  Reels and TikTok leave clear: the film is a 4:3 crop, so the captions fit under it and never cover the
+  picture — a teaching film's picture has words in it too (the players as they were laid out in 2026; a
+  band's `box` moves it when an app changes).
+- **A crop follows the action**: `crop` keys tie the crop's centre (an x on the 1600-wide frame) to spoken
+  phrases, like every other key, and it eases from one to the next (centred until the first). A key's
+  `width` (400–1600; the format's is 1200) shows more — `{"at": [...], "x": 800, "width": 1600}` is the whole
+  frame, with the paper above and below, for a wide title card — or less, to come closer. The portrait and
+  vertical formats crop; the others show the whole frame.
+- **The bands take the film's own paper and ink** and its sans type (`film.theme`); `background` and
+  `ink` change them.
+- **Caption files.** `captionFiles: true` writes `captions.vtt` and `captions.srt` beside the video, on
+  its clock (a partial render or an intro moves them), in cues of whole sentences on at most two lines —
+  YouTube, LinkedIn and X play their own captions from a file, so a landscape version can carry a file
+  instead of burned-in words.
+- **Motion blur.** `motionBlur: 4` (or `{subframes, shutter}`) makes each frame the average of that many
+  moments over half the frame's time, so a fast push or a whip streaks as a camera's would. It costs one
+  drawing per subframe; the bands and the poster are never blurred.
+- **One folder per version.** A render writes `poster.jpg` and `chapters.txt` beside its video, so give
+  each version its own folder. `node examples/formats.mjs` renders the hello film in all four.
+
+A layout is data, checked like a recipe: an unknown key refuses, a header in the landscape format
+refuses (it has no band), a crop key out of spoken order refuses. Only the landscape format takes an
+`intro`.
 
 ## The compile record
 
@@ -381,7 +497,8 @@ const studio = await startStudio({
 ```
 
 Keys: space plays; ← → step a frame (shift: a second); `[` `]` the previous and next phrase; `,` `.`
-the previous and next scene. It listens on 127.0.0.1 only, answers only requests addressed to that
+the previous and next scene. **Transitions** opens the collection a shot can enter with, on one sheet
+(return `kits` from `load()` and their own transitions show too). It listens on 127.0.0.1 only, answers only requests addressed to that
 name, only reads (GET), and runs nothing from the recipe. The engine side is `film.regionsAt(t)`
 (what is drawn where, each box naming its recipe entry) and `film.pointAt(t, x, y)` (a click in the
 recipe's coordinates); every `film.beats[i].path` names the entry that asked for that phrase.
@@ -418,6 +535,8 @@ const myKit = {name: 'cartoon', story: {
       sounds: [{time: clock.at(['story', 'But wait']), type: 'chime'}],
     };
   }}};
+
+// A kit may also add transitions (see Transitions): {name, transitions: {curtain: {family, seconds, ease, sound, params, draw}}}.
 
 // A stage kit adds a stage type. `keys` lists its own spec keys (besides type, scene, chip,
 // chipDark, title, enter, chrome); any other key refuses. cardBox is null in a film without a card.
@@ -469,12 +588,14 @@ const picturesKit = {name: 'pictures', story: {context: true,
 `EASES`, `easeNamed(name, where)`): `linear`; `in` (starts slow); `out` (slows into place); `inOut` (slow,
 fast, slow: exactly the whiteboard's `ease`, which is now this curve under its old name); `back` (overshoots
 about 10% and settles); `walk` (speeds up over the first fifth, steady, slows over the last fifth); `jump`
-(no in-between: the start value until the change ends). Each takes how far through its seconds a change is
-(0..1, clamped) and returns how far the value has gone. An unknown name refuses, naming the eases:
+(no in-between: the start value until the change ends); `spring` (a damped spring: arrives fast, overshoots
+about 4% and settles — the "pop" a motion designer reaches for; a formula, so any moment draws the same
+pixels). Each takes how far through its seconds a change is (0..1, clamped) and returns how far the value
+has gone. An unknown name refuses, naming the eases:
 
 ```js
 import {easeNamed} from 'footprint-storyreel/ease';
-const x = 200 + 600 * easeNamed('out')((t - start) / .4);   // easeNamed('spring') → "spring" is not an ease; the eases are linear, in, …
+const x = 200 + 600 * easeNamed('spring')((t - start) / .4);   // easeNamed('bounce') → "bounce" is not an ease; the eases are linear, in, …
 ```
 
 **Sounds.** `tap`, `slide`, `settle`, `question`, `chime`, `door`, `step`, `click`, `whoosh`, `crumble`:
@@ -498,19 +619,22 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 
 | import | what it does |
 |---|---|
-| `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?, hostKeys?, record?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `reading`, `moments()`, `regionsAt(t)`, `pointAt(t, x, y)`, `posterAt`; with `record: true`, `record` (the compile as a footprintjs run) |
-| `renderFilm({film, storyboard, timings, narrationDir?, out, width?, height?, fps?, intro?, stamp?, from?, to?, poster?, loudness?})` | the MP4 (FFmpeg), its chapters, its poster, its loudness (two passes) |
+| `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?, hostKeys?, record?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `reading`, `moments()`, `regionsAt(t)`, `pointAt(t, x, y)`, `posterAt`, `theme`; with `record: true`, `record` (the compile as a footprintjs run) |
+| `renderFilm({film, storyboard, timings, narrationDir?, out, width?, height?, fps?, intro?, stamp?, from?, to?, poster?, loudness?, layout?, motionBlur?, captionFiles?})` | the MP4 (FFmpeg), its chapters, its poster, its loudness (two passes); a version for a platform, motion blur, caption files |
+| `compileLayout(film, layout)` · `FORMAT_NAMES` | a format's picture and bands, drawn at any t (`footprint-storyreel/layout` adds `formatOf`, `cropWindow`) |
+| `captionChunks(film, {maxWords?, maxChars?, breaks?})` · `captionFile(chunks, 'vtt' \| 'srt', {offset?, from?, to?})` | the spoken words in caption chunks; a WebVTT or SRT file (`footprint-storyreel/captions` adds `captionAt`, `drawCaption`) |
+| `TRANSITIONS` · `TRANSITION_NAMES` · `transitionCatalog(kits)` · `transitionSheet({catalog?, moments?, width?})` | the transitions a shot can enter with, a kit's own added, on one PNG (`footprint-storyreel/transitions` adds `readEntrance`, `ghostPainter`) |
 | `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?})` | compile + render as a footprintjs pipeline, with `making-of.json` |
 | `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |
 | `directionTimings(scene, {tail?})` · `withDirections(storyboard, timings)` · `sceneText(scene)` | a silent scene's timing; a voice's timings completed with the silent scenes; a scene's text |
 | `makeClock(storyboard, timings)` | phrases → seconds |
-| `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `inOut` | the one ease table (`linear in out inOut back walk jump`) |
+| `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `inOut` | the one ease table (`linear in out inOut back walk jump spring`) |
 | `contactSheet(film, {moments?, columns?, width?})` | a PNG of stills |
 | `frameHashes(film, {count?, width?, times?})` · `changedFrames(pinned, now)` | pixel pins |
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/pins`, `/sheet`, `/render`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/regions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/pins`, `/sheet`, `/render`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws
@@ -532,8 +656,8 @@ screen or a real result, shown so the viewer sees the actual thing a lesson is a
 at work, not marketing. **Marketing polish is not**: launch videos, brand campaigns and polished product
 shots are left out on purpose; a launch-video tool such as
 [`/brag`](https://github.com/latent-spaces/brag) (a Claude Code skill, MIT) fits better. What comes
-next here — recipe kinds, a library explainer generated from a repository, vertical teasers — is in
-[BACKLOG.md](BACKLOG.md).
+next here — recipe kinds, a library explainer generated from a repository, a teaser cut of a film — is
+in [BACKLOG.md](BACKLOG.md).
 
 ## What it uses
 

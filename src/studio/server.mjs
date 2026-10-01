@@ -16,7 +16,8 @@ import {fileURLToPath} from 'node:url';
 import {createCanvas} from '@napi-rs/canvas';
 import {hitTest} from '../regions.mjs';
 import {jsonLines, valueAt} from './lines.mjs';
-import {contactSheet} from '../sheet.mjs';
+import {contactSheet, transitionSheet} from '../sheet.mjs';
+import {transitionCatalog} from '../transitions.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PAGE = {'/': ['page.html', 'text/html; charset=utf-8'], '/studio.js': ['page.js', 'text/javascript; charset=utf-8'], '/studio.css': ['page.css', 'text/css; charset=utf-8']};
@@ -26,10 +27,11 @@ const HEADERS = {
 };
 
 /**
- * @param load   async () => {film, storyboard, recipe, title?, source?: {file, prefix?}, audio?}
+ * @param load   async () => {film, storyboard, recipe, title?, source?: {file, prefix?}, audio?, kits?}
  *               film: from compileFilm · recipe: the recipe object the film was compiled from ·
  *               source.file: the file the recipe is written in (prefix: where in that file the recipe
- *               sits, e.g. 'recipe') · audio: a WAV of the paced narration, for playback
+ *               sits, e.g. 'recipe') · audio: a WAV of the paced narration, for playback · kits: the
+ *               kits the film was compiled with, so the transitions sheet shows their transitions too
  * @param watch  files that, when changed, make the studio call load() again
  * @param port   the port on 127.0.0.1 (0: any free port)
  * @returns {url, port, reload(), close()}
@@ -57,7 +59,7 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
   for (const file of watch) watchFile(file, {interval: 300}, changed);
 
   const canvases = new Map();
-  let sheet = null;
+  let sheet = null, transitions = null;
   const lineOf = p => { const prefix = state.loaded?.source?.prefix; return state.lines.get(prefix ? (p ? `${prefix}.${p}` : prefix) : p) ?? null; };
   const number = (v, lo, hi, fallback) => { const n = Number(v); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : fallback; };
 
@@ -116,6 +118,11 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
       if (u.pathname === '/api/frame') return send(res, 200, await frame(t, number(q.get('w'), 160, 1920, 960)), 'image/jpeg');
       if (u.pathname === '/api/hit') return send(res, 200, hit(t, number(q.get('x'), 0, 1600, 800), number(q.get('y'), 0, 900, 450)));
       if (u.pathname === '/api/sheet') { if (sheet?.version !== state.version) sheet = {version: state.version, png: await contactSheet(state.loaded.film)}; return send(res, 200, sheet.png, 'image/png'); }
+      if (u.pathname === '/api/transitions') {
+        // The collection a shot can enter with (transitions.mjs): the built-in ones and the film's kits' own.
+        if (transitions?.version !== state.version) transitions = {version: state.version, png: await transitionSheet({catalog: transitionCatalog(state.loaded.kits ?? [])})};
+        return send(res, 200, transitions.png, 'image/png');
+      }
       if (u.pathname === '/api/entry') return send(res, 200, entry(String(q.get('path') ?? '')));
       if (u.pathname === '/api/audio' && state.loaded.audio) return sendAudio(req, res, state.loaded.audio);
       return send(res, 404, {error: 'Not found'});

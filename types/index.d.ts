@@ -1,5 +1,6 @@
 // Types for footprint-storyreel (the code is plain JavaScript; these describe its public surface).
 import type {CombinedNarrativeEntry, RuntimeSnapshot} from 'footprintjs';
+import type {EaseName} from './sub/ease.js';
 
 /** A spoken phrase: [scene, phrase] or [scene, phrase, plus seconds], or the object form. */
 export type Beat = [scene: string, phrase: string] | [scene: string, phrase: string, plus: number]
@@ -53,7 +54,7 @@ export interface Recipe {
   paperStyle?: string;
   pushIn?: {after: string; rest: number; turn?: number; zoom?: number; hang?: number; caption: string};
   card?: Record<string, unknown>;
-  stages?: {type: string; scene: string; [key: string]: unknown}[];
+  stages?: {type: string; scene: string; enter?: Enter; [key: string]: unknown}[];
   guesses?: {after: Beat; question: string; answer?: string; place?: 'top' | 'center' | 'bottom'; until?: Beat}[];
   notes?: DirectorNote[];
   recalls?: Record<string, Beat>;
@@ -61,6 +62,55 @@ export interface Recipe {
   reading?: 'report' | 'refuse';
   [key: string]: unknown;
 }
+
+/** The built-in transitions (transitions.mjs · TRANSITIONS). */
+export type TransitionName = 'cut' | 'fade' | 'dip' | 'wipe' | 'split' | 'clock' | 'iris' | 'push' | 'slide' | 'whip' | 'zoom' | 'page';
+/**
+ * A shot's entrance: a transition's name (a kit's own too), or its name with settings — `seconds` (0.2–3),
+ * `ease`, `sound` (a sound, or false for none) and the transition's own: `from` (push, slide, whip, wipe:
+ * left | right | top | bottom), `line` (split: vertical | horizontal), `at` (iris, zoom: [x, y]), `color`
+ * (dip: a hex colour). Left out: a fade.
+ */
+export type Enter = TransitionName | (string & {}) | ({type: TransitionName | (string & {}); seconds?: number; ease?: EaseName; sound?: SoundType | false;
+  from?: 'left' | 'right' | 'top' | 'bottom'; line?: 'vertical' | 'horizontal'; at?: [number, number]; color?: string; [setting: string]: unknown});
+/** A transition's setting: one of some words, a point, a colour or a number, each with its default. */
+export type TransitionSetting = {oneOf: readonly string[]; default: string} | {point: true; default: readonly [number, number]}
+  | {color: true; default: string} | {number: readonly [number, number]; default: number};
+/** What a transition's draw is given (transitions.mjs): how far (eased), the two pictures, its settings, a scratch picture, the theme. */
+export interface TransitionDraw {
+  /** How far the change has come, 0..1, eased (an overshooting ease goes past 1 only where the transition allows it). */
+  e: number;
+  /** Draw the leaving picture into ctx (the 1600×900 frame through ctx's transform). */
+  from(ctx: any): void;
+  /** Draw the arriving picture into ctx. */
+  to(ctx: any): void;
+  /** The settings, checked, with the defaults filled in. */
+  p: Readonly<Record<string, unknown>>;
+  /** paint(c) into a scratch picture, laid over ctx at alpha: a see-through picture, drawn whole. */
+  ghost(alpha: number, paint: (ctx: any) => void): void;
+  theme: Record<string, unknown>;
+}
+/** A transition a kit adds (kit.transitions): drawn through the same contract as the built-in ones; it must cover the whole frame at every e. */
+export interface Transition {
+  /** What a browser groups it under (the built-in families: cut, dissolve, wipe, iris, motion, zoom, page). */
+  family: string;
+  /** Its default length, 0.2–3 s. */
+  seconds: number;
+  ease: EaseName;
+  sound: SoundType | null;
+  /** true when an overshooting ease (back, spring) may drive it. */
+  overshoot?: boolean;
+  params?: Record<string, TransitionSetting>;
+  draw(ctx: any, args: TransitionDraw): void;
+}
+/** A built-in transition (the cut draws nothing: it is no transition at all). */
+export interface BuiltInTransition extends Omit<Transition, 'draw'> { draw: Transition['draw'] | null }
+export const TRANSITIONS: Readonly<Record<TransitionName, Readonly<BuiltInTransition>>>;
+export const TRANSITION_NAMES: readonly TransitionName[];
+/** The built-in transitions and every kit's own, each checked; a kit may not reuse a built-in name or another kit's. */
+export function transitionCatalog(kits?: Kit[]): Record<string, Readonly<BuiltInTransition>>;
+/** The transitions on one image (a row each, a still per moment of A becoming B), as a PNG. */
+export function transitionSheet(options?: {catalog?: Record<string, Readonly<BuiltInTransition>>; moments?: number[]; width?: number}): Promise<Uint8Array>;
 
 export interface Clock {
   total: number;
@@ -104,6 +154,8 @@ export interface Film {
   moments(): {t: number; kind: 'settled' | 'moving'; label: string}[];
   regionsAt(t: number): Region[];
   pointAt(t: number, x: number, y: number): {frame: [number, number]; world?: {path: string; at: [number, number]}};
+  /** The theme the film is drawn with: a layout's bands take its paper, ink and sans type. */
+  theme: Record<string, unknown>;
   /** Only with compileFilm({…, record: true}): the compile as a footprintjs run. */
   record?: CompileRecord;
 }
@@ -152,9 +204,11 @@ export interface KitContext {
   readFile(file: string): Uint8Array;
 }
 
-/** A plug-in: a story kit draws a world; stage kits add stage types. A story kit on the context contract is a ContextKit. */
+/** A plug-in: a story kit draws a world; stage kits add stage types; a kit may add transitions. A story kit on the context contract is a ContextKit. */
 export interface Kit {
   name: string;
+  /** Transitions a recipe can name in a shot's `enter`, as it names the built-in ones. */
+  transitions?: Record<string, Transition>;
   story?: {
     /** The motion words it follows, e.g. ['cameraSpeed'] (a speed note refuses a world whose kit lacks it). */
     motion?: string[];
@@ -208,13 +262,49 @@ export interface Loudness {
   reason?: string;
 }
 
+/** The shapes a film is posted in (layout.mjs): landscape 1920×1080, square 1080×1080, portrait 1080×1350, vertical 1080×1920 (portrait and vertical show a 4:3 crop). */
+export type FormatName = 'landscape' | 'square' | 'portrait' | 'vertical';
+/** A band's box in output pixels: [x, y, width, height]. */
+export type Box = [x: number, y: number, width: number, height: number];
+/**
+ * A version of the film for a platform: its format, a title band (not in landscape), captions burned in from
+ * the word timings, crop keys that follow the action (portrait and vertical: {at: beat, x, width?}), and the
+ * bands' colours (default: the film's paper and ink). Unknown keys refuse.
+ */
+export interface Layout {
+  format: FormatName;
+  header?: {title: string; sub?: string; box?: Box} | false;
+  captions?: boolean | {maxWords?: number; size?: number; box?: Box};
+  /** Portrait and vertical: the crop's centre (x on the 1600-wide frame) and, optionally, its width (400–1600; up to the whole frame). */
+  crop?: {at: Beat; x: number; width?: number}[];
+  background?: string;
+  ink?: string;
+}
+export const FORMAT_NAMES: readonly FormatName[];
+/** A layout compiled for a film: the output size, where the film and the bands are, and the two drawing passes. */
+export function compileLayout(film: Film, layout: Layout): {width: number; height: number; format: FormatName;
+  boxes: {film: Box; header?: Box; captions?: Box}; picture(ctx: any, t: number): void; overlay(ctx: any, t: number, options?: {still?: boolean}): void};
+
+/** A caption chunk on the film clock: its words, each timed. */
+export interface CaptionChunk { start: number; end: number; words: {text: string; start: number; end: number}[] }
+/** The spoken words in chunks (never a silent scene's directions): maxWords 1–20, maxChars ≥ 12, broken after a clause or a sentence. */
+export function captionChunks(film: Film, options?: {maxWords?: number; maxChars?: number; breaks?: 'clause' | 'sentence'}): CaptionChunk[];
+/** A WebVTT or SRT file's text, moved onto a video's clock (t + offset) and cut to [from, to] (film time). */
+export function captionFile(chunks: CaptionChunk[], kind?: 'vtt' | 'srt', options?: {offset?: number; from?: number; to?: number; lineChars?: number}): string;
+
 export function renderFilm(options: {
   film: Film; storyboard: Storyboard; timings: Timings; narrationDir?: string | null; out: string;
   width?: number; height?: number; fps?: number; stamp?: string | null; from?: number; to?: number; poster?: number | null;
   intro?: {seconds: number; title?: string; wav?: Uint8Array; draw(ctx: any, t: number, info: {width: number; height: number; handoff: unknown}): void} | null;
   /** Checked before rendering: I -70..-5 (LUFS), TP -9..0 (dBTP), LRA 1..50 (LU, optional); other keys refuse. */
   peakCeilingDBFS?: number; loudness?: {I: number; TP: number; LRA?: number}; ffmpeg?: string;
-}): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness}>;
+  /** A version for a platform: the output takes the format's size (width or height beside it refuses); only landscape takes an intro. */
+  layout?: Layout | null;
+  /** Each frame the average of `subframes` (2–16) moments over `shutter` (0.1–1, default 0.5) of its time; a number is the subframes. */
+  motionBlur?: number | {subframes: number; shutter?: number} | null;
+  /** Caption files beside the video (captions.vtt, captions.srt) on its clock: true for both, or the kinds. */
+  captionFiles?: boolean | ('vtt' | 'srt')[];
+}): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; format?: FormatName; captions?: {vtt?: string; srt?: string}; loudness: Loudness}>;
 
 /** makeFilm's options; `K` is the kits it takes (two signatures, as compileFilm). */
 export interface MakeFilmOptions<K = Kit | ContextKit> {

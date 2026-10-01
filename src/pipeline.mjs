@@ -54,7 +54,8 @@ const sha = text => createHash('sha256').update(text).digest('hex').slice(0, 16)
  *                     to the word times of a silent cut (the same holds, so a pause-and-guess waits)
  * @param strings      the string table for the film's language ({key: text}); lang names it
  * @param out          the .mp4 to write; making-of.json is written beside it
- * @param render       extra options for renderFilm (intro, stamp, from, to, width, height…)
+ * @param render       extra options for renderFilm (intro, stamp, from, to, width, height, layout, motionBlur,
+ *                     captionFiles…); a layout, motion blur or caption files are written into the record as `version`
  */
 export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}}) {
   const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
@@ -102,6 +103,9 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     ...(strings ? {strings: {lang, used: film.strings}} : {}),
     pacing: paced.pacing ?? null,
     ...(result.poster ? {poster: {file: path.basename(result.poster), at: film.posterAt}} : {}),
+    // The version made: its format (layout.mjs), its motion blur, the caption files beside it.
+    ...(result.format || render.motionBlur || result.captions ? {version: {format: result.format ?? 'frame', ...(render.motionBlur ? {motionBlur: render.motionBlur} : {}),
+      ...(result.captions ? {captionFiles: Object.values(result.captions).map(f => path.basename(f))} : {})}} : {}),
     ...(film.reading.length ? {reading: {tooShort: film.reading}} : {}),
     // Each beat: what was said, when, and the recipe entry that asked for it.
     beats: film.beats.map(({ref, t, path}) => ({said: Array.isArray(ref) ? {scene: ref[0], phrase: ref[1], plus: ref[2] ?? 0} : ref, at: t, ...(path ? {entry: path} : {})})),

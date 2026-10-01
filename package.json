@@ -11,7 +11,10 @@
     "whiteboard",
     "storyboard",
     "canvas",
-    "footprintjs"
+    "footprintjs",
+    "captions",
+    "transitions",
+    "shorts"
   ],
   "homepage": "https://github.com/footprintjs/storyreel#readme",
   "bugs": {
@@ -95,6 +98,18 @@
     "./reading": {
       "types": "./types/sub/reading.d.ts",
       "default": "./src/reading.mjs"
+    },
+    "./captions": {
+      "types": "./types/sub/captions.d.ts",
+      "default": "./src/captions.mjs"
+    },
+    "./layout": {
+      "types": "./types/sub/layout.d.ts",
+      "default": "./src/layout.mjs"
+    },
+    "./transitions": {
+      "types": "./types/sub/transitions.d.ts",
+      "default": "./src/transitions.mjs"
     },
     "./package.json": "./package.json"
   },

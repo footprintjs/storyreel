@@ -33,6 +33,7 @@ import {view, then, about, through, back} from './regions.mjs';
 import {tooShortToRead, readingMode} from './reading.mjs';
 import {checkSound, soundsByScene, MAX_SOUNDS_PER_SCENE} from './sound.mjs';
 import {step, drainSteps, recordSteps} from './record.mjs';
+import {readEntrance, transitionCatalog, ghostPainter, CUT} from './transitions.mjs';
 
 /** The recipe's own top-level keys: anything else refuses, unless the host application names it in `hostKeys`. */
 const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'notes', 'recalls', 'poster', 'reading', 'paperStyle'];
@@ -47,23 +48,7 @@ const COMMON_KEYS = ['type', 'scene', 'chip', 'chipDark', 'title', 'enter', 'chr
 const KIT_STAGE_ENGINE_KEYS = new Set(['footer']);
 const WORLD_KEYS = new Set(['type', 'scene', 'world', 'enter']);
 const BUILT_IN_STAGES = new Set(['code', 'api', 'recap', 'summary', 'world']);
-const ENTERS = new Set(['fade', 'wipe', 'iris', 'page', 'cut']);
 const GUESS_KEYS = new Set(['after', 'question', 'answer', 'place', 'until']);
-/** A hard cut: the new shot is there, whole, on the scene's first frame. */
-const CUT = Object.freeze({type: 'cut', seconds: 0, lead: 0, at: [800, 450]});
-
-/** A shot's entrance: 'fade' | 'wipe' | 'iris' | 'page' (a page turn) | 'cut', or {type, seconds, at: [x, y] (the iris centre)}. */
-function entrance(enter, where) {
-  const e = typeof enter === 'string' ? {type: enter} : enter ?? {type: 'fade'};
-  if (!e || typeof e !== 'object' || !ENTERS.has(e.type)) throw new Error(`${where}: enter must be fade, wipe, iris, page or cut`);
-  for (const key of Object.keys(e)) if (!['type', 'seconds', 'at'].includes(key)) throw new Error(`${where}: enter has unsupported key ${key}`);
-  if (e.type === 'cut') { if (Object.keys(e).length > 1) throw new Error(`${where}: a cut takes no seconds and no centre`); return CUT; }
-  const seconds = e.seconds ?? (e.type === 'page' ? 1.1 : .8);
-  if (!(seconds >= .2 && seconds <= 3)) throw new Error(`${where}: enter.seconds must be between 0.2 and 3`);
-  if (e.at !== undefined && !(Array.isArray(e.at) && e.at.length === 2 && e.at.every(Number.isFinite))) throw new Error(`${where}: enter.at must be [x, y]`);
-  // Most of the change happens in the silence before the scene's first word.
-  return {type: e.type, seconds, lead: seconds * .75, at: e.at ?? [800, 450]};
-}
 
 /**
  * Refuse a recipe key the engine does not read (law 1: an unknown key refuses). A host application that
@@ -183,6 +168,8 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const storyKits = Object.fromEntries(allKits.filter(k => k.story).map(k => [k.name, k.story]));
   const stageKits = Object.fromEntries(allKits.flatMap(k => Object.entries(k.stages ?? {})));
   const stageKitNames = Object.fromEntries(allKits.flatMap(k => Object.keys(k.stages ?? {}).map(type => [type, k.name])));
+  // The transitions a shot may enter with: the built-in collection and every kit's own (transitions.mjs).
+  const transitions = transitionCatalog(allKits);
   const worldKits = new Set();
   // What a context kit gets (kitContext); every world's `ready`, settled before recalls are drawn (readyWorlds).
   const context = kitContext({clock, motion, theme: paper, root}), readies = [];
@@ -229,7 +216,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (spec.chrome !== undefined && typeof spec.chrome !== 'boolean') throw new Error(`${where}: chrome must be true or false`);
     if (spec.card !== undefined && spec.card !== false) throw new Error(`${where}: card may only be false (the stage takes the whole page)`);
     const st = {...spec, start: clock.start(spec.scene)};
-    if (!push) st.entrance = entrance(spec.enter, where);
+    if (!push) st.entrance = readEntrance(spec.enter, where, transitions);
     if (spec.type === 'world') st.world = {...hung(compileWorld(spec.world, where)), kit: spec.world.kit};
     if (reads('code') && spec.code) {
       const source = excerpt(within(spec.code.file), {elide: spec.code.elide ?? []});
@@ -482,58 +469,11 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
       const w = Math.min(enter, leave); if (w > 0) drawStage(ctx, P, paper, w, stageSpec(st, t));
     });
   }
-  const layers = new Map();
-  /** A canvas the size of ctx's frame in device pixels (for a fade drawn at full resolution). */
-  function layerFor(m) {
-    const w = Math.ceil(1600 * Math.abs(m.a)), h = Math.ceil(900 * Math.abs(m.d)), key = `${w}x${h}`;
-    if (!layers.has(key)) layers.set(key, createCanvas(w, h));
-    return layers.get(key);
-  }
-  /** The shot that is arriving, over the one leaving: a fade, a wipe (left to right) or an iris. */
-  function drawEntering(ctx, shot, t, e) {
-    const {type, at: [cx, cy]} = shot.enter;
-    if (type === 'fade') {
-      const m = ctx.getTransform(), layer = layerFor(m), lc = layer.getContext('2d');
-      lc.resetTransform(); lc.clearRect(0, 0, layer.width, layer.height); lc.setTransform(m.a, 0, 0, m.d, 0, 0);
-      drawShot(lc, shot, t);
-      ctx.save(); ctx.globalAlpha *= e; ctx.setTransform(1, 0, 0, 1, m.e, m.f); ctx.drawImage(layer, 0, 0); ctx.restore();
-      return;
-    }
-    if (type === 'page') { drawPageTurn(ctx, shot, t, e); return; }
-    ctx.save(); ctx.beginPath();
-    if (type === 'wipe') ctx.rect(0, 0, 1600 * e, 900);
-    else ctx.arc(cx, cy, e * Math.hypot(Math.max(cx, 1600 - cx), Math.max(cy, 900 - cy)), 0, Math.PI * 2);
-    ctx.clip(); drawShot(ctx, shot, t); ctx.restore();
-    // The moving edge, softly shaded so the eye follows it.
-    ctx.save();
-    if (type === 'wipe') {
-      const x = 1600 * e, g = ctx.createLinearGradient(x, 0, x + 40, 0);
-      g.addColorStop(0, 'rgba(40,32,20,.22)'); g.addColorStop(1, 'rgba(40,32,20,0)'); ctx.fillStyle = g; ctx.fillRect(x, 0, 40, 900);
-    } else {
-      ctx.strokeStyle = 'rgba(40,32,20,.28)'; ctx.lineWidth = 8; ctx.beginPath();
-      ctx.arc(cx, cy, e * Math.hypot(Math.max(cx, 1600 - cx), Math.max(cy, 900 - cy)), 0, Math.PI * 2); ctx.stroke();
-    }
-    ctx.restore();
-  }
-  /**
-   * A page turn: the old shot is a page lifting from its right edge and folding over to the left.
-   * Right of the fold, the new shot is uncovered (in the lifting page's shadow); left of it, the
-   * page's back — paper, darker at the fold; further left, what is still flat of the old page.
-   */
-  function drawPageTurn(ctx, shot, t, e) {
-    const f = 1600 * (1 - e), back = Math.max(0, 2 * f - 1600), paperBack = paper.palette.card ?? paper.palette.bg;
-    ctx.save(); ctx.beginPath(); ctx.rect(f, 0, 1600 - f, 900); ctx.clip(); drawShot(ctx, shot, t); ctx.restore();
-    ctx.save();
-    const shade = ctx.createLinearGradient(f, 0, f + 80, 0); shade.addColorStop(0, 'rgba(30,20,10,.3)'); shade.addColorStop(1, 'rgba(30,20,10,0)');
-    ctx.fillStyle = shade; ctx.fillRect(f, 0, 80, 900);
-    if (f > back) {
-      ctx.fillStyle = paperBack; ctx.fillRect(back, 0, f - back, 900);
-      const curl = ctx.createLinearGradient(back, 0, f, 0);
-      curl.addColorStop(0, 'rgba(255,255,255,.35)'); curl.addColorStop(.7, 'rgba(60,40,20,.06)'); curl.addColorStop(1, 'rgba(60,40,20,.28)');
-      ctx.fillStyle = curl; ctx.fillRect(back, 0, f - back, 900);
-      ctx.strokeStyle = 'rgba(60,40,20,.35)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(back, 0); ctx.lineTo(back, 900); ctx.stroke();
-    }
-    ctx.restore();
+  const ghost = ghostPainter();
+  /** The shot that is arriving over the one leaving, through its transition (transitions.mjs). */
+  function drawTransition(ctx, j, t, e) {
+    const shot = shots[j], prev = shots[j - 1], en = shot.enter;
+    en.draw(ctx, {e, from: c => drawShot(c, prev, t), to: c => drawShot(c, shot, t), p: en.p, ghost: (alpha, paint) => ghost(ctx, alpha, paint), theme: paper});
   }
   /** A film without a pushIn at t: the current shot, or the next one arriving over it. */
   /** Which shot is on screen (or arriving) at t. */
@@ -545,8 +485,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   function drawShots(ctx, t) {
     const j = shotAt(t), shot = shots[j], u = j === 0 || shot.enter.type === 'cut' ? 1 : ramp(t, shot.start - shot.enter.lead, shot.enter.seconds);
     if (u >= 1) { drawShot(ctx, shot, t); return; }
-    drawShot(ctx, shots[j - 1], t);
-    drawEntering(ctx, shot, t, ease(u));
+    drawTransition(ctx, j, t, shot.enter.ease(u));
   }
 
   /** The whole film at t, drawn into ctx whose transform maps 1600×900 onto the frame. */
@@ -628,7 +567,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const addKitSounds = (list, who) => { for (const s of list ?? []) { checkSound(s, who); add(s.time, s.type, s.gain); } };
   addKitSounds(story.sounds, `the story kit "${storySpec.kit}"`);
   if (push) { add(boardEnd, 'slide'); add(MOVE0, 'slide'); }
-  for (const shot of shots.slice(1)) if (shot.enter.type !== 'fade' && shot.enter.type !== 'cut') add(shot.start - shot.enter.lead, 'slide');
+  for (const shot of shots.slice(1)) if (shot.enter.sound) add(shot.start - shot.enter.lead, shot.enter.sound);
   for (const st of stages) {
     if (st.world) addKitSounds(st.world.instance.sounds, `the story kit "${st.world.kit}" (stage ${st.scene})`);
     for (const [, at] of st.reveal ?? []) add(at, 'tap');
@@ -741,7 +680,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   yield step('checks', () => checksSummary({readingRule, reading, sounds, byScene: soundsByScene(sounds, clock.offsets, timings.scenes.map(s => s.duration)), worlds: readies.filter(Boolean).length, recalls: Object.keys(recipe.recalls ?? {})}));
   // Every line the build resolved (the clock is a pure function of the paced word times, so the order it was asked in changes no second).
   yield step('resolve-lines', () => linesSummary(beats));
-  return {total: clock.total, clock, timings, sounds, frame, beats, strings: [...used], notes: notesApplied, reading, posterAt, moments, regionsAt, pointAt};
+  return {total: clock.total, clock, timings, sounds, frame, beats, strings: [...used], notes: notesApplied, reading, posterAt, moments, regionsAt, pointAt, theme: paper};
 }
 
 /** What reading the inputs gave (record.mjs): the recipe's top-level keys, each scene's seconds, the notes, the strings used. */

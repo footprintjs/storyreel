@@ -13,4 +13,7 @@ export {loadTheme, validateTheme} from './theme.mjs';
 export {whiteboardKit} from './kits/whiteboard/index.mjs';
 export {cartoonKit} from './kits/cartoon/index.mjs';
 export {frameHashes, changedFrames} from './pins.mjs';
-export {contactSheet} from './sheet.mjs';
+export {contactSheet, transitionSheet} from './sheet.mjs';
+export {compileLayout, FORMAT_NAMES} from './layout.mjs';
+export {captionChunks, captionFile} from './captions.mjs';
+export {TRANSITIONS, TRANSITION_NAMES, transitionCatalog} from './transitions.mjs';

@@ -18,5 +18,9 @@ Transcript: every word in `/api/film` carries `spoken`; a silent scene's words a
 seen, never said. A storyboard scene `{"id": "open", "silent": [["the door opens", 1.0]]}` shows
 *the door opens* in grey italics, and a click still seeks to it.
 
+Transitions: the **Transitions** link (`/api/transitions`) shows the collection a shot can enter with
+(`transitions.mjs`), a row each, as a few moments of picture A becoming picture B — the built-in ones and,
+when `load()` returns the film's `kits`, their own. Pick one by name in a stage's `enter`.
+
 Example: `node examples/studio.mjs hello` → open the printed address, click the stick figure: it
 answers `story.items[0]`, line 7 of `examples/hello/recipe.json`.

@@ -59,6 +59,8 @@ test('the studio: frames, the film, what drew a spot; loopback only, read only; 
     assert.equal((await raw(port, '/api/film', {host: 'studio.example.com'})).status, 403);
     assert.equal((await raw(port, '/api/film', {method: 'POST'})).status, 405);
     assert.equal((await fetch(url + 'api/audio')).status, 404, 'no voice, no audio');
+    const sheet = await fetch(url + 'api/transitions');
+    assert.equal(sheet.headers.get('content-type'), 'image/png', 'the transitions a shot can enter with, on one sheet');
     assert.equal((await fetch(url + '../package.json')).status, 404);
     assert.equal((await fetch(url + 'server.mjs')).status, 404);
     // A note added to the recipe: the studio compiles again and lists it.

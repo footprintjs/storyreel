@@ -9,6 +9,8 @@ import {spawn, spawnSync} from 'node:child_process';
 import {once} from 'node:events';
 import {createCanvas} from '@napi-rs/canvas';
 import {createMotionSound, soundsByScene} from './sound.mjs';
+import {compileLayout} from './layout.mjs';
+import {captionChunks, captionFile, FILE_CHUNKS} from './captions.mjs';
 
 /**
  * Loudness in two passes (FFmpeg's loudnorm): measure the whole mixed film, then set it with ONE fixed
@@ -140,6 +142,43 @@ function joinVoice(run, {dir, storyboard, timings, narrationDir, voice}) {
 
 const clock = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
+/** The motionBlur option: null, a number of subframes, or {subframes 2–16, shutter 0.1–1 (default 0.5)}. */
+export function readMotionBlur(v) {
+  if (v === null || v === undefined || v === false) return null;
+  const o = typeof v === 'number' ? {subframes: v} : v;
+  if (!o || typeof o !== 'object' || Array.isArray(o)) throw new Error('motionBlur must be a number of subframes or {subframes, shutter}');
+  for (const key of Object.keys(o)) if (!['subframes', 'shutter'].includes(key)) throw new Error(`motionBlur has unsupported key ${key} (the keys are subframes, shutter)`);
+  const shutter = o.shutter ?? .5;
+  if (!(Number.isInteger(o.subframes) && o.subframes >= 2 && o.subframes <= 16)) throw new Error('motionBlur.subframes must be a whole number 2–16');
+  if (!(typeof shutter === 'number' && shutter >= .1 && shutter <= 1)) throw new Error('motionBlur.shutter must be 0.1–1 (the share of a frame\'s time the blur spans)');
+  return {subframes: o.subframes, shutter};
+}
+
+/**
+ * The painter: one output picture at film time t into ctx — the film (in its layout, if any), averaged
+ * over the motion-blur subframes, then the layout's bands on top (never blurred). A still (the poster)
+ * takes no blur and no caption (a thumbnail shows the picture and the title band). Every call leaves ctx
+ * with an identity transform and full alpha.
+ */
+export function makePainter({film, framed, blur, width, height, fps, ctx}) {
+  const k = width / 1600;
+  const picture = (c, t) => { c.resetTransform(); c.globalAlpha = 1; c.clearRect(0, 0, width, height); if (framed) framed.picture(c, t); else { c.scale(k, k); film.frame(c, t); } c.resetTransform(); };
+  const sub = blur ? createCanvas(width, height) : null, subCtx = sub?.getContext('2d');
+  return (t, {still = false} = {}) => {
+    if (!blur || still) picture(ctx, t);
+    else {
+      // A running average: subframe i is laid over the first i at 1 / (i + 1), so each counts once.
+      const span = blur.shutter / fps, n = blur.subframes;
+      for (let i = 0; i < n; i++) {
+        const at = Math.max(0, Math.min(film.total, t + (i / (n - 1) - .5) * span));
+        if (i === 0) { picture(ctx, at); continue; }
+        picture(subCtx, at); ctx.globalAlpha = 1 / (i + 1); ctx.drawImage(sub, 0, 0); ctx.globalAlpha = 1;
+      }
+    }
+    if (framed) { framed.overlay(ctx, t, {still}); ctx.resetTransform(); ctx.globalAlpha = 1; }
+  };
+}
+
 /**
  * @param film       from compileFilm
  * @param storyboard the storyboard (scene titles become chapters)
@@ -154,13 +193,27 @@ const clock = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(
  *                   written beside the video (poster.jpg) and REPLACES the video's first frame, so every
  *                   platform's thumbnail shows it (the length and the sound's sync are unchanged)
  * @param loudness   the target {I, TP, LRA?} (LUFS, dBTP, LU) for the two loudness passes (render.mjs · muxWithLoudness)
- * @returns {out, seconds, chapters, poster?, loudness: {type, target, measured, reason?}}
+ * @param layout     a format for a platform ({format: landscape | square | portrait | vertical, header?, captions?, crop?};
+ *                   layout.mjs · compileLayout): the output takes that format's size (width or height beside it refuses)
+ * @param motionBlur {subframes, shutter?} (or a number of subframes): each frame is the average of that many moments
+ *                   spread over `shutter` (0.5 by default) of the frame's time, so fast moves blur as a camera's would
+ * @param captionFiles true (both) or a list of 'vtt' / 'srt': caption files beside the video (captions.vtt,
+ *                   captions.srt) on the video's clock, for players that show their own captions (captions.mjs · captionFile)
+ * @returns {out, seconds, chapters, poster?, format?, captions?: {vtt?, srt?}, loudness: {type, target, measured, reason?}}
  */
-export async function renderFilm({film, storyboard, timings, narrationDir = null, out, width = 1280, height = 720, fps = 30, intro = null, stamp = null,
-  from = intro ? -intro.seconds : 0, to = film.total, poster = film.posterAt ?? null, peakCeilingDBFS = -20, loudness = {I: -16, TP: -1.5}, ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg'}) {
+export async function renderFilm({film, storyboard, timings, narrationDir = null, out, width: givenWidth, height: givenHeight, fps = 30, intro = null, stamp = null,
+  from = intro ? -intro.seconds : 0, to = film.total, poster = film.posterAt ?? null, peakCeilingDBFS = -20, loudness = {I: -16, TP: -1.5}, layout = null, motionBlur = null,
+  captionFiles = false, ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg'}) {
   checkLoudnessTarget(loudness);
+  const blur = readMotionBlur(motionBlur), captionKinds = readCaptionFiles(captionFiles);
+  const framed = layout ? compileLayout(film, layout) : null;
+  // A layout's format sets the size; a size given beside it would be silently ignored, so it refuses.
+  if (framed && (givenWidth !== undefined || givenHeight !== undefined)) throw new Error(`renderFilm: the ${framed.format} layout is ${framed.width}×${framed.height}; leave width and height out (they size a render without a layout)`);
+  const width = framed?.width ?? givenWidth ?? 1280, height = framed?.height ?? givenHeight ?? 720;
+  if (framed && intro && framed.format !== 'landscape') throw new Error(`renderFilm: an intro is drawn for the landscape frame; the ${framed.format} layout takes none (leave intro out)`);
   const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
   const k = width / 1600, canvas = createCanvas(width, height), ctx = canvas.getContext('2d');
+  const paint = makePainter({film, framed, blur, width, height, fps, ctx});
   to = Math.min(to, film.total);
   const withIntro = intro && from < 0, start = Math.max(0, from);
   const drawStamp = () => {
@@ -174,16 +227,16 @@ export async function renderFilm({film, storyboard, timings, narrationDir = null
   // The poster: drawn once, written beside the video, and sent as the video's first frame.
   let posterFile = null, posterFirst = poster !== null;
   if (posterFirst) {
-    ctx.resetTransform(); ctx.globalAlpha = 1; ctx.clearRect(0, 0, width, height); ctx.scale(k, k); film.frame(ctx, poster); ctx.resetTransform();
+    paint(poster, {still: true});
     posterFile = path.join(dir, 'poster.jpg'); writeFileSync(posterFile, await canvas.encode('jpeg', 90));
   }
-  const frameOrPoster = async draw => { if (posterFirst) { posterFirst = false; ctx.resetTransform(); ctx.globalAlpha = 1; ctx.clearRect(0, 0, width, height); ctx.scale(k, k); film.frame(ctx, poster); ctx.resetTransform(); } else draw(); await push(); };
+  const frameOrPoster = async draw => { if (posterFirst) { posterFirst = false; paint(poster, {still: true}); } else draw(); await push(); };
   if (withIntro) {
     const handoff = createCanvas(width, height); { const c = handoff.getContext('2d'); c.scale(k, k); film.frame(c, 0); }
     for (let f = 0; f < Math.round(intro.seconds * fps); f++) await frameOrPoster(() => { ctx.resetTransform(); ctx.globalAlpha = 1; ctx.clearRect(0, 0, width, height); intro.draw(ctx, f / fps, {width, height, handoff}); });
   }
   for (let f = 0; f < Math.ceil((to - start) * fps); f++) {
-    await frameOrPoster(() => { ctx.resetTransform(); ctx.globalAlpha = 1; ctx.clearRect(0, 0, width, height); ctx.scale(k, k); film.frame(ctx, start + f / fps); ctx.resetTransform(); });
+    await frameOrPoster(() => paint(start + f / fps));
   }
   ff.stdin.end(); await once(ff, 'close');
 
@@ -216,5 +269,20 @@ export async function renderFilm({film, storyboard, timings, narrationDir = null
   const lead = withIntro ? intro.seconds : 0;
   const chapters = [...(withIntro ? [[0, intro.title ?? 'Title']] : []), ...storyboard.scenes.map((s, i) => [lead + film.clock.offsets[i] - start, s.title ?? s.id])].filter(([t]) => t >= 0);
   writeFileSync(path.join(dir, 'chapters.txt'), chapters.map(([t, n]) => `${clock(t)} ${n}`).join('\n') + '\n');
-  return {out: path.resolve(out), seconds: lead + to - start, chapters: chapters.map(([t, n]) => `${clock(t)} ${n}`), loudness: loudnessSet, ...(posterFile ? {poster: posterFile} : {})};
+  // Caption files on the output's clock too (the same shift as the chapters), for the cues the render covers.
+  const captions = {};
+  if (captionKinds.length) {
+    const chunks = captionChunks(film, FILE_CHUNKS);
+    for (const kind of captionKinds) { captions[kind] = path.join(dir, `captions.${kind}`); writeFileSync(captions[kind], captionFile(chunks, kind, {offset: lead - start, from: start, to})); }
+  }
+  return {out: path.resolve(out), seconds: lead + to - start, chapters: chapters.map(([t, n]) => `${clock(t)} ${n}`), loudness: loudnessSet,
+    ...(posterFile ? {poster: posterFile} : {}), ...(framed ? {format: framed.format} : {}), ...(captionKinds.length ? {captions} : {})};
+}
+
+/** The captionFiles option: false, true (both kinds) or a list of 'vtt' / 'srt'. */
+export function readCaptionFiles(v) {
+  if (v === false || v === undefined || v === null) return [];
+  if (v === true) return ['vtt', 'srt'];
+  if (!Array.isArray(v) || !v.length || !v.every(k => k === 'vtt' || k === 'srt') || new Set(v).size !== v.length) throw new Error(`captionFiles must be true or a list of 'vtt' and/or 'srt', not ${JSON.stringify(v)}`);
+  return v;
 }

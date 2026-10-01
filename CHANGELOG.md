@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+- **Transitions: a collection, like a video editor's** (`src/transitions.mjs`, `footprint-storyreel/transitions`):
+  a shot's `enter` names one of twelve — `cut`; dissolve `fade` · `dip` (`color`); wipe `wipe` (`from`) · `split`
+  (`line`) · `clock`; `iris` (`at`); motion `push` · `slide` · `whip` (`from`); `zoom` (`at`); `page` — each with
+  a family, a default length, ease and sound, and checked settings. Every entrance also takes `seconds`, `ease`
+  (any name in the ease table; `back` and `spring` only where the frame's edge would not show: `slide`) and
+  `sound` (a sound's name or `false`). A kit adds its own (`kit.transitions`), named in a recipe like a built-in
+  one; a kit may not take a built-in name or another kit's. One drawing contract for all:
+  `draw(ctx, {e, from, to, p, ghost, theme})` (`ghostPainter` is the see-through scratch picture the fade always
+  used, now shared). `transitionSheet({catalog})` puts any collection on one PNG (the README's picture,
+  `examples/transitions.mjs`); the studio shows it under **Transitions** (`load()` may return `kits`). `TRANSITIONS`,
+  `TRANSITION_NAMES`, `transitionCatalog`, `readEntrance`, `CUT`. The five that shipped before draw the same
+  pixels and make the same sounds (the pixel pins are unchanged). **Changed:** the refusal for an unknown
+  entrance lists the collection (`enter must be a transition: cut, fade, …`), and `at` is now a setting of
+  `iris` and `zoom` only — `{"type": "fade", "at": […]}`, accepted and ignored before, refuses.
+- **One film, every platform** (`src/layout.mjs`, `footprint-storyreel/layout`): `renderFilm({…, layout})`
+  renders the film as `landscape` 1920×1080 (YouTube, X, LinkedIn), `square` 1080×1080 (feeds), `portrait`
+  1080×1350 (Instagram and Facebook feeds) or `vertical` 1080×1920 (Shorts, Reels, TikTok): a title band
+  (`header: {title, sub?}`), captions burned in (`captions: true | {maxWords, size, box}`), and in portrait and
+  vertical a 4:3 crop that follows the action (`crop: [{at: beat, x, width?}]`, eased; `width` up to 1600 shows
+  the whole frame with paper above and below). The bands sit where the phone players leave room (in
+  vertical, title, film and captions all between y 285 and 1460: under the app's top bar, above its text,
+  the captions under the film so they never cover the picture), take the film's paper, ink and sans type
+  (`film.theme`, new) unless the layout names `background`/`ink`, and move with `box`. A layout is data:
+  unknown keys and misplaced bands refuse. Only landscape takes an `intro`. `compileLayout`, `FORMAT_NAMES`,
+  `formatOf`, `cropWindow`. The result carries `format`.
+- **Captions** (`src/captions.mjs`, `footprint-storyreel/captions`): built from the word times the film already
+  has — never a silent scene's directions. `captionChunks(film, {maxWords, maxChars, breaks})` (a chunk takes
+  one word more rather than leave a clause's last word alone); the word being said is highlighted
+  (`captionAt`, `drawCaption`); the poster shows the title band without a caption. **Caption files**: `renderFilm({…, captionFiles: true | ['vtt'|'srt']})` writes
+  `captions.vtt` / `captions.srt` beside the video on its clock (whole sentences, at most two lines of 42),
+  for players that show their own captions; `captionFile(chunks, kind, {offset, from, to})`.
+- **Motion blur** (`renderFilm({…, motionBlur: 4 | {subframes, shutter}})`): each frame the average of 2–16
+  moments over `shutter` (default half) of its time; the bands and the poster are never blurred. Without a
+  layout or motion blur a render is the same as before.
+- **`spring`** joins the ease table: a closed-form damped spring (damping 0.7), overshooting about 4% and
+  settling, exact at both ends.
+- `makeFilm` writes the version it made into `making-of.json`: `version: {format, motionBlur?, captionFiles?}`.
+  Examples: `examples/formats.mjs` (the hello film in all four formats), `examples/transitions.mjs`.
+
 - **The compile record** (`record.mjs · recordSteps`, `film.mjs · compileSteps`): `compileFilm({…, record:
   true})` runs the compile as a footprintjs flowchart of five stages — read inputs, build worlds and stages,
   guesses and notes, checks, resolve lines — each running its own segment of the existing compile (the
