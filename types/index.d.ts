@@ -105,20 +105,45 @@ export interface Film {
   pointAt(t: number, x: number, y: number): {frame: [number, number]; world?: {path: string; at: [number, number]}};
 }
 
-/** A plug-in: a story kit draws a world; stage kits add stage types. */
+/** What a story kit's compile returns: a world the engine hangs on the paper and draws at any t. */
+export interface StoryWorld {
+  hang?: number;
+  draw(ctx: any, t: number, spot: unknown): void;
+  spotAt?(t: number): {cx: number; cy: number; r: number; zoom: number; w: number} | null;
+  sounds?: SoundEvent[];
+  regionsAt?(t: number): Region[];
+  texts?(): {text: string; from: number; to: number; path: string}[];
+  /** Settles once the world can draw (e.g. its images have decoded); compileFilm waits for it before drawing recalls and before returning. */
+  ready?: Promise<unknown>;
+}
+
+/**
+ * What a story kit that declares `context: true` is compiled with (frozen). It has no way to draw the film.
+ * `library` and `labels` are the recipe's (empty until the recipe carries them).
+ */
+export interface KitContext {
+  readonly clock: Clock;
+  readonly motion: {readonly cameraSpeed: number};
+  readonly theme: Record<string, unknown>;
+  /** The film's root folder, as compileFilm got it. */
+  readonly root: string;
+  readonly library: Readonly<Record<string, unknown>>;
+  readonly labels: Readonly<Record<string, unknown>>;
+  /** The real path of a file inside root; a path outside it (a sibling folder, a link out) refuses. */
+  insideRoot(file: string): string;
+  /** A file's bytes, read only from inside root (insideRoot). */
+  readFile(file: string): Uint8Array;
+}
+
+/** A plug-in: a story kit draws a world; stage kits add stage types. A story kit on the context contract is a ContextKit. */
 export interface Kit {
   name: string;
   story?: {
     /** The motion words it follows, e.g. ['cameraSpeed'] (a speed note refuses a world whose kit lacks it). */
     motion?: string[];
-    compile(spec: any, clock: Clock, motion: {cameraSpeed: number}): {
-      hang?: number;
-      draw(ctx: any, t: number, spot: unknown): void;
-      spotAt?(t: number): {cx: number; cy: number; r: number; zoom: number; w: number} | null;
-      sounds?: SoundEvent[];
-      regionsAt?(t: number): Region[];
-      texts?(): {text: string; from: number; to: number; path: string}[];
-    };
+    /** Today's contract: compile(spec, clock, motion). `context: true` is the other contract (ContextKit). */
+    context?: false;
+    compile(spec: any, clock: Clock, motion: {cameraSpeed: number}): StoryWorld;
   };
   stages?: Record<string, {
     keys?: string[];
@@ -131,12 +156,26 @@ export interface Kit {
   }>;
 }
 
-export function compileFilm(options: {
-  storyboard: Storyboard; timings: Timings; recipe: Recipe; data?: unknown; kits?: Kit[];
+/** A kit whose story kit declares `context: true`: compiled as compile(spec, context), one frozen KitContext. */
+export interface ContextKit extends Omit<Kit, 'story'> {
+  story: {
+    motion?: string[];
+    context: true;
+    compile(spec: any, context: KitContext): StoryWorld;
+  };
+}
+
+/** compileFilm's options; `K` is the kits it takes (see the two signatures below). */
+export interface CompileFilmOptions<K = Kit | ContextKit> {
+  storyboard: Storyboard; timings: Timings; recipe: Recipe; data?: unknown; kits?: K[];
   theme?: string | Record<string, unknown>; root?: string; strings?: Record<string, string> | null;
   /** Top-level recipe keys the host application reads itself: allowed, and ignored by the engine. */
   hostKeys?: string[];
-}): Promise<Film>;
+}
+// Two signatures, so a kit written inline on today's contract keeps its contextual types (a list that
+// mixes both contracts cannot give them: TypeScript cannot tell an unmarked story kit apart from the union).
+export function compileFilm(options: CompileFilmOptions<Kit>): Promise<Film>;
+export function compileFilm(options: CompileFilmOptions<Kit | ContextKit>): Promise<Film>;
 
 /** What the two loudness passes measured and did (render.mjs · muxWithLoudness). */
 export interface Loudness {
@@ -158,11 +197,14 @@ export function renderFilm(options: {
   peakCeilingDBFS?: number; loudness?: {I: number; TP: number; LRA?: number}; ffmpeg?: string;
 }): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness}>;
 
-export function makeFilm(options: {
-  storyboard: Storyboard; recipe: Recipe; data?: unknown; kits?: Kit[]; theme?: string | Record<string, unknown>; root?: string; hostKeys?: string[];
+/** makeFilm's options; `K` is the kits it takes (two signatures, as compileFilm). */
+export interface MakeFilmOptions<K = Kit | ContextKit> {
+  storyboard: Storyboard; recipe: Recipe; data?: unknown; kits?: K[]; theme?: string | Record<string, unknown>; root?: string; hostKeys?: string[];
   narrationDir?: string | null; timings?: Timings | null; pacing?: Pacing | null; strings?: Record<string, string> | null; lang?: string | null;
   out: string; render?: Record<string, unknown>;
-}): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;
+}
+export function makeFilm(options: MakeFilmOptions<Kit>): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;
+export function makeFilm(options: MakeFilmOptions<Kit | ContextKit>): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;
 
 export function makeClock(storyboard: Storyboard, timings: Timings): Clock;
 export function evenTimings(storyboard: Storyboard, options?: {wordSeconds?: number; lead?: number; tail?: number}): Timings;

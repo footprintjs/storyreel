@@ -9,7 +9,7 @@
  * Every note carries its words (`note`) and exactly one camera word. A note the film cannot honour
  * refuses the recipe, and every note is written into the making-of record.
  */
-import {ease} from './kits/whiteboard/board.mjs';
+import {inOut as ease} from './ease.mjs';
 
 const WORDS = ['speed', 'cut', 'push'];
 const NOTE_KEYS = new Set(['note', ...WORDS]);

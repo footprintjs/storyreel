@@ -9,13 +9,15 @@
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {getStroke} from 'perfect-freehand';
+import {inOut} from '../../ease.mjs';
 
 const {GlobalFonts} = createRequire(import.meta.url)('@napi-rs/canvas');
 GlobalFonts.registerFromPath(fileURLToPath(new URL('../../../fonts/caveat/Caveat.ttf', import.meta.url)), 'Caveat');
 
 export const INK = {black: '#23262b', blue: '#1f4f9c', red: '#c0392b', green: '#1e7a4c', orange: '#c26a12', grey: '#8a8f96'};
 const clamp01 = n => Math.max(0, Math.min(1, n));
-export const ease = t => { t = clamp01(t); return t * t * (3 - 2 * t); };
+/** Slow, fast, slow: the core ease table's `inOut` (src/ease.mjs · inOut), kept under its old name. */
+export const ease = inOut;
 
 /** Deterministic noise: the same wobble on every frame (a drawing never jitters). */
 function rng(seed) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return ((s >>> 0) % 10000) / 10000; }; }

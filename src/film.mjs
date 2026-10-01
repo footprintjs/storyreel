@@ -16,8 +16,9 @@
  * See README.md for the data.
  */
 import {createCanvas} from '@napi-rs/canvas';
+import {readFileSync} from 'node:fs';
 import {insideRoot} from './files.mjs';
-import {ease} from './kits/whiteboard/board.mjs';
+import {inOut as ease} from './ease.mjs';
 import {makePen} from './pen.mjs';
 import {loadTheme} from './theme.mjs';
 import {paperGround} from './ground.mjs';
@@ -97,11 +98,49 @@ const into = (st, t, lead, seconds) => st.cut ? (t >= st.start ? 1 : 0) : ramp(t
 const aim = (ctx, c) => { ctx.translate(c.tx, c.ty); ctx.scale(c.z, c.z); ctx.translate(-c.sx, -c.sy); };
 
 /**
+ * What a story kit that declares `context: true` is compiled with: kit.compile(spec, context). Frozen,
+ * and with no way to draw the film (only the engine draws clips, and nothing can call the film while it
+ * is still being built). `library` and `labels` are the recipe's; no recipe carries them yet, so both are
+ * empty. A file the kit opens goes through `readFile`, which loads only from inside root (files.mjs ·
+ * insideRoot, as the recipe's own files do).
+ */
+function kitContext({clock, motion, theme, root}) {
+  const inside = file => insideRoot(root, file);
+  return Object.freeze({clock, motion, theme, root, library: Object.freeze({}), labels: Object.freeze({}),
+    insideRoot: inside, readFile: file => readFileSync(inside(file))});
+}
+
+/** Whether a story kit takes the context (`context: true`) or today's (spec, clock, motion). */
+function usesContext(storyKit, name) {
+  const asked = storyKit.context ?? false;
+  if (typeof asked !== 'boolean') throw new Error(`The story kit "${name}" declares context: ${JSON.stringify(asked)}; context is true (compile(spec, context)) or false / left out (compile(spec, clock, motion))`);
+  return asked;
+}
+
+/**
+ * A world's optional `ready` (a Promise: e.g. its images decoding), settled at once into
+ * {error} | null so a refusal that comes early is never an unhandled rejection while the film is built.
+ */
+function readyOf(instance, name, where) {
+  const ready = instance?.ready;
+  if (ready === undefined) return null;
+  if (typeof ready?.then !== 'function') throw new Error(`${where}: the kit "${name}" returned ready that is not a Promise; ready is optional, and when given it is a Promise that settles once the world can draw (e.g. its images have decoded)`);
+  return Promise.resolve(ready).then(() => null, error => ({error, name, where}));
+}
+
+/** Wait for every world to be ready; the first that failed refuses the film, naming the world. */
+async function readyWorlds(readies) {
+  const failed = (await Promise.all(readies)).find(Boolean);
+  if (failed) throw new Error(`${failed.where}: the kit "${failed.name}" was not ready: ${failed.error?.message ?? failed.error}`, {cause: failed.error});
+}
+
+/**
  * @param storyboard {scenes: [{id, narration, …}]}   (alias: board)
  * @param timings    {scenes: [{id, duration, words: [{text, start, end}], alignment: {status: 'available'}}]} — paced
  * @param recipe     the film's recipe (data only)
  * @param data       values the recipe quotes (e.g. a recorded run)   (alias: capture)
- * @param kits       [{name, story?: {compile(spec, clock)}, stages?: {type: impl}}] — plug-ins
+ * @param kits       [{name, story?: {compile(spec, clock, motion)} | {context: true, compile(spec, context)}, stages?: {type: impl}}]
+ *                   — plug-ins; a story world may return `ready` (a Promise), awaited before recalls and the return
  * @param theme      a theme object, or the name of a built-in theme (default 'paper')
  * @param root       directory that recipe file paths (code excerpts) are relative to (default cwd)
  * @param strings    the string table for the film's language ({key: text}), when the recipe names strings
@@ -131,13 +170,17 @@ export async function compileFilm({storyboard, board, timings, recipe, data, cap
   const stageKits = Object.fromEntries(allKits.flatMap(k => Object.entries(k.stages ?? {})));
   const stageKitNames = Object.fromEntries(allKits.flatMap(k => Object.keys(k.stages ?? {}).map(type => [type, k.name])));
   const worldKits = new Set();
+  // What a context kit gets (kitContext); every world's `ready`, settled before recalls are drawn (readyWorlds).
+  const context = kitContext({clock, motion, theme: paper, root}), readies = [];
   const compileWorld = (spec, where) => {
     const kit = storyKits[spec?.kit];
     if (!kit) throw new Error(`No story kit "${spec?.kit}" for ${where} (have: ${Object.keys(storyKits).join(', ')})`);
     // A camera speed covers EVERY camera move, so a world whose kit cannot follow it refuses the note.
     if (notes.speed !== 1 && !kit.motion?.includes('cameraSpeed')) throw new Error(`note "${notes.speedNote.note}": ${where} is drawn by the kit "${spec.kit}", which does not take a camera speed (a story kit that does lists motion: ['cameraSpeed'] and divides its camera moves' seconds by motion.cameraSpeed)`);
     worldKits.add(spec.kit);
-    return kit.compile(spec, clock, motion);
+    const instance = usesContext(kit, spec.kit) ? kit.compile(spec, context) : kit.compile(spec, clock, motion);
+    readies.push(readyOf(instance, spec.kit, where));
+    return instance;
   };
   /** A world on its sheet: hung on the paper at scale S (1 = full frame). */
   const hung = (instance, hang) => { const S = hang ?? instance.hang ?? .9; return {instance, S, BX: 1600 * (1 - S) / 2, BY: 900 * (1 - S) / 2 + 7.5 * (S < 1 ? 1 : 0)}; };
@@ -672,7 +715,9 @@ export async function compileFilm({storyboard, board, timings, recipe, data, cap
   for (const p of pushes) applied.set(p.given, {note: p.note, push: {at: p.at, zoom: p.zoom}, from: +p.a.toFixed(3), to: +p.b.toFixed(3), seconds: +p.seconds.toFixed(3)});
   const notesApplied = (recipe.notes ?? []).map(n => applied.get(n));
 
-  // Recall images: the film's own frames, reused in the recap so the viewer sees what they saw.
+  // Recall images: the film's own frames, reused in the recap so the viewer sees what they saw. Every
+  // world is ready first (its images decoded), so a recall keeps the loaded picture and so does the film.
+  await readyWorlds(readies);
   for (const [name, ref] of Object.entries(recipe.recalls ?? {})) {
     const c = createCanvas(1600, 900); frame(c.getContext('2d'), clock.at(ref)); recalls[name] = c;
   }

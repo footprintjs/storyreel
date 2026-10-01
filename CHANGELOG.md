@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **The kit context** (`film.mjs · kitContext`): a story kit that declares `context: true` is compiled as
+  `compile(spec, context)`, one frozen object `{clock, motion, theme, root, library, labels, insideRoot,
+  readFile}` (`library` and `labels` are empty until a recipe carries them). `readFile(path)` loads only from
+  inside the root folder (`files.mjs · insideRoot`: a sibling folder or a link out refuses). The context has
+  no way to draw the film. Older kits keep `compile(spec, clock, motion)`; the speed-note rule is the same for
+  both; `context` other than true/false refuses. Types: `KitContext`, `ContextKit`, `StoryWorld`;
+  `compileFilm` and `makeFilm` take both kinds of kit (two signatures, so an inline kit on today's contract
+  keeps its contextual types).
+- **Ready** (`film.mjs · readyOf`, `readyWorlds`): a world may return `ready`, a Promise (e.g. its images
+  decoding); `compileFilm` waits for every one before drawing the recipe's `recalls` and before returning. A
+  `ready` that rejects refuses the film, naming the world; one that is not a Promise refuses.
+- **One ease table** (`src/ease.mjs`, `footprint-storyreel/ease`): `EASES` = `linear in out inOut back walk
+  jump`, `easeNamed(name, where)` (an unknown name refuses, naming the eases). `inOut` is exactly the
+  whiteboard's `ease`; `kits/whiteboard/board.mjs · ease` is now that curve under its old name, and
+  `film.mjs` and `notes.mjs` read it from the table. No easing changed: the pixel pins are unchanged.
+
 - **Silent scenes with directions** (`clock.mjs · directionTimings`): a storyboard scene may carry
   `"silent": [["the door opens", 1.0], ["Mia walks to the stall", 3.0]]` in place of `narration`. The clock
   treats a direction like a spoken phrase (`["open", "the door opens"]`, with `plus`, `edge`, `nth`);

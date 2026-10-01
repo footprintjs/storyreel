@@ -403,6 +403,45 @@ not list it still draws, but a speed note on a film with one of its worlds refus
 *every* camera move). A stage kit's `compile` gets `{clock, data, motion}`, and may add
 `regions(handle, t, cardBox)` for the studio (boxes on the frame, paths relative to its stage).
 
+**The kit context.** A story kit that declares `context: true` is compiled as `compile(spec, context)`
+instead: one frozen object `{clock, motion, theme, root, library, labels, insideRoot, readFile}`. `theme`
+is the film's theme; `library` and `labels` are the recipe's (empty until a recipe carries them). Files go
+through `readFile(path)` (or `insideRoot(path)`, the real path), which loads only from inside the film's
+root folder, the same rule as the recipe's own files: a sibling folder or a link out refuses. The context
+has no way to draw the film. A kit that does not declare it keeps `compile(spec, clock, motion)`, and the
+speed-note rule above is the same for both.
+
+**Ready.** A world may return `ready`, a Promise that settles once it can draw (its images decoded).
+`compileFilm` waits for every world's `ready` before it draws the recipe's `recalls` and before it
+returns, so a recall never catches a half-loaded picture. A `ready` that rejects refuses the film, naming
+the world; a `ready` that is not a Promise refuses.
+
+```js
+import {loadImage} from '@napi-rs/canvas';
+const picturesKit = {name: 'pictures', story: {context: true,
+  compile(spec, {clock, theme, readFile}) {
+    const shown = clock.at(spec.at); let img = null;
+    const ready = loadImage(readFile(spec.src)).then(loaded => { img = loaded; });
+    return {hang: 1, ready, draw(ctx, t) {
+      ctx.fillStyle = theme.palette.bg; ctx.fillRect(0, 0, 1600, 900);
+      if (t >= shown) ctx.drawImage(img, 0, 0, 1600, 900);
+    }};
+  }}};
+// "src": "pics/stall.png" loads; "src": "../film-private/stall.png" refuses: it is outside the root folder
+```
+
+**Eases.** One table names how a change speeds up and settles (`footprint-storyreel/ease` ·
+`EASES`, `easeNamed(name, where)`): `linear`; `in` (starts slow); `out` (slows into place); `inOut` (slow,
+fast, slow: exactly the whiteboard's `ease`, which is now this curve under its old name); `back` (overshoots
+about 10% and settles); `walk` (speeds up over the first fifth, steady, slows over the last fifth); `jump`
+(no in-between: the start value until the change ends). Each takes how far through its seconds a change is
+(0..1, clamped) and returns how far the value has gone. An unknown name refuses, naming the eases:
+
+```js
+import {easeNamed} from 'footprint-storyreel/ease';
+const x = 200 + 600 * easeNamed('out')((t - start) / .4);   // easeNamed('spring') → "spring" is not an ease; the eases are linear, in, …
+```
+
 **Sounds.** `tap`, `slide`, `settle`, `question`, `chime`, `door`, `step`, `click`, `whoosh`, `crumble`:
 short, quiet and made by procedural synthesis (no samples). A kit's sound is `{time, type, gain?}`:
 
@@ -430,12 +469,13 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |
 | `directionTimings(scene, {tail?})` · `withDirections(storyboard, timings)` · `sceneText(scene)` | a silent scene's timing; a voice's timings completed with the silent scenes; a scene's text |
 | `makeClock(storyboard, timings)` | phrases → seconds |
+| `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `inOut` | the one ease table (`linear in out inOut back walk jump`) |
 | `contactSheet(film, {moments?, columns?, width?})` | a PNG of stills |
 | `frameHashes(film, {count?, width?, times?})` · `changedFrames(pinned, now)` | pixel pins |
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/pins`, `/sheet`, `/render`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/regions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/pins`, `/sheet`, `/render`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/regions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws

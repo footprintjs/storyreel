@@ -37,6 +37,10 @@
       "types": "./types/sub/pacing.d.ts",
       "default": "./src/pacing.mjs"
     },
+    "./ease": {
+      "types": "./types/sub/ease.d.ts",
+      "default": "./src/ease.mjs"
+    },
     "./sound": "./src/sound.mjs",
     "./pen": "./src/pen.mjs",
     "./theme": {
