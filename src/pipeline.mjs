@@ -41,8 +41,19 @@ const TOOLS = () => [
 export function loudnessRecord(loudness) {
   if (loudness.type === 'linear') return loudness;
   const flag = loudness.type === 'skipped' ? `not normalised: ${loudness.reason}`
-    : `normalised "${loudness.type}", not "linear": loudnorm varied the gain (the true-peak limit, a film under 3 s, or a measured range above the LRA you set blocks one fixed gain), so quiet moments may be raised`;
+    : `normalised "${loudness.type}", not "linear": loudnorm varied the gain (the true-peak limit, a film under 3 s, or a measured range above the LRA you set blocks one fixed gain), so quiet moments may be raised${peakAdvice(loudness)}`;
   return {...loudness, flag};
+}
+
+/**
+ * When the true-peak limit is what blocked one fixed gain, the target that one gain can reach: the gain
+ * lifts the loudest peak by as much as it lifts the loudness, so I can rise at most to I + (TP limit − peak).
+ */
+function peakAdvice({target, measured}) {
+  const {I, TP} = measured ?? {};
+  if (![I, TP, target?.I, target?.TP].every(Number.isFinite)) return '';
+  const reach = Math.floor((I + target.TP - TP) * 10) / 10;
+  return reach < target.I ? `; here the loudest peak (${TP} dBTP) reaches the ${target.TP} dBTP limit at I = ${reach} LUFS — ask for loudness I ${reach} or lower to keep one fixed gain` : '';
 }
 const sha = text => createHash('sha256').update(text).digest('hex').slice(0, 16);
 

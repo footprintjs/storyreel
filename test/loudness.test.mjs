@@ -79,6 +79,10 @@ test('the making-of record flags every type that is not linear, and names why', 
   const measured = {I: -20, TP: -3, LRA: 4, thresh: -30, offset: 0}, target = {I: -16, TP: -1.5};
   assert.deepEqual(loudnessRecord({type: 'linear', target, measured}), {type: 'linear', target, measured});
   assert.match(loudnessRecord({type: 'dynamic', target, measured}).flag, /normalised "dynamic", not "linear".*the LRA you set.*quiet moments may be raised/);
+  // When the peak is what blocked one gain, the record names the loudest target one gain can reach.
+  const peaky = loudnessRecord({type: 'dynamic', target: {I: -18, TP: -1.5}, measured: {I: -19.98, TP: -2.93, LRA: 14.7, thresh: -31.5, offset: -.3}});
+  assert.match(peaky.flag, /the loudest peak \(-2.93 dBTP\) reaches the -1.5 dBTP limit at I = -18.6 LUFS — ask for loudness I -18.6 or lower to keep one fixed gain/);
+  assert.doesNotMatch(loudnessRecord({type: 'dynamic', target: {I: -20, TP: -1.5}, measured: {I: -19.98, TP: -2.93, LRA: 30, thresh: -31.5, offset: 0}}).flag, /ask for loudness/, 'no advice when the peak is not the cause');
   assert.match(loudnessRecord({type: 'skipped', target, measured: {...measured, I: null}, reason: 'the audio is silent'}).flag, /^not normalised: the audio is silent/);
 });
 

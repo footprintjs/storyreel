@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **The loudness flag says what to ask for** (`pipeline.mjs · loudnessRecord`): when one fixed gain was
+  blocked by the true-peak limit, the making-of record's flag names the loudest target one gain can reach
+  here (`I + (TP limit − measured peak)`, rounded down): "ask for loudness I -18.6 or lower to keep one fixed
+  gain". No advice when the peak was not the cause.
 - **Characters that talk** (`clock.mjs · makeClock`): a storyboard scene may name its `speaker` (`"speaker":
   "robot"`: a word; anything else refuses). The clock — the one a story kit is compiled with — answers
   `clock.speaking(t)`: `{scene, speaker, word, start, end}` while a word is being said, `null` between words

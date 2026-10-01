@@ -376,7 +376,9 @@ also needs its own narration; the recipe's phrases are its English cues for now.
   `dynamic` (loudnorm varied the gain: the true-peak limit, a film under 3 s, or a measured range above an
   `LRA` you set still blocks one gain) or `skipped` (nothing usable to measure, so the sound is left as it
   is: `reason` says "the audio is silent" for pure silence — a render of only a silent opening works —
-  or names the fields FFmpeg left unread). A perfectly steady sound measures a range of exactly 0, which
+  or names the fields FFmpeg left unread). When the true-peak limit is what blocked one gain, the record says
+  how loud one gain can go (`… reaches the -1.5 dBTP limit at I = -18.6 LUFS — ask for loudness I -18.6 or
+  lower to keep one fixed gain`). A perfectly steady sound measures a range of exactly 0, which
   FFmpeg reads as "not measured"; it is sent as 0.1 and `measured` keeps the 0. The making-of record keeps
   it all and **flags every type that is not `linear`**:
   ```json
