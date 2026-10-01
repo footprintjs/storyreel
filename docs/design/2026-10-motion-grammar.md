@@ -741,7 +741,7 @@ When `carry` lands, the same `carry` name in two beats becomes a FLIP morph in t
 
 ## 12. Rollout
 
-Open question 1 (screenshots) is answered **before phase 0**, because phase 0 ships image loading and phase 1d ships callouts.
+Decision 1 (screenshots are in scope as evidence) is recorded in section 13; phase 0a writes it into the README.
 
 Each phase lands with its rules written into the section's README, pinned tests, and a small public example with invented content.
 
@@ -770,16 +770,18 @@ Each phase lands with its rules written into the section's README, pinned tests,
 - masks made of any drawing (with a benchmark);
 - a browser pen for storydeck (with pixel parity).
 
-## 13. Open questions for the owner
+## 13. Decisions (the owner delegated them, 2026-09-30)
 
-1. **Screenshots.** The README leaves out "polished UI shots", but three devices use screenshots. Proposed wording: "a screenshot shown as evidence in a teaching film is in scope; marketing polish is not." This is needed **before phase 0**.
-2. **Text inside a replay.** The default is to treat it as picture: it is reported, not refused. Should it instead be checked for reading time and for size on screen?
-3. **Smallest text.** What is the minimum size for text on screen after zoom? The proposal is 20 px on the 1600×900 frame.
-4. **Studio saving.** May the studio save edits to the film's files, under the rules in section 8?
-5. **celebrate.** Should "at most one per part" be a hard refusal, or advice in the making-of record?
-6. **The later list.** Is there anything on it you want sooner?
+Each decision favours what keeps the library general and lets a film choose, over a fixed rule of taste.
 
-Decided since the first draft: a speed note moves keys that are chained to a camera move along with that move, and the making-of record reports them (section 6).
+| # | question | decision | why |
+|---|---|---|---|
+| 1 | screenshots | **In scope.** A screenshot shown as evidence in a teaching film (a real screen, a real result) belongs here; marketing polish (launch videos, brand campaigns) does not. The README's backlog wording changes in phase 0a. | three devices need it, and "show the real thing" is the honesty law, not marketing |
+| 2 | text inside a replay | **Reported, not refused**, by default. A film may set `"reading": "refuse"` and then clip text is checked like any other text. | a replay shows what the viewer already read; a film that wants it strict can say so |
+| 3 | smallest text on screen | **20 px on the 1600×900 frame after every scale and zoom** (24 px at 1080p), as a film setting `minTextPx` with that default. Below it: reported; with `"reading": "refuse"`: refused. | readable on a phone; a vertical teaser can set its own number |
+| 4 | studio saving | **Yes, later and opt-in**: the studio stays read-only by default; `--write` turns on saving under the round-trip rules (section 8), only to the film's own files, every edit compiled before it is saved, local only. | the editor is the point of the grammar, but writing files must be a choice the author makes |
+| 5 | celebrate once per part | **Advice, not a refusal**: the making-of record notes a second celebration in a part. | taste belongs to the film; the library refuses only what breaks a law |
+| 6 | the later list | **Nothing moves sooner.** Each later item lands when a device or a real film needs it, with that film as its first test. | the grammar grows from use, never ahead of it |
 
 ## 14. footprintjs: the record, debugging, and the AI helper
 
