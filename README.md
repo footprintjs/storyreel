@@ -75,7 +75,8 @@ console.log(result.out, result.makingOf);         // the film, and making-of.jso
 ```
 
 From a clone of the package: `node examples/hello/make.mjs`, `node examples/shepherd/make.mjs`
-(the cartoon kit), `node examples/worlds/make.mjs` (worlds as shots, a pause-and-guess, a string table).
+(the cartoon kit), `node examples/worlds/make.mjs` (worlds as shots, a pause-and-guess, a string table),
+`node examples/recap/make.mjs` (a recap of the film's own frames and a teaser for the next film).
 
 **See it before you render it:** `node examples/studio.mjs hello` opens the preview studio (below).
 
@@ -114,6 +115,29 @@ A phrase that is not in the narration refuses the recipe.
   `glows` that link a code line to a card row, `footer`), `api` (code + a list of values read
   from `data`), `recap` (the film's own frames on a story strip, then an optional `teaser`),
   `summary` (cards), `world` (below). Any stage takes `chrome: false` to drop its chip and title.
+- **Files stay inside `root`.** A file the recipe names (a code excerpt today; pictures next) loads only
+  from inside the film's root folder (the `root` option, default the working folder). The check uses
+  real paths, so `../film-private/x.ts` (a sibling folder whose name begins like the root) and a
+  symbolic link that leads out of the folder are both refused, with a message naming the fix:
+  `"code": {"file": "code/rule.ts"}` loads; `"code": {"file": "../film-private/rule.ts"}` refuses.
+
+### A recap and a teaser
+
+`recalls` keep frames of the film itself (a phrase names the moment); a `recap` stage lays them on a
+story strip and hops between them as the voice names each one, and its `teaser` fills the screen with one
+of them, stamps the next question, rewinds the story fast and brings in the next film's title. The
+teaser runs to the film's end, so the last scene needs about 6.5 s after `teaser.at`
+(`examples/recap`, pinned in `test/golden.json`):
+
+```json
+"recalls": {"stall": ["story", "from a small stall", 1.6], "total": ["story", "twelve sales", 0.8]},
+"stages": [{"type": "recap", "scene": "recap", "chip": "RECAP", "title": "What we saw",
+  "frames": [{"recall": "stall", "caption": "A stall"}, {"recall": "total", "caption": "Twelve sales"}],
+  "keys": [{"at": ["recap", "A small stall"], "f": 0}, {"at": ["recap", "Twelve sales"], "f": 1}],
+  "teaser": {"at": ["recap", "where did the lemons go"], "recall": "total", "stamp": "AND THE LEMONS?",
+    "rewind": {"from": ["story", "Twelve cups"], "to": ["story", "Mia sells lemonade"]},
+    "next": {"chip": "NEXT FILM", "title": "Where did the lemons go?", "sub": "a ledger that does not add up"}}}]
+```
 
 ### Signs that tie the story to the code
 
@@ -223,9 +247,14 @@ also needs its own narration; the recipe's phrases are its English cues for now.
 - **A poster.** `"poster": ["summary", "What to keep", 1]` names the film's best settled frame. The
   renderer writes it beside the video (`poster.jpg`) and makes it the video's first frame, so every
   platform's thumbnail shows it; the length and the sound's sync do not change.
-- **Pixel pins.** `frameHashes(film)` hashes frames across the film; store them beside a test and compare
-  with `changedFrames(pinned, now)`. Hashes depend on the machine's fonts: record them again on a new
-  machine, and otherwise only for a change you meant.
+- **Pixel pins.** `frameHashes(film)` hashes frames at 24 evenly spaced moments; store them beside a test
+  and compare with `changedFrames(pinned, now)`. `frameHashes(film, {times})` hashes the moments you
+  name instead (seconds inside the film, each rounded to the millisecond and used as its key), so a short
+  pop that even spacing would miss can be pinned: `frameHashes(film, {times: film.moments().map(m => m.t)})`.
+  Hashes depend on the machine's fonts: record them again on a new machine, and otherwise only for a
+  change you meant. This package also pins, for every example film, what its pixels never show —
+  `film.reading`, `film.moments()` and the refusal a push note gets across each change of picture
+  (`test/behaviour.json`; `node test/behaviour.mjs --write` re-records it, only for a change you meant).
 - **The making-of record** (`making-of.json`, written by `makeFilm`): every phrase → the recipe entry it
   triggered and when, the director's notes as applied, the lines too short to read, the pacing, the
   poster, the tools and versions — the film's own footprintjs run.
@@ -320,7 +349,7 @@ Sound accents: `tap`, `slide`, `settle`, `question`, `chime` (procedural, no sam
 | `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |
 | `makeClock(storyboard, timings)` | phrases → seconds |
 | `contactSheet(film, {moments?, columns?, width?})` | a PNG of stills |
-| `frameHashes(film)` · `changedFrames(pinned, now)` | pixel pins |
+| `frameHashes(film, {count?, width?, times?})` · `changedFrames(pinned, now)` | pixel pins |
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
@@ -332,7 +361,7 @@ TypeScript types ship with the package: the main entry, `/studio`, and the docum
 1. **Data only.** A recipe names shapes, phrases and numbers; an unknown key refuses. Nothing in a recipe runs.
 2. **Phrases, not seconds.** Pictures follow the voice; change the voice and the film follows.
 3. **Pure function of time.** `frame(ctx, t)` draws any moment in any order, the same way every time.
-4. **Every frame restores the canvas** (no leaked alpha or transform).
+4. **Every frame restores the canvas**: no leaked transform, alpha, compositing, shadow, filter or clip (the test fills the whole frame after each one and reads its corners).
 5. **One focal point at a time**: speech is a bubble, data is a pill, the old stage leaves before the new one arrives, one camera move at a time.
 6. **Long enough to read.** A line meant to be read stays up about 0.3 s a word.
 7. **Notes change the camera, never the beats.** Every note says what was asked; one the film cannot honour refuses.
@@ -341,8 +370,10 @@ TypeScript types ship with the package: the main entry, `/studio`, and the docum
 
 ## Not in this package
 
-StoryReel is for teaching and story films. **Product advertisements** — launch videos, brand
-campaigns, polished UI shots, HTML scenes — are left out on purpose; a launch-video tool such as
+StoryReel is for teaching and story films. **Screenshots shown as evidence are in scope**: a real
+screen or a real result, shown so the viewer sees the actual thing a lesson is about, is the honesty law
+at work, not marketing. **Marketing polish is not**: launch videos, brand campaigns and polished product
+shots are left out on purpose; a launch-video tool such as
 [`/brag`](https://github.com/latent-spaces/brag) (a Claude Code skill, MIT) fits better. What comes
 next here — recipe kinds, a library explainer generated from a repository, vertical teasers — is in
 [BACKLOG.md](BACKLOG.md).

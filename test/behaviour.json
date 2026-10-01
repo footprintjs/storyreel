@@ -1,0 +1,330 @@
+{
+ "hello": {
+  "reading": [],
+  "moments": [
+   {
+    "t": 7.881,
+    "kind": "settled",
+    "label": "Long ago"
+   },
+   {
+    "t": 17.756,
+    "kind": "moving",
+    "label": "mid the push-in"
+   },
+   {
+    "t": 25.765,
+    "kind": "settled",
+    "label": "The rule"
+   }
+  ],
+  "pushes": [
+   {
+    "across": "mid the push-in",
+    "at": 17.756,
+    "from": {
+     "scene": "story",
+     "phrase": "home.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "rule",
+     "phrase": "One",
+     "nth": 0
+    },
+    "says": "note \"push across mid the push-in\": the push runs from 15.12 s to 20.80 s, across the push-in (15.76 s); a push stays on one picture"
+   },
+   {
+    "across": "start of rule",
+    "at": 19.5,
+    "from": {
+     "scene": "story",
+     "phrase": "home.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "rule",
+     "phrase": "One",
+     "nth": 0
+    },
+    "says": "note \"push across start of rule\": the push runs from 15.12 s to 20.80 s, across the push-in (15.76 s); a push stays on one picture"
+   }
+  ]
+ },
+ "shepherd": {
+  "reading": [],
+  "moments": [
+   {
+    "t": 10.26,
+    "kind": "settled",
+    "label": "Morning"
+   },
+   {
+    "t": 27.93,
+    "kind": "settled",
+    "label": "Evening"
+   }
+  ],
+  "pushes": [
+   {
+    "across": "start of evening",
+    "at": 20.52,
+    "from": {
+     "scene": "morning",
+     "phrase": "pebble.",
+     "nth": 1
+    },
+    "to": {
+     "scene": "evening",
+     "phrase": "Each",
+     "nth": 0
+    },
+    "says": "accepted"
+   }
+  ]
+ },
+ "worlds": {
+  "reading": [],
+  "moments": [
+   {
+    "t": 3.271,
+    "kind": "settled",
+    "label": "The board"
+   },
+   {
+    "t": 6.942,
+    "kind": "moving",
+    "label": "mid the fade into valley"
+   },
+   {
+    "t": 15.063,
+    "kind": "settled",
+    "label": "The valley"
+   },
+   {
+    "t": 23.184,
+    "kind": "moving",
+    "label": "mid the wipe into rule"
+   },
+   {
+    "t": 26.565,
+    "kind": "settled",
+    "label": "The rule"
+   },
+   {
+    "t": 29.946,
+    "kind": "moving",
+    "label": "mid the iris into again"
+   },
+   {
+    "t": 32.867,
+    "kind": "settled",
+    "label": "Back to the board"
+   }
+  ],
+  "pushes": [
+   {
+    "across": "mid the fade into valley",
+    "at": 6.942,
+    "from": {
+     "scene": "board",
+     "phrase": "ago.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "valley",
+     "phrase": "Now",
+     "nth": 0
+    },
+    "says": "note \"push across mid the fade into valley\": the push runs from 6.00 s to 8.44 s, across the fade into valley (6.54 s); a push stays on one picture"
+   },
+   {
+    "across": "start of valley",
+    "at": 7.142,
+    "from": {
+     "scene": "board",
+     "phrase": "ago.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "valley",
+     "phrase": "Now",
+     "nth": 0
+    },
+    "says": "note \"push across start of valley\": the push runs from 6.00 s to 8.44 s, across the fade into valley (6.54 s); a push stays on one picture"
+   },
+   {
+    "across": "mid the wipe into rule",
+    "at": 23.184,
+    "from": {
+     "scene": "valley",
+     "phrase": "home.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "rule",
+     "phrase": "Here",
+     "nth": 0
+    },
+    "says": "note \"push across mid the wipe into rule\": the push runs from 21.84 s to 24.68 s, across the wipe into rule (22.78 s); a push stays on one picture"
+   },
+   {
+    "across": "start of rule",
+    "at": 23.384,
+    "from": {
+     "scene": "valley",
+     "phrase": "home.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "rule",
+     "phrase": "Here",
+     "nth": 0
+    },
+    "says": "note \"push across start of rule\": the push runs from 21.84 s to 24.68 s, across the wipe into rule (22.78 s); a push stays on one picture"
+   },
+   {
+    "across": "mid the iris into again",
+    "at": 29.946,
+    "from": {
+     "scene": "rule",
+     "phrase": "out.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "again",
+     "phrase": "Back",
+     "nth": 0
+    },
+    "says": "note \"push across mid the iris into again\": the push runs from 29.00 s to 31.45 s, across the iris into again (29.55 s); a push stays on one picture"
+   },
+   {
+    "across": "start of again",
+    "at": 30.146,
+    "from": {
+     "scene": "rule",
+     "phrase": "out.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "again",
+     "phrase": "Back",
+     "nth": 0
+    },
+    "says": "note \"push across start of again\": the push runs from 29.00 s to 31.45 s, across the iris into again (29.55 s); a push stays on one picture"
+   }
+  ]
+ },
+ "recap": {
+  "reading": [],
+  "moments": [
+   {
+    "t": 7.23,
+    "kind": "settled",
+    "label": "The stall"
+   },
+   {
+    "t": 14.86,
+    "kind": "moving",
+    "label": "mid the fade into code"
+   },
+   {
+    "t": 19.705,
+    "kind": "settled",
+    "label": "The tally"
+   },
+   {
+    "t": 24.975,
+    "kind": "moving",
+    "label": "mid the hand-over to recap"
+   },
+   {
+    "t": 34.61,
+    "kind": "settled",
+    "label": "What we saw"
+   },
+   {
+    "t": 41.03,
+    "kind": "moving",
+    "label": "mid the teaser"
+   }
+  ],
+  "pushes": [
+   {
+    "across": "mid the fade into code",
+    "at": 14.86,
+    "from": {
+     "scene": "story",
+     "phrase": "sales.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "code",
+     "phrase": "The",
+     "nth": 0
+    },
+    "says": "note \"push across mid the fade into code\": the push runs from 12.08 s to 16.36 s, across the fade into code (14.46 s); a push stays on one picture"
+   },
+   {
+    "across": "start of code",
+    "at": 15.06,
+    "from": {
+     "scene": "story",
+     "phrase": "sales.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "code",
+     "phrase": "The",
+     "nth": 0
+    },
+    "says": "note \"push across start of code\": the push runs from 12.08 s to 16.36 s, across the fade into code (14.46 s); a push stays on one picture"
+   },
+   {
+    "across": "start of recap",
+    "at": 24.8,
+    "from": {
+     "scene": "code",
+     "phrase": "list.",
+     "nth": 1
+    },
+    "to": {
+     "scene": "recap",
+     "phrase": "So",
+     "nth": 0
+    },
+    "says": "note \"push across start of recap\": the push runs from 21.82 s to 26.10 s, across the hand-over to recap (24.15 s); a push stays on one picture"
+   },
+   {
+    "across": "mid the hand-over to recap",
+    "at": 24.975,
+    "from": {
+     "scene": "code",
+     "phrase": "list.",
+     "nth": 1
+    },
+    "to": {
+     "scene": "recap",
+     "phrase": "So",
+     "nth": 0
+    },
+    "says": "note \"push across mid the hand-over to recap\": the push runs from 21.82 s to 26.10 s, across the hand-over to recap (24.15 s); a push stays on one picture"
+   },
+   {
+    "across": "mid the teaser",
+    "at": 41.03,
+    "from": {
+     "scene": "recap",
+     "phrase": "not",
+     "nth": 0
+    },
+    "to": {
+     "scene": "recap",
+     "phrase": "add",
+     "nth": 0
+    },
+    "says": "note \"push across mid the teaser\": the push runs from 40.68 s to 42.06 s, across the teaser (37.64 s); a push stays on one picture"
+   }
+  ]
+ }
+}

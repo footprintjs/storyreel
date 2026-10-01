@@ -15,8 +15,8 @@
  * Director notes (notes.mjs) lay camera words over the film: a camera speed, cuts, pushes.
  * See README.md for the data.
  */
-import path from 'node:path';
 import {createCanvas} from '@napi-rs/canvas';
+import {insideRoot} from './files.mjs';
 import {ease} from './kits/whiteboard/board.mjs';
 import {makePen} from './pen.mjs';
 import {loadTheme} from './theme.mjs';
@@ -95,7 +95,8 @@ export async function compileFilm({storyboard, board, timings, recipe, data, cap
     at: ref => { const t = base.at(ref); beats.push({ref, t: +t.toFixed(3), path: entries.get(ref) ?? null}); return t; },
     pauseAfter: ref => { const p = base.pauseAfter(ref); beats.push({ref, t: +p.start.toFixed(3), path: entries.get(ref) ?? null}); return p; }};
   const paper = typeof theme === 'object' && theme ? theme : loadTheme(theme ?? recipe.paperStyle ?? 'paper');
-  const within = file => { const abs = path.resolve(root, file); if (!abs.startsWith(path.resolve(root))) throw new Error(`${file} is outside ${root}`); return abs; };
+  // Files the recipe names load only from inside root (files.mjs · insideRoot: real paths, so no link leads out).
+  const within = file => insideRoot(root, file);
   const allKits = [whiteboardKit, ...kits];
   const storyKits = Object.fromEntries(allKits.filter(k => k.story).map(k => [k.name, k.story]));
   const stageKits = Object.fromEntries(allKits.flatMap(k => Object.entries(k.stages ?? {})));

@@ -1,5 +1,5 @@
 // Checked by test/types.test.mjs with tsc: what the types accept, and what they refuse.
-import type {Recipe, DirectorNote, Film, Kit} from '../types/index.js';
+import type {Recipe, DirectorNote, Film, Kit, frameHashes} from '../types/index.js';
 import type {startStudio} from '../types/studio.js';
 
 const notes: DirectorNote[] = [
@@ -11,11 +11,14 @@ export const recipe: Recipe = {story: {kit: 'whiteboard', items: []}, notes, rea
 export const kit: Kit = {name: 'plain', story: {motion: ['cameraSpeed'], compile: () => ({hang: 1, draw: () => {}})}};
 export const seconds = (film: Film): number => film.total + film.moments().length + film.reading.length;
 export type Studio = typeof startStudio;
+export const atMoments = (film: Film, hash: typeof frameHashes) => hash(film, {times: film.moments().map(m => m.t), width: 320});
 
 // @ts-expect-error a note needs its words
 export const noWords: DirectorNote = {cut: 'inside'};
 // @ts-expect-error reading is 'report' or 'refuse'
 export const strict: Recipe = {reading: 'strict'};
+// @ts-expect-error frameHashes times are seconds, not labels
+export const labelTimes = (film: Film, hash: typeof frameHashes) => hash(film, {times: ['settled']});
 // @ts-expect-error a push needs from and to
 export const halfPush: DirectorNote = {note: 'push', push: {at: [1, 2]}};
 

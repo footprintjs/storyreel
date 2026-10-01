@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- **Files stay inside `root`, for real.** The root-folder check (`files.mjs · insideRoot`) compares real
+  paths with `path.relative`: a sibling folder whose name begins like the root (`../film-private/x.ts`
+  with root `/x/film`, which the old prefix check let through) and a symbolic link that leads out of the
+  folder are refused, with a message that names the fix.
+- **`frameHashes(film, {times})`** hashes the moments you name (seconds inside the film) instead of 24
+  evenly spaced ones; anything else refuses.
+- **Safety pins for the motion grammar's refactors** (no film draws a different pixel):
+  - a new example, `examples/recap` (a recap strip of the film's own frames and a teaser), pinned in
+    `test/golden.json` — nothing pinned the teaser before;
+  - behaviour pins (`test/behaviour.json`): for every example film, `film.reading`, `film.moments()` and
+    the refusal a push note gets across each change of picture;
+  - the restore test runs on every example film and also checks compositing, shadow, filter and a
+    leaked clip (a full-frame fill must reach the corners).
+- README: screenshots shown as evidence are in scope; marketing polish is not.
+- Code is tokenized with no time limit (`kits/paper/code.mjs · tokenize`): Shiki's 500 ms per-line
+  limit made a busy machine tokenize the same code differently, or throw (`startIndex` of undefined).
+
 ## 0.2.0 — first release for other projects
 
 - **Director notes** (`recipe.notes`): `speed` (every camera move), `cut` (a scene starts on a hard cut;

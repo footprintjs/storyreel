@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * The preview studio on an example film: scrub it, play it, click a drawing to see its recipe entry.
- *   node examples/studio.mjs [hello|worlds|shepherd]      then open the address it prints
+ *   node examples/studio.mjs [hello|worlds|shepherd|recap]      then open the address it prints
  * Edit the example's recipe.json while it runs: the film is compiled again (a refusal is shown, and
  * the last good film stays). Local only; Ctrl+C stops it.
  */
@@ -15,6 +15,7 @@ const FILMS = {
   hello: {tail: 4, kits: []},
   shepherd: {tail: 3.5, kits: [cartoonKit]},
   worlds: {tail: .8, kits: [cartoonKit], pacing: 'pacing.json', strings: 'strings/en.json'},
+  recap: {tail: 2.6, kits: []},
 };
 const name = process.argv[2] ?? 'hello', how = FILMS[name];
 if (!how) { console.error(`Usage: node examples/studio.mjs [${Object.keys(FILMS).join('|')}]`); process.exit(1); }

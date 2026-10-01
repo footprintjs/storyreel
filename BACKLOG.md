@@ -29,7 +29,12 @@ name the **kind** of film a recipe is, so each kind brings its own defaults, che
 - A silent render of only the first seconds of a film fails at the loudness pass (FFmpeg `loudnorm` on
   pure silence); full-length renders work.
 
-## Still not in this package
+## In scope, and still not in this package
 
-Product advertisements (launch videos, sales funnels, polished UI shots, HTML scenes) — use a
-launch-video tool such as `/brag`. An `explainer` teaches what a library does; it does not sell it.
+**In scope:** a screenshot shown as evidence in a teaching film — a real screen, a real result — so the
+viewer sees the actual thing (motion grammar, decision 1; the picture symbol loads it from inside the
+film's root folder).
+
+**Still not in this package:** marketing polish — launch videos, brand campaigns, sales funnels,
+polished product shots, HTML scenes. Use a launch-video tool such as `/brag`. An `explainer` teaches
+what a library does; it does not sell it.

@@ -1,0 +1,53 @@
+{
+  "story": {
+    "kit": "whiteboard",
+    "defaultErase": null,
+    "erasers": {},
+    "items": [
+      {"at": ["story", "Mia sells lemonade"], "dur": 1.2, "draw": [["figure", 300, 620, 1.1]], "seed": 1},
+      {"at": ["story", "from a small stall"], "dur": 1.0, "draw": [["rect", 520, 420, 420, 300], ["line", 500, 420, 960, 420]], "seed": 2},
+      {"at": ["story", "from a small stall", 0.6], "dur": 0.8, "write": "LEMONADE", "x": 730, "y": 380, "size": 44, "align": "center", "color": "orange"},
+      {"at": ["story", "she puts one cup on the shelf"], "dur": 0.8, "draw": [["line", 1100, 640, 1480, 640]], "seed": 3},
+      {"at": ["story", "she puts one cup on the shelf", 0.6], "dur": 0.4, "draw": [["rect", 1120, 580, 36, 56]], "color": "blue", "seed": 4},
+      {"at": ["story", "she puts one cup on the shelf", 1.0], "dur": 0.4, "draw": [["rect", 1180, 580, 36, 56]], "color": "blue", "seed": 5},
+      {"at": ["story", "she puts one cup on the shelf", 1.4], "dur": 0.4, "draw": [["rect", 1240, 580, 36, 56]], "color": "blue", "seed": 6},
+      {"at": ["story", "she counts the cups"], "dur": 0.9, "write": "1, 2, 3 …", "x": 1290, "y": 520, "size": 40, "align": "center", "color": "red"},
+      {"at": ["story", "Twelve cups, twelve sales"], "eureka": [1290, 340]}
+    ],
+    "spots": []
+  },
+  "stages": [
+    {"type": "code", "scene": "code", "chip": "THE TALLY", "title": "The shelf is a list", "file": "tally.ts", "label": "TYPESCRIPT",
+     "code": {"file": "tally.ts"},
+     "reveal": [[0, ["code", "The shelf is a list"]], [1, ["code", "Each sale pushes one cup"]], [2, ["code", "The count is"]]],
+     "footer": {"text": "A list counts itself.", "at": ["code", "the length of the list"]}},
+    {"type": "recap", "scene": "recap", "chip": "RECAP", "title": "What we saw",
+     "frames": [
+       {"recall": "stall", "caption": "A stall"},
+       {"recall": "shelf", "caption": "A cup per sale"},
+       {"recall": "dusk", "caption": "Count at dusk"},
+       {"recall": "list", "caption": "A list"},
+       {"recall": "count", "caption": "Its length"},
+       {"recall": "total", "caption": "Twelve sales"}
+     ],
+     "keys": [
+       {"at": ["recap", "A small stall"], "f": 0},
+       {"at": ["recap", "A cup on the shelf"], "f": 1},
+       {"at": ["recap", "Counting at dusk"], "f": 2},
+       {"at": ["recap", "The shelf as a list"], "f": 3},
+       {"at": ["recap", "Its length is the count"], "f": 4},
+       {"at": ["recap", "Twelve sales"], "f": 5}
+     ],
+     "teaser": {"at": ["recap", "where did the lemons go"], "recall": "total", "stamp": "AND THE LEMONS?",
+       "rewind": {"from": ["story", "Twelve cups"], "to": ["story", "Mia sells lemonade"]},
+       "next": {"chip": "NEXT FILM", "title": "Where did the lemons go?", "sub": "a ledger that does not add up"}}}
+  ],
+  "recalls": {
+    "stall": ["story", "from a small stall", 1.6],
+    "shelf": ["story", "she puts one cup on the shelf", 2.0],
+    "dusk": ["story", "she counts the cups", 1.2],
+    "list": ["code", "Each sale pushes one cup", 1.0],
+    "count": ["code", "the length of the list", 1.2],
+    "total": ["story", "twelve sales", 0.8]
+  }
+}

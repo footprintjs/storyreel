@@ -145,6 +145,7 @@ export function loadTheme(name?: string): Record<string, unknown>;
 export function validateTheme(theme: unknown): void;
 export const whiteboardKit: Kit;
 export const cartoonKit: Kit;
-export function frameHashes(film: Film, options?: {count?: number; width?: number}): Record<string, string>;
+/** Hashes at `count` evenly spaced moments (default 24), or at the given `times` (seconds, rounded to the millisecond). */
+export function frameHashes(film: Film, options?: {count?: number; width?: number; times?: number[]}): Record<string, string>;
 export function changedFrames(pinned: Record<string, string>, now: Record<string, string>): string[];
 export function contactSheet(film: Film, options?: {moments?: {t: number; label: string; kind?: string}[]; columns?: number; width?: number}): Promise<Uint8Array>;

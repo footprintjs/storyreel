@@ -8,17 +8,20 @@ import {compileFilm, evenTimings, paceTimings, cartoonKit, frameHashes} from '..
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 /** How each example is compiled: its word times (silent), kits, pacing and strings. */
-const FILMS = {
+export const FILMS = {
   hello: {tail: 4, kits: []},
   shepherd: {tail: 3.5, kits: [cartoonKit]},
   worlds: {tail: .8, kits: [cartoonKit], pacing: 'pacing.json', strings: 'strings/en.json'},
+  // A recap strip of the film's own frames (recalls) and a teaser: the tail leaves the teaser room to reach the next title.
+  recap: {tail: 2.6, kits: []},
 };
 
-export async function compileExample(name) {
+/** An example compiled as pinned; `recipe` replaces its recipe (e.g. one with an extra note). */
+export async function compileExample(name, {recipe} = {}) {
   const {tail, kits, pacing, strings} = FILMS[name], dir = fileURLToPath(new URL(`../examples/${name}/`, import.meta.url));
   const read = file => JSON.parse(readFileSync(dir + file, 'utf8')), storyboard = read('storyboard.json');
   const even = evenTimings(storyboard, {tail}), timings = pacing ? paceTimings(storyboard, even, read(pacing)) : even;
-  return compileFilm({storyboard, timings, recipe: read('recipe.json'), kits, root: dir, strings: strings ? read(strings) : null});
+  return compileFilm({storyboard, timings, recipe: recipe ?? read('recipe.json'), kits, root: dir, strings: strings ? read(strings) : null});
 }
 
 export async function hashFilms() {
@@ -27,7 +30,8 @@ export async function hashFilms() {
   return out;
 }
 
-if (process.argv.includes('--write')) {
+// Only when run as the script itself: a module that imports this one (behaviour.mjs) may take --write too.
+if (process.argv[1] === fileURLToPath(import.meta.url) && process.argv.includes('--write')) {
   writeFileSync(here + 'golden.json', JSON.stringify(await hashFilms(), null, 1) + '\n');
   console.log('pinned', here + 'golden.json');
 }

@@ -30,11 +30,33 @@ test('a film is a pure function of time: the same moment draws the same pixels, 
   assert.deepEqual(forward, backward);
 });
 
-test('every frame restores the canvas (no leaked alpha or transform)', () => {
-  const c = createCanvas(160, 90), x = c.getContext('2d');
-  for (let t = 0; t < film.total; t += film.total / 30) {
-    x.resetTransform(); x.scale(.1, .1); film.frame(x, t);
-    const m = x.getTransform(); assert.ok(Math.abs(m.a - .1) < 1e-6 && Math.abs(m.d - .1) < 1e-6 && m.b === 0 && m.c === 0 && m.e === 0 && m.f === 0, `transform leaked at ${t}`); assert.equal(x.globalAlpha, 1, `alpha leaked at ${t}`);
+/**
+ * Law 4, every frame restores the canvas: after each frame the transform, alpha, compositing, shadow and
+ * filter are as they were, and a fill of the whole frame reaches its corners (a leaked clip would show there).
+ */
+const FILL = [18, 52, 86];
+function assertRestored(x, t) {
+  const m = x.getTransform(), at = `at ${t.toFixed(2)} s`;
+  assert.ok(Math.abs(m.a - .1) < 1e-6 && Math.abs(m.d - .1) < 1e-6 && m.b === 0 && m.c === 0 && m.e === 0 && m.f === 0, `transform leaked ${at}`);
+  assert.equal(x.globalAlpha, 1, `alpha leaked ${at}`);
+  assert.equal(x.globalCompositeOperation, 'source-over', `compositing leaked ${at}`);
+  assert.equal(x.shadowBlur, 0, `shadow leaked ${at}`);
+  if (typeof x.filter === 'string') assert.equal(x.filter, 'none', `filter leaked ${at}`);
+  x.fillStyle = `rgb(${FILL.join(',')})`; x.fillRect(0, 0, 1600, 900);
+  for (const [px, py] of [[0, 0], [159, 0], [0, 89], [159, 89]]) assert.deepEqual([...x.getImageData(px, py, 1, 1).data.slice(0, 3)], FILL, `clip leaked ${at}: the corner ${px},${py} was not filled`);
+}
+const {FILMS, compileExample} = await import('./golden.mjs');
+for (const name of Object.keys(FILMS)) test(`every frame restores the canvas: ${name} (transform, alpha, compositing, shadow, filter, clip)`, async () => {
+  const f = await compileExample(name), c = createCanvas(160, 90), x = c.getContext('2d');
+  for (let t = 0; t < f.total; t += f.total / 30) { x.resetTransform(); x.scale(.1, .1); f.frame(x, t); assertRestored(x, t); }
+});
+
+test('the restore check sees a leaked clip, compositing, shadow and filter', () => {
+  const leaks = {clip: x => { x.save(); x.beginPath(); x.rect(0, 0, 800, 450); x.clip(); }, compositing: x => { x.globalCompositeOperation = 'multiply'; }, shadow: x => { x.shadowBlur = 4; }};
+  if (typeof createCanvas(1, 1).getContext('2d').filter === 'string') leaks.filter = x => { x.filter = 'blur(2px)'; };
+  for (const [what, leak] of Object.entries(leaks)) {
+    const x = createCanvas(160, 90).getContext('2d'); x.scale(.1, .1); leak(x);
+    assert.throws(() => assertRestored(x, 0), new RegExp(`${what} leaked`));
   }
 });
 

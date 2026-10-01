@@ -26,10 +26,14 @@ function toneOf(token, emphasis) {
   return 'ink';
 }
 
-/** Lines of [[text, tone]] for a block of TypeScript. */
+/**
+ * Lines of [[text, tone]] for a block of TypeScript. No time limit (`tokenizeTimeLimit: 0`): Shiki's
+ * default stops a line after 500 ms of wall-clock time, so on a busy machine the same code would come
+ * out differently, or its two passes (colours, scopes) would disagree and throw. A film is a pure function.
+ */
 export async function tokenize(source, emphasis = {}) {
   const h = await ts();
-  return h.codeToTokensBase(source, {lang: 'typescript', theme: 'github-light', includeExplanation: true})
+  return h.codeToTokensBase(source, {lang: 'typescript', theme: 'github-light', includeExplanation: true, tokenizeTimeLimit: 0})
     .map(line => line.filter(t => t.content.length).map(t => [t.content, toneOf(t, emphasis)]));
 }
 
