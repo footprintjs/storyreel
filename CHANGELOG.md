@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **The recipe's top level is checked** (`film.mjs · checkRecipeKeys`): `story`, `whiteboard`, `pushIn`,
+  `card`, `stages`, `guesses`, `notes`, `recalls`, `poster`, `reading`, `paperStyle`; any other key
+  refuses with the list and the fix. A host application names the keys it reads itself in the new
+  `hostKeys` option of `compileFilm` and `makeFilm` (e.g. `hostKeys: ['terms']`); the engine ignores them.
+  Every known recipe was swept first: only a glossary under `terms` needs a `hostKeys` entry.
+- **Sounds are checked when the film is built**, not only after rendering: a kit sound with an unknown
+  name or a gain outside 0..1 refuses, naming the kit and the sounds there are (`sound.mjs · checkSound`),
+  and a scene with more than 64 sounds refuses, naming the scene. One rule says which scene a sound falls
+  in (`sound.mjs · soundsByScene`), used by both `compileFilm` and `renderFilm`.
+- **Five new sounds**: `door`, `step`, `click`, `whoosh`, `crumble` (original procedural synthesis, short
+  and quiet). Every sound has a default gain, and a sound event may carry `gain` (0..1) that overrides it;
+  `compileFilm` keeps the gain of story-kit and stage-kit sounds in `film.sounds`. A gain is relative to
+  its scene (a scene is scaled by one factor set by its loudest moment). The first five sounds produce
+  the same samples as before (pinned in `test/sound.test.mjs`).
 - **Files stay inside `root`, for real.** The root-folder check (`files.mjs · insideRoot`) compares real
   paths with `path.relative`: a sibling folder whose name begins like the root (`../film-private/x.ts`
   with root `/x/film`, which the old prefix check let through) and a symbolic link that leads out of the

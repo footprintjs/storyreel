@@ -30,7 +30,10 @@ import {tokenize, excerpt} from './kits/paper/code.mjs';
 import {readNotes, placePushes, pushAt} from './notes.mjs';
 import {view, then, about, through, back} from './regions.mjs';
 import {tooShortToRead, readingMode} from './reading.mjs';
+import {checkSound, soundsByScene, MAX_SOUNDS_PER_SCENE} from './sound.mjs';
 
+/** The recipe's own top-level keys: anything else refuses, unless the host application names it in `hostKeys`. */
+const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'notes', 'recalls', 'poster', 'reading', 'paperStyle'];
 const STAGE_KEYS = new Set(['type', 'scene', 'chip', 'chipDark', 'title', 'file', 'label', 'code', 'lh', 'reveal', 'focus', 'glows', 'footer', 'list', 'loop', 'cards', 'closing', 'hero', 'frames', 'keys', 'teaser', 'enter', 'chrome', 'marks', 'columns', 'card']);
 /** What every stage may carry; a stage kit that lists its own `keys` accepts these plus its own. */
 const COMMON_KEYS = ['type', 'scene', 'chip', 'chipDark', 'title', 'enter', 'chrome', 'card'];
@@ -61,6 +64,30 @@ function entrance(enter, where) {
 }
 
 /**
+ * Refuse a recipe key the engine does not read (law 1: an unknown key refuses). A host application that
+ * keeps its own data in the recipe (e.g. a glossary under "terms") names those keys in `hostKeys`: they
+ * are allowed and the engine ignores them.
+ */
+function checkRecipeKeys(recipe, hostKeys) {
+  if (!recipe || typeof recipe !== 'object' || Array.isArray(recipe)) throw new Error('The recipe must be an object ({story, stages, …})');
+  if (!Array.isArray(hostKeys) || !hostKeys.every(k => typeof k === 'string' && k)) throw new Error('compileFilm: hostKeys must be a list of key names (e.g. ["terms"])');
+  for (const k of hostKeys) if (RECIPE_KEYS.includes(k)) throw new Error(`compileFilm: hostKeys names "${k}", which is the recipe's own key (the engine reads it); hostKeys are only for keys your application reads itself`);
+  for (const key of Object.keys(recipe)) if (!RECIPE_KEYS.includes(key) && !hostKeys.includes(key)) throw new Error(`The recipe has unsupported key "${key}". A recipe takes ${RECIPE_KEYS.join(', ')}. If your application reads "${key}" itself, name it: compileFilm({…, hostKeys: ["${key}"]})`);
+}
+
+/**
+ * At most MAX_SOUNDS_PER_SCENE sounds in a scene, counted the way renderFilm mixes them (sound.mjs ·
+ * soundsByScene), so the film refuses when it is built, not after every frame is encoded.
+ */
+function checkSoundCounts(sounds, clock, storyboard, timings) {
+  soundsByScene(sounds, clock.offsets, timings.scenes.map(s => s.duration)).forEach((list, i) => {
+    if (list.length <= MAX_SOUNDS_PER_SCENE) return;
+    const kinds = Object.entries(Object.groupBy(list, e => e.type)).map(([type, l]) => `${type} ×${l.length}`).join(', ');
+    throw new Error(`Scene "${storyboard.scenes[i].id}" has ${list.length} sounds (${kinds}); a scene takes at most ${MAX_SOUNDS_PER_SCENE}: make fewer (a kit's sounds count too), or spread them over more scenes`);
+  });
+}
+
+/**
  * How far the hand-over INTO a stage has come at t: eased over `seconds`, starting `lead` before
  * the stage's scene starts — or a step on the scene's first frame when the director cut into it.
  */
@@ -78,12 +105,14 @@ const aim = (ctx, c) => { ctx.translate(c.tx, c.ty); ctx.scale(c.z, c.z); ctx.tr
  * @param theme      a theme object, or the name of a built-in theme (default 'paper')
  * @param root       directory that recipe file paths (code excerpts) are relative to (default cwd)
  * @param strings    the string table for the film's language ({key: text}), when the recipe names strings
+ * @param hostKeys   top-level recipe keys the host application reads itself (allowed, ignored); any other unknown key refuses
  * @returns {total, clock, timings, sounds, frame(ctx, t), beats: [{ref, t, path}] (every phrase resolved, and the
  *          recipe entry that named it), strings: [keys used], notes: [the director's notes as applied],
  *          regionsAt(t) → [{box, path, label}] (what is drawn where), pointAt(t, x, y) → {frame, world?}}
  */
-export async function compileFilm({storyboard, board, timings, recipe, data, capture, kits = [], theme, root = process.cwd(), strings = null}) {
+export async function compileFilm({storyboard, board, timings, recipe, data, capture, kits = [], theme, root = process.cwd(), strings = null, hostKeys = []}) {
   storyboard ??= board; data ??= capture ?? null;
+  checkRecipeKeys(recipe, hostKeys);
   const used = new Set(); recipe = withStrings(recipe, strings, used);
   const entries = recipePaths(recipe);
   // The director's notes: one camera speed for the film (story kits take it as motion.cameraSpeed), cuts, pushes.
@@ -100,6 +129,7 @@ export async function compileFilm({storyboard, board, timings, recipe, data, cap
   const allKits = [whiteboardKit, ...kits];
   const storyKits = Object.fromEntries(allKits.filter(k => k.story).map(k => [k.name, k.story]));
   const stageKits = Object.fromEntries(allKits.flatMap(k => Object.entries(k.stages ?? {})));
+  const stageKitNames = Object.fromEntries(allKits.flatMap(k => Object.keys(k.stages ?? {}).map(type => [type, k.name])));
   const worldKits = new Set();
   const compileWorld = (spec, where) => {
     const kit = storyKits[spec?.kit];
@@ -524,18 +554,20 @@ export async function compileFilm({storyboard, board, timings, recipe, data, cap
     return lines;
   }
 
-  // Sound design: quiet accents on the actions, a chime on the eurekas and the answer.
+  // Sound design: quiet accents on the actions, a chime on the eurekas and the answer. A kit's sounds are
+  // checked by name and gain here (sound.mjs · checkSound), and keep their gain.
   const sounds = [];
-  const add = (time, type) => { if (Number.isFinite(time) && time >= 0 && time < clock.total) sounds.push({time, type}); };
-  for (const s of story.sounds ?? []) add(s.time, s.type);
+  const add = (time, type, gain) => { if (Number.isFinite(time) && time >= 0 && time < clock.total) sounds.push(gain === undefined ? {time, type} : {time, type, gain}); };
+  const addKitSounds = (list, who) => { for (const s of list ?? []) { checkSound(s, who); add(s.time, s.type, s.gain); } };
+  addKitSounds(story.sounds, `the story kit "${storySpec.kit}"`);
   if (push) { add(boardEnd, 'slide'); add(MOVE0, 'slide'); }
   for (const shot of shots.slice(1)) if (shot.enter.type !== 'fade' && shot.enter.type !== 'cut') add(shot.start - shot.enter.lead, 'slide');
   for (const st of stages) {
-    for (const s of st.world?.instance.sounds ?? []) add(s.time, s.type);
+    if (st.world) addKitSounds(st.world.instance.sounds, `the story kit "${st.world.kit}" (stage ${st.scene})`);
     for (const [, at] of st.reveal ?? []) add(at, 'tap');
     for (const item of st.listAt ?? []) add(item.t, 'tap');
     for (const k of st.cardsAt ?? []) add(k.t, 'settle');
-    for (const s of st.kit?.sounds?.(st.handle) ?? []) add(s.time, s.type);
+    if (st.kit?.sounds) addKitSounds(st.kit.sounds(st.handle), `the stage kit "${stageKitNames[st.type]}" (stage ${st.scene})`);
   }
   if (recapStage) {
     for (const k of recapStage.keysAt.slice(1)) add(k.t, 'tap');
@@ -543,6 +575,7 @@ export async function compileFilm({storyboard, board, timings, recipe, data, cap
   }
   for (const g of guesses) { add(g.start, 'question'); if (g.answer) add(g.end, 'chime'); }
   sounds.sort((a, b) => a.time - b.time);
+  checkSoundCounts(sounds, clock, storyboard, timings);
 
   // What is drawn where, for the preview studio (regions.mjs): each box names the recipe entry that drew it.
   const storyPath = recipe.story ? 'story' : 'whiteboard', stagePath = st => `stages[${stages.indexOf(st)}]`;

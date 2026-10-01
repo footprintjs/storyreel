@@ -35,7 +35,7 @@ const TOOLS = () => [
 const sha = text => createHash('sha256').update(text).digest('hex').slice(0, 16);
 
 /**
- * @param storyboard, recipe, data, kits, theme, root — as compileFilm
+ * @param storyboard, recipe, data, kits, theme, root, hostKeys — as compileFilm
  * @param narrationDir a folder with the UNPACED timings.json and the scene audio (or null → silent;
  *                     then pass `timings` with word times, e.g. evenTimings(storyboard))
  * @param pacing       {sceneTail, holds, tails?, voiceSpeed?} — applied to a copy of the narration, or
@@ -44,7 +44,7 @@ const sha = text => createHash('sha256').update(text).digest('hex').slice(0, 16)
  * @param out          the .mp4 to write; making-of.json is written beside it
  * @param render       extra options for renderFilm (intro, stamp, from, to, width, height…)
  */
-export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}}) {
+export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}}) {
   const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
   let film, paced, result;
   const stages = {
@@ -71,7 +71,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       scope.pacing = paced.pacing ?? null;
     },
     'compile-film': async scope => {
-      film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings});
+      film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings, hostKeys});
       scope.beats = film.beats.length; scope.sounds = film.sounds.length; scope.total = +film.total.toFixed(3);
     },
     'render-film': async scope => {

@@ -33,9 +33,16 @@ export type DirectorNote =
   | {note: string; cut: string}
   | {note: string; push: {at: [number, number]; zoom?: number; from: Beat; to: Beat; seconds?: number}};
 
-/** A recipe is data: see the README for every key. */
+/**
+ * A recipe is data: see the README for every key. At run time an unknown top-level key refuses, unless the
+ * host application names it in compileFilm's `hostKeys` (keys it reads itself; the engine ignores them).
+ */
 export interface Recipe {
   story?: {kit: string; [key: string]: unknown};
+  /** The older spelling of a whiteboard story: {items, erasers, spots…} without `kit`. */
+  whiteboard?: Record<string, unknown>;
+  /** The built-in theme's name when compileFilm gets no `theme`. */
+  paperStyle?: string;
   pushIn?: {after: string; rest: number; turn?: number; zoom?: number; hang?: number; caption: string};
   card?: Record<string, unknown>;
   stages?: {type: string; scene: string; [key: string]: unknown}[];
@@ -61,14 +68,19 @@ export interface Clock {
 /** What is drawn where: a box on the 1600×900 frame and the recipe entry that drew it. */
 export interface Region { box: [number, number, number, number]; path: string; label: string }
 
-export type SoundType = 'tap' | 'slide' | 'settle' | 'question' | 'chime';
+export type SoundType = 'tap' | 'slide' | 'settle' | 'question' | 'chime' | 'door' | 'step' | 'click' | 'whoosh' | 'crumble';
+/**
+ * A sound at a time. `gain` (0..1) overrides the sound's default; it is relative to its SCENE, because a
+ * scene is scaled by one factor set by its loudest moment (a loud door turns down every tap in it).
+ */
+export interface SoundEvent { time: number; type: SoundType; gain?: number }
 
 export interface Film {
   /** Seconds. */
   total: number;
   clock: Clock;
   timings: Timings;
-  sounds: {time: number; type: SoundType}[];
+  sounds: SoundEvent[];
   /** Draw the film at t into a context whose transform maps 1600×900 onto the frame. Pure. */
   frame(ctx: CanvasRenderingContext2D | unknown, t: number): void;
   /** Every phrase the recipe named, when it is said, and the recipe entry that asked for it. */
@@ -96,7 +108,7 @@ export interface Kit {
       hang?: number;
       draw(ctx: any, t: number, spot: unknown): void;
       spotAt?(t: number): {cx: number; cy: number; r: number; zoom: number; w: number} | null;
-      sounds?: {time: number; type: SoundType}[];
+      sounds?: SoundEvent[];
       regionsAt?(t: number): Region[];
       texts?(): {text: string; from: number; to: number; path: string}[];
     };
@@ -107,7 +119,7 @@ export interface Kit {
     draw(ctx: any, pen: any, theme: any, handle: any, t: number, cardBox: [number, number, number, number] | null): void;
     card?(handle: any, t: number): {rows: unknown; glow: unknown; pop: unknown};
     place?(handle: any): {at: [number, number]; scale: number};
-    sounds?(handle: any): {time: number; type: SoundType}[];
+    sounds?(handle: any): SoundEvent[];
     regions?(handle: any, t: number, cardBox: [number, number, number, number] | null): Region[];
   }>;
 }
@@ -115,6 +127,8 @@ export interface Kit {
 export function compileFilm(options: {
   storyboard: Storyboard; timings: Timings; recipe: Recipe; data?: unknown; kits?: Kit[];
   theme?: string | Record<string, unknown>; root?: string; strings?: Record<string, string> | null;
+  /** Top-level recipe keys the host application reads itself: allowed, and ignored by the engine. */
+  hostKeys?: string[];
 }): Promise<Film>;
 
 export function renderFilm(options: {
@@ -125,7 +139,7 @@ export function renderFilm(options: {
 }): Promise<{out: string; seconds: number; chapters: string[]; poster?: string}>;
 
 export function makeFilm(options: {
-  storyboard: Storyboard; recipe: Recipe; data?: unknown; kits?: Kit[]; theme?: string | Record<string, unknown>; root?: string;
+  storyboard: Storyboard; recipe: Recipe; data?: unknown; kits?: Kit[]; theme?: string | Record<string, unknown>; root?: string; hostKeys?: string[];
   narrationDir?: string | null; timings?: Timings | null; pacing?: Pacing | null; strings?: Record<string, string> | null; lang?: string | null;
   out: string; render?: Record<string, unknown>;
 }): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; makingOf: string}>;
@@ -140,7 +154,7 @@ export function speechIndex(scene: Storyboard['scenes'][number], timing: SceneTi
 export function phraseMatches(index: unknown, phrase: string): {start: number; end: number}[];
 export function ramp(t: number, at: number, d?: number): number;
 export function withStrings<T>(recipe: T, strings: Record<string, string> | null, used?: Set<string>): T;
-export function createSound(options: {duration: number; events: {time: number; type: SoundType}[]; peakCeilingDBFS?: number}): {wav: Uint8Array};
+export function createSound(options: {duration: number; events: SoundEvent[]; peakCeilingDBFS?: number}): {wav: Uint8Array};
 export function loadTheme(name?: string): Record<string, unknown>;
 export function validateTheme(theme: unknown): void;
 export const whiteboardKit: Kit;

@@ -7,7 +7,7 @@ import path from 'node:path';
 import {spawn, spawnSync} from 'node:child_process';
 import {once} from 'node:events';
 import {createCanvas} from '@napi-rs/canvas';
-import {createMotionSound} from './sound.mjs';
+import {createMotionSound, soundsByScene} from './sound.mjs';
 
 const clock = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
@@ -62,10 +62,11 @@ export async function renderFilm({film, storyboard, timings, narrationDir = null
     writeFileSync(path.join(dir, 'film-narration.txt'), timings.scenes.map(s => `file '${path.resolve(narrationDir, s.audio)}'`).join('\n') + '\n');
     run(['-f', 'concat', '-safe', '0', '-i', path.join(dir, 'film-narration.txt'), '-ar', '48000', '-ac', '1', voice]);
   } else run(['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', String(film.total), voice]);
+  // Each scene's sounds on its own clock (sound.mjs · soundsByScene, the rule compileFilm counted them by).
+  const byScene = soundsByScene(film.sounds, film.clock.offsets, timings.scenes.map(s => s.duration));
   const sfxParts = timings.scenes.map((s, i) => {
-    const t0 = film.clock.offsets[i], file = path.join(dir, `film-sfx-${i}.wav`);
-    const events = film.sounds.filter(e => e.time >= t0 && e.time < t0 + s.duration - .02).map(e => ({type: e.type, time: e.time - t0}));
-    writeFileSync(file, createMotionSound({duration: s.duration, events, peakCeilingDBFS}).wav);
+    const file = path.join(dir, `film-sfx-${i}.wav`);
+    writeFileSync(file, createMotionSound({duration: s.duration, events: byScene[i], peakCeilingDBFS}).wav);
     return file;
   });
   writeFileSync(path.join(dir, 'film-sfx.txt'), sfxParts.map(f => `file '${f}'`).join('\n') + '\n');

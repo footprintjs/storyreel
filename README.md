@@ -115,6 +115,12 @@ A phrase that is not in the narration refuses the recipe.
   `glows` that link a code line to a card row, `footer`), `api` (code + a list of values read
   from `data`), `recap` (the film's own frames on a story strip, then an optional `teaser`),
   `summary` (cards), `world` (below). Any stage takes `chrome: false` to drop its chip and title.
+- **The top level is checked.** A recipe takes `story` (or the older `whiteboard`), `pushIn`, `card`,
+  `stages`, `guesses`, `notes`, `recalls`, `poster`, `reading` and `paperStyle`; any other key refuses,
+  so a misspelling (`"stage"`) is never silently ignored. An application that keeps its own data in the
+  recipe names those keys in `hostKeys`: they are allowed, and the engine never reads them.
+  `compileFilm({…, recipe: {story, stages, terms}})` refuses `"terms"` with the fix;
+  `compileFilm({…, recipe: {story, stages, terms}, hostKeys: ['terms']})` compiles (so does `makeFilm`).
 - **Files stay inside `root`.** A file the recipe names (a code excerpt today; pictures next) loads only
   from inside the film's root folder (the `root` option, default the working folder). The check uses
   real paths, so `../film-private/x.ts` (a sibling folder whose name begins like the root) and a
@@ -342,14 +348,28 @@ not list it still draws, but a speed note on a film with one of its worlds refus
 *every* camera move). A stage kit's `compile` gets `{clock, data, motion}`, and may add
 `regions(handle, t, cardBox)` for the studio (boxes on the frame, paths relative to its stage).
 
-Sound accents: `tap`, `slide`, `settle`, `question`, `chime` (procedural, no samples; at most 64 per scene).
+**Sounds.** `tap`, `slide`, `settle`, `question`, `chime`, `door`, `step`, `click`, `whoosh`, `crumble`:
+short, quiet and made by procedural synthesis (no samples). A kit's sound is `{time, type, gain?}`:
+
+- `gain` (0..1) overrides the sound's default (1 for the first five; `door` .8, `step` .7, `click` .8,
+  `whoosh` .8, `crumble` .7). **A gain is relative to its scene**: each scene's sounds are scaled by one
+  factor, set by the loudest moment in that scene (`sound.mjs · createMotionSound`), so a loud door turns
+  down every tap in the same scene.
+- Names, gains and the count are checked when the film is built (`compileFilm`), not after rendering: a
+  misspelled name refuses, naming the kit and the sounds there are, and a scene with more than 64 sounds
+  (the engine's and every kit's together) refuses, naming the scene.
+
+```js
+sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45}, {time: clock.at(['story', 'she walks in']), type: 'step'}]
+// type: 'dor' → the story kit "farm" makes a sound "dor"; the sounds are slide, settle, tap, … crumble
+```
 
 
 ## API
 
 | import | what it does |
 |---|---|
-| `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `reading`, `moments()`, `regionsAt(t)`, `pointAt(t, x, y)`, `posterAt` |
+| `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?, hostKeys?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `reading`, `moments()`, `regionsAt(t)`, `pointAt(t, x, y)`, `posterAt` |
 | `renderFilm({film, storyboard, timings, narrationDir?, out, width?, height?, fps?, intro?, stamp?, from?, to?, poster?})` | the MP4 (FFmpeg), its chapters, its poster |
 | `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?})` | compile + render as a footprintjs pipeline, with `making-of.json` |
 | `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |
