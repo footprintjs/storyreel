@@ -21,6 +21,13 @@
      "code": {"file": "tally.ts"},
      "reveal": [[0, ["code", "The shelf is a list"]], [1, ["code", "Each sale pushes one cup"]], [2, ["code", "The count is"]]],
      "footer": {"text": "A list counts itself.", "at": ["code", "the length of the list"]}},
+    {"type": "summary", "scene": "keep", "chip": "TO KEEP", "title": "What to keep",
+     "cards": [
+       {"at": ["keep", "One cup for one sale"], "icon": "bulb", "head": "ONE FOR ONE", "text": "One cup for one sale", "recall": "shelf"},
+       {"at": ["keep", "The shelf is the list"], "icon": "code", "head": "THE LIST", "text": "The shelf is the list"},
+       {"at": ["keep", "Count the list"], "icon": "code", "head": "THE COUNT", "text": "Its length is the count"}
+     ],
+     "closing": {"text": "Count the list, not the coins, and the tally keeps itself honest.", "at": ["keep", "not the coins"]}},
     {"type": "recap", "scene": "recap", "chip": "RECAP", "title": "What we saw",
      "frames": [
        {"recall": "stall", "caption": "A stall"},
@@ -41,6 +48,9 @@
      "teaser": {"at": ["recap", "where did the lemons go"], "recall": "total", "stamp": "AND THE LEMONS?",
        "rewind": {"from": ["story", "Twelve cups"], "to": ["story", "Mia sells lemonade"]},
        "next": {"chip": "NEXT FILM", "title": "Where did the lemons go?", "sub": "a ledger that does not add up"}}}
+  ],
+  "notes": [
+    {"note": "Go straight to the code", "cut": "code"}
   ],
   "recalls": {
     "stall": ["story", "from a small stall", 1.6],

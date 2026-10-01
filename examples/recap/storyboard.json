@@ -3,6 +3,7 @@
   "scenes": [
     {"id": "story", "title": "The stall", "narration": "Mia sells lemonade from a small stall. For every cup she sells, she puts one cup on the shelf. At dusk she counts the cups on the shelf. Twelve cups, twelve sales."},
     {"id": "code", "title": "The tally", "narration": "The shelf is a list. Each sale pushes one cup. The count is the length of the list."},
+    {"id": "keep", "title": "What to keep", "narration": "What to keep. One cup for one sale. The shelf is the list. Count the list, not the coins."},
     {"id": "recap", "title": "What we saw", "narration": "So what did we see? A small stall. A cup on the shelf for each sale. Counting at dusk. The shelf as a list. Its length is the count. Twelve sales. Next time, where did the lemons go? The ledger does not add up."}
   ]
 }

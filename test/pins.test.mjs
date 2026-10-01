@@ -23,8 +23,18 @@ test('frameHashes times: hashes exactly the moments named (rounded to the millis
 test('frameHashes times: anything but a list of moments inside the film refuses', () => {
   assert.throws(() => frameHashes(film, {times: []}), /times must be a list of moments/);
   assert.throws(() => frameHashes(film, {times: 3}), /times must be a list of moments/);
-  assert.throws(() => frameHashes(film, {times: [1, '2']}), /the moment 2 is not a number of seconds/);
+  assert.throws(() => frameHashes(film, {times: [1, '2']}), /the moment "2" is not a number of seconds/, 'a string is quoted, so it does not read as a number');
   assert.throws(() => frameHashes(film, {times: [-1]}), /the moment -1 is not/);
   assert.throws(() => frameHashes(film, {times: [film.total + 1]}), /from 0 to the film's end/);
   assert.throws(() => frameHashes(film, {times: [NaN]}), /the moment NaN is not/);
+});
+
+test('frameHashes times: two moments that round to the same millisecond refuse (one would be lost)', () => {
+  assert.throws(() => frameHashes(film, {times: [1, 1.0004]}), /the moments 1 and 1\.0004 are the same millisecond \(1\); name each moment once/);
+  assert.throws(() => frameHashes(film, {times: [2, 2]}), /same millisecond/);
+  assert.deepEqual(Object.keys(frameHashes(film, {times: [1, 1.001], width: 160})), ['1', '1.001'], 'a millisecond apart is two moments');
+});
+
+test('frameHashes: count and times together refuse (one would be ignored)', () => {
+  assert.throws(() => frameHashes(film, {count: 5, times: [1]}), /give count \(evenly spaced moments\) or times \(the moments you name\), not both/);
 });

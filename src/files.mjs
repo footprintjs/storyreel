@@ -12,9 +12,16 @@ import {existsSync, realpathSync} from 'node:fs';
  * A file that does not exist yet is judged by its nearest folder that does (resolved for links too).
  */
 export function insideRoot(root, file) {
-  const base = realpathSync(path.resolve(root)), real = realPathOf(path.resolve(root, file)), rel = path.relative(base, real);
+  const base = realRoot(root), real = realPathOf(path.resolve(root, file)), rel = path.relative(base, real);
   if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) throw new Error(`${file} is outside ${root}: a recipe loads files only from inside the film's root folder (the root option); move the file inside it, or point root at a folder that holds it`);
   return real;
+}
+
+/** The root folder's real path, or a refusal that names the fix when it does not exist. */
+function realRoot(root) {
+  try { return realpathSync(path.resolve(root)); } catch {
+    throw new Error(`root ${root} is not a folder that exists: pass the film's folder as the root option (default the working folder)`);
+  }
 }
 
 /** A path with every symbolic link resolved: the file's own when it exists, else its nearest existing folder's plus the rest. */

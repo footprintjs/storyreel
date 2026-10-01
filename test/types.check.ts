@@ -19,6 +19,8 @@ export const noWords: DirectorNote = {cut: 'inside'};
 export const strict: Recipe = {reading: 'strict'};
 // @ts-expect-error frameHashes times are seconds, not labels
 export const labelTimes = (film: Film, hash: typeof frameHashes) => hash(film, {times: ['settled']});
+// @ts-expect-error frameHashes takes count or times, not both
+export const bothKinds = (film: Film, hash: typeof frameHashes) => hash(film, {count: 5, times: [1]});
 // @ts-expect-error a push needs from and to
 export const halfPush: DirectorNote = {note: 'push', push: {at: [1, 2]}};
 

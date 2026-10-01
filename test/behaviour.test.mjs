@@ -22,3 +22,13 @@ test('behaviour pins hold a refusal for every change of picture that has words o
     assert.match(p.says, /a push stays on one picture|one camera move at a time|after the film ends/, `${name}: a push across ${p.across} should refuse`);
   }
 });
+
+// The pins must reach the numbers a refactor of film.mjs · arrivalOf would touch: a plain hand-over
+// on the page (its settle, start + 0.4), a director's cut (a zero-length change) and a line too short
+// to read. examples/recap carries all three; if an edit to the examples drops one, this says so.
+test('behaviour pins reach a plain hand-over, a cut and a line too short to read', () => {
+  const films = Object.values(pinned);
+  assert.ok(films.some(b => b.reading.length > 0), 'no pinned film reports a line too short to read');
+  assert.ok(films.some(b => b.moments.some(m => /^mid the hand-over to (?!recap$)/.test(m.label))), 'no pinned film has a plain hand-over (one that is not into a recap)');
+  assert.ok(films.some(b => b.pushes.some(p => /across the cut into /.test(p.says))), 'no pinned film has a cut');
+});

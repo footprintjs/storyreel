@@ -118,7 +118,8 @@ A phrase that is not in the narration refuses the recipe.
 - **Files stay inside `root`.** A file the recipe names (a code excerpt today; pictures next) loads only
   from inside the film's root folder (the `root` option, default the working folder). The check uses
   real paths, so `../film-private/x.ts` (a sibling folder whose name begins like the root) and a
-  symbolic link that leads out of the folder are both refused, with a message naming the fix:
+  symbolic link that leads out of the folder are both refused, with a message naming the fix (so is a
+  `root` that does not exist):
   `"code": {"file": "code/rule.ts"}` loads; `"code": {"file": "../film-private/rule.ts"}` refuses.
 
 ### A recap and a teaser
@@ -251,10 +252,15 @@ also needs its own narration; the recipe's phrases are its English cues for now.
   and compare with `changedFrames(pinned, now)`. `frameHashes(film, {times})` hashes the moments you
   name instead (seconds inside the film, each rounded to the millisecond and used as its key), so a short
   pop that even spacing would miss can be pinned: `frameHashes(film, {times: film.moments().map(m => m.t)})`.
+  Give `count` or `times`, not both; two moments that round to the same millisecond refuse (one would be lost).
   Hashes depend on the machine's fonts: record them again on a new machine, and otherwise only for a
   change you meant. This package also pins, for every example film, what its pixels never show —
   `film.reading`, `film.moments()` and the refusal a push note gets across each change of picture
   (`test/behaviour.json`; `node test/behaviour.mjs --write` re-records it, only for a change you meant).
+  The pins must reach a plain hand-over on the page, a director's cut and a line too short to read —
+  `examples/recap` carries all three (`"notes": [{"note": "Go straight to the code", "cut": "code"}]`,
+  then a `summary` stage handed over to on the page, whose closing line is up too briefly) — and a test
+  says so if an edit to the examples drops one.
 - **The making-of record** (`making-of.json`, written by `makeFilm`): every phrase → the recipe entry it
   triggered and when, the director's notes as applied, the lines too short to read, the pacing, the
   poster, the tools and versions — the film's own footprintjs run.

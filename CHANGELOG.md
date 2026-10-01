@@ -15,6 +15,13 @@
     the refusal a push note gets across each change of picture;
   - the restore test runs on every example film and also checks compositing, shadow, filter and a
     leaked clip (a full-frame fill must reach the corners).
+  - `examples/recap` also takes a director's cut into its code stage and a `summary` stage handed over to
+    on the page, whose closing line is too short to read, so the behaviour pins reach the hand-over's
+    settle (`film.mjs · arrivalOf`), a zero-length change and `film.reading`; a test fails if no pinned
+    film carries them.
+- `frameHashes` refuses two moments that round to the same millisecond (one would be lost), and `count`
+  together with `times`; a bad moment that is not a number is quoted. `insideRoot` refuses a `root` that
+  does not exist with a message naming the fix.
 - README: screenshots shown as evidence are in scope; marketing polish is not.
 - Code is tokenized with no time limit (`kits/paper/code.mjs · tokenize`): Shiki's 500 ms per-line
   limit made a busy machine tokenize the same code differently, or throw (`startIndex` of undefined).

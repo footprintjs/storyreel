@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * A recap and a teaser: a whiteboard story, one code stage, then a recap strip of the film's own
- * frames (recalls) and a teaser for the next film. Silent (evenly spaced word times).
+ * A recap and a teaser: a whiteboard story, a hard cut into one code stage, a summary handed over to
+ * on the page, then a recap strip of the film's own frames (recalls) and a teaser for the next film.
+ * Silent (evenly spaced word times). Pinned in test/golden.json and test/behaviour.json.
  *   node examples/recap/make.mjs [out.mp4]
  */
 import {readFileSync} from 'node:fs';

@@ -216,55 +216,53 @@
   ]
  },
  "recap": {
-  "reading": [],
+  "reading": [
+   {
+    "path": "stages[1].closing",
+    "text": "Count the list, not the coins, and the tally keeps itself honest.",
+    "at": 31.68,
+    "seconds": 2.59,
+    "needs": 3.6
+   }
+  ],
   "moments": [
    {
-    "t": 7.23,
+    "t": 7.53,
     "kind": "settled",
     "label": "The stall"
    },
    {
-    "t": 14.86,
-    "kind": "moving",
-    "label": "mid the fade into code"
-   },
-   {
-    "t": 19.705,
+    "t": 19.605,
     "kind": "settled",
     "label": "The tally"
    },
    {
-    "t": 24.975,
+    "t": 24.675,
+    "kind": "moving",
+    "label": "mid the hand-over to keep"
+   },
+   {
+    "t": 29.735,
+    "kind": "settled",
+    "label": "What to keep"
+   },
+   {
+    "t": 35.095,
     "kind": "moving",
     "label": "mid the hand-over to recap"
    },
    {
-    "t": 34.61,
+    "t": 44.73,
     "kind": "settled",
     "label": "What we saw"
    },
    {
-    "t": 41.03,
+    "t": 51.15,
     "kind": "moving",
     "label": "mid the teaser"
    }
   ],
   "pushes": [
-   {
-    "across": "mid the fade into code",
-    "at": 14.86,
-    "from": {
-     "scene": "story",
-     "phrase": "sales.",
-     "nth": 0
-    },
-    "to": {
-     "scene": "code",
-     "phrase": "The",
-     "nth": 0
-    },
-    "says": "note \"push across mid the fade into code\": the push runs from 12.08 s to 16.36 s, across the fade into code (14.46 s); a push stays on one picture"
-   },
    {
     "across": "start of code",
     "at": 15.06,
@@ -278,10 +276,25 @@
      "phrase": "The",
      "nth": 0
     },
-    "says": "note \"push across start of code\": the push runs from 12.08 s to 16.36 s, across the fade into code (14.46 s); a push stays on one picture"
+    "says": "note \"push across start of code\": the push runs from 12.08 s to 16.36 s, across the cut into code (15.06 s); a push stays on one picture"
    },
    {
-    "across": "start of recap",
+    "across": "mid the hand-over to keep",
+    "at": 24.675,
+    "from": {
+     "scene": "code",
+     "phrase": "list.",
+     "nth": 1
+    },
+    "to": {
+     "scene": "keep",
+     "phrase": "What",
+     "nth": 0
+    },
+    "says": "note \"push across mid the hand-over to keep\": the push runs from 21.82 s to 26.10 s, across the hand-over to keep (24.15 s); a push stays on one picture"
+   },
+   {
+    "across": "start of keep",
     "at": 24.8,
     "from": {
      "scene": "code",
@@ -289,30 +302,45 @@
      "nth": 1
     },
     "to": {
-     "scene": "recap",
-     "phrase": "So",
+     "scene": "keep",
+     "phrase": "What",
      "nth": 0
     },
-    "says": "note \"push across start of recap\": the push runs from 21.82 s to 26.10 s, across the hand-over to recap (24.15 s); a push stays on one picture"
+    "says": "note \"push across start of keep\": the push runs from 21.82 s to 26.10 s, across the hand-over to keep (24.15 s); a push stays on one picture"
    },
    {
-    "across": "mid the hand-over to recap",
-    "at": 24.975,
+    "across": "start of recap",
+    "at": 34.92,
     "from": {
-     "scene": "code",
-     "phrase": "list.",
-     "nth": 1
+     "scene": "keep",
+     "phrase": "coins.",
+     "nth": 0
     },
     "to": {
      "scene": "recap",
      "phrase": "So",
      "nth": 0
     },
-    "says": "note \"push across mid the hand-over to recap\": the push runs from 21.82 s to 26.10 s, across the hand-over to recap (24.15 s); a push stays on one picture"
+    "says": "note \"push across start of recap\": the push runs from 31.94 s to 36.22 s, across the hand-over to recap (34.27 s); a push stays on one picture"
+   },
+   {
+    "across": "mid the hand-over to recap",
+    "at": 35.095,
+    "from": {
+     "scene": "keep",
+     "phrase": "coins.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "recap",
+     "phrase": "So",
+     "nth": 0
+    },
+    "says": "note \"push across mid the hand-over to recap\": the push runs from 31.94 s to 36.22 s, across the hand-over to recap (34.27 s); a push stays on one picture"
    },
    {
     "across": "mid the teaser",
-    "at": 41.03,
+    "at": 51.15,
     "from": {
      "scene": "recap",
      "phrase": "not",
@@ -323,7 +351,7 @@
      "phrase": "add",
      "nth": 0
     },
-    "says": "note \"push across mid the teaser\": the push runs from 40.68 s to 42.06 s, across the teaser (37.64 s); a push stays on one picture"
+    "says": "note \"push across mid the teaser\": the push runs from 50.80 s to 52.18 s, across the teaser (47.76 s); a push stays on one picture"
    }
   ]
  }

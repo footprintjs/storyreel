@@ -1,6 +1,6 @@
-import test from 'node:test';
+import test, {after} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, mkdirSync, writeFileSync, symlinkSync, readFileSync, realpathSync} from 'node:fs';
+import {mkdtempSync, mkdirSync, writeFileSync, symlinkSync, readFileSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -14,6 +14,7 @@ const block = '// --- on-screen code\nconst x = 1;\n// --- end on-screen code --
 writeFileSync(path.join(root, 'code', 'rule.ts'), block); writeFileSync(path.join(root, '..notes', 'a.ts'), block); writeFileSync(path.join(secret, 'x.ts'), block);
 symlinkSync(path.join(secret, 'x.ts'), path.join(root, 'link.ts'));
 symlinkSync(secret, path.join(root, 'shelf'));
+after(() => rmSync(top, {recursive: true, force: true}));
 
 test('insideRoot: a file inside the root folder passes, as its real path', () => {
   assert.equal(insideRoot(root, 'code/rule.ts'), realpathSync(path.join(root, 'code', 'rule.ts')));
@@ -32,6 +33,11 @@ test('insideRoot: a symbolic link out of the folder is refused, to a file or thr
   assert.throws(() => insideRoot(root, 'link.ts'), /link\.ts is outside/);
   assert.throws(() => insideRoot(root, 'shelf/x.ts'), /shelf\/x\.ts is outside/);
   assert.throws(() => insideRoot(root, 'shelf/not-yet.png'), /is outside/, 'a missing file under a linked folder is judged by the real folder');
+});
+
+test('insideRoot: a root that does not exist refuses, naming the fix', () => {
+  const missing = path.join(top, 'flim');
+  assert.throws(() => insideRoot(missing, 'code/rule.ts'), new RegExp(`root ${missing.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} is not a folder that exists: pass the film's folder as the root option`));
 });
 
 test('insideRoot: a root reached through a symbolic link still holds its own files', () => {
