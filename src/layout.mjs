@@ -70,6 +70,8 @@ export function compileLayout(film, spec) {
   const boxes = Object.freeze({film: sized(f.film), ...(header ? {header: sized(header.box)} : {}), ...(captions ? {captions: sized(captions.box)} : {})});
   return {
     width: f.width * k, height: f.height * k, format: spec.format, boxes,
+    /** The caption shown at t (null when none is, or the layout has no captions). */
+    captionAt: t => chunks ? captionAt(chunks, t) : null,
     picture(ctx, t) {
       ctx.save(); ctx.scale(k, k); ctx.fillStyle = bg; ctx.fillRect(0, 0, f.width, f.height);
       const [bx, by, bw, bh] = f.film;
