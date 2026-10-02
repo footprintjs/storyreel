@@ -37,7 +37,7 @@ import {readIntent, readContinuity, checkContinuity, tooMuchTooFast, distinctMom
 import {checkSound, soundsByScene, MAX_SOUNDS_PER_SCENE} from './sound.mjs';
 import {listeningMode, changeSounds, listeningText} from './listening.mjs';
 import {step, drainSteps, recordSteps} from './record.mjs';
-import {readEntrance, transitionCatalog, ghostPainter, CUT} from './transitions.mjs';
+import {readEntrance, transitionCatalog, ghostPainter, layerCrossfader, CUT} from './transitions.mjs';
 
 /** The recipe's own top-level keys: anything else refuses, unless the host application names it in `hostKeys`. */
 const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle'];
@@ -530,6 +530,20 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (u >= 1) { drawShot(ctx, shot, t); return; }
     drawTransition(ctx, j, t, shot.enter.ease(u));
   }
+  /**
+   * The held layers (a world's `overlay(ctx, t)`, on the frame): drawn over the picture and outside its camera,
+   * so a transition or a director's push never moves them — a presenter in the corner, a title band. Through a
+   * change of picture the leaving shot's layer crosses into the arriving one's (layerCrossfader): the same layer
+   * in both stays exactly itself.
+   */
+  const crossfade = layerCrossfader();
+  const overlayOf = (shot, t) => (shot.world?.instance.overlay ? c => shot.world.instance.overlay(c, t) : null);
+  function drawOverlays(ctx, t) {
+    const j = shotAt(t), shot = shots[j], u = j === 0 || shot.enter.type === 'cut' ? 1 : ramp(t, shot.start - shot.enter.lead, shot.enter.seconds);
+    const now = overlayOf(shot, t);
+    if (u >= 1) { if (now) { ctx.save(); now(ctx); ctx.restore(); } return; }
+    crossfade(ctx, Math.max(0, Math.min(1, shot.enter.ease(u))), overlayOf(shots[j - 1], t), now);
+  }
 
   /** The whole film at t, drawn into ctx whose transform maps 1600×900 onto the frame. */
   function frame(ctx, t) {
@@ -539,6 +553,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (cam) { ctx.save(); aim(ctx, cam); }
     if (push) drawPushed(ctx, t); else drawShots(ctx, t);
     if (cam) ctx.restore();
+    if (!push) drawOverlays(ctx, t);
     for (const g of guesses) if (t >= g.start && t <= g.until + .5) drawGuess(ctx, makePen(ctx, paper, {baseScale: 1}), paper, g, t);
   }
 

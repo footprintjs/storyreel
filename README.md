@@ -315,6 +315,12 @@ const stageKit = {name: 'stage', transitions: {curtain: {
 // "enter": {"type": "curtain", "color": "#000000"}
 ```
 
+**Held layers.** A world may draw an `overlay(ctx, t)` on the frame: it is drawn over the picture and outside
+its camera, so a transition or a director's push never moves it — a presenter in the corner stays in the corner
+while a match cut zooms the pictures under him. Through a change of picture the leaving shot's layer crosses into
+the arriving one's, mixed as light is, so the same layer in both shots stays exactly itself (and a layer only one
+shot has fades out or in with the change).
+
 `ghost(alpha, paint)` paints a picture whole into a scratch picture and lays it over at that alpha (a
 see-through picture must be drawn whole: canvas alpha on its parts shows the seams). A transition that goes
 through things says which with `regions: p => ({from: [p.region], to: [p.into]})` and reads where they are in

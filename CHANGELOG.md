@@ -40,6 +40,10 @@
   new picture names it differently). The old picture pushes in on its thing, the new one pulls back from its
   own, and they meet half way — same place, same size — at a quick dissolve. Both cameras only zoom in, so the
   frame is always covered: things far apart meet larger.
+- **Held layers**: a world's `overlay(ctx, t)` is drawn on the frame, over the picture and outside its camera, so a
+  transition or a director's push never moves it (a presenter in the corner); through a change of picture the leaving
+  shot's layer crosses into the arriving one's, mixed as light is (`layerCrossfader` in
+  `footprint-storyreel/transitions`), so the same layer in both shots stays exactly itself.
 - **The built-in kits name what they draw**: a whiteboard item takes a `name` (one word), and the cartoon kit
   names its scenery as its camera shows it — `sun` (it sets with the evening), `shepherd`, `sack`, `pen`,
   `gate`, and `bulb` once the eureka shows. `examples/match` turns a whiteboard circle into the cartoon's sun

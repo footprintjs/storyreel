@@ -262,6 +262,12 @@ export interface StoryWorld {
   regionsAt?(t: number): Region[];
   /** The mouths it draws at t (who: the speaker each belongs to, null for the narrator; open: 0..1), for the lip-sync check. */
   mouthsAt?(t: number): {who: string | null; open: number}[];
+  /**
+   * A held layer, drawn on the frame (1600×900) over the picture and outside its camera: a transition or a director's push
+   * never moves it (a presenter in the corner, a title band). Through a change of picture the leaving shot's layer crosses
+   * into the arriving one's, exactly: the same layer in both stays itself. A film with a pushIn draws none.
+   */
+  overlay?(ctx: any, t: number): void;
   texts?(): {text: string; from: number; to: number; path: string}[];
   /** Settles once the world can draw (e.g. its images have decoded); compileFilm waits for it before drawing recalls and before returning. */
   ready?: Promise<unknown>;

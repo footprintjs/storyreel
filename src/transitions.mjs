@@ -367,4 +367,29 @@ export function ghostPainter() {
   };
 }
 
+/**
+ * A layer crossfader: crossfade(ctx, x, paintA, paintB) lays (1 − x)·A + x·B over ctx, mixed as light is (each
+ * painted whole into a scratch picture, A at 1 − x, B added at x), so where the two layers are the same picture
+ * the result IS that picture at every x — a presenter held through a change of picture never flickers or
+ * thins. Either paint may be null (that layer fades out, or in). Sized like ghostPainter: ctx's transform must
+ * be a scale and a move.
+ */
+export function layerCrossfader() {
+  const layers = new Map(), scratch = (key, w, h) => { if (!layers.has(key)) layers.set(key, createCanvas(w, h)); return layers.get(key); };
+  return function crossfade(ctx, x, paintA, paintB) {
+    if (!(x > 0)) { paintA?.(ctx); return; }
+    if (!(x < 1)) { paintB?.(ctx); return; }
+    const m = ctx.getTransform(), w = Math.ceil(W * Math.abs(m.a)), h = Math.ceil(H * Math.abs(m.d));
+    const mix = scratch(`${w}x${h}#mix`, w, h), one = scratch(`${w}x${h}#one`, w, h), mc = mix.getContext('2d'), oc = one.getContext('2d');
+    mc.resetTransform(); mc.clearRect(0, 0, w, h);
+    for (const [paint, alpha, op] of [[paintA, 1 - x, 'source-over'], [paintB, x, 'lighter']]) {
+      if (!paint) continue;
+      oc.resetTransform(); oc.clearRect(0, 0, w, h); oc.setTransform(m.a, 0, 0, m.d, 0, 0);
+      oc.save(); paint(oc); oc.restore();
+      mc.save(); mc.globalAlpha = alpha; mc.globalCompositeOperation = op; mc.drawImage(one, 0, 0); mc.restore();
+    }
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, m.e, m.f); ctx.drawImage(mix, 0, 0); ctx.restore();
+  };
+}
+
 function deepFreeze(v) { if (v && typeof v === 'object' && !Object.isFrozen(v)) { Object.freeze(v); for (const x of Object.values(v)) deepFreeze(x); } return v; }

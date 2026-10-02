@@ -8,3 +8,5 @@ export function readEntrance(enter: Enter | undefined, where: string, catalog?: 
 export const CUT: Readonly<{type: 'cut'; seconds: 0; lead: 0; sound: null; p: Readonly<Record<string, never>>; at: readonly [number, number]}>;
 /** ghost(ctx, alpha, paint): paint into a scratch picture at ctx's scale, laid over ctx at alpha. */
 export function ghostPainter(): (ctx: any, alpha: number, paint: (ctx: any) => void) => void;
+/** crossfade(ctx, x, paintA, paintB): (1 − x)·A + x·B laid over ctx, mixed as light is — the same picture in both stays exactly itself. */
+export function layerCrossfader(): (ctx: any, x: number, paintA: ((ctx: any) => void) | null, paintB: ((ctx: any) => void) | null) => void;

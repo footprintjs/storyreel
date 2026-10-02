@@ -300,3 +300,22 @@ test('match meets a thing half off the frame by the half you see; a named settin
   const nothing = {...lookless, regions: () => undefined};
   await assert.rejects(thingFilm({type: 'nothing', region: 'window'}, [{name: 'k', transitions: {nothing}}]), /regions\(p\) must return \{from\?: \[names\], to\?: \[names\]\}/);
 });
+
+test('a held layer (a world\'s overlay) stays put through a transition and a push, and the same layer in both shots never thins', async () => {
+  // Two worlds, red and blue, each with the same white square held in the corner.
+  const held = c => { c.fillStyle = '#ffffff'; c.fillRect(40, 700, 160, 160); };
+  const kit = (name, color, overlay) => ({name, story: {compile: () => ({hang: 1, draw: c => { c.fillStyle = color; c.fillRect(0, 0, 1600, 900); }, ...(overlay ? {overlay: (c, t) => overlay(c, t)} : {})})}});
+  const make = (blueOverlay, notes) => compileFilm({storyboard, timings, root, kits: [kit('red', '#ff0000', held), kit('blue', '#0000ff', blueOverlay), kit('green', '#00ff00', null)],
+    recipe: {story: {kit: 'red'}, stages: [{type: 'world', scene: 'b', enter: {type: 'push', seconds: 1}, world: {kit: 'blue'}}, {type: 'world', scene: 'c', enter: 'cut', world: {kit: 'green'}}], ...(notes ? {notes} : {})}});
+  const f = await make(held), b = f.clock.start('b');
+  for (const dt of [-.75, -.5, -.25, 0, .2]) assert.deepEqual(pixel(f, b + dt, 120, 780), [255, 255, 255], `the square holds at ${dt}`);
+  assert.deepEqual([pixel(f, b - .5, 600, 450), pixel(f, b - .5, 1500, 450)], [RED, BLUE], 'while the pictures push under it');
+  // Only the leaving shot holds it: it fades out through the change.
+  const fades = await make(null), mid = pixel(fades, b - .25, 120, 780);
+  assert.ok(mid[1] < 250 && mid[1] > 5, `fading over the picture under it (${mid})`);
+  assert.deepEqual(pixel(fades, b + .3, 120, 780), BLUE, 'gone once the change is done');
+  // A director's push moves the picture, not the held layer.
+  const pushed = await make(held, [{note: 'push in', push: {at: [800, 450], zoom: 1.5, from: ['b', 'Now the second'], to: ['b', 'all in blue']}}]);
+  const during = pushed.clock.at(['b', 'arrives']);
+  assert.deepEqual(pixel(pushed, during, 120, 780), [255, 255, 255]);
+});
