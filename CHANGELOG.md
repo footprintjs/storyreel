@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 — release: one call, every platform
 
 ### Release: one call, every platform
 - **`makeRelease({targets, post, out, …makeFilm options})`** (`footprint-storyreel/release`): one interface, one
