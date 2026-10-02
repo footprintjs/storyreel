@@ -187,3 +187,11 @@ export const checked = checkReads(readReads([{what: 'the ring', at: ['loop', 'tu
 export const shown = (film: Film) => film.clock.shownWords(0).map(w => w.text);
 // @ts-expect-error a pace is words or letters
 export const badPace = secondsToRead('x', {perSyllable: 1});
+
+// Checks on the finished file.
+import {checkVideo, FINISHED_CHECK_NAMES} from '../types/index.js';
+import {ffmpegProbe, FINISHED} from '../types/sub/finished.js';
+export const finishedOk = async (film: Film) => (await checkVideo({file: 'out/film.mp4', film, voiced: true, expect: {seconds: 240, tolerance: 5}, checks: ['flash', 'voice'], probe: ffmpegProbe()})).ok;
+export const thresholds = FINISHED.change + FINISHED_CHECK_NAMES.length;
+// @ts-expect-error the checks are named
+export const badCheck = checkVideo({file: 'x.mp4', checks: ['wobble']});

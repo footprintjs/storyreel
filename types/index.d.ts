@@ -435,6 +435,28 @@ export function approveFilm(options: {record: string | {inputs: FilmInputs; out?
 /** Whether a film is still what was approved: {ok, changed} — which inputs differ, a file named by its path. */
 export function checkApproval(approval: Approval, inputs: FilmInputs): {ok: boolean; changed: string[]};
 
+/** One thing a check on the finished file found: where (seconds in the file), how serious ('problem': wrong; 'look': worth a look), what. */
+export interface FinishedFinding { check: FinishedCheckName; at: number; severity: 'problem' | 'look'; text: string }
+export type FinishedCheckName = 'duration' | 'blank' | 'flash' | 'handovers' | 'voice' | 'captions';
+/** What the checks on a finished file found: `ok` when nothing is a problem; a check that needs what was not given is skipped, saying why. */
+export interface FinishedReport { file: string; seconds: number; fps: number; frames: number | null; checked: FinishedCheckName[]; skipped: {check: FinishedCheckName; why: string}[]; findings: FinishedFinding[]; ok: boolean }
+/** Reads a finished file for the checks (finished.mjs · ffmpegProbe is the default). */
+export interface VideoProbe {
+  name: string;
+  probe(file: string): {seconds: number; video: {seconds: number; fps: number; width: number; height: number; frames: number | null}; audio: {seconds: number} | null};
+  frames(file: string, size: {width: number; height: number}, each: (index: number, grey: Uint8Array) => void): Promise<number>;
+  sound(file: string, options?: {rate?: number}): Float32Array;
+}
+/**
+ * Check a finished video: picture and sound lengths, blank stretches, flash frames, hand-overs a frame early or late and
+ * joins that repeat a frame, the voice there (voiced renders), captions in order and on their words. With the film it was
+ * made from, what the film meant (a dip to black, a cut, a silent scene) is never reported.
+ */
+export function checkVideo(options: {file: string; film?: Film | null; intro?: number; captions?: string | null; joins?: number[]; voiced?: boolean; expect?: {seconds?: number; tolerance?: number}; checks?: FinishedCheckName[]; probe?: VideoProbe}): Promise<FinishedReport>;
+/** A caption file's cues (WebVTT or SRT): [{start, end, text}]. */
+export function readCaptions(text: string): {start: number; end: number; text: string}[];
+export const FINISHED_CHECK_NAMES: readonly FinishedCheckName[];
+
 /** makeFilm's options; `K` is the kits it takes (two signatures, as compileFilm). */
 export interface MakeFilmOptions<K = Kit | ContextKit> {
   storyboard: Storyboard; recipe: Recipe; data?: unknown; kits?: K[]; theme?: string | Record<string, unknown>; root?: string; hostKeys?: string[];
@@ -446,6 +468,10 @@ export interface MakeFilmOptions<K = Kit | ContextKit> {
   voiceCheck?: 'report' | 'refuse';
   /** A fingerprint of the kits' drawing code (codeFingerprint): kept in the record's inputs, so an approval locks the code too. */
   code?: string | null;
+  /** Checks on the finished file (checkVideo): 'report' (the record's `finished` lists the findings) or 'refuse' (a problem refuses the film). */
+  check?: 'report' | 'refuse' | null;
+  /** The length the brief asks for, for the duration check. */
+  expect?: {seconds?: number; tolerance?: number};
 }
 export function makeFilm(options: MakeFilmOptions<Kit>): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;
 export function makeFilm(options: MakeFilmOptions<Kit | ContextKit>): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;

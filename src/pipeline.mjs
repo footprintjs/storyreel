@@ -18,6 +18,7 @@ import {compileFilm} from './film.mjs';
 import {prepareRender, finishRender, wholeVideo, checkVideoStrategy} from './render.mjs';
 import {readApproval, requireApproval, voiceHash, unlocked} from './approval.mjs';
 import {hashOf} from './hash.mjs';
+import {checkVideo, ffmpegProbe} from './finished.mjs';
 
 const require = createRequire(import.meta.url);
 /** A dependency's installed version (from its package.json, even when its exports hide that file). */
@@ -93,13 +94,17 @@ const MAX_PARTS = 256;
  *                     keeps who approved it, when, and what the approval does not lock
  * @param code         a fingerprint of the kits' drawing code (segments.mjs · codeFingerprint), kept in the record's
  *                     inputs: with it an approval locks the kits' code too
+ * @param check        checks on the finished file (finished.mjs · checkVideo): null (the default: none), 'report'
+ *                     (the record's `finished` lists what they found) or 'refuse' (a problem refuses the film);
+ *                     `expect: {seconds, tolerance?}` is the length the brief asks for
  */
-export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report', code = null}) {
+export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report', code = null, check = null, expect = {}}) {
+  if (check !== null && check !== 'report' && check !== 'refuse') throw new Error(`check is 'report' (the record lists what the checks on the finished file found), 'refuse' (a problem refuses the film) or left out, not ${JSON.stringify(check)}`);
   if (voiceCheck !== 'report' && voiceCheck !== 'refuse') throw new Error(`voiceCheck is 'report' (the record lists words the voice check did not hear) or 'refuse' (the film refuses them), not ${JSON.stringify(voiceCheck)}`);
   if (code !== null && !(typeof code === 'string' && code.trim())) throw new Error("code is a fingerprint of the kits' drawing code (codeFingerprint([kitsFolder])), or left out");
   if (approval) readApproval(approval);
   const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
-  let film, paced, result, job, plan, inputs, voice = null;
+  let film, paced, result, job, plan, inputs, finished = null, voice = null;
   const video = checkVideoStrategy(render.video ?? wholeVideo()), done = [];
   const stages = {
     'check-inputs': scope => {
@@ -151,6 +156,14 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       scope.out = result.out; scope.chapters = result.chapters; scope.loudness = result.loudness.type;
       if (result.video) scope.reused = result.video.reused, scope.rendered = result.video.rendered;
     },
+    // The finished file, checked (finished.mjs): what a person would catch watching it, against what the film meant.
+    'check-finished': async scope => {
+      if (!check) { scope.checked = false; return; }
+      const joins = (result.video?.segments ?? []).slice(1).map(s => Math.round(s.from * job.fps) + (job.withIntro ? Math.round(job.intro.seconds * job.fps) : 0));
+      finished = await checkVideo({file: result.out, film, intro: job.withIntro ? job.intro.seconds : 0, captions: result.captions?.srt ?? result.captions?.vtt ?? null, joins, voiced: Boolean(narrationDir), expect, probe: ffmpegProbe({ffmpeg: job.ffmpeg})});
+      scope.checked = finished.checked; scope.problems = finished.findings.filter(f => f.severity === 'problem').length;
+      if (check === 'refuse' && !finished.ok) throw new Error(`The finished file has ${scope.problems} problem${scope.problems > 1 ? 's' : ''} (check: 'refuse'): ${finished.findings.filter(f => f.severity === 'problem').slice(0, 3).map(f => `${f.check}: ${f.text}`).join('; ')}`);
+    },
   };
   // Each part of the picture is its own subflow (a fan-out over the plan): the record says, part by part,
   // whether it was drawn or reused from the store.
@@ -164,7 +177,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     .addFunction('compile-film', stages['compile-film'], 'compile-film')
     .addFunction('plan-picture', stages['plan-picture'], 'plan-picture')
     .addParallelForEach('render-picture', 'render-picture', {items: scope => scope.parts ?? [], branch: part, maxBranches: MAX_PARTS, into: 'partsDone', failFast: true})
-    .addFunction('render-film', stages['render-film'], 'render-film');
+    .addFunction('render-film', stages['render-film'], 'render-film')
+    .addFunction('check-finished', stages['check-finished'], 'check-finished');
   const run = await chart.build().recorder(trace).run();
   const record = {
     schemaVersion: 1, made: new Date().toISOString(), out: result.out, seconds: result.seconds, chapters: result.chapters,
@@ -185,6 +199,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     sounds: film.sounds.length,
     loudness: loudnessRecord(result.loudness),
     ...(result.video ? {picture: result.video} : {}),
+    ...(finished ? {finished: {ok: finished.ok, checked: finished.checked, skipped: finished.skipped, findings: finished.findings}} : {}),
     tools: TOOLS(),
     pipeline: trace.getEntries(),
     // The compile, stage by stage (record.mjs · recordSteps): what each stage read and wrote, every line as when.<recipe path>.

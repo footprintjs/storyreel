@@ -635,6 +635,36 @@ a frame is drawn. `making-of.json` keeps the approval it was rendered under, and
 not lock: the render settings (the same approved film is made for every platform) and, without a code
 fingerprint, the kits' code. A draft is rendered without one.
 
+## Check the finished file
+
+A render can pass every check before it and still come out wrong: a segment joined a frame off, a voice
+file that went silent, captions shifted by an intro. `checkVideo` reads the finished file itself — the
+picture as small grey frames, the sound as samples — and reports what a person would catch watching it:
+
+| check | finds |
+|---|---|
+| `duration` | picture and sound of different lengths; a picture longer or shorter than the film; a length outside the brief (`expect: {seconds, tolerance?}`) |
+| `blank` | a run of one-colour frames the film does not mean (a dip to black is meant) |
+| `flash` | a frame unlike both its neighbours, which are alike — a one-frame glitch |
+| `handovers` | a cut that lands a frame early or late; a frame repeated where two segments join |
+| `voice` | words the film times that are not heard in a voiced render (quieter than −50 dBFS) |
+| `captions` | cues out of order or overlapping, past the end of the picture, or starting away from their first word |
+
+```js
+import {checkVideo} from 'footprint-storyreel';
+const report = await checkVideo({file: 'out/film.mp4', film, captions: 'out/film.srt', voiced: true, expect: {seconds: 240}});
+// report.ok, report.findings: [{check: 'flash', at: 12.3, severity: 'problem', text: 'a flash frame at 12.30 s (frame 123): …'}]
+```
+
+With the film it was made from, the checks know what was meant, so a dip to black, a cut or a silent scene is
+never reported; a check that needs what was not given is skipped, saying why. `makeFilm({…, check: 'report'})`
+runs them as a stage of its own and writes `finished` into `making-of.json`; `check: 'refuse'` turns a problem
+into a refusal. The probe that reads the file is an adapter (`ffmpegProbe()`, or your own `{probe, frames,
+sound}`), and each check a strategy (`footprint-storyreel/finished` · `FINISHED_CHECKS`, `FINISHED`). The
+first run of these checks found a bug in the renderer itself: FFmpeg's `-shortest` stopped the picture a few
+frames early, so the last frames of every film were lost; the sound is now padded to the picture's exact
+length instead.
+
 ## The compile record
 
 `compileFilm({…, record: true})` runs the compile as a footprintjs flowchart and returns the film with
@@ -868,7 +898,8 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `captionChunks(film, {maxWords?, maxChars?, breaks?})` · `captionFile(chunks, 'vtt' \| 'srt', {offset?, from?, to?})` | the spoken words in caption chunks; a WebVTT or SRT file (`footprint-storyreel/captions` adds `captionAt`, `drawCaption`) |
 | `TRANSITIONS` · `TRANSITION_NAMES` · `transitionCatalog(kits)` · `transitionSheet({catalog?, moments?, width?})` | the transitions a shot can enter with, a kit's own added, on one PNG (`footprint-storyreel/transitions` adds `readEntrance`, `ghostPainter`) |
 | `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?})` | compile + render as a footprintjs pipeline, with `making-of.json` (a segmented render: one subflow per segment) |
-| `approveFilm({storyboard, recipe, pacing?, narrationDir?, by, note?})` · `checkApproval(approval, inputs)` · `filmHashes(inputs)` | the approval lock: what was approved, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
+| `approveFilm({record, by, note?})` · `checkApproval(approval, inputs)` | the approval lock: approve a watched render from its making-of.json, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
+| `checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})` · `readCaptions(text)` · `FINISHED_CHECK_NAMES` | checks on the finished file: lengths, blank runs, flash frames, hand-overs and joins, the voice, captions (`footprint-storyreel/finished` adds `ffmpegProbe`, `FINISHED_CHECKS`, `FINISHED`) |
 | `segmentedVideo({store, recipe, code?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir)` · `ffmpegJoin()` · `planSegments(film, {fps})` · `segmentKey(…)` · `codeFingerprint(paths)` | re-render only what changed: the picture in cached segments, joined (`renderFilm({…, video})`) |
 | `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |
 | `directionTimings(scene, {tail?})` · `withDirections(storyboard, timings)` · `sceneText(scene)` · `spokenText(scene)` · `unsaidNumbers(storyboard)` | a silent scene's timing; a voice's timings completed with the silent scenes; a scene's text as spoken (number slots in words); digits without a slot |
@@ -881,7 +912,7 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/acting`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/acting`, `/finished`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws

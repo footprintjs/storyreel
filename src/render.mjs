@@ -86,9 +86,11 @@ function measureFilm(ffmpeg, wav, target) {
  * ('linear' when one fixed gain was kept, 'dynamic' when loudnorm fell back to varying it) or 'skipped';
  * target is what the second pass asked for (render.mjs · effectiveTarget).
  */
-function muxWithLoudness({ffmpeg, video, wav, out, target}) {
+function muxWithLoudness({ffmpeg, video, wav, out, target, seconds}) {
   const {measured, reason} = measureFilm(ffmpeg, wav, target);
-  const mux = af => ['-i', video, '-i', wav, '-map', '0:v', '-map', '1:a', '-af', af, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-shortest', '-movflags', '+faststart', out];
+  // The sound is padded to the picture's exact length (frames / fps) and both end there. FFmpeg's -shortest
+  // stopped a copied picture a few frames early (the finished-file check found 4 frames missing at 30 fps).
+  const mux = af => ['-i', video, '-i', wav, '-map', '0:v', '-map', '1:a', '-af', `${af},apad`, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-t', seconds.toFixed(6), '-movflags', '+faststart', out];
   if (reason) {
     runReporting(ffmpeg, mux(`${LOUDNESS_FORMAT},aresample=48000`));
     return {type: 'skipped', target, measured, reason};
@@ -347,7 +349,8 @@ export async function finishRender(job, video) {
   run(['-ss', String(start), '-t', String(to - start), '-i', path.join(dir, 'film-lesson.wav'), path.join(dir, 'film-part.wav')]); parts.push(path.join(dir, 'film-part.wav'));
   writeFileSync(path.join(dir, 'film-audio.txt'), parts.map(p => `file '${p}'`).join('\n') + '\n');
   run(['-f', 'concat', '-safe', '0', '-i', path.join(dir, 'film-audio.txt'), '-ar', '48000', '-ac', '1', path.join(dir, 'film-audio.wav')]);
-  const loudnessSet = muxWithLoudness({ffmpeg, video: video.file, wav: path.join(dir, 'film-audio.wav'), out: path.resolve(job.out), target: loudness});
+  const pictureSeconds = (job.frames + (withIntro ? Math.round(intro.seconds * job.fps) : 0)) / job.fps;
+  const loudnessSet = muxWithLoudness({ffmpeg, video: video.file, wav: path.join(dir, 'film-audio.wav'), out: path.resolve(job.out), target: loudness, seconds: pictureSeconds});
   // Chapters on the output's clock, for review and YouTube.
   const lead = withIntro ? intro.seconds : 0;
   const chapters = [...(withIntro ? [[0, intro.title ?? 'Title']] : []), ...storyboard.scenes.map((s, i) => [lead + film.clock.offsets[i] - start, s.title ?? s.id])].filter(([t]) => t >= 0);

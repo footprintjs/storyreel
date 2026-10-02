@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Check the finished file
+- **`checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})`** reads the finished
+  file itself and reports what a person would catch watching it: picture and sound of different lengths, or a
+  length outside the brief (`duration`); a blank run the film does not mean (`blank`); a frame unlike both its
+  neighbours, which are alike (`flash`); a cut a frame early or late, a frame repeated where segments join
+  (`handovers`); words not heard in a voiced render (`voice`); captions out of order, past the end, or away
+  from their first word (`captions`). With the film, what it meant is never reported; a check that needs what
+  was not given is skipped, saying why. The probe is an adapter (`ffmpegProbe()`), each check a strategy
+  (`footprint-storyreel/finished`). **`makeFilm({check: 'report' | 'refuse', expect})`** runs them as a stage of
+  its own (`check-finished`) and writes `finished` into `making-of.json`.
+- **Fixed: the last frames of every film were lost** (also in 0.3.0). FFmpeg's `-shortest` stopped a copied
+  picture a few frames early when it was muxed with the sound (4 frames of a 35 s film at 30 fps); the sound is
+  now padded to the picture's exact length (frames / fps) and both end there. Found by the first run of the
+  checks above.
+
 ### Through a thing: match cuts
 - **`through`** (family `match`): the camera goes through a thing in the old picture — a window, a screen,
   a ring (`shape: "round"`) — and the new picture is what was inside it: fitted in the opening, zoomed about

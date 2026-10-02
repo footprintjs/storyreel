@@ -1,0 +1,139 @@
+// Checks on the finished file (finished.mjs): each check is a strategy over what a probe (the adapter) read,
+// so each is tested here on frames and sound made to order — a flash, a blank run, a late cut, a repeated
+// frame at a join, a missing voice, drifting captions — and then once on a real render read by FFmpeg.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync, writeFileSync, readFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+import {createCanvas} from '@napi-rs/canvas';
+import {compileFilm, evenTimings, paceTimings, renderFilm, makeFilm, cartoonKit, captionChunks, captionFile} from '../src/index.mjs';
+import {checkVideo, readCaptions, FINISHED_CHECK_NAMES, FINISHED} from '../src/finished.mjs';
+
+const W = 160, H = 90, fps = 10;
+/** A probe that reads frames and sound made to order (grey levels, W×H) instead of a file. */
+const fakeProbe = ({frames, audio = null, seconds = frames.length / fps}) => ({
+  name: 'fake',
+  probe: () => ({seconds, video: {seconds, fps, width: W, height: H, frames: frames.length}, audio: audio ? {seconds: audio.seconds} : null}),
+  async frames(_file, _size, each) { frames.forEach((f, i) => each(i, f)); return frames.length; },
+  sound: () => audio.samples,
+});
+const grey = fill => Uint8Array.from({length: W * H}, (_, i) => fill(i % W, Math.floor(i / W)));
+const stripes = shift => grey(x => 40 + ((x + shift) % 40) * 4);   // a pattern that moves `shift` pixels
+const solid = v => grey(() => v);
+const check = (frames, options = {}) => checkVideo({file: 'made.mp4', probe: fakeProbe({frames, ...options.probe}), ...options, probe: fakeProbe({frames, ...options.probe})});
+
+test('a flash frame — unlike both neighbours, which are alike — is found; a cut, a step from one picture to another, is not', async () => {
+  const frames = Array.from({length: 30}, (_, i) => (i === 12 ? solid(250) : i < 20 ? stripes(i) : solid(60 + i)));
+  const report = await check(frames, {checks: ['flash']});
+  assert.deepEqual(report.findings.map(f => [f.check, f.at, f.severity]), [['flash', 1.2, 'problem']]);
+  assert.match(report.findings[0].text, /a flash frame at 1.20 s \(frame 12\)/);
+  assert.equal(report.ok, false);
+});
+
+test('a blank run is worth a look without the film; a run shorter than FINISHED.blankFrames is not', async () => {
+  const frames = Array.from({length: 40}, (_, i) => ((i >= 10 && i < 15) || (i >= 30 && i < 32) ? solid(0) : stripes(i)));
+  const report = await check(frames, {checks: ['blank']});
+  assert.deepEqual(report.findings.map(f => [f.at, f.severity]), [[1, 'look']], `only the ${FINISHED.blankFrames}+ frame run`);
+  assert.match(report.findings[0].text, /5 blank frames \(one colour\) from 1.00 s/);
+  assert.equal(report.ok, true, 'a look is not a problem');
+});
+
+test('the picture and the sound run as long as each other and as the brief', async () => {
+  const frames = Array.from({length: 30}, (_, i) => stripes(i));
+  const longer = await check(frames, {checks: ['duration'], probe: {audio: {seconds: 4, samples: new Float32Array(1)}}});
+  assert.match(longer.findings[0].text, /the sound runs 1.00 s longer than the picture/);
+  const brief = await check(frames, {checks: ['duration'], expect: {seconds: 60}});
+  assert.match(brief.findings[0].text, /it is 3.0 s; the brief asks for 60 s/);
+  assert.equal((await check(frames, {checks: ['duration'], expect: {seconds: 3.5, tolerance: 1}})).findings.length, 0);
+});
+
+test('a check that needs what is not given is skipped, saying why; an unknown check refuses', async () => {
+  const report = await check([stripes(0), stripes(1)]);
+  assert.deepEqual(report.checked, ['duration', 'blank', 'flash']);
+  assert.deepEqual(report.skipped.map(s => s.check), ['handovers', 'voice', 'captions']);
+  assert.match(report.skipped.find(s => s.check === 'voice').why, /give the film/);
+  await assert.rejects(check([stripes(0)], {checks: ['wobble']}), /"wobble" is not a check; the checks are duration, blank, flash, handovers, voice, captions/);
+  assert.deepEqual(FINISHED_CHECK_NAMES, ['duration', 'blank', 'flash', 'handovers', 'voice', 'captions']);
+});
+
+// A film with a cut: a red story, a blue world, then a green one entered with a cut.
+const storyboard = {title: 'T', scenes: [{id: 'a', narration: 'This is the first world, all in red.'}, {id: 'b', narration: 'Now the second world arrives, all in blue.'}, {id: 'c', narration: 'And a third world comes after it.'}]};
+const world = (name, color) => ({name, story: {compile: () => ({hang: 1, spotAt: () => null, sounds: [], draw: c => { c.fillStyle = color; c.fillRect(0, 0, 1600, 900); }})}});
+const film = await compileFilm({storyboard, timings: evenTimings(storyboard), kits: [world('red', '#f00'), world('blue', '#00f'), world('green', '#0f0')],
+  recipe: {story: {kit: 'red'}, stages: [{type: 'world', scene: 'b', world: {kit: 'blue'}}, {type: 'world', scene: 'c', enter: 'cut', world: {kit: 'green'}}]}});
+/** The film's frame at t, grey, W×H: what a probe would read from a perfect render. */
+const canvas = createCanvas(W, H), ctx = canvas.getContext('2d');
+const drawn = (f, t) => { ctx.resetTransform(); ctx.clearRect(0, 0, W, H); ctx.scale(W / 1600, H / 900); f.frame(ctx, Math.max(0, Math.min(f.total, t))); const d = ctx.getImageData(0, 0, W, H).data; return Uint8Array.from({length: W * H}, (_, i) => Math.round(.299 * d[4 * i] + .587 * d[4 * i + 1] + .114 * d[4 * i + 2])); };
+
+test('with the film: a cut that lands a frame late is found; one that lands on its frame is not', async () => {
+  const n = Math.ceil(film.total * fps), cut = Math.ceil(film.clock.start('c') * fps - 1e-6);
+  const right = Array.from({length: n}, (_, f) => drawn(film, f / fps)), late = right.map((g, f) => (f === cut ? right[cut - 1] : g));
+  assert.equal((await check(right, {film, checks: ['handovers']})).findings.length, 0);
+  const report = await check(late, {film, checks: ['handovers']});
+  assert.equal(report.findings.length, 1); assert.match(report.findings[0].text, /the cut into stages\[1\] lands 1 frame late/);
+});
+
+test('with the film: a frame repeated where two segments join is found, while the picture moves', async () => {
+  // A film that moves all the time: stripes drifting across the frame.
+  const moving = {total: 4, rows: [], timings: {scenes: []}, clock: {offsets: [], words: () => [], shownWords: () => []},
+    frame(c, t) { for (let x = 0; x < 1600; x += 100) { c.fillStyle = (x / 100) % 2 ? '#222' : '#ddd'; c.fillRect((x + t * 300) % 1600, 0, 100, 900); } }};
+  const frames = Array.from({length: 40}, (_, f) => drawn(moving, f / fps)), join = 20;
+  assert.equal((await check(frames, {film: moving, joins: [join], checks: ['handovers']})).findings.length, 0);
+  const repeated = frames.map((g, f) => (f === join ? frames[join - 1] : g));
+  const report = await check(repeated, {film: moving, joins: [join], checks: ['handovers']});
+  assert.match(report.findings[0]?.text ?? '', /a frame repeats where two segments join \(frame 20/);
+});
+
+test('the voice is there when the render has one: silence where the film says words is a problem', async () => {
+  const frames = Array.from({length: Math.ceil(film.total * fps)}, (_, f) => drawn(film, f / fps)), rate = 8000, n = Math.ceil(film.total * rate);
+  const silent = await check(frames, {film, voiced: true, checks: ['voice'], probe: {audio: {seconds: film.total, samples: new Float32Array(n)}}});
+  assert.equal(silent.findings.length, 3, 'all three scenes'); assert.match(silent.findings[0].text, /the voice is not there in scene a: 8 of 8 words are quieter than -50 dBFS/);
+  const speech = Float32Array.from({length: n}, (_, i) => .2 * Math.sin(i / 3));
+  assert.equal((await check(frames, {film, voiced: true, checks: ['voice'], probe: {audio: {seconds: film.total, samples: speech}}})).findings.length, 0);
+  assert.match((await check(frames, {film, voiced: true, checks: ['voice']})).findings[0].text, /the film has words and the file has no sound/);
+  assert.deepEqual((await check(frames, {film, checks: ['voice']})).skipped, [{check: 'voice', why: 'the render has no voice (voiced: true when it does)'}]);
+});
+
+test('captions: in order, inside the picture, and each starting with its first word', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'storyreel-cap-')), file = (name, text) => { const p = path.join(dir, name); writeFileSync(p, text); return p; };
+  const frames = Array.from({length: Math.ceil(film.total * fps)}, (_, f) => drawn(film, f / fps)), chunks = captionChunks(film);
+  const right = file('right.srt', captionFile(chunks, 'srt'));
+  assert.equal((await check(frames, {film, captions: right, checks: ['captions']})).findings.length, 0, 'made from the film: no drift');
+  const late = await check(frames, {film, captions: file('late.vtt', captionFile(chunks, 'vtt', {offset: .8})), checks: ['captions']});
+  assert.ok(late.findings.some(f => /starts 0.80 s after its first word is said/.test(f.text)), late.findings.map(f => f.text).join(' | '));
+  assert.ok(late.findings.some(f => /the last caption ends at [\d.]+ s, after the picture/.test(f.text)), 'shifted late, the last one also outlasts the picture');
+  const bad = file('bad.srt', '1\n00:00:01,000 --> 00:00:03,000\nOne\n\n2\n00:00:02,500 --> 00:00:04,000\nTwo\n\n3\n00:01:00,000 --> 00:01:02,000\nLate\n');
+  const texts = (await check(frames, {captions: bad, checks: ['captions']})).findings.map(f => f.text);
+  assert.ok(texts.some(t => /caption 2 starts before caption 1 ends/.test(t)) && texts.some(t => /the last caption ends at 62.00 s, after the picture/.test(t)), texts.join(' | '));
+  assert.deepEqual(readCaptions('WEBVTT\n\n00:01.500 --> 00:02.000 align:start\nHi there\n'), [{start: 1.5, end: 2, text: 'Hi there'}]);
+});
+
+const has = cmd => !spawnSync(cmd, ['-version']).error;
+test('on a real render, read by FFmpeg: every frame is there, the checks pass, and a frame burned white is found', {skip: has('ffmpeg') && has('ffprobe') ? false : 'needs ffmpeg and ffprobe'}, async () => {
+  const dir = fileURLToPath(new URL('../examples/worlds/', import.meta.url)), read = f => JSON.parse(readFileSync(dir + f, 'utf8'));
+  const board = read('storyboard.json'), timings = paceTimings(board, evenTimings(board, {tail: .8}), read('pacing.json')), recipe = read('recipe.json');
+  const worlds = await compileFilm({storyboard: board, timings, recipe, kits: [cartoonKit], root: dir, strings: read('strings/en.json')});
+  const top = mkdtempSync(path.join(tmpdir(), 'storyreel-finished-'));
+  const made = await renderFilm({film: worlds, storyboard: board, timings, out: path.join(top, 'film.mp4'), width: 320, height: 180, fps, captionFiles: ['srt']});
+  const report = await checkVideo({file: made.out, film: worlds, captions: made.captions.srt});
+  assert.equal(report.frames, Math.ceil(worlds.total * fps), 'the mux keeps every frame (FFmpeg\'s -shortest used to drop the last few)');
+  assert.deepEqual(report.findings, []); assert.equal(report.ok, true);
+  const broken = path.join(top, 'broken.mp4');
+  spawnSync('ffmpeg', ['-y', '-v', 'error', '-i', made.out, '-vf', "drawbox=x=0:y=0:w=iw:h=ih:color=white:t=fill:enable='eq(n,123)'", '-c:a', 'copy', broken]);
+  const found = await checkVideo({file: broken, film: worlds, checks: ['flash']});
+  assert.deepEqual(found.findings.map(f => f.at), [12.3]);
+});
+
+test('makeFilm checks the finished file when asked: the record lists what was found; refuse turns a problem into a refusal', {skip: has('ffmpeg') && has('ffprobe') ? false : 'needs ffmpeg and ffprobe'}, async () => {
+  const dir = fileURLToPath(new URL('../examples/hello/', import.meta.url)), read = f => JSON.parse(readFileSync(dir + f, 'utf8'));
+  const board = read('storyboard.json'), recipe = read('recipe.json'), timings = evenTimings(board, {tail: 4}), top = mkdtempSync(path.join(tmpdir(), 'storyreel-finished-'));
+  const made = await makeFilm({storyboard: board, recipe, root: dir, timings, out: path.join(top, 'a', 'film.mp4'), render: {width: 320, height: 180, fps}, check: 'report'});
+  const record = JSON.parse(readFileSync(made.makingOf, 'utf8'));
+  assert.equal(record.finished.ok, true); assert.deepEqual(record.finished.checked, ['duration', 'blank', 'flash', 'handovers']);
+  assert.ok(record.pipeline.some(e => /check-finished/.test(e.text ?? e.stageName ?? JSON.stringify(e))), 'a stage of its own in the run');
+  await assert.rejects(makeFilm({storyboard: board, recipe, root: dir, timings, out: path.join(top, 'b', 'film.mp4'), render: {width: 320, height: 180, fps}, check: 'refuse', expect: {seconds: 10}}), /The finished file has 1 problem \(check: 'refuse'\): duration: it is [\d.]+ s; the brief asks for 10 s/);
+  await assert.rejects(makeFilm({storyboard: board, recipe, root: dir, timings, out: path.join(top, 'c', 'film.mp4'), check: 'always'}), /check is 'report'/);
+});

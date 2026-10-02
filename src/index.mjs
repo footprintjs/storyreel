@@ -8,6 +8,7 @@ export {renderFilm, wholeVideo} from './render.mjs';
 export {segmentedVideo, folderStore, ffmpegJoin, planSegments, segmentKey, codeFingerprint} from './segments.mjs';
 export {makeFilm} from './pipeline.mjs';
 export {approveFilm, checkApproval} from './approval.mjs';
+export {checkVideo, readCaptions, FINISHED_CHECK_NAMES} from './finished.mjs';
 export {applyPacing, validatePacing, tailFor, paceTimings} from './pacing.mjs';
 export {withStrings} from './strings.mjs';
 export {createMotionSound as createSound} from './sound.mjs';

@@ -75,6 +75,10 @@
       "types": "./types/sub/acting.d.ts",
       "default": "./src/acting.mjs"
     },
+    "./finished": {
+      "types": "./types/sub/finished.d.ts",
+      "default": "./src/finished.mjs"
+    },
     "./pins": {
       "types": "./types/sub/pins.d.ts",
       "default": "./src/pins.mjs"
