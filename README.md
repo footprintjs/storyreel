@@ -569,6 +569,35 @@ A layout is data, checked like a recipe: an unknown key refuses, a header in the
 refuses (it has no band), a crop key out of spoken order refuses. Only the landscape format takes an
 `intro`.
 
+### Release: one call, every platform
+
+A layout makes a version; a **release** makes the whole post for each place it goes. One interface,
+`makeRelease`, and one adapter per platform (`youtube`, `youtube-shorts`, `linkedin`, `tiktok`,
+`instagram-reels`), each imported only when a release names it. What differs between platforms lives in
+the adapter as data: the video's shape, its length, the text fields and their limits, the thumbnail, who the
+platform is for, and how the text is composed (YouTube's description gets the film's chapters).
+
+```js
+import {makeRelease} from 'footprint-storyreel/release';
+
+await makeRelease({storyboard, recipe, narrationDir, pacing, out: 'release/ep01',
+  post: {title: 'One sheep, one pebble', description: 'How counting began.', audience: 'kids', thumbnail: 'ep01.jpg'},
+  targets: ['youtube', {target: 'youtube-shorts', from: 51, to: 110, crop: [{at: ['past', 'a shepherd'], x: 900}]}]});
+// release/ep01/youtube/  the film 1920×1080, captions.srt + .vtt, thumbnail.jpg, post.json, post.txt (made for kids: yes)
+// release/ep01/youtube-shorts/  a 59 s part, 1080×1920 with the title band and captions, post.json, post.txt
+```
+
+- **Who it is for.** `post.audience` is `'kids'` or `'general'`. YouTube marks a kids' film made for kids;
+  TikTok, Instagram (13 and over) and LinkedIn (16 and over) refuse it, with the fix: the full film goes where
+  children watch, and a teaser for parents goes there as `'general'`.
+- **Refused before a frame is drawn** when it can be known then (the audience, a title over the limit, a
+  thumbnail of the wrong shape, a part too long); the film's own length and the text with its chapters are
+  checked after the render.
+- **Limits change.** Each adapter says when its facts were checked and where (`facts`); a target may override
+  one (`{target: 'tiktok', limits: {seconds: {max: 3600}}}`). An adapter of your own is an object of the same
+  shape (`checkAdapter` names what is missing), passed in `targets`.
+- **Uploading is not a release's job:** it needs the account owner's sign-in, and stays a separate step.
+
 ## Re-render only what changed
 
 A film is edited many times. Fixing one word, one beat or one drawing should not mean drawing all
@@ -938,6 +967,7 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `approveFilm({record, by, note?})` · `checkApproval(approval, inputs)` | the approval lock: approve a watched render from its making-of.json, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
 | `checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})` · `readCaptions(text)` · `FINISHED_CHECK_NAMES` | checks on the finished file: lengths, blank runs, flash frames, hand-overs and joins, the voice, captions (`footprint-storyreel/finished` adds `ffmpegProbe`, `FINISHED_CHECKS`, `FINISHED`) |
 | `segmentedVideo({store, recipe, code?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir)` · `ffmpegJoin()` · `planSegments(film, {fps})` · `segmentKey(…)` · `codeFingerprint(paths)` | re-render only what changed: the picture in cached segments, joined (`renderFilm({…, video})`) |
+| `footprint-storyreel/release` → `makeRelease({targets, post, out, …})` · `loadTarget` · `checkAdapter` · `planProblems` · `TARGET_NAMES` | the post for each platform: the video in its shape, captions, thumbnail, the text to paste, checked against the platform's limits and audience |
 | `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |
 | `directionTimings(scene, {tail?})` · `withDirections(storyboard, timings)` · `sceneText(scene)` · `spokenText(scene)` · `unsaidNumbers(storyboard)` | a silent scene's timing; a voice's timings completed with the silent scenes; a scene's text as spoken (number slots in words); digits without a slot |
 | `makeClock(storyboard, timings)` | phrases → seconds; `speaking(t)`, `turns()`, `gaze(t, who)` |
@@ -949,7 +979,7 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/acting`, `/finished`, `/listening`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws
