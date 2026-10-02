@@ -1,4 +1,4 @@
-export {makeClock, ramp, speechIndex, phraseMatches, evenTimings, directionTimings, withDirections, sceneText} from '../index.js';
+export {makeClock, ramp, speechIndex, phraseMatches, evenTimings, directionTimings, withDirections, sceneText, spokenText, unsaidNumbers} from '../index.js';
 import type {StoryboardScene} from '../index.js';
 /** How long one direction may last, in seconds: [0.2, 20]. */
 export const DIRECTION_SECONDS: readonly [number, number];
@@ -6,3 +6,7 @@ export const DIRECTION_SECONDS: readonly [number, number];
 export function checkScene(scene: StoryboardScene, index?: number): 'spoken' | 'silent';
 /** Letters and digits only, lower case: how narration text and spoken words are compared. */
 export function normSpeech(text: string): string;
+/** A phrase as the voice says it: every number slot's shown text replaced by its spoken words. */
+export function spokenPhrase(scene: StoryboardScene, phrase: string): string;
+/** The words to show for a scene (captions): number slots' spoken runs collapsed back into what is shown. */
+export function shownWords<W extends {text: string; start: number; end: number}>(scene: StoryboardScene, words: W[]): {text: string; start: number; end: number}[];

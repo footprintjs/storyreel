@@ -3,7 +3,7 @@
  * on which spoken phrase). See README.md.
  */
 export {compileFilm} from './film.mjs';
-export {makeClock, ramp, speechIndex, phraseMatches, evenTimings, directionTimings, withDirections, sceneText} from './clock.mjs';
+export {makeClock, ramp, speechIndex, phraseMatches, evenTimings, directionTimings, withDirections, sceneText, spokenText, unsaidNumbers} from './clock.mjs';
 export {renderFilm, wholeVideo} from './render.mjs';
 export {segmentedVideo, folderStore, ffmpegJoin, planSegments, segmentKey, codeFingerprint} from './segments.mjs';
 export {makeFilm} from './pipeline.mjs';

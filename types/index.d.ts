@@ -10,7 +10,9 @@ export type Beat = [scene: string, phrase: string] | [scene: string, phrase: str
 export type Direction = [text: string, seconds: number];
 
 /** A scene is spoken (`narration`) or silent (`silent`: directions), never both. */
-export type StoryboardScene = {id: string; title?: string; /** Who says the scene: a name the voice step maps to a voice; kits read it through clock.speaking(t). */ speaker?: string; [key: string]: unknown}
+export type StoryboardScene = {id: string; title?: string; /** Who says the scene: a name the voice step maps to a voice; kits read it through clock.speaking(t). */ speaker?: string;
+  /** Number slots: [shown, spoken] — the captions show `shown` ("16.67 ms"), the voice says `spoken` ("sixteen point six seven milliseconds"; words only). Each shown text appears in the narration, in order. */
+  say?: [string, string][]; [key: string]: unknown}
   & ({narration: string; silent?: never} | {silent: Direction[]; narration?: never});
 
 export interface Storyboard {
@@ -410,6 +412,8 @@ export interface MakeFilmOptions<K = Kit | ContextKit> {
   out: string; render?: Record<string, unknown>;
   /** Refuse to render anything but what this approval locked (the record keeps who approved it, and when). */
   approval?: Approval | null;
+  /** The voice folder's word-check.json: 'report' (the default: the record lists low and unheard words) or 'refuse' (a word not heard refuses). */
+  voiceCheck?: 'report' | 'refuse';
 }
 export function makeFilm(options: MakeFilmOptions<Kit>): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;
 export function makeFilm(options: MakeFilmOptions<Kit | ContextKit>): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;
@@ -422,6 +426,10 @@ export function directionTimings(scene: StoryboardScene, options?: {tail?: numbe
 export function withDirections(storyboard: Storyboard, timings: Timings): Timings;
 /** A scene's text: its narration, or its directions joined (checked: one of the two, well formed). */
 export function sceneText(scene: StoryboardScene): string;
+/** What the voice says for a scene: its narration with each number slot's spoken words in place of what is shown. */
+export function spokenText(scene: StoryboardScene): string;
+/** Numbers left as digits in the narration (not inside a say slot): a voice tool can refuse them before it speaks. */
+export function unsaidNumbers(storyboard: Storyboard): {scene: string; text: string}[];
 export function paceTimings(storyboard: Storyboard, timings: Timings, pacing: Pacing): Timings;
 export function applyPacing(options: {runDir: string; board: Storyboard; timings: Timings; pacing: Pacing}): Promise<Timings>;
 export function validatePacing(pacing: Pacing, board: Storyboard): void;

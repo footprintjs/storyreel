@@ -90,7 +90,7 @@ export function segmentMaterial(film, seg, {recipe, storyboard = null, pixels, c
     .map(({sc, start}) => {
       const board = storyboard?.scenes?.find(b => b.id === sc.id);
       return {id: sc.id, start: at(start), duration: round(sc.duration), words: (sc.words ?? []).map(w => [w.text, at(start + w.start), at(start + w.end)]),
-        ...(board ? {said: board.narration ?? board.silent ?? null, speaker: board.speaker ?? null} : {})};
+        ...(board ? {said: board.narration ?? board.silent ?? null, say: board.say ?? null, speaker: board.speaker ?? null} : {})};
     });
   const near = t => t >= seg.from - margin && t <= seg.to + margin;
   return {

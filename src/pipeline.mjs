@@ -8,7 +8,7 @@
  * Heavy things (the compiled film, canvases) never enter the flowchart's tracked scope; stages
  * pass small values and file paths, as footprintjs expects.
  */
-import {readFileSync, writeFileSync, mkdirSync, cpSync, rmSync} from 'node:fs';
+import {readFileSync, writeFileSync, mkdirSync, cpSync, rmSync, existsSync, statSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 import path from 'node:path';
@@ -57,6 +57,20 @@ function peakAdvice({target, measured}) {
   return reach < target.I ? `; here the loudest peak (${TP} dBTP) reaches the ${target.TP} dBTP limit at I = ${reach} LUFS — ask for loudness I ${reach} or lower to keep one fixed gain` : '';
 }
 const sha = text => createHash('sha256').update(text).digest('hex').slice(0, 16);
+
+/**
+ * The voice check a voice folder carries (word-check.json, written by the voice tools' check_words.py):
+ * every word forced alignment scored low, and every word the listen-back did not hear (a dropped word,
+ * which alignment cannot see). Flagged stale when it is older than the folder's timings.json.
+ */
+export function readVoiceCheck(narrationDir) {
+  const file = path.join(narrationDir, 'word-check.json');
+  if (!existsSync(file)) return null;
+  const report = JSON.parse(readFileSync(file, 'utf8')), spoken = (report.scenes ?? []).filter(s => !s.silent);
+  const stale = statSync(file).mtimeMs < statSync(path.join(narrationDir, 'timings.json')).mtimeMs;
+  return {lowWords: spoken.flatMap(s => (s.lowWords ?? []).map(([word, score]) => ({scene: s.scene, word, score}))),
+    notHeard: spoken.flatMap(s => (s.notHeard ?? []).map(word => ({scene: s.scene, word}))), checked: report.notHeardCount !== undefined, ...(stale ? {stale: 'word-check.json is older than timings.json: check the voice again'} : {})};
+}
 /** The most parts a picture is planned in (segments.mjs · planSegments makes one per row of pictures). */
 const MAX_PARTS = 256;
 
@@ -72,12 +86,15 @@ const MAX_PARTS = 256;
  *                     captionFiles, video…); a layout, motion blur or caption files are written into the record as
  *                     `version`; a segmentedVideo strategy renders each segment as its own subflow and the record's
  *                     `picture` says which were drawn and which were reused
+ * @param voiceCheck   'report' (the default: the record lists the words the voice check scored low or did not hear,
+ *                     from the voice folder's word-check.json) or 'refuse' (a word not heard refuses the film)
  * @param approval     an approval (approval.mjs · approveFilm): the render refuses if the storyboard, the recipe, the
  *                     pacing or the voice changed since it was approved; the record keeps who approved it and when
  */
-export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null}) {
+export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report'}) {
+  if (voiceCheck !== 'report' && voiceCheck !== 'refuse') throw new Error(`voiceCheck is 'report' (the record lists words the voice check did not hear) or 'refuse' (the film refuses them), not ${JSON.stringify(voiceCheck)}`);
   const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
-  let film, paced, result, job, plan;
+  let film, paced, result, job, plan, voice = null;
   const video = checkVideoStrategy(render.video ?? wholeVideo()), done = [];
   const stages = {
     'check-inputs': scope => {
@@ -98,6 +115,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
         paced = pacing ? await applyPacing({runDir: copy, board: storyboard, timings: raw, pacing}) : withDirections(storyboard, raw);
         writeFileSync(path.join(copy, 'timings.json'), JSON.stringify(paced, null, 2));
         scope.narration = copy;
+        voice = readVoiceCheck(narrationDir);
+        if (voice && voiceCheck === 'refuse' && voice.notHeard.length) throw new Error(`The voice check did not hear ${voice.notHeard.map(w => `"${w.word}" (${w.scene})`).join(', ')}: choose another take (voice_takes.py), reword the line, or write a number as a say slot`);
       } else {
         if (!timings) throw new Error('A silent film needs timings (word times per scene)');
         paced = pacing ? paceTimings(storyboard, timings, pacing) : withDirections(storyboard, timings); scope.narration = null;
@@ -142,6 +161,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     schemaVersion: 1, made: new Date().toISOString(), out: result.out, seconds: result.seconds, chapters: result.chapters,
     inputs: {storyboard: run.state?.storyboardHash, recipe: run.state?.recipeHash, scenes: storyboard.scenes.length, ...(strings ? {strings: run.state?.stringsHash} : {})},
     ...(approval ? {approval: {by: approval.by, approved: approval.approved, ...(approval.note ? {note: approval.note} : {}), hashes: approval.hashes}} : {}),
+    ...(voice ? {voice} : {}),
     ...(strings ? {strings: {lang, used: film.strings}} : {}),
     pacing: paced.pacing ?? null,
     ...(result.poster ? {poster: {file: path.basename(result.poster), at: film.posterAt}} : {}),

@@ -24,8 +24,10 @@ export function checkScene(scene, i = 0) {
   if (scene.speaker !== undefined && !(typeof scene.speaker === 'string' && scene.speaker.trim())) throw new TypeError(`${name}: speaker must name who says the scene (a word, e.g. "robot"), not ${JSON.stringify(scene.speaker)}`);
   if (spoken) {
     if (typeof scene.narration !== 'string') throw new TypeError(`${name}: narration must be the words said, as one string`);
+    if (scene.say !== undefined) checkSay(scene, name);
     return 'spoken';
   }
+  if (scene.say !== undefined) throw new Error(`${name}: say is for a spoken scene (what the voice says for a word the captions show); a silent scene says nothing`);
   if (!Array.isArray(scene.silent) || !scene.silent.length) throw new TypeError(`${name}: silent must list its directions, e.g. "silent": [["the door opens", 1.0]]`);
   const [lo, hi] = DIRECTION_SECONDS;
   scene.silent.forEach((direction, k) => {
@@ -37,8 +39,82 @@ export function checkScene(scene, i = 0) {
   return 'silent';
 }
 
-/** A scene's text, checked (clock.mjs · checkScene): its narration, or its directions joined — what its words spell. */
-export const sceneText = (scene, i) => checkScene(scene, i) === 'silent' ? scene.silent.map(([text]) => text).join(' ') : scene.narration;
+/**
+ * Number slots: `say: [[shown, spoken], …]` — the captions show `shown` ("16.67 ms"), the voice says
+ * `spoken` ("sixteen point six seven milliseconds"). A voice drops or garbles digits, so a number is
+ * written for the voice in words and shown on screen in digits. Each `shown` must appear in the
+ * narration, in order; `spoken` is words only (no digits — that is the point).
+ */
+function checkSay(scene, name) {
+  if (!Array.isArray(scene.say) || !scene.say.length) throw new TypeError(`${name}: say must list pairs [shown, spoken], e.g. "say": [["16.67 ms", "sixteen point six seven milliseconds"]]`);
+  let from = 0;
+  scene.say.forEach((pair, k) => {
+    if (!Array.isArray(pair) || pair.length !== 2 || !pair.every(x => typeof x === 'string' && normSpeech(x))) throw new TypeError(`${name}: say[${k}] must be [shown, spoken], two strings with words, not ${JSON.stringify(pair)}`);
+    const [shown, said] = pair;
+    if (/[0-9]/.test(said)) throw new Error(`${name}: say[${k}] "${said}" has digits; say it in words (a voice drops or garbles digits)`);
+    const at = scene.narration.indexOf(shown, from);
+    if (at < 0) throw new Error(`${name}: say[${k}] shows "${shown}", which the narration does not have${from ? ' after the slot before it' : ''}; each shown text must appear in the narration, in order`);
+    from = at + shown.length;
+  });
+}
+
+/** What the voice says for a scene: its narration with each number slot's spoken words in place of what is shown. */
+export function spokenText(scene) {
+  if (!scene.say) return scene.narration;
+  let out = '', rest = scene.narration;
+  for (const [shown, said] of scene.say) { const at = rest.indexOf(shown); out += rest.slice(0, at) + said; rest = rest.slice(at + shown.length); }
+  return out + rest;
+}
+
+/** A phrase as the voice says it: every number slot's shown text in it replaced by its spoken words. */
+export function spokenPhrase(scene, phrase) {
+  let out = String(phrase);
+  for (const [shown, said] of scene?.say ?? []) out = out.split(shown).join(said);
+  return out;
+}
+
+/**
+ * The words to show for a scene: its timed words, with each number slot's spoken run collapsed back
+ * into what is shown ("sixteen point six seven milliseconds." → "16.67 ms."), timed from the run's first
+ * word to its last — so captions show digits while the voice said words.
+ */
+export function shownWords(scene, words) {
+  if (!scene?.say) return words;
+  const out = [...words];
+  let k = 0;
+  for (const [shown, said] of scene.say) {
+    const target = normSpeech(said);
+    for (let i = k; i < out.length; i++) {
+      let acc = '', j = i;
+      while (j < out.length && acc.length < target.length) acc += normSpeech(out[j++].text);
+      if (acc === target) {
+        const last = out[j - 1], tail = String(last.text).match(/[^\p{L}\p{N}]+$/u)?.[0] ?? '';
+        out.splice(i, j - i, {text: shown + tail, start: out[i].start, end: last.end});
+        k = i + 1; break;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Numbers in the narration the voice would have to read as digits: [{scene, text}] — every run of digits
+ * not inside a number slot's shown text. A voice tool can refuse these before it speaks (a voice drops
+ * or garbles digits); write them as `say` slots.
+ */
+export function unsaidNumbers(storyboard) {
+  const out = [];
+  for (const scene of storyboard.scenes) {
+    if (scene.narration === undefined) continue;
+    let text = scene.narration;
+    for (const [shown] of scene.say ?? []) text = text.split(shown).join(' ');
+    for (const m of text.matchAll(/[0-9][0-9.,:]*/g)) out.push({scene: scene.id, text: m[0].replace(/[.,:]+$/, '')});
+  }
+  return out;
+}
+
+/** A scene's text, checked (clock.mjs · checkScene): what its words spell — the narration as spoken (number slots in words), or its directions joined. */
+export const sceneText = (scene, i) => checkScene(scene, i) === 'silent' ? scene.silent.map(([text]) => text).join(' ') : spokenText(scene);
 
 /**
  * A silent scene's timing, in the shape a voice aligner writes: each direction's words spread evenly
@@ -140,7 +216,7 @@ export function makeClock(board, timings) {
      */
     at(ref) {
       const r = Array.isArray(ref) ? {scene: ref[0], phrase: ref[1], plus: ref[2]} : ref;
-      const i = sceneIndex(r.scene), match = phraseMatches(speech[r.scene], r.phrase)[r.nth ?? 0];
+      const i = sceneIndex(r.scene), match = phraseMatches(speech[r.scene], spokenPhrase(board.scenes[i], r.phrase))[r.nth ?? 0];
       if (!match) throw new Error(`Phrase not in ${r.scene}: "${r.phrase}"`);
       return offsets[i] + (r.edge === 'end' ? match.end : match.start) + (r.plus ?? 0);
     },
@@ -150,7 +226,7 @@ export function makeClock(board, timings) {
      */
     pauseAfter(ref) {
       const r = Array.isArray(ref) ? {scene: ref[0], phrase: ref[1]} : ref;
-      const i = sceneIndex(r.scene), match = phraseMatches(speech[r.scene], r.phrase)[r.nth ?? 0];
+      const i = sceneIndex(r.scene), match = phraseMatches(speech[r.scene], spokenPhrase(board.scenes[i], r.phrase))[r.nth ?? 0];
       if (!match) throw new Error(`Phrase not in ${r.scene}: "${r.phrase}"`);
       const next = speech[r.scene].words.find(w => w.start >= match.end - 1e-6);
       return {start: offsets[i] + match.end, end: offsets[i] + (next ? next.start : timings.scenes[i].duration)};
@@ -160,6 +236,8 @@ export function makeClock(board, timings) {
       let i = offsets.length - 1; while (i > 0 && t < offsets[i]) i--;
       return {index: i, id: board.scenes[i].id, time: t - offsets[i]};
     },
+    /** The words to show for scene i (captions): its timed words with number slots collapsed into what is shown, on the scene's own clock. */
+    shownWords: i => shownWords(board.scenes[i], timings.scenes[i].words ?? []),
     /** The words said in scene `id`, on the whole-lesson clock: [{text, start, end}] (none in a silent scene). */
     words: id => said[sceneIndex(id)].slice(),
     /**
@@ -219,7 +297,7 @@ export function evenTimings(storyboard, {wordSeconds = .38, lead = .3, tail = .8
   return {provider: 'even', scenes: storyboard.scenes.map((scene, i) => {
     if (checkScene(scene, i) === 'silent') return directionTimings(scene, {tail});
     let at = lead;
-    const words = scene.narration.split(/\s+/).filter(Boolean).map(text => { const w = {text, start: +at.toFixed(3), end: +(at + wordSeconds * .9).toFixed(3)}; at += wordSeconds; return w; });
+    const words = spokenText(scene).split(/\s+/).filter(Boolean).map(text => { const w = {text, start: +at.toFixed(3), end: +(at + wordSeconds * .9).toFixed(3)}; at += wordSeconds; return w; });
     return {id: scene.id, duration: +(at + tail).toFixed(3), words, alignment: {status: 'available', method: 'even-spacing'}};
   })};
 }

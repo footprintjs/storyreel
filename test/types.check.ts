@@ -145,3 +145,10 @@ import {approveFilm as approve, checkApproval as check} from '../types/sub/appro
 export const approved = (storyboard: Storyboard, recipe: Recipe) => check(approve({storyboard, recipe, by: 'S'}), {storyboard, recipe}).ok;
 // @ts-expect-error an approval says who approves it
 export const anonymous = (storyboard: Storyboard, recipe: Recipe) => approve({storyboard, recipe});
+
+// Number slots: the voice says words, the captions show digits.
+import {spokenText, unsaidNumbers} from '../types/index.js';
+export const slotted: Storyboard = {scenes: [{id: 'frame', narration: 'One frame is 16.67 ms.', say: [['16.67 ms', 'sixteen point six seven milliseconds']]}]};
+export const said = spokenText(slotted.scenes[0]) + unsaidNumbers(slotted).length;
+// @ts-expect-error a slot is a pair [shown, spoken]
+export const halfSlot: Storyboard = {scenes: [{id: 'x', narration: 'A 2.', say: [['2']]}]};

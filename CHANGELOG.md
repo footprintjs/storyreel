@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Numbers shown in digits, said in words; listening back
+- **Number slots**: a scene's `say: [[shown, spoken], …]` — the captions show `shown` ("16.67 ms"), the voice
+  says `spoken` ("sixteen point six seven milliseconds"). The scene's text is what is spoken (`spokenText`,
+  `sceneText`), a beat may name a phrase as shown or as spoken, and captions and caption files collapse the
+  spoken run back into what is shown (`clock.shownWords(i)`). A slot not in the narration, out of order or
+  spoken in digits refuses. `unsaidNumbers(storyboard)` lists digits without a slot.
+- **The voice check in the record**: `makeFilm` reads the voice folder's `word-check.json` into
+  `making-of.json` (`voice`: words scored low, words the listen-back did not hear, stale when older than
+  the timings); `voiceCheck: 'refuse'` refuses a film with a word not heard (`readVoiceCheck` on
+  `footprint-storyreel/pipeline`). The voice tools' check transcribes the audio freely and lines it up with
+  the script, because forced alignment cannot see a dropped word.
+
 ### Approve a film
 - **`approveFilm({storyboard, recipe, pacing?, narrationDir?, by, note?})`** records who approved the film,
   when, and hashes of what they saw (keys sorted first, so reformatting changes nothing).

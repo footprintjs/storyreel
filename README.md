@@ -95,6 +95,30 @@ reports its own). **Pacing** — `{sceneTail, holds: [{scene, after: 'a phrase',
 inserts silence after phrases so the pictures can land; with a voice it is cut into the audio, and in a
 silent cut `paceTimings` shifts the word times the same way.
 
+### Numbers: shown in digits, said in words
+
+A voice drops or garbles digits — and sometimes the words for them. Write a number once for each side
+with a **number slot**: the captions show `shown`, the voice says `spoken`:
+
+```json
+{"id": "frame", "narration": "One frame takes 16.67 ms at 60 Hz.",
+ "say": [["16.67 ms", "sixteen point six seven milliseconds"], ["60 Hz", "sixty hertz"]]}
+```
+
+The scene's text is what is spoken (`spokenText(scene)`), so the voice's word times line up with it; a
+beat may name a phrase either way (`["frame", "takes 16.67 ms"]` and `["frame", "takes sixteen point six
+seven milliseconds"]` are the same moment); the captions and caption files show `16.67 ms`, timed from the
+first spoken word of the slot to its last. Each `shown` must appear in the narration, in order, and
+`spoken` is words only. `unsaidNumbers(storyboard)` lists digits left without a slot, so a voice tool can
+refuse them before it speaks.
+
+**Listen back.** Forced alignment fits every script word somewhere in the audio, so a word the voice
+dropped still gets a slot and a plausible time. The voice tools' word check also transcribes the audio
+freely and lines it up with the script; a word whose letters were mostly not heard is reported as **not
+heard**. `makeFilm` reads the voice folder's `word-check.json` into `making-of.json` (`voice`: low words,
+not-heard words, stale when older than the timings), and `voiceCheck: 'refuse'` refuses a film with a word
+not heard.
+
 ## Silent scenes
 
 A scene with no voice — the door opens, a character walks in — is written in the storyboard with
@@ -770,7 +794,7 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `approveFilm({storyboard, recipe, pacing?, narrationDir?, by, note?})` · `checkApproval(approval, inputs)` · `filmHashes(inputs)` | the approval lock: what was approved, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
 | `segmentedVideo({store, recipe, code?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir)` · `ffmpegJoin()` · `planSegments(film, {fps})` · `segmentKey(…)` · `codeFingerprint(paths)` | re-render only what changed: the picture in cached segments, joined (`renderFilm({…, video})`) |
 | `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |
-| `directionTimings(scene, {tail?})` · `withDirections(storyboard, timings)` · `sceneText(scene)` | a silent scene's timing; a voice's timings completed with the silent scenes; a scene's text |
+| `directionTimings(scene, {tail?})` · `withDirections(storyboard, timings)` · `sceneText(scene)` · `spokenText(scene)` · `unsaidNumbers(storyboard)` | a silent scene's timing; a voice's timings completed with the silent scenes; a scene's text as spoken (number slots in words); digits without a slot |
 | `makeClock(storyboard, timings)` | phrases → seconds; `speaking(t)`, `turns()`, `gaze(t, who)` |
 | `footprint-storyreel/shots` → `readIntent` · `readContinuity` · `checkContinuity` · `tooMuchTooFast` · `distinctMoments` · `WATCHING` | the shot plan's checks, on their own |
 | `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `inOut` | the one ease table (`linear in out inOut back walk jump spring`) |
@@ -790,10 +814,11 @@ TypeScript types ship with the package: the main entry, `/studio`, and the docum
 4. **Every frame restores the canvas**: no leaked transform, alpha, compositing, shadow, filter or clip (the test fills the whole frame after each one and reads its corners).
 5. **One focal point at a time**: speech is a bubble, data is a pill, the old stage leaves before the new one arrives, one camera move at a time.
 6. **Long enough to read.** A line meant to be read stays up about 0.3 s a word.
-7. **Notes change the camera, never the beats.** Every note says what was asked; one the film cannot honour refuses.
-8. **Say what made it.** The making-of record lists every phrase → drawing, every note, every tool, and the compile stage by stage.
-9. **Pinned pixels.** An approved film stays the approved film until a change is meant.
-10. **Draw again only what changed.** A segment is reused only when everything that draws it is unchanged and a spot check of its frames agrees; the sound is mixed whole every time.
+7. **Said in words, shown in digits.** A number the voice reads is a say slot; a word the voice did not say is caught by listening back, not by alignment.
+8. **Notes change the camera, never the beats.** Every note says what was asked; one the film cannot honour refuses.
+9. **Say what made it.** The making-of record lists every phrase → drawing, every note, every tool, and the compile stage by stage.
+10. **Pinned pixels.** An approved film stays the approved film until a change is meant.
+11. **Draw again only what changed.** A segment is reused only when everything that draws it is unchanged and a spot check of its frames agrees; the sound is mixed whole every time.
 
 ## Not in this package
 

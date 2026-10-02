@@ -29,7 +29,8 @@ export function captionChunks(film, {maxWords = 5, maxChars = Infinity, breaks =
     const offset = film.clock.offsets[i], sceneEnd = offset + scene.duration;
     let current = [], chars = 0;
     const close = () => { if (current.length) chunks.push({words: current, sceneEnd}); current = []; chars = 0; };
-    const words = (scene.words ?? []).filter(spoken);
+    // Number slots show as written (clock.mjs · shownWords): the voice said words, the caption shows digits.
+    const words = (film.clock.shownWords ? film.clock.shownWords(i) : scene.words ?? []).filter(spoken);
     words.forEach((w, k) => {
       if (current.length && chars + 1 + w.text.length > maxChars) close();
       chars += (current.length ? 1 : 0) + w.text.length;
