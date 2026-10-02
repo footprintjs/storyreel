@@ -389,7 +389,9 @@ export interface Layout {
 export const FORMAT_NAMES: readonly FormatName[];
 /** A layout compiled for a film: the output size, where the film and the bands are, and the two drawing passes. */
 export function compileLayout(film: Film, layout: Layout): {width: number; height: number; format: FormatName;
-  boxes: {film: Box; header?: Box; captions?: Box}; picture(ctx: any, t: number): void; overlay(ctx: any, t: number, options?: {still?: boolean}): void};
+  boxes: {film: Box; header?: Box; captions?: Box}; picture(ctx: any, t: number): void; overlay(ctx: any, t: number, options?: {still?: boolean}): void;
+  /** The caption shown at t, or null (none showing, or no captions in this layout). */
+  captionAt(t: number): unknown | null};
 
 /** One row of pictures (Film.rows). */
 export interface FilmRow { from: number; start: number; paths: string[];

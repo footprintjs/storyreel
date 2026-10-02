@@ -674,6 +674,20 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   editing; a part render is checked as a part and can never be approved (an approval is of the whole film).
   `partTimeline(film, {from, to})` lists the scenes and beats in it with their times (`timelineText` as lines):
   read when "the network does the waiting" lands instead of rendering stills to guess.
+- **Review a part by reading it.** `reviewPart(film, {part, layout})` (`footprint-storyreel/review`) reads the
+  picture as text — every line a frame draws, where it lands and how faint — and names what is wrong, with times:
+  words under the captions while a caption shows, words over other words, words cut off at the edge, nothing
+  changing for 5 s. Read the findings and the timeline first; look at a frame only to confirm:
+
+  ```js
+  import {reviewPart} from 'footprint-storyreel/review';
+  const r = await reviewPart(film, {part: {scenes: ['chapters']}, layout: {format: 'landscape', captions: true}});
+  console.log(r.timeline); console.log(r.text);
+  // 2:02.5–2:05.3 chapters · under the captions: "one turn"
+  ```
+  The review is a footprintjs flowchart: a selector picks each check by what the part has (no caption band, no
+  caption check), each check runs as its own subflow, and `r.record` says what ran and why. A check of your own
+  is `{label, why, when(scope), find(review)}` in `checks`.
 - **A reused segment must pass a spot check.** A few of its frames (6 by default, `samples`) are painted
   again exactly as the video shows them (layout, motion blur, stamp, poster) at the same places in the
   segment, and must match the ones kept when it was drawn. A segment that moved is reused only when its

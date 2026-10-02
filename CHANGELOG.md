@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Review a part by reading it
+- **`reviewPart(film, {part, layout})`** (`footprint-storyreel/review`) reads the picture as text and names what is
+  wrong, with times: words under the captions while a caption shows, words over other words, words cut off at the
+  frame's edge, and a picture that does not change for 5 s or more. `wordsAt(film, t)` is every line a frame draws
+  — followed from each world's sheet onto the frame, its quad kept through rotations — with its alpha. Words
+  fainter than 0.5 or there for less than 1 s (a fade, a page turning) do not count. On a 2:26 film the whole
+  review takes about 2 s.
+- **The review is a footprintjs flowchart** with its own record: `read-part` reads the part once for every check,
+  `pick-checks` is a selector that picks each check by what the part has (a caption band, words, length), each
+  check runs as its own subflow, and `report` merges the findings into spans. A check is a strategy:
+  `{label, why, when, find}`, and one of your own goes in `checks`. `findingsText` gives the lines; the compiled
+  layout gains `captionAt(t)`.
+
 ### Edit one part, look at one part
 - **Code per segment:** `segmentedVideo({code: sourceCode(sources, {shared})})` keys each segment by the code of its
   own shots — the files `sources(entry)` names for its recipe entries, everything they import (relative imports

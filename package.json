@@ -110,6 +110,10 @@
       "types": "./types/sub/regions.d.ts",
       "default": "./src/regions.mjs"
     },
+    "./review": {
+      "types": "./types/sub/review.d.ts",
+      "default": "./src/review.mjs"
+    },
     "./studio": {
       "types": "./types/studio.d.ts",
       "default": "./src/studio/server.mjs"
