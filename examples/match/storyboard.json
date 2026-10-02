@@ -1,0 +1,8 @@
+{
+ "title": "Through a thing",
+ "scenes": [
+  {"id": "board", "title": "A circle", "narration": "Here is a circle on the board. Watch it closely."},
+  {"id": "valley", "title": "The valley", "narration": "The circle becomes the sun over the valley. A shepherd lets his sheep out, one by one. In the evening they come home. But wait, one is missing!"},
+  {"id": "gate", "title": "Back", "narration": "Now the idea takes us back, to the board where it began."}
+ ]
+}

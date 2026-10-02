@@ -286,6 +286,9 @@ takes: `enter has unsupported key at (a push takes seconds, ease, sound, from)`.
 
 **Through a thing.** `through` and `match` go through something drawn in the pictures, named the way a
 kit names what it draws (`regionsAt(t) → [{box, path, label, name}]`, the names a push note frames). The
+built-in kits name things too: a whiteboard item's `"name": "pebble"`, and the cartoon's `sun`, `shepherd`,
+`sack`, `pen`, `gate` and (after the eureka) `bulb`; `node examples/match/make.mjs` turns a board's circle into
+the sun and goes back through the shepherd's idea. The
 film finds each named thing once, when it is built: in the picture the change leaves at its first moment, in
 the one it arrives at at its last — so every frame of the change is still a pure function of time, and a name
 the picture does not have refuses then, naming the ones it has: `stage loop: the through looks for "window" in

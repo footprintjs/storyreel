@@ -25,7 +25,7 @@ const SHAPES = {
   clock: (x, y, s = 1) => icons.clock(x, y, s),
   flashlight: (x, y, s = 1, dir = 1) => icons.flashlight(x, y, s, dir),
 };
-const ITEM_KEYS = new Set(['at', 'dur', 'draw', 'write', 'x', 'y', 'size', 'align', 'color', 'erase', 'seed', 'eureka']);
+const ITEM_KEYS = new Set(['at', 'dur', 'draw', 'write', 'x', 'y', 'size', 'align', 'color', 'erase', 'seed', 'eureka', 'name']);
 const color = name => { if (name === undefined) return INK.black; if (!(name in INK)) throw new Error(`Unknown ink colour ${name}`); return INK[name]; };
 
 export function compileWhiteboard(spec, clock, motion = {cameraSpeed: 1}) {
@@ -39,8 +39,10 @@ export function compileWhiteboard(spec, clock, motion = {cameraSpeed: 1}) {
   const items = [], dings = [], places = [];
   spec.items.forEach((item, n) => {
     for (const key of Object.keys(item)) if (!ITEM_KEYS.has(key)) throw new Error(`whiteboard item ${n} has unsupported key ${key}`);
+    // A name makes the item a thing a push can frame and a transition can go through (regionsAt → name).
+    if (item.name !== undefined && !(typeof item.name === 'string' && /^[a-z][a-zA-Z0-9-]*$/.test(item.name))) throw new Error(`whiteboard item ${n}: name is one word for the thing it draws (e.g. "pebble"), not ${JSON.stringify(item.name)}`);
     const at = clock.at(item.at), erase = eraseOf(item);
-    places.push({at, erase, path: `items[${n}]`, dur: item.dur, write: typeof item.write === 'string', ...placeOf(item)});
+    places.push({at, erase, path: `items[${n}]`, dur: item.dur, write: typeof item.write === 'string', ...placeOf(item), ...(item.name ? {name: item.name} : {})});
     if (item.eureka) {
       const [x, y] = item.eureka;
       items.push({at, dur: .5, draw: (ctx, f) => drawGlow(ctx, x, y + 8, 95, f), erase});
@@ -91,9 +93,9 @@ export function boardTexts(board) {
   return board.places.filter(p => p.write).map(p => ({text: p.label, from: p.at + p.dur, to: p.erase ? p.erase.at : Infinity, path: p.path}));
 }
 
-/** What the board shows at t, item by item: [{box, path: 'items[n]', label}] (drawn, and not yet wiped away). */
+/** What the board shows at t, item by item: [{box, path: 'items[n]', label, name?}] (drawn, and not yet wiped away). */
 export function boardRegions(board, t) {
-  return board.places.filter(p => p.box && t >= p.at && !(p.erase && t >= p.erase.at + p.erase.dur)).map(({box, path, label}) => ({box, path, label}));
+  return board.places.filter(p => p.box && t >= p.at && !(p.erase && t >= p.erase.at + p.erase.dur)).map(({box, path, label, name}) => ({box, path, label, ...(name ? {name} : {})}));
 }
 
 /** The strongest spotlight at t, with its weight (0..1), or null. */

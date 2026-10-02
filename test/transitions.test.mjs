@@ -255,3 +255,34 @@ test('in a film: the things are found once, where the change starts and ends, an
   assert.throws(() => transitionCatalog([{name: 'k', transitions: {spy: {...spy, regions: ['window']}}}]), /regions must be p => \(\{from\?: \[names\], to\?: \[names\]\}\)/);
   assert.throws(() => transitionCatalog([{name: 'k', transitions: {spy: {...spy, params: {region: {name: true, default: 3}}}}}]), /enter.region must be the name of a thing in the picture/);
 });
+
+test('the built-in kits name what they draw: a whiteboard item by its `name`, the cartoon\'s scenery as its camera shows it', async () => {
+  const {compileExample} = await import('./golden.mjs');
+  const shepherd = await compileExample('shepherd'), names = t => shepherd.regionsAt(t).filter(r => r.name).map(r => r.name);
+  assert.deepEqual(names(1), ['sun', 'shepherd', 'sack', 'pen', 'gate'], 'the scenery, before the eureka');
+  const eureka = shepherd.beats.find(b => b.path === 'story.eureka.at').t;
+  assert.ok(names(eureka + .5).includes('bulb'), 'the eureka\'s bulb, once it shows');
+  const sky = shepherd.regionsAt(1).find(r => r.name === 'sun'), dusk = shepherd.regionsAt(shepherd.total - .1).find(r => r.name === 'sun');
+  assert.ok(dusk.box[1] > sky.box[1], 'the sun sets: lower by evening');
+  const board = {title: 'B', scenes: [{id: 'a', narration: 'Here is a circle on the board, and here is a line.'}]};
+  const film = await compileFilm({storyboard: board, timings: evenTimings(board), recipe: {story: {kit: 'whiteboard', items: [
+    {at: ['a', 'Here is a circle'], dur: .8, draw: [['ellipse', 800, 400, 60, 60]], name: 'circle'}, {at: ['a', 'here is a line'], dur: .6, draw: [['line', 600, 600, 1000, 600]]}]}}});
+  assert.deepEqual(film.regionsAt(film.total - .1).filter(r => r.name).map(r => r.name), ['circle']);
+  await assert.rejects(compileFilm({storyboard: board, timings: evenTimings(board), recipe: {story: {kit: 'whiteboard', items: [{at: ['a', 'Here is a circle'], dur: .8, draw: [['ellipse', 800, 400, 60, 60]], name: 'a circle'}]}}}), /name is one word for the thing it draws/);
+});
+
+test('through a round opening: it stays inside the new picture as it widens, and ends on it exactly', () => {
+  const from = withThing(RED, [700, 350, 820, 470], WHITE), to = solid(BLUE), go = e => drawnWith({type: 'through', region: 'bulb', shape: 'round'}, e, {from, to, boxes: {from: [700, 350, 820, 470], to: [0, 0, 1, 1]}});
+  assert.equal(go(1).hash(), plain(to));
+  for (const e of [.6, .75, .9]) {
+    const frame = go(e);
+    // Whatever shows inside the new picture is the new picture: red (the old one) only outside it, never a gap of it inside.
+    assert.deepEqual(frame.px(760, 410), BLUE, `the middle of the opening at ${e}`);
+  }
+  // Early, a round opening leaves its box's corners to the old picture: find the corner of the box-shaped opening at the same moment.
+  const boxed = drawnWith({type: 'through', region: 'bulb'}, .3, {from, to, boxes: {from: [700, 350, 820, 470], to: [0, 0, 1, 1]}});
+  let corner = null;
+  for (let y = 0; y < 900 && !corner; y += 2) for (let x = 0; x < 1600; x += 2) if (boxed.px(x, y)[2] > 200 && boxed.px(x, y)[0] < 50) { corner = [x + 2, y + 2]; break; }
+  assert.ok(corner, 'the box-shaped opening shows the new picture');
+  assert.deepEqual(boxed.px(...corner), BLUE); assert.deepEqual(go(.3).px(...corner), WHITE, 'the round one leaves that corner to the old picture (there, the thing itself)');
+});

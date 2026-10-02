@@ -40,6 +40,12 @@
   new picture names it differently). The old picture pushes in on its thing, the new one pulls back from its
   own, and they meet half way — same place, same size — at a quick dissolve. Both cameras only zoom in, so the
   frame is always covered: things far apart meet larger.
+- **The built-in kits name what they draw**: a whiteboard item takes a `name` (one word), and the cartoon kit
+  names its scenery as its camera shows it — `sun` (it sets with the evening), `shepherd`, `sack`, `pen`,
+  `gate`, and `bulb` once the eureka shows. `examples/match` turns a whiteboard circle into the cartoon's sun
+  and goes back through the shepherd's idea (the bulb) to the board, then checks the finished file.
+- A `through` opening widens to the new picture's own edges (a round one squaring its corners as it goes), so
+  nothing of the old picture shows through a gap before the last frame.
 - **The contract**: a transition may say which things it looks for, `regions: p => ({from?, to?})`, and
   reads them in `draw(ctx, {…, boxes})`. The film finds each one once, when it is built (the leaving
   picture's at the change's first moment, the arriving one's at its last), so a frame stays a pure function of

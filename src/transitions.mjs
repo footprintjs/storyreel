@@ -189,15 +189,14 @@ function goThrough(ctx, {e, from, to, p, ghost, boxes}) {
   const {opening, fit, zoom, still} = throughPlan(boxes.from[p.region]), s = Math.pow(zoom, e);
   const at = (v, k) => (still ? still[k] + s * (v - still[k]) : v);   // a frame coordinate (k: 0 for x, 1 for y), zoomed
   if (still) scaled(ctx, still, s, from); else from(ctx);
-  // The opening, zoomed; near the end it widens until it holds the whole frame (a round one, until the frame's corners are inside it).
-  const open = smooth(.55, 1, e), round = p.shape === 'round', grow = round ? Math.SQRT2 * 1.02 : 1;
-  const [zx0, zy0, zx1, zy1] = [at(opening[0], 0), at(opening[1], 1), at(opening[2], 0), at(opening[3], 1)];
-  const cx = lerp((zx0 + zx1) / 2, W / 2, open), cy = lerp((zy0 + zy1) / 2, H / 2, open), hw = lerp((zx1 - zx0) / 2, W / 2 * grow, open), hh = lerp((zy1 - zy0) / 2, H / 2 * grow, open);
+  // The opening, zoomed; near the end it widens to the new picture's own edges (never past them, so nothing of
+  // the old picture shows through a gap), its corners squaring as it goes — the last frame is the new picture.
+  const open = smooth(.55, 1, e), [px, py, pw] = [at(fit[0], 0), at(fit[1], 1), s * fit[2]], ph = pw * H / W;
+  const [x0, y0, x1, y1] = [[at(opening[0], 0), px], [at(opening[1], 1), py], [at(opening[2], 0), px + pw], [at(opening[3], 1), py + ph]].map(([a, b]) => a + (b - a) * open);
+  const radius = p.shape === 'round' ? (1 - open) * Math.min(x1 - x0, y1 - y0) / 2 : 0;
   if (e > 0) ghost(Math.min(1, e / .25), c => {
-    c.save(); c.beginPath();
-    if (round) c.ellipse(cx, cy, Math.max(.01, hw), Math.max(.01, hh), 0, 0, Math.PI * 2); else c.rect(cx - hw, cy - hh, 2 * hw, 2 * hh);
-    c.clip();
-    c.translate(at(fit[0], 0), at(fit[1], 1)); c.scale(s * fit[2] / W, s * fit[2] / W); to(c); c.restore();
+    c.save(); c.beginPath(); c.roundRect(x0, y0, x1 - x0, y1 - y0, Math.max(0, radius)); c.clip();
+    c.translate(px, py); c.scale(pw / W, pw / W); to(c); c.restore();
   });
 }
 

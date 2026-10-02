@@ -45,6 +45,13 @@ export function compileCartoon(spec, clock, motion = {cameraSpeed: 1}) {
   const captions = (spec.captions ?? []).map(c => ({text: c.text, at: clock.at(c.at), until: clock.at(c.until)}));
   const camera = [{t: -Infinity, to: [800, 450], zoom: 1}, ...(spec.camera ?? []).map(k => ({t: clock.at(k.at), to: k.to, zoom: k.zoom ?? 1}))];
   const spots = (spec.spots ?? []).map(s => ({at: clock.at(s.from), until: clock.at(s.to), cx: s.at[0], cy: s.at[1], r: s.r, zoom: s.zoom ?? 1.12}));
+  /** The camera at t: eased moves between keys; scaled about its point and clamped so the world always fills the frame. */
+  const cameraAt = t => {
+    let cam = camera[0];
+    for (const k of camera.slice(1)) { if (t < k.t) break; const u = ease(clamp01((t - k.t) / MOVE)); cam = {to: [lerp(cam.to[0], k.to[0], u), lerp(cam.to[1], k.to[1], u)], zoom: lerp(cam.zoom, k.zoom, u)}; }
+    const z = cam.zoom;
+    return {z, tx: Math.min(0, Math.max(1600 - 1600 * z, 800 - cam.to[0] * z)), ty: Math.min(0, Math.max(900 - 900 * z, 450 - cam.to[1] * z))};
+  };
   const sounds = [
     ...sheep.flatMap(s => [{time: s.outGate + .45, type: 'tap'}, ...(Number.isFinite(s.homeGate) ? [{time: s.homeGate + .35, type: 'tap'}] : [])]),
     ...(Number.isFinite(evening) ? [{time: evening, type: 'slide'}] : []),
@@ -56,17 +63,36 @@ export function compileCartoon(spec, clock, motion = {cameraSpeed: 1}) {
     // The captions, for the reading-time check: whole once popped in (.35 s), leaving at until.
     texts: () => (spec.captions ?? []).map((c, i) => ({text: captions[i].text, from: captions[i].at + .35, to: captions[i].until, path: `captions[${i}]`})),
     spotAt: t => { let best = null; for (const f of spots) { const w = Math.min(ease((t - f.at) / IN), 1 - ease((t - f.until) / OUT)); if (w > 0 && (!best || w > best.w)) best = {...f, w}; } return best; },
+    // The things it draws, by name, as the camera shows them: what a push frames and a transition goes through.
+    regionsAt: t => {
+      const {z, tx, ty} = cameraAt(t), seen = ([x0, y0, x1, y1]) => [x0 * z + tx, y0 * z + ty, x1 * z + tx, y1 * z + ty];
+      return sceneryAt(t, {evening, eureka}).map(r => ({...r, box: seen(r.box)}));
+    },
     draw: (ctx, t, spot) => {
-      // The camera: eased moves between keys; scaled about its point and clamped so the world always fills the frame.
-      let cam = camera[0];
-      for (const k of camera.slice(1)) { if (t < k.t) break; const u = ease(clamp01((t - k.t) / MOVE)); cam = {to: [lerp(cam.to[0], k.to[0], u), lerp(cam.to[1], k.to[1], u)], zoom: lerp(cam.zoom, k.zoom, u)}; }
-      const z = cam.zoom, tx = Math.min(0, Math.max(1600 - 1600 * z, 800 - cam.to[0] * z)), ty = Math.min(0, Math.max(900 - 900 * z, 450 - cam.to[1] * z));
+      const {z, tx, ty} = cameraAt(t);
       ctx.save(); ctx.translate(tx, ty); ctx.scale(z, z);
       drawWorld(ctx, t, {sheep, evening, eureka, captions: [], spot});
       ctx.restore();
       drawCaptions(ctx, t, captions);
     },
   };
+}
+
+/**
+ * The scenery a recipe can name (in the world's own coordinates): the sun (it sets on `evening`), the
+ * shepherd, his bag, the stone pen, its gate, and the eureka's bulb once it shows.
+ */
+function sceneryAt(t, {evening, eureka}) {
+  const m = ease(clamp01((t - evening) / 1.6)), sunX = lerp(1240, 1330, m), sunY = lerp(170, 470, m), [sx, sy] = LAYOUT.shepherd, [kx, ky] = LAYOUT.sack, g = LAYOUT.gate;
+  const things = [
+    {name: 'sun', label: 'the sun', box: [sunX - 62, sunY - 62, sunX + 62, sunY + 62]},
+    {name: 'shepherd', label: 'the shepherd', box: [sx - 80, sy - 275, sx + 64, sy + 6]},
+    {name: 'sack', label: 'the bag of pebbles', box: [kx - 62, ky - 92, kx + 62, ky + 6]},
+    {name: 'pen', label: 'the stone pen', box: [LAYOUT.pen[0], LAYOUT.pen[1] + 40, LAYOUT.pen[2], LAYOUT.pen[3]]},
+    {name: 'gate', label: 'the gate', box: [g - 34, 640, g + 104, 760]},
+    ...(eureka && t >= eureka.at ? [{name: 'bulb', label: 'the eureka', box: [sx - 60, sy - 360, sx + 60, sy - 240]}] : []),
+  ];
+  return things.map(r => ({...r, path: r.name === 'bulb' ? 'eureka' : r.name === 'sun' ? 'evening' : r.name}));
 }
 
 /** Where a sheep is at t, how fast it moves (for the walk), and which way it faces. */

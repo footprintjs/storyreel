@@ -1,0 +1,17 @@
+{
+ "story": {"kit": "whiteboard", "intent": "Draw one circle, and ask the viewer to watch it.",
+  "items": [
+   {"at": ["board", "Here is a circle"], "dur": 1.0, "draw": [["ellipse", 1000, 330, 80, 80]], "color": "orange", "size": 9, "seed": 4, "name": "circle"},
+   {"at": ["board", "Watch it closely"], "dur": 0.8, "write": "a circle", "x": 1000, "y": 520, "size": 56, "align": "center"}
+  ]},
+ "stages": [
+  {"type": "world", "scene": "valley", "intent": "The circle becomes the sun, and the shepherd notices a sheep is missing.",
+   "enter": {"type": "match", "region": "circle", "into": "sun", "seconds": 1.2},
+   "world": {"kit": "cartoon", "evening": ["valley", "In the evening"],
+    "flock": {"count": 4, "missing": 1, "out": {"at": ["valley", "lets his sheep out"], "every": 0.9}, "home": {"at": ["valley", "they come home"], "every": 0.9}},
+    "eureka": {"at": ["valley", "But wait"], "text": "One is missing!"}}},
+  {"type": "world", "scene": "gate", "intent": "Go through the shepherd's idea, back to the board.",
+   "enter": {"type": "through", "region": "bulb", "shape": "round", "seconds": 1.4},
+   "world": {"kit": "whiteboard", "items": [{"at": ["gate", "the idea takes us back"], "dur": 1.0, "write": "back on the board", "x": 800, "y": 450, "size": 64, "align": "center", "color": "blue"}]}}
+ ]
+}
