@@ -6,4 +6,4 @@ export const FINISHED: Readonly<{width: number; blank: number; blankFrames: numb
 /** The default probe: FFmpeg and ffprobe (beside the FFmpeg given, or on the PATH). */
 export function ffmpegProbe(options?: {ffmpeg?: string; ffprobe?: string}): VideoProbe;
 /** The checks, each a strategy over what the probe read: what it needs (frames, the film, the captions, a voiced render), and run. */
-export const FINISHED_CHECKS: Readonly<Record<string, {needs: string[]; run(context: unknown): Omit<FinishedFinding, 'check'>[]}>>;
+export const FINISHED_CHECKS: Readonly<Record<string, {needs: string[]; run(context: unknown): Omit<FinishedFinding, 'check'>[] | {skip: string}}>>;

@@ -681,7 +681,11 @@ const report = await checkVideo({file: 'out/film.mp4', film, captions: 'out/film
 ```
 
 With the film it was made from, the checks know what was meant, so a dip to black, a cut or a silent scene is
-never reported; a check that needs what was not given is skipped, saying why. `makeFilm({…, check: 'report'})`
+never reported; a check that needs what was not given — or finds nothing to compare, such as lips when no kit
+draws a mouth — is skipped, saying why. An intro is your own drawing: the checks read the film's frames after it.
+A part of the film (`from`, `to`, as renderFilm takes them) is checked as that part. The checks read the file with
+FFmpeg's `ffprobe` (beside the FFmpeg you give, or on the PATH; `FFPROBE_BIN` names another); when it cannot run,
+`check: 'report'` records the error in `finished.error` and `check: 'refuse'` refuses. `makeFilm({…, check: 'report'})`
 runs them as a stage of its own and writes `finished` into `making-of.json`; `check: 'refuse'` turns a problem
 into a refusal. The probe that reads the file is an adapter (`ffmpegProbe()`, or your own `{probe, frames,
 sound}`), and each check a strategy (`footprint-storyreel/finished` · `FINISHED_CHECKS`, `FINISHED`). The

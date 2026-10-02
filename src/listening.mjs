@@ -25,9 +25,10 @@ export function changeSounds(changes, rule = LISTENING) {
   const out = [], sounding = changes.filter(c => c.sound);
   if (changes.length >= rule.least && sounding.length / changes.length > rule.share)
     out.push({kind: 'every-change', at: +sounding[0].at.toFixed(3), text: `${sounding.length} of ${changes.length} changes of picture make a sound; about half should be silent (an entrance's "sound": false) — a sound marks a change only when it matters`});
-  for (let i = 1; i < sounding.length; i++) {
-    const [a, b] = [sounding[i - 1], sounding[i]];
-    if (a.sound === b.sound) out.push({kind: 'same-twice', at: +b.at.toFixed(3), where: b.where, text: `${a.where} and ${b.where} both enter with a ${b.sound}, one after the other: give the second another sound, or none`});
+  // Neighbouring changes only: a sound, a silent change, then the same sound again is the rhythm recommended above.
+  for (let i = 1; i < changes.length; i++) {
+    const [a, b] = [changes[i - 1], changes[i]];
+    if (a.sound && a.sound === b.sound) out.push({kind: 'same-twice', at: +b.at.toFixed(3), where: b.where, text: `${a.where} and ${b.where} both enter with a ${b.sound}, one after the other: give the second another sound, or none`});
   }
   return out;
 }

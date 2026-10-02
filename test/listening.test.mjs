@@ -49,3 +49,8 @@ test('a render measures the effects apart: the record says how loud each role wa
   assert.ok(Number.isFinite(made.loudness.roles.effects) && made.loudness.roles.effects < -10, `the effects measured (${made.loudness.roles.effects} LUFS)`);
   assert.deepEqual(made.listening, []);
 });
+
+test('the same sound twice is two NEIGHBOURING changes: a sound, a silent change, the same sound again is fine', () => {
+  assert.deepEqual(changeSounds([change(5, 'slide'), change(60, null), change(120, 'slide'), change(200, null)]), []);
+  assert.deepEqual(changeSounds([change(5, 'slide'), change(9, 'slide')]).map(f => f.kind), ['same-twice']);
+});

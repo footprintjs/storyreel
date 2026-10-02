@@ -837,7 +837,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
    * the row before it too). A film with a pushIn is one row: its stages hand over on one page.
    */
   function rows() {
-    if (push) return [{from: 0, start: 0, paths: [storyPath, 'pushIn', 'card', ...stages.map(stagePath)], enter: null, pushIn: true}];
+    if (push) return [{from: 0, start: 0, paths: [storyPath, 'pushIn', 'card', ...stages.map(stagePath)], stage: storyPath, enter: null, pushIn: true}];
     // A teaser rewinds through the film (drawTeaser draws earlier moments), so its row draws every row's entries,
     // and says which moments it replays (`rewinds`: from–to, played at–until) for what they bring with them.
     const everything = [storyPath, ...stages.map(stagePath)];
@@ -846,6 +846,8 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
       return {
         from: j === 0 ? 0 : shot.start - shot.enter.lead, start: shot.start,
         paths: j === 0 ? [storyPath] : shot.world ? [stagePath(stages.find(st => st.world === shot.world))] : teasing ? everything : shot.stages.map(stagePath),
+        // The entry the row begins with (its first stage, or the story): what a check names when it means this row.
+        stage: j === 0 ? storyPath : stagePath(shot.stages[0] ?? stages.find(st => st.world === shot.world)),
         enter: j === 0 ? null : {type: shot.enter.type, seconds: shot.enter.seconds, lead: shot.enter.lead},
         ...(teasing ? {rewinds: Object.freeze({from: Math.min(teaser.from, teaser.to), to: Math.max(teaser.from, teaser.to), at: teaser.at + 2.7, until: teaser.at + 4.8})} : {}),
       };

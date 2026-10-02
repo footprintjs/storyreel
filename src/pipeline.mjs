@@ -161,7 +161,14 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     'check-finished': async scope => {
       if (!check) { scope.checked = false; return; }
       const joins = (result.video?.segments ?? []).slice(1).map(s => Math.round(s.from * job.fps) + (job.withIntro ? Math.round(job.intro.seconds * job.fps) : 0));
-      finished = await checkVideo({file: result.out, film, intro: job.withIntro ? job.intro.seconds : 0, captions: result.captions?.srt ?? result.captions?.vtt ?? null, joins, voiced: Boolean(narrationDir), expect, probe: ffmpegProbe({ffmpeg: job.ffmpeg})});
+      try {
+        finished = await checkVideo({file: result.out, film, intro: job.withIntro ? job.intro.seconds : 0, from: job.start, to: job.to, captions: result.captions?.srt ?? result.captions?.vtt ?? null,
+          joins, voiced: Boolean(narrationDir), expect, probe: ffmpegProbe({ffmpeg: job.ffmpeg})});
+      } catch (e) {
+        // The checks could not read the file (no ffprobe, say): a report says so; a refusal refuses.
+        if (check === 'refuse') throw new Error(`The finished file could not be checked (check: 'refuse'): ${e.message}`, {cause: e});
+        finished = {ok: null, error: e.message, checked: [], skipped: [], findings: []};
+      }
       scope.checked = finished.checked; scope.problems = finished.findings.filter(f => f.severity === 'problem').length;
       if (check === 'refuse' && !finished.ok) throw new Error(`The finished file has ${scope.problems} problem${scope.problems > 1 ? 's' : ''} (check: 'refuse'): ${finished.findings.filter(f => f.severity === 'problem').slice(0, 3).map(f => `${f.check}: ${f.text}`).join('; ')}`);
     },
@@ -204,7 +211,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     ...(film.listening.length || result.listening.length ? {listening: [...film.listening, ...result.listening]} : {}),
     loudness: loudnessRecord(result.loudness),
     ...(result.video ? {picture: result.video} : {}),
-    ...(finished ? {finished: {ok: finished.ok, checked: finished.checked, skipped: finished.skipped, findings: finished.findings}} : {}),
+    ...(finished ? {finished: {ok: finished.ok, checked: finished.checked, skipped: finished.skipped, findings: finished.findings, ...(finished.error ? {error: finished.error} : {})}} : {}),
     tools: TOOLS(),
     pipeline: trace.getEntries(),
     // The compile, stage by stage (record.mjs · recordSteps): what each stage read and wrote, every line as when.<recipe path>.

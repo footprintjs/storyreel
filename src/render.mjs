@@ -73,6 +73,17 @@ export function unusableReason(m) {
   return missing.length ? `could not read: ${missing.join(', ')}` : null;
 }
 
+/**
+ * A sound's integrated loudness (LUFS), or null when it is silent or cannot be read: FFmpeg's ebur128 meter, which
+ * reads a 10-minute file in under a second (loudnorm's measuring pass takes tens).
+ */
+export function integratedLoudness(ffmpeg, wav) {
+  const r = spawnSync(ffmpeg, ['-hide_banner', '-nostats', '-i', wav, '-filter_complex', 'ebur128=framelog=quiet', '-f', 'null', '-'], {encoding: 'utf8', maxBuffer: 1 << 24});
+  const all = [...String(r.stderr ?? '').matchAll(/I:\s+(-?[\d.]+|-inf)\s+LUFS/g)], last = all.at(-1)?.[1];
+  const I = last === undefined || last === '-inf' ? null : Number(last);
+  return Number.isFinite(I) && I > -69 ? I : null;
+}
+
 /** Pass 1: measure the mixed film's loudness (render.mjs · measuredLoudness), and why it is unusable, if it is. */
 function measureFilm(ffmpeg, wav, target) {
   const report = parseLoudnormReport(runReporting(ffmpeg, ['-i', wav, '-af', `${LOUDNESS_FORMAT},loudnorm=${loudnormTarget(target)}:print_format=json`, '-f', 'null', '-']));
@@ -341,7 +352,7 @@ export async function finishRender(job, video) {
   writeFileSync(path.join(dir, 'film-sfx.txt'), sfxParts.map(f => `file '${f}'`).join('\n') + '\n');
   run(['-f', 'concat', '-safe', '0', '-i', path.join(dir, 'film-sfx.txt'), '-ar', '48000', '-ac', '1', path.join(dir, 'film-sfx.wav')]);
   // Each role measured apart (listening.mjs): the effects stay well under the voice, so the words stay clear.
-  const integrated = wav => measureFilm(ffmpeg, wav, loudness).measured.I;
+  const integrated = wav => integratedLoudness(ffmpeg, wav);
   const roles = {voice: narrationDir ? integrated(voice) : null, effects: film.sounds.length ? integrated(path.join(dir, 'film-sfx.wav')) : null};
   const tooLoud = effectsUnderVoice(roles);
   run(['-i', voice, '-i', path.join(dir, 'film-sfx.wav'), '-filter_complex', '[0:a]aresample=48000[a];[1:a]aresample=48000[b];[a][b]amix=inputs=2:normalize=0:duration=first', '-ac', '1', path.join(dir, 'film-lesson.wav')]);

@@ -88,7 +88,7 @@ test('with the film: a frame repeated where two segments join is found, while th
 });
 
 test('the voice is there when the render has one: silence where the film says words is a problem', async () => {
-  const frames = Array.from({length: Math.ceil(film.total * fps)}, (_, f) => drawn(film, f / fps)), rate = 8000, n = Math.ceil(film.total * rate);
+  const frames = Array.from({length: Math.ceil(film.total * fps)}, (_, f) => drawn(film, f / fps)), rate = 16000, n = Math.ceil(film.total * rate);
   const silent = await check(frames, {film, voiced: true, checks: ['voice'], probe: {audio: {seconds: film.total, samples: new Float32Array(n)}}});
   assert.equal(silent.findings.length, 3, 'all three scenes'); assert.match(silent.findings[0].text, /the voice is not there in scene a: 8 of 8 words are quieter than -50 dBFS/);
   const speech = Float32Array.from({length: n}, (_, i) => .2 * Math.sin(i / 3));
@@ -146,7 +146,7 @@ const mouthKit = (shut = false) => ({name: 'mouths', story: {compile: (spec, clo
   mouthsAt: t => [{who: 'robot', open: shut ? 0 : mouthAt(clock, t, 'robot')}]})}});
 const talker = async (shut = false) => compileFilm({storyboard: talking, timings: evenTimings(talking), kits: [mouthKit(shut)], recipe: {story: {kit: 'mouths'}}});
 /** A voice made from the mouth itself, `shift` seconds late (negative: early), silent over [quiet0, quiet1). */
-const voiceOf = (f, {shift = 0, quiet = [0, 0]} = {}) => { const rate = 8000; return Float32Array.from({length: Math.ceil(f.total * rate)}, (_, i) => { const t = i / rate; return t >= quiet[0] && t < quiet[1] ? 0 : .3 * mouthAt(f.clock, t - shift, 'robot') * Math.sin(2 * Math.PI * 200 * t); }); };
+const voiceOf = (f, {shift = 0, quiet = [0, 0]} = {}) => { const rate = 16000; return Float32Array.from({length: Math.ceil(f.total * rate)}, (_, i) => { const t = i / rate; return t >= quiet[0] && t < quiet[1] ? 0 : .3 * mouthAt(f.clock, t - shift, 'robot') * Math.sin(2 * Math.PI * 200 * t); }); };
 const lips = async (f, samples) => (await check([solid(50)], {film: f, voiced: true, checks: ['lipsync'], probe: {seconds: f.total, audio: {seconds: f.total, samples}}})).findings.map(x => x.text);
 
 test('lip sync: a mouth on its voice passes; one the sound runs late or early beyond what the eye forgives is found', async () => {
@@ -185,4 +185,92 @@ test('lip sync: a mouth that closes a tenth of a second late is worth a look; lo
   assert.ok(short.length === 0 || short.every(x => x.severity === 'look'), short.map(x => x.text).join(' | '));
   const long = await tail(.3);
   assert.ok(long.some(x => x.severity === 'problem' && /moves for [\d.]+ s/.test(x.text)), long.map(x => `${x.severity}: ${x.text}`).join(' | '));
+});
+
+// Review 2026-10-02 (features 7–9): the part rendered, an intro, exact cut frames, silent scenes, two speakers, honest skips.
+/** Frames exactly as the encoder makes them: the intro's (round(intro × fps), here black), then the film at from + f / fps. */
+const encoded = (f, {fps: rate = fps, from = 0, to = f.total, intro = 0} = {}) => [
+  ...Array.from({length: Math.round(intro * rate)}, () => solid(0)),
+  ...Array.from({length: Math.ceil((to - from) * rate)}, (_, k) => drawn(f, from + k / rate))];
+const probeOf = (frames, rate, audio = null) => ({name: 'fake', probe: () => ({seconds: frames.length / rate, video: {seconds: frames.length / rate, fps: rate, width: W, height: H, frames: frames.length}, audio}),
+  async frames(_f, _s, each) { frames.forEach((g, i) => each(i, g)); return frames.length; }, sound: () => audio.samples});
+
+test('a cut is expected where the encoder shows it, to the last bit of the clock (no false "a frame late")', async () => {
+  const board = {scenes: [{id: 'a', narration: 'One two three.'}, {id: 'b', narration: 'Four five six seven eight.'}, {id: 'c', narration: 'Nine ten.'}]};
+  const kits3 = [world('red', '#ff0000'), world('blue', '#0000ff'), world('green', '#00ff00')];
+  const f = await compileFilm({storyboard: board, timings: evenTimings(board, {tail: .5}), kits: kits3, recipe: {story: {kit: 'red'}, stages: [{type: 'world', scene: 'b', enter: 'cut', world: {kit: 'blue'}}, {type: 'world', scene: 'c', enter: 'cut', world: {kit: 'green'}}]}});
+  for (const rate of [24, 25, 30]) {
+    const frames = encoded(f, {fps: rate});
+    assert.deepEqual((await checkVideo({file: 'x.mp4', film: f, checks: ['handovers'], probe: probeOf(frames, rate)})).findings, [], `at ${rate} fps`);
+  }
+});
+
+test('an intro is the caller\'s drawing: a black opening is not a blank film, and the cuts and words after it line up', async () => {
+  const frames = encoded(film, {intro: 2.01});
+  const report = await checkVideo({file: 'x.mp4', film, intro: 2.01, checks: ['duration', 'blank', 'flash', 'handovers'], probe: probeOf(frames, fps)});
+  assert.deepEqual(report.findings, []);
+});
+
+test('a part of the film (from, to) is checked as the part: its length, its cuts, its words', async () => {
+  const from = 3, to = 9, frames = encoded(film, {from, to});
+  const report = await checkVideo({file: 'x.mp4', film, from, to, checks: ['duration', 'blank', 'flash', 'handovers'], probe: probeOf(frames, fps)});
+  assert.deepEqual(report.findings, []);
+  const whole = await checkVideo({file: 'x.mp4', film, checks: ['duration'], probe: probeOf(frames, fps)});
+  assert.match(whole.findings[0]?.text ?? '', /the picture is 6.00 s; the film is [\d.]+ s/, 'without from/to the same file is the whole film, and too short');
+  await assert.rejects(checkVideo({file: 'x.mp4', film, from: 5, to: 2, probe: probeOf(frames, fps)}), /to is where the part ends on the film's clock, after from/);
+});
+
+test('captions around a silent scene: its directions are never captioned, so they never count as words', async () => {
+  const board = {scenes: [{id: 'a', narration: 'The sheep go out in the morning.'}, {id: 'gate', silent: [['The gate opens slowly', 1.5]]}, {id: 'b', narration: 'The shepherd counts the pebbles.'}]};
+  const f = await compileFilm({storyboard: board, timings: evenTimings(board), recipe: {story: {kit: 'whiteboard', items: []}}});
+  const dir = mkdtempSync(path.join(tmpdir(), 'storyreel-cap-')), cues = path.join(dir, 'c.srt');
+  writeFileSync(cues, captionFile(captionChunks(f), 'srt'));
+  const frames = encoded(f);
+  assert.deepEqual((await checkVideo({file: 'x.mp4', film: f, captions: cues, checks: ['captions'], probe: probeOf(frames, fps)})).findings, []);
+});
+
+test('lip sync with two speakers and a narrator: each mouth is lined up around its own words', async () => {
+  const board = {scenes: [{id: 'n', narration: 'Once upon a time, two friends met at the shop and had a long talk.'},
+    {id: 'r', speaker: 'robot', narration: 'Hello there, I am the robot, and I will tell you how the frame is drawn every time.'},
+    {id: 'g', speaker: 'girl', narration: 'Thank you robot, that was a very good story about the loop and the screen.'}]};
+  const kit = {name: 'two', story: {compile: (spec, clock) => ({hang: 1, draw: c => { c.fillStyle = '#334'; c.fillRect(0, 0, 1600, 900); },
+    mouthsAt: t => [{who: 'robot', open: mouthAt(clock, t, 'robot')}, {who: 'girl', open: mouthAt(clock, t, 'girl')}]})}};
+  const f = await compileFilm({storyboard: board, timings: evenTimings(board), kits: [kit], recipe: {story: {kit: 'two'}}});
+  const rate = 16000, voice = shift => Float32Array.from({length: Math.ceil(f.total * rate)}, (_, i) => { const t = i / rate;
+    return .3 * Math.max(mouthAt(f.clock, t - shift, 'robot'), mouthAt(f.clock, t - shift, 'girl'), mouthAt(f.clock, t - shift, null)) * Math.sin(2 * Math.PI * 200 * t); });
+  const lips2 = async shift => (await checkVideo({file: 'x.mp4', film: f, voiced: true, checks: ['lipsync'], probe: probeOf([solid(50)], fps, {seconds: f.total, samples: voice(shift)})})).findings.map(x => x.text);
+  assert.deepEqual(await lips2(0), []);
+  const late = await lips2(.25);
+  assert.ok(late.some(t => /robot's mouth leads the voice/.test(t)) && late.some(t => /girl's mouth leads the voice/.test(t)), late.join(' | '));
+});
+
+test('lip sync is skipped, saying why, when no kit on screen draws a mouth; the sound is read at 16 kHz', async () => {
+  let asked = null;
+  const p = {...probeOf([solid(50)], fps, {seconds: film.total, samples: new Float32Array(16000)}), sound: (_f, {rate}) => { asked = rate; return new Float32Array(Math.ceil(film.total * rate)); }};
+  const report = await checkVideo({file: 'x.mp4', film, voiced: true, checks: ['lipsync'], probe: p});
+  assert.deepEqual(report.checked, []); assert.deepEqual(report.skipped, [{check: 'lipsync', why: 'no kit on screen draws a mouth (a world\'s mouthsAt)'}]);
+  assert.equal(asked, 16000, 'an /s/ lives above 4 kHz');
+});
+
+test('the probe finds ffprobe beside the FFmpeg it is given, or on the PATH', {skip: has('ffmpeg') && has('ffprobe') ? false : 'needs ffmpeg and ffprobe'}, async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'storyreel-ffmpeg-')), real = spawnSync('which', ['ffmpeg'], {encoding: 'utf8'}).stdout.trim();
+  spawnSync('ln', ['-s', real, path.join(dir, 'ffmpeg')]);   // a folder holding only ffmpeg, as ffmpeg-static ships it
+  const {ffmpegProbe} = await import('../src/finished.mjs');
+  const clip = path.join(dir, 'clip.mp4');
+  spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=red:s=160x90:d=1', '-pix_fmt', 'yuv420p', clip]);
+  assert.equal(ffmpegProbe({ffmpeg: path.join(dir, 'ffmpeg')}).probe(clip).video.width, 160);
+});
+
+test('makeFilm checks a part as the part, and a check that cannot read the file is reported, not thrown, unless it must refuse', {skip: has('ffmpeg') && has('ffprobe') ? false : 'needs ffmpeg and ffprobe'}, async () => {
+  const dir = fileURLToPath(new URL('../examples/hello/', import.meta.url)), read = f => JSON.parse(readFileSync(dir + f, 'utf8'));
+  const board = read('storyboard.json'), recipe = read('recipe.json'), timings = evenTimings(board, {tail: 4}), top = mkdtempSync(path.join(tmpdir(), 'storyreel-part-'));
+  const part = await makeFilm({storyboard: board, recipe, root: dir, timings, out: path.join(top, 'part', 'film.mp4'), render: {width: 160, height: 90, fps, from: 5, to: 15}, check: 'refuse'});
+  assert.equal(JSON.parse(readFileSync(part.makingOf, 'utf8')).finished.ok, true, 'a part is checked as the part');
+  const was = process.env.FFPROBE_BIN; process.env.FFPROBE_BIN = '/no/such/ffprobe';
+  try {
+    const made = await makeFilm({storyboard: board, recipe, root: dir, timings, out: path.join(top, 'r', 'film.mp4'), render: {width: 160, height: 90, fps}, check: 'report'});
+    const finished = JSON.parse(readFileSync(made.makingOf, 'utf8')).finished;
+    assert.equal(finished.ok, null); assert.match(finished.error, /ffprobe could not read the file/);
+    await assert.rejects(makeFilm({storyboard: board, recipe, root: dir, timings, out: path.join(top, 'x', 'film.mp4'), render: {width: 160, height: 90, fps}, check: 'refuse'}), /The finished file could not be checked \(check: 'refuse'\)/);
+  } finally { if (was === undefined) delete process.env.FFPROBE_BIN; else process.env.FFPROBE_BIN = was; }
 });

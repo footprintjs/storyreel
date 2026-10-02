@@ -379,7 +379,12 @@ export function compileLayout(film: Film, layout: Layout): {width: number; heigh
   boxes: {film: Box; header?: Box; captions?: Box}; picture(ctx: any, t: number): void; overlay(ctx: any, t: number, options?: {still?: boolean}): void};
 
 /** One row of pictures (Film.rows). */
-export interface FilmRow { from: number; start: number; paths: string[]; enter: {type: string; seconds: number; lead: number} | null; pushIn?: boolean }
+export interface FilmRow { from: number; start: number; paths: string[];
+  /** The entry the row begins with: its first stage, or the story. */
+  stage: string;
+  enter: {type: string; seconds: number; lead: number} | null; pushIn?: boolean;
+  /** A teaser's row: the moments it replays (from–to) and when it plays them (at–until). */
+  rewinds?: {from: number; to: number; at: number; until: number} }
 
 /** A caption chunk on the film clock: its words, each timed. */
 export interface CaptionChunk { start: number; end: number; words: {text: string; start: number; end: number}[] }
@@ -472,7 +477,7 @@ export interface VideoProbe {
  * joins that repeat a frame, the voice there and lips in sync with it (voiced renders), captions in order and on their words. With the film it was
  * made from, what the film meant (a dip to black, a cut, a silent scene) is never reported.
  */
-export function checkVideo(options: {file: string; film?: Film | null; intro?: number; captions?: string | null; joins?: number[]; voiced?: boolean; expect?: {seconds?: number; tolerance?: number}; checks?: FinishedCheckName[]; probe?: VideoProbe}): Promise<FinishedReport>;
+export function checkVideo(options: {file: string; film?: Film | null; intro?: number; from?: number; to?: number | null; captions?: string | null; joins?: number[]; voiced?: boolean; expect?: {seconds?: number; tolerance?: number}; checks?: FinishedCheckName[]; probe?: VideoProbe}): Promise<FinishedReport>;
 /** A caption file's cues (WebVTT or SRT): [{start, end, text}]. */
 export function readCaptions(text: string): {start: number; end: number; text: string}[];
 export const FINISHED_CHECK_NAMES: readonly FinishedCheckName[];

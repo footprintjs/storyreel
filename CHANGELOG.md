@@ -16,7 +16,9 @@
   ear — more than 60% of four or more changes making a sound (about half should be silent), or the same cue
   twice running; `"listening": "refuse"` refuses them. The worlds example now lists its wipe and iris both
   sliding.
-- **Each role measured apart**: a render measures the voice and the effects before it mixes them
+- **The same sound twice** means two neighbouring changes of picture: a sound, a silent change, then the same sound
+  again is the rhythm the rule asks for, not a finding.
+- **Each role measured apart** (FFmpeg's ebur128 meter: under a second for a 10-minute film): a render measures the voice and the effects before it mixes them
   (`result.loudness.roles`, LUFS) and lists the effects in `result.listening` when they are less than 10 LU
   under the voice; `makeFilm` writes both lists into `making-of.json`'s `listening`.
 
@@ -36,6 +38,15 @@
   speaker heard with the mouth shut (a mouth that moves in silence for under 0.15 s — usually a word's end timed into
   the silence after it — is worth a look, not a problem). **`mouthAt(clock, t, who)`** (`footprint-storyreel/acting`): the mouth the
   kits had each written for themselves — open only while its owner says a word, about once a syllable.
+- The checks were reviewed against real renders (36 renders, every example, 10/24/30 fps, motion blur, a vertical
+  layout, intros, parts, segments) and planted faults; what that found is fixed: the sound is read at 16 kHz (at 8 kHz
+  an /s/ read as silence and a correct film was refused); each mouth is lined up around its own speaker's words (with
+  two speakers the lag was never reported); a part (`from`, `to`) is checked as the part; a cut is expected on the
+  very frame the encoder shows it (a rounding at the last bit of the clock reported "a frame late"); an intro is never
+  taken for a blank film; a silent scene's directions are never counted as captioned words; lips are skipped, saying
+  why, when no kit draws a mouth; ffprobe is found on the PATH when it is not beside the FFmpeg given, and a check that
+  cannot run is recorded (`finished.error`) unless the render must refuse. `film.rows[i].stage` names the entry a row
+  begins with.
 - **Fixed: the last frames of every film were lost** (also in 0.3.0). FFmpeg's `-shortest` stopped a copied
   picture a few frames early when it was muxed with the sound (4 frames of a 35 s film at 30 fps); the sound is
   now padded to the picture's exact length (frames / fps) and both end there. Found by the first run of the
