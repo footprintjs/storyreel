@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.6.0 — a release for a big screen: 4K, a finer encode, the poster as thumbnail, AI said so, chapters from titles
+
+- **A larger picture, redrawn sharp:** a layout takes `scale` (1–2; `layout.mjs · formatScale` checks it keeps the
+  size whole and even), and a release target too: `{target: 'youtube', scale: 2}` is 3840×2160 (4K). Every line
+  and word is drawn at that size; the boxes a layout reports are in output pixels.
+- **A finer encode for posting:** `render: {quality: 'high'}` encodes slower and finer (x264 slow, CRF 16) and
+  converts the colours with HD video's matrix, tagged so (BT.709). The default encode converted with FFmpeg's SD
+  matrix and left the colours untagged, which players read as HD's — reds and greens a little off; it is unchanged
+  ('standard'), and its segments keep their keys.
+- **The thumbnail from the film:** `post.thumbnail: 'poster'` draws the recipe's poster at the platform's thumbnail
+  size (filling it, centred, under its byte limit); a film without a poster is refused before anything renders.
+  A platform that takes an uploaded thumbnail (YouTube) no longer gets the poster baked into the video's first
+  frame (a one-frame flash of the title before the film): the render's new `posterFrame: false`, which a release
+  sets for it; the default (true) and its segment keys are unchanged.
+- **Made with AI, said so:** `post.synthetic` lists what in the film is realistic and made with AI (`['voice']`).
+  YouTube and YouTube Shorts set `alteredOrSynthetic` from it — YouTube asks creators to disclose a synthetic voice
+  narrating — and post.json keeps the list. post.txt says yes / no for a yes-or-no field.
+- **Chapters come from titled scenes:** a titled scene starts a chapter and an untitled one goes on with the one
+  before it (`render.mjs · sceneChapters`), so a film with a few titled parts no longer lists every scene by its id
+  — which YouTube's chapter rules then thinned, keeping an id and dropping a title. A storyboard with no titles at
+  all still makes every scene a chapter, by its id.
+
 ## 0.5.0 — release: one call, every platform
 
 ### Release: one call, every platform

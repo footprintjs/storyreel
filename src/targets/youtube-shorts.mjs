@@ -9,6 +9,6 @@ export default {
   limits: {seconds: {min: 1, max: 180}, text: {title: {max: 100}, description: {max: 5000}}},
   audience: {minAge: 13, kids: 'madeForKids'},
   thumbnail: null,
-  facts: {checked: '2026-10-02', sources: ['https://support.google.com/youtube/answer/15424877']},
-  post: (post) => ({title: post.title, description: [post.description, '#Shorts'].filter(Boolean).join('\n\n'), tags: post.tags, madeForKids: post.audience === 'kids'}),
+  facts: {checked: '2026-10-02', sources: ['https://support.google.com/youtube/answer/15424877', 'https://blog.youtube/news-and-events/disclosing-ai-generated-content']},
+  post: (post) => ({title: post.title, description: [post.description, '#Shorts'].filter(Boolean).join('\n\n'), tags: post.tags, madeForKids: post.audience === 'kids', alteredOrSynthetic: (post.synthetic ?? []).length > 0}),
 };

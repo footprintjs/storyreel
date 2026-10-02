@@ -238,7 +238,7 @@ export function segmentedVideo({store, recipe, code = null, joiner = null, force
       if (job.start !== 0 || job.to < job.film.total - 1e-6) throw new Error('segmentedVideo: segments cover the whole film; render a part (from, to) with wholeVideo()');
       failed = null;
       const {film} = job, recallTimes = [...new Set(film.beats.filter(b => b.path?.startsWith('recalls')).map(b => b.t))];
-      const extra = {poster: job.poster === null ? null : frameHashes(film, {times: [+job.poster.toFixed(3)], width: 192}),
+      const extra = {poster: job.poster === null || job.posterFrame === false ? null : frameHashes(film, {times: [+job.poster.toFixed(3)], width: 192}),
         recalls: recallTimes.length ? frameHashes(film, {times: recallTimes, width: 192}) : null};
       return planSegments(film, {fps: job.fps, frames: job.frames, minSeconds, blur: Boolean(job.blur)}).map(seg => ({
         ...seg, key: segmentKey(film, seg, {recipe, storyboard: job.storyboard, pixels: job.pixels, code, fps: job.fps, extra}),

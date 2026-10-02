@@ -84,6 +84,18 @@ test('layouts: four formats with their sizes; the bands take the film\'s paper; 
   bad({format: 'square', background: 12}, /layout.background must be a colour/);
 });
 
+test('a layout at a scale draws the same picture larger: 2 makes landscape 3840×2160 (4K); the sizes stay whole and even', () => {
+  const big = compileLayout(film, {format: 'landscape', captions: true, scale: 2});
+  assert.deepEqual([big.width, big.height], [3840, 2160]);
+  assert.deepEqual(big.boxes, {film: [0, 0, 3840, 2160], captions: [320, 1720, 3200, 320]}, 'the boxes in output pixels');
+  const c = createCanvas(3840, 2160), ctx = c.getContext('2d'); big.picture(ctx, 0);
+  const px = (x, y) => [...ctx.getImageData(x, y, 1, 1).data].slice(0, 3).join(',');
+  assert.equal(px(3839, 2159), '255,0,0', 'the film fills the larger picture to its far corner');
+  assert.equal(px(840, 1080), '255,255,255', 'and every thing in it is where it was, twice as far from the corner (the square at 300, 400 on the 1600-wide frame)');
+  assert.deepEqual((({width, height}) => [width, height])(compileLayout(film, {format: 'vertical', scale: 1.5})), [1620, 2880]);
+  for (const scale of [3, .5, 1.0001, '2']) assert.throws(() => compileLayout(film, {format: 'landscape', scale}), /layout\.scale must be 1–2 and keep the landscape size whole and even \(1920×1080 at 1; 2 makes 3840×2160, 4K\)/);
+});
+
 test('a crop follows its keys, eased, never leaves the frame\'s width, and may widen to the whole frame', () => {
   const keys = [{t: 10, x: 300}, {t: 20, x: 1500}, {t: 30, x: 800, width: 1600}, {t: 40, x: 800, width: 600}];
   const at = t => cropWindow(keys, t, [900, 900]);

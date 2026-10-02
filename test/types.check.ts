@@ -93,6 +93,9 @@ export const tiktok: Layout = {format: 'tiktok'};
 export const cropAt: Layout = {format: 'vertical', crop: [{at: ['a', 'b'], y: 300}]};
 // @ts-expect-error caption files are vtt or srt
 export const ass = (render: typeof RenderFilm, film: Film, board: Storyboard) => render({film, storyboard: board, timings: film.timings, out: 'x.mp4', captionFiles: ['ass']});
+export const master = (render: typeof RenderFilm, film: Film, board: Storyboard) => render({film, storyboard: board, timings: film.timings, out: 'x.mp4', layout: {format: 'landscape', scale: 2}, quality: 'high'});
+// @ts-expect-error quality is 'standard' or 'high'
+export const ultra = (render: typeof RenderFilm, film: Film, board: Storyboard) => render({film, storyboard: board, timings: film.timings, out: 'x.mp4', quality: 'ultra'});
 
 // Transitions: a name, or a name with settings; a kit adds its own.
 export const entrances: Enter[] = ['push', {type: 'wipe', from: 'top', seconds: .6}, {type: 'whip', sound: false}, {type: 'iris', at: [800, 420]}, 'curtain'];
@@ -214,5 +217,9 @@ const mine: ReleaseAdapter = {name: 'mine', label: 'Mine', video: {format: 'squa
   audience: {minAge: 13, kids: 'refuse'}, thumbnail: null, facts: {checked: '2026-10-02', sources: []}, post: p => ({text: p.title})};
 export const targets: ReleaseTarget[] = ['youtube', {target: 'youtube-shorts', from: 0, to: 60}, mine];
 export const teaser: ReleasePost = {title: 'Pebbles', audience: 'general'};
+export const big: ReleaseTarget = {target: 'youtube', scale: 2};
+export const voiced: ReleasePost = {title: 'Pebbles', audience: 'general', thumbnail: 'poster', synthetic: ['voice']};
+// @ts-expect-error synthetic is a list of words
+export const voicedWrong: ReleasePost = {title: 'Pebbles', audience: 'general', synthetic: 'voice'};
 // @ts-expect-error an audience is 'kids' or 'general'
 export const wrong: ReleasePost = {title: 'Pebbles', audience: 'everyone'};

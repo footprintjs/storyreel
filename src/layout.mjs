@@ -35,7 +35,7 @@ const FORMATS = Object.freeze({
   vertical: {width: 1080, height: 1920, film: [0, 480, 1080, 810], crop: [1200, 900], header: [100, 285, 880, 185], captions: [120, 1298, 840, 162], captionSize: 54, maxWords: 4},
 });
 export const FORMAT_NAMES = Object.freeze(Object.keys(FORMATS));
-const KEYS = ['format', 'header', 'captions', 'crop', 'background', 'ink'];
+const KEYS = ['format', 'header', 'captions', 'crop', 'background', 'ink', 'scale'];
 const MOVE = .8;   // seconds a crop takes to move to its next key
 const SANS = '"Helvetica Neue", Helvetica, Arial, sans-serif';
 
@@ -48,15 +48,16 @@ export function formatOf(name) {
 
 /**
  * Compile a layout for a film. spec: {format, header?: {title, sub?, box?}, captions?: true | {maxWords?,
- * size?, box?}, crop?: [{at: beat, x, width?}], background?, ink?} → {width, height, format, boxes,
+ * size?, box?}, crop?: [{at: beat, x, width?}], background?, ink?, scale?} → {width, height, format, boxes,
  * picture(ctx, t), overlay(ctx, t, {still?})}: picture draws the background and the film (what motion blur
  * may average); overlay draws the bands (a still — the poster — without a caption); boxes are where the film
- * and the bands are, in output pixels.
+ * and the bands are, in output pixels. scale (1–2, default 1) draws the same picture that many times the format's
+ * size: 2 makes landscape 3840×2160 (4K), every line and word drawn sharp at that size (layout.mjs · formatScale).
  */
 export function compileLayout(film, spec) {
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) throw new Error(`layout must be {format: ${FORMAT_NAMES.join(' | ')}, …}`);
   for (const key of Object.keys(spec)) if (!KEYS.includes(key)) throw new Error(`layout has unsupported key ${key} (the keys are ${KEYS.join(', ')})`);
-  const f = formatOf(spec.format);
+  const f = formatOf(spec.format), k = formatScale(spec.format, spec.scale);
   const header = readHeader(spec.header, f, spec.format), captions = readCaptions(spec.captions, f);
   if (spec.crop !== undefined && !f.crop) throw new Error(`layout.crop: the ${spec.format} format shows the whole frame; a crop applies to portrait and vertical`);
   for (const key of ['background', 'ink']) if (spec[key] !== undefined && !(typeof spec[key] === 'string' && spec[key].trim())) throw new Error(`layout.${key} must be a colour (e.g. "#f3eee3")`);
@@ -64,11 +65,12 @@ export function compileLayout(film, spec) {
   const chunks = captions ? captionChunks(film, {maxWords: captions.maxWords}) : null;
   const palette = film.theme?.palette ?? {}, sans = film.theme?.type?.sans ?? SANS;
   const bg = spec.background ?? palette.bg ?? '#f3eee3', ink = spec.ink ?? palette.ink ?? '#23211c';
-  const boxes = Object.freeze({film: f.film, ...(header ? {header: header.box} : {}), ...(captions ? {captions: captions.box} : {})});
+  const sized = b => b.map(v => v * k);   // the boxes in output pixels; the bands themselves are drawn in the format's
+  const boxes = Object.freeze({film: sized(f.film), ...(header ? {header: sized(header.box)} : {}), ...(captions ? {captions: sized(captions.box)} : {})});
   return {
-    width: f.width, height: f.height, format: spec.format, boxes,
+    width: f.width * k, height: f.height * k, format: spec.format, boxes,
     picture(ctx, t) {
-      ctx.save(); ctx.fillStyle = bg; ctx.fillRect(0, 0, f.width, f.height);
+      ctx.save(); ctx.scale(k, k); ctx.fillStyle = bg; ctx.fillRect(0, 0, f.width, f.height);
       const [bx, by, bw, bh] = f.film;
       ctx.beginPath(); ctx.rect(bx, by, bw, bh); ctx.clip();
       if (crop) {
@@ -80,10 +82,24 @@ export function compileLayout(film, spec) {
     },
     /** The bands at t; a still (the poster, a thumbnail) takes the title band without a caption. */
     overlay(ctx, t, {still = false} = {}) {
+      ctx.save(); ctx.scale(k, k);
       if (header) drawHeader(ctx, header, ink, sans);
       if (chunks && !still) drawCaption(ctx, captionAt(chunks, t), captions.box, {size: captions.size, font: sans});
+      ctx.restore();
     },
   };
+}
+
+/**
+ * A layout's scale, checked: 1 (the format's size, the default) to 2, keeping the size whole and even (as video needs).
+ * Returns the scale; refuses naming the sizes it would make.
+ */
+export function formatScale(format, scale) {
+  const f = formatOf(format);
+  if (scale === undefined) return 1;
+  if (!(typeof scale === 'number' && scale >= 1 && scale <= 2 && Number.isInteger(f.width * scale / 2) && Number.isInteger(f.height * scale / 2)))
+    throw new Error(`layout.scale must be 1–2 and keep the ${format} size whole and even (${f.width}×${f.height} at 1; 2 makes ${f.width * 2}×${f.height * 2}${format === 'landscape' ? ', 4K' : ''})`);
+  return scale;
 }
 
 /** The title band: {title, sub?, box?}, only where the format has one; false or left out for none. */

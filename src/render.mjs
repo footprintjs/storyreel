@@ -196,7 +196,7 @@ export function makePainter({film, framed, blur, width, height, fps, ctx}) {
 
 /**
  * @param film       from compileFilm
- * @param storyboard the storyboard (scene titles become chapters)
+ * @param storyboard the storyboard (a titled scene starts a chapter: render.mjs · sceneChapters)
  * @param timings    the PACED timings ({scenes: [{id, duration, audio}]}); audio paths relative to narrationDir
  *                   (a silent scene may name none: render.mjs · joinVoice generates its silence)
  * @param narrationDir where the paced scene audio lives (null → a silent film)
@@ -207,6 +207,8 @@ export function makePainter({film, framed, blur, width, height, fps, ctx}) {
  * @param poster     the film second to use as the poster (default: the recipe's `poster`, film.posterAt): it is
  *                   written beside the video (poster.jpg) and REPLACES the video's first frame, so every
  *                   platform's thumbnail shows it (the length and the sound's sync are unchanged)
+ * @param posterFrame true (the default): the poster replaces the first frame; false: it is written beside the video
+ *                   only — for a platform that takes an uploaded thumbnail, so the video starts on the film's own frame
  * @param loudness   the target {I, TP, LRA?} (LUFS, dBTP, LU) for the two loudness passes (render.mjs · muxWithLoudness)
  * @param layout     a format for a platform ({format: landscape | square | portrait | vertical, header?, captions?, crop?};
  *                   layout.mjs · compileLayout): the output takes that format's size (width or height beside it refuses)
@@ -217,6 +219,8 @@ export function makePainter({film, framed, blur, width, height, fps, ctx}) {
  * @param video      how the picture is made (a strategy, segments.mjs): wholeVideo() — every frame in one pass, the
  *                   default — or segmentedVideo({...}) — the film in segments, each reused from a cache when nothing
  *                   that draws it changed, then joined. The sound is always mixed for the whole film, once.
+ * @param quality    'standard' (the default: quick to make, fine to watch) or 'high' (for posting: a slower, finer
+ *                   encode, its colours converted and tagged as HD video's, BT.709, the way players read them)
  * @returns {out, seconds, chapters, poster?, format?, captions?: {vtt?, srt?}, loudness: {type, target, measured, reason?},
  *          video?: the strategy's report (segmentedVideo: each segment, rendered or reused)}
  */
@@ -227,13 +231,37 @@ export async function renderFilm(options) {
 }
 
 /**
+ * How the frames are encoded. 'standard': quick, fine to watch. 'high', for posting: a slower, finer encode, and the
+ * colours converted with HD video's matrix and tagged so (BT.709): FFmpeg converts RGB with the older SD matrix unless
+ * told, and players read HD video as BT.709, which shifts reds and greens a little.
+ */
+const ENCODE = Object.freeze({
+  standard: ['-preset', 'fast', '-crf', '19', '-pix_fmt', 'yuv420p'],
+  // The frames carry the tags too (setparams): a newer FFmpeg takes them from the frames, an older one from the flags.
+  high: ['-preset', 'slow', '-crf', '16', '-vf', 'scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv',
+    '-pix_fmt', 'yuv420p', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv'],
+});
+export const QUALITIES = Object.freeze(Object.keys(ENCODE));
+
+/**
+ * The film's chapters on its own clock, [[seconds, name]]: a titled scene starts a chapter and an untitled one goes
+ * on with the chapter before it; a storyboard without any titles makes every scene a chapter, named by its id.
+ */
+export function sceneChapters(scenes, offsets) {
+  const titled = scenes.some(s => s.title);
+  return scenes.flatMap((s, i) => s.title ? [[offsets[i], s.title]] : titled ? [] : [[offsets[i], s.id]]);
+}
+
+/**
  * A render's job: everything checked and sized once, and the one way frames are made (encodeFrames), so a
  * strategy (segments.mjs) decides only WHICH frames to encode into which files.
  */
 export function prepareRender({film, storyboard, timings, narrationDir = null, out, width: givenWidth, height: givenHeight, fps = 30, intro = null, stamp = null,
-  from = intro ? -intro.seconds : 0, to = film.total, poster = film.posterAt ?? null, peakCeilingDBFS = -20, loudness = {I: -16, TP: -1.5}, layout = null, motionBlur = null,
-  captionFiles = false, ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', video: _strategy}) {
+  from = intro ? -intro.seconds : 0, to = film.total, poster = film.posterAt ?? null, posterFrame = true, peakCeilingDBFS = -20, loudness = {I: -16, TP: -1.5}, layout = null, motionBlur = null,
+  captionFiles = false, quality = 'standard', ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', video: _strategy}) {
   checkLoudnessTarget(loudness);
+  if (typeof posterFrame !== 'boolean') throw new Error('posterFrame must be true (the poster replaces the first frame) or false (written beside the video only)');
+  if (!ENCODE[quality]) throw new Error(`quality must be ${QUALITIES.map(q => `'${q}'`).join(' or ')}`);
   const blur = readMotionBlur(motionBlur), captionKinds = readCaptionFiles(captionFiles);
   const framed = layout ? compileLayout(film, layout) : null;
   // A layout's format sets the size; a size given beside it would be silently ignored, so it refuses.
@@ -243,11 +271,11 @@ export function prepareRender({film, storyboard, timings, narrationDir = null, o
   const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
   to = Math.min(to, film.total);
   const withIntro = intro && from < 0, start = Math.max(0, from);
-  const job = {film, storyboard, timings, narrationDir, out, dir, width, height, fps, intro, withIntro, stamp, start, to, poster, peakCeilingDBFS, loudness, layout, framed, blur, captionKinds, ffmpeg,
+  const job = {film, storyboard, timings, narrationDir, out, dir, width, height, fps, intro, withIntro, stamp, start, to, poster, posterFrame, peakCeilingDBFS, loudness, layout, framed, blur, captionKinds, ffmpeg,
     /** How many frames the film part has (the intro's are extra). */
     frames: Math.ceil((to - start) * fps),
     /** What changes a frame's pixels besides the film itself: a segment's cache key includes it (segments.mjs). */
-    pixels: {width, height, fps, layout: layout ?? null, stamp: stamp ?? null, motionBlur: blur, poster},
+    pixels: {width, height, fps, layout: layout ?? null, stamp: stamp ?? null, motionBlur: blur, poster: posterFrame ? poster : null, ...(quality === 'standard' ? {} : {quality})},
   };
   /**
    * Encode film frames [f0, f1) (frame f shows film second start + f / fps) into `file`; withIntro puts the
@@ -257,7 +285,7 @@ export function prepareRender({film, storyboard, timings, narrationDir = null, o
   job.encodeFrames = async ({f0 = 0, f1 = job.frames, file, withIntro: introHere = false, posterFirst = false}) => {
     const k = width / 1600, canvas = createCanvas(width, height), ctx = canvas.getContext('2d');
     const paint = makePainter({film, framed, blur, width, height, fps, ctx});
-    const ff = spawn(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pixel_format', 'rgba', '-video_size', `${width}x${height}`, '-framerate', String(fps), '-i', 'pipe:0', '-c:v', 'libx264', '-preset', 'fast', '-crf', '19', '-pix_fmt', 'yuv420p', file], {stdio: ['pipe', 'ignore', 'inherit']});
+    const ff = spawn(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pixel_format', 'rgba', '-video_size', `${width}x${height}`, '-framerate', String(fps), '-i', 'pipe:0', '-c:v', 'libx264', ...ENCODE[quality], file], {stdio: ['pipe', 'ignore', 'inherit']});
     // FFmpeg that cannot start, or that stops taking frames, is a refusal (not a crash): every failure lands on `closed`.
     let failed = null;
     const closed = new Promise(resolve => { ff.once('error', e => { failed ??= e; resolve([null]); }); ff.once('close', code => resolve([code])); });
@@ -267,7 +295,7 @@ export function prepareRender({film, storyboard, timings, narrationDir = null, o
       if (failed) throw new Error(`ffmpeg (${ffmpeg}) could not encode ${path.basename(file)}: ${failed.message}`);
       if (!ff.stdin.write(canvas.data())) await Promise.race([once(ff.stdin, 'drain'), closed]);
     };
-    let posterNext = posterFirst && poster !== null;
+    let posterNext = posterFirst && poster !== null && posterFrame;
     const frameOrPoster = async draw => { if (posterNext) { posterNext = false; paint(poster, {still: true}); } else draw(); await push(); };
     if (introHere) {
       const handoff = createCanvas(width, height); { const c = handoff.getContext('2d'); c.scale(k, k); film.frame(c, 0); }
@@ -369,7 +397,7 @@ export async function finishRender(job, video) {
   const loudnessSet = muxWithLoudness({ffmpeg, video: video.file, wav: path.join(dir, 'film-audio.wav'), out: path.resolve(job.out), target: loudness, seconds: pictureSeconds});
   // Chapters on the output's clock, for review and YouTube.
   const lead = withIntro ? intro.seconds : 0;
-  const chapters = [...(withIntro ? [[0, intro.title ?? 'Title']] : []), ...storyboard.scenes.map((s, i) => [lead + film.clock.offsets[i] - start, s.title ?? s.id])].filter(([t]) => t >= 0);
+  const chapters = [...(withIntro ? [[0, intro.title ?? 'Title']] : []), ...sceneChapters(storyboard.scenes, film.clock.offsets).map(([t, name]) => [lead + t - start, name])].filter(([t]) => t >= 0);
   writeFileSync(path.join(dir, 'chapters.txt'), chapters.map(([t, n]) => `${clock(t)} ${n}`).join('\n') + '\n');
   // Caption files on the output's clock too (the same shift as the chapters), for the cues the render covers.
   const captions = {};
