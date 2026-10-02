@@ -16,7 +16,7 @@ import {flowChart, narrative} from 'footprintjs';
 import {applyPacing, validatePacing, paceTimings} from './pacing.mjs';
 import {withDirections} from './clock.mjs';
 import {compileFilm} from './film.mjs';
-import {renderFilm} from './render.mjs';
+import {prepareRender, finishRender, wholeVideo, checkVideoStrategy} from './render.mjs';
 
 const require = createRequire(import.meta.url);
 /** A dependency's installed version (from its package.json, even when its exports hide that file). */
@@ -56,6 +56,8 @@ function peakAdvice({target, measured}) {
   return reach < target.I ? `; here the loudest peak (${TP} dBTP) reaches the ${target.TP} dBTP limit at I = ${reach} LUFS — ask for loudness I ${reach} or lower to keep one fixed gain` : '';
 }
 const sha = text => createHash('sha256').update(text).digest('hex').slice(0, 16);
+/** The most parts a picture is planned in (segments.mjs · planSegments makes one per row of pictures). */
+const MAX_PARTS = 256;
 
 /**
  * @param storyboard, recipe, data, kits, theme, root, hostKeys — as compileFilm
@@ -66,11 +68,14 @@ const sha = text => createHash('sha256').update(text).digest('hex').slice(0, 16)
  * @param strings      the string table for the film's language ({key: text}); lang names it
  * @param out          the .mp4 to write; making-of.json is written beside it
  * @param render       extra options for renderFilm (intro, stamp, from, to, width, height, layout, motionBlur,
- *                     captionFiles…); a layout, motion blur or caption files are written into the record as `version`
+ *                     captionFiles, video…); a layout, motion blur or caption files are written into the record as
+ *                     `version`; a segmentedVideo strategy renders each segment as its own subflow and the record's
+ *                     `picture` says which were drawn and which were reused
  */
 export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}}) {
   const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
-  let film, paced, result;
+  let film, paced, result, job, plan;
+  const video = checkVideoStrategy(render.video ?? wholeVideo()), done = [];
   const stages = {
     'check-inputs': scope => {
       if (!storyboard?.scenes?.length) throw new Error('The storyboard has no scenes');
@@ -99,14 +104,34 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings, hostKeys, record: true});
       scope.beats = film.beats.length; scope.sounds = film.sounds.length; scope.total = +film.total.toFixed(3);
     },
+    // The picture: planned as one pass or as segments (render.mjs · wholeVideo, segments.mjs · segmentedVideo).
+    'plan-picture': scope => {
+      job = prepareRender({film, storyboard, timings: paced, narrationDir: scope.narration, out, ...render});
+      plan = video.plan(job);
+      if (plan.length > MAX_PARTS) throw new Error(`The picture is planned in ${plan.length} parts; at most ${MAX_PARTS} can be drawn (segments.mjs · planSegments: give the segments a larger minSeconds)`);
+      scope.picture = {strategy: video.name, parts: plan.length};
+      scope.parts = plan.map(p => ({index: p.index, frames: p.f1 - p.f0, ...(p.key ? {key: p.key, scenes: [...p.scenes]} : {})}));
+    },
     'render-film': async scope => {
-      result = await renderFilm({film, storyboard, timings: paced, narrationDir: scope.narration, out, ...render});
+      const picture = await video.join(job, done);
+      result = await finishRender(job, picture);
       scope.out = result.out; scope.chapters = result.chapters; scope.loudness = result.loudness.type;
+      if (result.video) scope.reused = result.video.reused, scope.rendered = result.video.rendered;
     },
   };
-  const ids = Object.keys(stages), trace = narrative();
-  let chart = flowChart(ids[0], stages[ids[0]], ids[0]);
-  for (const id of ids.slice(1)) chart = chart.addFunction(id, stages[id], id);
+  // Each part of the picture is its own subflow (a fan-out over the plan): the record says, part by part,
+  // whether it was drawn or reused from the store.
+  const part = (item, i) => flowChart('picture part', async s => {
+    const r = await video.one(job, plan[i]); done[i] = r;
+    s.status = r.status; s.frames = r.frames; if (r.why) s.why = r.why;
+  }, 'part').build();
+  const trace = narrative();
+  const chart = flowChart('check-inputs', stages['check-inputs'], 'check-inputs')
+    .addFunction('pace-narration', stages['pace-narration'], 'pace-narration')
+    .addFunction('compile-film', stages['compile-film'], 'compile-film')
+    .addFunction('plan-picture', stages['plan-picture'], 'plan-picture')
+    .addParallelForEach('render-picture', 'render-picture', {items: scope => scope.parts ?? [], branch: part, maxBranches: MAX_PARTS, into: 'partsDone', failFast: true})
+    .addFunction('render-film', stages['render-film'], 'render-film');
   const run = await chart.build().recorder(trace).run();
   const record = {
     schemaVersion: 1, made: new Date().toISOString(), out: result.out, seconds: result.seconds, chapters: result.chapters,
@@ -123,6 +148,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     ...(film.notes.length ? {notes: film.notes} : {}),
     sounds: film.sounds.length,
     loudness: loudnessRecord(result.loudness),
+    ...(result.video ? {picture: result.video} : {}),
     tools: TOOLS(),
     pipeline: trace.getEntries(),
     // The compile, stage by stage (record.mjs · recordSteps): what each stage read and wrote, every line as when.<recipe path>.

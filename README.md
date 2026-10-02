@@ -497,6 +497,48 @@ A layout is data, checked like a recipe: an unknown key refuses, a header in the
 refuses (it has no band), a crop key out of spoken order refuses. Only the landscape format takes an
 `intro`.
 
+## Re-render only what changed
+
+A film is edited many times. Fixing one word, one beat or one drawing should not mean drawing all
+4 000 frames again. `video: segmentedVideo({store, recipe, code})` makes the picture in **segments** — one
+per row of pictures (a shot, from the moment its entrance starts), so a transition is never cut in two —
+keeps each one in a store, and on the next render reuses every segment that nothing has changed:
+
+```js
+import {renderFilm, segmentedVideo, folderStore, codeFingerprint} from 'footprint-storyreel';
+
+const video = segmentedVideo({
+  store: folderStore('work/segments'),     // <key>.mp4 + <key>.json per segment, kept between renders
+  recipe,                                  // each segment's recipe entries are part of its key
+  code: codeFingerprint(['film/kits']),    // your drawing code: change a kit, and what it draws changes
+});
+const result = await renderFilm({film, storyboard, timings, narrationDir, out: 'out/draft.mp4', video});
+console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
+```
+
+- **A key is on the segment's own clock.** It is built from everything that draws the segment, timed from
+  its first frame: its recipe entries (and the shot an entrance also draws), every line they resolved, the
+  words spoken in and around it (captions and mouths), the director's notes over it, the frame settings
+  (size, layout, stamp, motion blur, poster) and the drawing code (StoryReel's own and yours). So a
+  longer scene near the start moves every later segment in time but changes none of their keys: they are
+  reused, shifted.
+- **A reused segment must pass a spot check.** A few of its frames (6 by default, `samples`) are drawn
+  again, small, and their fingerprints must match the ones kept when it was drawn. A change the key
+  missed shows there, and the segment is drawn again (`why` says so).
+- **The sound is never cached.** It is mixed for the whole film on every render (it takes seconds), so it
+  never has a seam; the segments are joined without re-encoding (`ffmpegJoin()`; every segment is encoded
+  with the same settings).
+- **You decide when a part is drawn fresh.** `force: [2, 'race']` draws the third segment and every
+  segment covering the scene `race` again, whatever their keys say. A final render for publishing can
+  still use `wholeVideo()` (the default): every frame in one pass.
+- **Three seams.** The strategy (`wholeVideo()`, `segmentedVideo()`), the store (`folderStore(dir)`, or
+  your own `{get(key), put(key, file, manifest)}`) and the joiner (`ffmpegJoin()`, or your own
+  `{join(files, out)}`) are each replaceable. A segmented render covers the whole film: an `intro` or a
+  part (`from`, `to`) refuses, naming `wholeVideo()`.
+- **In `makeFilm`**, each segment is its own footprintjs subflow (a fan-out over the plan), and
+  `making-of.json` gets a `picture` entry: every segment, its key, and whether it was drawn or reused
+  and why. `parallel` (2 by default) is how many segments are drawn at once.
+
 ## The compile record
 
 `compileFilm({…, record: true})` runs the compile as a footprintjs flowchart and returns the film with
@@ -698,12 +740,13 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 
 | import | what it does |
 |---|---|
-| `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?, hostKeys?, record?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `reading`, `shots` (each shot's intent, facts and moments), `watching`, `moments()`, `regionsAt(t)`, `pointAt(t, x, y)`, `posterAt`, `theme`; with `record: true`, `record` (the compile as a footprintjs run) |
-| `renderFilm({film, storyboard, timings, narrationDir?, out, width?, height?, fps?, intro?, stamp?, from?, to?, poster?, loudness?, layout?, motionBlur?, captionFiles?})` | the MP4 (FFmpeg), its chapters, its poster, its loudness (two passes); a version for a platform, motion blur, caption files |
+| `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?, hostKeys?, record?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `reading`, `shots` (each shot's intent, facts and moments), `watching`, `rows` (the rows of pictures segments are planned from), `moments()`, `regionsAt(t)`, `pointAt(t, x, y)`, `posterAt`, `theme`; with `record: true`, `record` (the compile as a footprintjs run) |
+| `renderFilm({film, storyboard, timings, narrationDir?, out, width?, height?, fps?, intro?, stamp?, from?, to?, poster?, loudness?, layout?, motionBlur?, captionFiles?, video?})` | the MP4 (FFmpeg), its chapters, its poster, its loudness (two passes); a version for a platform, motion blur, caption files; the picture in one pass or in cached segments |
 | `compileLayout(film, layout)` · `FORMAT_NAMES` | a format's picture and bands, drawn at any t (`footprint-storyreel/layout` adds `formatOf`, `cropWindow`) |
 | `captionChunks(film, {maxWords?, maxChars?, breaks?})` · `captionFile(chunks, 'vtt' \| 'srt', {offset?, from?, to?})` | the spoken words in caption chunks; a WebVTT or SRT file (`footprint-storyreel/captions` adds `captionAt`, `drawCaption`) |
 | `TRANSITIONS` · `TRANSITION_NAMES` · `transitionCatalog(kits)` · `transitionSheet({catalog?, moments?, width?})` | the transitions a shot can enter with, a kit's own added, on one PNG (`footprint-storyreel/transitions` adds `readEntrance`, `ghostPainter`) |
-| `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?})` | compile + render as a footprintjs pipeline, with `making-of.json` |
+| `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?})` | compile + render as a footprintjs pipeline, with `making-of.json` (a segmented render: one subflow per segment) |
+| `segmentedVideo({store, recipe, code?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir)` · `ffmpegJoin()` · `planSegments(film, {fps})` · `segmentKey(…)` · `codeFingerprint(paths)` | re-render only what changed: the picture in cached segments, joined (`renderFilm({…, video})`) |
 | `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |
 | `directionTimings(scene, {tail?})` · `withDirections(storyboard, timings)` · `sceneText(scene)` | a silent scene's timing; a voice's timings completed with the silent scenes; a scene's text |
 | `makeClock(storyboard, timings)` | phrases → seconds; `speaking(t)`, `turns()`, `gaze(t, who)` |
@@ -714,7 +757,7 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/pins`, `/sheet`, `/render`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/pins`, `/sheet`, `/render`, `/segments`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws
@@ -728,6 +771,7 @@ TypeScript types ship with the package: the main entry, `/studio`, and the docum
 7. **Notes change the camera, never the beats.** Every note says what was asked; one the film cannot honour refuses.
 8. **Say what made it.** The making-of record lists every phrase → drawing, every note, every tool, and the compile stage by stage.
 9. **Pinned pixels.** An approved film stays the approved film until a change is meant.
+10. **Draw again only what changed.** A segment is reused only when everything that draws it is unchanged and a spot check of its frames agrees; the sound is mixed whole every time.
 
 ## Not in this package
 

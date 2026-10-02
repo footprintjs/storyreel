@@ -59,6 +59,10 @@
       "types": "./types/sub/render.d.ts",
       "default": "./src/render.mjs"
     },
+    "./segments": {
+      "types": "./types/sub/segments.d.ts",
+      "default": "./src/segments.mjs"
+    },
     "./pipeline": {
       "types": "./types/sub/pipeline.d.ts",
       "default": "./src/pipeline.mjs"

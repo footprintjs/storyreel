@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Re-render only what changed
+- **`segmentedVideo({store, recipe, code?, force?, samples?, parallel?})`** — a picture strategy for
+  `renderFilm({…, video})` and `makeFilm({render: {video}})`: the film in segments (one per row of pictures,
+  `film.rows`, from when each shot's entrance starts; rows under `minSeconds` join the one before), each kept
+  in a store under a key built from everything that draws it on its own clock, reused when the key and a spot
+  check of `samples` frames match, drawn again otherwise or when `force` names it, then joined without
+  re-encoding. The sound is mixed for the whole film every time. `result.video` (and `making-of.json`'s
+  `picture`) says which segments were drawn, which reused, and why.
+- **Three seams**: the strategy (`wholeVideo()` — the default, one pass — or `segmentedVideo()`), the store
+  (`folderStore(dir)`) and the joiner (`ffmpegJoin()`), each replaceable. `planSegments`, `segmentKey` and
+  `codeFingerprint` are exported for tools that want the plan or the keys.
+- **`makeFilm` draws the picture as a fan-out**: a `plan-picture` stage, then one footprintjs subflow per part
+  (`render-picture`), then `render-film` joins and finishes; a whole-film render is one part.
+- **`film.rows`**: the film as rows of pictures — when each starts to arrive, the recipe entries that draw it,
+  and how it arrives (a pushIn film is one row).
+- `renderFilm` is now `prepareRender` (the checked job and its one way to encode frames) → a strategy →
+  `finishRender` (sound, mux, chapters, captions); the output is unchanged, and an FFmpeg that fails while
+  encoding frames now refuses instead of passing silently.
+
 ## 0.3.0 — shots planned like a film crew plans them; transitions as a collection; one film in every platform's shape
 
 ### Planning the shots (borrowed from how a film crew plans a shot)

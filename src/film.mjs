@@ -715,6 +715,21 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     return out.filter(m => m.t >= 0 && m.t < clock.total).sort((a, b) => a.t - b.t);
   }
 
+  /**
+   * The film as rows of pictures (segments.mjs plans renders from them): when each row's picture starts
+   * to arrive (`from`: its entrance begins, `lead` seconds before its first scene), the recipe entries that
+   * draw it (`paths`), and how it arrives (`enter`: null for the first; a cut, or a transition that draws
+   * the row before it too). A film with a pushIn is one row: its stages hand over on one page.
+   */
+  function rows() {
+    if (push) return [{from: 0, start: 0, paths: [storyPath, ...stages.map(stagePath)], enter: null, pushIn: true}];
+    return shots.map((shot, j) => ({
+      from: j === 0 ? 0 : shot.start - shot.enter.lead, start: shot.start,
+      paths: j === 0 ? [storyPath] : shot.world ? [stagePath(stages.find(st => st.world === shot.world))] : shot.stages.map(stagePath),
+      enter: j === 0 ? null : {type: shot.enter.type, seconds: shot.enter.seconds, lead: shot.enter.lead},
+    }));
+  }
+
   // A poster: the recipe's chosen frame (a phrase), for the thumbnail (renderFilm bakes it in as frame 0).
   const posterAt = recipe.poster === undefined ? null : clock.at(recipe.poster);
 
@@ -726,7 +741,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   yield step('checks', () => checksSummary({readingRule, reading, watchingRule, watching, facts, sounds, byScene: soundsByScene(sounds, clock.offsets, timings.scenes.map(s => s.duration)), worlds: readies.filter(Boolean).length, recalls: Object.keys(recipe.recalls ?? {})}));
   // Every line the build resolved (the clock is a pure function of the paced word times, so the order it was asked in changes no second).
   yield step('resolve-lines', () => linesSummary(beats));
-  return {total: clock.total, clock, timings, sounds, frame, beats, strings: [...used], notes: notesApplied, reading, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching};
+  return {total: clock.total, clock, timings, sounds, frame, beats, strings: [...used], notes: notesApplied, reading, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching, rows: Object.freeze(rows().map(Object.freeze))};
 }
 
 /** What reading the inputs gave (record.mjs): the recipe's top-level keys, each scene's seconds, the notes, the strings used. */

@@ -199,11 +199,25 @@ export function makePainter({film, framed, blur, width, height, fps, ctx}) {
  *                   spread over `shutter` (0.5 by default) of the frame's time, so fast moves blur as a camera's would
  * @param captionFiles true (both) or a list of 'vtt' / 'srt': caption files beside the video (captions.vtt,
  *                   captions.srt) on the video's clock, for players that show their own captions (captions.mjs · captionFile)
- * @returns {out, seconds, chapters, poster?, format?, captions?: {vtt?, srt?}, loudness: {type, target, measured, reason?}}
+ * @param video      how the picture is made (a strategy, segments.mjs): wholeVideo() — every frame in one pass, the
+ *                   default — or segmentedVideo({...}) — the film in segments, each reused from a cache when nothing
+ *                   that draws it changed, then joined. The sound is always mixed for the whole film, once.
+ * @returns {out, seconds, chapters, poster?, format?, captions?: {vtt?, srt?}, loudness: {type, target, measured, reason?},
+ *          video?: the strategy's report (segmentedVideo: each segment, rendered or reused)}
  */
-export async function renderFilm({film, storyboard, timings, narrationDir = null, out, width: givenWidth, height: givenHeight, fps = 30, intro = null, stamp = null,
+export async function renderFilm(options) {
+  const job = prepareRender(options);
+  const video = await checkVideoStrategy(options.video ?? wholeVideo()).render(job);
+  return finishRender(job, video);
+}
+
+/**
+ * A render's job: everything checked and sized once, and the one way frames are made (encodeFrames), so a
+ * strategy (segments.mjs) decides only WHICH frames to encode into which files.
+ */
+export function prepareRender({film, storyboard, timings, narrationDir = null, out, width: givenWidth, height: givenHeight, fps = 30, intro = null, stamp = null,
   from = intro ? -intro.seconds : 0, to = film.total, poster = film.posterAt ?? null, peakCeilingDBFS = -20, loudness = {I: -16, TP: -1.5}, layout = null, motionBlur = null,
-  captionFiles = false, ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg'}) {
+  captionFiles = false, ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', video: _strategy}) {
   checkLoudnessTarget(loudness);
   const blur = readMotionBlur(motionBlur), captionKinds = readCaptionFiles(captionFiles);
   const framed = layout ? compileLayout(film, layout) : null;
@@ -212,34 +226,79 @@ export async function renderFilm({film, storyboard, timings, narrationDir = null
   const width = framed?.width ?? givenWidth ?? 1280, height = framed?.height ?? givenHeight ?? 720;
   if (framed && intro && framed.format !== 'landscape') throw new Error(`renderFilm: an intro is drawn for the landscape frame; the ${framed.format} layout takes none (leave intro out)`);
   const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
-  const k = width / 1600, canvas = createCanvas(width, height), ctx = canvas.getContext('2d');
-  const paint = makePainter({film, framed, blur, width, height, fps, ctx});
   to = Math.min(to, film.total);
   const withIntro = intro && from < 0, start = Math.max(0, from);
-  const drawStamp = () => {
-    if (!stamp) return;
-    ctx.save(); ctx.font = '600 16px Menlo'; const w = ctx.measureText(stamp).width + 24;
-    ctx.fillStyle = 'rgba(179,63,54,.92)'; ctx.fillRect(width - w - 16, 14, w, 28); ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.fillText(stamp, width - w - 4, 28); ctx.restore();
+  const job = {film, storyboard, timings, narrationDir, out, dir, width, height, fps, intro, withIntro, stamp, start, to, poster, peakCeilingDBFS, loudness, layout, framed, blur, captionKinds, ffmpeg,
+    /** How many frames the film part has (the intro's are extra). */
+    frames: Math.ceil((to - start) * fps),
+    /** What changes a frame's pixels besides the film itself: a segment's cache key includes it (segments.mjs). */
+    pixels: {width, height, fps, layout: layout ?? null, stamp: stamp ?? null, motionBlur: blur, poster},
   };
-  const video = path.join(dir, 'film-video.mp4');
-  const ff = spawn(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pixel_format', 'rgba', '-video_size', `${width}x${height}`, '-framerate', String(fps), '-i', 'pipe:0', '-c:v', 'libx264', '-preset', 'fast', '-crf', '19', '-pix_fmt', 'yuv420p', video], {stdio: ['pipe', 'ignore', 'inherit']});
-  const push = async () => { drawStamp(); if (!ff.stdin.write(canvas.data())) await once(ff.stdin, 'drain'); };
-  // The poster: drawn once, written beside the video, and sent as the video's first frame.
-  let posterFile = null, posterFirst = poster !== null;
-  if (posterFirst) {
-    paint(poster, {still: true});
-    posterFile = path.join(dir, 'poster.jpg'); writeFileSync(posterFile, await canvas.encode('jpeg', 90));
-  }
-  const frameOrPoster = async draw => { if (posterFirst) { posterFirst = false; paint(poster, {still: true}); } else draw(); await push(); };
-  if (withIntro) {
-    const handoff = createCanvas(width, height); { const c = handoff.getContext('2d'); c.scale(k, k); film.frame(c, 0); }
-    for (let f = 0; f < Math.round(intro.seconds * fps); f++) await frameOrPoster(() => { ctx.resetTransform(); ctx.globalAlpha = 1; ctx.clearRect(0, 0, width, height); intro.draw(ctx, f / fps, {width, height, handoff}); });
-  }
-  for (let f = 0; f < Math.ceil((to - start) * fps); f++) {
-    await frameOrPoster(() => paint(start + f / fps));
-  }
-  ff.stdin.end(); await once(ff, 'close');
+  /**
+   * Encode film frames [f0, f1) (frame f shows film second start + f / fps) into `file`; withIntro puts the
+   * intro's frames first; posterFirst replaces the first frame with the poster still. Each call has its own
+   * canvas and painter, so strategies may encode several parts at once.
+   */
+  job.encodeFrames = async ({f0 = 0, f1 = job.frames, file, withIntro: introHere = false, posterFirst = false}) => {
+    const k = width / 1600, canvas = createCanvas(width, height), ctx = canvas.getContext('2d');
+    const paint = makePainter({film, framed, blur, width, height, fps, ctx});
+    const drawStamp = () => {
+      if (!stamp) return;
+      ctx.save(); ctx.font = '600 16px Menlo'; const w = ctx.measureText(stamp).width + 24;
+      ctx.fillStyle = 'rgba(179,63,54,.92)'; ctx.fillRect(width - w - 16, 14, w, 28); ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.fillText(stamp, width - w - 4, 28); ctx.restore();
+    };
+    const ff = spawn(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pixel_format', 'rgba', '-video_size', `${width}x${height}`, '-framerate', String(fps), '-i', 'pipe:0', '-c:v', 'libx264', '-preset', 'fast', '-crf', '19', '-pix_fmt', 'yuv420p', file], {stdio: ['pipe', 'ignore', 'inherit']});
+    const closed = once(ff, 'close');
+    const push = async () => { drawStamp(); if (!ff.stdin.write(canvas.data())) await once(ff.stdin, 'drain'); };
+    let posterNext = posterFirst && poster !== null;
+    const frameOrPoster = async draw => { if (posterNext) { posterNext = false; paint(poster, {still: true}); } else draw(); await push(); };
+    if (introHere) {
+      const handoff = createCanvas(width, height); { const c = handoff.getContext('2d'); c.scale(k, k); film.frame(c, 0); }
+      for (let f = 0; f < Math.round(intro.seconds * fps); f++) await frameOrPoster(() => { ctx.resetTransform(); ctx.globalAlpha = 1; ctx.clearRect(0, 0, width, height); intro.draw(ctx, f / fps, {width, height, handoff}); });
+    }
+    for (let f = f0; f < f1; f++) await frameOrPoster(() => paint(start + f / fps));
+    ff.stdin.end();
+    const [code] = await closed;
+    if (code !== 0) throw new Error(`ffmpeg failed encoding frames ${f0}–${f1} into ${path.basename(file)} (exit ${code})`);
+    return file;
+  };
+  return job;
+}
 
+/** The default strategy: every frame in one pass, the intro first (if any), the poster as the first frame. */
+export function wholeVideo() {
+  return {
+    name: 'whole',
+    plan: job => [{index: 0, f0: 0, f1: job.frames, whole: true}],
+    async one(job) {
+      const file = path.join(job.dir, 'film-video.mp4');
+      await job.encodeFrames({file, withIntro: Boolean(job.withIntro), posterFirst: true});
+      return {index: 0, status: 'rendered', frames: job.frames, file};
+    },
+    join: (job, [done]) => ({file: done.file}),
+    async render(job) { return this.join(job, [await this.one(job, this.plan(job)[0])]); },
+  };
+}
+
+/** A picture strategy has plan(job), one(job, item) and join(job, done); render(job) runs them in order. */
+export function checkVideoStrategy(video) {
+  if (!video || typeof video !== 'object' || !['plan', 'one', 'join', 'render'].every(k => typeof video[k] === 'function')) throw new Error('video must be a picture strategy: wholeVideo() or segmentedVideo({...}) (an object with plan, one, join and render)');
+  return video;
+}
+
+/** Write the poster still beside the video (poster.jpg), when the render has one. */
+async function writePoster(job) {
+  if (job.poster === null) return null;
+  const canvas = createCanvas(job.width, job.height), ctx = canvas.getContext('2d');
+  makePainter({film: job.film, framed: job.framed, blur: job.blur, width: job.width, height: job.height, fps: job.fps, ctx})(job.poster, {still: true});
+  const file = path.join(job.dir, 'poster.jpg'); writeFileSync(file, await canvas.encode('jpeg', 90));
+  return file;
+}
+
+/** The sound (mixed for the whole part, once), the mux with loudness, the chapters and the caption files. */
+export async function finishRender(job, video) {
+  const {film, storyboard, timings, narrationDir, dir, intro, withIntro, start, to, peakCeilingDBFS, loudness, framed, captionKinds, ffmpeg} = job;
+  const posterFile = await writePoster(job);
   // Audio: narration end to end (or silence), the accents on the same clock, the intro's sound first.
   const run = args => { const r = spawnSync(ffmpeg, ['-y', '-loglevel', 'error', ...args], {stdio: 'inherit'}); if (r.status) throw new Error(`ffmpeg failed: ${args.join(' ').slice(0, 200)}`); };
   const voice = path.join(dir, 'film-voice.wav');
@@ -264,7 +323,7 @@ export async function renderFilm({film, storyboard, timings, narrationDir = null
   run(['-ss', String(start), '-t', String(to - start), '-i', path.join(dir, 'film-lesson.wav'), path.join(dir, 'film-part.wav')]); parts.push(path.join(dir, 'film-part.wav'));
   writeFileSync(path.join(dir, 'film-audio.txt'), parts.map(p => `file '${p}'`).join('\n') + '\n');
   run(['-f', 'concat', '-safe', '0', '-i', path.join(dir, 'film-audio.txt'), '-ar', '48000', '-ac', '1', path.join(dir, 'film-audio.wav')]);
-  const loudnessSet = muxWithLoudness({ffmpeg, video, wav: path.join(dir, 'film-audio.wav'), out: path.resolve(out), target: loudness});
+  const loudnessSet = muxWithLoudness({ffmpeg, video: video.file, wav: path.join(dir, 'film-audio.wav'), out: path.resolve(job.out), target: loudness});
   // Chapters on the output's clock, for review and YouTube.
   const lead = withIntro ? intro.seconds : 0;
   const chapters = [...(withIntro ? [[0, intro.title ?? 'Title']] : []), ...storyboard.scenes.map((s, i) => [lead + film.clock.offsets[i] - start, s.title ?? s.id])].filter(([t]) => t >= 0);
@@ -275,8 +334,8 @@ export async function renderFilm({film, storyboard, timings, narrationDir = null
     const chunks = captionChunks(film, FILE_CHUNKS);
     for (const kind of captionKinds) { captions[kind] = path.join(dir, `captions.${kind}`); writeFileSync(captions[kind], captionFile(chunks, kind, {offset: lead - start, from: start, to})); }
   }
-  return {out: path.resolve(out), seconds: lead + to - start, chapters: chapters.map(([t, n]) => `${clock(t)} ${n}`), loudness: loudnessSet,
-    ...(posterFile ? {poster: posterFile} : {}), ...(framed ? {format: framed.format} : {}), ...(captionKinds.length ? {captions} : {})};
+  return {out: path.resolve(job.out), seconds: lead + to - start, chapters: chapters.map(([t, n]) => `${clock(t)} ${n}`), loudness: loudnessSet,
+    ...(posterFile ? {poster: posterFile} : {}), ...(framed ? {format: framed.format} : {}), ...(captionKinds.length ? {captions} : {}), ...(video.report ? {video: video.report} : {})};
 }
 
 /** The captionFiles option: false, true (both kinds) or a list of 'vtt' / 'srt'. */

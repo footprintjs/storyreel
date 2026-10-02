@@ -127,3 +127,15 @@ export const loud: Recipe = {watching: 'loud'};
 // @ts-expect-error a push aims at a point or a named thing, not both
 export const both: DirectorNote = {note: 'both', push: {at: [1, 2], on: 'robot', from: ['a', 'b'], to: ['a', 'c']}};
 export const blend = (film: Film): number => film.clock.gaze(1, 'user')?.also?.amount ?? 0;
+
+// Re-render only what changed: a segmented picture strategy, its store and its report.
+import {segmentedVideo, folderStore, wholeVideo as whole, planSegments, codeFingerprint} from '../types/sub/segments.js';
+import type {SegmentsReport} from '../types/index.js';
+export const segmented = (recipe: Recipe) => segmentedVideo({store: folderStore('work/segments'), recipe, code: codeFingerprint(['film/kits']), force: [2, 'race'], parallel: 2});
+export const onePass = whole();
+export const rows = (film: Film): number => film.rows.filter(r => r.enter?.type === 'iris').length + planSegments(film, {fps: 30}).length;
+export const reusedOf = (r: SegmentsReport): number => r.segments.filter(s => s.status === 'reused').length + r.reused;
+// @ts-expect-error a segmented render needs a store
+export const noStore = segmentedVideo({recipe: {}});
+// @ts-expect-error force names segments by index or scene id
+export const badForce = segmentedVideo({store: folderStore('x'), recipe: {}, force: [true]});

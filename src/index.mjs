@@ -4,7 +4,8 @@
  */
 export {compileFilm} from './film.mjs';
 export {makeClock, ramp, speechIndex, phraseMatches, evenTimings, directionTimings, withDirections, sceneText} from './clock.mjs';
-export {renderFilm} from './render.mjs';
+export {renderFilm, wholeVideo} from './render.mjs';
+export {segmentedVideo, folderStore, ffmpegJoin, planSegments, segmentKey, codeFingerprint} from './segments.mjs';
 export {makeFilm} from './pipeline.mjs';
 export {applyPacing, validatePacing, tailFor, paceTimings} from './pacing.mjs';
 export {withStrings} from './strings.mjs';

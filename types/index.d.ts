@@ -187,6 +187,12 @@ export interface Film {
   shots: {path: string; where: string; scene: string; from: number; to: number; intent: string | null; start: Record<string, Fact> | null; end: Record<string, Fact> | null; moments: number}[];
   /** Bursts: more than 4 moments in 2 s of one shot — too fast to take in. */
   watching: Watching[];
+  /**
+   * The film as rows of pictures (segments.mjs plans renders from them): `from` — when the row's picture starts to
+   * arrive (its entrance begins); `paths` — the recipe entries that draw it; `enter` — how it arrives (null for the
+   * first row). A film with a pushIn is one row (`pushIn: true`).
+   */
+  rows: FilmRow[];
   /** The recipe's poster frame (seconds), or null. */
   posterAt: number | null;
   /** Stills worth checking: each settled picture and each change half way. */
@@ -324,6 +330,9 @@ export const FORMAT_NAMES: readonly FormatName[];
 export function compileLayout(film: Film, layout: Layout): {width: number; height: number; format: FormatName;
   boxes: {film: Box; header?: Box; captions?: Box}; picture(ctx: any, t: number): void; overlay(ctx: any, t: number, options?: {still?: boolean}): void};
 
+/** One row of pictures (Film.rows). */
+export interface FilmRow { from: number; start: number; paths: string[]; enter: {type: string; seconds: number; lead: number} | null; pushIn?: boolean }
+
 /** A caption chunk on the film clock: its words, each timed. */
 export interface CaptionChunk { start: number; end: number; words: {text: string; start: number; end: number}[] }
 /** The spoken words in chunks (never a silent scene's directions): maxWords 1–20, maxChars ≥ 12, broken after a clause or a sentence. */
@@ -343,7 +352,47 @@ export function renderFilm(options: {
   motionBlur?: number | {subframes: number; shutter?: number} | null;
   /** Caption files beside the video (captions.vtt, captions.srt) on its clock: true for both, or the kinds. */
   captionFiles?: boolean | ('vtt' | 'srt')[];
-}): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; format?: FormatName; captions?: {vtt?: string; srt?: string}; loudness: Loudness}>;
+  /** How the picture is made: wholeVideo() (the default: every frame in one pass) or segmentedVideo({...}) (cached segments, joined). */
+  video?: VideoStrategy;
+}): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; format?: FormatName; captions?: {vtt?: string; srt?: string}; loudness: Loudness; video?: SegmentsReport}>;
+
+/** A way to make the picture (segments.mjs): plan the parts, make each one, join them; render runs the three in order. */
+export interface VideoStrategy {
+  name: string;
+  plan(job: unknown): unknown[];
+  one(job: unknown, part: unknown): Promise<unknown>;
+  join(job: unknown, done: unknown[]): {file: string; report?: unknown} | Promise<{file: string; report?: unknown}>;
+  render(job: unknown): Promise<{file: string; report?: unknown}>;
+}
+/** One segment's fate in a segmented render. */
+export interface SegmentReport { index: number; from: number; to: number; frames: number; scenes: string[]; key: string; status: 'rendered' | 'reused'; why?: string }
+/** What a segmented render did: how many segments were drawn and how many were reused, and each one. */
+export interface SegmentsReport { strategy: 'segments'; store: string; reused: number; rendered: number; note?: string; segments: SegmentReport[] }
+/** Where segments are kept between renders (folderStore(dir) is the default): get by key, put a file under a key. */
+export interface SegmentStore { name: string; dir?: string; get(key: string): {file: string; manifest: Record<string, unknown>} | null; put(key: string, file: string, manifest: Record<string, unknown>): string }
+/** How segment files are joined into one video (ffmpegJoin() is the default: no re-encode). */
+export interface SegmentJoiner { name: string; join(files: string[], out: string): string }
+/** The default strategy: every frame in one pass. */
+export function wholeVideo(): VideoStrategy;
+/**
+ * Re-render only what changed: the film in segments (one per row of pictures, rows shorter than minSeconds joined),
+ * each kept in the store under a key built from everything that draws it, reused when its key AND a spot check of
+ * `samples` frames match, drawn again otherwise (or when `force` names it: an index or a scene id), then joined.
+ * The sound is mixed for the whole film each time. An intro or a part (from, to) refuses: use wholeVideo().
+ */
+export function segmentedVideo(options: {store: SegmentStore; recipe: Recipe; code?: string | null; joiner?: SegmentJoiner; force?: (number | string)[]; samples?: number; minSeconds?: number; sampleWidth?: number; parallel?: number}): VideoStrategy;
+/** Keep segments as <key>.mp4 + <key>.json in one folder. */
+export function folderStore(dir: string): SegmentStore;
+/** Join segment files with FFmpeg's concat demuxer, without re-encoding. */
+export function ffmpegJoin(options?: {ffmpeg?: string}): SegmentJoiner;
+/** One planned segment: frames [f0, f1), seconds [from, to), the recipe entries that draw it, the row an entrance also draws, the scenes it covers. */
+export interface Segment { index: number; f0: number; f1: number; from: number; to: number; paths: string[]; before: string[] | null; scenes: string[] }
+/** The film's segments: one per row of pictures, on whole frames, covering every frame once. */
+export function planSegments(film: Film, options?: {fps?: number; frames?: number; minSeconds?: number}): Segment[];
+/** A segment's cache key (on its own clock, so it keeps still when only an earlier scene moves). */
+export function segmentKey(film: Film, segment: Segment, options: {recipe: Recipe; storyboard?: Storyboard | null; pixels: Record<string, unknown>; code?: string | null; fps?: number; margin?: number; extra?: {poster?: unknown; recalls?: unknown}}): string;
+/** A fingerprint of drawing code: every file under the folders given, hashed in path order. */
+export function codeFingerprint(paths: string[], options?: {extensions?: string[]}): string;
 
 /** makeFilm's options; `K` is the kits it takes (two signatures, as compileFilm). */
 export interface MakeFilmOptions<K = Kit | ContextKit> {
