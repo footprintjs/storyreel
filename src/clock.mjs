@@ -122,10 +122,23 @@ export function makeClock(board, timings) {
   const total = at;
   const sceneIndex = id => { if (!(id in byId)) throw new Error(`Unknown scene ${id}`); return byId[id]; };
   // Each scene's said words on the whole-lesson clock (a silent scene's directions are seen, never said).
+  // Who says each word: the word's own `speaker` (a voice step that knows who said what writes it — the narrator and
+  // the characters taking turns inside one scene), else the scene's, else null (the narrator).
   const said = board.scenes.map((scene, i) => scene.silent !== undefined ? []
-    : timings.scenes[i].words.filter(w => w.text.replace(/[^\p{L}\p{N}]/gu, '')).map(w => Object.freeze({text: w.text, start: offsets[i] + w.start, end: offsets[i] + w.end})));
-  // Each character's turns: a scene with a speaker, from its first said word to its last.
-  const turns = board.scenes.flatMap((scene, i) => scene.speaker && said[i].length ? [Object.freeze({scene: scene.id, speaker: scene.speaker, start: said[i][0].start, end: said[i].at(-1).end})] : []);
+    : timings.scenes[i].words.filter(w => w.text.replace(/[^\p{L}\p{N}]/gu, '')).map(w => {
+      if (w.speaker !== undefined && w.speaker !== null && !(typeof w.speaker === 'string' && w.speaker.trim())) throw new TypeError(`${scene.id}: the word "${w.text}" has speaker ${JSON.stringify(w.speaker)}; a word's speaker names who says it (a word), or is left out (the scene's speaker, or the narrator)`);
+      return Object.freeze({text: w.text, start: offsets[i] + w.start, end: offsets[i] + w.end, speaker: w.speaker ?? scene.speaker ?? null, ...(w.speaker ? {own: true} : {})});
+    }));
+  // Each character's turns: in each scene, every run of words said by one speaker (a scene's own speaker is one run).
+  const turns = board.scenes.flatMap((scene, i) => {
+    const runs = [];
+    for (const w of said[i]) {
+      if (w.speaker === null) { runs.push(null); continue; }
+      const last = runs.at(-1);
+      if (last && last.speaker === w.speaker) last.end = w.end; else runs.push({scene: scene.id, speaker: w.speaker, start: w.start, end: w.end});
+    }
+    return runs.filter(Boolean).map(r => Object.freeze(r));
+  });
   return {
     total, offsets,
     /** Whole-lesson seconds where scene `id` starts. */
@@ -161,7 +174,7 @@ export function makeClock(board, timings) {
       return {index: i, id: board.scenes[i].id, time: t - offsets[i]};
     },
     /** The words said in scene `id`, on the whole-lesson clock: [{text, start, end}] (none in a silent scene). */
-    words: id => said[sceneIndex(id)].slice(),
+    words: id => said[sceneIndex(id)].map(({text, start, end, speaker, own}) => Object.freeze({text, start, end, ...(own ? {speaker} : {})})),
     /**
      * Who is saying a word at t: {scene, speaker, word, start, end} (speaker: the storyboard scene's `speaker`,
      * or null; start/end: the word's, on the whole-lesson clock), or null between words and in silent scenes —
@@ -170,7 +183,7 @@ export function makeClock(board, timings) {
     speaking(t) {
       let i = offsets.length - 1; while (i > 0 && t < offsets[i]) i--;
       const w = said[i].find(x => t >= x.start && t < x.end);
-      return w ? {scene: board.scenes[i].id, speaker: board.scenes[i].speaker ?? null, word: w.text, start: w.start, end: w.end} : null;
+      return w ? {scene: board.scenes[i].id, speaker: w.speaker, word: w.text, start: w.start, end: w.end} : null;
     },
     /** Every character's turn to speak: [{scene, speaker, start, end}] on the whole-lesson clock, in order. */
     turns: () => turns.slice(),
