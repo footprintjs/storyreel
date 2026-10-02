@@ -648,6 +648,7 @@ picture as small grey frames, the sound as samples — and reports what a person
 | `flash` | a frame unlike both its neighbours, which are alike — a one-frame glitch |
 | `handovers` | a cut that lands a frame early or late; a frame repeated where two segments join |
 | `voice` | words the film times that are not heard in a voiced render (quieter than −50 dBFS) |
+| `lipsync` | mouths that lead or trail the voice beyond what the eye forgives (sound 45 ms ahead or 125 ms behind, ITU-R BT.1359); a mouth moving while nothing is heard; a speaker heard with the mouth shut |
 | `captions` | cues out of order or overlapping, past the end of the picture, or starting away from their first word |
 
 ```js
@@ -859,6 +860,10 @@ drawing to the kit:
   an uneven rhythm), `sway` (pixels), `glance` (a look aside now and then). Each seed moves differently, so
   give every character its own: two characters never blink or breathe in step, and a hold never freezes.
 - `follows(f, delay)` — a value that follows another a moment behind: the head goes where the eyes went.
+- `mouthAt(clock, t, who)` — how open a speaker's mouth is: it moves only while its owner says a word (the
+  scene's `speaker`; `null` is the narrator), about once a syllable. A kit that draws mouths says where they are
+  — a world's `mouthsAt(t) → [{who, open}]` (a kit stage's `mouthsAt(handle, t)`) — and the lip-sync check
+  holds the finished file to them (`film.mouthsAt(t)` lists the mouths on screen).
 
 Both are pure functions of time, like every frame. The cartoon kit's shepherd acts his eureka this way,
 and each of his sheep blinks on its own rhythm.

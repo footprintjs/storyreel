@@ -34,3 +34,5 @@ export interface Idle {
 export function idleAt(t: number, options?: {seed?: number; breath?: number; breathEvery?: number; blinkEvery?: number; blinkFor?: number; sway?: number; swayEvery?: number}): Idle;
 /** A value that follows another `delay` seconds (default 0.15) behind it: the head follows where the eyes went. */
 export function follows<T>(f: (t: number) => T, delay?: number): (t: number) => T;
+/** How open `who`'s mouth is at t (0..1): it moves only while its owner says a word (clock.speaking; null is the narrator), once a syllable or so. */
+export function mouthAt(clock: {speaking?(t: number): {speaker: string | null; start: number; end: number} | null}, t: number, who?: string | null, options?: {syllable?: number}): number;

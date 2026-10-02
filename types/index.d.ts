@@ -221,6 +221,8 @@ export interface Film {
   overlays: readonly {path: string; from: number; to: number}[];
   /** What the film was made from, hashed: its storyboard, timings, recipe, strings, data, theme and every file it read through its root. */
   inputs: FilmInputs;
+  /** The mouths drawn at t (each kit on screen that draws one says so: mouthsAt), with the recipe entry that drew it. */
+  mouthsAt(t: number): {who: string | null; open: number; path: string}[];
   /** The recipe's poster frame (seconds), or null. */
   posterAt: number | null;
   /** Stills worth checking: each settled picture and each change half way. */
@@ -254,6 +256,8 @@ export interface StoryWorld {
   spotAt?(t: number): {cx: number; cy: number; r: number; zoom: number; w: number} | null;
   sounds?: SoundEvent[];
   regionsAt?(t: number): Region[];
+  /** The mouths it draws at t (who: the speaker each belongs to, null for the narrator; open: 0..1), for the lip-sync check. */
+  mouthsAt?(t: number): {who: string | null; open: number}[];
   texts?(): {text: string; from: number; to: number; path: string}[];
   /** Settles once the world can draw (e.g. its images have decoded); compileFilm waits for it before drawing recalls and before returning. */
   ready?: Promise<unknown>;
@@ -297,6 +301,8 @@ export interface Kit {
     place?(handle: any): {at: [number, number]; scale: number};
     sounds?(handle: any): SoundEvent[];
     regions?(handle: any, t: number, cardBox: [number, number, number, number] | null): Region[];
+    /** The mouths the stage draws at t, for the lip-sync check. */
+    mouthsAt?(handle: any, t: number): {who: string | null; open: number}[];
   }>;
 }
 
@@ -437,7 +443,7 @@ export function checkApproval(approval: Approval, inputs: FilmInputs): {ok: bool
 
 /** One thing a check on the finished file found: where (seconds in the file), how serious ('problem': wrong; 'look': worth a look), what. */
 export interface FinishedFinding { check: FinishedCheckName; at: number; severity: 'problem' | 'look'; text: string }
-export type FinishedCheckName = 'duration' | 'blank' | 'flash' | 'handovers' | 'voice' | 'captions';
+export type FinishedCheckName = 'duration' | 'blank' | 'flash' | 'handovers' | 'voice' | 'lipsync' | 'captions';
 /** What the checks on a finished file found: `ok` when nothing is a problem; a check that needs what was not given is skipped, saying why. */
 export interface FinishedReport { file: string; seconds: number; fps: number; frames: number | null; checked: FinishedCheckName[]; skipped: {check: FinishedCheckName; why: string}[]; findings: FinishedFinding[]; ok: boolean }
 /** Reads a finished file for the checks (finished.mjs · ffmpegProbe is the default). */
@@ -449,7 +455,7 @@ export interface VideoProbe {
 }
 /**
  * Check a finished video: picture and sound lengths, blank stretches, flash frames, hand-overs a frame early or late and
- * joins that repeat a frame, the voice there (voiced renders), captions in order and on their words. With the film it was
+ * joins that repeat a frame, the voice there and lips in sync with it (voiced renders), captions in order and on their words. With the film it was
  * made from, what the film meant (a dip to black, a cut, a silent scene) is never reported.
  */
 export function checkVideo(options: {file: string; film?: Film | null; intro?: number; captions?: string | null; joins?: number[]; voiced?: boolean; expect?: {seconds?: number; tolerance?: number}; checks?: FinishedCheckName[]; probe?: VideoProbe}): Promise<FinishedReport>;

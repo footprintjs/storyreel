@@ -658,6 +658,21 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     throw new Error(`nothing in the picture is called "${name}" at ${t.toFixed(2)} s; ${names.length ? `the names there are ${names.join(', ')}` : 'nothing there has a name (a kit names things in regionsAt: {box, path, label, name})'}`);
   }
   /**
+   * The mouths drawn at t, for the lip-sync check (finished.mjs): each kit on screen that draws one says so —
+   * a world's instance.mouthsAt(t), a kit stage's mouthsAt(handle, t) → [{who, open: 0..1}] (who: the speaker
+   * it belongs to, null for the narrator). [{who, open, path}].
+   */
+  function mouthsAt(t) {
+    if (teaser && t >= teaser.at) return [];
+    const out = [], world = worldOnScreen(t), add = (list, path) => { for (const m of list ?? []) out.push({who: m.who ?? null, open: Math.max(0, Math.min(1, Number(m.open) || 0)), path}); };
+    if (world) add(world.w.instance.mouthsAt?.(Math.min(t, world.until)), world.path);
+    else {
+      const shown = push ? stateAt(t).shown.map(([st]) => st) : shots[shotAt(t)].stages;
+      for (const st of shown) add(st.kit?.mouthsAt?.(st.handle, t), stagePath(st));
+    }
+    return out;
+  }
+  /**
    * A point on the frame at t in the recipe's own coordinates: `frame` (as a push note's `at` means it:
    * before any push) and, over a world, `world` {path, at} (the sheet's, as its items are placed).
    */
@@ -826,7 +841,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   // What is drawn over every shot for a while: the guess cards, from their question to the card gone.
   const overlays = Object.freeze(guesses.map((g, n) => Object.freeze({path: `guesses[${n}]`, from: g.start, to: g.until + .5})));
   return {total: clock.total, clock, timings, sounds, frame, beats, strings: [...used], notes: notesApplied, reading, reads, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching,
-    rows: Object.freeze(rows().map(Object.freeze)), overlays, inputs};
+    rows: Object.freeze(rows().map(Object.freeze)), overlays, inputs, mouthsAt};
 }
 
 /** What reading the inputs gave (record.mjs): the recipe's top-level keys, each scene's seconds, the notes, the strings used. */

@@ -12,6 +12,11 @@
   was not given is skipped, saying why. The probe is an adapter (`ffmpegProbe()`), each check a strategy
   (`footprint-storyreel/finished`). **`makeFilm({check: 'report' | 'refuse', expect})`** runs them as a stage of
   its own (`check-finished`) and writes `finished` into `making-of.json`.
+- **Lips in sync** (`lipsync`): every mouth a kit draws (a world's `mouthsAt(t) → [{who, open}]`, collected by
+  `film.mouthsAt(t)`) against the finished file's voice, every 10 ms: how far the mouths lead or trail it (sound
+  more than 45 ms ahead or 125 ms behind is seen: ITU-R BT.1359), a mouth moving while nothing is heard, a
+  speaker heard with the mouth shut. **`mouthAt(clock, t, who)`** (`footprint-storyreel/acting`): the mouth the
+  kits had each written for themselves — open only while its owner says a word, about once a syllable.
 - **Fixed: the last frames of every film were lost** (also in 0.3.0). FFmpeg's `-shortest` stopped a copied
   picture a few frames early when it was muxed with the sound (4 frames of a 35 s film at 30 fps); the sound is
   now padded to the picture's exact length (frames / fps) and both end there. Found by the first run of the

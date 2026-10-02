@@ -27,6 +27,9 @@ export const FINISHED = Object.freeze({
   change: 6,           // a change between two frames at least this big is a change you see
   quiet: -50,          // dBFS: a word quieter than this was not heard
   drift: .3,           // seconds a caption may start away from its first word
+  soundLeads: .045,    // seconds the sound may come before the mouth before the eye notices (ITU-R BT.1359)
+  soundTrails: .125,   // seconds it may come after
+  open: .3,            // a mouth this open is moving
 });
 
 /**
@@ -158,6 +161,54 @@ export const FINISHED_CHECKS = Object.freeze({
     }
     return out;
   }},
+  /**
+   * Lips in sync with the voice (voiced renders, with the film): every mouth a kit draws (film.mouthsAt) against
+   * the loudness of the finished file's sound — how far the mouths lead or trail it (judged as broadcast is:
+   * sound more than 45 ms ahead, or 125 ms behind, is seen), a mouth moving while nothing is heard, and a
+   * character heard speaking with its mouth shut.
+   */
+  lipsync: {needs: ['film', 'voiced'], run(c) {
+    if (!c.meta.audio || typeof c.film.mouthsAt !== 'function') return [];
+    // Mouth and voice every 10 ms, whatever the frame rate: a mouth is a function of time, and a syllable
+    // (about six a second) is lost between frames at a low frame rate.
+    const out = [], step = .01, rate = c.sound.rate, samples = c.sound.samples, n = Math.floor(c.film.total / step);
+    const level = i => { const i0 = Math.floor((i * step + c.intro) * rate), i1 = Math.min(samples.length, Math.floor(((i + 1) * step + c.intro) * rate)); let e = 0; for (let k = i0; k < i1; k++) e += samples[k] * samples[k]; return i1 > i0 ? Math.sqrt(e / (i1 - i0)) : 0; };
+    const voice = Float64Array.from({length: n}, (_, i) => level(i)), dB = v => 20 * Math.log10(v || 1e-9);
+    // Every mouth (NaN where it is not drawn).
+    const mouths = new Map();
+    for (let i = 0; i < n; i++) for (const m of c.film.mouthsAt(i * step)) {
+      if (!mouths.has(m.who)) mouths.set(m.who, new Float64Array(n).fill(NaN));
+      const a = mouths.get(m.who); a[i] = Math.max(Number.isNaN(a[i]) ? 0 : a[i], m.open);
+    }
+    if (!mouths.size) return [];
+    const smooth = a => Float64Array.from(a, (_, i) => { let s = 0, k = 0; for (let g = i - 1; g <= i + 1; g++) if (g >= 0 && g < a.length && !Number.isNaN(a[g])) { s += a[g]; k++; } return k ? s / k : 0; });
+    const v = smooth(voice), when = i => +(i * step + c.intro).toFixed(2);
+    for (const [who, open] of mouths) {
+      const name = who ?? 'the narrator', m = smooth(open), drawn = Array.from(open, x => !Number.isNaN(x));
+      // How far the mouth is from the voice: the shift that lines the two up best, where the mouth is drawn.
+      const corr = lag => { let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0, k = 0;
+        for (let i = 0; i < n; i++) { const g = i - lag; if (g < 0 || g >= n || !drawn[i]) continue; const x = m[i], y = v[g]; sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y; k++; }
+        const cov = sxy / k - (sx / k) * (sy / k), sd = Math.sqrt(Math.max(0, sxx / k - (sx / k) ** 2) * Math.max(0, syy / k - (sy / k) ** 2)); return k * step > 1 && sd > 0 ? cov / sd : -1; };
+      const reach = Math.round(.4 / step), lags = Array.from({length: 2 * reach + 1}, (_, i) => i - reach), score = new Map(lags.map(l => [l, corr(l)]));
+      const best = lags.reduce((b, l) => (score.get(l) > score.get(b) ? l : b), 0), seconds = best * step;
+      if (score.get(best) > .3 && (seconds > FINISHED.soundLeads || -seconds > FINISHED.soundTrails))
+        out.push({at: when(drawn.indexOf(true)), severity: 'problem', text: `${name}'s mouth ${seconds > 0 ? 'trails' : 'leads'} the voice by ${Math.round(Math.abs(seconds) * 1000)} ms (the eye notices sound ${seconds > 0 ? 'more than 45 ms ahead' : 'more than 125 ms behind'})`});
+      // A mouth moving while nothing is heard (a run of at least a tenth of a second).
+      for (let i = 0; i < n;) {
+        if (!(open[i] > FINISHED.open && dB(voice[i]) < FINISHED.quiet)) { i++; continue; }
+        let g = i; while (g < n && (open[g] > .05 || g - i < 5) && dB(voice[g]) < FINISHED.quiet) g++;
+        if ((g - i) * step >= .1) out.push({at: when(i), severity: 'problem', text: `${name}'s mouth moves for ${((g - i) * step).toFixed(2)} s at ${when(i).toFixed(2)} s while nothing is heard`});
+        i = g;
+      }
+      // Heard speaking with the mouth shut: words said by this speaker, loud, while the drawn mouth stays closed.
+      const said = c.film.timings.scenes.flatMap(sc => c.film.clock.words(sc.id)).filter(w => (c.film.clock.speaking((w.start + w.end) / 2)?.speaker ?? null) === who);
+      const shut = said.filter(w => { let drawnHere = false, loud = false, moved = false;
+        for (let i = Math.floor(w.start / step); i < Math.min(n, Math.ceil(w.end / step)); i++) { if (drawn[i]) drawnHere = true; if (dB(voice[i]) > FINISHED.quiet + 10) loud = true; if (open[i] > .05) moved = true; }
+        return drawnHere && loud && !moved; });
+      if (shut.length >= Math.max(2, .3 * said.length)) out.push({at: when(Math.floor(shut[0].start / step)), severity: 'problem', text: `${name} is heard saying ${shut.length} word${shut.length > 1 ? 's' : ''} with the mouth shut (from "${shut[0].text}" at ${(shut[0].start + c.intro).toFixed(2)} s)`});
+    }
+    return out;
+  }},
   /** Captions in order, inside the film, each starting with its first word (with the film). */
   captions: {needs: ['captions'], run(c) {
     const out = [], cues = c.captions;
@@ -233,7 +284,7 @@ export async function checkVideo({file, film = null, intro = 0, captions = null,
     });
     c.frames = {d, skip, spreads};
   }
-  if (run.includes('voice') && meta.audio) { const rate = 8000; c.sound = {rate, samples: probe.sound(file, {rate})}; }
+  if ((run.includes('voice') || run.includes('lipsync')) && meta.audio) { const rate = 8000; c.sound = {rate, samples: probe.sound(file, {rate})}; }
   if (captions) c.captions = readCaptions(readFileSync(captions, 'utf8'));
   const findings = run.flatMap(name => FINISHED_CHECKS[name].run(c).map(f => ({check: name, ...f}))).sort((a, b) => a.at - b.at);
   return {file, seconds: meta.video.seconds, fps, frames: c.frames ? c.frames.spreads.length : meta.video.frames, checked: run, skipped, findings, ok: !findings.some(f => f.severity === 'problem')};

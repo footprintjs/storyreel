@@ -153,10 +153,10 @@ test('segments: a moved segment is reused only when its frames did not move with
   assert.equal(wipe.status, 'rendered'); assert.match(wipe.why, /it moved, and its frames moved with the film's clock/, 'the wipe draws the cartoon, whose clouds drift on the film clock');
   assert.equal(iris.status, 'reused', 'the iris into the whiteboard does not: moved, it is the same picture');
   // A cached file cut short (a copy that failed half way) is never reused.
-  const kept = readdirSync(path.join(top, 'cache')).filter(f => f.endsWith('.mp4'))[0], file = path.join(top, 'cache', kept);
+  const file = path.join(top, 'cache', `${iris.key}.mp4`);
   writeFileSync(file, readFileSync(file).subarray(0, 1000));
   const again = await render('c', await worlds({longer: 1}));
-  assert.ok(again.video.segments.some(s => s.key === kept.replace('.mp4', '') && s.status === 'rendered'), 'the cut-short segment is drawn again');
+  assert.equal(again.video.segments.find(s => s.key === iris.key).status, 'rendered', 'the cut-short segment is drawn again');
 });
 
 test('a pushIn film\'s one segment holds its push-in and card; a teaser\'s segment holds every row it rewinds through', async () => {

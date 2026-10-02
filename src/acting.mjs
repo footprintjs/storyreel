@@ -115,5 +115,19 @@ function blinkAt(t, seed, every, length) {
   return 0;
 }
 
+/**
+ * How open `who`'s mouth is at t (0..1): it moves only while its owner says a word (clock.speaking: the
+ * scene's `speaker`; null is the narrator), one open-and-close a syllable or so (`syllable` seconds), shut
+ * between words. A kit that draws a mouth with it can say so (a world's mouthsAt(t) → [{who, open}]) and the
+ * lip-sync check (finished.mjs) holds the finished file to it.
+ */
+export function mouthAt(clock, t, who = null, {syllable = .17} = {}) {
+  if (!(syllable > 0)) throw new Error('mouthAt: syllable is the seconds of one open-and-close, above 0');
+  const w = clock.speaking?.(t);
+  if (!w || (w.speaker ?? null) !== who) return 0;
+  const n = Math.max(1, Math.round((w.end - w.start) / syllable)), k = clamp01((t - w.start) / (w.end - w.start));
+  return Math.abs(Math.sin(Math.PI * k * n));
+}
+
 /** A value that follows another `delay` seconds behind it: the head follows where the eyes went. */
 export const follows = (f, delay = .15) => t => f(t - delay);

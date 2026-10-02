@@ -53,10 +53,10 @@ test('the picture and the sound run as long as each other and as the brief', asy
 test('a check that needs what is not given is skipped, saying why; an unknown check refuses', async () => {
   const report = await check([stripes(0), stripes(1)]);
   assert.deepEqual(report.checked, ['duration', 'blank', 'flash']);
-  assert.deepEqual(report.skipped.map(s => s.check), ['handovers', 'voice', 'captions']);
+  assert.deepEqual(report.skipped.map(s => s.check), ['handovers', 'voice', 'lipsync', 'captions']);
   assert.match(report.skipped.find(s => s.check === 'voice').why, /give the film/);
-  await assert.rejects(check([stripes(0)], {checks: ['wobble']}), /"wobble" is not a check; the checks are duration, blank, flash, handovers, voice, captions/);
-  assert.deepEqual(FINISHED_CHECK_NAMES, ['duration', 'blank', 'flash', 'handovers', 'voice', 'captions']);
+  await assert.rejects(check([stripes(0)], {checks: ['wobble']}), /"wobble" is not a check; the checks are duration, blank, flash, handovers, voice, lipsync, captions/);
+  assert.deepEqual(FINISHED_CHECK_NAMES, ['duration', 'blank', 'flash', 'handovers', 'voice', 'lipsync', 'captions']);
 });
 
 // A film with a cut: a red story, a blue world, then a green one entered with a cut.
@@ -136,4 +136,43 @@ test('makeFilm checks the finished file when asked: the record lists what was fo
   assert.ok(record.pipeline.some(e => /check-finished/.test(e.text ?? e.stageName ?? JSON.stringify(e))), 'a stage of its own in the run');
   await assert.rejects(makeFilm({storyboard: board, recipe, root: dir, timings, out: path.join(top, 'b', 'film.mp4'), render: {width: 320, height: 180, fps}, check: 'refuse', expect: {seconds: 10}}), /The finished file has 1 problem \(check: 'refuse'\): duration: it is [\d.]+ s; the brief asks for 10 s/);
   await assert.rejects(makeFilm({storyboard: board, recipe, root: dir, timings, out: path.join(top, 'c', 'film.mp4'), check: 'always'}), /check is 'report'/);
+});
+
+// Lips in sync: a robot that speaks two scenes, drawn by a kit that says where its mouth is.
+import {mouthAt} from '../src/acting.mjs';
+const talking = {scenes: [{id: 'a', speaker: 'robot', narration: 'Hello there, I am the robot, and I will tell you how the frame is drawn every time the screen asks for one.'},
+  {id: 'b', speaker: 'robot', narration: 'First the work, then the paint, then the picture, and then it waits for the next turn of the loop again.'}]};
+const mouthKit = (shut = false) => ({name: 'mouths', story: {compile: (spec, clock) => ({hang: 1, draw: c => { c.fillStyle = '#334'; c.fillRect(0, 0, 1600, 900); },
+  mouthsAt: t => [{who: 'robot', open: shut ? 0 : mouthAt(clock, t, 'robot')}]})}});
+const talker = async (shut = false) => compileFilm({storyboard: talking, timings: evenTimings(talking), kits: [mouthKit(shut)], recipe: {story: {kit: 'mouths'}}});
+/** A voice made from the mouth itself, `shift` seconds late (negative: early), silent over [quiet0, quiet1). */
+const voiceOf = (f, {shift = 0, quiet = [0, 0]} = {}) => { const rate = 8000; return Float32Array.from({length: Math.ceil(f.total * rate)}, (_, i) => { const t = i / rate; return t >= quiet[0] && t < quiet[1] ? 0 : .3 * mouthAt(f.clock, t - shift, 'robot') * Math.sin(2 * Math.PI * 200 * t); }); };
+const lips = async (f, samples) => (await check([solid(50)], {film: f, voiced: true, checks: ['lipsync'], probe: {seconds: f.total, audio: {seconds: f.total, samples}}})).findings.map(x => x.text);
+
+test('lip sync: a mouth on its voice passes; one the sound runs late or early beyond what the eye forgives is found', async () => {
+  const f = await talker();
+  assert.equal(typeof f.mouthsAt, 'function'); assert.deepEqual(f.mouthsAt(f.clock.words('a')[2].start + .05).map(m => m.who), ['robot']);
+  assert.deepEqual(await lips(f, voiceOf(f)), [], 'in sync');
+  const [late] = await lips(f, voiceOf(f, {shift: .25}));
+  assert.match(late ?? '', /robot's mouth leads the voice by (2[3-6]\d) ms \(the eye notices sound more than 125 ms behind\)/);
+  const [early] = await lips(f, voiceOf(f, {shift: -.1}));
+  assert.match(early ?? '', /robot's mouth trails the voice by (\d{2,3}) ms \(the eye notices sound more than 45 ms ahead\)/);
+  assert.deepEqual(await lips(f, voiceOf(f, {shift: .03})), [], 'a frame off is forgiven');
+});
+
+test('lip sync: a mouth moving while nothing is heard, and a voice heard from a shut mouth, are found', async () => {
+  const f = await talker(), words = f.clock.words('b');
+  const quiet = await lips(f, voiceOf(f, {quiet: [words[3].start, words[6].end]}));
+  assert.ok(quiet.some(t => /robot's mouth moves for [\d.]+ s at [\d.]+ s while nothing is heard/.test(t)), quiet.join(' | '));
+  const shut = await talker(true);
+  const [heard] = await lips(shut, voiceOf(f));
+  assert.match(heard ?? '', /robot is heard saying \d+ words with the mouth shut \(from "Hello" at/);
+});
+
+test('mouthAt: open only while its owner says a word, once a syllable or so; never for someone else', async () => {
+  const f = await talker(), w = f.clock.words('a')[0], mid = (w.start + w.end) / 2;
+  assert.ok(mouthAt(f.clock, mid, 'robot') >= 0 && mouthAt(f.clock, mid, 'robot') <= 1);
+  assert.equal(mouthAt(f.clock, mid, 'person'), 0, 'not this one\'s word');
+  assert.equal(mouthAt(f.clock, f.total + 1, 'robot'), 0, 'between words or after them, shut');
+  assert.throws(() => mouthAt(f.clock, mid, 'robot', {syllable: 0}), /syllable is the seconds of one open-and-close/);
 });

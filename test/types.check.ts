@@ -195,3 +195,8 @@ export const finishedOk = async (film: Film) => (await checkVideo({file: 'out/fi
 export const thresholds = FINISHED.change + FINISHED_CHECK_NAMES.length;
 // @ts-expect-error the checks are named
 export const badCheck = checkVideo({file: 'x.mp4', checks: ['wobble']});
+
+// Lips in sync: a world that says where its mouths are, drawn with the library's mouth.
+import {mouthAt} from '../types/sub/acting.js';
+export const talkingWorld = (clock: Parameters<typeof mouthAt>[0]): import('../types/index.js').StoryWorld => ({draw: () => {}, mouthsAt: t => [{who: 'robot', open: mouthAt(clock, t, 'robot')}]});
+export const mouthsNow = (film: Film) => film.mouthsAt(1).map(m => m.who);
