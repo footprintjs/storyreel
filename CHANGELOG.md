@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 — the cast: one film, another language and place
 
 ### A release folder holds only what is posted
 - Each target's folder (`<out>/<target>/`) now holds the video, its caption files, the thumbnail and post.json +
