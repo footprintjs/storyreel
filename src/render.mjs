@@ -207,6 +207,8 @@ export function makePainter({film, framed, blur, width, height, fps, ctx}) {
  * @param poster     the film second to use as the poster (default: the recipe's `poster`, film.posterAt): it is
  *                   written beside the video (poster.jpg) and REPLACES the video's first frame, so every
  *                   platform's thumbnail shows it (the length and the sound's sync are unchanged)
+ * @param posterFrame true (the default): the poster replaces the first frame; false: it is written beside the video
+ *                   only — for a platform that takes an uploaded thumbnail, so the video starts on the film's own frame
  * @param loudness   the target {I, TP, LRA?} (LUFS, dBTP, LU) for the two loudness passes (render.mjs · muxWithLoudness)
  * @param layout     a format for a platform ({format: landscape | square | portrait | vertical, header?, captions?, crop?};
  *                   layout.mjs · compileLayout): the output takes that format's size (width or height beside it refuses)
@@ -255,9 +257,10 @@ export function sceneChapters(scenes, offsets) {
  * strategy (segments.mjs) decides only WHICH frames to encode into which files.
  */
 export function prepareRender({film, storyboard, timings, narrationDir = null, out, width: givenWidth, height: givenHeight, fps = 30, intro = null, stamp = null,
-  from = intro ? -intro.seconds : 0, to = film.total, poster = film.posterAt ?? null, peakCeilingDBFS = -20, loudness = {I: -16, TP: -1.5}, layout = null, motionBlur = null,
+  from = intro ? -intro.seconds : 0, to = film.total, poster = film.posterAt ?? null, posterFrame = true, peakCeilingDBFS = -20, loudness = {I: -16, TP: -1.5}, layout = null, motionBlur = null,
   captionFiles = false, quality = 'standard', ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', video: _strategy}) {
   checkLoudnessTarget(loudness);
+  if (typeof posterFrame !== 'boolean') throw new Error('posterFrame must be true (the poster replaces the first frame) or false (written beside the video only)');
   if (!ENCODE[quality]) throw new Error(`quality must be ${QUALITIES.map(q => `'${q}'`).join(' or ')}`);
   const blur = readMotionBlur(motionBlur), captionKinds = readCaptionFiles(captionFiles);
   const framed = layout ? compileLayout(film, layout) : null;
@@ -268,11 +271,11 @@ export function prepareRender({film, storyboard, timings, narrationDir = null, o
   const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
   to = Math.min(to, film.total);
   const withIntro = intro && from < 0, start = Math.max(0, from);
-  const job = {film, storyboard, timings, narrationDir, out, dir, width, height, fps, intro, withIntro, stamp, start, to, poster, peakCeilingDBFS, loudness, layout, framed, blur, captionKinds, ffmpeg,
+  const job = {film, storyboard, timings, narrationDir, out, dir, width, height, fps, intro, withIntro, stamp, start, to, poster, posterFrame, peakCeilingDBFS, loudness, layout, framed, blur, captionKinds, ffmpeg,
     /** How many frames the film part has (the intro's are extra). */
     frames: Math.ceil((to - start) * fps),
     /** What changes a frame's pixels besides the film itself: a segment's cache key includes it (segments.mjs). */
-    pixels: {width, height, fps, layout: layout ?? null, stamp: stamp ?? null, motionBlur: blur, poster, ...(quality === 'standard' ? {} : {quality})},
+    pixels: {width, height, fps, layout: layout ?? null, stamp: stamp ?? null, motionBlur: blur, poster: posterFrame ? poster : null, ...(quality === 'standard' ? {} : {quality})},
   };
   /**
    * Encode film frames [f0, f1) (frame f shows film second start + f / fps) into `file`; withIntro puts the
@@ -292,7 +295,7 @@ export function prepareRender({film, storyboard, timings, narrationDir = null, o
       if (failed) throw new Error(`ffmpeg (${ffmpeg}) could not encode ${path.basename(file)}: ${failed.message}`);
       if (!ff.stdin.write(canvas.data())) await Promise.race([once(ff.stdin, 'drain'), closed]);
     };
-    let posterNext = posterFirst && poster !== null;
+    let posterNext = posterFirst && poster !== null && posterFrame;
     const frameOrPoster = async draw => { if (posterNext) { posterNext = false; paint(poster, {still: true}); } else draw(); await push(); };
     if (introHere) {
       const handoff = createCanvas(width, height); { const c = handoff.getContext('2d'); c.scale(k, k); film.frame(c, 0); }

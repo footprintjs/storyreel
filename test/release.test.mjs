@@ -77,6 +77,8 @@ test('a release: each target its own folder — the video in its shape, captions
   const [yt, short] = done;
   assert.equal(probe(yt.video), '1920,1080'); assert.equal(probe(short.video), '1080,1920');
   assert.equal(probe(yt.video, 'color_space,color_transfer,color_primaries'), 'bt709,bt709,bt709', 'the high-quality encode: colours converted and tagged as HD video\'s');
+  const firstFrame = (file, x, y) => [...spawnSync('ffmpeg', ['-v', 'error', '-i', file, '-frames:v', '1', '-vf', `crop=1:1:${x}:${y}`, '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], {encoding: 'buffer'}).stdout];
+  assert.ok(firstFrame(yt.video, 420, 540).every(v => v > 200), 'YouTube takes the thumbnail as a file: its video starts on the film\'s own first frame (the white square at the start), not the poster');
   const thumb = await loadImage(readFileSync(yt.thumbnail)); assert.deepEqual([thumb.width, thumb.height], [1280, 720], 'the poster, drawn at YouTube\'s thumbnail size');
   assert.ok(existsSync(path.join(yt.dir, 'captions.srt')) && existsSync(path.join(yt.dir, 'thumbnail.jpg')), 'YouTube: caption files and the thumbnail beside the video');
   assert.equal(short.thumbnail, null, 'Shorts pick their own frame');

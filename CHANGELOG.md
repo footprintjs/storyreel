@@ -11,6 +11,9 @@
   ('standard'), and its segments keep their keys.
 - **The thumbnail from the film:** `post.thumbnail: 'poster'` draws the recipe's poster at the platform's thumbnail
   size (filling it, centred, under its byte limit); a film without a poster is refused before anything renders.
+  A platform that takes an uploaded thumbnail (YouTube) no longer gets the poster baked into the video's first
+  frame (a one-frame flash of the title before the film): the render's new `posterFrame: false`, which a release
+  sets for it; the default (true) and its segment keys are unchanged.
 - **Made with AI, said so:** `post.synthetic` lists what in the film is realistic and made with AI (`['voice']`).
   YouTube and YouTube Shorts set `alteredOrSynthetic` from it — YouTube asks creators to disclose a synthetic voice
   narrating — and post.json keeps the list. post.txt says yes / no for a yes-or-no field.

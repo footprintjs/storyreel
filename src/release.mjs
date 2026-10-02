@@ -177,7 +177,8 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
     const dir = path.join(out, options.name); mkdirSync(dir, {recursive: true});
     const layout = {format: adapter.video.format, ...(adapter.video.captions || options.captions ? {captions: options.captions ?? adapter.video.captions} : {}),
       ...(options.header ? {header: options.header} : adapter.video.header && p.title ? {header: {title: p.title}} : {}), ...(options.crop ? {crop: options.crop} : {}), ...(options.scale !== undefined ? {scale: options.scale} : {})};
-    const render = {...(film.render ?? {}), layout, ...(adapter.video.captionFiles ? {captionFiles: adapter.video.captionFiles} : {}),
+    // A platform that takes an uploaded thumbnail (YouTube) shows no frame of the video as one: it starts on the film's own.
+    const render = {...(adapter.thumbnail && !(film.render && 'posterFrame' in film.render) ? {posterFrame: false} : {}), ...(film.render ?? {}), layout, ...(adapter.video.captionFiles ? {captionFiles: adapter.video.captionFiles} : {}),
       ...(options.from !== undefined ? {from: options.from} : {}), ...(options.to !== undefined ? {to: options.to} : {})};
     const result = await makeFilm({...film, out: path.join(dir, `${stem}.mp4`), render});
     refuse(adapter, lengthProblems(adapter, result.seconds));

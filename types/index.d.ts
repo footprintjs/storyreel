@@ -409,6 +409,8 @@ export function renderFilm(options: {
   captionFiles?: boolean | ('vtt' | 'srt')[];
   /** 'standard' (the default: quick) or 'high' (for posting: a slower, finer encode, its colours converted and tagged as HD video's, BT.709). */
   quality?: 'standard' | 'high';
+  /** true (the default): the poster replaces the first frame; false: written beside the video only (for a platform that takes an uploaded thumbnail). */
+  posterFrame?: boolean;
   /** How the picture is made: wholeVideo() (the default: every frame in one pass) or segmentedVideo({...}) (cached segments, joined). */
   video?: VideoStrategy;
 }): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; format?: FormatName; captions?: {vtt?: string; srt?: string}; loudness: Loudness; listening: ListeningFinding[]; video?: SegmentsReport}>;

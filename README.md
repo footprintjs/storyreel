@@ -601,7 +601,9 @@ await makeRelease({storyboard, recipe, narrationDir, pacing, out: 'release/ep01'
   redrawn at that size, not enlarged. Pair it with the render's `quality: 'high'`, a slower and finer encode whose
   colours are converted and tagged as HD video's (BT.709), the way players read them.
 - **The thumbnail from the film.** `post.thumbnail: 'poster'` draws the recipe's poster (a phrase that is said) at
-  the platform's thumbnail size; a film without a poster is refused before anything renders.
+  the platform's thumbnail size; a film without a poster is refused before anything renders. Where the thumbnail
+  is uploaded (YouTube) the video starts on the film's own first frame; elsewhere the poster stays in the first frame
+  (the render's `posterFrame`).
 - **Made with AI, said so.** `post.synthetic` lists what in the film is realistic and made with AI (`['voice']` for a
   synthetic voice narrating). YouTube asks creators to disclose that, so its post says `alteredOrSynthetic: yes`:
   tick "Altered or synthetic content" when you upload.
