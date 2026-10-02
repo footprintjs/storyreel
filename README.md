@@ -539,6 +539,27 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   `making-of.json` gets a `picture` entry: every segment, its key, and whether it was drawn or reused
   and why. `parallel` (2 by default) is how many segments are drawn at once.
 
+## Approve a film
+
+A "final" render should be the film someone actually watched. `approveFilm` records what was approved —
+hashes of the storyboard, the recipe, the pacing and (with a voice) every word time and audio file — and
+`makeFilm({…, approval})` refuses to render if any of it changed since, naming the part:
+
+```js
+import {approveFilm, makeFilm} from 'footprint-storyreel';
+
+// When the person signs off on the draft they watched:
+writeFileSync('film/approval.json', JSON.stringify(approveFilm({storyboard, recipe, pacing, narrationDir: 'work/voice', by: 'Sanjay', note: 'v12, for the conference'}), null, 2));
+
+// The final render: refuses if anything changed since.
+await makeFilm({storyboard, recipe, pacing, narrationDir: 'work/voice', out: 'out/final/film.mp4', approval: JSON.parse(readFileSync('film/approval.json', 'utf8'))});
+// → "The film changed since Sanjay approved it on 2026-10-02: recipe differs from what was approved. …"
+```
+
+The hashes are of the data, not its spelling (keys are sorted first), so reformatting a file changes
+nothing; a changed word, phrase, number or take does. `making-of.json` keeps the approval it was rendered
+under. A draft is rendered without one.
+
 ## The compile record
 
 `compileFilm({…, record: true})` runs the compile as a footprintjs flowchart and returns the film with
@@ -746,6 +767,7 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `captionChunks(film, {maxWords?, maxChars?, breaks?})` · `captionFile(chunks, 'vtt' \| 'srt', {offset?, from?, to?})` | the spoken words in caption chunks; a WebVTT or SRT file (`footprint-storyreel/captions` adds `captionAt`, `drawCaption`) |
 | `TRANSITIONS` · `TRANSITION_NAMES` · `transitionCatalog(kits)` · `transitionSheet({catalog?, moments?, width?})` | the transitions a shot can enter with, a kit's own added, on one PNG (`footprint-storyreel/transitions` adds `readEntrance`, `ghostPainter`) |
 | `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?})` | compile + render as a footprintjs pipeline, with `making-of.json` (a segmented render: one subflow per segment) |
+| `approveFilm({storyboard, recipe, pacing?, narrationDir?, by, note?})` · `checkApproval(approval, inputs)` · `filmHashes(inputs)` | the approval lock: what was approved, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
 | `segmentedVideo({store, recipe, code?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir)` · `ffmpegJoin()` · `planSegments(film, {fps})` · `segmentKey(…)` · `codeFingerprint(paths)` | re-render only what changed: the picture in cached segments, joined (`renderFilm({…, video})`) |
 | `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |
 | `directionTimings(scene, {tail?})` · `withDirections(storyboard, timings)` · `sceneText(scene)` | a silent scene's timing; a voice's timings completed with the silent scenes; a scene's text |
@@ -757,7 +779,7 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/pins`, `/sheet`, `/render`, `/segments`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws

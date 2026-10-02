@@ -394,11 +394,22 @@ export function segmentKey(film: Film, segment: Segment, options: {recipe: Recip
 /** A fingerprint of drawing code: every file under the folders given, hashed in path order. */
 export function codeFingerprint(paths: string[], options?: {extensions?: string[]}): string;
 
+/** What a person approved: who, when, and hashes of the storyboard, the recipe, the pacing and (with a voice) the voice. */
+export interface Approval { schemaVersion: 1; approved: string; by: string; note?: string; hashes: {storyboard: string; recipe: string; pacing: string; voice?: string} }
+/** Approve a film as it is now (keys are sorted before hashing: reformatting changes nothing). */
+export function approveFilm(options: {storyboard: Storyboard; recipe: Recipe; pacing?: Pacing | null; narrationDir?: string | null; by: string; note?: string | null; at?: Date}): Approval;
+/** Whether the film is still what was approved, and which parts changed. */
+export function checkApproval(approval: Approval, inputs: {storyboard: Storyboard; recipe: Recipe; pacing?: Pacing | null; narrationDir?: string | null}): {ok: boolean; changed: string[]};
+/** The hashes an approval locks. */
+export function filmHashes(inputs: {storyboard: Storyboard; recipe: Recipe; pacing?: Pacing | null; narrationDir?: string | null}): Approval['hashes'];
+
 /** makeFilm's options; `K` is the kits it takes (two signatures, as compileFilm). */
 export interface MakeFilmOptions<K = Kit | ContextKit> {
   storyboard: Storyboard; recipe: Recipe; data?: unknown; kits?: K[]; theme?: string | Record<string, unknown>; root?: string; hostKeys?: string[];
   narrationDir?: string | null; timings?: Timings | null; pacing?: Pacing | null; strings?: Record<string, string> | null; lang?: string | null;
   out: string; render?: Record<string, unknown>;
+  /** Refuse to render anything but what this approval locked (the record keeps who approved it, and when). */
+  approval?: Approval | null;
 }
 export function makeFilm(options: MakeFilmOptions<Kit>): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;
 export function makeFilm(options: MakeFilmOptions<Kit | ContextKit>): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;

@@ -139,3 +139,9 @@ export const reusedOf = (r: SegmentsReport): number => r.segments.filter(s => s.
 export const noStore = segmentedVideo({recipe: {}});
 // @ts-expect-error force names segments by index or scene id
 export const badForce = segmentedVideo({store: folderStore('x'), recipe: {}, force: [true]});
+
+// The approval lock.
+import {approveFilm as approve, checkApproval as check} from '../types/sub/approval.js';
+export const approved = (storyboard: Storyboard, recipe: Recipe) => check(approve({storyboard, recipe, by: 'S'}), {storyboard, recipe}).ok;
+// @ts-expect-error an approval says who approves it
+export const anonymous = (storyboard: Storyboard, recipe: Recipe) => approve({storyboard, recipe});

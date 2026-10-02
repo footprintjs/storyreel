@@ -67,6 +67,10 @@
       "types": "./types/sub/pipeline.d.ts",
       "default": "./src/pipeline.mjs"
     },
+    "./approval": {
+      "types": "./types/sub/approval.d.ts",
+      "default": "./src/approval.mjs"
+    },
     "./pins": {
       "types": "./types/sub/pins.d.ts",
       "default": "./src/pins.mjs"

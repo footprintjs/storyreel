@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Approve a film
+- **`approveFilm({storyboard, recipe, pacing?, narrationDir?, by, note?})`** records who approved the film,
+  when, and hashes of what they saw (keys sorted first, so reformatting changes nothing).
+  **`makeFilm({…, approval})`** refuses to render if the storyboard, the recipe, the pacing or the voice
+  changed since, naming the part and the date; `making-of.json` keeps the approval. `checkApproval` and
+  `filmHashes` are exported (`footprint-storyreel/approval` adds `stableJson`, `requireApproval`).
+
 ### Re-render only what changed
 - **`segmentedVideo({store, recipe, code?, force?, samples?, parallel?})`** — a picture strategy for
   `renderFilm({…, video})` and `makeFilm({render: {video}})`: the film in segments (one per row of pictures,

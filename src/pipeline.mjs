@@ -17,6 +17,7 @@ import {applyPacing, validatePacing, paceTimings} from './pacing.mjs';
 import {withDirections} from './clock.mjs';
 import {compileFilm} from './film.mjs';
 import {prepareRender, finishRender, wholeVideo, checkVideoStrategy} from './render.mjs';
+import {requireApproval} from './approval.mjs';
 
 const require = createRequire(import.meta.url);
 /** A dependency's installed version (from its package.json, even when its exports hide that file). */
@@ -71,14 +72,18 @@ const MAX_PARTS = 256;
  *                     captionFiles, video…); a layout, motion blur or caption files are written into the record as
  *                     `version`; a segmentedVideo strategy renders each segment as its own subflow and the record's
  *                     `picture` says which were drawn and which were reused
+ * @param approval     an approval (approval.mjs · approveFilm): the render refuses if the storyboard, the recipe, the
+ *                     pacing or the voice changed since it was approved; the record keeps who approved it and when
  */
-export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}}) {
+export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null}) {
   const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
   let film, paced, result, job, plan;
   const video = checkVideoStrategy(render.video ?? wholeVideo()), done = [];
   const stages = {
     'check-inputs': scope => {
       if (!storyboard?.scenes?.length) throw new Error('The storyboard has no scenes');
+      // An approval locks what was approved: anything changed since refuses (approval.mjs · requireApproval).
+      if (approval) { requireApproval(approval, {storyboard, recipe, pacing, narrationDir}); scope.approvedBy = approval.by; }
       // A silent cut has no voice speed to check; its holds and tails are checked the same way.
       if (pacing) validatePacing(narrationDir ? pacing : {voiceSpeed: 1, ...pacing}, storyboard);
       scope.scenes = storyboard.scenes.length;
@@ -136,6 +141,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   const record = {
     schemaVersion: 1, made: new Date().toISOString(), out: result.out, seconds: result.seconds, chapters: result.chapters,
     inputs: {storyboard: run.state?.storyboardHash, recipe: run.state?.recipeHash, scenes: storyboard.scenes.length, ...(strings ? {strings: run.state?.stringsHash} : {})},
+    ...(approval ? {approval: {by: approval.by, approved: approval.approved, ...(approval.note ? {note: approval.note} : {}), hashes: approval.hashes}} : {}),
     ...(strings ? {strings: {lang, used: film.strings}} : {}),
     pacing: paced.pacing ?? null,
     ...(result.poster ? {poster: {file: path.basename(result.poster), at: film.posterAt}} : {}),
