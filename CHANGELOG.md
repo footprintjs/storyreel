@@ -7,7 +7,7 @@
   `clock.speaking(t)`, `clock.turns()` (now one turn per run of words by one speaker), `gaze` and `mouthAt` follow
   it, so the narrator and the characters can take turns inside one scene. A word with no speaker is the scene's
   speaker, or the narrator; without word speakers nothing changes (`clock.words` keeps a speaker only on a word that
-  carried one). A segment's key holds the word speakers.
+  carried one). A word speaker that is not a word refuses, naming the word. A segment's key holds the word speakers.
 - **Captions end a sentence that ends inside a quote or a bracket** (`tomorrow!"`, `me?'`, `done.”`), so a caption no
   longer runs on into the next sentence.
 
