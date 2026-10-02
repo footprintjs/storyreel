@@ -185,7 +185,7 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
     refuse(adapter, planProblems(adapter, p, {seconds: part, poster}));
     if (p.thumbnail !== 'poster') await checkThumbnail(adapter, p.thumbnail);
   }
-  const stem = base ?? (String(film.storyboard?.title ?? 'film').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'film');
+  const stem = base ?? (String(film.storyboard?.title ?? 'film').toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'film');
   const released = [];
   for (const {adapter, options} of loaded) {
     const dir = path.join(out, options.name), work = path.join(out, WORK, options.name); mkdirSync(dir, {recursive: true}); mkdirSync(work, {recursive: true});

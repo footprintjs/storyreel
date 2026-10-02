@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Speech in scripts with vowel signs
+- **A phrase is found by its letters and its vowel signs** (`clock.mjs · normSpeech` keeps combining marks): in
+  Tamil, Telugu, Hindi and other scripts whose vowel signs are combining marks, two words that differ only in a vowel
+  sign (கடை "shop", கட) were the same to the matcher, so a phrase could be found at the wrong word. English is
+  unchanged (NFKC leaves it no combining marks). A release folder named from a title keeps the vowel signs too.
+
 ### The review tools: a command line, a skill, one core
 - **`storyreel <tool>`** (the package's bin): `timeline`, `review`, `part` and `still`, for people and for agents.
   The project names its film once, in `storyreel.config.mjs` (`export default {film: flags => ({storyboard,
