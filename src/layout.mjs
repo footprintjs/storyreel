@@ -51,8 +51,9 @@ export function formatOf(name) {
  * size?, box?}, crop?: [{at: beat, x, width?}], background?, ink?, scale?} → {width, height, format, boxes,
  * picture(ctx, t), overlay(ctx, t, {still?})}: picture draws the background and the film (what motion blur
  * may average); overlay draws the bands (a still — the poster — without a caption); boxes are where the film
- * and the bands are, in output pixels. scale (1–2, default 1) draws the same picture that many times the format's
- * size: 2 makes landscape 3840×2160 (4K), every line and word drawn sharp at that size (layout.mjs · formatScale).
+ * and the bands are, in output pixels. scale (0.5–2, default 1) draws the same picture that many times the format's
+ * size: 2 makes landscape 3840×2160 (4K), every line and word drawn sharp at that size; 0.5, a quick draft to look
+ * at while editing (layout.mjs · formatScale).
  */
 export function compileLayout(film, spec) {
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) throw new Error(`layout must be {format: ${FORMAT_NAMES.join(' | ')}, …}`);
@@ -91,14 +92,14 @@ export function compileLayout(film, spec) {
 }
 
 /**
- * A layout's scale, checked: 1 (the format's size, the default) to 2, keeping the size whole and even (as video needs).
+ * A layout's scale, checked: 0.5 (a draft) to 2 (1, the format's size, by default), keeping the size whole and even (as video needs).
  * Returns the scale; refuses naming the sizes it would make.
  */
 export function formatScale(format, scale) {
   const f = formatOf(format);
   if (scale === undefined) return 1;
-  if (!(typeof scale === 'number' && scale >= 1 && scale <= 2 && Number.isInteger(f.width * scale / 2) && Number.isInteger(f.height * scale / 2)))
-    throw new Error(`layout.scale must be 1–2 and keep the ${format} size whole and even (${f.width}×${f.height} at 1; 2 makes ${f.width * 2}×${f.height * 2}${format === 'landscape' ? ', 4K' : ''})`);
+  if (!(typeof scale === 'number' && scale >= .5 && scale <= 2 && Number.isInteger(f.width * scale / 2) && Number.isInteger(f.height * scale / 2)))
+    throw new Error(`layout.scale must be 0.5–2 and keep the ${format} size whole and even (${f.width}×${f.height} at 1; 2 makes ${f.width * 2}×${f.height * 2}${format === 'landscape' ? ', 4K' : ''})`);
   return scale;
 }
 

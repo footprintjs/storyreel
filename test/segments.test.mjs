@@ -10,7 +10,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {compileFilm, evenTimings, paceTimings, renderFilm, makeFilm, wholeVideo, cartoonKit} from '../src/index.mjs';
-import {planSegments, segmentKey, segmentedVideo, folderStore, codeFingerprint, sampleOffsets} from '../src/segments.mjs';
+import {planSegments, segmentKey, segmentedVideo, folderStore, codeFingerprint, sampleOffsets, sourceCode} from '../src/segments.mjs';
 
 const dir = fileURLToPath(new URL('../examples/worlds/', import.meta.url)), read = f => JSON.parse(readFileSync(dir + f, 'utf8'));
 /** The worlds example (four rows: the story, then three worlds by fade, wipe and iris), its first scene `longer` seconds longer. */
@@ -56,6 +56,26 @@ test('a segment keeps its key when only an earlier scene grows, and changes when
   const film = a.film, seg = planSegments(film, {fps: 10})[1];
   assert.notEqual(segmentKey(film, seg, {recipe: a.recipe, storyboard: a.storyboard, pixels, code: 'kits', fps: 10}), segmentKey(film, seg, {recipe: a.recipe, storyboard: a.storyboard, pixels: {...pixels, stamp: 'DRAFT'}, code: 'kits', fps: 10}), 'a frame setting is part of the key');
   assert.notEqual(segmentKey(film, seg, {recipe: a.recipe, storyboard: a.storyboard, pixels, code: 'kits', fps: 10}), segmentKey(film, seg, {recipe: a.recipe, storyboard: a.storyboard, pixels, code: 'kits-edited', fps: 10}), 'the drawing code is part of the key');
+});
+
+test('code per segment: editing one shot\'s module changes only the keys of the segments that show it (its imports followed)', async () => {
+  const a = await worlds(), top = mkdtempSync(path.join(tmpdir(), 'storyreel-src-'));
+  writeFileSync(path.join(top, 'shared.mjs'), 'export const ink = "#222";\n');
+  const files = a.recipe.stages.map((_, i) => { const f = path.join(top, `stage${i}.mjs`); writeFileSync(f, `import {ink} from './shared.mjs';\nexport const n = ${i};\n`); return f; });
+  const fileOf = new Map(a.recipe.stages.map((s, i) => [s, files[i]]));
+  // A new sourceCode per render, as each render reads the files once.
+  const keys = () => { const code = sourceCode(entry => fileOf.has(entry) ? [fileOf.get(entry)] : []); return planSegments(a.film, {fps: 10}).map(seg => segmentKey(a.film, seg, {recipe: a.recipe, storyboard: a.storyboard, pixels, code, fps: 10})); };
+  const before = keys();
+  assert.deepEqual(keys(), before, 'the same code, the same keys');
+  writeFileSync(files.at(-1), 'import {ink} from \'./shared.mjs\';\nexport const n = 99;\n');
+  const edited = keys();
+  assert.deepEqual(edited.map((k, i) => k !== before[i]), [false, false, false, true], 'only the last world\'s segment changed');
+  writeFileSync(path.join(top, 'shared.mjs'), 'export const ink = "#000";\n');
+  const plan = planSegments(a.film, {fps: 10}), drawsAStage = seg => [...seg.paths, ...(seg.before ?? [])].some(p => p.startsWith('stages'));
+  assert.deepEqual(keys().map((k, i) => k !== edited[i]), plan.map(drawsAStage), 'a file the shots import changes every segment that shows one of them');
+  writeFileSync(files[0], 'import {gone} from \'./nope.mjs\';\n');
+  assert.throws(keys, /imports \.\/nope\.mjs, which does not exist/);
+  assert.throws(() => sourceCode('shots/'), /sources\(entry\) names the files that draw a recipe entry/);
 });
 
 test('codeFingerprint hashes the drawing code, and refuses what is not there', () => {

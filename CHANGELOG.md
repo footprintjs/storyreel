@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Edit one part, look at one part
+- **Code per segment:** `segmentedVideo({code: sourceCode(sources, {shared})})` keys each segment by the code of its
+  own shots — the files `sources(entry)` names for its recipe entries, everything they import (relative imports
+  followed, a package by its installed version) and `shared` files (hashed as they are). An edit to one shot's
+  module draws only the segments that show it again; one fingerprint for every kit (`codeFingerprint`) still works
+  and draws them all.
+- **A part with its handles:** `part: {scenes, handles}` on a render (and `makeFilm`'s `render`) renders those
+  scenes and `handles` seconds (1.5) of the film either side, so both of the part's cuts are seen
+  (`partWindow`). A part is checked as a part and is never approvable.
+- **A quick look:** `quality: 'draft'` (x264 ultrafast) and a layout `scale` down to 0.5 (half size).
+- **The part as text:** `partTimeline(film, {from, to})` / `timelineText(rows)` — each scene that starts and each
+  beat that lands, with its time, phrase and recipe entry: what a reviewer (or a model) reads before looking at
+  frames.
+
 ## 0.7.0 — the cast: one film, another language and place
 
 ### A release folder holds only what is posted

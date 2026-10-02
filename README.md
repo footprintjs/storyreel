@@ -657,6 +657,23 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   the frame settings (size, layout, stamp, motion blur, poster) and the drawing code (StoryReel's own, its
   fonts and the versions it draws with, and yours). So a scene near the start that grows by whole frames
   changes the keys of the segments around it, not of the ones further on.
+- **Edit one shot, draw one segment.** With one fingerprint for all your kits, any edit draws every segment
+  again. `code: sourceCode(entry => [the files that draw it])` keys each segment by its own shots' code
+  instead: the files a segment's entries name, everything they import (followed; a package by its installed
+  version) and any `shared` files (hashed as they are — a kit's index imports every shot, so its imports are
+  not followed). An edit to one shot's module then draws only the segments that show it:
+
+  ```js
+  code: sourceCode(entry => entry.world?.shot ? [`film/kits/draws/shots/${entry.world.shot}.mjs`] : [],
+    {shared: ['film/kits/draws/index.mjs']}),
+  ```
+- **Look at one part, with its handles.** `renderFilm({…, part: {scenes: ['chapters'], handles: 1.5}})` renders
+  those scenes and 1.5 s of the film either side — the end of the part before and the start of the part after,
+  as a film editor's handles — so both of its cuts are seen without rendering the whole film. With
+  `quality: 'draft'` (the quickest encode) and `layout: {…, scale: .5}` (half size) it is a quick look while
+  editing; a part render is checked as a part and can never be approved (an approval is of the whole film).
+  `partTimeline(film, {from, to})` lists the scenes and beats in it with their times (`timelineText` as lines):
+  read when "the network does the waiting" lands instead of rendering stills to guess.
 - **A reused segment must pass a spot check.** A few of its frames (6 by default, `samples`) are painted
   again exactly as the video shows them (layout, motion blur, stamp, poster) at the same places in the
   segment, and must match the ones kept when it was drawn. A segment that moved is reused only when its

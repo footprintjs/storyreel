@@ -51,6 +51,58 @@ export function codeFingerprint(paths, {extensions = CODE_EXTENSIONS} = {}) {
   return h.digest('hex').slice(0, 24);
 }
 
+/**
+ * Code per segment, for a kit that draws many shots: `sources(entry)` names the files that draw a recipe entry (its
+ * shot's module, say), and a segment's code is the fingerprint of the files its own entries name, everything they
+ * import (relative imports followed; a package by its installed version) and the `shared` files (hashed as they
+ * are, their imports not followed: a kit's index imports every shot). Editing one shot then draws again only the
+ * segments that show it; the rest are reused. Give the result to segmentedVideo as `code`.
+ */
+export function sourceCode(sources, {shared = []} = {}) {
+  if (typeof sources !== 'function') throw new Error("sourceCode: sources(entry) names the files that draw a recipe entry (e.g. its shot's module)");
+  if (!Array.isArray(shared)) throw new Error('sourceCode: shared is a list of files every segment depends on');
+  const known = new Map();   // file → {hash, files, packages}: a file's own bytes and what it imports, read once
+  const read = file => {
+    if (known.has(file)) return known.get(file);
+    if (!existsSync(file)) throw new Error(`sourceCode: ${file} does not exist (named by sources or imported)`);
+    const bytes = readFileSync(file), files = [], packages = [];
+    if (/\.(mjs|js|cjs)$/.test(file)) for (const m of bytes.toString('utf8').matchAll(IMPORTS)) {
+      const r = resolveImport(m[1] ?? m[2], file);
+      if (r?.file) files.push(r.file); else if (r?.pkg) packages.push(r.pkg);
+    }
+    const entry = {hash: createHash('sha256').update(bytes).digest('hex'), files, packages};
+    known.set(file, entry); return entry;
+  };
+  const name = f => `${path.basename(path.dirname(f))}/${path.basename(f)}`;
+  return entries => {
+    const files = new Map(), packages = new Set();
+    const follow = f => { if (files.has(f)) return; const e = read(f); files.set(f, e.hash); e.packages.forEach(p => packages.add(p)); e.files.forEach(follow); };
+    for (const e of entries) for (const f of sources(e) ?? []) follow(path.resolve(f));
+    for (const f of shared) { const p = path.resolve(f); files.set(p, read(p).hash); }
+    const h = createHash('sha256');
+    for (const f of [...files.keys()].sort()) h.update(name(f)).update('\0').update(files.get(f)).update('\0');
+    for (const p of [...packages].sort()) h.update(p).update('\0');
+    return h.digest('hex').slice(0, 24);
+  };
+}
+// import … from '…', export … from '…', import '…', import('…'): what a module reads its code from.
+const IMPORTS = /(?:^|[^\w$.])(?:import|export)\s*(?:[\w$*{}\s,]+from\s*)?['"]([^'"\n]+)['"]|(?:^|[^\w$.])import\s*\(\s*['"]([^'"\n]+)['"]\s*\)/g;
+function resolveImport(spec, from) {
+  if (spec.startsWith('node:')) return null;
+  if (spec.startsWith('.') || spec.startsWith('/')) {
+    const base = path.resolve(path.dirname(from), spec);
+    const file = [base, `${base}.mjs`, `${base}.js`, path.join(base, 'index.mjs'), path.join(base, 'index.js')].find(f => existsSync(f) && statSync(f).isFile());
+    if (!file) throw new Error(`sourceCode: ${from} imports ${spec}, which does not exist`);
+    return {file};
+  }
+  const pkg = spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0];
+  for (let dir = path.dirname(from); ; dir = path.dirname(dir)) {
+    const manifest = path.join(dir, 'node_modules', pkg, 'package.json');
+    if (existsSync(manifest)) return {pkg: `${pkg}@${JSON.parse(readFileSync(manifest, 'utf8')).version ?? '?'}`};
+    if (path.dirname(dir) === dir) return {pkg: `${pkg}@?`};   // a built-in module, or not installed beside the code
+  }
+}
+
 /** StoryReel's own drawing code, its fonts, and the installed versions of what it draws with: part of every key. */
 let ownCode = null;
 const storyreelCode = () => ownCode ??= `${codeFingerprint(['./', '../fonts/'].map(p => fileURLToPath(new URL(p, import.meta.url))).filter(existsSync))}+${DRAWING.map(n => `${n}@${installedVersion(n)}`).join(',')}`;
@@ -126,7 +178,7 @@ export function segmentMaterial(film, seg, {recipe, storyboard = null, pixels, c
   const near = t => spans.some(([f, to]) => t >= f - margin && t <= to + margin);
   const {strings = null, data = null, theme = null, files = {}} = film.inputs ?? {};
   return {
-    v: 2, storyreel: storyreelCode(), code, frames: seg.f1 - seg.f0, fps,
+    v: 2, storyreel: storyreelCode(), code: typeof code === 'function' ? code(paths.map(p => entryAt(recipe, p)).filter(Boolean)) : code, frames: seg.f1 - seg.f0, fps,
     pixels: {...pixels, poster: seg.index === 0 && pixels.poster !== null ? 'drawn' : null},
     entries: paths.map(p => [p, entryAt(recipe, p) ?? null]),
     lines: film.beats.filter(b => b.path && (inside(b.path, paths) || (b.path.startsWith('guesses') && near(b.t)))).map(b => [b.path, at(b.t)]),
@@ -212,8 +264,10 @@ const MANIFEST = 2;
  * a scene id it covers) — for when you want to see a part fresh.
  * @param store    where segments are kept (folderStore(dir)) — required
  * @param recipe   the film's recipe (each segment's entries are part of its key) — required
- * @param code     a fingerprint of the drawing code outside StoryReel (codeFingerprint([kitsFolder])); without
- *                 it a kit change is caught only by the spot check, and the report says so
+ * @param code     a fingerprint of the drawing code outside StoryReel (codeFingerprint([kitsFolder])), or code per
+ *                 segment (sourceCode(sources): a segment keyed by the code of its own shots, so an edit to one shot
+ *                 draws only its segments again); without it a kit change is caught only by the spot check, and the
+ *                 report says so
  * @param joiner   how segment files are joined (default: ffmpegJoin with the render's FFmpeg)
  * @param samples  how many frames of a reused segment are painted again to check it (6; 0 turns the check off)
  * @param parallel how many segments are drawn at once (2)
