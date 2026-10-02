@@ -204,6 +204,8 @@ export function makePainter({film, framed, blur, width, height, fps, ctx}) {
  * @param intro      optional {seconds, draw(ctx, t, {width, height, handoff}), wav?: Buffer} — a title before the film
  * @param stamp      optional text stamped on every frame (e.g. 'DRAFT · NOT APPROVED')
  * @param from,to    render part of the film (seconds on the film clock); the intro plays only when from < 0
+ * @param part       instead of from/to: {scenes: [id, …], handles?} — those scenes and `handles` seconds (1.5) of the
+ *                   film around them, so both of the part's cuts are seen (render.mjs · partWindow)
  * @param poster     the film second to use as the poster (default: the recipe's `poster`, film.posterAt): it is
  *                   written beside the video (poster.jpg) and REPLACES the video's first frame, so every
  *                   platform's thumbnail shows it (the length and the sound's sync are unchanged)
@@ -219,7 +221,8 @@ export function makePainter({film, framed, blur, width, height, fps, ctx}) {
  * @param video      how the picture is made (a strategy, segments.mjs): wholeVideo() — every frame in one pass, the
  *                   default — or segmentedVideo({...}) — the film in segments, each reused from a cache when nothing
  *                   that draws it changed, then joined. The sound is always mixed for the whole film, once.
- * @param quality    'standard' (the default: quick to make, fine to watch) or 'high' (for posting: a slower, finer
+ * @param quality    'standard' (the default: quick to make, fine to watch), 'draft' (quickest, for looking while
+ *                   editing) or 'high' (for posting: a slower, finer
  *                   encode, its colours converted and tagged as HD video's, BT.709, the way players read them)
  * @returns {out, seconds, chapters, poster?, format?, captions?: {vtt?, srt?}, loudness: {type, target, measured, reason?},
  *          video?: the strategy's report (segmentedVideo: each segment, rendered or reused)}
@@ -237,6 +240,7 @@ export async function renderFilm(options) {
  */
 const ENCODE = Object.freeze({
   standard: ['-preset', 'fast', '-crf', '19', '-pix_fmt', 'yuv420p'],
+  draft: ['-preset', 'ultrafast', '-crf', '24', '-pix_fmt', 'yuv420p'],
   // The frames carry the tags too (setparams): a newer FFmpeg takes them from the frames, an older one from the flags.
   high: ['-preset', 'slow', '-crf', '16', '-vf', 'scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv',
     '-pix_fmt', 'yuv420p', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv'],
@@ -256,7 +260,52 @@ export function sceneChapters(scenes, offsets) {
  * A render's job: everything checked and sized once, and the one way frames are made (encodeFrames), so a
  * strategy (segments.mjs) decides only WHICH frames to encode into which files.
  */
-export function prepareRender({film, storyboard, timings, narrationDir = null, out, width: givenWidth, height: givenHeight, fps = 30, intro = null, stamp = null,
+/**
+ * A part of the film with its handles, as a render's from/to (seconds on the film clock): the part's scenes, and
+ * `handles` seconds of the film before and after them (1.5 by default) — the end of the part before and the start
+ * of the part after, so both of its cuts are seen. part: {scenes: [id, …], handles?} or {scene: id, handles?}.
+ */
+export function partWindow(film, part) {
+  const scenes = typeof part?.scene === 'string' ? [part.scene] : part?.scenes;
+  if (!Array.isArray(scenes) || !scenes.length || !scenes.every(s => typeof s === 'string')) throw new Error('part must be {scenes: [scene id, …], handles?} or {scene: id, handles?}');
+  for (const key of Object.keys(part)) if (!['scene', 'scenes', 'handles'].includes(key)) throw new Error(`part has unsupported key ${key} (a part is {scenes | scene, handles?})`);
+  const ids = film.timings.scenes.map(s => s.id), missing = scenes.filter(s => !ids.includes(s));
+  if (missing.length) throw new Error(`part: no scene called ${missing.map(s => `"${s}"`).join(', ')} (the scenes are ${ids.join(', ')})`);
+  const handles = part.handles ?? 1.5;
+  if (!(typeof handles === 'number' && handles >= 0 && handles <= 10)) throw new Error('part.handles is the seconds shown before and after the part, 0–10 (1.5 by default)');
+  const from = Math.min(...scenes.map(id => film.clock.start(id))), to = Math.max(...scenes.map(id => film.clock.end(id)));
+  return {from: +Math.max(0, from - handles).toFixed(3), to: +Math.min(film.total, to + handles).toFixed(3)};
+}
+const withPart = options => {
+  if (options.part === undefined || options.part === null) return options;
+  if (options.from !== undefined || options.to !== undefined) throw new Error('a render takes a part or from/to, not both');
+  const {part, ...rest} = options;
+  return {...rest, ...partWindow(options.film, part)};
+};
+
+/**
+ * What happens in a stretch of the film, as text to read instead of frames: each scene that starts and each beat
+ * that lands — its time on the stretch's own clock, the phrase it waits for, the recipe entry it moves. A reviewer
+ * (or a model) finds "when does 'the network does the waiting' land" here, without rendering a still to guess.
+ * Returns [{t, kind: 'scene' | 'beat', scene, phrase?, entry?}]; timelineText(rows) is the same as lines.
+ */
+export function partTimeline(film, {from = 0, to = film.total} = {}) {
+  const inside = t => t >= from - 1e-6 && t <= to + 1e-6, seen = new Set(), rows = [];
+  film.timings.scenes.forEach((s, i) => { const t = film.clock.offsets[i]; if (inside(t)) rows.push({t, kind: 'scene', scene: s.id}); });
+  for (const b of film.beats ?? []) {
+    if (!inside(b.t)) continue;
+    const scene = Array.isArray(b.ref) ? b.ref[0] : b.ref?.scene ?? null, phrase = Array.isArray(b.ref) ? b.ref[1] : b.ref?.phrase ?? null;
+    const key = `${b.t}|${scene}|${phrase}|${b.path}`; if (seen.has(key)) continue; seen.add(key);
+    rows.push({t: b.t, kind: 'beat', scene, phrase, entry: b.path ?? null});
+  }
+  return rows.sort((a, b) => a.t - b.t || (a.kind === 'scene' ? -1 : b.kind === 'scene' ? 1 : 0)).map(r => ({...r, t: +(r.t - from).toFixed(2)}));
+}
+export const timelineText = rows => rows.map(r => r.kind === 'scene' ? `${r.t.toFixed(2)}  ── ${r.scene}` : `${r.t.toFixed(2)}  "${r.phrase}"${r.entry ? ` → ${r.entry}` : ''}`).join('\n');
+
+/** The render's job from its options; a part ({scenes, handles}) becomes its from/to first (partWindow). */
+export const prepareRender = options => prepareJob(withPart(options));
+
+function prepareJob({film, storyboard, timings, narrationDir = null, out, width: givenWidth, height: givenHeight, fps = 30, intro = null, stamp = null,
   from = intro ? -intro.seconds : 0, to = film.total, poster = film.posterAt ?? null, posterFrame = true, peakCeilingDBFS = -20, loudness = {I: -16, TP: -1.5}, layout = null, motionBlur = null,
   captionFiles = false, quality = 'standard', ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', video: _strategy}) {
   checkLoudnessTarget(loudness);

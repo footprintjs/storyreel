@@ -94,6 +94,7 @@ export const cropAt: Layout = {format: 'vertical', crop: [{at: ['a', 'b'], y: 30
 // @ts-expect-error caption files are vtt or srt
 export const ass = (render: typeof RenderFilm, film: Film, board: Storyboard) => render({film, storyboard: board, timings: film.timings, out: 'x.mp4', captionFiles: ['ass']});
 export const master = (render: typeof RenderFilm, film: Film, board: Storyboard) => render({film, storyboard: board, timings: film.timings, out: 'x.mp4', layout: {format: 'landscape', scale: 2}, quality: 'high'});
+export const draftPart = (render: typeof RenderFilm, film: Film, board: Storyboard) => render({film, storyboard: board, timings: film.timings, out: 'x.mp4', part: {scenes: ['talk'], handles: 1}, layout: {format: 'landscape', scale: .5}, quality: 'draft'});
 // @ts-expect-error quality is 'standard' or 'high'
 export const ultra = (render: typeof RenderFilm, film: Film, board: Storyboard) => render({film, storyboard: board, timings: film.timings, out: 'x.mp4', quality: 'ultra'});
 

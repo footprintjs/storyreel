@@ -8,7 +8,7 @@ import {createCanvas} from '@napi-rs/canvas';
 import {compileFilm, evenTimings, renderFilm, makeFilm} from '../src/index.mjs';
 import {captionChunks, captionAt, captionFile, FILE_CHUNKS} from '../src/captions.mjs';
 import {compileLayout, cropWindow, formatOf, FORMAT_NAMES} from '../src/layout.mjs';
-import {makePainter, readMotionBlur, readCaptionFiles} from '../src/render.mjs';
+import {makePainter, readMotionBlur, readCaptionFiles, partWindow, partTimeline, timelineText, prepareRender} from '../src/render.mjs';
 
 // A silent opening, then two spoken scenes; a world that is red with a white square sliding fast.
 const storyboard = {title: 'Formats', scenes: [
@@ -93,7 +93,33 @@ test('a layout at a scale draws the same picture larger: 2 makes landscape 3840�
   assert.equal(px(3839, 2159), '255,0,0', 'the film fills the larger picture to its far corner');
   assert.equal(px(840, 1080), '255,255,255', 'and every thing in it is where it was, twice as far from the corner (the square at 300, 400 on the 1600-wide frame)');
   assert.deepEqual((({width, height}) => [width, height])(compileLayout(film, {format: 'vertical', scale: 1.5})), [1620, 2880]);
-  for (const scale of [3, .5, 1.0001, '2']) assert.throws(() => compileLayout(film, {format: 'landscape', scale}), /layout\.scale must be 1–2 and keep the landscape size whole and even \(1920×1080 at 1; 2 makes 3840×2160, 4K\)/);
+  assert.deepEqual((({width, height}) => [width, height])(compileLayout(film, {format: 'landscape', scale: .5})), [960, 540], 'a half-size draft');
+  for (const scale of [3, .25, 1.0001, '2']) assert.throws(() => compileLayout(film, {format: 'landscape', scale}), /layout\.scale must be 0\.5–2 and keep the landscape size whole and even \(1920×1080 at 1; 2 makes 3840×2160, 4K\)/);
+});
+
+test('a part with its handles: the scenes asked for and a moment of the film either side; refusals name the fix', () => {
+  assert.deepEqual(partWindow(film, {scene: 'talk', handles: 1}), {from: +(film.clock.start('talk') - 1).toFixed(3), to: +(film.clock.end('talk') + 1).toFixed(3)});
+  assert.equal(partWindow(film, {scenes: ['open']}).from, 0, 'never before the film starts');
+  assert.equal(partWindow(film, {scenes: ['talk', 'end'], handles: 5}).to, +film.total.toFixed(3), 'nor after it ends');
+  assert.throws(() => partWindow(film, {scene: 'middle'}), /no scene called "middle" \(the scenes are open, talk, end\)/);
+  assert.throws(() => partWindow(film, {scene: 'talk', handles: 20}), /handles is the seconds shown before and after the part/);
+  assert.throws(() => prepareRender({film, part: {scene: 'talk'}, from: 0}), /a part or from\/to, not both/);
+});
+
+test('a part\'s timeline: the scenes and beats in it as text, on the part\'s own clock, each once', () => {
+  const said = ['b', 'the network does the waiting'], fake = {timings: {scenes: [{id: 'a', duration: 5}, {id: 'b', duration: 5}]}, clock: {offsets: [0, 5]}, total: 10,
+    beats: [{ref: said, t: 6.2, path: 'stages[1].world.beats.waiting'}, {ref: said, t: 6.2, path: 'stages[1].world.beats.waiting'}, {ref: ['a', 'early'], t: 1, path: null}]};
+  const rows = partTimeline(fake, {from: 3.5, to: 10});
+  assert.deepEqual(rows, [{t: 1.5, kind: 'scene', scene: 'b'}, {t: 2.7, kind: 'beat', scene: 'b', phrase: 'the network does the waiting', entry: 'stages[1].world.beats.waiting'}]);
+  assert.equal(timelineText(rows), '1.50  ── b\n2.70  "the network does the waiting" → stages[1].world.beats.waiting');
+});
+
+test('a quick look at one part: its scenes with handles, at half size, in the draft encode', {skip: spawnSync('ffmpeg', ['-version']).error ? 'needs ffmpeg' : false}, async () => {
+  const out = path.join(mkdtempSync(path.join(tmpdir(), 'storyreel-part-')), 'part.mp4'), part = {scene: 'talk', handles: 1};
+  const r = await renderFilm({film, storyboard, timings: evenTimings(storyboard), out, part, quality: 'draft', layout: {format: 'landscape', scale: .5}});
+  const w = partWindow(film, part);
+  assert.ok(Math.abs(r.seconds - (w.to - w.from)) < .1, `the part and its handles: ${r.seconds} s`);
+  assert.equal(spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', out], {encoding: 'utf8'}).stdout.trim(), '960,540');
 });
 
 test('a crop follows its keys, eased, never leaves the frame\'s width, and may widen to the whole frame', () => {

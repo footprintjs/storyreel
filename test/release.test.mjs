@@ -61,7 +61,7 @@ test('chapters: a titled scene starts one and an untitled one goes on with it; w
 test('refused before a frame is drawn: a poster thumbnail for a film with no poster, a scale the format cannot take; synthetic is a list of words', async () => {
   const out = mkdtempSync(path.join(tmpdir(), 'release-'));
   await assert.rejects(makeRelease({...film, recipe: {story: {kit: 'slide'}}, out, targets: ['youtube'], post: {...kids, thumbnail: 'poster'}}), /the thumbnail is to be the film's poster, and the film has none \(name the poster in the recipe/);
-  await assert.rejects(makeRelease({...film, out, targets: [{target: 'youtube', scale: 3}], post: kids}), /layout\.scale must be 1–2/);
+  await assert.rejects(makeRelease({...film, out, targets: [{target: 'youtube', scale: 3}], post: kids}), /layout\.scale must be 0\.5–2/);
   assert.equal(existsSync(path.join(out, 'youtube')), false, 'nothing rendered');
   assert.equal((await loadTarget({target: 'youtube', scale: 2})).options.scale, 2);
   assert.throws(() => readPost({...kids, synthetic: 'voice'}), /post\.synthetic lists what in the film is realistic and made with AI/);

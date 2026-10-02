@@ -5,6 +5,12 @@ export function readMotionBlur(v: unknown): {subframes: number; shutter: number}
 /** The film's chapters on its own clock: a titled scene starts one, an untitled one goes on with it; with no titles at all, every scene is one by its id. */
 export function sceneChapters(scenes: {id: string; title?: string}[], offsets: number[]): [number, string][];
 /** The encodes a render can make: 'standard' (quick) and 'high' (for posting). */
-export const QUALITIES: readonly ('standard' | 'high')[];
+export const QUALITIES: readonly ('standard' | 'draft' | 'high')[];
+/** A part with its handles → the render's from/to on the film clock. */
+export function partWindow(film: import('../index.js').Film, part: {scenes: string[]; handles?: number} | {scene: string; handles?: number}): {from: number; to: number};
+/** The scenes and beats in a stretch of the film, on its own clock: text to read instead of frames. */
+export interface TimelineRow {t: number; kind: 'scene' | 'beat'; scene: string | null; phrase?: string | null; entry?: string | null}
+export function partTimeline(film: import('../index.js').Film, window?: {from?: number; to?: number}): TimelineRow[];
+export function timelineText(rows: TimelineRow[]): string;
 /** The captionFiles option, checked: the kinds to write. */
 export function readCaptionFiles(v: unknown): ('vtt' | 'srt')[];

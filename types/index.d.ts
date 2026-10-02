@@ -383,7 +383,7 @@ export interface Layout {
   crop?: {at: Beat; x: number; width?: number}[];
   background?: string;
   ink?: string;
-  /** 1–2 (default 1): the same picture at that many times the format's size, redrawn sharp; 2 makes landscape 3840×2160 (4K). */
+  /** 0.5–2 (default 1): the same picture at that many times the format's size, redrawn sharp; 2 makes landscape 3840×2160 (4K), 0.5 a quick draft. */
   scale?: number;
 }
 export const FORMAT_NAMES: readonly FormatName[];
@@ -419,7 +419,9 @@ export function renderFilm(options: {
   /** Caption files beside the video (captions.vtt, captions.srt) on its clock: true for both, or the kinds. */
   captionFiles?: boolean | ('vtt' | 'srt')[];
   /** 'standard' (the default: quick) or 'high' (for posting: a slower, finer encode, its colours converted and tagged as HD video's, BT.709). */
-  quality?: 'standard' | 'high';
+  quality?: 'standard' | 'draft' | 'high';
+  /** Instead of from/to: those scenes and `handles` seconds (1.5) of the film around them, so both cuts are seen. */
+  part?: {scenes: string[]; handles?: number} | {scene: string; handles?: number};
   /** true (the default): the poster replaces the first frame; false: written beside the video only (for a platform that takes an uploaded thumbnail). */
   posterFrame?: boolean;
   /** How the picture is made: wholeVideo() (the default: every frame in one pass) or segmentedVideo({...}) (cached segments, joined). */
@@ -452,7 +454,9 @@ export function wholeVideo(): VideoStrategy;
  * names it: an index or a scene id), then joined (by default with the render's own FFmpeg). The sound is mixed for
  * the whole film each time. An intro or a part (from, to) refuses: use wholeVideo().
  */
-export function segmentedVideo(options: {store: SegmentStore; recipe: Recipe; code?: string | null; joiner?: SegmentJoiner | null; force?: (number | string)[]; samples?: number; minSeconds?: number; parallel?: number}): VideoStrategy;
+/** Code per segment (segments.mjs · sourceCode): a segment's own entries → the fingerprint of the code that draws them. */
+export type SegmentCode = (entries: unknown[]) => string;
+export function segmentedVideo(options: {store: SegmentStore; recipe: Recipe; code?: string | SegmentCode | null; joiner?: SegmentJoiner | null; force?: (number | string)[]; samples?: number; minSeconds?: number; parallel?: number}): VideoStrategy;
 /** Keep segments as <key>.mp4 + <key>.json in one folder; a segment lands whole or not at all, and a file cut short is never reused. */
 export function folderStore(dir: string): SegmentStore;
 /** Join segment files with FFmpeg's concat demuxer, without re-encoding. */
@@ -462,7 +466,7 @@ export interface Segment { index: number; f0: number; f1: number; from: number; 
 /** The film's segments: one per row of pictures, on whole frames, covering every frame once and in order (a row that never shows alone joins the next); `blur`: frames are drawn with motion blur. */
 export function planSegments(film: Film, options?: {fps?: number; frames?: number; minSeconds?: number; blur?: boolean}): Segment[];
 /** A segment's cache key (on its own clock, so a segment further on keeps it when an earlier scene grows by whole frames). */
-export function segmentKey(film: Film, segment: Segment, options: {recipe: Recipe; storyboard?: Storyboard | null; pixels: Record<string, unknown>; code?: string | null; fps?: number; margin?: number; extra?: {poster?: unknown; recalls?: unknown}}): string;
+export function segmentKey(film: Film, segment: Segment, options: {recipe: Recipe; storyboard?: Storyboard | null; pixels: Record<string, unknown>; code?: string | SegmentCode | null; fps?: number; margin?: number; extra?: {poster?: unknown; recalls?: unknown}}): string;
 /** A fingerprint of drawing code: every file under the folders given, hashed in path order. */
 export function codeFingerprint(paths: string[], options?: {extensions?: string[]}): string;
 
