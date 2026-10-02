@@ -6,7 +6,8 @@
  * and the directions are never spoken (clock.mjs · directionTimings).
  */
 /** Letters and digits only, lower case: how narration text and spoken words are compared. */
-export const normSpeech = text => String(text).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+// (Letters, their combining marks and digits: a Tamil or Telugu vowel sign is part of the word — கடை is not கட.)
+export const normSpeech = text => String(text).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{M}\p{N}]/gu, '');
 
 /** How long one direction may last, in seconds: long enough to see, short enough to stay a beat. */
 export const DIRECTION_SECONDS = Object.freeze([.2, 20]);
