@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Through a thing: match cuts
+- **`through`** (family `match`): the camera goes through a thing in the old picture — a window, a screen,
+  a ring (`shape: "round"`) — and the new picture is what was inside it: fitted in the opening, zoomed about
+  the one point that zoom leaves still until it fills the frame, the opening widening to the frame's edges at
+  the end. `"enter": {"type": "through", "region": "window"}`.
+- **`match`**: a thing in the old picture becomes the same thing in the new one (`region`, and `into` when the
+  new picture names it differently). The old picture pushes in on its thing, the new one pulls back from its
+  own, and they meet half way — same place, same size — at a quick dissolve. Both cameras only zoom in, so the
+  frame is always covered: things far apart meet larger.
+- **The contract**: a transition may say which things it looks for, `regions: p => ({from?, to?})`, and
+  reads them in `draw(ctx, {…, boxes})`. The film finds each one once, when it is built (the leaving
+  picture's at the change's first moment, the arriving one's at its last), so a frame stays a pure function of
+  time; a name the picture does not have, or a thing off the frame, refuses, naming the names there are. A
+  setting may be `{name: true}` (required) or `{name: true, default: null}`.
+- `docs/transitions.png` redrawn with the two new rows.
+
 ### Acting: changes, not swaps
 - **`footprint-storyreel/acting`**: `moodAt(keys, t)` acts a mood change the way an animator times a
   reaction — `anticipation` (the eyes close over the 0.1 s before the change and open over the 0.08 s after,

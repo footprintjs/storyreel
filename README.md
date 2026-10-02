@@ -266,9 +266,13 @@ recipe names:
 | | `whip` | a fast push that streaks, as a camera turned quickly blurs | `from` (`right`) | 0.4 s | whoosh |
 | zoom | `zoom` | the old picture rushes forward and fades while the new one settles | `at` (the centre) | 0.6 s | whoosh |
 | page | `page` | the old picture is a page that lifts from its right edge and turns over | – | 1.1 s | slide |
+| match | `through` | the camera goes through a thing in the old picture (a window, a screen) and the new picture is what was inside it | `region` (required), `shape`: `box` · `round` (`box`) | 1.2 s | whoosh |
+| | `match` | a thing in the old picture becomes the same thing in the new one: they meet, same place, same size, at a dissolve | `region` (required), `into` (the same name) | 1 s | – |
 
 ```json
 "enter": "push"
+"enter": {"type": "through", "region": "window"}              through the old picture's window into the new one
+"enter": {"type": "match", "region": "ring", "into": "loop"}  the old ring becomes the new picture's loop
 "enter": {"type": "push", "from": "left", "seconds": 0.5}
 "enter": {"type": "dip", "color": "#ffffff"}                  a dip to white
 "enter": {"type": "whip", "sound": false}                     no sound
@@ -280,14 +284,27 @@ name, or `false`). An ease that goes past the end (`back`, `spring`) is refused 
 would show — only `slide` takes one. An unknown name, key or setting refuses, naming what the transition
 takes: `enter has unsupported key at (a push takes seconds, ease, sound, from)`.
 
+**Through a thing.** `through` and `match` go through something drawn in the pictures, named the way a
+kit names what it draws (`regionsAt(t) → [{box, path, label, name}]`, the names a push note frames). The
+film finds each named thing once, when it is built: in the picture the change leaves at its first moment, in
+the one it arrives at at its last — so every frame of the change is still a pure function of time, and a name
+the picture does not have refuses then, naming the ones it has: `stage loop: the through looks for "window" in
+the picture it leaves, and nothing in the picture is called "window" at 12.40 s; the names there are screen,
+ring`. `through` zooms about the one point that leaves still while the new picture, fitted inside the
+opening, grows to fill the frame; near the end the opening widens to the frame's edges. `match` pushes the old
+picture in on its thing and pulls the new one back from its own, so the two meet half way at a quick
+dissolve — at least 1.3 times the larger one's size, and larger when they are far apart, because a camera
+that zooms only in must zoom far enough to carry its thing to the meeting point without uncovering an edge.
+Both end on the new picture exactly.
+
 **A kit adds its own**, as Final Cut takes Motion templates and Premiere takes `.mogrt` files, and a recipe
 names it like a built-in one. Every transition — built in or not — draws through one contract:
 
 ```js
 const stageKit = {name: 'stage', transitions: {curtain: {
   family: 'theatre', seconds: 1.2, ease: 'inOut', sound: 'whoosh',
-  params: {color: {color: true, default: '#7a1020'}},          // settings: {oneOf}, {point}, {color} or {number: [min, max]}, each with a default
-  draw(ctx, {e, from, to, p, ghost, theme}) {                 // e: 0..1, eased; from(c) / to(c) draw the two pictures
+  params: {color: {color: true, default: '#7a1020'}},          // settings: {oneOf}, {point}, {color} or {number: [min, max]}, each with a default; or {name: true}
+  draw(ctx, {e, from, to, p, ghost, theme, boxes}) {          // e: 0..1, eased; from(c) / to(c) draw the two pictures
     (e < .5 ? from : to)(ctx);                                // cover the whole frame at every e
     const closed = 1 - Math.abs(1 - 2 * e);
     ctx.fillStyle = p.color; ctx.fillRect(0, 0, 800 * closed, 900); ctx.fillRect(1600 - 800 * closed, 0, 800 * closed, 900);
@@ -296,7 +313,10 @@ const stageKit = {name: 'stage', transitions: {curtain: {
 ```
 
 `ghost(alpha, paint)` paints a picture whole into a scratch picture and lays it over at that alpha (a
-see-through picture must be drawn whole: canvas alpha on its parts shows the seams). A kit's transition
+see-through picture must be drawn whole: canvas alpha on its parts shows the seams). A transition that goes
+through things says which with `regions: p => ({from: [p.region], to: [p.into]})` and reads where they are in
+`boxes.from[name]` / `boxes.to[name]` (`[x0, y0, x1, y1]` on the frame); a `{name: true}` setting is the
+recipe's name for one (no default: the recipe must give it). A kit's transition
 may not take a built-in name or another kit's. `transitionSheet({catalog})` draws any collection on one
 PNG (`node examples/transitions.mjs` wrote the picture above), and the studio shows it under
 **Transitions**.

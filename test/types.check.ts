@@ -166,3 +166,12 @@ export const squint: number = Math.max(acted.anticipation, idleAt(2.1, {seed: 3}
 export const head: (t: number) => number = follows((t: number) => t * 2, .2);
 // @ts-expect-error a mood key names its mood
 export const noMood = moodAt([{at: 0}], 1);
+
+// Through a named thing: the two match transitions, and a kit's own that looks for things in the pictures.
+export const throughs: Enter[] = [{type: 'through', region: 'window'}, {type: 'through', region: 'ring', shape: 'round'}, {type: 'match', region: 'ring', into: 'loop'}];
+export const portal: Transition = {family: 'match', seconds: 1, ease: 'inOut', sound: null, params: {region: {name: true}, into: {name: true, default: null}},
+  regions: p => ({from: [String(p.region)]}), draw(ctx, {e, from, to, boxes}) { const [x0] = boxes.from.window ?? [0]; (e < .5 ? from : to)(ctx); ctx.fillRect(x0, 0, 1, 1); }};
+// @ts-expect-error a through's opening is a box or round
+export const oval: Enter = {type: 'through', region: 'ring', shape: 'oval'};
+// @ts-expect-error a name setting's default is a name or null
+export const badName: Transition = {...portal, params: {region: {name: true, default: 3}}};

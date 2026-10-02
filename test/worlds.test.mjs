@@ -116,7 +116,7 @@ test('a film joins its parts one way: worlds and entrances without a pushIn, glo
   await assert.rejects(compileFilm({storyboard, timings, recipe: {...recipe(), card: lesson.card}, kits, root}), /card and no pushIn/);
   const glowing = recipe(); glowing.stages[1] = {...glowing.stages[1], glows: [{row: 'a', from: ['c', 'paper'], to: ['c', 'code']}]};
   await assert.rejects(compileFilm({storyboard, timings, recipe: glowing, kits, root}), /glows card rows, and the film has no card/);
-  await assert.rejects(compileFilm({storyboard, timings, recipe: recipe('dissolve'), kits, root}), /stage b: enter must be a transition: cut, fade, dip, wipe, split, clock, iris, push, slide, whip, zoom, page \(not "dissolve"\)/);
+  await assert.rejects(compileFilm({storyboard, timings, recipe: recipe('dissolve'), kits, root}), /stage b: enter must be a transition: cut, fade, dip, wipe, split, clock, iris, push, slide, whip, zoom, page, through, match \(not "dissolve"\)/);
   const titled = recipe(); titled.stages[0] = {...titled.stages[0], title: 'Blue'};
   await assert.rejects(compileFilm({storyboard, timings, recipe: titled, kits, root}), /stage b has unsupported key title/);
   await assert.rejects(compileFilm({storyboard, timings, recipe: {...recipe(), stages: [{type: 'world', scene: 'b', world: {kit: 'green'}}]}, kits, root}), /No story kit "green" for stage b/);

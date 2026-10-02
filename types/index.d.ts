@@ -97,18 +97,23 @@ export interface Recipe {
 export type Watching = {kind: 'burst'; path: string; where: string; at: number; moments: number; seconds: number};
 
 /** The built-in transitions (transitions.mjs · TRANSITIONS). */
-export type TransitionName = 'cut' | 'fade' | 'dip' | 'wipe' | 'split' | 'clock' | 'iris' | 'push' | 'slide' | 'whip' | 'zoom' | 'page';
+export type TransitionName = 'cut' | 'fade' | 'dip' | 'wipe' | 'split' | 'clock' | 'iris' | 'push' | 'slide' | 'whip' | 'zoom' | 'page' | 'through' | 'match';
 /**
  * A shot's entrance: a transition's name (a kit's own too), or its name with settings — `seconds` (0.2–3),
  * `ease`, `sound` (a sound, or false for none) and the transition's own: `from` (push, slide, whip, wipe:
  * left | right | top | bottom), `line` (split: vertical | horizontal), `at` (iris, zoom: [x, y]), `color`
- * (dip: a hex colour). Left out: a fade.
+ * (dip: a hex colour), `region` (through, match: the name of a thing in the picture it leaves — required),
+ * `into` (match: the thing's name in the new picture, when it differs), `shape` (through: box | round).
+ * Left out: a fade.
  */
 export type Enter = TransitionName | (string & {}) | ({type: TransitionName | (string & {}); seconds?: number; ease?: EaseName; sound?: SoundType | false;
-  from?: 'left' | 'right' | 'top' | 'bottom'; line?: 'vertical' | 'horizontal'; at?: [number, number]; color?: string; [setting: string]: unknown});
-/** A transition's setting: one of some words, a point, a colour or a number, each with its default. */
+  from?: 'left' | 'right' | 'top' | 'bottom'; line?: 'vertical' | 'horizontal'; at?: [number, number]; color?: string;
+  region?: string; into?: string; shape?: 'box' | 'round'; [setting: string]: unknown});
+/** A transition's setting: one of some words, a point, a colour or a number, each with its default; or the name of a thing in the picture (no default: the recipe must give it; default null: it may be left out). */
 export type TransitionSetting = {oneOf: readonly string[]; default: string} | {point: true; default: readonly [number, number]}
-  | {color: true; default: string} | {number: readonly [number, number]; default: number};
+  | {color: true; default: string} | {number: readonly [number, number]; default: number} | {name: true; default?: string | null};
+/** A box on the 1600×900 frame: [x0, y0, x1, y1]. */
+export type FrameBox = readonly [number, number, number, number];
 /** What a transition's draw is given (transitions.mjs): how far (eased), the two pictures, its settings, a scratch picture, the theme. */
 export interface TransitionDraw {
   /** How far the change has come, 0..1, eased (an overshooting ease goes past 1 only where the transition allows it). */
@@ -122,6 +127,8 @@ export interface TransitionDraw {
   /** paint(c) into a scratch picture, laid over ctx at alpha: a see-through picture, drawn whole. */
   ghost(alpha: number, paint: (ctx: any) => void): void;
   theme: Record<string, unknown>;
+  /** Where the things the transition names (its `regions`) are on the frame: the leaving picture's at the change's first moment, the arriving one's at its last. */
+  boxes: Readonly<{from: Readonly<Record<string, FrameBox>>; to: Readonly<Record<string, FrameBox>>}>;
 }
 /** A transition a kit adds (kit.transitions): drawn through the same contract as the built-in ones; it must cover the whole frame at every e. */
 export interface Transition {
@@ -134,6 +141,8 @@ export interface Transition {
   /** true when an overshooting ease (back, spring) may drive it. */
   overshoot?: boolean;
   params?: Record<string, TransitionSetting>;
+  /** The things it looks for, by name, in the picture it leaves (`from`) and the one it arrives at (`to`): the film finds them once and passes their boxes to draw. */
+  regions?(p: Readonly<Record<string, unknown>>): {from?: string[]; to?: string[]};
   draw(ctx: any, args: TransitionDraw): void;
 }
 /** A built-in transition (the cut draws nothing: it is no transition at all). */

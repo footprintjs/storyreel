@@ -284,6 +284,8 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
 
   // Without a push-in, the film is a row of shots: the story, then each world, each run of paper.
   const shots = [{world: storyWorld, stages: [], start: 0}];
+  // Where the things a shot's entrance goes through are (transitions.mjs · boxes), by shot: found once the worlds are ready.
+  const entranceBoxes = new Map(), NO_BOXES = Object.freeze({from: Object.freeze({}), to: Object.freeze({})});
   if (!push) for (const st of stages) {
     const last = shots.at(-1);
     if (st.type !== 'world' && !last.world && st.enter === undefined) {
@@ -492,7 +494,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   /** The shot that is arriving over the one leaving, through its transition (transitions.mjs). */
   function drawTransition(ctx, j, t, e) {
     const shot = shots[j], prev = shots[j - 1], en = shot.enter;
-    en.draw(ctx, {e, from: c => drawShot(c, prev, t), to: c => drawShot(c, shot, t), p: en.p, ghost: (alpha, paint) => ghost(ctx, alpha, paint), theme: paper});
+    en.draw(ctx, {e, from: c => drawShot(c, prev, t), to: c => drawShot(c, shot, t), p: en.p, ghost: (alpha, paint) => ghost(ctx, alpha, paint), theme: paper, boxes: entranceBoxes.get(shot) ?? NO_BOXES});
   }
   /** A film without a pushIn at t: the current shot, or the next one arriving over it. */
   /** Which shot is on screen (or arriving) at t. */
@@ -561,7 +563,11 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
       if (t >= boardEnd && ease((t - boardEnd - TURN * .45) / (TURN * .45)) >= .5) return null;
       return {w: storyWorld, path: storyPath, until: boardEnd, view: worldView(storyWorld, t < boardEnd ? spotOf(storyWorld, t) : null, t >= boardEnd ? pushInCamera(t) : null)};
     }
-    const shot = shots[shotAt(t)], st = shot.world && stages.find(s => s.world === shot.world);
+    return shotWorld(shots[shotAt(t)], t);
+  }
+  /** A shot's world at t (the part of the recipe that draws it, and its view), or null for a shot on paper. */
+  function shotWorld(shot, t) {
+    const st = shot.world && stages.find(s => s.world === shot.world);
     return shot.world ? {w: shot.world, path: st ? `${stagePath(st)}.world` : storyPath, until: Infinity, view: worldView(shot.world, spotOf(shot.world, t))} : null;
   }
   /** Which reveal made a code line appear: its recipe entry. */
@@ -596,26 +602,35 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   /** What is drawn where at t before any director's push: the world's (or the page's) regions, on the frame. */
   function regionsUnder(t) {
     if (teaser && t >= teaser.at) return [{box: [0, 0, 1600, 900], path: `${stagePath(recapStage)}.teaser`, label: 'the teaser'}];
-    const out = [], world = worldOnScreen(t);
-    if (world) {
-      out.push({box: through(world.view, [0, 0, 1600, 900]), path: world.path, label: `the ${world.w.kit} world`});
-      for (const r of world.w.instance.regionsAt?.(Math.min(t, world.until)) ?? []) out.push({box: through(world.view, r.box), path: `${world.path}.${r.path}`, label: r.label ?? '', ...(r.name ? {name: r.name} : {})});
-    } else if (push) {
-      const now = stateAt(t);
-      if (now.fade > 0) out.push(...cardRegions(t, now));
-      for (const [st] of now.shown) out.push(...stageRegions(st, t));
-    } else {
-      const shot = shots[shotAt(t)];
-      shot.stages.forEach((st, k) => { const next = shot.stages[k + 1]; if (Math.min(k === 0 ? 1 : into(st, t, .2, .45), next ? 1 - into(next, t, .65, .45) : 1) > 0) out.push(...stageRegions(st, t)); });
-    }
+    if (!push) return shotRegions(shots[shotAt(t)], t);
+    const world = worldOnScreen(t);
+    if (world) return worldRegions(world, t);
+    const out = [], now = stateAt(t);
+    if (now.fade > 0) out.push(...cardRegions(t, now));
+    for (const [st] of now.shown) out.push(...stageRegions(st, t));
+    return out;
+  }
+  /** A world's regions on the frame: the world itself, then each thing its kit says it draws (regionsAt), through the world's view. */
+  function worldRegions(world, t) {
+    const out = [{box: through(world.view, [0, 0, 1600, 900]), path: world.path, label: `the ${world.w.kit} world`}];
+    for (const r of world.w.instance.regionsAt?.(Math.min(t, world.until)) ?? []) out.push({box: through(world.view, r.box), path: `${world.path}.${r.path}`, label: r.label ?? '', ...(r.name ? {name: r.name} : {})});
+    return out;
+  }
+  /** One shot's regions at t, on screen or not (a film without a pushIn): its world's, or its stages' on the page. */
+  function shotRegions(shot, t) {
+    const world = shotWorld(shot, t);
+    if (world) return worldRegions(world, t);
+    const out = [];
+    shot.stages.forEach((st, k) => { const next = shot.stages[k + 1]; if (Math.min(k === 0 ? 1 : into(st, t, .2, .45), next ? 1 - into(next, t, .65, .45) : 1) > 0) out.push(...stageRegions(st, t)); });
     return out;
   }
   /**
    * The box of the one thing called `name` at t (a kit names things in its regions: regionsAt → {name}),
    * for a push that frames it (notes.mjs · FRAMINGS). Nothing by that name, or two, refuses.
    */
-  function named(name, t) {
-    const regions = regionsUnder(t), hits = regions.filter(r => r.name === name);
+  const named = (name, t) => namedIn(regionsUnder(t), name, t);
+  function namedIn(regions, name, t) {
+    const hits = regions.filter(r => r.name === name);
     if (hits.length === 1) return hits[0].box;
     if (hits.length > 1) throw new Error(`${hits.length} things are called "${name}" at ${t.toFixed(2)} s; a name frames one thing`);
     const names = [...new Set(regions.map(r => r.name).filter(Boolean))];
@@ -633,6 +648,31 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
 
   // A push on a named thing reads the worlds' regions, so every world is ready first (its images decoded).
   await readyWorlds(readies);
+  // An entrance that goes through a named thing (transitions.mjs · regions) finds it once, here: in the picture
+  // it leaves at the change's first moment, in the one it arrives at at its last. The draw reads these boxes,
+  // so a frame stays a pure function of time; a name the picture does not have refuses, naming the ones it has.
+  if (!push) shots.forEach((shot, j) => {
+    const en = shot.enter;
+    if (!j || !en.regions) return;
+    const st = shot.stages[0] ?? stages.find(s => s.world === shot.world), where = `stage ${st.scene}`, want = en.regions(en.p);
+    const t0 = Math.max(0, shot.start - en.lead), t1 = Math.min(clock.total, t0 + en.seconds);
+    const names = side => {
+      const list = want?.[side] ?? [];
+      if (!Array.isArray(list) || !list.every(n => typeof n === 'string' && n.trim())) throw new Error(`${where}: the ${en.type}'s regions(p) must return {from?: [names], to?: [names]}`);
+      return list;
+    };
+    const find = (side, sh, t) => Object.freeze(Object.fromEntries(names(side).map(name => [name, entranceBox(sh, name, t, {where, type: en.type, side})])));
+    entranceBoxes.set(shot, Object.freeze({from: find('from', shots[j - 1], t0), to: find('to', shot, t1)}));
+  });
+  /** The box of the thing an entrance names, in the picture it leaves (side 'from') or arrives at ('to'), at t; it must be on the frame. */
+  function entranceBox(shot, name, t, {where, type, side}) {
+    const picture = side === 'from' ? 'the picture it leaves' : 'the picture it arrives at';
+    let box;
+    try { box = namedIn(shotRegions(shot, t), name, t); } catch (err) { throw new Error(`${where}: the ${type} looks for "${name}" in ${picture}, and ${err.message}`); }
+    const w = Math.min(1600, box[2]) - Math.max(0, box[0]), h = Math.min(900, box[3]) - Math.max(0, box[1]);
+    if (!(w >= 4 && h >= 4)) throw new Error(`${where}: the ${type} goes through "${name}" in ${picture}, which is not on the frame at ${t.toFixed(2)} s (its box is [${box.map(n => Math.round(n)).join(', ')}])`);
+    return Object.freeze([...box]);
+  }
   const pushes = placePushes(notes.pushes, {clock, speed: notes.speed, changes: pictureChanges(), spotlight: spotlightAt, total: clock.total, named});
 
   // The notes as applied, in the order written: the making-of record says what each one changed.

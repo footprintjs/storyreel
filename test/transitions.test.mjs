@@ -11,17 +11,23 @@ const solid = ([r, g, b]) => c => { c.fillStyle = `rgb(${r},${g},${b})`; c.fillR
 const theme = loadTheme('paper');
 const near = (got, want, tol = 12) => want.every((v, i) => Math.abs(got[i] - v) <= tol);
 
+/** Where the things a transition looks for are, for the ones that go through a thing: a box on each picture. */
+const THING = {from: [1000, 300, 1200, 500], to: [300, 200, 700, 600]};
+const boxesFor = (en, boxes = THING) => { const want = en.regions?.(en.p) ?? {}, all = (names, box) => Object.fromEntries((names ?? []).map(n => [n, box])); return {from: all(want.from, boxes.from), to: all(want.to, boxes.to)}; };
+/** A transition by name, with a thing to go through when it needs one. */
+const named = name => (TRANSITIONS[name].params?.region ? {type: name, region: 'thing'} : name);
+
 /** One transition drawn alone at e, red leaving and blue arriving; returns the canvas and a pixel reader. */
-function drawn(enter, e, {scale = 1} = {}) {
+function drawn(enter, e, {scale = 1, boxes} = {}) {
   const en = readEntrance(enter, 'test'), c = createCanvas(1600 * scale, 900 * scale), ctx = c.getContext('2d'), ghost = ghostPainter();
   ctx.scale(scale, scale);
-  en.draw(ctx, {e, from: solid(RED), to: solid(BLUE), p: en.p, ghost: (alpha, paint) => ghost(ctx, alpha, paint), theme});
+  en.draw(ctx, {e, from: solid(RED), to: solid(BLUE), p: en.p, ghost: (alpha, paint) => ghost(ctx, alpha, paint), theme, boxes: boxesFor(en, boxes)});
   return {ctx, px: (x, y) => [...ctx.getImageData(Math.round(x * scale), Math.round(y * scale), 1, 1).data]};
 }
 
 test('the collection: every family a video editor groups by, each transition with its default length, ease and sound', () => {
-  assert.deepEqual(TRANSITION_NAMES, ['cut', 'fade', 'dip', 'wipe', 'split', 'clock', 'iris', 'push', 'slide', 'whip', 'zoom', 'page']);
-  assert.deepEqual([...new Set(Object.values(TRANSITIONS).map(t => t.family))], ['cut', 'dissolve', 'wipe', 'iris', 'motion', 'zoom', 'page']);
+  assert.deepEqual(TRANSITION_NAMES, ['cut', 'fade', 'dip', 'wipe', 'split', 'clock', 'iris', 'push', 'slide', 'whip', 'zoom', 'page', 'through', 'match']);
+  assert.deepEqual([...new Set(Object.values(TRANSITIONS).map(t => t.family))], ['cut', 'dissolve', 'wipe', 'iris', 'motion', 'zoom', 'page', 'match']);
   // The five that shipped first keep their lengths and sounds (the pixel pins hold their pictures).
   for (const [name, seconds, sound] of [['fade', .8, null], ['wipe', .8, 'slide'], ['iris', .8, 'slide'], ['page', 1.1, 'slide']]) {
     const en = readEntrance(name, 'test');
@@ -34,7 +40,7 @@ test('the collection: every family a video editor groups by, each transition wit
 
 test('every transition covers the whole frame at every moment and leaves the canvas as it found it', () => {
   for (const name of TRANSITION_NAMES.filter(n => n !== 'cut')) for (const e of [0, .03, .3, .5, .7, .97, 1]) {
-    const {ctx, px} = drawn(name, e, {scale: .25});
+    const {ctx, px} = drawn(named(name), e, {scale: .25});
     for (const [x, y] of [[2, 2], [1597, 2], [2, 897], [1597, 897], [800, 450], [400, 225], [1200, 675]]) assert.equal(px(x, y)[3], 255, `${name} at ${e}: (${x}, ${y}) is covered`);
     const m = ctx.getTransform();
     assert.ok(m.a === .25 && m.d === .25 && m.e === 0 && m.f === 0 && ctx.globalAlpha === 1, `${name} at ${e} restores the canvas`);
@@ -84,7 +90,7 @@ test('the shapes: each transition shows the new picture where it should, half wa
 });
 
 test('settings and refusals: each refusal names what the transition takes', () => {
-  assert.throws(() => readEntrance('dissolve', 'stage b'), /stage b: enter must be a transition: cut, fade, dip, wipe, split, clock, iris, push, slide, whip, zoom, page \(not "dissolve"\)/);
+  assert.throws(() => readEntrance('dissolve', 'stage b'), /stage b: enter must be a transition: cut, fade, dip, wipe, split, clock, iris, push, slide, whip, zoom, page, through, match \(not "dissolve"\)/);
   assert.throws(() => readEntrance({type: 'push', at: [1, 2]}, 'stage b'), /enter has unsupported key at \(a push takes seconds, ease, sound, from\)/);
   assert.throws(() => readEntrance({type: 'fade', at: [800, 450]}, 'stage b'), /enter has unsupported key at \(a fade takes seconds, ease, sound\)/);
   assert.throws(() => readEntrance({type: 'push', from: 'north'}, 'stage b'), /enter.from must be left, right, top, bottom/);
@@ -120,7 +126,7 @@ test('a kit adds its own transitions, checked like the built-in ones; names neve
   bad(curtain, /has a built-in transition's name/, 'wipe');
   assert.throws(() => transitionCatalog([{name: 'a', transitions: {curtain}}, {name: 'b', transitions: {curtain}}]), /the kit "a" already has a transition named "curtain"/);
   bad(curtain, /one word in camelCase/, 'Big-Curtain');
-  bad({...curtain, draw: undefined}, /needs draw\(ctx, \{e, from, to, p, ghost, theme\}\)/);
+  bad({...curtain, draw: undefined}, /needs draw\(ctx, \{e, from, to, p, ghost, theme, boxes\}\)/);
   bad({...curtain, colour: 1}, /has unsupported key colour/);
   bad({...curtain, family: ''}, /needs a family/);
   bad({...curtain, seconds: 9}, /seconds must be between 0.2 and 3/);
@@ -164,7 +170,7 @@ test('in a film: a kit\'s transition is named like a built-in one', async () => 
   assert.deepEqual(pixel(f, b - .75 + .5, 100, 450), [0x7a, 0x10, 0x20], 'the curtain closed half way through');
   assert.deepEqual(pixel(f, b + .3, 800, 450), BLUE);
   assert.ok(f.sounds.some(s => s.type === 'whoosh' && Math.abs(s.time - (b - .75)) < 1e-9));
-  await assert.rejects(film('curtain'), /stage b: enter must be a transition: cut, fade, dip, wipe, split, clock, iris, push, slide, whip, zoom, page \(not "curtain"\)/);
+  await assert.rejects(film('curtain'), /stage b: enter must be a transition: cut, fade, dip, wipe, split, clock, iris, push, slide, whip, zoom, page, through, match \(not "curtain"\)/);
 });
 
 test('the transitions sheet: a row per transition, a still per moment, as a PNG', async () => {
@@ -175,4 +181,77 @@ test('the transitions sheet: a row per transition, a still per moment, as a PNG'
   assert.equal(width, 900); assert.equal(height, 10 + (TRANSITION_NAMES.length - 1) * (cell + 10), 'every transition but the cut');
   const withKit = await transitionSheet({width: 900, catalog: transitionCatalog([{name: 'stage', transitions: {curtain}}])});
   assert.equal(withKit.readUInt32BE(20), height + cell + 10, 'a kit\'s transitions show too');
+});
+
+// Through and match: transitions that go through a named thing (transitions.mjs · regions, boxes).
+const WHITE = [255, 255, 255], YELLOW = [255, 255, 0];
+/** A picture in one colour with a box of another where its thing is. */
+const withThing = (color, box, thing) => c => { solid(color)(c); c.fillStyle = `rgb(${thing.join(',')})`; c.fillRect(box[0], box[1], box[2] - box[0], box[3] - box[1]); };
+function drawnWith(enter, e, {from, to, boxes = THING}) {
+  const en = readEntrance(enter, 'test'), c = createCanvas(1600, 900), ctx = c.getContext('2d'), ghost = ghostPainter();
+  en.draw(ctx, {e, from, to, p: en.p, ghost: (alpha, paint) => ghost(ctx, alpha, paint), theme, boxes: boxesFor(en, boxes)});
+  return {hash: () => [...ctx.getImageData(0, 0, 1600, 900).data].join(), px: (x, y) => [...ctx.getImageData(x, y, 1, 1).data.slice(0, 3)]};
+}
+const plain = paint => { const c = createCanvas(1600, 900), ctx = c.getContext('2d'); paint(ctx); return [...ctx.getImageData(0, 0, 1600, 900).data].join(); };
+
+test('through: the camera goes through a thing in the old picture, and the new picture is what was inside it', () => {
+  const from = withThing(RED, THING.from, WHITE), to = solid(BLUE), at = (e, x, y) => drawnWith({type: 'through', region: 'window'}, e, {from, to}).px(x, y);
+  assert.equal(drawnWith({type: 'through', region: 'window'}, 0, {from, to}).hash(), plain(from), 'its first moment: the old picture, exactly');
+  assert.equal(drawnWith({type: 'through', region: 'window'}, 1, {from, to}).hash(), plain(to), 'its last: the new one, exactly');
+  assert.deepEqual(at(.3, 1100, 400), BLUE, 'the new picture shows inside the opening');
+  assert.deepEqual(at(.3, 100, 100), RED, 'outside it, the old picture');
+  // The zoom leaves one point still (here near the window's right edge, as the window sits right of centre), so the opening grows leftward.
+  assert.deepEqual(at(0, 900, 400), RED); assert.deepEqual(at(.5, 900, 400), BLUE, 'the camera zooms in: the opening grows past where it was');
+  assert.throws(() => readEntrance('through', 'stage b'), /stage b: a through needs enter.region: the name of a thing in the picture/);
+  assert.throws(() => readEntrance({type: 'through', region: ''}, 'stage b'), /enter.region must be the name of a thing in the picture/);
+  assert.deepEqual(readEntrance({type: 'through', region: 'window'}, 'x').regions({region: 'window'}), {from: ['window']});
+  // An opening about the frame's size: nothing to zoom through; it widens to the frame and still ends exactly.
+  const wide = {from: [0, 300, 1600, 600], to: THING.to};
+  assert.equal(drawnWith({type: 'through', region: 'band'}, 1, {from, to, boxes: wide}).hash(), plain(to));
+  assert.deepEqual(drawnWith({type: 'through', region: 'band'}, .3, {from, to, boxes: wide}).px(800, 450), BLUE);
+});
+
+test('match: a thing in the old picture becomes the same thing in the new one, meeting it half way', () => {
+  const from = withThing(RED, THING.from, WHITE), to = withThing(BLUE, THING.to, YELLOW), match = e => drawnWith({type: 'match', region: 'ring'}, e, {from, to});
+  assert.equal(match(0).hash(), plain(from), 'its first moment: the old picture, exactly');
+  assert.equal(match(1).hash(), plain(to), 'its last: the new one, exactly');
+  // Half way the two things meet: between their centres, at 1.3 times the larger one's size, the old thing's white dissolves into the new one's yellow.
+  const [ax, ay] = [1100, 400], [bx, by] = [500, 400], meet = match(.5).px((ax + bx) / 2, (ay + by) / 2);
+  assert.ok(meet[0] > 240 && meet[1] > 240 && meet[2] > 100 && meet[2] < 160, `where they meet, both things at once (${meet})`);
+  const named = readEntrance({type: 'match', region: 'ring', into: 'loop'}, 'x');
+  assert.deepEqual(named.regions(named.p), {from: ['ring'], to: ['loop']}, 'into: the thing\'s name in the new picture');
+  const same = readEntrance({type: 'match', region: 'ring'}, 'x');
+  assert.deepEqual(same.regions(same.p), {from: ['ring'], to: ['ring']}, 'the same name in both, by default');
+  assert.throws(() => readEntrance({type: 'match', into: 'loop'}, 'stage b'), /a match needs enter.region/);
+});
+
+// Worlds that name a thing: a window in the red one; a ring in the blue one that moves right 100 px a second.
+const namer = (name, color, things) => ({name, story: {compile: () => ({hang: 1, spotAt: () => null, sounds: [],
+  draw: c => { c.fillStyle = color; c.fillRect(0, 0, 1600, 900); }, regionsAt: t => things(t)})}});
+const thingKits = [namer('red', '#ff0000', () => [{box: [1000, 300, 1200, 500], path: 'window', name: 'window'}, {box: [1700, 0, 1800, 100], path: 'gone', name: 'gone'}]),
+  namer('blue', '#0000ff', t => [{box: [100 * t, 200, 100 * t + 400, 600], path: 'ring', name: 'ring'}]), world('green', '#00ff00')];
+const thingFilm = (enter, more = []) => compileFilm({storyboard, timings, root, kits: [...thingKits, ...more], recipe: {story: {kit: 'red'}, stages: [
+  {type: 'world', scene: 'b', enter, world: {kit: 'blue'}}, {type: 'world', scene: 'c', enter: 'cut', world: {kit: 'green'}}]}});
+
+test('in a film: the things are found once, where the change starts and ends, and a name the picture lacks refuses', async () => {
+  const seen = [];
+  const spy = {family: 'test', seconds: 1, ease: 'linear', sound: null, params: {region: {name: true}, into: {name: true, default: null}},
+    regions: p => ({from: [p.region], to: [p.into]}), draw(ctx, {e, from, to, boxes}) { seen.push(boxes); (e < .5 ? from : to)(ctx); }};
+  const f = await thingFilm({type: 'spy', region: 'window', into: 'ring'}, [{name: 'spies', transitions: {spy}}]), b = f.clock.start('b'), t0 = b - .75, t1 = t0 + 1;
+  pixel(f, t0 + .5, 800, 450);
+  assert.deepEqual(seen.at(-1).from, {window: [1000, 300, 1200, 500]}, 'the old picture\'s thing, where the change starts');
+  assert.ok(Math.abs(seen.at(-1).to.ring[0] - 100 * t1) < 1e-6, 'the new picture\'s thing, where the change ends (it moves; the box is its last place)');
+  pixel(f, t0 + .1, 800, 450);
+  assert.deepEqual(seen.at(-1), seen.at(-2), 'the same boxes at every moment of the change: a frame is a pure function of time');
+  const through = await thingFilm({type: 'through', region: 'window'});
+  assert.deepEqual(pixel(through, t0 + .3 * 1.2, 1100, 400), BLUE, 'through the red world\'s window into the blue one');
+  assert.deepEqual(pixel(through, t0 + .05, 100, 100), RED);
+  await assert.rejects(thingFilm({type: 'through', region: 'door'}), /stage b: the through looks for "door" in the picture it leaves, and nothing in the picture is called "door" at [\d.]+ s; the names there are window, gone/);
+  await assert.rejects(thingFilm({type: 'match', region: 'window'}), /stage b: the match looks for "window" in the picture it arrives at, and nothing in the picture is called "window"/);
+  await assert.rejects(thingFilm({type: 'through', region: 'gone'}), /stage b: the through goes through "gone" in the picture it leaves, which is not on the frame at [\d.]+ s \(its box is \[1700, 0, 1800, 100\]\)/);
+  assert.ok((await thingFilm({type: 'match', region: 'window', into: 'ring'})).total > 0);
+  const liar = {...spy, regions: () => ({from: 'window'})};
+  await assert.rejects(thingFilm({type: 'liar', region: 'window'}, [{name: 'liars', transitions: {liar}}]), /the liar's regions\(p\) must return \{from\?: \[names\], to\?: \[names\]\}/);
+  assert.throws(() => transitionCatalog([{name: 'k', transitions: {spy: {...spy, regions: ['window']}}}]), /regions must be p => \(\{from\?: \[names\], to\?: \[names\]\}\)/);
+  assert.throws(() => transitionCatalog([{name: 'k', transitions: {spy: {...spy, params: {region: {name: true, default: 3}}}}}]), /enter.region must be the name of a thing in the picture/);
 });
