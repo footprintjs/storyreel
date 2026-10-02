@@ -17,3 +17,15 @@ export function tooMuchTooFast(shots: {path: string; where: string; moments: num
 export function watchingMode(value: unknown): 'report' | 'refuse';
 /** One finding in words. */
 export function watchingText(finding: Watching): string;
+/** A read's limits: `min` (the least time it needs) by default, and the range it may be (seconds). */
+export const READS: {readonly min: number; readonly least: number; readonly most: number};
+/** A declared read: what the viewer must take in, on a phrase, with the least time it needs, about a named thing. */
+export interface ReadSpec { what: string; at: import('../index.js').Beat; min: number; region?: string }
+/** A shot's reads, checked (an unknown key, an empty `what`, a `min` outside READS refuse); [] when none are given. */
+export function readReads(value: unknown, where: string): ReadSpec[];
+/**
+ * A shot's timed reads (t: when each starts) checked against the shot (from: when it starts to arrive; to: when it
+ * starts to leave): one before or after the shot, two at once, or one the shot leaves before it lands. Returns them
+ * in time order, each as given, with a `problem` where there is one.
+ */
+export function checkReads<R extends {what: string; t: number; min: number}>(reads: R[], options: {from?: number; to: number; where: string}): (R & {problem?: string})[];

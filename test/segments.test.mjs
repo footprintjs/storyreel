@@ -4,13 +4,13 @@
 // makeFilm runs each segment as its own subflow.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, readFileSync, writeFileSync, readdirSync} from 'node:fs';
+import {mkdtempSync, readFileSync, writeFileSync, readdirSync, cpSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {compileFilm, evenTimings, paceTimings, renderFilm, makeFilm, wholeVideo, cartoonKit} from '../src/index.mjs';
-import {planSegments, segmentKey, segmentedVideo, folderStore, codeFingerprint, sampleMoments} from '../src/segments.mjs';
+import {planSegments, segmentKey, segmentedVideo, folderStore, codeFingerprint, sampleOffsets} from '../src/segments.mjs';
 
 const dir = fileURLToPath(new URL('../examples/worlds/', import.meta.url)), read = f => JSON.parse(readFileSync(dir + f, 'utf8'));
 /** The worlds example (four rows: the story, then three worlds by fade, wipe and iris), its first scene `longer` seconds longer. */
@@ -40,7 +40,7 @@ test('the plan covers every frame once, splits where a picture starts to arrive,
   const coarse = planSegments(film, {fps: 30, minSeconds: 10});
   assert.ok(coarse.length < plan.length, 'rows under 10 s join their neighbours');
   assert.equal(coarse.at(-1).f1, plan.at(-1).f1); coarse.forEach((s, i) => { if (i) assert.equal(s.f0, coarse[i - 1].f1); });
-  assert.deepEqual(sampleMoments({f0: 0, f1: 3}, {fps: 10, count: 6}), [0, .1, .2], 'a short segment samples each of its frames once');
+  assert.deepEqual(sampleOffsets({f0: 30, f1: 33}, 6), [0, 1, 2], 'a short segment samples each of its frames once, by its place in the segment');
 });
 
 test('a segment keeps its key when only an earlier scene grows, and changes when its own shot changes', async () => {
@@ -106,4 +106,68 @@ test('makeFilm runs each segment as its own subflow and records which were drawn
   assert.equal(record.picture.strategy, 'segments');
   assert.deepEqual([record.picture.reused, record.picture.rendered], [4, 0]);
   assert.ok(record.pipeline.filter(e => /picture part/.test(e.text ?? '')).length >= 4, 'each segment is a subflow in the footprintjs narrative');
+});
+
+// Review 2026-10-02: what a key must hold, a plan with no overlap, a check that sees what the video shows.
+test('a long entrance that starts before the row ahead of it: segments still cover every frame once, in order', async () => {
+  const {film} = await worlds(), rows = film.rows.map((r, j) => (j === 2 ? {...r, from: film.rows[1].from - 1} : r));
+  const plan = planSegments({...film, rows}, {fps: 10, minSeconds: .1});
+  assert.equal(plan[0].f0, 0); plan.forEach((s, i) => { assert.ok(s.f1 > s.f0); if (i) assert.equal(s.f0, plan[i - 1].f1); });
+  assert.equal(plan.at(-1).f1, Math.ceil(film.total * 10));
+  assert.ok(plan.some(s => s.paths.includes(film.rows[1].paths[0]) || s.before?.includes(film.rows[1].paths[0])), 'the row it took over from is drawn by a segment');
+  const blurred = planSegments(film, {fps: 10, blur: true});
+  assert.ok(blurred.slice(1).every(s => s.before), 'with motion blur, a segment starting at a cut draws the row before it too');
+});
+
+test('a key holds what reaches its frames: the guess card over it, the strings, every file the film read', async () => {
+  const a = await worlds(), ka = keysOf(a), guessed = planSegments(a.film, {fps: 10}).findIndex(s => s.from < a.film.overlays[0].to && s.to > a.film.overlays[0].from);
+  const answer = structuredClone(a.recipe); answer.guesses[0].answer = 'Four sheep.';
+  const kb = keysOf(await worlds({recipe: answer}));
+  assert.notEqual(kb[guessed], ka[guessed], 'the guess card\'s answer is in the key of the segment it is drawn over');
+  assert.equal(kb.filter((k, i) => k !== ka[i]).length, 1, 'and only there');
+  const storyboard = read('storyboard.json'), timings = paceTimings(storyboard, evenTimings(storyboard, {tail: .8}), read('pacing.json'));
+  const withStrings = async strings => compileFilm({storyboard, timings, recipe: a.recipe, kits: [cartoonKit], root: dir, strings});
+  const reworded = await withStrings({...read('strings/en.json'), 'valley.caption': 'They all came back.'});
+  assert.notDeepEqual(keysOf({film: reworded, recipe: a.recipe, storyboard}), ka, 'a string\'s text is in the keys');
+  const copy = mkdtempSync(path.join(tmpdir(), 'storyreel-files-')); cpSync(dir, copy, {recursive: true});
+  writeFileSync(path.join(copy, 'count.ts'), readFileSync(path.join(copy, 'count.ts'), 'utf8') + '\n// one more line\n');
+  const edited = await compileFilm({storyboard, timings, recipe: a.recipe, kits: [cartoonKit], root: copy, strings: read('strings/en.json')});
+  assert.deepEqual(Object.keys(edited.inputs.files), ['count.ts']);
+  assert.notDeepEqual(keysOf({film: edited, recipe: a.recipe, storyboard}), ka, 'a code file the film shows is in the keys');
+});
+
+test('the default joiner runs the render\'s own FFmpeg, and an FFmpeg that cannot start is a refusal, not a crash', async () => {
+  const {film, storyboard, timings, recipe} = await worlds(), top = mkdtempSync(path.join(tmpdir(), 'storyreel-seg-'));
+  assert.throws(() => segmentedVideo({store: folderStore(top), recipe}).join({dir: top, ffmpeg: 'no-such-ffmpeg-here'}, [{file: 'a.mp4'}]), /no-such-ffmpeg-here/);
+  await assert.rejects(renderFilm({film, storyboard, timings, out: path.join(top, 'x', 'film.mp4'), width: 160, height: 90, fps: 5, ffmpeg: '/no/such/ffmpeg'}), /could not encode film-video.mp4/);
+});
+
+test('segments: a moved segment is reused only when its frames did not move with the clock; a file cut short is drawn again', {skip: has('ffmpeg') && has('ffprobe') ? false : 'needs ffmpeg and ffprobe'}, async () => {
+  const top = mkdtempSync(path.join(tmpdir(), 'storyreel-seg-')), store = folderStore(path.join(top, 'cache'));
+  const render = async (name, made) => renderFilm({film: made.film, storyboard: made.storyboard, timings: made.timings, out: path.join(top, name, 'film.mp4'), width: 320, height: 180, fps: 10, video: segmentedVideo({store, recipe: made.recipe, code: 'kits'})});
+  await render('a', await worlds());
+  // The first scene one second longer (ten whole frames): every later segment moves.
+  const moved = await render('b', await worlds({longer: 1}));
+  // Segment 1 holds the grown scene's words (its key changed); 2 and 3 kept their keys and moved.
+  const [, , wipe, iris] = moved.video.segments;
+  assert.equal(wipe.status, 'rendered'); assert.match(wipe.why, /it moved, and its frames moved with the film's clock/, 'the wipe draws the cartoon, whose clouds drift on the film clock');
+  assert.equal(iris.status, 'reused', 'the iris into the whiteboard does not: moved, it is the same picture');
+  // A cached file cut short (a copy that failed half way) is never reused.
+  const kept = readdirSync(path.join(top, 'cache')).filter(f => f.endsWith('.mp4'))[0], file = path.join(top, 'cache', kept);
+  writeFileSync(file, readFileSync(file).subarray(0, 1000));
+  const again = await render('c', await worlds({longer: 1}));
+  assert.ok(again.video.segments.some(s => s.key === kept.replace('.mp4', '') && s.status === 'rendered'), 'the cut-short segment is drawn again');
+});
+
+test('a pushIn film\'s one segment holds its push-in and card; a teaser\'s segment holds every row it rewinds through', async () => {
+  const {compileExample} = await import('./golden.mjs'), example = n => JSON.parse(readFileSync(fileURLToPath(new URL(`../examples/${n}/recipe.json`, import.meta.url)), 'utf8'));
+  const key = async (name, recipe) => { const film = await compileExample(name, {recipe}); return planSegments(film, {fps: 10}).map(seg => segmentKey(film, seg, {recipe, pixels, code: 'kits', fps: 10})); };
+  const hello = example('hello'), caption = structuredClone(hello); caption.pushIn.caption = 'A different caption.';
+  assert.notDeepEqual(await key('hello', caption), await key('hello', hello), 'the push-in\'s caption is in the key');
+  const recap = example('recap'), story = structuredClone(recap), item = story.story.items.findIndex(i => i.dur !== undefined);
+  story.story.items[item].dur += .2;
+  const [was, now] = [await key('recap', recap), await key('recap', story)];
+  assert.notEqual(now.at(-1), was.at(-1), 'the teaser rewinds through the story, so its segment changes with it');
+  const {wholeVideo: fromSegments} = await import('../src/segments.mjs');
+  assert.equal(typeof fromSegments, 'function', 'wholeVideo is on the segments subpath, as its types say');
 });

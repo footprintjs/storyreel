@@ -7,7 +7,7 @@ export {makeClock, ramp, speechIndex, phraseMatches, evenTimings, directionTimin
 export {renderFilm, wholeVideo} from './render.mjs';
 export {segmentedVideo, folderStore, ffmpegJoin, planSegments, segmentKey, codeFingerprint} from './segments.mjs';
 export {makeFilm} from './pipeline.mjs';
-export {approveFilm, checkApproval, filmHashes} from './approval.mjs';
+export {approveFilm, checkApproval} from './approval.mjs';
 export {applyPacing, validatePacing, tailFor, paceTimings} from './pacing.mjs';
 export {withStrings} from './strings.mjs';
 export {createMotionSound as createSound} from './sound.mjs';

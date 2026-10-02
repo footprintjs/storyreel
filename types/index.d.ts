@@ -165,6 +165,8 @@ export interface Clock {
   locate(t: number): {index: number; id: string; time: number};
   /** The words said in a scene, on the whole-lesson clock (none in a silent scene). */
   words(scene: string): {text: string; start: number; end: number}[];
+  /** The words to show for scene i (captions), on the scene's own clock: each number slot's spoken run collapsed back into its digits, where the slot is. */
+  shownWords(i: number): {text: string; start: number; end: number}[];
   /** Who is saying a word at t (the scene's `speaker`, or null), or null between words: for a talking mouth. */
   speaking(t: number): {scene: string; speaker: string | null; word: string; start: number; end: number} | null;
   /** Every character's turn to speak (a scene with a `speaker`, first said word to last), in order. */
@@ -215,6 +217,10 @@ export interface Film {
    * first row). A film with a pushIn is one row (`pushIn: true`).
    */
   rows: FilmRow[];
+  /** What is drawn over every shot for a while: the guess cards ({path: 'guesses[n]', from, to}). */
+  overlays: readonly {path: string; from: number; to: number}[];
+  /** What the film was made from, hashed: its storyboard, timings, recipe, strings, data, theme and every file it read through its root. */
+  inputs: FilmInputs;
   /** The recipe's poster frame (seconds), or null. */
   posterAt: number | null;
   /** Stills worth checking: each settled picture and each change half way. */
@@ -398,42 +404,48 @@ export interface SegmentJoiner { name: string; join(files: string[], out: string
 export function wholeVideo(): VideoStrategy;
 /**
  * Re-render only what changed: the film in segments (one per row of pictures, rows shorter than minSeconds joined),
- * each kept in the store under a key built from everything that draws it, reused when its key AND a spot check of
- * `samples` frames match, drawn again otherwise (or when `force` names it: an index or a scene id), then joined.
- * The sound is mixed for the whole film each time. An intro or a part (from, to) refuses: use wholeVideo().
+ * each kept in the store under a key built from what draws it (its entries, the guess cards over it, its lines, words
+ * and notes, film.inputs, the frame settings, the code), reused when its key AND a spot check of `samples` frames —
+ * painted as the video shows them, at the same places in the segment — match, drawn again otherwise (or when `force`
+ * names it: an index or a scene id), then joined (by default with the render's own FFmpeg). The sound is mixed for
+ * the whole film each time. An intro or a part (from, to) refuses: use wholeVideo().
  */
-export function segmentedVideo(options: {store: SegmentStore; recipe: Recipe; code?: string | null; joiner?: SegmentJoiner; force?: (number | string)[]; samples?: number; minSeconds?: number; sampleWidth?: number; parallel?: number}): VideoStrategy;
-/** Keep segments as <key>.mp4 + <key>.json in one folder. */
+export function segmentedVideo(options: {store: SegmentStore; recipe: Recipe; code?: string | null; joiner?: SegmentJoiner | null; force?: (number | string)[]; samples?: number; minSeconds?: number; parallel?: number}): VideoStrategy;
+/** Keep segments as <key>.mp4 + <key>.json in one folder; a segment lands whole or not at all, and a file cut short is never reused. */
 export function folderStore(dir: string): SegmentStore;
 /** Join segment files with FFmpeg's concat demuxer, without re-encoding. */
 export function ffmpegJoin(options?: {ffmpeg?: string}): SegmentJoiner;
-/** One planned segment: frames [f0, f1), seconds [from, to), the recipe entries that draw it, the row an entrance also draws, the scenes it covers. */
+/** One planned segment: frames [f0, f1), seconds [from, to), the recipe entries that draw it, the row an entrance (or a blurred cut) also draws, the scenes it covers. */
 export interface Segment { index: number; f0: number; f1: number; from: number; to: number; paths: string[]; before: string[] | null; scenes: string[] }
-/** The film's segments: one per row of pictures, on whole frames, covering every frame once. */
-export function planSegments(film: Film, options?: {fps?: number; frames?: number; minSeconds?: number}): Segment[];
-/** A segment's cache key (on its own clock, so it keeps still when only an earlier scene moves). */
+/** The film's segments: one per row of pictures, on whole frames, covering every frame once and in order (a row that never shows alone joins the next); `blur`: frames are drawn with motion blur. */
+export function planSegments(film: Film, options?: {fps?: number; frames?: number; minSeconds?: number; blur?: boolean}): Segment[];
+/** A segment's cache key (on its own clock, so a segment further on keeps it when an earlier scene grows by whole frames). */
 export function segmentKey(film: Film, segment: Segment, options: {recipe: Recipe; storyboard?: Storyboard | null; pixels: Record<string, unknown>; code?: string | null; fps?: number; margin?: number; extra?: {poster?: unknown; recalls?: unknown}}): string;
 /** A fingerprint of drawing code: every file under the folders given, hashed in path order. */
 export function codeFingerprint(paths: string[], options?: {extensions?: string[]}): string;
 
-/** What a person approved: who, when, and hashes of the storyboard, the recipe, the pacing and (with a voice) the voice. */
-export interface Approval { schemaVersion: 1; approved: string; by: string; note?: string; hashes: {storyboard: string; recipe: string; pacing: string; voice?: string} }
-/** Approve a film as it is now (keys are sorted before hashing: reformatting changes nothing). */
-export function approveFilm(options: {storyboard: Storyboard; recipe: Recipe; pacing?: Pacing | null; narrationDir?: string | null; by: string; note?: string | null; at?: Date}): Approval;
-/** Whether the film is still what was approved, and which parts changed. */
-export function checkApproval(approval: Approval, inputs: {storyboard: Storyboard; recipe: Recipe; pacing?: Pacing | null; narrationDir?: string | null}): {ok: boolean; changed: string[]};
-/** The hashes an approval locks. */
-export function filmHashes(inputs: {storyboard: Storyboard; recipe: Recipe; pacing?: Pacing | null; narrationDir?: string | null}): Approval['hashes'];
+/** What a film was made from, hashed (keys sorted first: reformatting changes nothing): film.inputs, and makeFilm adds the pacing, the voice and the kits' code. */
+export interface FilmInputs { storyboard: string; timings: string; recipe: string; strings: string | null; data: string | null; theme: string;
+  /** Every file the film read through its root, by its path from the root. */
+  files: Readonly<Record<string, string>>; pacing?: string; voice?: string; code?: string }
+/** What a person approved: who, when, the render they watched, and what it was made from. */
+export interface Approval { schemaVersion: 2; approved: string; by: string; note?: string; render?: string; inputs: FilmInputs }
+/** Approve a render as it was watched, from its making-of record (the path of its making-of.json, or the object). */
+export function approveFilm(options: {record: string | {inputs: FilmInputs; out?: string}; by: string; note?: string | null; at?: Date}): Approval;
+/** Whether a film is still what was approved: {ok, changed} — which inputs differ, a file named by its path. */
+export function checkApproval(approval: Approval, inputs: FilmInputs): {ok: boolean; changed: string[]};
 
 /** makeFilm's options; `K` is the kits it takes (two signatures, as compileFilm). */
 export interface MakeFilmOptions<K = Kit | ContextKit> {
   storyboard: Storyboard; recipe: Recipe; data?: unknown; kits?: K[]; theme?: string | Record<string, unknown>; root?: string; hostKeys?: string[];
   narrationDir?: string | null; timings?: Timings | null; pacing?: Pacing | null; strings?: Record<string, string> | null; lang?: string | null;
   out: string; render?: Record<string, unknown>;
-  /** Refuse to render anything but what this approval locked (the record keeps who approved it, and when). */
+  /** Refuse to render anything but what this approval locked: anything the film is made from, changed since (the record keeps who approved it, when, and what is not locked). */
   approval?: Approval | null;
-  /** The voice folder's word-check.json: 'report' (the default: the record lists low and unheard words) or 'refuse' (a word not heard refuses). */
+  /** The voice folder's word-check.json: 'report' (the default: the record lists low and unheard words) or 'refuse' (a word not heard refuses, and so does a missing or stale check). */
   voiceCheck?: 'report' | 'refuse';
+  /** A fingerprint of the kits' drawing code (codeFingerprint): kept in the record's inputs, so an approval locks the code too. */
+  code?: string | null;
 }
 export function makeFilm(options: MakeFilmOptions<Kit>): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;
 export function makeFilm(options: MakeFilmOptions<Kit | ContextKit>): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;

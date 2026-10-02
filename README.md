@@ -579,18 +579,26 @@ const result = await renderFilm({film, storyboard, timings, narrationDir, out: '
 console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
 ```
 
-- **A key is on the segment's own clock.** It is built from everything that draws the segment, timed from
-  its first frame: its recipe entries (and the shot an entrance also draws), every line they resolved, the
-  words spoken in and around it (captions and mouths), the director's notes over it, the frame settings
-  (size, layout, stamp, motion blur, poster) and the drawing code (StoryReel's own and yours). So a
-  longer scene near the start moves every later segment in time but changes none of their keys: they are
-  reused, shifted.
-- **A reused segment must pass a spot check.** A few of its frames (6 by default, `samples`) are drawn
-  again, small, and their fingerprints must match the ones kept when it was drawn. A change the key
-  missed shows there, and the segment is drawn again (`why` says so).
+- **A key is on the segment's own clock.** It is built from what draws the segment, timed from its first
+  frame: its recipe entries (and the shot an entrance, or a blurred cut, also draws; a push-in film's
+  `pushIn` and `card`; every row a teaser rewinds through), the guess cards over it, every line they
+  resolved, the words spoken in and around it (captions and mouths), the director's notes over it, what
+  reaches every frame — the strings, the data, the theme and every file the film read (`film.inputs`) —
+  the frame settings (size, layout, stamp, motion blur, poster) and the drawing code (StoryReel's own, its
+  fonts and the versions it draws with, and yours). So a scene near the start that grows by whole frames
+  changes the keys of the segments around it, not of the ones further on.
+- **A reused segment must pass a spot check.** A few of its frames (6 by default, `samples`) are painted
+  again exactly as the video shows them (layout, motion blur, stamp, poster) at the same places in the
+  segment, and must match the ones kept when it was drawn. A segment that moved is reused only when its
+  frames did not move with the film's clock: a kit that animates on it (the cartoon's drifting clouds)
+  makes it draw again (`why`: it moved). A key whose frames changed anyway is drawn again, saying the key
+  missed something. Six frames are a spot check, not a proof: a change the key misses that shows only
+  between them is not seen, which is why the key lists what it does and a final render can use
+  `wholeVideo()`.
 - **The sound is never cached.** It is mixed for the whole film on every render (it takes seconds), so it
-  never has a seam; the segments are joined without re-encoding (`ffmpegJoin()`; every segment is encoded
-  with the same settings).
+  never has a seam; the segments are joined without re-encoding (`ffmpegJoin()` with the render's own
+  FFmpeg; every segment is encoded with the same settings). A segment lands in the store whole or not at
+  all, and a file cut short is never reused; when one segment fails, the others stop.
 - **You decide when a part is drawn fresh.** `force: [2, 'race']` draws the third segment and every
   segment covering the scene `race` again, whatever their keys say. A final render for publishing can
   still use `wholeVideo()` (the default): every frame in one pass.
@@ -604,24 +612,28 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
 
 ## Approve a film
 
-A "final" render should be the film someone actually watched. `approveFilm` records what was approved —
-hashes of the storyboard, the recipe, the pacing and (with a voice) every word time and audio file — and
-`makeFilm({…, approval})` refuses to render if any of it changed since, naming the part:
+A "final" render should be the film someone actually watched. Every `makeFilm` render's `making-of.json`
+lists what the film was made from, hashed (`inputs`): the storyboard, the timings, the recipe, the strings,
+the data, the theme, every file the film read through its root, the pacing, the voice's audio, and — when you
+pass `code: codeFingerprint(['film/kits'])` — the kits' drawing code. `approveFilm` takes the record of the
+render the person watched, and `makeFilm({…, approval})` refuses to render anything else, naming what changed:
 
 ```js
 import {approveFilm, makeFilm} from 'footprint-storyreel';
 
-// When the person signs off on the draft they watched:
-writeFileSync('film/approval.json', JSON.stringify(approveFilm({storyboard, recipe, pacing, narrationDir: 'work/voice', by: 'Sanjay', note: 'v12, for the conference'}), null, 2));
+// When the person signs off on the draft they watched (its making-of.json):
+writeFileSync('film/approval.json', JSON.stringify(approveFilm({record: 'out/draft/making-of.json', by: 'Sanjay', note: 'v12, for the conference'}), null, 2));
 
 // The final render: refuses if anything changed since.
-await makeFilm({storyboard, recipe, pacing, narrationDir: 'work/voice', out: 'out/final/film.mp4', approval: JSON.parse(readFileSync('film/approval.json', 'utf8'))});
-// → "The film changed since Sanjay approved it on 2026-10-02: recipe differs from what was approved. …"
+await makeFilm({storyboard, recipe, pacing, narrationDir: 'work/voice', code, out: 'out/final/film.mp4', approval: JSON.parse(readFileSync('film/approval.json', 'utf8'))});
+// → "The film changed since Sanjay approved it on 2026-10-02: the file rule.ts differs from what was approved. …"
 ```
 
 The hashes are of the data, not its spelling (keys are sorted first), so reformatting a file changes
-nothing; a changed word, phrase, number or take does. `making-of.json` keeps the approval it was rendered
-under. A draft is rendered without one.
+nothing; a changed word, phrase, number, file or take does. The check runs once the film is compiled, before
+a frame is drawn. `making-of.json` keeps the approval it was rendered under, and says what an approval does
+not lock: the render settings (the same approved film is made for every platform) and, without a code
+fingerprint, the kits' code. A draft is rendered without one.
 
 ## The compile record
 
@@ -884,7 +896,7 @@ TypeScript types ship with the package: the main entry, `/studio`, and the docum
 8. **Notes change the camera, never the beats.** Every note says what was asked; one the film cannot honour refuses.
 9. **Say what made it.** The making-of record lists every phrase → drawing, every note, every tool, and the compile stage by stage.
 10. **Pinned pixels.** An approved film stays the approved film until a change is meant.
-11. **Draw again only what changed.** A segment is reused only when everything that draws it is unchanged and a spot check of its frames agrees; the sound is mixed whole every time.
+11. **Draw again only what changed.** A segment is reused only when its key — the entries, lines, words, notes, inputs, settings and code that draw it — is unchanged and a spot check of its frames, painted as the video shows them, agrees; the sound is mixed whole every time.
 
 ## Not in this package
 

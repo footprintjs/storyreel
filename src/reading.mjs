@@ -8,7 +8,8 @@ export const READING = Object.freeze({perWord: .3, least: 1});
 /**
  * The letters pace (`"reading": {"pace": "letters"}`): a second and a half to find the line, then a
  * fifteenth of a second a letter — fairer to short labels, which the words pace lets go too soon
- * ("change the picture": 0.9 s by words, 2.7 s by letters).
+ * ("change the picture": 1 s by words — its three words need 0.9 s, and a line gets at least 1 — and
+ * 2.57 s by letters).
  */
 export const LETTERS = Object.freeze({perLetter: 1 / 15, base: 1.5});
 

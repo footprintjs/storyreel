@@ -6,7 +6,7 @@ export interface MoodKey { at: number; mood: string; take?: number }
 export interface ActedMood {
   /** The mood now: the latest key at or before t (the first key's before it). */
   mood: string;
-  /** The mood it is changing from; null when nothing is changing. */
+  /** The mood before the latest change (null before the first change); `u` says how far the change has gone. */
   from: string | null;
   /** How far the change has gone, 0..1 over `fade`: cross-fade colours with it. */
   u: number;
@@ -17,7 +17,7 @@ export interface ActedMood {
   /** 0..1 with a little overshoot: a pose settling into the new mood. */
   settle: number;
 }
-/** A character's mood at t, acted: anticipation, a swap under the squint, a take that settles, a colour cross-fade. Refuses keys out of time order. */
+/** A character's mood at t, acted: anticipation, a swap under the squint, a take that settles, a colour cross-fade. A key that repeats the mood is no change; refuses keys out of time order, two moods at one moment, and changes closer than max(fade, settle). */
 export function moodAt(keys: readonly MoodKey[], t: number, options?: Partial<typeof ACTING>): ActedMood;
 /** What a character does while nothing happens. */
 export interface Idle {
@@ -30,7 +30,7 @@ export interface Idle {
   /** -1..1: a small look aside now and then, 0 most of the time. */
   glance: number;
 }
-/** The idle layer at t: breathe, blink, sway, glance. Give each character its own seed, so no two move in step. */
+/** The idle layer at t: breathe, blink, sway, glance. Give each character its own seed, so no two move in step. Periods are seconds above 0; blinkEvery: Infinity (or blinkFor: 0) never blinks; a blink takes under half of blinkEvery. */
 export function idleAt(t: number, options?: {seed?: number; breath?: number; breathEvery?: number; blinkEvery?: number; blinkFor?: number; sway?: number; swayEvery?: number}): Idle;
 /** A value that follows another `delay` seconds (default 0.15) behind it: the head follows where the eyes went. */
 export function follows<T>(f: (t: number) => T, delay?: number): (t: number) => T;

@@ -177,7 +177,7 @@ function eye(ctx, x, y, r, shut) {
 function drawShepherd(ctx, t, [x, y], {dropping, eureka, m}) {
   // His eureka is acted (acting.mjs): the eyes squint just before it, the face swaps under the squint, the head
   // jumps up and settles. Between changes he breathes and blinks on his own uneven rhythm.
-  const act = moodAt([{at: 0, mood: 'calm'}, ...(eureka ? [{at: Math.max(0, eureka.at), mood: 'surprised'}] : [])], t), idle = idleAt(t, {seed: 1});
+  const act = moodAt(eureka ? (eureka.at > 0 ? [{at: 0, mood: 'calm'}, {at: eureka.at, mood: 'surprised'}] : [{at: 0, mood: 'surprised'}]) : [{at: 0, mood: 'calm'}], t), idle = idleAt(t, {seed: 1});
   const surprised = act.mood === 'surprised', shut = Math.max(idle.blink, act.anticipation), take = act.take;
   const bob = Math.sin(t * 2) * 2;
   ctx.fillStyle = 'rgba(0,0,0,.15)'; ctx.beginPath(); ctx.ellipse(x, y + 4, 60, 12, 0, 0, 7); ctx.fill();

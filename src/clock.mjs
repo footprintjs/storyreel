@@ -58,56 +58,102 @@ function checkSay(scene, name) {
   });
 }
 
+/**
+ * A spoken scene's narration in pieces: the text between slots, and each slot where it sits — found the
+ * way checkSay finds them (each shown text, in order, after the one before). A slot is a POSITION: a
+ * shown text written again elsewhere in the narration is not a slot there.
+ */
+function slotPieces(scene) {
+  const pieces = []; let rest = scene.narration;
+  for (const [shown, said] of scene.say ?? []) {
+    const at = rest.indexOf(shown);
+    if (at < 0) break;
+    pieces.push({text: rest.slice(0, at)}, {shown, said});
+    rest = rest.slice(at + shown.length);
+  }
+  pieces.push({text: rest});
+  return pieces;
+}
+
 /** What the voice says for a scene: its narration with each number slot's spoken words in place of what is shown. */
 export function spokenText(scene) {
   if (!scene.say) return scene.narration;
-  let out = '', rest = scene.narration;
-  for (const [shown, said] of scene.say) { const at = rest.indexOf(shown); out += rest.slice(0, at) + said; rest = rest.slice(at + shown.length); }
-  return out + rest;
-}
-
-/** A phrase as the voice says it: every number slot's shown text in it replaced by its spoken words. */
-export function spokenPhrase(scene, phrase) {
-  let out = String(phrase);
-  for (const [shown, said] of scene?.say ?? []) out = out.split(shown).join(said);
-  return out;
+  return slotPieces(scene).map(p => p.text ?? p.said).join('');
 }
 
 /**
- * The words to show for a scene: its timed words, with each number slot's spoken run collapsed back
- * into what is shown ("sixteen point six seven milliseconds." → "16.67 ms."), timed from the run's first
- * word to its last — so captions show digits while the voice said words.
+ * The scene's slots in letters-and-digits offsets (normSpeech): `shown` is the narration as written,
+ * and each piece maps its range there [n0, n1) to its range in the spoken text [s0, s1) — so a phrase
+ * written with the digits finds the same words as one written as the voice says it.
+ */
+function slotMap(scene) {
+  if (!scene?.say || scene.narration === undefined) return null;
+  let shown = '', n = 0, s = 0; const map = [];
+  for (const p of slotPieces(scene)) {
+    const written = normSpeech(p.text ?? p.shown), spoken = normSpeech(p.text ?? p.said);
+    map.push({n0: n, n1: n + written.length, s0: s, s1: s + spoken.length, slot: p.shown ?? null});
+    shown += written; n += written.length; s += spoken.length;
+  }
+  return {shown, map};
+}
+/** A letters-and-digits offset in the narration as written, in the spoken text; inside a slot it snaps to the slot's edge (a phrase that covers part of a slot covers all of it). */
+function spokenOffset(map, at, end) {
+  for (const m of map) if (at >= m.n0 && at <= m.n1) return !m.slot ? m.s0 + (at - m.n0) : at === m.n0 ? m.s0 : at === m.n1 ? m.s1 : end ? m.s1 : m.s0;
+  return null;
+}
+
+/** Where in `raw` its n-th letter or digit starts (raw.length past the last). */
+function letterStart(raw, n) {
+  let count = 0, at = 0;
+  for (const ch of raw) { const k = normSpeech(ch).length; if (k && count >= n) return at; count += k; at += ch.length; }
+  return raw.length;
+}
+/** Where in `raw` its n-th letter or digit ends (n counted from 1; the punctuation after it is not included). */
+function letterEnd(raw, n) {
+  let count = 0, at = 0;
+  for (const ch of raw) { at += ch.length; count += normSpeech(ch).length; if (count >= n) return at; }
+  return raw.length;
+}
+
+/**
+ * The words to show for a scene: its timed words, with each number slot's spoken run collapsed back into
+ * what is shown where the slot IS ("sixteen point six seven milliseconds." → "16.67 ms."), timed from the
+ * run's first word to its last — so captions show digits while the voice said words. Punctuation around
+ * the run stays ("(" … ")"), and a slot joined to a word keeps the word ("three-pebble" → "3-pebble").
+ * Words that do not spell the scene as spoken are returned as they are.
  */
 export function shownWords(scene, words) {
-  if (!scene?.say) return words;
-  const out = [...words];
-  let k = 0;
-  for (const [shown, said] of scene.say) {
-    const target = normSpeech(said);
-    for (let i = k; i < out.length; i++) {
-      let acc = '', j = i;
-      while (j < out.length && acc.length < target.length) acc += normSpeech(out[j++].text);
-      if (acc === target) {
-        const last = out[j - 1], tail = String(last.text).match(/[^\p{L}\p{N}]+$/u)?.[0] ?? '';
-        out.splice(i, j - i, {text: shown + tail, start: out[i].start, end: last.end});
-        k = i + 1; break;
-      }
-    }
+  const slots = slotMap(scene);
+  if (!slots) return words;
+  let at = 0;
+  const ranged = words.map(w => { const n = normSpeech(w.text).length, r = {w, from: at, to: at + n}; at += n; return r; });
+  if (at !== normSpeech(spokenText(scene)).length) return words;
+  const out = []; let i = 0;
+  for (const m of slots.map.filter(p => p.slot)) {
+    const touches = r => (r.to > m.s0 && r.from < m.s1) || (r.from === r.to && r.from > m.s0 && r.from < m.s1);
+    while (i < ranged.length && !touches(ranged[i])) out.push(ranged[i++].w);
+    const first = ranged[i]; let j = i;
+    while (j < ranged.length && touches(ranged[j])) j++;
+    if (!first || j === i) continue;
+    const last = ranged[j - 1], before = String(first.w.text), after = String(last.w.text);
+    const text = before.slice(0, letterStart(before, m.s0 - first.from)) + m.slot + after.slice(letterEnd(after, m.s1 - last.from));
+    out.push({text, start: first.w.start, end: last.w.end});
+    i = j;
   }
+  while (i < ranged.length) out.push(ranged[i++].w);
   return out;
 }
 
 /**
  * Numbers in the narration the voice would have to read as digits: [{scene, text}] — every run of digits
- * not inside a number slot's shown text. A voice tool can refuse these before it speaks (a voice drops
- * or garbles digits); write them as `say` slots.
+ * not in a number slot (a slot is a position: the same digits written again elsewhere are not said).
+ * A voice tool can refuse these before it speaks (a voice drops or garbles digits); write them as `say` slots.
  */
 export function unsaidNumbers(storyboard) {
   const out = [];
   for (const scene of storyboard.scenes) {
     if (scene.narration === undefined) continue;
-    let text = scene.narration;
-    for (const [shown] of scene.say ?? []) text = text.split(shown).join(' ');
+    const text = slotPieces(scene).map(p => p.text ?? ' ').join('');
     for (const m of text.matchAll(/[0-9][0-9.,:]*/g)) out.push({scene: scene.id, text: m[0].replace(/[.,:]+$/, '')});
   }
   return out;
@@ -164,17 +210,31 @@ export function speechIndex(scene, timing) {
     words.push({...word, from: content.length, to: content.length + text.length}); content += text; previous = word.end;
   }
   if (content !== normSpeech(sceneText(scene))) return null;
-  return {content, words};
+  return {content, words, slots: scene.silent === undefined ? slotMap(scene) : null};
 }
 
-/** Every place a phrase is spoken: [{start, end}] in scene seconds, word-aligned. */
+/** Every offset where `needle` starts in `text`. */
+function* occurrences(text, needle) {
+  for (let at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + 1)) yield at;
+}
+
+/**
+ * Every place a phrase is spoken: [{start, end}] in scene seconds, word-aligned, in order. A scene with
+ * number slots matches the phrase as the voice says it ("sixty hertz") and as written ("60 Hz"): both
+ * find the same words, and each place is listed once.
+ */
 export function phraseMatches(index, phrase) {
   if (!index) return [];
-  const needle = normSpeech(phrase), result = []; if (!needle) return result;
-  let from = 0;
-  while (from < index.content.length) {
-    const at = index.content.indexOf(needle, from); if (at < 0) break; from = at + 1;
-    const first = index.words.find(w => w.from === at), last = index.words.find(w => w.to === at + needle.length);
+  const needle = normSpeech(phrase); if (!needle) return [];
+  const spans = [...occurrences(index.content, needle)].map(at => [at, at + needle.length]);
+  if (index.slots) for (const at of occurrences(index.slots.shown, needle)) {
+    const a = spokenOffset(index.slots.map, at, false), b = spokenOffset(index.slots.map, at + needle.length, true);
+    if (a !== null && b !== null && b > a) spans.push([a, b]);
+  }
+  const seen = new Set(), result = [];
+  for (const [a, b] of spans.sort((x, y) => x[0] - y[0] || x[1] - y[1])) {
+    if (seen.has(`${a}:${b}`)) continue; seen.add(`${a}:${b}`);
+    const first = index.words.find(w => w.from === a), last = index.words.find(w => w.to === b);
     if (first && last) result.push({start: first.start, end: last.end});
   }
   return result;
@@ -216,7 +276,7 @@ export function makeClock(board, timings) {
      */
     at(ref) {
       const r = Array.isArray(ref) ? {scene: ref[0], phrase: ref[1], plus: ref[2]} : ref;
-      const i = sceneIndex(r.scene), match = phraseMatches(speech[r.scene], spokenPhrase(board.scenes[i], r.phrase))[r.nth ?? 0];
+      const i = sceneIndex(r.scene), match = phraseMatches(speech[r.scene], r.phrase)[r.nth ?? 0];
       if (!match) throw new Error(`Phrase not in ${r.scene}: "${r.phrase}"`);
       return offsets[i] + (r.edge === 'end' ? match.end : match.start) + (r.plus ?? 0);
     },
@@ -226,7 +286,7 @@ export function makeClock(board, timings) {
      */
     pauseAfter(ref) {
       const r = Array.isArray(ref) ? {scene: ref[0], phrase: ref[1]} : ref;
-      const i = sceneIndex(r.scene), match = phraseMatches(speech[r.scene], spokenPhrase(board.scenes[i], r.phrase))[r.nth ?? 0];
+      const i = sceneIndex(r.scene), match = phraseMatches(speech[r.scene], r.phrase)[r.nth ?? 0];
       if (!match) throw new Error(`Phrase not in ${r.scene}: "${r.phrase}"`);
       const next = speech[r.scene].words.find(w => w.start >= match.end - 1e-6);
       return {start: offsets[i] + match.end, end: offsets[i] + (next ? next.start : timings.scenes[i].duration)};

@@ -142,9 +142,12 @@ export const badForce = segmentedVideo({store: folderStore('x'), recipe: {}, for
 
 // The approval lock.
 import {approveFilm as approve, checkApproval as check} from '../types/sub/approval.js';
-export const approved = (storyboard: Storyboard, recipe: Recipe) => check(approve({storyboard, recipe, by: 'S'}), {storyboard, recipe}).ok;
+export const approved = (film: Film) => check(approve({record: 'out/draft/making-of.json', by: 'S'}), film.inputs).ok;
+export const fromObject = (film: Film) => approve({record: {inputs: film.inputs, out: 'draft.mp4'}, by: 'S', note: 'final'}).inputs.files;
 // @ts-expect-error an approval says who approves it
-export const anonymous = (storyboard: Storyboard, recipe: Recipe) => approve({storyboard, recipe});
+export const anonymous = () => approve({record: 'out/draft/making-of.json'});
+// @ts-expect-error an approval is made from a render's record, not from the storyboard and recipe
+export const fromParts = (storyboard: Storyboard, recipe: Recipe) => approve({storyboard, recipe, by: 'S'});
 
 // Number slots: the voice says words, the captions show digits.
 import {spokenText, unsaidNumbers} from '../types/index.js';
@@ -175,3 +178,12 @@ export const portal: Transition = {family: 'match', seconds: 1, ease: 'inOut', s
 export const oval: Enter = {type: 'through', region: 'ring', shape: 'oval'};
 // @ts-expect-error a name setting's default is a name or null
 export const badName: Transition = {...portal, params: {region: {name: true, default: 3}}};
+
+// The reading paces, the reads checks and the clock's shown words, as typed.
+import {LETTERS, READING, secondsToRead, readingPace, lettersIn} from '../types/sub/reading.js';
+import {READS, readReads, checkReads} from '../types/sub/shots.js';
+export const paces = [secondsToRead('change the picture', LETTERS), secondsToRead('a line', READING), secondsToRead('x', readingPace({pace: 'letters'})), lettersIn('ab')];
+export const checked = checkReads(readReads([{what: 'the ring', at: ['loop', 'turns'], min: READS.min}], 'x').map(r => ({...r, t: 1})), {from: 0, to: 9, where: 'x'}).map(r => r.problem ?? r.what);
+export const shown = (film: Film) => film.clock.shownWords(0).map(w => w.text);
+// @ts-expect-error a pace is words or letters
+export const badPace = secondsToRead('x', {perSyllable: 1});

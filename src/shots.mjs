@@ -151,15 +151,19 @@ export function readReads(value, where) {
 }
 
 /**
- * What is wrong with a shot's reads, timed (t = when each starts): two at once, or one the shot ends
- * before it lands. Returns the reads with a `problem` where there is one.
+ * What is wrong with a shot's reads, timed (t = when each starts): one that starts before the shot begins
+ * to arrive (`from`) or after the next one has (`to`: when this shot starts to leave), two at once, or one
+ * the shot leaves before it lands. Returns the reads in time order — each keeps what it was given (its
+ * declared index too) — with a `problem` where there is one.
  */
-export function checkReads(reads, {to, where}) {
+export function checkReads(reads, {from = -Infinity, to, where}) {
   const sorted = [...reads].sort((a, b) => a.t - b.t);
   return sorted.map((r, i) => {
     const next = sorted[i + 1];
+    if (r.t < from - 1e-6) return {...r, problem: `${where}: "${r.what}" starts at ${r.t.toFixed(2)} s, before the shot is on screen (it arrives at ${from.toFixed(2)} s); time it on a phrase the shot shows`};
+    if (r.t > to - 1e-6) return {...r, problem: `${where}: "${r.what}" starts at ${r.t.toFixed(2)} s, when the shot has started to leave (at ${to.toFixed(2)} s); time it on a phrase the shot shows`};
     if (next && next.t < r.t + r.min - 1e-6) return {...r, problem: `${where}: "${r.what}" needs ${r.min} s from ${r.t.toFixed(2)} s, and "${next.what}" starts at ${next.t.toFixed(2)} s — two reads at once; give the first its time (a pacing hold) or start the second later`};
-    if (r.t + r.min > to + 1e-6) return {...r, problem: `${where}: "${r.what}" needs ${r.min} s from ${r.t.toFixed(2)} s, and the shot ends at ${to.toFixed(2)} s — lengthen the scene's tail (pacing.tails) or start the read earlier`};
+    if (r.t + r.min > to + 1e-6) return {...r, problem: `${where}: "${r.what}" needs ${r.min} s from ${r.t.toFixed(2)} s, and the shot starts to leave at ${to.toFixed(2)} s — lengthen the scene's tail (pacing.tails) or start the read earlier`};
     return r;
   });
 }

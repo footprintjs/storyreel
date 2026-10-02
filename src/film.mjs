@@ -16,8 +16,10 @@
  * See README.md for the data.
  */
 import {createCanvas} from '@napi-rs/canvas';
-import {readFileSync} from 'node:fs';
+import {readFileSync, statSync, realpathSync} from 'node:fs';
+import path from 'node:path';
 import {insideRoot} from './files.mjs';
+import {hashOf, hashBytes} from './hash.mjs';
 import {inOut as ease} from './ease.mjs';
 import {makePen} from './pen.mjs';
 import {loadTheme} from './theme.mjs';
@@ -93,10 +95,25 @@ const aim = (ctx, c) => { ctx.translate(c.tx, c.ty); ctx.scale(c.z, c.z); ctx.tr
  * empty. A file the kit opens goes through `readFile`, which loads only from inside root (files.mjs ·
  * insideRoot, as the recipe's own files do).
  */
-function kitContext({clock, motion, theme, root}) {
-  const inside = file => insideRoot(root, file);
+function kitContext({clock, motion, theme, root, inside = file => insideRoot(root, file)}) {
   return Object.freeze({clock, motion, theme, root, library: Object.freeze({}), labels: Object.freeze({}),
     insideRoot: inside, readFile: file => readFileSync(inside(file))});
+}
+
+/**
+ * The files a film reads through its root (code excerpts, a kit's readFile and insideRoot), each hashed when
+ * it is first asked for: `note(realPath)` records it, `list()` gives {path relative to root: hash}. A folder,
+ * or a file that does not exist, is not recorded.
+ */
+function fileLedger(root) {
+  const seen = new Map(), base = (() => { try { return realpathSync(path.resolve(root)); } catch { return path.resolve(root); } })();
+  return {
+    note(real) {
+      if (!seen.has(real)) { let hash = null; try { if (statSync(real).isFile()) hash = hashBytes(readFileSync(real)); } catch { /* not there: nothing read */ } seen.set(real, hash); }
+      return real;
+    },
+    list: () => Object.fromEntries([...seen].filter(([, h]) => h).map(([real, h]) => [path.relative(base, real).split(path.sep).join('/'), h]).sort(([a], [b]) => a.localeCompare(b))),
+  };
 }
 
 /** Whether a story kit takes the context (`context: true`) or today's (spec, clock, motion). */
@@ -154,7 +171,7 @@ export async function compileFilm(options) {
 async function* compileSteps({storyboard, board, timings, recipe, data, capture, kits = [], theme, root = process.cwd(), strings = null, hostKeys = []}) {
   storyboard ??= board; data ??= capture ?? null;
   checkRecipeKeys(recipe, hostKeys);
-  const used = new Set(); recipe = withStrings(recipe, strings, used);
+  const given = recipe, used = new Set(); recipe = withStrings(recipe, strings, used);
   const entries = recipePaths(recipe);
   // The director's notes: one camera speed for the film (story kits take it as motion.cameraSpeed), cuts, pushes.
   const notes = readNotes(recipe.notes), motion = Object.freeze({cameraSpeed: notes.speed});
@@ -165,8 +182,9 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     at: ref => { const t = base.at(ref); beats.push({ref, t: +t.toFixed(3), path: entries.get(ref) ?? null}); return t; },
     pauseAfter: ref => { const p = base.pauseAfter(ref); beats.push({ref, t: +p.start.toFixed(3), path: entries.get(ref) ?? null}); return p; }};
   const paper = typeof theme === 'object' && theme ? theme : loadTheme(theme ?? recipe.paperStyle ?? 'paper');
-  // Files the recipe names load only from inside root (files.mjs · insideRoot: real paths, so no link leads out).
-  const within = file => insideRoot(root, file);
+  // Files the recipe names load only from inside root (files.mjs · insideRoot: real paths, so no link leads out),
+  // and every one the film reads is hashed into its inputs (fileLedger).
+  const files = fileLedger(root), within = file => files.note(insideRoot(root, file));
   const allKits = [whiteboardKit, ...kits];
   const storyKits = Object.fromEntries(allKits.filter(k => k.story).map(k => [k.name, k.story]));
   const stageKits = Object.fromEntries(allKits.flatMap(k => Object.entries(k.stages ?? {})));
@@ -175,7 +193,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const transitions = transitionCatalog(allKits);
   const worldKits = new Set();
   // What a context kit gets (kitContext); every world's `ready`, settled before recalls are drawn (readyWorlds).
-  const context = kitContext({clock, motion, theme: paper, root}), readies = [];
+  const context = kitContext({clock, motion, theme: paper, root, inside: within}), readies = [];
   const compileWorld = (spec, where) => {
     const kit = storyKits[spec?.kit];
     if (!kit) throw new Error(`No story kit "${spec?.kit}" for ${where} (have: ${Object.keys(storyKits).join(', ')})`);
@@ -261,11 +279,14 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   // The plan of the shots (shots.mjs): what each is for, and what is true when it starts and ends — one
   // shot's start must agree with what the shots before it left.
   const storyPathName = recipe.story ? 'story' : 'whiteboard';
-  // Reads (shots.mjs · readReads): what the viewer must take in, each on a phrase (resolved here, so the record logs it).
-  const timedReads = (value, where) => readReads(value, where).map((r, k) => ({...r, t: clock.at(Array.isArray(value) ? value[k].at : r.at)}));
-  const plan = [{path: storyPathName, where: 'the story', scene: storyboard.scenes[0]?.id, from: 0,
+  // Reads (shots.mjs · readReads): what the viewer must take in, each on a phrase (resolved here, so the record
+  // logs it). Each keeps its declared index (k), so a problem names the read the recipe wrote; a read's phrase
+  // is when something is taken in, not something new to see, so it is no moment (readRefs, below).
+  const readRefs = new Set();
+  const timedReads = (value, where) => readReads(value, where).map((r, k) => { readRefs.add(value[k].at); return {...r, k, t: clock.at(value[k].at)}; });
+  const plan = [{path: storyPathName, where: 'the story', scene: storyboard.scenes[0]?.id, from: 0, stage: null,
     intent: readIntent(storyIntent, 'the story'), continuity: readContinuity(storyContinuity, 'the story'), reads: timedReads(storyReads, 'the story')},
-  ...stages.map((st, i) => ({path: `stages[${i}]`, where: `stage ${st.scene}`, scene: st.scene, from: st.start,
+  ...stages.map((st, i) => ({path: `stages[${i}]`, where: `stage ${st.scene}`, scene: st.scene, from: st.start, stage: st,
     intent: readIntent(st.intent, `stage ${st.scene}`), continuity: readContinuity(st.continuity, `stage ${st.scene}`), reads: timedReads(st.reads, `stage ${st.scene}`)}))];
   // Film order is time order: a recipe may list its stages in any order, the plan never does.
   plan.sort((a, b) => a.from - b.from);
@@ -687,7 +708,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   // never too many, too close together. Phrases that are not something to see are left out, by identity:
   // a push's camera words, a teaser's rewind (it names the past), the poster and the recalls.
   const notMoments = new Set([...notes.pushes.flatMap(n => [n.push.from, n.push.to]), ...stages.flatMap(st => st.teaser ? [st.teaser.rewind.from, st.teaser.rewind.to] : []),
-    ...(recipe.poster ? [recipe.poster] : []), ...Object.values(recipe.recalls ?? {})]);
+    ...(recipe.poster ? [recipe.poster] : []), ...Object.values(recipe.recalls ?? {}), ...readRefs]);
   const momentsOf = u => beats.filter(b => !notMoments.has(b.ref) && b.t >= u.from && b.t < u.to).map(b => b.t);
   const watchingRule = watchingMode(recipe.watching);
   const watching = tooMuchTooFast(plan.map(u => ({path: u.path, where: u.where, moments: momentsOf(u)})), WATCHING);
@@ -696,12 +717,16 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
 
   // Reading time (reading.mjs): every line meant to be read stays up, whole, long enough to read.
   const readingRule = readingMode(recipe.reading), reading = tooShortToRead(readableLines(), readingPace(recipe.reading));
-  // Reads: one at a time, each with its time before the shot ends, each about a thing that is there.
-  const reads = plan.flatMap(u => checkReads(u.reads, {to: u.to, where: u.where}).map((r, k) => {
-    const out = {path: `${u.path}.reads[${k}]`, what: r.what, at: +r.t.toFixed(3), min: r.min, ...(r.region ? {region: r.region} : {}), ...(r.problem ? {problem: r.problem} : {})};
-    if (r.region && !out.problem) { try { named(r.region, Math.min(r.t + .05, clock.total)); } catch (e) { out.problem = `${u.where}: "${r.what}" is about "${r.region}": ${e.message}`; } }
+  // Reads: one at a time, each while its shot is on screen — from when it starts to arrive until the next one
+  // does — with its time before the shot leaves, each about a thing that is there the whole time it needs.
+  const leavesAt = i => plan[i + 1] ? (plan[i + 1].stage ? arrivalOf(plan[i + 1].stage).from : plan[i + 1].from) : (teaser ? teaser.at : clock.total);
+  const reads = plan.flatMap((u, i) => checkReads(u.reads, {from: u.stage ? arrivalOf(u.stage).from : 0, to: leavesAt(i), where: u.where}).map(r => {
+    const out = {path: `${u.path}.reads[${r.k}]`, what: r.what, at: +r.t.toFixed(3), min: r.min, ...(r.region ? {region: r.region} : {}), ...(r.problem ? {problem: r.problem} : {})};
+    if (r.region && !out.problem) for (const t of [r.t + .05, r.t + r.min / 2, r.t + r.min - .05].map(x => Math.min(x, clock.total))) {
+      try { named(r.region, t); } catch (e) { out.problem = `${u.where}: "${r.what}" is about "${r.region}" for ${r.min} s from ${r.t.toFixed(2)} s: ${e.message}`; break; }
+    }
     return out;
-  }));
+  })).sort((a, b) => a.at - b.at || a.path.localeCompare(b.path));
   const readProblems = reads.filter(r => r.problem);
   if (readingRule === 'refuse' && readProblems.length) throw new Error(`Reads that cannot land (the recipe says reading: "refuse"): ${readProblems.slice(0, 3).map(r => r.problem).join('; ')}${readProblems.length > 3 ? `; and ${readProblems.length - 3} more` : ''}`);
   if (readingRule === 'refuse' && reading.length) throw new Error(`Too short to read (the recipe says reading: "refuse"): ${reading.slice(0, 3).map(l => `"${l.text}" (${l.path}) is up ${l.seconds} s and needs ${l.needs} s`).join('; ')}${reading.length > 3 ? `; and ${reading.length - 3} more` : ''}`);
@@ -772,10 +797,12 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
    * the row before it too). A film with a pushIn is one row: its stages hand over on one page.
    */
   function rows() {
-    if (push) return [{from: 0, start: 0, paths: [storyPath, ...stages.map(stagePath)], enter: null, pushIn: true}];
+    if (push) return [{from: 0, start: 0, paths: [storyPath, 'pushIn', 'card', ...stages.map(stagePath)], enter: null, pushIn: true}];
+    // A teaser rewinds through the film (drawTeaser draws earlier moments), so its row draws every row's entries.
+    const everything = [storyPath, ...stages.map(stagePath)];
     return shots.map((shot, j) => ({
       from: j === 0 ? 0 : shot.start - shot.enter.lead, start: shot.start,
-      paths: j === 0 ? [storyPath] : shot.world ? [stagePath(stages.find(st => st.world === shot.world))] : shot.stages.map(stagePath),
+      paths: j === 0 ? [storyPath] : shot.world ? [stagePath(stages.find(st => st.world === shot.world))] : shot.stages.some(st => st.teaserAt) ? everything : shot.stages.map(stagePath),
       enter: j === 0 ? null : {type: shot.enter.type, seconds: shot.enter.seconds, lead: shot.enter.lead},
     }));
   }
@@ -791,7 +818,15 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   yield step('checks', () => checksSummary({readingRule, reading, reads, watchingRule, watching, facts, sounds, byScene: soundsByScene(sounds, clock.offsets, timings.scenes.map(s => s.duration)), worlds: readies.filter(Boolean).length, recalls: Object.keys(recipe.recalls ?? {})}));
   // Every line the build resolved (the clock is a pure function of the paced word times, so the order it was asked in changes no second).
   yield step('resolve-lines', () => linesSummary(beats));
-  return {total: clock.total, clock, timings, sounds, frame, beats, strings: [...used], notes: notesApplied, reading, reads, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching, rows: Object.freeze(rows().map(Object.freeze))};
+  // What the film was made from, hashed (hash.mjs): an approval locks these (approval.mjs), and every segment's
+  // key holds the ones that reach every frame (segments.mjs). Files: every one read through the root while the
+  // film was built.
+  const inputs = Object.freeze({storyboard: hashOf(storyboard), timings: hashOf(timings), recipe: hashOf(given), strings: strings ? hashOf(strings) : null,
+    data: data === null ? null : hashOf(data), theme: hashOf(paper), files: Object.freeze(files.list())});
+  // What is drawn over every shot for a while: the guess cards, from their question to the card gone.
+  const overlays = Object.freeze(guesses.map((g, n) => Object.freeze({path: `guesses[${n}]`, from: g.start, to: g.until + .5})));
+  return {total: clock.total, clock, timings, sounds, frame, beats, strings: [...used], notes: notesApplied, reading, reads, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching,
+    rows: Object.freeze(rows().map(Object.freeze)), overlays, inputs};
 }
 
 /** What reading the inputs gave (record.mjs): the recipe's top-level keys, each scene's seconds, the notes, the strings used. */

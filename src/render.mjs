@@ -7,6 +7,7 @@ import {writeFileSync, mkdirSync} from 'node:fs';
 import path from 'node:path';
 import {spawn, spawnSync} from 'node:child_process';
 import {once} from 'node:events';
+import {createHash} from 'node:crypto';
 import {createCanvas} from '@napi-rs/canvas';
 import {createMotionSound, soundsByScene} from './sound.mjs';
 import {compileLayout} from './layout.mjs';
@@ -242,14 +243,16 @@ export function prepareRender({film, storyboard, timings, narrationDir = null, o
   job.encodeFrames = async ({f0 = 0, f1 = job.frames, file, withIntro: introHere = false, posterFirst = false}) => {
     const k = width / 1600, canvas = createCanvas(width, height), ctx = canvas.getContext('2d');
     const paint = makePainter({film, framed, blur, width, height, fps, ctx});
-    const drawStamp = () => {
-      if (!stamp) return;
-      ctx.save(); ctx.font = '600 16px Menlo'; const w = ctx.measureText(stamp).width + 24;
-      ctx.fillStyle = 'rgba(179,63,54,.92)'; ctx.fillRect(width - w - 16, 14, w, 28); ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.fillText(stamp, width - w - 4, 28); ctx.restore();
-    };
     const ff = spawn(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pixel_format', 'rgba', '-video_size', `${width}x${height}`, '-framerate', String(fps), '-i', 'pipe:0', '-c:v', 'libx264', '-preset', 'fast', '-crf', '19', '-pix_fmt', 'yuv420p', file], {stdio: ['pipe', 'ignore', 'inherit']});
-    const closed = once(ff, 'close');
-    const push = async () => { drawStamp(); if (!ff.stdin.write(canvas.data())) await once(ff.stdin, 'drain'); };
+    // FFmpeg that cannot start, or that stops taking frames, is a refusal (not a crash): every failure lands on `closed`.
+    let failed = null;
+    const closed = new Promise(resolve => { ff.once('error', e => { failed ??= e; resolve([null]); }); ff.once('close', code => resolve([code])); });
+    ff.stdin.on('error', e => { failed ??= e; });
+    const push = async () => {
+      drawStamp(ctx, stamp, width);
+      if (failed) throw new Error(`ffmpeg (${ffmpeg}) could not encode ${path.basename(file)}: ${failed.message}`);
+      if (!ff.stdin.write(canvas.data())) await Promise.race([once(ff.stdin, 'drain'), closed]);
+    };
     let posterNext = posterFirst && poster !== null;
     const frameOrPoster = async draw => { if (posterNext) { posterNext = false; paint(poster, {still: true}); } else draw(); await push(); };
     if (introHere) {
@@ -259,10 +262,31 @@ export function prepareRender({film, storyboard, timings, narrationDir = null, o
     for (let f = f0; f < f1; f++) await frameOrPoster(() => paint(start + f / fps));
     ff.stdin.end();
     const [code] = await closed;
+    if (failed) throw new Error(`ffmpeg (${ffmpeg}) could not encode ${path.basename(file)}: ${failed.message}`);
     if (code !== 0) throw new Error(`ffmpeg failed encoding frames ${f0}–${f1} into ${path.basename(file)} (exit ${code})`);
     return file;
   };
+  /**
+   * A frame hasher with its own canvas: hash(f, {poster}) fingerprints frame f exactly as encodeFrames paints
+   * it — the layout, the motion blur, the stamp; the poster still when `poster` — so a spot check sees what
+   * the video shows. Each caller makes its own, so parts checked at once never share a canvas.
+   */
+  job.frameHasher = () => {
+    const canvas = createCanvas(width, height), ctx = canvas.getContext('2d'), paint = makePainter({film, framed, blur, width, height, fps, ctx});
+    return (f, {poster: asPoster = false} = {}) => {
+      if (asPoster && poster !== null) paint(poster, {still: true}); else paint(start + f / fps);
+      drawStamp(ctx, stamp, width);
+      return createHash('sha256').update(canvas.data()).digest('hex').slice(0, 16);
+    };
+  };
   return job;
+}
+
+/** A draft stamp in the frame's top right corner (nothing without one). */
+function drawStamp(ctx, stamp, width) {
+  if (!stamp) return;
+  ctx.save(); ctx.resetTransform(); ctx.globalAlpha = 1; ctx.font = '600 16px Menlo'; const w = ctx.measureText(stamp).width + 24;
+  ctx.fillStyle = 'rgba(179,63,54,.92)'; ctx.fillRect(width - w - 16, 14, w, 28); ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.fillText(stamp, width - w - 4, 28); ctx.restore();
 }
 
 /** The default strategy: every frame in one pass, the intro first (if any), the poster as the first frame. */

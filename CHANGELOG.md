@@ -25,9 +25,14 @@
   12% of it, still at 0.4 s), a colour cross-fade `u` and a spring `settle`. `idleAt(t, {seed})`: breath,
   blink on an uneven rhythm, sway and a glance now and then, different for every seed so two characters never
   move in step. `follows(f, delay)`: the head follows where the eyes went. Keys out of order refuse.
+- **One change at a time**: changes closer than one change takes to settle (max(fade, settle)) refuse, and so
+  do two moods at one moment and timings that are not seconds above 0; a key that repeats the mood is no
+  change. Every number a kit reads moves smoothly from frame to frame. `idleAt` refuses periods that are not
+  seconds above 0 (`blinkEvery: Infinity` or `blinkFor: 0` never blinks) and finds the blink at any moment in
+  the same time.
 - **The cartoon kit acts**: the shepherd squints into his eureka, the face swaps under the squint and the head
-  jumps and settles (it used to swap in one frame); each sheep blinks on its own rhythm. The shepherd
-  example's pixel pins were re-recorded for this (4 of its 24 pinned frames changed; no other film's).
+  jumps and settles (it used to swap in one frame); each sheep blinks on its own rhythm. The pixel pins were
+  re-recorded for this: 5 of the shepherd example's 24 pinned frames and 2 of the worlds example's changed.
 
 ### Reads, and a fairer reading pace
 - **`reads`** on the story and on every stage (beside `intent` and `continuity`): what the viewer must take in,
@@ -49,31 +54,45 @@
   `footprint-storyreel/pipeline`). The voice tools' check transcribes the audio freely and lines it up with
   the script, because forced alignment cannot see a dropped word.
 
-### Approve a film
-- **`approveFilm({storyboard, recipe, pacing?, narrationDir?, by, note?})`** records who approved the film,
-  when, and hashes of what they saw (keys sorted first, so reformatting changes nothing).
-  **`makeFilm({…, approval})`** refuses to render if the storyboard, the recipe, the pacing or the voice
-  changed since, naming the part and the date; `making-of.json` keeps the approval. `checkApproval` and
-  `filmHashes` are exported (`footprint-storyreel/approval` adds `stableJson`, `requireApproval`).
+### What a film is made from, and approving it
+- **`film.inputs`**: what the film was made from, hashed (keys sorted first, so reformatting changes nothing):
+  the storyboard, the timings, the recipe, the strings, the data, the theme, and every file it read through
+  its root (code excerpts, a kit's `readFile`/`insideRoot`), by path. `making-of.json` lists them as `inputs`,
+  with the pacing, the voice's audio (each file by name, length and bytes) and, with `makeFilm({code})`, a
+  fingerprint of the kits' code.
+- **`approveFilm({record, by, note?})`** approves a render as it was watched: from its making-of.json (the path
+  or the object). **`makeFilm({…, approval})`** refuses to render anything else — once the film is compiled,
+  before a frame is drawn — naming what changed (a file by its path) and the approver's own date;
+  `making-of.json` keeps the approval and says what it does not lock (the render settings; the kits' code
+  without a fingerprint). `checkApproval` is exported (`footprint-storyreel/approval` adds `stableJson`,
+  `requireApproval`, `voiceHash`, `readApproval`, `unlocked`). Anything that is not an approval refuses as one.
+- **`voiceCheck: 'refuse'`** also refuses a voice with no word check, or one older than the voice's timings.
 
 ### Re-render only what changed
 - **`segmentedVideo({store, recipe, code?, force?, samples?, parallel?})`** — a picture strategy for
   `renderFilm({…, video})` and `makeFilm({render: {video}})`: the film in segments (one per row of pictures,
   `film.rows`, from when each shot's entrance starts; rows under `minSeconds` join the one before), each kept
-  in a store under a key built from everything that draws it on its own clock, reused when the key and a spot
-  check of `samples` frames match, drawn again otherwise or when `force` names it, then joined without
-  re-encoding. The sound is mixed for the whole film every time. `result.video` (and `making-of.json`'s
-  `picture`) says which segments were drawn, which reused, and why.
+  in a store under a key built from what draws it on its own clock (its entries, the guess cards over it, its
+  lines, words and notes, `film.inputs`, the frame settings, the code), reused when the key and a spot check
+  of `samples` frames — painted as the video shows them, at the same places in the segment — match, drawn
+  again otherwise or when `force` names it, then joined without re-encoding. A segment that moved is reused
+  only when its frames did not move with the film's clock. The sound is mixed for the whole film every time.
+  `result.video` (and `making-of.json`'s `picture`) says which segments were drawn, which reused, and why.
+- **Every frame once**: a row whose entrance starts before the row ahead of it takes over from it (that row's
+  entries join it), so the segments never overlap; with motion blur a segment that starts at a cut draws the
+  row before it too. A segment lands in the store whole or not at all; a file cut short is never reused; when
+  one segment fails the others stop; the default joiner runs the render's own FFmpeg.
 - **Three seams**: the strategy (`wholeVideo()` — the default, one pass — or `segmentedVideo()`), the store
   (`folderStore(dir)`) and the joiner (`ffmpegJoin()`), each replaceable. `planSegments`, `segmentKey` and
-  `codeFingerprint` are exported for tools that want the plan or the keys.
+  `codeFingerprint` (code, data, images and fonts, TypeScript too) are exported for tools that want the plan
+  or the keys.
 - **`makeFilm` draws the picture as a fan-out**: a `plan-picture` stage, then one footprintjs subflow per part
   (`render-picture`), then `render-film` joins and finishes; a whole-film render is one part.
 - **`film.rows`**: the film as rows of pictures — when each starts to arrive, the recipe entries that draw it,
   and how it arrives (a pushIn film is one row).
 - `renderFilm` is now `prepareRender` (the checked job and its one way to encode frames) → a strategy →
   `finishRender` (sound, mux, chapters, captions); the output is unchanged, and an FFmpeg that fails while
-  encoding frames now refuses instead of passing silently.
+  encoding frames — or cannot start — now refuses instead of passing silently or crashing the process.
 
 ## 0.3.0 — shots planned like a film crew plans them; transitions as a collection; one film in every platform's shape
 

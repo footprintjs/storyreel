@@ -9,7 +9,6 @@
  * pass small values and file paths, as footprintjs expects.
  */
 import {readFileSync, writeFileSync, mkdirSync, cpSync, rmSync, existsSync, statSync} from 'node:fs';
-import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 import path from 'node:path';
 import {flowChart, narrative} from 'footprintjs';
@@ -17,7 +16,8 @@ import {applyPacing, validatePacing, paceTimings} from './pacing.mjs';
 import {withDirections} from './clock.mjs';
 import {compileFilm} from './film.mjs';
 import {prepareRender, finishRender, wholeVideo, checkVideoStrategy} from './render.mjs';
-import {requireApproval} from './approval.mjs';
+import {readApproval, requireApproval, voiceHash, unlocked} from './approval.mjs';
+import {hashOf} from './hash.mjs';
 
 const require = createRequire(import.meta.url);
 /** A dependency's installed version (from its package.json, even when its exports hide that file). */
@@ -56,7 +56,6 @@ function peakAdvice({target, measured}) {
   const reach = Math.floor((I + target.TP - TP) * 10) / 10;
   return reach < target.I ? `; here the loudest peak (${TP} dBTP) reaches the ${target.TP} dBTP limit at I = ${reach} LUFS — ask for loudness I ${reach} or lower to keep one fixed gain` : '';
 }
-const sha = text => createHash('sha256').update(text).digest('hex').slice(0, 16);
 
 /**
  * The voice check a voice folder carries (word-check.json, written by the voice tools' check_words.py):
@@ -87,25 +86,28 @@ const MAX_PARTS = 256;
  *                     `version`; a segmentedVideo strategy renders each segment as its own subflow and the record's
  *                     `picture` says which were drawn and which were reused
  * @param voiceCheck   'report' (the default: the record lists the words the voice check scored low or did not hear,
- *                     from the voice folder's word-check.json) or 'refuse' (a word not heard refuses the film)
- * @param approval     an approval (approval.mjs · approveFilm): the render refuses if the storyboard, the recipe, the
- *                     pacing or the voice changed since it was approved; the record keeps who approved it and when
+ *                     from the voice folder's word-check.json) or 'refuse' (a word not heard refuses the film, and so
+ *                     does a voice with no check, or a check older than the voice's timings)
+ * @param approval     an approval (approval.mjs · approveFilm, made from a watched render's making-of.json): the
+ *                     render refuses if anything it was made from changed since (the record's `inputs`); the record
+ *                     keeps who approved it, when, and what the approval does not lock
+ * @param code         a fingerprint of the kits' drawing code (segments.mjs · codeFingerprint), kept in the record's
+ *                     inputs: with it an approval locks the kits' code too
  */
-export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report'}) {
+export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report', code = null}) {
   if (voiceCheck !== 'report' && voiceCheck !== 'refuse') throw new Error(`voiceCheck is 'report' (the record lists words the voice check did not hear) or 'refuse' (the film refuses them), not ${JSON.stringify(voiceCheck)}`);
+  if (code !== null && !(typeof code === 'string' && code.trim())) throw new Error("code is a fingerprint of the kits' drawing code (codeFingerprint([kitsFolder])), or left out");
+  if (approval) readApproval(approval);
   const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
-  let film, paced, result, job, plan, voice = null;
+  let film, paced, result, job, plan, inputs, voice = null;
   const video = checkVideoStrategy(render.video ?? wholeVideo()), done = [];
   const stages = {
     'check-inputs': scope => {
       if (!storyboard?.scenes?.length) throw new Error('The storyboard has no scenes');
-      // An approval locks what was approved: anything changed since refuses (approval.mjs · requireApproval).
-      if (approval) { requireApproval(approval, {storyboard, recipe, pacing, narrationDir}); scope.approvedBy = approval.by; }
       // A silent cut has no voice speed to check; its holds and tails are checked the same way.
       if (pacing) validatePacing(narrationDir ? pacing : {voiceSpeed: 1, ...pacing}, storyboard);
       scope.scenes = storyboard.scenes.length;
-      scope.storyboardHash = sha(JSON.stringify(storyboard)); scope.recipeHash = sha(JSON.stringify(recipe));
-      if (strings) { scope.stringsHash = sha(JSON.stringify(strings)); scope.lang = lang; }
+      if (strings) scope.lang = lang;
     },
     'pace-narration': async scope => {
       if (narrationDir) {
@@ -116,7 +118,11 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
         writeFileSync(path.join(copy, 'timings.json'), JSON.stringify(paced, null, 2));
         scope.narration = copy;
         voice = readVoiceCheck(narrationDir);
-        if (voice && voiceCheck === 'refuse' && voice.notHeard.length) throw new Error(`The voice check did not hear ${voice.notHeard.map(w => `"${w.word}" (${w.scene})`).join(', ')}: choose another take (voice_takes.py), reword the line, or write a number as a say slot`);
+        if (voiceCheck === 'refuse') {
+          if (!voice) throw new Error(`voiceCheck: 'refuse' needs the voice's word check, and ${narrationDir} has no word-check.json: check the voice (check_words.py) before the final render`);
+          if (voice.stale) throw new Error(`voiceCheck: 'refuse': ${voice.stale}`);
+          if (voice.notHeard.length) throw new Error(`The voice check did not hear ${voice.notHeard.map(w => `"${w.word}" (${w.scene})`).join(', ')}: choose another take (voice_takes.py), reword the line, or write a number as a say slot`);
+        }
       } else {
         if (!timings) throw new Error('A silent film needs timings (word times per scene)');
         paced = pacing ? paceTimings(storyboard, timings, pacing) : withDirections(storyboard, timings); scope.narration = null;
@@ -127,6 +133,9 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     'compile-film': async scope => {
       film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings, hostKeys, record: true});
       scope.beats = film.beats.length; scope.sounds = film.sounds.length; scope.total = +film.total.toFixed(3);
+      // What the film is made from (film.inputs, and the pacing, the voice, the kits' code): an approval locks all of it.
+      inputs = {...film.inputs, pacing: hashOf(pacing), ...(narrationDir ? {voice: voiceHash(narrationDir)} : {}), ...(code ? {code} : {})};
+      if (approval) { requireApproval(approval, inputs); scope.approvedBy = approval.by; }
     },
     // The picture: planned as one pass or as segments (render.mjs · wholeVideo, segments.mjs · segmentedVideo).
     'plan-picture': scope => {
@@ -159,8 +168,9 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   const run = await chart.build().recorder(trace).run();
   const record = {
     schemaVersion: 1, made: new Date().toISOString(), out: result.out, seconds: result.seconds, chapters: result.chapters,
-    inputs: {storyboard: run.state?.storyboardHash, recipe: run.state?.recipeHash, scenes: storyboard.scenes.length, ...(strings ? {strings: run.state?.stringsHash} : {})},
-    ...(approval ? {approval: {by: approval.by, approved: approval.approved, ...(approval.note ? {note: approval.note} : {}), hashes: approval.hashes}} : {}),
+    // What the film was made from, hashed: approveFilm takes these from this record (approval.mjs).
+    inputs,
+    ...(approval ? {approval: {by: approval.by, approved: approval.approved, ...(approval.note ? {note: approval.note} : {}), ...(approval.render ? {render: approval.render} : {}), unlocked: unlocked(inputs)}} : {}),
     ...(voice ? {voice} : {}),
     ...(strings ? {strings: {lang, used: film.strings}} : {}),
     pacing: paced.pacing ?? null,
