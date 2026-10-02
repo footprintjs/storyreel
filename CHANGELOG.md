@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### A release folder holds only what is posted
+- Each target's folder (`<out>/<target>/`) now holds the video, its caption files, the thumbnail and post.json +
+  post.txt — nothing else, so it is the folder you upload from. The render's working files and its record
+  (making-of.json) go to `<out>/work/<target>/`; the posted files are linked from there (one copy on disk; copied
+  where a link cannot be made). `Released.work` names that folder; a target called `work` is refused.
+
 ### The cast: one film, another language and place
 - **`cast`** on `compileFilm` and `makeFilm`: `{role: {name, …}}`, who is in the film as configuration. `{{role}}`
   in the storyboard, the recipe and the string table becomes the role's name before anything reads it (the voice,

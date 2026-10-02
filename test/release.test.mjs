@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, existsSync, readFileSync} from 'node:fs';
+import {mkdtempSync, existsSync, readFileSync, readdirSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -82,6 +82,10 @@ test('a release: each target its own folder — the video in its shape, captions
   const thumb = await loadImage(readFileSync(yt.thumbnail)); assert.deepEqual([thumb.width, thumb.height], [1280, 720], 'the poster, drawn at YouTube\'s thumbnail size');
   assert.ok(existsSync(path.join(yt.dir, 'captions.srt')) && existsSync(path.join(yt.dir, 'thumbnail.jpg')), 'YouTube: caption files and the thumbnail beside the video');
   assert.equal(short.thumbnail, null, 'Shorts pick their own frame');
+  assert.deepEqual(readdirSync(yt.dir).sort(), ['captions.srt', 'captions.vtt', 'post.json', 'post.txt', 'release-test.mp4', 'thumbnail.jpg'], 'the folder holds what is posted and nothing else');
+  assert.deepEqual(readdirSync(short.dir).sort(), ['post.json', 'post.txt', 'release-test.mp4']);
+  assert.ok(existsSync(yt.makingOf) && yt.makingOf.startsWith(path.join(out, 'work', 'youtube')), 'the record and the working files are kept apart, in work/<target>/');
+  await assert.rejects(makeRelease({...film, out, targets: [{target: 'youtube', name: 'work'}], post: kids}), /a target cannot be called "work"/);
   const post = JSON.parse(readFileSync(path.join(yt.dir, 'post.json'), 'utf8'));
   assert.equal(post.fields.madeForKids, true); assert.equal(post.fields.alteredOrSynthetic, true); assert.deepEqual(post.synthetic, ['voice']);
   assert.match(readFileSync(path.join(yt.dir, 'post.txt'), 'utf8'), /## madeForKids\nyes\n\n## alteredOrSynthetic\nyes\n/); assert.match(post.fields.description, /How counting began\.\n\n0:00 The start\n0:\d\d The middle/);
