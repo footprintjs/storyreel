@@ -120,7 +120,7 @@ export function segmentMaterial(film, seg, {recipe, storyboard = null, pixels, c
     .filter(({sc, start}) => over(start - margin, start + sc.duration + margin))
     .map(({sc, start}) => {
       const board = storyboard?.scenes?.find(b => b.id === sc.id);
-      return {id: sc.id, start: at(start), duration: round(sc.duration), words: (sc.words ?? []).map(w => [w.text, at(start + w.start), at(start + w.end)]),
+      return {id: sc.id, start: at(start), duration: round(sc.duration), words: (sc.words ?? []).map(w => [w.text, at(start + w.start), at(start + w.end), ...(w.speaker ? [w.speaker] : [])]),
         ...(board ? {said: board.narration ?? board.silent ?? null, say: board.say ?? null, speaker: board.speaker ?? null} : {})};
     });
   const near = t => spans.some(([f, to]) => t >= f - margin && t <= to + margin);

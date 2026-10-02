@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Who says each word
+- **A word's own `speaker`** in the timings (written by a voice step that knows who said what) wins over the scene's:
+  `clock.speaking(t)`, `clock.turns()` (now one turn per run of words by one speaker), `gaze` and `mouthAt` follow
+  it, so the narrator and the characters can take turns inside one scene. A word with no speaker is the scene's
+  speaker, or the narrator; without word speakers nothing changes (`clock.words` keeps a speaker only on a word that
+  carried one). A segment's key holds the word speakers.
+- **Captions end a sentence that ends inside a quote or a bracket** (`tomorrow!"`, `me?'`, `done.”`), so a caption no
+  longer runs on into the next sentence.
+
 ### Listening
 - **`film.listening`** (`footprint-storyreel/listening`): what the sounds of the changes of picture ask of the
   ear — more than 60% of four or more changes making a sound (about half should be silent), or the same cue
@@ -24,7 +33,8 @@
 - **Lips in sync** (`lipsync`): every mouth a kit draws (a world's `mouthsAt(t) → [{who, open}]`, collected by
   `film.mouthsAt(t)`) against the finished file's voice, every 10 ms: how far the mouths lead or trail it (sound
   more than 45 ms ahead or 125 ms behind is seen: ITU-R BT.1359), a mouth moving while nothing is heard, a
-  speaker heard with the mouth shut. **`mouthAt(clock, t, who)`** (`footprint-storyreel/acting`): the mouth the
+  speaker heard with the mouth shut (a mouth that moves in silence for under 0.15 s — usually a word's end timed into
+  the silence after it — is worth a look, not a problem). **`mouthAt(clock, t, who)`** (`footprint-storyreel/acting`): the mouth the
   kits had each written for themselves — open only while its owner says a word, about once a syllable.
 - **Fixed: the last frames of every film were lost** (also in 0.3.0). FFmpeg's `-shortest` stopped a copied
   picture a few frames early when it was muxed with the sound (4 frames of a 35 s film at 30 fps); the sound is

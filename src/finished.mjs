@@ -30,6 +30,7 @@ export const FINISHED = Object.freeze({
   soundLeads: .045,    // seconds the sound may come before the mouth before the eye notices (ITU-R BT.1359)
   soundTrails: .125,   // seconds it may come after
   open: .3,            // a mouth this open is moving
+  silentMouth: .15,    // seconds a mouth may move with nothing heard before it is a problem (shorter: worth a look)
 });
 
 /**
@@ -193,11 +194,14 @@ export const FINISHED_CHECKS = Object.freeze({
       const best = lags.reduce((b, l) => (score.get(l) > score.get(b) ? l : b), 0), seconds = best * step;
       if (score.get(best) > .3 && (seconds > FINISHED.soundLeads || -seconds > FINISHED.soundTrails))
         out.push({at: when(drawn.indexOf(true)), severity: 'problem', text: `${name}'s mouth ${seconds > 0 ? 'trails' : 'leads'} the voice by ${Math.round(Math.abs(seconds) * 1000)} ms (the eye notices sound ${seconds > 0 ? 'more than 45 ms ahead' : 'more than 125 ms behind'})`});
-      // A mouth moving while nothing is heard (a run of at least a tenth of a second).
+      // A mouth moving while nothing is heard: a run of a tenth of a second is worth a look (an aligner often pads a
+      // word's end with the silence after it, and the mouth closes that much late); FINISHED.silentMouth or more is a problem.
       for (let i = 0; i < n;) {
         if (!(open[i] > FINISHED.open && dB(voice[i]) < FINISHED.quiet)) { i++; continue; }
         let g = i; while (g < n && (open[g] > .05 || g - i < 5) && dB(voice[g]) < FINISHED.quiet) g++;
-        if ((g - i) * step >= .1) out.push({at: when(i), severity: 'problem', text: `${name}'s mouth moves for ${((g - i) * step).toFixed(2)} s at ${when(i).toFixed(2)} s while nothing is heard`});
+        const run = (g - i) * step;
+        if (run >= .1 - 1e-9) out.push({at: when(i), severity: run >= FINISHED.silentMouth - 1e-9 ? 'problem' : 'look',
+          text: `${name}'s mouth moves for ${run.toFixed(2)} s at ${when(i).toFixed(2)} s while nothing is heard${run < FINISHED.silentMouth ? ' (short: often a word\'s end timed into the silence after it)' : ''}`});
         i = g;
       }
       // Heard speaking with the mouth shut: words said by this speaker, loud, while the drawn mouth stays closed.

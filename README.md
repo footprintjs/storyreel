@@ -819,6 +819,11 @@ between words, so a mouth opens and closes with the voice (and only the speaker'
 `clock.words(scene)` lists a scene's said words on the film's clock. What a speaker sounds like is the voice
 step's business (the starter maps a speaker to a voice profile); a silent scene says nothing.
 
+When the narrator and the characters take turns inside one scene, the voice step can say who says each word: a
+word's own `speaker` in timings.json (`{"text": "Yes!", "start": 4.1, "end": 4.4, "speaker": "amaira"}`) wins over
+the scene's, and a word with none is the scene's speaker, or the narrator. `speaking(t)`, `turns()` (one turn per
+run of words by one speaker), `gaze` and `mouthAt` all follow it. Without word speakers nothing changes.
+
 Listeners look at the speaker. `clock.gaze(t, who)` says where `who` looks: at the character speaking, as
 `{at: 'robot', amount: 0..1}` — turning toward them 0.3 s before their first word and back 0.5 s after their last
 (`{turn, hold}` to change it) — or `null` when nobody else speaks. A speaker never looks at itself, and a narrator
@@ -832,8 +837,8 @@ const eyes = g?.at === 'robot' ? g.amount : 0;                     // 0 = at her
 ```
 
 ```js
-const open = (t, who) => { const w = clock.speaking(t); if (w?.speaker !== who) return 0;
-  return Math.abs(Math.sin(Math.PI * (t - w.start) / (w.end - w.start))); };   // 0..1: how far the mouth is open
+import {mouthAt} from 'footprint-storyreel/acting';
+const open = mouthAt(clock, t, 'robot');   // 0..1: open only while the robot says a word, about once a syllable
 ```
 
 **Ready.** A world may return `ready`, a Promise that settles once it can draw (its images decoded).

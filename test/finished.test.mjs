@@ -176,3 +176,13 @@ test('mouthAt: open only while its owner says a word, once a syllable or so; nev
   assert.equal(mouthAt(f.clock, f.total + 1, 'robot'), 0, 'between words or after them, shut');
   assert.throws(() => mouthAt(f.clock, mid, 'robot', {syllable: 0}), /syllable is the seconds of one open-and-close/);
 });
+
+test('lip sync: a mouth that closes a tenth of a second late is worth a look; longer is a problem', async () => {
+  const f = await talker(), w = f.clock.words('b')[5];
+  // Silence the last part of one word: the mouth keeps moving that long with nothing heard.
+  const tail = async seconds => (await check([solid(50)], {film: f, voiced: true, checks: ['lipsync'], probe: {seconds: f.total, audio: {seconds: f.total, samples: voiceOf(f, {quiet: [w.end - seconds, w.end]})}}})).findings;
+  const short = await tail(.12);
+  assert.ok(short.length === 0 || short.every(x => x.severity === 'look'), short.map(x => x.text).join(' | '));
+  const long = await tail(.3);
+  assert.ok(long.some(x => x.severity === 'problem' && /moves for [\d.]+ s/.test(x.text)), long.map(x => `${x.severity}: ${x.text}`).join(' | '));
+});
