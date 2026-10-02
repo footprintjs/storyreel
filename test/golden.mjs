@@ -7,6 +7,12 @@ import {fileURLToPath} from 'node:url';
 import {compileFilm, evenTimings, paceTimings, cartoonKit, frameHashes} from '../src/index.mjs';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
+/**
+ * Whether the pinned hashes can be compared here. The pins were recorded with macOS's fonts (the code panels
+ * use Menlo): elsewhere the same film draws the same frames every time, but not these hashes.
+ * STORYREEL_PINS=1 compares them anyway. Every test that compares against golden.json asks this.
+ */
+export const PINS_HERE = process.platform === 'darwin' || process.env.STORYREEL_PINS === '1';
 /** How each example is compiled: its word times (silent), kits, pacing and strings. */
 export const FILMS = {
   hello: {tail: 4, kits: []},

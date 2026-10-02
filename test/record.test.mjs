@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {sliceForKey, sliceToJSON, formatSlice, keysReadFromExecutionTree} from 'footprintjs/trace';
-import {FILMS, compileExample} from './golden.mjs';
+import {FILMS, compileExample, PINS_HERE} from './golden.mjs';
 import {frameHashes} from '../src/index.mjs';
 import {COMPILE_STAGES} from '../src/record.mjs';
 
@@ -57,15 +57,20 @@ test('record off (the default): the same film, no record, the same pixels as rec
   assert.deepEqual(Object.keys(on), [...FILM_KEYS, 'record']);
   assert.deepEqual(on.beats, off.beats);
   assert.deepEqual(on.notes, off.notes);
-  assert.deepEqual(frameHashes(on), golden.hello, 'recording draws no different pixel');
-  assert.deepEqual(frameHashes(off), golden.hello);
+  // The claim holds on every machine: the recorded film draws the same pixels as the plain one. Against the
+  // pinned hashes too, where the pins can be compared (golden.mjs · PINS_HERE).
+  assert.deepEqual(frameHashes(on), frameHashes(off), 'recording draws no different pixel');
+  if (PINS_HERE) assert.deepEqual(frameHashes(off), golden.hello);
 });
 
 test('record with notes and a teaser: the notes as applied and the pixels pinned', async () => {
   const film = await compileExample('recap', {record: true}), state = film.record.snapshot.sharedState;
   film.notes.forEach((n, i) => assert.deepEqual(state[`note.notes[${i}]`], n));
   assert.deepEqual(state['checks.reading'].tooShort, film.reading.map(l => l.path));
-  assert.deepEqual(frameHashes(film), golden.recap);
+  // The notes and the teaser draw as the plain compile draws them; and as pinned, where pins compare.
+  const plain = await compileExample('recap');
+  assert.deepEqual(frameHashes(film), frameHashes(plain), 'recording draws no different pixel');
+  if (PINS_HERE) assert.deepEqual(frameHashes(film), golden.recap);
 });
 
 test('record refuses anything but true or false, naming the fix', async () => {

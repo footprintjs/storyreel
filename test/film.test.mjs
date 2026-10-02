@@ -8,6 +8,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createCanvas} from '@napi-rs/canvas';
 import {compileFilm, evenTimings, makeFilm, changedFrames} from '../src/index.mjs';
+import {PINS_HERE} from './golden.mjs';
 
 const hello = fileURLToPath(new URL('../examples/hello/', import.meta.url));
 const storyboard = JSON.parse(readFileSync(hello + 'storyboard.json', 'utf8'));
@@ -113,10 +114,8 @@ test('the cartoon kit: a full-frame world, deterministic, and every frame restor
   for (const t of [2, 20, a.total * .85]) { a.frame(fx, t); for (const [px, py] of [[1, 1], [1598, 1], [1, 898], [1598, 898]]) { const d = [...fx.getImageData(px, py, 1, 1).data.slice(0, 3)]; assert.ok(d.some((v, i) => Math.abs(v - paperRgb[i]) > 6), `paper showing at ${px},${py} (t=${t})`); } }
 });
 
-// The pins were recorded with macOS's fonts (the code panels use Menlo): elsewhere the same film draws the
-// same frames every time, but not these hashes. STORYREEL_PINS=1 runs them anyway.
-const pinsHere = process.platform === 'darwin' || process.env.STORYREEL_PINS === '1';
-test('pixel pins: the example films draw exactly the frames recorded in test/golden.json', {skip: pinsHere ? false : 'pins are recorded with macOS fonts'}, async () => {
+// The pins were recorded with macOS's fonts (golden.mjs · PINS_HERE).
+test('pixel pins: the example films draw exactly the frames recorded in test/golden.json', {skip: PINS_HERE ? false : 'pins are recorded with macOS fonts'}, async () => {
   const {hashFilms} = await import('./golden.mjs');
   const pinned = JSON.parse(readFileSync(fileURLToPath(new URL('./golden.json', import.meta.url)), 'utf8'));
   const now = await hashFilms();
