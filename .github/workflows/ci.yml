@@ -20,4 +20,4 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npx publint
-      - run: npx @arethetypeswrong/cli --pack --profile esm-only --entrypoints . clock pacing ease pins sheet render pipeline film strings theme reading shots regions captions layout transitions kits/whiteboard kits/cartoon studio  # the typed entry points (README: the drawing internals are untyped)
+      - run: npx @arethetypeswrong/cli --pack --profile esm-only --entrypoints . clock pacing ease pins sheet render segments pipeline approval film strings theme reading shots regions captions layout transitions acting finished listening kits/whiteboard kits/cartoon studio  # the typed entry points (README: the drawing internals are untyped)
