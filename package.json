@@ -114,6 +114,10 @@
       "types": "./types/sub/review.d.ts",
       "default": "./src/review.mjs"
     },
+    "./tools": {
+      "types": "./types/sub/tools.d.ts",
+      "default": "./src/tools.mjs"
+    },
     "./studio": {
       "types": "./types/studio.d.ts",
       "default": "./src/studio/server.mjs"
@@ -146,8 +150,12 @@
     "./package.json": "./package.json"
   },
   "types": "./types/index.d.ts",
+  "bin": {
+    "storyreel": "src/cli.mjs"
+  },
   "files": [
     "src",
+    "skills",
     "types",
     "themes",
     "fonts",

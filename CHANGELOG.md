@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### The review tools: a command line, a skill, one core
+- **`storyreel <tool>`** (the package's bin): `timeline`, `review`, `part` and `still`, for people and for agents.
+  The project names its film once, in `storyreel.config.mjs` (`export default {film: flags => ({storyboard,
+  recipe, kits, root, narrationDir?, pacing?, layout?, out?})}`); every flag also reaches `film()`. Text first
+  (when each beat lands; what is wrong, with times), a quick part render (handles, half size, draft encode,
+  reviewed first), and one still last.
+- **`skills/storyreel-review/SKILL.md`** ships with the package: read first, look last — the loop and its rules,
+  for an agent to follow.
+- **`footprint-storyreel/tools`**: the one core (`loadProject`, `timeline`, `review`, `part`, `still`, `TOOLS`
+  with what each does and takes) the command line uses, and an MCP server can.
+
 ### Review a part by reading it
 - **`reviewPart(film, {part, layout})`** (`footprint-storyreel/review`) reads the picture as text and names what is
   wrong, with times: words under the captions while a caption shows, words over other words, words cut off at the

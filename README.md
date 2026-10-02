@@ -688,6 +688,11 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   The review is a footprintjs flowchart: a selector picks each check by what the part has (no caption band, no
   caption check), each check runs as its own subflow, and `r.record` says what ran and why. A check of your own
   is `{label, why, when(scope), find(review)}` in `checks`.
+- **The same, from the command line — and as a skill for agents.** `npx storyreel timeline | review | part | still
+  --scene <id>` (the film named in the project's `storyreel.config.mjs`: `export default {film: flags =>
+  ({storyboard, recipe, kits, root, narrationDir?, pacing?, layout?})}`; every flag also reaches `film()`). The
+  package ships `skills/storyreel-review/SKILL.md`, which teaches the order — timeline, review, fix, part, one
+  still last — copy it into a project's `.claude/skills/`. `footprint-storyreel/tools` is the one core both use.
 - **A reused segment must pass a spot check.** A few of its frames (6 by default, `samples`) are painted
   again exactly as the video shows them (layout, motion blur, stamp, poster) at the same places in the
   segment, and must match the ones kept when it was drawn. A segment that moved is reused only when its
