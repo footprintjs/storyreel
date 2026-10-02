@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — re-render only what changed; approve a film; acting, match cuts and held layers; checks on the finished file
 
 ### Who says each word
 - **A word's own `speaker`** in the timings (written by a voice step that knows who said what) wins over the scene's:
