@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — shots planned like a film crew plans them; transitions as a collection; one film in every platform's shape
 
 ### Planning the shots (borrowed from how a film crew plans a shot)
 - **`intent`** on the story and on every stage: what the shot is for, in one sentence (at most 140 characters;
