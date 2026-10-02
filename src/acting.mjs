@@ -32,12 +32,13 @@ const clamp01 = n => Math.max(0, Math.min(1, n));
  *   settle       0..1 with a little overshoot: a pose settling into the new mood
  */
 export function moodAt(keys, t, options = {}) {
-  const o = actingOptions(options), moods = readKeys(keys, o);
+  const o = actingOptions(options ?? {}), moods = readKeys(keys, o);
   if (!Number.isFinite(t)) throw new Error('moodAt: t is a time in seconds');
   let i = -1; while (i + 1 < moods.length && moods[i + 1].at <= t) i++;
-  if (i < 0) return {mood: moods[0].mood, from: null, u: 1, anticipation: 0, take: 0, settle: 1};
-  // Anticipation, around a change only: the eyes start closing just before it and open again just after it.
-  const next = moods[i + 1], before = next ? clamp01((t - (next.at - o.anticipate)) / o.anticipate) : 0;
+  // Anticipation, around a change only: the eyes start closing just before it and open again just after it
+  // (before the first key too: the first mood is already on, and the change after it may come soon).
+  const next = moods[Math.max(1, i + 1)], before = next ? clamp01((t - (next.at - o.anticipate)) / o.anticipate) : 0;
+  if (i < 0) return {mood: moods[0].mood, from: null, u: 1, anticipation: before, take: 0, settle: 1};
   const after = i > 0 ? 1 - clamp01((t - moods[i].at) / o.reopen) : 0, anticipation = Math.max(before, after);
   if (i === 0) return {mood: moods[0].mood, from: null, u: 1, anticipation, take: 0, settle: 1};
   const key = moods[i], dt = t - key.at, s = clamp01(dt / o.settle);
@@ -45,7 +46,9 @@ export function moodAt(keys, t, options = {}) {
 }
 
 /** The timing, checked: every length a number of seconds above 0, overshoot a fraction above 0 and below 1. */
-function actingOptions({anticipate = ACTING.anticipate, reopen = ACTING.reopen, fade = ACTING.fade, settle = ACTING.settle, overshoot = ACTING.overshoot} = {}) {
+function actingOptions(options) {
+  for (const key of Object.keys(options)) if (!Object.hasOwn(ACTING, key)) throw new Error(`moodAt: unknown option ${key}; the timing takes ${Object.keys(ACTING).join(', ')}`);
+  const {anticipate = ACTING.anticipate, reopen = ACTING.reopen, fade = ACTING.fade, settle = ACTING.settle, overshoot = ACTING.overshoot} = options;
   for (const [name, v] of Object.entries({anticipate, reopen, fade, settle})) if (!(Number.isFinite(v) && v > 0)) throw new Error(`moodAt: ${name} is seconds, above 0`);
   if (!(overshoot > 0 && overshoot < 1)) throw new Error('moodAt: overshoot is how far a take falls back past rest, a fraction above 0 and below 1');
   return {anticipate, reopen, fade, settle, overshoot};
@@ -82,6 +85,9 @@ function takeCurve(s, overshoot) {
 /** A whole-number seed's phase and period offsets: deterministic, different for each seed. */
 const jitter = (seed, k) => { const x = Math.sin(seed * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); };
 
+/** The idle layer's options. */
+const IDLE = ['seed', 'breath', 'breathEvery', 'blinkEvery', 'blinkFor', 'sway', 'swayEvery'];
+
 /**
  * The idle layer at t: what a character does while nothing happens — breathe, blink, sway, glance. `seed`
  * sets each one's phase and a slightly different period, so two characters with different seeds never move
@@ -89,7 +95,9 @@ const jitter = (seed, k) => { const x = Math.sin(seed * 12.9898 + k * 78.233) * 
  * takes under half the time between blinks. Returns {breath (a scale, ~1 ± breath), blink (0 open .. 1
  * shut), sway (px), glance (-1..1, a small look aside now and then)}.
  */
-export function idleAt(t, {seed = 1, breath = .012, breathEvery = 3.6, blinkEvery = 3.8, blinkFor = .14, sway = 2, swayEvery = 5.3} = {}) {
+export function idleAt(t, options = {}) {
+  for (const key of Object.keys(options ?? {})) if (!IDLE.includes(key)) throw new Error(`idleAt: unknown option ${key}; it takes ${IDLE.join(', ')}`);
+  const {seed = 1, breath = .012, breathEvery = 3.6, blinkEvery = 3.8, blinkFor = .14, sway = 2, swayEvery = 5.3} = options ?? {};
   if (!Number.isFinite(t)) throw new Error('idleAt: t is a time in seconds');
   if (!Number.isFinite(seed)) throw new Error('idleAt: seed is a number (give each character its own, so they never move in step)');
   for (const [name, v] of Object.entries({breathEvery, swayEvery})) if (!(Number.isFinite(v) && v > 0)) throw new Error(`idleAt: ${name} is a period in seconds, above 0`);

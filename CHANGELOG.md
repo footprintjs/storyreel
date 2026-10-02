@@ -101,7 +101,11 @@
   `making-of.json` keeps the approval and says what it does not lock (the render settings; the kits' code
   without a fingerprint). `checkApproval` is exported (`footprint-storyreel/approval` adds `stableJson`,
   `requireApproval`, `voiceHash`, `readApproval`, `unlocked`). Anything that is not an approval refuses as one.
-- **`voiceCheck: 'refuse'`** also refuses a voice with no word check, or one older than the voice's timings.
+- **`voiceCheck: 'refuse'`** also refuses a voice with no word check, one older than the voice's timings, or one
+  that only aligned the words and never listened back.
+- An approval is of the whole film: `making-of.json` says what part a render shows (`span`), and a render of a
+  part refuses to be approved. A render the approval refuses leaves the approved render's narration folder as it
+  was (the new one is paced aside and moved into place only once the film is allowed).
 
 ### Re-render only what changed
 - **`segmentedVideo({store, recipe, code?, force?, samples?, parallel?})`** — a picture strategy for

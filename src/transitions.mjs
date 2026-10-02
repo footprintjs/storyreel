@@ -220,8 +220,10 @@ function matchCamera(box, meet, scale, k) {
   return {z, ox: clamp(px - z * cx, W - z * W, 0), oy: clamp(py - z * cy, H - z * H, 0)};
 }
 const drawWith = (ctx, {z, ox, oy}, paint) => { ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip(); ctx.translate(ox, oy); ctx.scale(z, z); paint(ctx); ctx.restore(); };
+/** A box, the part of it on the frame (a thing half off the frame meets its partner by the half you see). */
+const onFrame = ([x0, y0, x1, y1]) => [clamp(x0, 0, W), clamp(y0, 0, H), clamp(x1, 0, W), clamp(y1, 0, H)];
 function matchCut(ctx, {e, from, to, p, ghost, boxes}) {
-  const a = boxes.from[p.region], b = boxes.to[p.into ?? p.region], [ax, ay] = centreOf(a), [bx, by] = centreOf(b);
+  const a = onFrame(boxes.from[p.region]), b = onFrame(boxes.to[p.into ?? p.region]), [ax, ay] = centreOf(a), [bx, by] = centreOf(b);
   const meet = [clamp((ax + bx) / 2, 0, W), clamp((ay + by) / 2, 0, H)], size = Math.max(1.3 * Math.max(sizeOf(a), sizeOf(b)), meetingSize(a, meet), meetingSize(b, meet));
   const leaving = matchCamera(a, meet, size / sizeOf(a), e / .5), arriving = matchCamera(b, meet, size / sizeOf(b), (1 - e) / .5);
   const shown = smooth(.35, .65, e);   // how much of the new picture shows: the dissolve, around the meeting
@@ -281,7 +283,7 @@ export function readEntrance(enter, where, catalog = TRANSITIONS) {
   if (sound !== null && !SOUND_NAMES.includes(sound)) throw new Error(`${where}: enter.sound must be false or a sound: ${SOUND_NAMES.join(', ')} (not ${JSON.stringify(sound)})`);
   const p = readParams(params, e, where);
   // Most of the change happens in the silence before the scene's first word.
-  return {type: e.type, seconds, lead: seconds * .75, ease, sound, p, draw: tr.draw, regions: tr.regions ?? null, at: p.at ?? [800, 450]};
+  return {type: e.type, seconds, lead: seconds * .75, ease, sound, p, draw: tr.draw, regions: tr.regions ?? null, names: Object.keys(params).filter(k => params[k]?.name), at: p.at ?? [800, 450]};
 }
 
 /** A transition's settings from an entrance, each checked against its kind, the defaults filled in. */
@@ -332,6 +334,7 @@ function checkTransition(def, who) {
   if (def.sound !== null && !SOUND_NAMES.includes(def.sound)) throw new Error(`${who}: sound must be null or a sound: ${SOUND_NAMES.join(', ')}`);
   if (def.overshoot !== undefined && typeof def.overshoot !== 'boolean') throw new Error(`${who}: overshoot must be true or false`);
   if (def.regions !== undefined && typeof def.regions !== 'function') throw new Error(`${who}: regions must be p => ({from?: [names], to?: [names]}): the things it looks for in the picture it leaves and the one it arrives at`);
+  if (def.regions === undefined && Object.values(def.params ?? {}).some(spec => spec?.name)) throw new Error(`${who} has a setting that names a thing in the picture, and no regions(p) to look it up: add regions: p => ({from: [p.yourSetting]}) (or to: …)`);
   const params = def.params ?? {};
   if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error(`${who}: params must be {name: {oneOf | point | color | number, default}}`);
   for (const [name, spec] of Object.entries(params)) {

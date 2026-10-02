@@ -80,3 +80,12 @@ test('a read about a thing needs the thing there for the whole time it takes', a
   const brief = await compileFilm({storyboard, timings, kits: [kit], recipe: {story: {kit: 'squares', reads: [{what: 'the square', at: ['a', 'the square'], min: .5, region: 'square'}]}}});
   assert.equal(brief.reads[0].problem, undefined, 'a read short enough to finish while it is there is fine');
 });
+
+test('a read\'s thing must be there all the time it needs, not only at a few instants', async () => {
+  const storyboard = {scenes: [{id: 'a', narration: 'Look at the square while it is here, and keep looking for a while longer.'}, {id: 'b', narration: 'The end.'}]};
+  const timings = evenTimings(storyboard), t = timings.scenes[0].words[2].start;   // "the square"
+  const kit = {name: 'blinking', story: {compile: () => ({hang: 1, draw: c => { c.fillStyle = '#336'; c.fillRect(0, 0, 1600, 900); },
+    regionsAt: x => (x - t > .3 && x - t < .9 ? [] : [{box: [600, 300, 1000, 600], path: 'square', label: 'the square', name: 'square'}])})}};
+  const film = await compileFilm({storyboard, timings, kits: [kit], recipe: {story: {kit: 'blinking', reads: [{what: 'the square', at: ['a', 'the square'], min: 2, region: 'square'}]}}});
+  assert.match(film.reads[0].problem ?? '', /is about "square" for 2 s/, 'gone for 0.6 s of the 2 it needs');
+});

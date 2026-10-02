@@ -8,8 +8,7 @@
  * Heavy things (the compiled film, canvases) never enter the flowchart's tracked scope; stages
  * pass small values and file paths, as footprintjs expects.
  */
-import {readFileSync, writeFileSync, mkdirSync, cpSync, rmSync, existsSync, statSync} from 'node:fs';
-import {createRequire} from 'node:module';
+import {readFileSync, writeFileSync, mkdirSync, cpSync, rmSync, existsSync, statSync, renameSync} from 'node:fs';
 import path from 'node:path';
 import {flowChart, narrative} from 'footprintjs';
 import {applyPacing, validatePacing, paceTimings} from './pacing.mjs';
@@ -19,14 +18,9 @@ import {prepareRender, finishRender, wholeVideo, checkVideoStrategy} from './ren
 import {readApproval, requireApproval, voiceHash, unlocked} from './approval.mjs';
 import {hashOf} from './hash.mjs';
 import {checkVideo, ffmpegProbe} from './finished.mjs';
+import {installedVersion} from './versions.mjs';
 
-const require = createRequire(import.meta.url);
-/** A dependency's installed version (from its package.json, even when its exports hide that file). */
-const version = name => {
-  try { return require(`${name}/package.json`).version; } catch {}
-  try { let dir = path.dirname(require.resolve(name)); for (let i = 0; i < 6; i++, dir = path.dirname(dir)) { try { const p = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')); if (p.name === name) return p.version; } catch {} } } catch {}
-  return 'unknown';
-};
+const version = installedVersion;
 const TOOLS = () => [
   {name: 'footprintjs', version: version('footprintjs'), license: 'MIT', detail: 'the making-of pipeline and its record'},
   {name: '@napi-rs/canvas', version: version('@napi-rs/canvas'), license: 'MIT', detail: 'drawing'},
@@ -116,7 +110,9 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     },
     'pace-narration': async scope => {
       if (narrationDir) {
-        const copy = path.join(dir, 'narration'); rmSync(copy, {recursive: true, force: true}); cpSync(narrationDir, copy, {recursive: true});
+        // Paced in a folder of its own: it takes the place of <out dir>/narration only once the film is allowed
+        // (an approval refused leaves the approved render's narration as it was).
+        const copy = path.join(dir, `.narration-${process.pid}`); rmSync(copy, {recursive: true, force: true}); cpSync(narrationDir, copy, {recursive: true});
         const raw = JSON.parse(readFileSync(path.join(copy, 'timings.json'), 'utf8'));
         // A voice knows only the spoken scenes: a silent scene it left out gets its directions' timing (clock.mjs · withDirections).
         paced = pacing ? await applyPacing({runDir: copy, board: storyboard, timings: raw, pacing}) : withDirections(storyboard, raw);
@@ -125,6 +121,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
         voice = readVoiceCheck(narrationDir);
         if (voiceCheck === 'refuse') {
           if (!voice) throw new Error(`voiceCheck: 'refuse' needs the voice's word check, and ${narrationDir} has no word-check.json: check the voice (check_words.py) before the final render`);
+          if (!voice.checked) throw new Error(`voiceCheck: 'refuse' needs a word check that listened back (notHeardCount in ${path.join(narrationDir, 'word-check.json')}); this one only aligned the words: check the voice again (check_words.py)`);
           if (voice.stale) throw new Error(`voiceCheck: 'refuse': ${voice.stale}`);
           if (voice.notHeard.length) throw new Error(`The voice check did not hear ${voice.notHeard.map(w => `"${w.word}" (${w.scene})`).join(', ')}: choose another take (voice_takes.py), reword the line, or write a number as a say slot`);
         }
@@ -140,7 +137,11 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       scope.beats = film.beats.length; scope.sounds = film.sounds.length; scope.total = +film.total.toFixed(3);
       // What the film is made from (film.inputs, and the pacing, the voice, the kits' code): an approval locks all of it.
       inputs = {...film.inputs, pacing: hashOf(pacing), ...(narrationDir ? {voice: voiceHash(narrationDir)} : {}), ...(code ? {code} : {})};
-      if (approval) { requireApproval(approval, inputs); scope.approvedBy = approval.by; }
+      if (approval) {
+        try { requireApproval(approval, inputs); } catch (e) { if (scope.narration) rmSync(scope.narration, {recursive: true, force: true}); throw e; }
+        scope.approvedBy = approval.by;
+      }
+      if (scope.narration) { const final = path.join(dir, 'narration'); rmSync(final, {recursive: true, force: true}); renameSync(scope.narration, final); scope.narration = final; }
     },
     // The picture: planned as one pass or as segments (render.mjs · wholeVideo, segments.mjs · segmentedVideo).
     'plan-picture': scope => {
@@ -182,6 +183,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   const run = await chart.build().recorder(trace).run();
   const record = {
     schemaVersion: 1, made: new Date().toISOString(), out: result.out, seconds: result.seconds, chapters: result.chapters,
+    // What part of the film this render shows (an approval is of a render of the whole film).
+    span: {from: job.start, to: +job.to.toFixed(3), total: +film.total.toFixed(3), whole: job.start === 0 && job.to >= film.total - 1e-6, ...(job.withIntro ? {intro: job.intro.seconds} : {})},
     // What the film was made from, hashed: approveFilm takes these from this record (approval.mjs).
     inputs,
     ...(approval ? {approval: {by: approval.by, approved: approval.approved, ...(approval.note ? {note: approval.note} : {}), ...(approval.render ? {render: approval.render} : {}), unlocked: unlocked(inputs)}} : {}),

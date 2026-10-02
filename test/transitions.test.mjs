@@ -286,3 +286,17 @@ test('through a round opening: it stays inside the new picture as it widens, and
   assert.ok(corner, 'the box-shaped opening shows the new picture');
   assert.deepEqual(boxed.px(...corner), BLUE); assert.deepEqual(go(.3).px(...corner), WHITE, 'the round one leaves that corner to the old picture (there, the thing itself)');
 });
+
+test('match meets a thing half off the frame by the half you see; a named setting must be looked up', async () => {
+  // The old thing's centre is off the left edge: they still meet, half way between what shows of each.
+  const from = withThing(RED, [-60, 400, 60, 500], WHITE), to = withThing(BLUE, [700, 400, 820, 500], YELLOW);
+  const mid = drawnWith({type: 'match', region: 'ring'}, .5, {from, to, boxes: {from: [-60, 400, 60, 500], to: [700, 400, 820, 500]}});
+  const meet = mid.px(390, 450);
+  assert.ok(meet[0] > 200 && meet[1] > 200, `both things at the meeting point (${meet})`);
+  const lookless = {family: 'x', seconds: 1, ease: 'linear', sound: null, params: {region: {name: true}}, draw: (ctx, {from: f}) => f(ctx)};
+  assert.throws(() => transitionCatalog([{name: 'k', transitions: {lookless}}]), /a setting that names a thing in the picture, and no regions\(p\) to look it up/);
+  const forgets = {...lookless, params: {region: {name: true}, also: {name: true, default: null}}, regions: p => ({from: [p.region]})};
+  await assert.rejects(thingFilm({type: 'forgets', region: 'window', also: 'door'}, [{name: 'k', transitions: {forgets}}]), /the forgets's also names "door", which its regions\(p\) does not look for/);
+  const nothing = {...lookless, regions: () => undefined};
+  await assert.rejects(thingFilm({type: 'nothing', region: 'window'}, [{name: 'k', transitions: {nothing}}]), /regions\(p\) must return \{from\?: \[names\], to\?: \[names\]\}/);
+});

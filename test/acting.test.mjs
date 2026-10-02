@@ -92,3 +92,13 @@ test('follows: the head follows where the eyes went, a moment later', () => {
   const eyes = t => (t >= 1 ? 1 : 0), head = follows(eyes, .15);
   assert.deepEqual([eyes(1.05), head(1.05), head(1.2)], [1, 0, 1]);
 });
+
+test('before the first key the next change is still anticipated; options are checked by name', () => {
+  const soon = [{at: 2, mood: 'a'}, {at: 2.6, mood: 'b'}];
+  assert.ok(moodAt(soon, 2.55).anticipation > .4, 'squinting into the change');
+  const quick = [{at: 2, mood: 'a'}, {at: 2.02, mood: 'b'}];
+  assert.ok(Math.abs(moodAt(quick, 1.999).anticipation - moodAt(quick, 2.001).anticipation) < .1, 'no jump at the first key');
+  assert.deepEqual(moodAt(quick, 5, null).mood, 'b', 'null options: the defaults');
+  assert.throws(() => moodAt(quick, 1, {setle: 5}), /unknown option setle; the timing takes anticipate, reopen, fade, settle, overshoot/);
+  assert.throws(() => idleAt(1, {blink: 3}), /idleAt: unknown option blink/);
+});

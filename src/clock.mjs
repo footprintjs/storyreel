@@ -52,10 +52,24 @@ function checkSay(scene, name) {
     if (!Array.isArray(pair) || pair.length !== 2 || !pair.every(x => typeof x === 'string' && normSpeech(x))) throw new TypeError(`${name}: say[${k}] must be [shown, spoken], two strings with words, not ${JSON.stringify(pair)}`);
     const [shown, said] = pair;
     if (/[0-9]/.test(said)) throw new Error(`${name}: say[${k}] "${said}" has digits; say it in words (a voice drops or garbles digits)`);
-    const at = scene.narration.indexOf(shown, from);
-    if (at < 0) throw new Error(`${name}: say[${k}] shows "${shown}", which the narration does not have${from ? ' after the slot before it' : ''}; each shown text must appear in the narration, in order`);
+    const at = findSlot(scene.narration, shown, from);
+    if (at < 0) throw new Error(`${name}: say[${k}] shows "${shown}", which the narration does not have as a whole${from ? ' after the slot before it' : ''} (not inside a longer number or word); each shown text must appear in the narration, in order`);
     from = at + shown.length;
   });
+}
+
+/**
+ * Where a slot's shown text is in the narration, from `from`: the first place it stands whole — not inside
+ * a longer number or word ("2" is not in "12", "B2" or "2012") — or -1.
+ */
+function findSlot(text, shown, from = 0) {
+  const word = /[\p{L}\p{N}]/u, joinsLeft = word.test(shown[0]), joinsRight = word.test(shown.at(-1));
+  for (let at = text.indexOf(shown, from); at >= 0; at = text.indexOf(shown, at + 1)) {
+    if (joinsLeft && at > 0 && word.test(text[at - 1])) continue;
+    if (joinsRight && at + shown.length < text.length && word.test(text[at + shown.length])) continue;
+    return at;
+  }
+  return -1;
 }
 
 /**
@@ -64,14 +78,14 @@ function checkSay(scene, name) {
  * shown text written again elsewhere in the narration is not a slot there.
  */
 function slotPieces(scene) {
-  const pieces = []; let rest = scene.narration;
+  const pieces = [], text = scene.narration; let from = 0;
   for (const [shown, said] of scene.say ?? []) {
-    const at = rest.indexOf(shown);
+    const at = findSlot(text, shown, from);
     if (at < 0) break;
-    pieces.push({text: rest.slice(0, at)}, {shown, said});
-    rest = rest.slice(at + shown.length);
+    pieces.push({text: text.slice(from, at)}, {shown, said});
+    from = at + shown.length;
   }
-  pieces.push({text: rest});
+  pieces.push({text: text.slice(from)});
   return pieces;
 }
 
@@ -119,8 +133,9 @@ function letterEnd(raw, n) {
  * The words to show for a scene: its timed words, with each number slot's spoken run collapsed back into
  * what is shown where the slot IS ("sixteen point six seven milliseconds." → "16.67 ms."), timed from the
  * run's first word to its last — so captions show digits while the voice said words. Punctuation around
- * the run stays ("(" … ")"), and a slot joined to a word keeps the word ("three-pebble" → "3-pebble").
- * Words that do not spell the scene as spoken are returned as they are.
+ * the run stays ("(" … ")"), a slot joined to a word keeps the word ("three-pebble" → "3-pebble"), and two
+ * slots in one word are both shown ("three-four" → "3-4"). Words that do not spell the scene as spoken are
+ * returned as they are.
  */
 export function shownWords(scene, words) {
   const slots = slotMap(scene);
@@ -128,19 +143,28 @@ export function shownWords(scene, words) {
   let at = 0;
   const ranged = words.map(w => { const n = normSpeech(w.text).length, r = {w, from: at, to: at + n}; at += n; return r; });
   if (at !== normSpeech(spokenText(scene)).length) return words;
-  const out = []; let i = 0;
+  // Units: the words each slot touches become one; slots that touch the same word share it.
+  const unitOf = ranged.map((_, i) => i), find = i => (unitOf[i] === i ? i : (unitOf[i] = find(unitOf[i])));
+  const slotsIn = new Map();
   for (const m of slots.map.filter(p => p.slot)) {
-    const touches = r => (r.to > m.s0 && r.from < m.s1) || (r.from === r.to && r.from > m.s0 && r.from < m.s1);
-    while (i < ranged.length && !touches(ranged[i])) out.push(ranged[i++].w);
-    const first = ranged[i]; let j = i;
-    while (j < ranged.length && touches(ranged[j])) j++;
-    if (!first || j === i) continue;
-    const last = ranged[j - 1], before = String(first.w.text), after = String(last.w.text);
-    const text = before.slice(0, letterStart(before, m.s0 - first.from)) + m.slot + after.slice(letterEnd(after, m.s1 - last.from));
-    out.push({text, start: first.w.start, end: last.w.end});
-    i = j;
+    const touched = ranged.map((r, i) => ((r.to > m.s0 && r.from < m.s1) || (r.from === r.to && r.from > m.s0 && r.from < m.s1) ? i : -1)).filter(i => i >= 0);
+    if (!touched.length) continue;
+    for (const i of touched) unitOf[find(i)] = find(touched[0]);
+    const root = find(touched[0]);
+    slotsIn.set(root, [...(slotsIn.get(root) ?? []), m]);
   }
-  while (i < ranged.length) out.push(ranged[i++].w);
+  for (const [root, list] of [...slotsIn]) { const r = find(root); if (r !== root) { slotsIn.set(r, [...(slotsIn.get(r) ?? []), ...list]); slotsIn.delete(root); } }
+  const out = [];
+  for (let i = 0; i < ranged.length;) {
+    const root = find(i); let j = i; while (j + 1 < ranged.length && find(j + 1) === root) j++;
+    const list = slotsIn.get(root);
+    if (!list) { out.push(ranged[i].w); i = j + 1; continue; }
+    // The unit's text, each slot's run replaced by what is shown — the last first, so the earlier places hold.
+    let text = ranged.slice(i, j + 1).map(r => String(r.w.text)).join(' '); const base = ranged[i].from;
+    for (const m of [...list].sort((a, b) => b.s0 - a.s0)) text = text.slice(0, letterStart(text, m.s0 - base)) + m.slot + text.slice(letterEnd(text, m.s1 - base));
+    out.push({text, start: ranged[i].w.start, end: ranged[j].w.end});
+    i = j + 1;
+  }
   return out;
 }
 
@@ -153,7 +177,7 @@ export function unsaidNumbers(storyboard) {
   const out = [];
   for (const scene of storyboard.scenes) {
     if (scene.narration === undefined) continue;
-    const text = slotPieces(scene).map(p => p.text ?? ' ').join('');
+    const text = slotPieces(scene).map(p => p.text ?? ' ').join('');   // a slot's place blanked: its digits are said
     for (const m of text.matchAll(/[0-9][0-9.,:]*/g)) out.push({scene: scene.id, text: m[0].replace(/[.,:]+$/, '')});
   }
   return out;

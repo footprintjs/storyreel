@@ -99,3 +99,17 @@ test('a pacing hold after a phrase written as shown holds where the same phrase 
   assert.deepEqual(shownHold.scenes[0].words, spokenHold.scenes[0].words);
   assert.ok(shownHold.scenes[0].duration > even.scenes[0].duration);
 });
+
+// Recheck 2026-10-02: a slot stands whole (not inside a longer number or word); two slots in one word both show.
+test('a slot stands whole: "2" is not found inside 12, B2 or 2012', () => {
+  assert.equal(spokenText({id: 'a', narration: 'Take 12 steps, then 2 more.', say: [['2', 'two']]}), 'Take 12 steps, then two more.');
+  assert.equal(spokenText({id: 'a', narration: 'Pick the B2 seat, row 2.', say: [['2', 'two']]}), 'Pick the B2 seat, row two.');
+  assert.equal(spokenText({id: 'a', narration: 'In 2012, 2 sheep left.', say: [['2', 'two']]}), 'In 2012, two sheep left.');
+  assert.throws(() => checkScene({id: 'a', narration: 'In 2012 they left.', say: [['2', 'two']]}), /does not have as a whole/);
+  assert.deepEqual(unsaidNumbers({scenes: [{id: 'a', narration: 'Take 12 steps, then 2 more.', say: [['2', 'two']]}]}), [{scene: 'a', text: '12'}]);
+});
+
+test('two slots in one spoken word both show, and the slots after them still collapse', () => {
+  assert.equal(capt({id: 'a', narration: 'A 3-4 split.', say: [['3', 'three'], ['4', 'four']]}), 'A 3-4 split.');
+  assert.equal(capt({id: 'a', narration: 'Score 3-4 then 5 more.', say: [['3', 'three'], ['4', 'four'], ['5', 'five']]}), 'Score 3-4 then 5 more.');
+});

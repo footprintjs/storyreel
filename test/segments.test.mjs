@@ -33,7 +33,7 @@ test('the plan covers every frame once, splits where a picture starts to arrive,
   assert.equal(plan[0].f0, 0);
   plan.forEach((s, i) => { assert.ok(s.f1 > s.f0, `segment ${i} has frames`); if (i) assert.equal(s.f0, plan[i - 1].f1, `segment ${i} starts where ${i - 1} ends`); });
   assert.equal(plan.at(-1).f1, Math.ceil(film.total * 30), 'the last segment ends on the last frame');
-  assert.deepEqual(plan.slice(1).map(s => s.f0), film.rows.slice(1).map(r => Math.round(r.from * 30)), 'a segment starts when its entrance starts');
+  assert.deepEqual(plan.slice(1).map(s => s.f0), film.rows.slice(1).map(r => Math.ceil(r.from * 30 - 1e-6)), 'a segment starts on the first frame at or after its entrance starts');
   assert.deepEqual(plan[1].before, ['story'], 'a fade into a world also draws the story');
   assert.ok(plan.every(s => s.scenes.length), 'each segment names the scenes it covers');
   // Short rows join the segment before them.
@@ -170,4 +170,22 @@ test('a pushIn film\'s one segment holds its push-in and card; a teaser\'s segme
   assert.notEqual(now.at(-1), was.at(-1), 'the teaser rewinds through the story, so its segment changes with it');
   const {wholeVideo: fromSegments} = await import('../src/segments.mjs');
   assert.equal(typeof fromSegments, 'function', 'wholeVideo is on the segments subpath, as its types say');
+});
+
+test('a segment begins on the first frame that shows its row, and a teaser\'s segment holds the moments it replays', async () => {
+  const {compileExample} = await import('./golden.mjs'), example = n => JSON.parse(readFileSync(fileURLToPath(new URL(`../examples/${n}/recipe.json`, import.meta.url)), 'utf8'));
+  const recap = await compileExample('recap'), plan = planSegments(recap, {fps: 10});
+  for (const [i, s] of plan.entries()) if (i) assert.ok(s.f0 / 10 >= recap.rows.find(r => r.paths.some(p => s.paths.includes(p)))?.from - 1e-6 || s.before, `segment ${i} does not start before its row`);
+  const teasing = plan.find(s => s.rewinds);
+  assert.ok(teasing, 'the recap film\'s last segment replays earlier moments');
+  const offsets = sampleOffsets(teasing, 6, 10), {at, until} = teasing.rewinds;
+  assert.ok(offsets.some(o => (teasing.f0 + o) / 10 >= at && (teasing.f0 + o) / 10 <= until), 'and is spot-checked inside the rewind');
+  // A guess over the story: replayed by the rewind, so in the teaser segment's key.
+  const recipe = example('recap'), story = (await compileExample('recap')).clock;
+  const key = async r => { const f = await compileExample('recap', {recipe: r}); return planSegments(f, {fps: 10}).map(seg => segmentKey(f, seg, {recipe: r, pixels, code: 'kits', fps: 10})).at(-1); };
+  const sceneOne = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/recap/storyboard.json', import.meta.url)), 'utf8')).scenes[0].id;
+  assert.ok(story.start(sceneOne) >= 0);
+  const before = await key(recipe), withNote = structuredClone(recipe);
+  withNote.notes = [...(recipe.notes ?? []), {note: 'push in on the board', push: {at: [800, 450], zoom: 1.2, from: [sceneOne, recap.clock.words(sceneOne)[0].text], to: [sceneOne, recap.clock.words(sceneOne).at(-1).text]}}];
+  assert.notEqual(await key(withNote), before, 'a push the rewind replays is in its key');
 });

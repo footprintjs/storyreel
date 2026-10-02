@@ -692,6 +692,11 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     const en = shot.enter;
     if (!j || !en.regions) return;
     const st = shot.stages[0] ?? stages.find(s => s.world === shot.world), where = `stage ${st.scene}`, want = en.regions(en.p);
+    const lists = want && typeof want === 'object' && !Array.isArray(want) && ['from', 'to'].every(side => want[side] === undefined || (Array.isArray(want[side]) && want[side].every(n => typeof n === 'string' && n.trim())));
+    if (!lists) throw new Error(`${where}: the ${en.type}'s regions(p) must return {from?: [names], to?: [names]}`);
+    // Every thing a setting names is looked up: one regions(p) leaves out would never be checked.
+    const looked = new Set([...(want.from ?? []), ...(want.to ?? [])]);
+    for (const [name, value] of Object.entries(en.p)) if (en.names?.includes(name) && value !== null && !looked.has(value)) throw new Error(`${where}: the ${en.type}'s ${name} names "${value}", which its regions(p) does not look for`);
     const t0 = Math.max(0, shot.start - en.lead), t1 = Math.min(clock.total, t0 + en.seconds);
     const names = side => {
       const list = want?.[side] ?? [];
@@ -738,7 +743,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const leavesAt = i => plan[i + 1] ? (plan[i + 1].stage ? arrivalOf(plan[i + 1].stage).from : plan[i + 1].from) : (teaser ? teaser.at : clock.total);
   const reads = plan.flatMap((u, i) => checkReads(u.reads, {from: u.stage ? arrivalOf(u.stage).from : 0, to: leavesAt(i), where: u.where}).map(r => {
     const out = {path: `${u.path}.reads[${r.k}]`, what: r.what, at: +r.t.toFixed(3), min: r.min, ...(r.region ? {region: r.region} : {}), ...(r.problem ? {problem: r.problem} : {})};
-    if (r.region && !out.problem) for (const t of [r.t + .05, r.t + r.min / 2, r.t + r.min - .05].map(x => Math.min(x, clock.total))) {
+    if (r.region && !out.problem) for (const t of Array.from({length: Math.floor(r.min / .1) + 1}, (_, k) => Math.min(clock.total, r.t + Math.min(r.min - .02, .02 + k * .1)))) {
       try { named(r.region, t); } catch (e) { out.problem = `${u.where}: "${r.what}" is about "${r.region}" for ${r.min} s from ${r.t.toFixed(2)} s: ${e.message}`; break; }
     }
     return out;
@@ -818,13 +823,18 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
    */
   function rows() {
     if (push) return [{from: 0, start: 0, paths: [storyPath, 'pushIn', 'card', ...stages.map(stagePath)], enter: null, pushIn: true}];
-    // A teaser rewinds through the film (drawTeaser draws earlier moments), so its row draws every row's entries.
+    // A teaser rewinds through the film (drawTeaser draws earlier moments), so its row draws every row's entries,
+    // and says which moments it replays (`rewinds`: from–to, played at–until) for what they bring with them.
     const everything = [storyPath, ...stages.map(stagePath)];
-    return shots.map((shot, j) => ({
-      from: j === 0 ? 0 : shot.start - shot.enter.lead, start: shot.start,
-      paths: j === 0 ? [storyPath] : shot.world ? [stagePath(stages.find(st => st.world === shot.world))] : shot.stages.some(st => st.teaserAt) ? everything : shot.stages.map(stagePath),
-      enter: j === 0 ? null : {type: shot.enter.type, seconds: shot.enter.seconds, lead: shot.enter.lead},
-    }));
+    return shots.map((shot, j) => {
+      const teasing = !shot.world && shot.stages.some(st => st.teaserAt);
+      return {
+        from: j === 0 ? 0 : shot.start - shot.enter.lead, start: shot.start,
+        paths: j === 0 ? [storyPath] : shot.world ? [stagePath(stages.find(st => st.world === shot.world))] : teasing ? everything : shot.stages.map(stagePath),
+        enter: j === 0 ? null : {type: shot.enter.type, seconds: shot.enter.seconds, lead: shot.enter.lead},
+        ...(teasing ? {rewinds: Object.freeze({from: Math.min(teaser.from, teaser.to), to: Math.max(teaser.from, teaser.to), at: teaser.at + 2.7, until: teaser.at + 4.8})} : {}),
+      };
+    });
   }
 
   // A poster: the recipe's chosen frame (a phrase), for the thumbnail (renderFilm bakes it in as frame 0).

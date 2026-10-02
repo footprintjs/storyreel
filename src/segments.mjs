@@ -29,6 +29,7 @@ import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {frameHashes} from './pins.mjs';
 import {stableJson} from './hash.mjs';
+import {installedVersion, DRAWING} from './versions.mjs';
 
 export {wholeVideo} from './render.mjs';
 
@@ -50,9 +51,9 @@ export function codeFingerprint(paths, {extensions = CODE_EXTENSIONS} = {}) {
   return h.digest('hex').slice(0, 24);
 }
 
-/** StoryReel's own drawing code, its fonts and its package.json (the versions of what it draws with): part of every key. */
+/** StoryReel's own drawing code, its fonts, and the installed versions of what it draws with: part of every key. */
 let ownCode = null;
-const storyreelCode = () => ownCode ??= codeFingerprint(['./', '../fonts/', '../package.json'].map(p => fileURLToPath(new URL(p, import.meta.url))).filter(existsSync));
+const storyreelCode = () => ownCode ??= `${codeFingerprint(['./', '../fonts/'].map(p => fileURLToPath(new URL(p, import.meta.url))).filter(existsSync))}+${DRAWING.map(n => `${n}@${installedVersion(n)}`).join(',')}`;
 
 /**
  * The film's segments: one per row of pictures (film.rows), on whole frames — segment i covers frames
@@ -69,8 +70,9 @@ export function planSegments(film, {fps = 30, frames = Math.ceil(film.total * fp
   if (!Array.isArray(film.rows) || !film.rows.length) throw new Error('planSegments: this film has no rows (compile it with StoryReel 0.4 or later)');
   let latest = 0;
   const raw = film.rows.map((r, j) => {
-    latest = j === 0 ? 0 : Math.max(latest, Math.min(frames, Math.max(0, Math.round(r.from * fps))));
-    return {f0: latest, paths: [...r.paths], before: r.enter && (r.enter.type !== 'cut' || blur) ? [...film.rows[j - 1].paths] : null};
+    // A row's first frame is the first one at or after its picture starts (an earlier one still shows the row before).
+    latest = j === 0 ? 0 : Math.max(latest, Math.min(frames, Math.max(0, Math.ceil(r.from * fps - 1e-6))));
+    return {f0: latest, paths: [...r.paths], before: r.enter && (r.enter.type !== 'cut' || blur) ? [...film.rows[j - 1].paths] : null, rewinds: r.rewinds ?? null};
   });
   raw.forEach((s, j) => { s.f1 = j + 1 < raw.length ? raw[j + 1].f0 : frames; });
   // A row that never shows alone (no frames of its own) is drawn by the next one: its entries join it.
@@ -84,8 +86,8 @@ export function planSegments(film, {fps = 30, frames = Math.ceil(film.total * fp
   const out = [];
   for (const s of shown) {
     const last = out.at(-1);
-    if (last && (s.f1 - s.f0) < minSeconds * fps) { last.f1 = s.f1; last.paths.push(...s.paths); continue; }
-    if (last && (last.f1 - last.f0) < minSeconds * fps) { last.f1 = s.f1; last.paths.push(...s.paths); last.before ??= s.before; continue; }
+    if (last && (s.f1 - s.f0) < minSeconds * fps) { last.f1 = s.f1; last.paths.push(...s.paths); last.rewinds ??= s.rewinds; continue; }
+    if (last && (last.f1 - last.f0) < minSeconds * fps) { last.f1 = s.f1; last.paths.push(...s.paths); last.before ??= s.before; last.rewinds ??= s.rewinds; continue; }
     out.push({...s});
   }
   if (out[0]?.f0 !== 0 || out.at(-1)?.f1 !== frames || out.some((s, i) => s.f1 <= s.f0 || (i && s.f0 !== out[i - 1].f1))) throw new Error(`planSegments: the segments do not cover frames 0–${frames} once each, in order (${out.map(s => `${s.f0}–${s.f1}`).join(', ')}); this is a bug in planning, please report it`);
@@ -93,7 +95,7 @@ export function planSegments(film, {fps = 30, frames = Math.ceil(film.total * fp
   return out.map((s, index) => {
     const from = s.f0 / fps, to = s.f1 / fps;
     const scenes = ids.filter((_, i) => offsets[i] < to && offsets[i] + durations[i] > from);
-    return Object.freeze({index, f0: s.f0, f1: s.f1, from, to, paths: Object.freeze([...new Set(s.paths)]), before: s.before && Object.freeze([...new Set(s.before)]), scenes: Object.freeze(scenes)});
+    return Object.freeze({index, f0: s.f0, f1: s.f1, from, to, paths: Object.freeze([...new Set(s.paths)]), before: s.before && Object.freeze([...new Set(s.before)]), scenes: Object.freeze(scenes), ...(s.rewinds ? {rewinds: s.rewinds} : {})});
   });
 }
 
@@ -110,16 +112,18 @@ const inside = (p, paths) => paths.some(q => p === q || p.startsWith(`${q}.`));
  * strings, the data, the theme, every file the film read: film.inputs), the frame settings, and the code.
  */
 export function segmentMaterial(film, seg, {recipe, storyboard = null, pixels, code = null, fps = 30, margin = 3}) {
-  const overlays = (film.overlays ?? []).filter(o => o.from < seg.to && o.to > seg.from).map(o => o.path);
+  // The times it draws: its own, and the moments a teaser in it replays (with their guess cards, pushes and words).
+  const spans = [[seg.from, seg.to], ...(seg.rewinds ? [[seg.rewinds.from, seg.rewinds.to]] : [])], over = (a, b) => spans.some(([f, t]) => a < t && b > f);
+  const overlays = (film.overlays ?? []).filter(o => over(o.from, o.to)).map(o => o.path);
   const paths = [...seg.paths, ...(seg.before ?? []), ...overlays], at = t => round(t - seg.from);
   const scenes = film.timings.scenes.map((sc, i) => ({sc, start: film.clock.offsets[i]}))
-    .filter(({sc, start}) => start < seg.to + margin && start + sc.duration > seg.from - margin)
+    .filter(({sc, start}) => over(start - margin, start + sc.duration + margin))
     .map(({sc, start}) => {
       const board = storyboard?.scenes?.find(b => b.id === sc.id);
       return {id: sc.id, start: at(start), duration: round(sc.duration), words: (sc.words ?? []).map(w => [w.text, at(start + w.start), at(start + w.end)]),
         ...(board ? {said: board.narration ?? board.silent ?? null, say: board.say ?? null, speaker: board.speaker ?? null} : {})};
     });
-  const near = t => t >= seg.from - margin && t <= seg.to + margin;
+  const near = t => spans.some(([f, to]) => t >= f - margin && t <= to + margin);
   const {strings = null, data = null, theme = null, files = {}} = film.inputs ?? {};
   return {
     v: 2, storyreel: storyreelCode(), code, frames: seg.f1 - seg.f0, fps,
@@ -127,7 +131,7 @@ export function segmentMaterial(film, seg, {recipe, storyboard = null, pixels, c
     entries: paths.map(p => [p, entryAt(recipe, p) ?? null]),
     lines: film.beats.filter(b => b.path && (inside(b.path, paths) || (b.path.startsWith('guesses') && near(b.t)))).map(b => [b.path, at(b.t)]),
     // A camera speed is the whole film's; a push or a cut counts where it happens.
-    notes: (film.notes ?? []).filter(n => n.speed !== undefined || (n.push ? (n.from < seg.to && n.to > seg.from) : near(n.at ?? -Infinity)))
+    notes: (film.notes ?? []).filter(n => n.speed !== undefined || (n.push ? over(n.from, n.to) : near(n.at ?? -Infinity)))
       .map(n => ({...n, ...(n.from === undefined ? {} : {from: at(n.from)}), ...(n.to === undefined ? {} : {to: at(n.to)}), ...(n.at === undefined ? {} : {at: at(n.at)})})),
     scenes, inputs: {strings, data, theme, files},
   };
@@ -142,10 +146,15 @@ export function segmentKey(film, seg, options) {
   return createHash('sha256').update(stableJson({material, ...(seg.index === 0 ? {poster: extra.poster ?? null} : {}), ...(drawsRecalls(material) ? {recalls: extra.recalls ?? null} : {})})).digest('hex').slice(0, 24);
 }
 
-/** Where in a segment it is spot-checked: `count` frame offsets spread over it, first and last included. */
-export function sampleOffsets(seg, count = 6) {
+/**
+ * Where in a segment it is spot-checked: `count` frame offsets spread over it, first and last included — and
+ * two more inside a teaser's rewind when the segment plays one (a stretch of replayed moments the spread may miss).
+ */
+export function sampleOffsets(seg, count = 6, fps = 30) {
   const n = seg.f1 - seg.f0, k = Math.min(count, n);
-  return [...new Set(Array.from({length: k}, (_, i) => Math.round(i * (n - 1) / Math.max(1, k - 1))))];
+  const spread = Array.from({length: k}, (_, i) => Math.round(i * (n - 1) / Math.max(1, k - 1)));
+  const rewind = seg.rewinds && count ? [1 / 3, 2 / 3].map(u => Math.round((seg.rewinds.at + (seg.rewinds.until - seg.rewinds.at) * u) * fps) - seg.f0).filter(o => o >= 0 && o < n) : [];
+  return [...new Set([...spread, ...rewind])].sort((a, b) => a - b);
 }
 
 /**
@@ -258,7 +267,7 @@ export function segmentedVideo({store, recipe, code = null, joiner = null, force
         const tmp = path.join(job.dir, `segment-${seg.index}-${seg.key}-${process.pid}-${++made}.mp4`);
         await job.encodeFrames({f0: seg.f0, f1: seg.f1, file: tmp, posterFirst: seg.index === 0});
         const file = store.put(seg.key, tmp, {v: MANIFEST, key: seg.key, index: seg.index, from: round(seg.from), frames: seg.f1 - seg.f0, scenes: seg.scenes,
-          samples: samples ? hashesAt(sampleOffsets(seg, samples)) : {}, made: new Date().toISOString()});
+          samples: samples ? hashesAt(sampleOffsets(seg, samples, job.fps)) : {}, made: new Date().toISOString()});
         return {...report, status: 'rendered', why, file};
       } catch (e) {
         failed ??= {index: seg.index, message: e.message};

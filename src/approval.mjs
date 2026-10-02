@@ -34,10 +34,12 @@ export function voiceHash(narrationDir) {
  * @param record  the render's making-of record: the path of its making-of.json, or the object
  * @returns {schemaVersion: 2, approved (ISO time), by, note?, render?, inputs}
  */
-export function approveFilm({record, by, note = null, at = new Date()}) {
+export function approveFilm({record, by, note = null, at = new Date()} = {}) {
   if (typeof by !== 'string' || !by.trim()) throw new Error('approveFilm: say who approves it (by: "a name")');
+  if (!(at instanceof Date) || Number.isNaN(at.getTime())) throw new Error('approveFilm: at is when it was approved, a Date (default: now)');
   const made = typeof record === 'string' ? JSON.parse(readFileSync(record, 'utf8')) : record;
   if (!made?.inputs?.storyboard || !made.inputs.recipe) throw new Error('approveFilm: give the making-of record of the render that was watched (record: its making-of.json, or the object); it lists what the film was made from');
+  if (made.span && !made.span.whole) throw new Error(`approveFilm: that render shows ${made.span.from}–${made.span.to} s of a ${made.span.total} s film; an approval is of the whole film: approve a render of all of it`);
   return {schemaVersion: 2, approved: at.toISOString(), by: by.trim(), ...(note ? {note} : {}), ...(made.out ? {render: path.basename(made.out)} : {}), inputs: made.inputs};
 }
 
@@ -53,6 +55,7 @@ export function readApproval(approval) {
  * made from now (makeFilm: the film's inputs, the pacing, the voice, the code); a file is named by its path.
  */
 export function checkApproval(approval, inputs) {
+  if (!inputs || typeof inputs !== 'object') throw new Error('checkApproval: give what the film is made from now (makeFilm: the film\'s inputs, the pacing, the voice, the code)');
   const was = readApproval(approval).inputs, changed = [];
   for (const key of [...new Set([...Object.keys(was), ...Object.keys(inputs)])].filter(k => k !== 'files').sort()) {
     if (stableJson(was[key] ?? null) === stableJson(inputs[key] ?? null)) continue;
@@ -74,4 +77,4 @@ export function requireApproval(approval, inputs) {
 }
 
 /** What an approval of these inputs does not lock (the record says so beside the approval). */
-export const unlocked = inputs => ['the render settings (size, format, captions: the same film for every platform)', ...(inputs.code ? [] : ['the kits\' code (give makeFilm a code fingerprint: codeFingerprint)'])];
+export const unlocked = inputs => ['the render settings (size, format and its bands, captions, intro, poster frame: the same film for every platform)', ...(inputs.code ? [] : ['the kits\' code (give makeFilm a code fingerprint: codeFingerprint)'])];
