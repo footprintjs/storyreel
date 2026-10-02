@@ -597,6 +597,16 @@ await makeRelease({storyboard, recipe, narrationDir, pacing, out: 'release/ep01'
   one (`{target: 'tiktok', limits: {seconds: {max: 3600}}}`). An adapter of your own is an object of the same
   shape (`checkAdapter` names what is missing), passed in `targets`.
 - **Uploading is not a release's job:** it needs the account owner's sign-in, and stays a separate step.
+- **For a big screen.** `{target: 'youtube', scale: 2}` makes the picture 3840×2160 (4K): every line and word is
+  redrawn at that size, not enlarged. Pair it with the render's `quality: 'high'`, a slower and finer encode whose
+  colours are converted and tagged as HD video's (BT.709), the way players read them.
+- **The thumbnail from the film.** `post.thumbnail: 'poster'` draws the recipe's poster (a phrase that is said) at
+  the platform's thumbnail size; a film without a poster is refused before anything renders.
+- **Made with AI, said so.** `post.synthetic` lists what in the film is realistic and made with AI (`['voice']` for a
+  synthetic voice narrating). YouTube asks creators to disclose that, so its post says `alteredOrSynthetic: yes`:
+  tick "Altered or synthetic content" when you upload.
+- **Chapters come from titled scenes.** A titled scene starts a chapter and an untitled one goes on with the one
+  before it; a storyboard with no titles at all makes every scene a chapter, named by its id.
 
 ## Re-render only what changed
 
@@ -959,7 +969,7 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | import | what it does |
 |---|---|
 | `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?, hostKeys?, record?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `reading`, `shots` (each shot's intent, facts and moments), `watching`, `rows` (the rows of pictures segments are planned from), `moments()`, `regionsAt(t)`, `pointAt(t, x, y)`, `posterAt`, `theme`; with `record: true`, `record` (the compile as a footprintjs run) |
-| `renderFilm({film, storyboard, timings, narrationDir?, out, width?, height?, fps?, intro?, stamp?, from?, to?, poster?, loudness?, layout?, motionBlur?, captionFiles?, video?})` | the MP4 (FFmpeg), its chapters, its poster, its loudness (two passes); a version for a platform, motion blur, caption files; the picture in one pass or in cached segments |
+| `renderFilm({film, storyboard, timings, narrationDir?, out, width?, height?, fps?, intro?, stamp?, from?, to?, poster?, loudness?, layout?, motionBlur?, captionFiles?, quality?, video?})` | the MP4 (FFmpeg), its chapters (one per titled scene), its poster, its loudness (two passes); a version for a platform, motion blur, caption files; the picture in one pass or in cached segments |
 | `compileLayout(film, layout)` · `FORMAT_NAMES` | a format's picture and bands, drawn at any t (`footprint-storyreel/layout` adds `formatOf`, `cropWindow`) |
 | `captionChunks(film, {maxWords?, maxChars?, breaks?})` · `captionFile(chunks, 'vtt' \| 'srt', {offset?, from?, to?})` | the spoken words in caption chunks; a WebVTT or SRT file (`footprint-storyreel/captions` adds `captionAt`, `drawCaption`) |
 | `TRANSITIONS` · `TRANSITION_NAMES` · `transitionCatalog(kits)` · `transitionSheet({catalog?, moments?, width?})` | the transitions a shot can enter with, a kit's own added, on one PNG (`footprint-storyreel/transitions` adds `readEntrance`, `ghostPainter`) |

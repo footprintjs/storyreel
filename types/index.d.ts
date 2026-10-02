@@ -372,6 +372,8 @@ export interface Layout {
   crop?: {at: Beat; x: number; width?: number}[];
   background?: string;
   ink?: string;
+  /** 1–2 (default 1): the same picture at that many times the format's size, redrawn sharp; 2 makes landscape 3840×2160 (4K). */
+  scale?: number;
 }
 export const FORMAT_NAMES: readonly FormatName[];
 /** A layout compiled for a film: the output size, where the film and the bands are, and the two drawing passes. */
@@ -405,6 +407,8 @@ export function renderFilm(options: {
   motionBlur?: number | {subframes: number; shutter?: number} | null;
   /** Caption files beside the video (captions.vtt, captions.srt) on its clock: true for both, or the kinds. */
   captionFiles?: boolean | ('vtt' | 'srt')[];
+  /** 'standard' (the default: quick) or 'high' (for posting: a slower, finer encode, its colours converted and tagged as HD video's, BT.709). */
+  quality?: 'standard' | 'high';
   /** How the picture is made: wholeVideo() (the default: every frame in one pass) or segmentedVideo({...}) (cached segments, joined). */
   video?: VideoStrategy;
 }): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; format?: FormatName; captions?: {vtt?: string; srt?: string}; loudness: Loudness; listening: ListeningFinding[]; video?: SegmentsReport}>;

@@ -17,11 +17,17 @@
  * A platform's limits change: every adapter says when its facts were checked and where (`facts`), and a target
  * may override a limit (`{target: 'tiktok', limits: {seconds: {max: 3600}}}`) without a new release of the library.
  * An adapter of your own is an object of the same shape (checkAdapter says what is missing), passed in `targets`.
+ *
+ * For a big screen a target may ask for a larger picture (`{target: 'youtube', scale: 2}`: 3840×2160, every line
+ * redrawn sharp, layout.mjs · formatScale) and the film's render for the finer encode (`render: {quality: 'high'}`).
+ * The thumbnail may be the film's poster (`post.thumbnail: 'poster'`), drawn at the platform's thumbnail size. What
+ * in the film is realistic and made with AI is declared (`post.synthetic: ['voice']` for a synthetic voice
+ * narrating), and an adapter whose platform asks for it says so in the post (YouTube: altered or synthetic content).
  */
 import {mkdirSync, writeFileSync, copyFileSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {makeFilm} from './pipeline.mjs';
-import {FORMAT_NAMES} from './layout.mjs';
+import {FORMAT_NAMES, formatScale} from './layout.mjs';
 
 /** The built-in adapters, each loaded on first use. */
 export const TARGETS = Object.freeze({
@@ -34,8 +40,8 @@ export const TARGETS = Object.freeze({
 export const TARGET_NAMES = Object.freeze(Object.keys(TARGETS));
 /** Who a film is made for: 'kids' (directed at children) or 'general' (anyone, a teaser for parents included). */
 export const AUDIENCES = Object.freeze(['kids', 'general']);
-const POST_KEYS = ['title', 'description', 'tags', 'audience', 'thumbnail', 'lang'];
-const TARGET_KEYS = ['target', 'name', 'from', 'to', 'header', 'crop', 'captions', 'limits'];
+const POST_KEYS = ['title', 'description', 'tags', 'audience', 'thumbnail', 'lang', 'synthetic'];
+const TARGET_KEYS = ['target', 'name', 'from', 'to', 'header', 'crop', 'captions', 'limits', 'scale'];
 
 /** The adapter interface: what every platform adapter must say. Returns the adapter; refuses naming what is missing. */
 export function checkAdapter(a) {
@@ -55,7 +61,7 @@ export function checkAdapter(a) {
 /** A target as given (a name, an adapter, or {target, …options}) → {adapter, options}; a built-in loads here, lazily. */
 export async function loadTarget(spec) {
   const given = typeof spec === 'string' || (spec && typeof spec === 'object' && 'post' in spec && typeof spec.post === 'function') ? {target: spec} : spec;
-  if (!given || typeof given !== 'object') throw new TypeError(`a release target is a name (${TARGET_NAMES.join(', ')}), an adapter, or {target, from?, to?, header?, crop?, captions?, limits?}`);
+  if (!given || typeof given !== 'object') throw new TypeError(`a release target is a name (${TARGET_NAMES.join(', ')}), an adapter, or {target, from?, to?, header?, crop?, captions?, limits?, scale?}`);
   for (const key of Object.keys(given)) if (!TARGET_KEYS.includes(key)) throw new Error(`release target has unsupported key ${key} (the keys are ${TARGET_KEYS.join(', ')})`);
   let adapter = given.target;
   if (typeof adapter === 'string') {
@@ -63,30 +69,39 @@ export async function loadTarget(spec) {
     adapter = (await TARGETS[adapter]()).default;
   }
   checkAdapter(adapter);
+  if (given.scale !== undefined) formatScale(adapter.video.format, given.scale);   // known before a frame is drawn
   const limits = given.limits ? mergeLimits(adapter.limits, given.limits) : adapter.limits;
-  return {adapter: {...adapter, limits}, options: {name: given.name ?? adapter.name, from: given.from, to: given.to, header: given.header, crop: given.crop, captions: given.captions}};
+  return {adapter: {...adapter, limits}, options: {name: given.name ?? adapter.name, from: given.from, to: given.to, header: given.header, crop: given.crop, captions: given.captions, scale: given.scale}};
 }
 const mergeLimits = (base, over) => ({...base, ...over, seconds: {...base.seconds, ...over.seconds}, text: {...base.text, ...over.text}});
 
-/** The post as given, checked: {title, description, tags?, audience, thumbnail?, lang?}. */
+/**
+ * The post as given, checked: {title, description, tags?, audience, thumbnail?, lang?, synthetic?}. thumbnail: an image
+ * file, or 'poster' (the film's poster at the platform's size); synthetic: what is realistic and made with AI, in words.
+ */
 export function readPost(post) {
   if (!post || typeof post !== 'object') throw new TypeError('post is {title, description, audience, tags?, thumbnail?, lang?}');
   for (const key of Object.keys(post)) if (!POST_KEYS.includes(key)) throw new Error(`post has unsupported key ${key} (the keys are ${POST_KEYS.join(', ')})`);
   if (!(typeof post.title === 'string' && post.title.trim())) throw new TypeError('post.title is the title people see');
+  if (post.thumbnail !== undefined && !(typeof post.thumbnail === 'string' && post.thumbnail.trim())) throw new TypeError("post.thumbnail is an image file, or 'poster' (the film's poster, drawn at the platform's thumbnail size)");
+  if (post.synthetic !== undefined && !(Array.isArray(post.synthetic) && post.synthetic.every(w => typeof w === 'string' && w.trim()))) throw new TypeError("post.synthetic lists what in the film is realistic and made with AI, in words (['voice'] for a synthetic voice narrating): platforms that ask are told");
   if (typeof (post.description ?? '') !== 'string') throw new TypeError('post.description is text');
   if (!AUDIENCES.includes(post.audience)) throw new TypeError(`post.audience must be ${AUDIENCES.map(a => `'${a}'`).join(' or ')}: 'kids' when the film is made for children (YouTube marks it made for kids; platforms for older people refuse it), 'general' otherwise (a teaser for parents is 'general')`);
   if (post.tags !== undefined && !(Array.isArray(post.tags) && post.tags.every(t => typeof t === 'string' && t.trim()))) throw new TypeError('post.tags is a list of words');
-  return {description: '', tags: [], ...post};
+  return {description: '', tags: [], synthetic: [], ...post};
 }
 
 /**
  * Everything a release can know before rendering, for one target: [{problem, fix}] (empty: go ahead). `seconds` is
- * the part's length when it is known (from/to given), else left for after the render.
+ * the part's length when it is known (from/to given), else left for after the render; `poster` whether the film has
+ * one (null: not known).
  */
-export function planProblems(adapter, post, {seconds = null} = {}) {
+export function planProblems(adapter, post, {seconds = null, poster = null} = {}) {
   const problems = [], {limits} = adapter;
   if (post.audience === 'kids' && adapter.audience.kids === 'refuse')
     problems.push({problem: `${adapter.label} is for people aged ${adapter.audience.minAge} and over, and this film is made for kids`, fix: `post the full film where children watch (YouTube, marked made for kids); here, post a teaser for parents with audience: 'general'`});
+  if (post.thumbnail === 'poster' && adapter.thumbnail && poster === false)
+    problems.push({problem: 'the thumbnail is to be the film\'s poster, and the film has none', fix: 'name the poster in the recipe (poster: a phrase that is said), or give post.thumbnail an image file'});
   if (seconds !== null) problems.push(...lengthProblems(adapter, seconds));
   const text = adapter.post(post, {chapters: [], seconds: seconds ?? 0});
   problems.push(...textProblems(adapter, text));
@@ -116,11 +131,26 @@ async function checkThumbnail(adapter, file) {
   return file;
 }
 
+/** The thumbnail in the target's folder: the image given, or the film's poster drawn at the platform's size; null when the platform takes none. */
+async function placeThumbnail(adapter, given, poster, dir) {
+  if (!given || !adapter.thumbnail) return null;
+  if (given !== 'poster') { const file = path.join(dir, `thumbnail${path.extname(given)}`); copyFileSync(given, file); return file; }
+  if (!poster) refuse(adapter, [{problem: 'the thumbnail is to be the film\'s poster, and the render made none', fix: 'name the poster in the recipe (poster: a phrase that is said)'}]);
+  const {createCanvas, loadImage} = await import('@napi-rs/canvas');
+  const img = await loadImage(readFileSync(poster)), {width, height, maxBytes} = adapter.thumbnail;
+  const canvas = createCanvas(width, height), ctx = canvas.getContext('2d'), s = Math.max(width / img.width, height / img.height);
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, (width - img.width * s) / 2, (height - img.height * s) / 2, img.width * s, img.height * s);   // filling the frame, centred
+  const file = path.join(dir, 'thumbnail.jpg');
+  for (const q of [92, 85, 75]) { const jpg = await canvas.encode('jpeg', q); if (!maxBytes || jpg.length <= maxBytes) { writeFileSync(file, jpg); return file; } }
+  refuse(adapter, [{problem: `the poster is over ${(maxBytes / 1e6).toFixed(1)} MB even as a plainer JPEG`, fix: 'give post.thumbnail an image file'}]);
+}
+
 /** A render's chapter line ("1:05 The middle") → [seconds, name], as adapters take it. */
 const chapterOf = line => { const [, stamp, name] = /^(\S+)\s+(.*)$/.exec(line); return [stamp.split(':').reduce((s, part) => s * 60 + +part, 0), name]; };
 
 /** The text ready to paste, one field after another. */
-const postText = (adapter, fields) => `${adapter.label}\n\n${Object.entries(fields).map(([k, v]) => `## ${k}\n${Array.isArray(v) ? v.join(', ') : v}`).join('\n\n')}\n`;
+const postText = (adapter, fields) => `${adapter.label}\n\n${Object.entries(fields).map(([k, v]) => `## ${k}\n${Array.isArray(v) ? v.join(', ') : typeof v === 'boolean' ? (v ? 'yes' : 'no') : v}`).join('\n\n')}\n`;
 
 /**
  * Release a film to each target: the checks a release can make first, then for each target the video in its shape
@@ -135,27 +165,27 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
   for (const spec of targets) loaded.push(await loadTarget(spec));
   const names = loaded.map(l => l.options.name); if (new Set(names).size !== names.length) throw new Error(`two targets are called the same (${names.join(', ')}): give one a name`);
   // First everything that can be known before a frame is drawn, for every target: nothing renders if any refuses.
+  const poster = film.render && 'poster' in film.render ? film.render.poster != null : film.recipe?.poster != null;
   for (const {adapter, options} of loaded) {
     const part = options.from !== undefined && options.to !== undefined ? options.to - options.from : null;
-    refuse(adapter, planProblems(adapter, p, {seconds: part}));
-    await checkThumbnail(adapter, p.thumbnail);
+    refuse(adapter, planProblems(adapter, p, {seconds: part, poster}));
+    if (p.thumbnail !== 'poster') await checkThumbnail(adapter, p.thumbnail);
   }
   const stem = base ?? (String(film.storyboard?.title ?? 'film').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'film');
   const released = [];
   for (const {adapter, options} of loaded) {
     const dir = path.join(out, options.name); mkdirSync(dir, {recursive: true});
     const layout = {format: adapter.video.format, ...(adapter.video.captions || options.captions ? {captions: options.captions ?? adapter.video.captions} : {}),
-      ...(options.header ? {header: options.header} : adapter.video.header && p.title ? {header: {title: p.title}} : {}), ...(options.crop ? {crop: options.crop} : {})};
+      ...(options.header ? {header: options.header} : adapter.video.header && p.title ? {header: {title: p.title}} : {}), ...(options.crop ? {crop: options.crop} : {}), ...(options.scale !== undefined ? {scale: options.scale} : {})};
     const render = {...(film.render ?? {}), layout, ...(adapter.video.captionFiles ? {captionFiles: adapter.video.captionFiles} : {}),
       ...(options.from !== undefined ? {from: options.from} : {}), ...(options.to !== undefined ? {to: options.to} : {})};
     const result = await makeFilm({...film, out: path.join(dir, `${stem}.mp4`), render});
     refuse(adapter, lengthProblems(adapter, result.seconds));
     const fields = adapter.post(p, {chapters: (result.chapters ?? []).map(chapterOf), seconds: result.seconds});
     refuse(adapter, textProblems(adapter, fields));
-    const thumbnail = p.thumbnail && adapter.thumbnail ? path.join(dir, `thumbnail${path.extname(p.thumbnail)}`) : null;
-    if (thumbnail) copyFileSync(p.thumbnail, thumbnail);
+    const thumbnail = await placeThumbnail(adapter, p.thumbnail, result.poster, dir);
     const record = {target: adapter.name, label: adapter.label, fields, video: path.basename(result.out), ...(result.captions ? {captions: Object.values(result.captions).map(f => path.basename(f))} : {}),
-      ...(thumbnail ? {thumbnail: path.basename(thumbnail)} : {}), seconds: +result.seconds.toFixed(2), format: adapter.video.format, audience: p.audience, ...(p.lang ? {lang: p.lang} : {}), facts: adapter.facts};
+      ...(thumbnail ? {thumbnail: path.basename(thumbnail)} : {}), seconds: +result.seconds.toFixed(2), format: adapter.video.format, audience: p.audience, ...(p.synthetic.length ? {synthetic: p.synthetic} : {}), ...(p.lang ? {lang: p.lang} : {}), facts: adapter.facts};
     writeFileSync(path.join(dir, 'post.json'), JSON.stringify(record, null, 2));
     writeFileSync(path.join(dir, 'post.txt'), postText(adapter, fields));
     released.push({target: options.name, dir, video: result.out, captions: result.captions ?? null, thumbnail, post: fields, makingOf: result.makingOf});
