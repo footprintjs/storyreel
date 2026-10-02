@@ -413,6 +413,25 @@ film.shots.map(s => `${s.where}: ${s.intent ?? '(no intent)'}`);   // what each 
 film.watching;                                                      // [{kind: 'burst', where, at, moments, seconds}]
 ```
 
+### Reads: what the viewer must take in
+
+An intent says what a shot is for; **reads** say what the viewer must understand, and when — timed by
+meaning, not by movement. Each read starts on a phrase, needs a least time to land (`min`, 2 s by
+default) and may name the thing it is about (`region`, a name the kit gives in `regionsAt`):
+
+```json
+{"type": "world", "scene": "loop", "intent": "Name the loop: change the picture, show it, at a speed.",
+ "reads": [{"what": "the ring is a loop that keeps turning", "at": ["loop", "That is a loop"], "min": 2},
+           {"what": "each turn changes the picture", "at": ["change", "It changes the picture"], "min": 2.5, "region": "ring"}],
+ "world": {"kit": "draws", "shot": "ring"}}
+```
+
+One read at a time: `film.reads` lists every read, timed, with a `problem` when two overlap, when the shot
+ends before one lands (lengthen the scene's tail), or when its region is not drawn at that moment; with
+`"reading": "refuse"` the recipe refuses them. A short label gets a fairer reading time with
+`"reading": {"pace": "letters"}`: 1.5 s to find the line, then a fifteenth of a second a letter
+("change the picture": 2.6 s instead of 1 s).
+
 ## Checking a film
 
 - **Reading time.** Every line meant to be read — titles, footers, list lines, captions, the board's

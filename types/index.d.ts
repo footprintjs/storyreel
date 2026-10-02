@@ -57,7 +57,15 @@ export type Fact = string | number | boolean;
 export interface ShotPlan {
   intent?: string;
   continuity?: {start?: Record<string, Fact>; end?: Record<string, Fact>};
+  /**
+   * What the viewer must take in during the shot, one at a time: `what` (words), `at` (the phrase it starts on),
+   * `min` (the least seconds it needs, 0.5–15; 2 by default) and `region` (the named thing it is about, optional).
+   * Two at once, one the shot ends before, or one about a thing that is not there are listed in film.reads.
+   */
+  reads?: Read[];
 }
+/** One declared read (ShotPlan.reads). */
+export interface Read { what: string; at: Beat; min?: number; region?: string }
 
 /**
  * A recipe is data: see the README for every key. At run time an unknown top-level key refuses, unless the
@@ -78,7 +86,8 @@ export interface Recipe {
   notes?: DirectorNote[];
   recalls?: Record<string, Beat>;
   poster?: Beat;
-  reading?: 'report' | 'refuse';
+  /** Reading time: 'report' (the default), 'refuse', or {rule, pace: 'words' (0.3 s a word, at least 1 s) | 'letters' (1.5 s + a fifteenth of a second a letter)}; the rule covers declared reads too. */
+  reading?: 'report' | 'refuse' | {rule?: 'report' | 'refuse'; pace?: 'words' | 'letters'};
   /** Too much, too fast (shots.mjs · WATCHING): 'report' (the default: film.watching lists it) or 'refuse'. */
   watching?: 'report' | 'refuse';
   [key: string]: unknown;
@@ -185,6 +194,8 @@ export interface Film {
   notes: Record<string, unknown>[];
   /** Lines shown for less time than they need to be read. */
   reading: {path: string; text: string; at: number; seconds: number; needs: number}[];
+  /** Every declared read (ShotPlan.reads), timed, with what is wrong with it if anything (two at once, too late, a region not there). */
+  reads: {path: string; what: string; at: number; min: number; region?: string; problem?: string}[];
   /** Every shot — the story, then each stage — on screen from `from` to `to`, with what it says it is for and the facts it starts and ends with (null when it states none). */
   shots: {path: string; where: string; scene: string; from: number; to: number; intent: string | null; start: Record<string, Fact> | null; end: Record<string, Fact> | null; moments: number}[];
   /** Bursts: more than 4 moments in 2 s of one shot — too fast to take in. */

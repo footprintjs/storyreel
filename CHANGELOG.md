@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Reads, and a fairer reading pace
+- **`reads`** on the story and on every stage (beside `intent` and `continuity`): what the viewer must take in,
+  each `{what, at, min?, region?}`. `film.reads` lists them timed, with a `problem` when two overlap, when the
+  shot ends before one lands, or when its `region` is not drawn then; `"reading": "refuse"` refuses them. A read's
+  phrase is logged with its recipe path like every other line.
+- **`"reading": {"rule", "pace": "letters"}`**: 1.5 s + a fifteenth of a second a letter (`LETTERS` in
+  `footprint-storyreel/reading`), fairer to short labels than the words pace (still the default).
+
 ### Numbers shown in digits, said in words; listening back
 - **Number slots**: a scene's `say: [[shown, spoken], …]` — the captions show `shown` ("16.67 ms"), the voice
   says `spoken` ("sixteen point six seven milliseconds"). The scene's text is what is spoken (`spokenText`,

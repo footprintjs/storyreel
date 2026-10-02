@@ -123,3 +123,43 @@ export function watchingMode(value) {
 
 /** One finding in words, for a refusal or a list. */
 export const watchingText = w => `${w.where} has ${w.moments} moments in ${w.seconds} s from ${w.at.toFixed(2)} s (too fast to take in)`;
+
+/**
+ * Reads: what the viewer must take in during a shot — each one a sentence about understanding (`what`),
+ * when it starts (`at`: a phrase), the least time it needs to land (`min` seconds, 2 by default) and,
+ * optionally, the named thing it is about (`region`: a name the kit gives in regionsAt). One read at a
+ * time: two that overlap ask the viewer to take in two things at once. Borrowed from animators who time a
+ * shot by what the viewer must understand, not by what moves.
+ *
+ *   "reads": [{"what": "the loop changes the picture each turn", "at": ["change", "It changes the picture"], "min": 2.5, "region": "ring"}]
+ */
+export const READS = Object.freeze({min: 2, least: .5, most: 15});
+export function readReads(value, where) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || !value.length) throw new Error(`${where}: reads is a list of {what, at, min?, region?}`);
+  return value.map((r, k) => {
+    const name = `${where}: reads[${k}]`;
+    if (!r || typeof r !== 'object' || Array.isArray(r)) throw new Error(`${name} must be {what, at, min?, region?}`);
+    for (const key of Object.keys(r)) if (!['what', 'at', 'min', 'region'].includes(key)) throw new Error(`${name} has ${key}; a read takes what, at, min and region`);
+    if (typeof r.what !== 'string' || !r.what.trim()) throw new Error(`${name}: what says what the viewer must take in, in words`);
+    if (!Array.isArray(r.at) && !(r.at && typeof r.at === 'object')) throw new Error(`${name}: at is the phrase the read starts on, e.g. ["scene", "a phrase"]`);
+    const min = r.min ?? READS.min;
+    if (!(typeof min === 'number' && min >= READS.least && min <= READS.most)) throw new Error(`${name}: min is the least time it needs, ${READS.least}–${READS.most} s`);
+    if (r.region !== undefined && !(typeof r.region === 'string' && r.region.trim())) throw new Error(`${name}: region names a thing the kit draws (regionsAt → name)`);
+    return {what: r.what.trim(), at: r.at, min, ...(r.region ? {region: r.region} : {})};
+  });
+}
+
+/**
+ * What is wrong with a shot's reads, timed (t = when each starts): two at once, or one the shot ends
+ * before it lands. Returns the reads with a `problem` where there is one.
+ */
+export function checkReads(reads, {to, where}) {
+  const sorted = [...reads].sort((a, b) => a.t - b.t);
+  return sorted.map((r, i) => {
+    const next = sorted[i + 1];
+    if (next && next.t < r.t + r.min - 1e-6) return {...r, problem: `${where}: "${r.what}" needs ${r.min} s from ${r.t.toFixed(2)} s, and "${next.what}" starts at ${next.t.toFixed(2)} s — two reads at once; give the first its time (a pacing hold) or start the second later`};
+    if (r.t + r.min > to + 1e-6) return {...r, problem: `${where}: "${r.what}" needs ${r.min} s from ${r.t.toFixed(2)} s, and the shot ends at ${to.toFixed(2)} s — lengthen the scene's tail (pacing.tails) or start the read earlier`};
+    return r;
+  });
+}

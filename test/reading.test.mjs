@@ -29,7 +29,7 @@ test('a film lists every line it shows too briefly; "reading": "refuse" refuses 
   assert.deepEqual(film.reading.map(l => l.path), ['pushIn.caption']);
   assert.ok(film.reading[0].seconds < film.reading[0].needs);
   await assert.rejects(helloWith({pushIn: {...recipe.pushIn, caption: long}, reading: 'refuse'}), /Too short to read .*"Now the rule that every shepherd.*" \(pushIn.caption\) is up .* s and needs 4.2 s/);
-  await assert.rejects(helloWith({reading: 'strict'}), /reading must be "report" or "refuse"/);
+  await assert.rejects(helloWith({reading: 'strict'}), /reading must be "report", "refuse", or \{rule, pace\}/);
   // A board's writing counts until the eraser starts.
   const written = await helloWith({story: {...recipe.story, erasers: {soon: {at: ['story', 'a shepherd', -0.5], dur: .5, box: [100, 300, 600, 420]}}, items: recipe.story.items.map((it, i) => i === 1 ? {...it, erase: 'soon'} : it)}});
   assert.ok(written.reading.some(l => l.path === 'story.items[1]' && l.text === 'no written numbers'));

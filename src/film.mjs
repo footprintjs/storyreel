@@ -30,8 +30,8 @@ import {drawCard, drawStage, drawSummary, drawConnector, cardEdge, PANEL, drawRe
 import {tokenize, excerpt} from './kits/paper/code.mjs';
 import {readNotes, placePushes, pushAt} from './notes.mjs';
 import {view, then, about, through, back} from './regions.mjs';
-import {tooShortToRead, readingMode} from './reading.mjs';
-import {readIntent, readContinuity, checkContinuity, tooMuchTooFast, distinctMoments, watchingMode, watchingText, WATCHING} from './shots.mjs';
+import {tooShortToRead, readingMode, readingPace} from './reading.mjs';
+import {readIntent, readContinuity, checkContinuity, tooMuchTooFast, distinctMoments, watchingMode, watchingText, WATCHING, readReads, checkReads} from './shots.mjs';
 import {checkSound, soundsByScene, MAX_SOUNDS_PER_SCENE} from './sound.mjs';
 import {step, drainSteps, recordSteps} from './record.mjs';
 import {readEntrance, transitionCatalog, ghostPainter, CUT} from './transitions.mjs';
@@ -39,7 +39,7 @@ import {readEntrance, transitionCatalog, ghostPainter, CUT} from './transitions.
 /** The recipe's own top-level keys: anything else refuses, unless the host application names it in `hostKeys`. */
 const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'notes', 'recalls', 'poster', 'reading', 'watching', 'paperStyle'];
 /** What every shot may say about itself (shots.mjs): what it is for, and what is true when it starts and ends. */
-const PLAN_KEYS = ['intent', 'continuity'];
+const PLAN_KEYS = ['intent', 'continuity', 'reads'];
 const STAGE_KEYS = new Set(['type', 'scene', 'chip', 'chipDark', 'title', 'file', 'label', 'code', 'lh', 'reveal', 'focus', 'glows', 'footer', 'list', 'loop', 'cards', 'closing', 'hero', 'frames', 'keys', 'teaser', 'enter', 'chrome', 'marks', 'columns', 'card', ...PLAN_KEYS]);
 /** What every stage may carry; a stage kit that lists its own `keys` accepts these plus its own. */
 const COMMON_KEYS = ['type', 'scene', 'chip', 'chipDark', 'title', 'enter', 'chrome', 'card', ...PLAN_KEYS];
@@ -191,7 +191,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   yield step('read-inputs', () => inputsSummary({recipe, storyboard, clock: base, notes, strings: strings ? [...used] : null}));
 
   // The story: its kit draws the opening world on a sheet (1600×900) that hangs on the paper.
-  const {intent: storyIntent, continuity: storyContinuity, ...storySpec} = recipe.story ?? {kit: 'whiteboard', ...recipe.whiteboard};
+  const {intent: storyIntent, continuity: storyContinuity, reads: storyReads, ...storySpec} = recipe.story ?? {kit: 'whiteboard', ...recipe.whiteboard};
   const story = compileWorld(storySpec, 'the story');
   // A film may be story only (no push-in, no card, no paper stages).
   const push = recipe.pushIn ?? null;
@@ -261,10 +261,12 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   // The plan of the shots (shots.mjs): what each is for, and what is true when it starts and ends — one
   // shot's start must agree with what the shots before it left.
   const storyPathName = recipe.story ? 'story' : 'whiteboard';
+  // Reads (shots.mjs · readReads): what the viewer must take in, each on a phrase (resolved here, so the record logs it).
+  const timedReads = (value, where) => readReads(value, where).map((r, k) => ({...r, t: clock.at(Array.isArray(value) ? value[k].at : r.at)}));
   const plan = [{path: storyPathName, where: 'the story', scene: storyboard.scenes[0]?.id, from: 0,
-    intent: readIntent(storyIntent, 'the story'), continuity: readContinuity(storyContinuity, 'the story')},
+    intent: readIntent(storyIntent, 'the story'), continuity: readContinuity(storyContinuity, 'the story'), reads: timedReads(storyReads, 'the story')},
   ...stages.map((st, i) => ({path: `stages[${i}]`, where: `stage ${st.scene}`, scene: st.scene, from: st.start,
-    intent: readIntent(st.intent, `stage ${st.scene}`), continuity: readContinuity(st.continuity, `stage ${st.scene}`)}))];
+    intent: readIntent(st.intent, `stage ${st.scene}`), continuity: readContinuity(st.continuity, `stage ${st.scene}`), reads: timedReads(st.reads, `stage ${st.scene}`)}))];
   // Film order is time order: a recipe may list its stages in any order, the plan never does.
   plan.sort((a, b) => a.from - b.from);
   plan.forEach((u, i) => { u.to = plan[i + 1]?.from ?? clock.total; });
@@ -653,7 +655,15 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const shotsPlanned = plan.map(u => ({path: u.path, where: u.where, scene: u.scene, from: +u.from.toFixed(3), to: +u.to.toFixed(3), intent: u.intent, start: u.continuity?.start ?? null, end: u.continuity?.end ?? null, moments: distinctMoments(momentsOf(u)).length}));
 
   // Reading time (reading.mjs): every line meant to be read stays up, whole, long enough to read.
-  const readingRule = readingMode(recipe.reading), reading = tooShortToRead(readableLines());
+  const readingRule = readingMode(recipe.reading), reading = tooShortToRead(readableLines(), readingPace(recipe.reading));
+  // Reads: one at a time, each with its time before the shot ends, each about a thing that is there.
+  const reads = plan.flatMap(u => checkReads(u.reads, {to: u.to, where: u.where}).map((r, k) => {
+    const out = {path: `${u.path}.reads[${k}]`, what: r.what, at: +r.t.toFixed(3), min: r.min, ...(r.region ? {region: r.region} : {}), ...(r.problem ? {problem: r.problem} : {})};
+    if (r.region && !out.problem) { try { named(r.region, Math.min(r.t + .05, clock.total)); } catch (e) { out.problem = `${u.where}: "${r.what}" is about "${r.region}": ${e.message}`; } }
+    return out;
+  }));
+  const readProblems = reads.filter(r => r.problem);
+  if (readingRule === 'refuse' && readProblems.length) throw new Error(`Reads that cannot land (the recipe says reading: "refuse"): ${readProblems.slice(0, 3).map(r => r.problem).join('; ')}${readProblems.length > 3 ? `; and ${readProblems.length - 3} more` : ''}`);
   if (readingRule === 'refuse' && reading.length) throw new Error(`Too short to read (the recipe says reading: "refuse"): ${reading.slice(0, 3).map(l => `"${l.text}" (${l.path}) is up ${l.seconds} s and needs ${l.needs} s`).join('; ')}${reading.length > 3 ? `; and ${reading.length - 3} more` : ''}`);
   /** Every line the film shows to be read, with when it is whole on screen and when it starts to leave. */
   function readableLines() {
@@ -738,10 +748,10 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   for (const [name, ref] of Object.entries(recipe.recalls ?? {})) {
     const c = createCanvas(1600, 900); frame(c.getContext('2d'), clock.at(ref)); recalls[name] = c;
   }
-  yield step('checks', () => checksSummary({readingRule, reading, watchingRule, watching, facts, sounds, byScene: soundsByScene(sounds, clock.offsets, timings.scenes.map(s => s.duration)), worlds: readies.filter(Boolean).length, recalls: Object.keys(recipe.recalls ?? {})}));
+  yield step('checks', () => checksSummary({readingRule, reading, reads, watchingRule, watching, facts, sounds, byScene: soundsByScene(sounds, clock.offsets, timings.scenes.map(s => s.duration)), worlds: readies.filter(Boolean).length, recalls: Object.keys(recipe.recalls ?? {})}));
   // Every line the build resolved (the clock is a pure function of the paced word times, so the order it was asked in changes no second).
   yield step('resolve-lines', () => linesSummary(beats));
-  return {total: clock.total, clock, timings, sounds, frame, beats, strings: [...used], notes: notesApplied, reading, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching, rows: Object.freeze(rows().map(Object.freeze))};
+  return {total: clock.total, clock, timings, sounds, frame, beats, strings: [...used], notes: notesApplied, reading, reads, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching, rows: Object.freeze(rows().map(Object.freeze))};
 }
 
 /** What reading the inputs gave (record.mjs): the recipe's top-level keys, each scene's seconds, the notes, the strings used. */
@@ -766,9 +776,9 @@ function notesSummary(guesses, notesApplied) {
   return {reads: ['lines', 'notes', 'stage.'], writes};
 }
 /** What the checks found: the reading rule and the lines too short to read, the busiest scene's sounds, the worlds waited for. */
-function checksSummary({readingRule, reading, watchingRule, watching, facts, sounds, byScene, worlds, recalls}) {
+function checksSummary({readingRule, reading, reads = [], watchingRule, watching, facts, sounds, byScene, worlds, recalls}) {
   return {reads: ['world.', 'stage.', 'guess.', 'note.'], writes: {
-    'checks.reading': {rule: readingRule, tooShort: reading.map(l => l.path)},
+    'checks.reading': {rule: readingRule, tooShort: reading.map(l => l.path), ...(reads.length ? {reads: reads.length, readProblems: reads.filter(r => r.problem).map(r => r.path)} : {})},
     'checks.watching': {rule: watchingRule, found: watching.map(w => ({kind: w.kind, path: w.path, at: w.at, moments: w.moments}))},
     'checks.continuity': {facts},
     'checks.sounds': {count: sounds.length, busiest: Math.max(0, ...byScene.map(l => l.length)), limit: MAX_SOUNDS_PER_SCENE},

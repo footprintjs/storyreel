@@ -152,3 +152,9 @@ export const slotted: Storyboard = {scenes: [{id: 'frame', narration: 'One frame
 export const said = spokenText(slotted.scenes[0]) + unsaidNumbers(slotted).length;
 // @ts-expect-error a slot is a pair [shown, spoken]
 export const halfSlot: Storyboard = {scenes: [{id: 'x', narration: 'A 2.', say: [['2']]}]};
+
+// Declared reads and the letters pace.
+export const withReads: Recipe = {stages: [{type: 'world', scene: 'loop', reads: [{what: 'the loop turns', at: ['loop', 'That is a loop'], min: 2.5, region: 'ring'}], world: {kit: 'draws'}}], reading: {rule: 'report', pace: 'letters'}};
+export const problems = (film: Film): string[] => film.reads.flatMap(r => (r.problem ? [r.problem] : []));
+// @ts-expect-error the reading pace is words or letters
+export const fastPace: Recipe = {reading: {pace: 'fast'}};
