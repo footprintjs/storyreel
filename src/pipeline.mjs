@@ -197,6 +197,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     beats: film.beats.map(({ref, t, path}) => ({said: Array.isArray(ref) ? {scene: ref[0], phrase: ref[1], plus: ref[2] ?? 0} : ref, at: t, ...(path ? {entry: path} : {})})),
     ...(film.notes.length ? {notes: film.notes} : {}),
     sounds: film.sounds.length,
+    // What the sound asks of the ear (listening.mjs): the film's changes of picture and the effects against the voice.
+    ...(film.listening.length || result.listening.length ? {listening: [...film.listening, ...result.listening]} : {}),
     loudness: loudnessRecord(result.loudness),
     ...(result.video ? {picture: result.video} : {}),
     ...(finished ? {finished: {ok: finished.ok, checked: finished.checked, skipped: finished.skipped, findings: finished.findings}} : {}),

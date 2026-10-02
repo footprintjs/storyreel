@@ -200,3 +200,10 @@ export const badCheck = checkVideo({file: 'x.mp4', checks: ['wobble']});
 import {mouthAt} from '../types/sub/acting.js';
 export const talkingWorld = (clock: Parameters<typeof mouthAt>[0]): import('../types/index.js').StoryWorld => ({draw: () => {}, mouthsAt: t => [{who: 'robot', open: mouthAt(clock, t, 'robot')}]});
 export const mouthsNow = (film: Film) => film.mouthsAt(1).map(m => m.who);
+
+// Listening: what the sound asks of the ear.
+import {changeSounds, effectsUnderVoice} from '../types/sub/listening.js';
+export const heard = (film: Film) => [...film.listening, ...changeSounds([{at: 1, where: 'stage a', sound: 'whoosh'}]), effectsUnderVoice({voice: -16, effects: null})].length;
+export const quietFilm: Recipe = {listening: 'refuse'};
+// @ts-expect-error listening is report or refuse
+export const loudFilm: Recipe = {listening: 'loud'};

@@ -90,6 +90,8 @@ export interface Recipe {
   reading?: 'report' | 'refuse' | {rule?: 'report' | 'refuse'; pace?: 'words' | 'letters'};
   /** Too much, too fast (shots.mjs · WATCHING): 'report' (the default: film.watching lists it) or 'refuse'. */
   watching?: 'report' | 'refuse';
+  /** What the sound asks of the ear (listening.mjs): 'report' (the default: film.listening lists it) or 'refuse'. */
+  listening?: 'report' | 'refuse';
   [key: string]: unknown;
 }
 
@@ -211,6 +213,8 @@ export interface Film {
   shots: {path: string; where: string; scene: string; from: number; to: number; intent: string | null; start: Record<string, Fact> | null; end: Record<string, Fact> | null; moments: number}[];
   /** Bursts: more than 4 moments in 2 s of one shot — too fast to take in. */
   watching: Watching[];
+  /** What the sound asks of the ear: a sound on most changes of picture, or the same cue twice running (listening.mjs). */
+  listening: ListeningFinding[];
   /**
    * The film as rows of pictures (segments.mjs plans renders from them): `from` — when the row's picture starts to
    * arrive (its entrance begins); `paths` — the recipe entries that draw it; `enter` — how it arrives (null for the
@@ -339,7 +343,11 @@ export interface Loudness {
   measured: {I: number | null; TP: number | null; LRA: number | null; thresh: number | null; offset: number | null};
   /** Why the pass was skipped: 'the audio is silent: …' for pure silence, else 'could not read: <fields>'. */
   reason?: string;
+  /** Each role measured apart before the mix (integrated loudness, LUFS; null when there is none): the effects stay well under the voice. */
+  roles?: {voice: number | null; effects: number | null};
 }
+/** One thing the sound asks too much of the ear for (listening.mjs). */
+export interface ListeningFinding { kind: 'every-change' | 'same-twice' | 'effects-loud'; at: number; where?: string; text: string }
 
 /** The shapes a film is posted in (layout.mjs): landscape 1920×1080, square 1080×1080, portrait 1080×1350, vertical 1080×1920 (portrait and vertical show a 4:3 crop). */
 export type FormatName = 'landscape' | 'square' | 'portrait' | 'vertical';
@@ -388,7 +396,7 @@ export function renderFilm(options: {
   captionFiles?: boolean | ('vtt' | 'srt')[];
   /** How the picture is made: wholeVideo() (the default: every frame in one pass) or segmentedVideo({...}) (cached segments, joined). */
   video?: VideoStrategy;
-}): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; format?: FormatName; captions?: {vtt?: string; srt?: string}; loudness: Loudness; video?: SegmentsReport}>;
+}): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; format?: FormatName; captions?: {vtt?: string; srt?: string}; loudness: Loudness; listening: ListeningFinding[]; video?: SegmentsReport}>;
 
 /** A way to make the picture (segments.mjs): plan the parts, make each one, join them; render runs the three in order. */
 export interface VideoStrategy {

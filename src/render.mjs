@@ -12,6 +12,7 @@ import {createCanvas} from '@napi-rs/canvas';
 import {createMotionSound, soundsByScene} from './sound.mjs';
 import {compileLayout} from './layout.mjs';
 import {captionChunks, captionFile, FILE_CHUNKS} from './captions.mjs';
+import {effectsUnderVoice} from './listening.mjs';
 
 /**
  * Loudness in two passes (FFmpeg's loudnorm): measure the whole mixed film, then set it with ONE fixed
@@ -339,6 +340,10 @@ export async function finishRender(job, video) {
   });
   writeFileSync(path.join(dir, 'film-sfx.txt'), sfxParts.map(f => `file '${f}'`).join('\n') + '\n');
   run(['-f', 'concat', '-safe', '0', '-i', path.join(dir, 'film-sfx.txt'), '-ar', '48000', '-ac', '1', path.join(dir, 'film-sfx.wav')]);
+  // Each role measured apart (listening.mjs): the effects stay well under the voice, so the words stay clear.
+  const integrated = wav => measureFilm(ffmpeg, wav, loudness).measured.I;
+  const roles = {voice: narrationDir ? integrated(voice) : null, effects: film.sounds.length ? integrated(path.join(dir, 'film-sfx.wav')) : null};
+  const tooLoud = effectsUnderVoice(roles);
   run(['-i', voice, '-i', path.join(dir, 'film-sfx.wav'), '-filter_complex', '[0:a]aresample=48000[a];[1:a]aresample=48000[b];[a][b]amix=inputs=2:normalize=0:duration=first', '-ac', '1', path.join(dir, 'film-lesson.wav')]);
   const parts = [];
   if (withIntro) {
@@ -361,7 +366,7 @@ export async function finishRender(job, video) {
     const chunks = captionChunks(film, FILE_CHUNKS);
     for (const kind of captionKinds) { captions[kind] = path.join(dir, `captions.${kind}`); writeFileSync(captions[kind], captionFile(chunks, kind, {offset: lead - start, from: start, to})); }
   }
-  return {out: path.resolve(job.out), seconds: lead + to - start, chapters: chapters.map(([t, n]) => `${clock(t)} ${n}`), loudness: loudnessSet,
+  return {out: path.resolve(job.out), seconds: lead + to - start, chapters: chapters.map(([t, n]) => `${clock(t)} ${n}`), loudness: {...loudnessSet, roles}, listening: tooLoud ? [tooLoud] : [],
     ...(posterFile ? {poster: posterFile} : {}), ...(framed ? {format: framed.format} : {}), ...(captionKinds.length ? {captions} : {}), ...(video.report ? {video: video.report} : {})};
 }
 

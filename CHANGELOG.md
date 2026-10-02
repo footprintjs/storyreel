@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Listening
+- **`film.listening`** (`footprint-storyreel/listening`): what the sounds of the changes of picture ask of the
+  ear — more than 60% of four or more changes making a sound (about half should be silent), or the same cue
+  twice running; `"listening": "refuse"` refuses them. The worlds example now lists its wipe and iris both
+  sliding.
+- **Each role measured apart**: a render measures the voice and the effects before it mixes them
+  (`result.loudness.roles`, LUFS) and lists the effects in `result.listening` when they are less than 10 LU
+  under the voice; `makeFilm` writes both lists into `making-of.json`'s `listening`.
+
 ### Check the finished file
 - **`checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})`** reads the finished
   file itself and reports what a person would catch watching it: picture and sound of different lengths, or a

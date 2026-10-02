@@ -79,6 +79,10 @@
       "types": "./types/sub/finished.d.ts",
       "default": "./src/finished.mjs"
     },
+    "./listening": {
+      "types": "./types/sub/listening.d.ts",
+      "default": "./src/listening.mjs"
+    },
     "./pins": {
       "types": "./types/sub/pins.d.ts",
       "default": "./src/pins.mjs"

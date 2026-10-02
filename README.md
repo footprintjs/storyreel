@@ -635,6 +635,20 @@ a frame is drawn. `making-of.json` keeps the approval it was rendered under, and
 not lock: the render settings (the same approved film is made for every platform) and, without a code
 fingerprint, the kits' code. A draft is rendered without one.
 
+## Listening
+
+A sound on every change of picture stops meaning anything — the ear learns to ignore it — and the same cue
+twice running sounds like a loop. The film lists what its changes of picture ask of the ear (`film.listening`):
+more than 60% of them making a sound (about half should be silent: an entrance's `"sound": false`), or two
+entrances in a row with the same sound. A render measures the voice and the effects apart before it mixes them
+(`result.loudness.roles`, in LUFS) and says when the effects are less than 10 LU under the voice, where they
+start to bury the words. `"listening": "refuse"` refuses the film's own findings. The rules are
+`footprint-storyreel/listening` · `LISTENING`.
+
+```json
+"stages": [{"scene": "loop", "enter": {"type": "zoom", "sound": "whoosh"}}, {"scene": "frame", "enter": {"type": "push", "sound": false}}]
+```
+
 ## Check the finished file
 
 A render can pass every check before it and still come out wrong: a segment joined a frame off, a voice
@@ -917,7 +931,7 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/acting`, `/finished`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/acting`, `/finished`, `/listening`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws

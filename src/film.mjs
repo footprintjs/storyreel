@@ -35,11 +35,12 @@ import {view, then, about, through, back} from './regions.mjs';
 import {tooShortToRead, readingMode, readingPace} from './reading.mjs';
 import {readIntent, readContinuity, checkContinuity, tooMuchTooFast, distinctMoments, watchingMode, watchingText, WATCHING, readReads, checkReads} from './shots.mjs';
 import {checkSound, soundsByScene, MAX_SOUNDS_PER_SCENE} from './sound.mjs';
+import {listeningMode, changeSounds, listeningText} from './listening.mjs';
 import {step, drainSteps, recordSteps} from './record.mjs';
 import {readEntrance, transitionCatalog, ghostPainter, CUT} from './transitions.mjs';
 
 /** The recipe's own top-level keys: anything else refuses, unless the host application names it in `hostKeys`. */
-const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'notes', 'recalls', 'poster', 'reading', 'watching', 'paperStyle'];
+const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle'];
 /** What every shot may say about itself (shots.mjs): what it is for, and what is true when it starts and ends. */
 const PLAN_KEYS = ['intent', 'continuity', 'reads'];
 const STAGE_KEYS = new Set(['type', 'scene', 'chip', 'chipDark', 'title', 'file', 'label', 'code', 'lh', 'reveal', 'focus', 'glows', 'footer', 'list', 'loop', 'cards', 'closing', 'hero', 'frames', 'keys', 'teaser', 'enter', 'chrome', 'marks', 'columns', 'card', ...PLAN_KEYS]);
@@ -788,6 +789,10 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   for (const g of guesses) { add(g.start, 'question'); if (g.answer) add(g.end, 'chime'); }
   sounds.sort((a, b) => a.time - b.time);
   checkSoundCounts(sounds, clock, storyboard, timings);
+  // Listening (listening.mjs): about half the changes of picture silent, never the same cue twice running.
+  const listeningRule = listeningMode(recipe.listening);
+  const listening = push ? [] : changeSounds(shots.slice(1).map(shot => ({at: shot.start - shot.enter.lead, where: `stage ${(shot.stages[0] ?? stages.find(st => st.world === shot.world)).scene}`, sound: shot.enter.sound})));
+  if (listeningRule === 'refuse' && listening.length) throw new Error(`The sound asks too much of the ear (the recipe says listening: "refuse"): ${listening.slice(0, 3).map(listeningText).join('; ')}${listening.length > 3 ? `; and ${listening.length - 3} more` : ''}`);
 
   /**
    * The moments worth a still (sheet.mjs): each scene's picture once it has settled, and each change of
@@ -840,7 +845,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     data: data === null ? null : hashOf(data), theme: hashOf(paper), files: Object.freeze(files.list())});
   // What is drawn over every shot for a while: the guess cards, from their question to the card gone.
   const overlays = Object.freeze(guesses.map((g, n) => Object.freeze({path: `guesses[${n}]`, from: g.start, to: g.until + .5})));
-  return {total: clock.total, clock, timings, sounds, frame, beats, strings: [...used], notes: notesApplied, reading, reads, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching,
+  return {total: clock.total, clock, timings, sounds, listening, frame, beats, strings: [...used], notes: notesApplied, reading, reads, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching,
     rows: Object.freeze(rows().map(Object.freeze)), overlays, inputs, mouthsAt};
 }
 
