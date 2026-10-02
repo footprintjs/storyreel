@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### The cast: one film, another language and place
+- **`cast`** on `compileFilm` and `makeFilm`: `{role: {name, …}}`, who is in the film as configuration. `{{role}}`
+  in the storyboard, the recipe and the string table becomes the role's name before anything reads it (the voice,
+  the beats, the cards); kits get the cast frozen as `context.cast` (a context story kit) and in a stage kit's
+  compile options, and read the rest of a role (a look, an outfit) as they choose. It is hashed into
+  `film.inputs.cast`, so an approval locks it. `readCast`, `castText`, `withCast`. A `{{role}}` the cast lacks or a
+  role without a name refuses with the fix. Without a cast and without `{{…}}`, nothing changes.
+
 ## 0.6.0 — a release for a big screen: 4K, a finer encode, the poster as thumbnail, AI said so, chapters from titles
 
 - **A larger picture, redrawn sharp:** a layout takes `scale` (1–2; `layout.mjs · formatScale` checks it keeps the

@@ -20,3 +20,4 @@ export {contactSheet, transitionSheet} from './sheet.mjs';
 export {compileLayout, FORMAT_NAMES} from './layout.mjs';
 export {captionChunks, captionFile} from './captions.mjs';
 export {TRANSITIONS, TRANSITION_NAMES, transitionCatalog} from './transitions.mjs';
+export {readCast, castText, withCast} from './cast.mjs';

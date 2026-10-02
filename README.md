@@ -610,6 +610,25 @@ await makeRelease({storyboard, recipe, narrationDir, pacing, out: 'release/ep01'
 - **Chapters come from titled scenes.** A titled scene starts a chapter and an untitled one goes on with the one
   before it; a storyboard with no titles at all makes every scene a chapter, named by its id.
 
+### The cast: one film, another language and place
+
+A film made for another language should feel native there: the hero's name, her clothes, the shop on her
+street. The cast holds that as configuration, so the recipe and the kits stay the same.
+
+```js
+const cast = {hero: {name: 'Amaira', outfit: 'pavadai'}, mom: {name: 'Amma'}};
+await makeFilm({storyboard, recipe, cast, narrationDir, out});   // storyboard: "{{hero}} is helping today."
+```
+
+- **`{{role}}` in the text** (the storyboard, the recipe's phrases and labels, the string table) becomes the
+  role's name before anything reads it: the voice says it, a beat's phrase finds it, a card shows it. Voice the
+  storyboard after `withCast(storyboard, readCast(cast))`, so the voice says what the film expects.
+- **Kits read the rest of a role** (a look, an outfit, a skin or hair colour, a voice) from `context.cast` (a story
+  kit with `context: true`) or a stage kit's compile options; what a role carries besides its name is the kit's to
+  define.
+- The cast is part of what the film is made from (`film.inputs.cast`): an approval locks it. A `{{role}}` the cast
+  lacks, or a role without a name, refuses with the fix.
+
 ## Re-render only what changed
 
 A film is edited many times. Fixing one word, one beat or one drawing should not mean drawing all
@@ -980,6 +999,7 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})` · `readCaptions(text)` · `FINISHED_CHECK_NAMES` | checks on the finished file: lengths, blank runs, flash frames, hand-overs and joins, the voice, captions (`footprint-storyreel/finished` adds `ffmpegProbe`, `FINISHED_CHECKS`, `FINISHED`) |
 | `segmentedVideo({store, recipe, code?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir)` · `ffmpegJoin()` · `planSegments(film, {fps})` · `segmentKey(…)` · `codeFingerprint(paths)` | re-render only what changed: the picture in cached segments, joined (`renderFilm({…, video})`) |
 | `footprint-storyreel/release` → `makeRelease({targets, post, out, …})` · `loadTarget` · `checkAdapter` · `planProblems` · `TARGET_NAMES` | the post for each platform: the video in its shape, captions, thumbnail, the text to paste, checked against the platform's limits and audience |
+| `readCast(cast)` · `castText(text, cast)` · `withCast(value, cast)` | the cast: `{{role}}` in any text becomes the role's name; kits read the rest from `context.cast` |
 | `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |
 | `directionTimings(scene, {tail?})` · `withDirections(storyboard, timings)` · `sceneText(scene)` · `spokenText(scene)` · `unsaidNumbers(storyboard)` | a silent scene's timing; a voice's timings completed with the silent scenes; a scene's text as spoken (number slots in words); digits without a slot |
 | `makeClock(storyboard, timings)` | phrases → seconds; `speaking(t)`, `turns()`, `gaze(t, who)` |

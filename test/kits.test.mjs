@@ -61,7 +61,8 @@ test('kit context: a story kit with context: true receives the context, with the
   const film = await compileFilm({storyboard, timings, recipe: {story: {kit: 'ctx', size: 3}}, kits: [kit], root});
   assert.equal(got.length, 1); const [[spec, context, more]] = got;
   assert.deepEqual(spec, {kit: 'ctx', size: 3}); assert.equal(more, undefined, 'one argument after the spec');
-  assert.deepEqual(Object.keys(context).sort(), ['clock', 'insideRoot', 'labels', 'library', 'motion', 'readFile', 'root', 'theme']);
+  assert.deepEqual(Object.keys(context).sort(), ['cast', 'clock', 'insideRoot', 'labels', 'library', 'motion', 'readFile', 'root', 'theme']);
+  assert.equal(context.cast, null, 'no cast given: null');
   assert.ok(Object.isFrozen(context));
   assert.deepEqual(context.theme, loadTheme('paper'), 'the film\'s theme (paper by default)');
   assert.deepEqual(context.motion, {cameraSpeed: 1});

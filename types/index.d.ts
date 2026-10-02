@@ -277,12 +277,21 @@ export interface StoryWorld {
  * What a story kit that declares `context: true` is compiled with (frozen). It has no way to draw the film.
  * `library` and `labels` are the recipe's (empty until the recipe carries them).
  */
+/** Who is in the film, as configuration: each role's name (said and shown where the text has {{role}}) and anything a kit draws them with. */
+export type Cast = Readonly<Record<string, Readonly<{name: string} & Record<string, unknown>>>>;
+export function readCast(cast: unknown): Cast | null;
+/** A text with {{role}} replaced by the role's name; a role the cast lacks refuses. */
+export function castText(text: string, cast: Cast | null, where?: string): string;
+/** Any JSON value with {{role}} replaced in every string (a storyboard, a recipe, a string table). */
+export function withCast<T>(value: T, cast: Cast | null, where?: string): T;
 export interface KitContext {
   readonly clock: Clock;
   readonly motion: {readonly cameraSpeed: number};
   readonly theme: Record<string, unknown>;
   /** The film's root folder, as compileFilm got it. */
   readonly root: string;
+  /** The film's cast (cast.mjs): {role: {name, …the look the kit reads}}, frozen; null without one. */
+  readonly cast: Cast | null;
   readonly library: Readonly<Record<string, unknown>>;
   readonly labels: Readonly<Record<string, unknown>>;
   /** The real path of a file inside root; a path outside it (a sibling folder, a link out) refuses. */
@@ -305,7 +314,7 @@ export interface Kit {
   };
   stages?: Record<string, {
     keys?: string[];
-    compile(spec: any, context: {clock: Clock; data: unknown; motion: {cameraSpeed: number}}): unknown;
+    compile(spec: any, context: {clock: Clock; data: unknown; motion: {cameraSpeed: number}; cast: Cast | null}): unknown;
     draw(ctx: any, pen: any, theme: any, handle: any, t: number, cardBox: [number, number, number, number] | null): void;
     card?(handle: any, t: number): {rows: unknown; glow: unknown; pop: unknown};
     place?(handle: any): {at: [number, number]; scale: number};
@@ -331,6 +340,8 @@ export interface CompileFilmOptions<K = Kit | ContextKit> {
   theme?: string | Record<string, unknown>; root?: string; strings?: Record<string, string> | null;
   /** Top-level recipe keys the host application reads itself: allowed, and ignored by the engine. */
   hostKeys?: string[];
+  /** Who is in the film ({role: {name, …}}): {{role}} in the text becomes the name; kits get it as context.cast. */
+  cast?: Record<string, {name: string} & Record<string, unknown>> | null;
   /** true: the compile runs as a footprintjs flowchart and the film carries `record` (default false: no record). */
   record?: boolean;
 }
@@ -490,7 +501,7 @@ export const FINISHED_CHECK_NAMES: readonly FinishedCheckName[];
 
 /** makeFilm's options; `K` is the kits it takes (two signatures, as compileFilm). */
 export interface MakeFilmOptions<K = Kit | ContextKit> {
-  storyboard: Storyboard; recipe: Recipe; data?: unknown; kits?: K[]; theme?: string | Record<string, unknown>; root?: string; hostKeys?: string[];
+  storyboard: Storyboard; recipe: Recipe; data?: unknown; kits?: K[]; theme?: string | Record<string, unknown>; root?: string; hostKeys?: string[]; cast?: Record<string, {name: string} & Record<string, unknown>> | null;
   narrationDir?: string | null; timings?: Timings | null; pacing?: Pacing | null; strings?: Record<string, string> | null; lang?: string | null;
   out: string; render?: Record<string, unknown>;
   /** Refuse to render anything but what this approval locked: anything the film is made from, changed since (the record keeps who approved it, when, and what is not locked). */
