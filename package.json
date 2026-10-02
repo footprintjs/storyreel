@@ -71,6 +71,10 @@
       "types": "./types/sub/approval.d.ts",
       "default": "./src/approval.mjs"
     },
+    "./acting": {
+      "types": "./types/sub/acting.d.ts",
+      "default": "./src/acting.mjs"
+    },
     "./pins": {
       "types": "./types/sub/pins.d.ts",
       "default": "./src/pins.mjs"

@@ -14,6 +14,7 @@
  *    camera: [{at, to: [x, y], zoom}]}                          // eased moves; the frame always stays covered
  */
 import {ease} from '../whiteboard/board.mjs';
+import {moodAt, idleAt} from '../../acting.mjs';
 
 const clamp01 = n => Math.max(0, Math.min(1, n));
 const lerp = (a, b, u) => a + (b - a) * u;
@@ -122,10 +123,10 @@ function drawWorld(ctx, t, {sheep, evening, eureka, captions, spot}) {
   }
   // The shepherd, dropping a pebble each time a sheep passes the gate.
   const dropping = sheep.some(s => t >= s.outGate - .15 && t < s.outGate + .35) || sheep.some(s => t >= s.homeGate - .15 && t < s.homeGate + .3);
-  drawShepherd(ctx, t, LAYOUT.shepherd, {dropping, surprised: eureka && t >= eureka.at, m});
+  drawShepherd(ctx, t, LAYOUT.shepherd, {dropping, eureka, m});
   // The flock, back to front.
   const drawn = sheep.map(s => ({s, ...sheepAt(s, t)})).filter(x => x.pos[0] < 1680).sort((a, b) => a.pos[1] - b.pos[1]);
-  for (const x of drawn) drawSheep(ctx, t + x.s.i * .7, x.pos, {walking: x.walking, facing: x.facing, m});
+  for (const x of drawn) drawSheep(ctx, t + x.s.i * .7, x.pos, {walking: x.walking, facing: x.facing, m, seed: x.s.i + 2});
   // The eureka: a bulb over the shepherd and his line.
   if (eureka && t >= eureka.at) {
     const u = clamp01((t - eureka.at) / .45), s = u < 1 ? 1 + .3 * Math.sin(u * Math.PI) : 1, [x, y] = [LAYOUT.shepherd[0], LAYOUT.shepherd[1] - 300];
@@ -168,30 +169,40 @@ function drawSack(ctx, t, [x, y], count, m) {
   ctx.fillStyle = C.sackDark; ctx.fillRect(x - 40, y - 76, 80, 12);
   for (let i = 0; i < Math.min(count, 5); i++) pebble(ctx, x - 26 + i * 13, y - 82 - (i % 2) * 5, 1);
 }
-function drawShepherd(ctx, t, [x, y], {dropping, surprised, m}) {
-  const bob = Math.sin(t * 2) * 2, blink = (t % 3.7) < .12;
+/** Eyes that blink and squint: a line when nearly shut, else an ellipse `shut` flattens. */
+function eye(ctx, x, y, r, shut) {
+  if (shut > .8) { ctx.fillRect(x - r - .5, y - 1, 2 * r + 1, 2.5); return; }
+  ctx.beginPath(); ctx.ellipse(x, y, r, r * (1 - shut), 0, 0, 7); ctx.fill();
+}
+function drawShepherd(ctx, t, [x, y], {dropping, eureka, m}) {
+  // His eureka is acted (acting.mjs): the eyes squint just before it, the face swaps under the squint, the head
+  // jumps up and settles. Between changes he breathes and blinks on his own uneven rhythm.
+  const act = moodAt([{at: 0, mood: 'calm'}, ...(eureka ? [{at: Math.max(0, eureka.at), mood: 'surprised'}] : [])], t), idle = idleAt(t, {seed: 1});
+  const surprised = act.mood === 'surprised', shut = Math.max(idle.blink, act.anticipation), take = act.take;
+  const bob = Math.sin(t * 2) * 2;
   ctx.fillStyle = 'rgba(0,0,0,.15)'; ctx.beginPath(); ctx.ellipse(x, y + 4, 60, 12, 0, 0, 7); ctx.fill();
   // Staff.
   ctx.strokeStyle = C.woodDark; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x - 58, y); ctx.lineTo(x - 58, y - 250); ctx.arc(x - 38, y - 250, 20, Math.PI, 0); ctx.stroke();
   // Robe and belt.
-  ctx.fillStyle = mix(C.robe, '#4a5b9a', m * .5); ctx.beginPath(); ctx.moveTo(x - 34, y - 150 + bob); ctx.lineTo(x + 34, y - 150 + bob); ctx.lineTo(x + 52, y); ctx.lineTo(x - 52, y); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = mix(C.robe, '#4a5b9a', m * .5); ctx.beginPath(); ctx.moveTo(x - 34, y - 150 + bob - 8 * take); ctx.lineTo(x + 34, y - 150 + bob - 8 * take); ctx.lineTo(x + 52, y); ctx.lineTo(x - 52, y); ctx.closePath(); ctx.fill();
   ctx.fillStyle = C.robeDark; ctx.fillRect(x - 42, y - 86 + bob, 84, 12);
   // Arms: one on the staff; the other drops a pebble (raised while dropping).
   ctx.strokeStyle = mix(C.robe, '#4a5b9a', m * .5); ctx.lineWidth = 16;
   ctx.beginPath(); ctx.moveTo(x - 26, y - 135 + bob); ctx.lineTo(x - 52, y - 110); ctx.stroke();
   const lift = dropping ? -40 : 0; ctx.beginPath(); ctx.moveTo(x + 26, y - 135 + bob); ctx.lineTo(x + 52, y - 110 + lift * .6); ctx.stroke();
   ctx.fillStyle = C.skin; ctx.beginPath(); ctx.arc(x - 55, y - 108, 9, 0, 7); ctx.arc(x + 55, y - 108 + lift * .6, 9, 0, 7); ctx.fill();
-  // Head: face, beard, eyes (blink; wide when surprised), a hood.
-  const hy = y - 185 + bob;
+  // Head: face, beard, eyes (blink and squint; wide when surprised), a hood. The take lifts it.
+  const hy = y - 185 + bob - 16 * take;
   ctx.fillStyle = C.robeDark; ctx.beginPath(); ctx.arc(x, hy - 4, 44, Math.PI, 0); ctx.fill();
   ctx.fillStyle = C.skin; ctx.beginPath(); ctx.arc(x, hy, 34, 0, 7); ctx.fill();
   ctx.fillStyle = C.beard; ctx.beginPath(); ctx.arc(x, hy + 12, 30, .1, Math.PI - .1); ctx.fill();
   ctx.fillStyle = C.ink;
-  for (const dx of [-12, 12]) { if (blink) ctx.fillRect(x + dx - 5, hy - 6, 10, 2.5); else { ctx.beginPath(); ctx.arc(x + dx, hy - 5, surprised ? 6 : 4.5, 0, 7); ctx.fill(); } }
-  ctx.strokeStyle = '#6b3f26'; ctx.lineWidth = 3; ctx.beginPath(); if (surprised) ctx.ellipse(x, hy + 14, 7, 9, 0, 0, 7); else ctx.arc(x, hy + 8, 9, .3, Math.PI - .3); ctx.stroke();
+  for (const dx of [-12, 12]) eye(ctx, x + dx, hy - 5, surprised ? lerp(4.5, 6, act.u) : 4.5, shut);
+  ctx.strokeStyle = '#6b3f26'; ctx.lineWidth = 3; ctx.beginPath(); if (surprised) ctx.ellipse(x, hy + 14, 7, 9 * (1 + .3 * Math.max(0, take)), 0, 0, 7); else ctx.arc(x, hy + 8, 9, .3, Math.PI - .3); ctx.stroke();
 }
-function drawSheep(ctx, t, [x, y], {walking, facing, m}) {
-  const phase = t * 11, bob = walking ? Math.abs(Math.sin(phase)) * 5 : Math.sin(t * 1.8) * 1.2, blink = (t % 4.1) < .12;
+function drawSheep(ctx, t, [x, y], {walking, facing, m, seed}) {
+  // Each sheep blinks on its own uneven rhythm (acting.mjs · idleAt): a flock never blinks in step.
+  const phase = t * 11, bob = walking ? Math.abs(Math.sin(phase)) * 5 : Math.sin(t * 1.8) * 1.2, blink = idleAt(t, {seed}).blink;
   ctx.save(); ctx.translate(x, y); ctx.scale(facing, 1);
   ctx.fillStyle = 'rgba(0,0,0,.14)'; ctx.beginPath(); ctx.ellipse(0, 38, 48, 9, 0, 0, 7); ctx.fill();
   ctx.fillStyle = C.face;
@@ -204,7 +215,8 @@ function drawSheep(ctx, t, [x, y], {walking, facing, m}) {
   ctx.fillStyle = C.face; ctx.beginPath(); ctx.ellipse(46, -8, 16, 20, .2, 0, 7); ctx.fill();
   ctx.beginPath(); ctx.ellipse(36, -22, 9, 5, -.6, 0, 7); ctx.fill();
   ctx.fillStyle = wool; ctx.beginPath(); ctx.arc(40, -26, 10, 0, 7); ctx.fill();
-  if (blink) { ctx.fillStyle = '#fff'; ctx.fillRect(46, -12, 8, 2); } else { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(50, -11, 4.5, 0, 7); ctx.fill(); ctx.fillStyle = C.ink; ctx.beginPath(); ctx.arc(51.5, -11, 2.2, 0, 7); ctx.fill(); }
+  ctx.fillStyle = '#fff'; eye(ctx, 50, -11, 4.5, blink);
+  if (blink <= .8) { ctx.fillStyle = C.ink; ctx.beginPath(); ctx.ellipse(51.5, -11, 2.2, 2.2 * (1 - blink), 0, 0, 7); ctx.fill(); }
   ctx.restore();
 }
 function speech(ctx, [cx, cy], [tx, ty], text, a) {

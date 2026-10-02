@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Acting: changes, not swaps
+- **`footprint-storyreel/acting`**: `moodAt(keys, t)` acts a mood change the way an animator times a
+  reaction — `anticipation` (the eyes close over the 0.1 s before the change and open over the 0.08 s after,
+  so the face swaps while they are shut), a `take` (a damped swing up to the key's `take`, back past rest by
+  12% of it, still at 0.4 s), a colour cross-fade `u` and a spring `settle`. `idleAt(t, {seed})`: breath,
+  blink on an uneven rhythm, sway and a glance now and then, different for every seed so two characters never
+  move in step. `follows(f, delay)`: the head follows where the eyes went. Keys out of order refuse.
+- **The cartoon kit acts**: the shepherd squints into his eureka, the face swaps under the squint and the head
+  jumps and settles (it used to swap in one frame); each sheep blinks on its own rhythm. The shepherd
+  example's pixel pins were re-recorded for this (4 of its 24 pinned frames changed; no other film's).
+
 ### Reads, and a fairer reading pace
 - **`reads`** on the story and on every stage (beside `intent` and `continuity`): what the viewer must take in,
   each `{what, at, min?, region?}`. `film.reads` lists them timed, with a `problem` when two overlap, when the

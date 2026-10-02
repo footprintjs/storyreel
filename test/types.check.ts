@@ -158,3 +158,11 @@ export const withReads: Recipe = {stages: [{type: 'world', scene: 'loop', reads:
 export const problems = (film: Film): string[] => film.reads.flatMap(r => (r.problem ? [r.problem] : []));
 // @ts-expect-error the reading pace is words or letters
 export const fastPace: Recipe = {reading: {pace: 'fast'}};
+
+// Acting: mood changes acted, an idle layer, a head that follows the eyes.
+import {moodAt, idleAt, follows, ACTING} from '../types/sub/acting.js';
+export const acted = moodAt([{at: 0, mood: 'calm'}, {at: 2, mood: 'surprised', take: .6}], 2.1, {overshoot: ACTING.overshoot});
+export const squint: number = Math.max(acted.anticipation, idleAt(2.1, {seed: 3}).blink);
+export const head: (t: number) => number = follows((t: number) => t * 2, .2);
+// @ts-expect-error a mood key names its mood
+export const noMood = moodAt([{at: 0}], 1);

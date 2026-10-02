@@ -667,8 +667,8 @@ recipe's coordinates); every `film.beats[i].path` names the entry that asked for
 
 - **whiteboard** (story) — a board hanging on paper; marker props, handwriting, eraser, eureka, spotlights.
 - **cartoon** (story) — a flat, friendly world drawn in code (no image files): morning-to-evening
-  sky, hills, a stone pen and gate, a shepherd, sheep that walk with a bounce, a bag of pebbles;
-  captions; camera moves (`camera: [{at, to: [x, y], zoom}]`, the frame always stays covered).
+  sky, hills, a stone pen and gate, a shepherd who acts his eureka, sheep that walk with a bounce and
+  blink on their own rhythms, a bag of pebbles; captions; camera moves (`camera: [{at, to: [x, y], zoom}]`, the frame always stays covered).
   `node examples/shepherd/make.mjs` renders its first scene.
 
 ```json
@@ -783,6 +783,32 @@ import {easeNamed} from 'footprint-storyreel/ease';
 const x = 200 + 600 * easeNamed('spring')((t - start) / .4);   // easeNamed('bounce') → "bounce" is not an ease; the eases are linear, in, …
 ```
 
+**Acting.** A face swapped from one frame to the next reads as a glitch; a change that is acted reads as a
+thought. `footprint-storyreel/acting` times a character the way an animator times a reaction, and leaves the
+drawing to the kit:
+
+- `moodAt(keys, t)` — keys are `[{at, mood, take?}]` in time order. It returns the `mood` now and the one it
+  is changing `from`; `anticipation` (0..1: the eyes close over the 0.1 s before a change and open over the
+  0.08 s after it, so the face swaps while they are shut); `take` (a stretch that peaks at the key's `take`,
+  falls back past rest by 12% of it and is still 0.4 s after the change; `take: 0` only cross-fades); `u`
+  (0..1 over 0.3 s: cross-fade the colours with it); `settle` (a spring, for a pose). A key that repeats the
+  mood is no change. Keys out of order refuse.
+- `idleAt(t, {seed})` — what a character does while nothing happens: `breath` (a scale), `blink` (0..1, on
+  an uneven rhythm), `sway` (pixels), `glance` (a look aside now and then). Each seed moves differently, so
+  give every character its own: two characters never blink or breathe in step, and a hold never freezes.
+- `follows(f, delay)` — a value that follows another a moment behind: the head goes where the eyes went.
+
+Both are pure functions of time, like every frame. The cartoon kit's shepherd acts his eureka this way,
+and each of his sheep blinks on its own rhythm.
+
+```js
+import {moodAt, idleAt} from 'footprint-storyreel/acting';
+const act = moodAt([{at: 0, mood: 'calm'}, {at: eurekaAt, mood: 'surprised'}], t), idle = idleAt(t, {seed: 1});
+const shut = Math.max(idle.blink, act.anticipation);           // squint into the change, blink between changes
+const headY = y - 185 - 16 * act.take;                         // the take lifts the head, then it settles
+eye(ctx, x, headY, act.mood === 'surprised' ? 4.5 + 1.5 * act.u : 4.5, shut);
+```
+
 **Sounds.** `tap`, `slide`, `settle`, `question`, `chime`, `door`, `step`, `click`, `whoosh`, `crumble`:
 short, quiet and made by procedural synthesis (no samples). A kit's sound is `{time, type, gain?}`:
 
@@ -817,12 +843,13 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `makeClock(storyboard, timings)` | phrases → seconds; `speaking(t)`, `turns()`, `gaze(t, who)` |
 | `footprint-storyreel/shots` → `readIntent` · `readContinuity` · `checkContinuity` · `tooMuchTooFast` · `distinctMoments` · `WATCHING` | the shot plan's checks, on their own |
 | `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `inOut` | the one ease table (`linear in out inOut back walk jump spring`) |
+| `footprint-storyreel/acting` → `moodAt(keys, t)` · `idleAt(t, {seed})` · `follows(f, delay?)` · `ACTING` | a mood change acted (anticipation, a take, a cross-fade), an idle layer that never moves in step |
 | `contactSheet(film, {moments?, columns?, width?})` | a PNG of stills |
 | `frameHashes(film, {count?, width?, times?})` · `changedFrames(pinned, now)` | pixel pins |
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/acting`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws
