@@ -11,7 +11,10 @@
 - **`skills/storyreel-review/SKILL.md`** ships with the package: read first, look last — the loop and its rules,
   for an agent to follow.
 - **`footprint-storyreel/tools`**: the one core (`loadProject`, `timeline`, `review`, `part`, `still`, `TOOLS`
-  with what each does and takes) the command line uses, and an MCP server can.
+  with what each does and takes) the command line and the MCP server use.
+- **`storyreel mcp`**: the same four tools over MCP (stdio) for Claude Code, Claude Desktop, VS Code's Copilot or
+  Cursor — each call in a fresh process (an edit between calls is always seen), a still returned as the picture,
+  the start flags as every call's defaults.
 
 ### Review a part by reading it
 - **`reviewPart(film, {part, layout})`** (`footprint-storyreel/review`) reads the picture as text and names what is

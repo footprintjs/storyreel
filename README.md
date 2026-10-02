@@ -693,6 +693,14 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   ({storyboard, recipe, kits, root, narrationDir?, pacing?, layout?})}`; every flag also reaches `film()`). The
   package ships `skills/storyreel-review/SKILL.md`, which teaches the order — timeline, review, fix, part, one
   still last — copy it into a project's `.claude/skills/`. `footprint-storyreel/tools` is the one core both use.
+- **And as an MCP server,** for any assistant that speaks MCP: `storyreel mcp [--flag value …]` serves the same
+  four tools over stdio (the flags are every call's defaults; a still comes back as the picture). Each call runs in
+  a fresh process, so an edit to a kit between two calls is always seen:
+
+  ```bash
+  claude mcp add storyreel -- npx storyreel mcp --ep ep1 --voice work/ep1/voice      # Claude Code
+  # Claude Desktop / VS Code (Copilot) / Cursor: a stdio server, command "npx", args ["storyreel", "mcp", …]
+  ```
 - **A reused segment must pass a spot check.** A few of its frames (6 by default, `samples`) are painted
   again exactly as the video shows them (layout, motion blur, stamp, poster) at the same places in the
   segment, and must match the ones kept when it was drawn. A segment that moved is reused only when its

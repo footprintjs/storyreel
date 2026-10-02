@@ -38,3 +38,26 @@ test('part: the scenes with their handles, rendered quickly, reviewed first', {s
   assert.match(r.stdout, /two: [\d.]+–[\d.]+ s .* — review/);
   assert.match(r.stdout, new RegExp(`${out.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/parts/two\\.mp4 · [\\d.]+ s · made in [\\d.]+ s · checks`));
 });
+
+test('the same tools over MCP (stdio): the handshake, the list with each tool\'s arguments, a call as text, a still as the picture, an error as an error', async () => {
+  const out = mkdtempSync(path.join(tmpdir(), 'storyreel-mcp-')), {spawn} = await import('node:child_process');
+  const server = spawn(process.execPath, [cli, 'mcp', '--out', out], {cwd: project}), replies = new Map();
+  let buffered = '';
+  server.stdout.on('data', d => { buffered += d; let i; while ((i = buffered.indexOf('\n')) >= 0) { const m = JSON.parse(buffered.slice(0, i)); buffered = buffered.slice(i + 1); replies.set(m.id, m); } });
+  const ask = (id, method, params) => server.stdin.write(`${JSON.stringify({jsonrpc: '2.0', id, method, params})}\n`);
+  ask(1, 'initialize', {protocolVersion: '2025-06-18', capabilities: {}, clientInfo: {name: 'test', version: '0'}});
+  server.stdin.write(`${JSON.stringify({jsonrpc: '2.0', method: 'notifications/initialized'})}\n`);
+  ask(2, 'tools/list', {}); ask(3, 'tools/call', {name: 'review', arguments: {scene: 'one'}}); ask(4, 'tools/call', {name: 'still', arguments: {at: 'one+2.5'}});
+  ask(5, 'tools/call', {name: 'still', arguments: {at: 'nowhere+1'}}); ask(6, 'resources/list', {});
+  server.stdin.end();
+  await new Promise(r => server.on('close', r));
+  assert.equal(replies.get(1).result.serverInfo.name, 'storyreel'); assert.ok(replies.get(1).result.capabilities.tools);
+  const tools = replies.get(2).result.tools;
+  assert.deepEqual(tools.map(t => t.name), ['timeline', 'review', 'part', 'still']);
+  assert.deepEqual(tools.find(t => t.name === 'still').inputSchema.required, ['at']);
+  assert.match(replies.get(3).result.content[0].text, /words over words: "Alpha" and "Beta"/);
+  const [text, image] = replies.get(4).result.content;
+  assert.match(text.text, /stills\/one\+2\.5\.png · 1 frame/); assert.equal(image.type, 'image'); assert.equal(image.mimeType, 'image/png');
+  assert.equal(replies.get(5).result.isError, true); assert.match(replies.get(5).result.content[0].text, /"nowhere\+1" is not a moment/);
+  assert.equal(replies.get(6).error.code, -32601);
+});
