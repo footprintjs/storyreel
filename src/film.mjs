@@ -15,6 +15,7 @@
  * Director notes (notes.mjs) lay camera words over the film: a camera speed, cuts, pushes.
  * See README.md for the data.
  */
+import {readCast, withCast} from './cast.mjs';
 import {createCanvas} from '@napi-rs/canvas';
 import {readFileSync, statSync, realpathSync} from 'node:fs';
 import path from 'node:path';
@@ -90,14 +91,15 @@ const into = (st, t, lead, seconds) => st.cut ? (t >= st.start ? 1 : 0) : ramp(t
 const aim = (ctx, c) => { ctx.translate(c.tx, c.ty); ctx.scale(c.z, c.z); ctx.translate(-c.sx, -c.sy); };
 
 /**
- * What a story kit that declares `context: true` is compiled with: kit.compile(spec, context). Frozen,
+ * What a story kit that declares `context: true` is compiled with: kit.compile(spec, context) — `cast` is the
+ * film's cast (cast.mjs; null without one). Frozen,
  * and with no way to draw the film (only the engine draws clips, and nothing can call the film while it
  * is still being built). `library` and `labels` are the recipe's; no recipe carries them yet, so both are
  * empty. A file the kit opens goes through `readFile`, which loads only from inside root (files.mjs ·
  * insideRoot, as the recipe's own files do).
  */
-function kitContext({clock, motion, theme, root, inside = file => insideRoot(root, file)}) {
-  return Object.freeze({clock, motion, theme, root, library: Object.freeze({}), labels: Object.freeze({}),
+function kitContext({clock, motion, theme, root, cast = null, inside = file => insideRoot(root, file)}) {
+  return Object.freeze({clock, motion, theme, root, cast, library: Object.freeze({}), labels: Object.freeze({}),
     insideRoot: inside, readFile: file => readFileSync(inside(file))});
 }
 
@@ -169,9 +171,12 @@ export async function compileFilm(options) {
  * summary)`, where `summary()` (called only when recording) says what the segment read and wrote.
  * The segments run the same code in the same order whether or not the compile is recorded.
  */
-async function* compileSteps({storyboard, board, timings, recipe, data, capture, kits = [], theme, root = process.cwd(), strings = null, hostKeys = []}) {
+async function* compileSteps({storyboard, board, timings, recipe, data, capture, kits = [], theme, root = process.cwd(), strings = null, hostKeys = [], cast = null}) {
   storyboard ??= board; data ??= capture ?? null;
   checkRecipeKeys(recipe, hostKeys);
+  // The cast's names go into the text first ({{role}} → name; cast.mjs), so every reader sees the film as it is said.
+  const castGiven = cast; cast = readCast(cast);
+  storyboard = withCast(storyboard, cast, 'storyboard'); recipe = withCast(recipe, cast, 'recipe'); strings = strings === null ? null : withCast(strings, cast, 'strings');
   const given = recipe, used = new Set(); recipe = withStrings(recipe, strings, used);
   const entries = recipePaths(recipe);
   // The director's notes: one camera speed for the film (story kits take it as motion.cameraSpeed), cuts, pushes.
@@ -194,7 +199,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const transitions = transitionCatalog(allKits);
   const worldKits = new Set();
   // What a context kit gets (kitContext); every world's `ready`, settled before recalls are drawn (readyWorlds).
-  const context = kitContext({clock, motion, theme: paper, root, inside: within}), readies = [];
+  const context = kitContext({clock, motion, theme: paper, root, cast, inside: within}), readies = [];
   const compileWorld = (spec, where) => {
     const kit = storyKits[spec?.kit];
     if (!kit) throw new Error(`No story kit "${spec?.kit}" for ${where} (have: ${Object.keys(storyKits).join(', ')})`);
@@ -261,7 +266,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     st.columnsAt = (reads('columns') ? spec.columns ?? [] : []).map(k => ({key: k.key, a: clock.at(k.from), b: clock.at(k.to)}));
     if (reads('footer') && spec.footer) st.footerAt = clock.at(spec.footer.at);
     if (reads('list') && spec.list) st.listAt = spec.list.map(item => ({...item, t: clock.at(item.at), detail: valueFrom(data, item.value)}));
-    if (impl) { st.kit = impl; st.handle = st.kit.compile(spec, {clock, data, motion}); }
+    if (impl) { st.kit = impl; st.handle = st.kit.compile(spec, {clock, data, motion, cast}); }
     if (reads('cards') && spec.cards) st.cardsAt = spec.cards.map(c => ({...c, t: clock.at(c.at)}));
     if (reads('closing') && spec.closing) st.closingAt = clock.at(spec.closing.at);
     if (reads('hero') && spec.hero) st.heroAt = {...spec.hero, until: clock.at(spec.hero.until)};
@@ -869,7 +874,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   // key holds the ones that reach every frame (segments.mjs). Files: every one read through the root while the
   // film was built.
   const inputs = Object.freeze({storyboard: hashOf(storyboard), timings: hashOf(timings), recipe: hashOf(given), strings: strings ? hashOf(strings) : null,
-    data: data === null ? null : hashOf(data), theme: hashOf(paper), files: Object.freeze(files.list())});
+    data: data === null ? null : hashOf(data), theme: hashOf(paper), files: Object.freeze(files.list()), ...(castGiven ? {cast: hashOf(castGiven)} : {})});
   // What is drawn over every shot for a while: the guess cards, from their question to the card gone.
   const overlays = Object.freeze(guesses.map((g, n) => Object.freeze({path: `guesses[${n}]`, from: g.start, to: g.until + .5})));
   return {total: clock.total, clock, timings, sounds, listening, frame, beats, strings: [...used], notes: notesApplied, reading, reads, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching,

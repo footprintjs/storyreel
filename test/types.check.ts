@@ -223,3 +223,10 @@ export const voiced: ReleasePost = {title: 'Pebbles', audience: 'general', thumb
 export const voicedWrong: ReleasePost = {title: 'Pebbles', audience: 'general', synthetic: 'voice'};
 // @ts-expect-error an audience is 'kids' or 'general'
 export const wrong: ReleasePost = {title: 'Pebbles', audience: 'everyone'};
+
+// The cast: a role's name and the look a kit reads; a context kit reads it as context.cast.
+import type {Cast, KitContext as CastContext} from '../types/index.js';
+export const heroDress = (ctx: CastContext): unknown => ctx.cast?.hero?.dress;
+export const cast: Cast = {hero: {name: 'Amaira', outfit: 'stripes'}};
+// @ts-expect-error a role needs its name
+export const nameless: Cast = {hero: {outfit: 'stripes'}};

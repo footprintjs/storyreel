@@ -8,6 +8,7 @@
  * Heavy things (the compiled film, canvases) never enter the flowchart's tracked scope; stages
  * pass small values and file paths, as footprintjs expects.
  */
+import {readCast, withCast} from './cast.mjs';
 import {readFileSync, writeFileSync, mkdirSync, cpSync, rmSync, existsSync, statSync, renameSync} from 'node:fs';
 import path from 'node:path';
 import {flowChart, narrative} from 'footprintjs';
@@ -92,7 +93,9 @@ const MAX_PARTS = 256;
  *                     (the record's `finished` lists what they found) or 'refuse' (a problem refuses the film);
  *                     `expect: {seconds, tolerance?}` is the length the brief asks for
  */
-export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report', code = null, check = null, expect = {}}) {
+export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report', code = null, check = null, expect = {}, cast = null}) {
+  // The cast's names into the text before anything reads it: the pacing, the voice check, the chapters (cast.mjs).
+  if (cast) { const c = readCast(cast); storyboard = withCast(storyboard, c, 'storyboard'); recipe = withCast(recipe, c, 'recipe'); if (strings) strings = withCast(strings, c, 'strings'); }
   if (check !== null && check !== 'report' && check !== 'refuse') throw new Error(`check is 'report' (the record lists what the checks on the finished file found), 'refuse' (a problem refuses the film) or left out, not ${JSON.stringify(check)}`);
   if (voiceCheck !== 'report' && voiceCheck !== 'refuse') throw new Error(`voiceCheck is 'report' (the record lists words the voice check did not hear) or 'refuse' (the film refuses them), not ${JSON.stringify(voiceCheck)}`);
   if (code !== null && !(typeof code === 'string' && code.trim())) throw new Error("code is a fingerprint of the kits' drawing code (codeFingerprint([kitsFolder])), or left out");
@@ -133,7 +136,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       scope.pacing = paced.pacing ?? null;
     },
     'compile-film': async scope => {
-      film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings, hostKeys, record: true});
+      film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings, hostKeys, cast, record: true});
       scope.beats = film.beats.length; scope.sounds = film.sounds.length; scope.total = +film.total.toFixed(3);
       // What the film is made from (film.inputs, and the pacing, the voice, the kits' code): an approval locks all of it.
       inputs = {...film.inputs, pacing: hashOf(pacing), ...(narrationDir ? {voice: voiceHash(narrationDir)} : {}), ...(code ? {code} : {})};
