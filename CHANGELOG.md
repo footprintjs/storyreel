@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Who says each word
+- **A word's own `speaker`** in the timings (written by a voice step that knows who said what) wins over the scene's:
+  `clock.speaking(t)`, `clock.turns()` (now one turn per run of words by one speaker) and `gaze` follow it, so the
+  narrator and the characters can take turns inside one scene. A word with no speaker is the scene's speaker, or the
+  narrator; without word speakers nothing changes (`clock.words` keeps a speaker only on a word that carried one). A
+  word speaker that is not a word refuses, naming the word.
+- **Captions end a sentence that ends inside a quote or a bracket** (`tomorrow!"`, `me?'`, `done.”`), so a caption no
+  longer runs on into the next sentence.
+
 ## 0.3.0 — shots planned like a film crew plans them; transitions as a collection; one film in every platform's shape
 
 ### Planning the shots (borrowed from how a film crew plans a shot)

@@ -9,7 +9,8 @@
  *   a file     — WebVTT or SRT beside the video (captionFile), for players that show their own captions
  *                (YouTube, LinkedIn and X take a file): longer cues, broken at sentences, two lines at most
  */
-const CLAUSE = /[.?!:;,—–]$/, SENTENCE = /[.?!]$/;
+// A sentence or clause may end inside a quote or a bracket: `tomorrow!"`, `me?'`, `done.”`, `(soon).`
+const CLAUSE = /[.?!:;,—–]["'”’)\]]*$/, SENTENCE = /[.?!]["'”’)\]]*$/;
 const spoken = w => String(w.text).replace(/[^\p{L}\p{N}]/gu, '');
 
 /**
