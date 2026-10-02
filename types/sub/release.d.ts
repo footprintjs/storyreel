@@ -26,7 +26,10 @@ export interface ReleaseAdapter {
 export type TargetName = 'youtube' | 'youtube-shorts' | 'linkedin' | 'tiktok' | 'instagram-reels';
 /** A target: a built-in name, an adapter, or one with options (a part from/to, a crop for the tall shapes, limits overridden). */
 export type ReleaseTarget = TargetName | ReleaseAdapter | {target: TargetName | ReleaseAdapter; name?: string; from?: number; to?: number; header?: {title: string; sub?: string}; crop?: unknown[]; captions?: boolean | object; limits?: Partial<ReleaseAdapter['limits']>; scale?: number};
-export interface Released {target: string; dir: string; video: string; captions: {srt?: string; vtt?: string} | null; thumbnail: string | null; post: Record<string, unknown>; makingOf: string}
+/** One target released: `dir` holds what is posted and nothing else; `work` the render's working files and its record. */
+export interface Released {target: string; dir: string; video: string; captions: {srt?: string; vtt?: string} | null; thumbnail: string | null; post: Record<string, unknown>; makingOf: string; work: string}
+/** The folder inside a release's `out` that holds each target's working files and record. */
+export const WORK: 'work';
 
 export const TARGETS: Readonly<Record<TargetName, () => Promise<{default: ReleaseAdapter}>>>;
 export const TARGET_NAMES: readonly TargetName[];

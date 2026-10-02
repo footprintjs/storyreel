@@ -11,7 +11,9 @@
  * A release refuses BEFORE rendering what it can know then (an audience the platform does not admit, a title too
  * long, a thumbnail of the wrong shape, a part longer than the platform takes) and checks the rest after (the
  * film's own length, the text with the chapters added). Each target gets a folder: the video in the platform's
- * shape, its caption files, its thumbnail, and post.json + post.txt with the text ready to paste. Uploading is not
+ * shape, its caption files, its thumbnail, and post.json + post.txt with the text ready to paste — and nothing
+ * else, so the folder is what gets uploaded; the render's working files and its record (making-of.json) go to
+ * <out>/work/<target>/, and the clean folder's files are linked from there (one copy on disk). Uploading is not
  * a release's job: a platform's upload needs the account owner's sign-in and stays a separate step.
  *
  * A platform's limits change: every adapter says when its facts were checked and where (`facts`), and a target
@@ -24,7 +26,7 @@
  * in the film is realistic and made with AI is declared (`post.synthetic: ['voice']` for a synthetic voice
  * narrating), and an adapter whose platform asks for it says so in the post (YouTube: altered or synthetic content).
  */
-import {mkdirSync, writeFileSync, copyFileSync, readFileSync, statSync} from 'node:fs';
+import {mkdirSync, writeFileSync, copyFileSync, readFileSync, statSync, linkSync, rmSync} from 'node:fs';
 import path from 'node:path';
 import {makeFilm} from './pipeline.mjs';
 import {FORMAT_NAMES, formatScale} from './layout.mjs';
@@ -131,6 +133,17 @@ async function checkThumbnail(adapter, file) {
   return file;
 }
 
+/** The folder (inside a release's `out`) that holds each target's working files and record, apart from what is posted. */
+export const WORK = 'work';
+
+/** A file of the render in the clean folder: linked (one copy on disk), or copied where a link cannot be made. */
+function deliver(file, dir) {
+  const to = path.join(dir, path.basename(file));
+  rmSync(to, {force: true});
+  try { linkSync(file, to); } catch { copyFileSync(file, to); }
+  return to;
+}
+
 /** The thumbnail in the target's folder: the image given, or the film's poster drawn at the platform's size; null when the platform takes none. */
 async function placeThumbnail(adapter, given, poster, dir) {
   if (!given || !adapter.thumbnail) return null;
@@ -164,6 +177,7 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
   const p = readPost(post), loaded = [];
   for (const spec of targets) loaded.push(await loadTarget(spec));
   const names = loaded.map(l => l.options.name); if (new Set(names).size !== names.length) throw new Error(`two targets are called the same (${names.join(', ')}): give one a name`);
+  if (names.includes(WORK)) throw new Error(`a target cannot be called "${WORK}": that folder holds the renders' working files (give the target another name)`);
   // First everything that can be known before a frame is drawn, for every target: nothing renders if any refuses.
   const poster = film.render && 'poster' in film.render ? film.render.poster != null : film.recipe?.poster != null;
   for (const {adapter, options} of loaded) {
@@ -174,22 +188,23 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
   const stem = base ?? (String(film.storyboard?.title ?? 'film').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'film');
   const released = [];
   for (const {adapter, options} of loaded) {
-    const dir = path.join(out, options.name); mkdirSync(dir, {recursive: true});
+    const dir = path.join(out, options.name), work = path.join(out, WORK, options.name); mkdirSync(dir, {recursive: true}); mkdirSync(work, {recursive: true});
     const layout = {format: adapter.video.format, ...(adapter.video.captions || options.captions ? {captions: options.captions ?? adapter.video.captions} : {}),
       ...(options.header ? {header: options.header} : adapter.video.header && p.title ? {header: {title: p.title}} : {}), ...(options.crop ? {crop: options.crop} : {}), ...(options.scale !== undefined ? {scale: options.scale} : {})};
     // A platform that takes an uploaded thumbnail (YouTube) shows no frame of the video as one: it starts on the film's own.
     const render = {...(adapter.thumbnail && !(film.render && 'posterFrame' in film.render) ? {posterFrame: false} : {}), ...(film.render ?? {}), layout, ...(adapter.video.captionFiles ? {captionFiles: adapter.video.captionFiles} : {}),
       ...(options.from !== undefined ? {from: options.from} : {}), ...(options.to !== undefined ? {to: options.to} : {})};
-    const result = await makeFilm({...film, out: path.join(dir, `${stem}.mp4`), render});
+    const result = await makeFilm({...film, out: path.join(work, `${stem}.mp4`), render});
     refuse(adapter, lengthProblems(adapter, result.seconds));
     const fields = adapter.post(p, {chapters: (result.chapters ?? []).map(chapterOf), seconds: result.seconds});
     refuse(adapter, textProblems(adapter, fields));
+    const video = deliver(result.out, dir), captions = result.captions ? Object.fromEntries(Object.entries(result.captions).map(([kind, file]) => [kind, deliver(file, dir)])) : null;
     const thumbnail = await placeThumbnail(adapter, p.thumbnail, result.poster, dir);
-    const record = {target: adapter.name, label: adapter.label, fields, video: path.basename(result.out), ...(result.captions ? {captions: Object.values(result.captions).map(f => path.basename(f))} : {}),
+    const record = {target: adapter.name, label: adapter.label, fields, video: path.basename(video), ...(captions ? {captions: Object.values(captions).map(f => path.basename(f))} : {}),
       ...(thumbnail ? {thumbnail: path.basename(thumbnail)} : {}), seconds: +result.seconds.toFixed(2), format: adapter.video.format, audience: p.audience, ...(p.synthetic.length ? {synthetic: p.synthetic} : {}), ...(p.lang ? {lang: p.lang} : {}), facts: adapter.facts};
     writeFileSync(path.join(dir, 'post.json'), JSON.stringify(record, null, 2));
     writeFileSync(path.join(dir, 'post.txt'), postText(adapter, fields));
-    released.push({target: options.name, dir, video: result.out, captions: result.captions ?? null, thumbnail, post: fields, makingOf: result.makingOf});
+    released.push({target: options.name, dir, video, captions, thumbnail, post: fields, makingOf: result.makingOf, work});
   }
   return released;
 }

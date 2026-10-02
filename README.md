@@ -583,7 +583,8 @@ import {makeRelease} from 'footprint-storyreel/release';
 await makeRelease({storyboard, recipe, narrationDir, pacing, out: 'release/ep01',
   post: {title: 'One sheep, one pebble', description: 'How counting began.', audience: 'kids', thumbnail: 'ep01.jpg'},
   targets: ['youtube', {target: 'youtube-shorts', from: 51, to: 110, crop: [{at: ['past', 'a shepherd'], x: 900}]}]});
-// release/ep01/youtube/  the film 1920×1080, captions.srt + .vtt, thumbnail.jpg, post.json, post.txt (made for kids: yes)
+// release/ep01/youtube/  the film 1920×1080, captions.srt + .vtt, thumbnail.jpg, post.json, post.txt (made for kids: yes) — nothing else
+// release/ep01/work/youtube/  the render's working files and its record (making-of.json), kept apart
 // release/ep01/youtube-shorts/  a 59 s part, 1080×1920 with the title band and captions, post.json, post.txt
 ```
 
