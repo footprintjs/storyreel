@@ -83,6 +83,10 @@
       "types": "./types/sub/listening.d.ts",
       "default": "./src/listening.mjs"
     },
+    "./release": {
+      "types": "./types/sub/release.d.ts",
+      "default": "./src/release.mjs"
+    },
     "./pins": {
       "types": "./types/sub/pins.d.ts",
       "default": "./src/pins.mjs"

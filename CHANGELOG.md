@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Release: one call, every platform
+- **`makeRelease({targets, post, out, …makeFilm options})`** (`footprint-storyreel/release`): one interface, one
+  adapter per platform — `youtube`, `youtube-shorts`, `linkedin`, `tiktok`, `instagram-reels` — each imported only
+  when a release names it. An adapter holds its platform's strategies as data: the video's shape (a layout), its
+  length, the text fields and their limits, the thumbnail, who the platform is for (`audience: {minAge, kids}`)
+  and how the text is composed (YouTube's description gets the chapters by YouTube's rules: the first at 0:00, at
+  least three, each at least 10 s). Each target gets a folder: the video, caption files, thumbnail, `post.json`
+  and `post.txt`. A post says who the film is for (`audience: 'kids' | 'general'`): YouTube marks a kids' film
+  made for kids, the 13-and-over and 16-and-over platforms refuse it with the fix (a teaser for parents). What can
+  be known before rendering refuses before a frame is drawn. Every adapter says when its facts were checked
+  (`facts`), and a target may override a limit. Your own adapter: an object of the same shape (`checkAdapter`).
+
 ## 0.4.0 — re-render only what changed; approve a film; acting, match cuts and held layers; checks on the finished file
 
 ### Who says each word

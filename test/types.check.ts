@@ -207,3 +207,12 @@ export const heard = (film: Film) => [...film.listening, ...changeSounds([{at: 1
 export const quietFilm: Recipe = {listening: 'refuse'};
 // @ts-expect-error listening is report or refuse
 export const loudFilm: Recipe = {listening: 'loud'};
+
+// Release (types/sub/release.d.ts): targets by name, with options, or an adapter of your own; a post says who it is for.
+import type {ReleaseAdapter, ReleaseTarget, ReleasePost} from '../types/sub/release.js';
+const mine: ReleaseAdapter = {name: 'mine', label: 'Mine', video: {format: 'square', captions: true}, limits: {seconds: {max: 60}, text: {text: {max: 500}}},
+  audience: {minAge: 13, kids: 'refuse'}, thumbnail: null, facts: {checked: '2026-10-02', sources: []}, post: p => ({text: p.title})};
+export const targets: ReleaseTarget[] = ['youtube', {target: 'youtube-shorts', from: 0, to: 60}, mine];
+export const teaser: ReleasePost = {title: 'Pebbles', audience: 'general'};
+// @ts-expect-error an audience is 'kids' or 'general'
+export const wrong: ReleasePost = {title: 'Pebbles', audience: 'everyone'};
