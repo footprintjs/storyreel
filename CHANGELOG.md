@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 — read first: edit one part, review it as text, the tools for people and agents
 
 ### Speech in scripts with vowel signs
 - **A phrase is found by its letters and its vowel signs** (`clock.mjs · normSpeech` keeps combining marks): in
