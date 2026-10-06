@@ -1,6 +1,6 @@
 /**
  * The review tools: one core for every way they are called — the command line (cli.mjs: `storyreel review`),
- * a skill that teaches the order (skills/storyreel-review/SKILL.md) and an MCP server. Each tool takes the
+ * a skill that teaches the order (plugin/skills/storyreel-review/SKILL.md) and an MCP server. Each tool takes the
  * project (the film's inputs, from the project's storyreel.config.mjs) and returns text to read; a still returns
  * the picture's file too. Read first, look last: the timeline and the review are text, a still is the one picture.
  *

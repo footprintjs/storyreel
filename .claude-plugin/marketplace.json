@@ -1,0 +1,8 @@
+{
+  "name": "storyreel",
+  "owner": {"name": "footprintjs", "url": "https://github.com/footprintjs"},
+  "metadata": {"description": "StoryReel skills: make and review films drawn in code."},
+  "plugins": [
+    {"name": "storyreel", "source": "./plugin", "description": "Review and fix a StoryReel film by reading it first: the timeline, the review as text, a quick part render, one still to confirm."}
+  ]
+}

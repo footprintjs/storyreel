@@ -12,7 +12,7 @@
  * long, a thumbnail of the wrong shape, a part longer than the platform takes) and checks the rest after (the
  * film's own length, the text with the chapters added). Each target gets a folder: the video in the platform's
  * shape, its caption files, its thumbnail, and post.json + post.txt with the text ready to paste — and nothing
- * else, so the folder is what gets uploaded; the render's working files and its record (making-of.json) go to
+ * else (and CREDITS.txt: what the film was made with), so the folder is what gets uploaded; the render's working files and its record (making-of.json) go to
  * <out>/work/<target>/, and the clean folder's files are linked from there (one copy on disk). Uploading is not
  * a release's job: a platform's upload needs the account owner's sign-in and stays a separate step.
  *
@@ -42,7 +42,7 @@ export const TARGETS = Object.freeze({
 export const TARGET_NAMES = Object.freeze(Object.keys(TARGETS));
 /** Who a film is made for: 'kids' (directed at children) or 'general' (anyone, a teaser for parents included). */
 export const AUDIENCES = Object.freeze(['kids', 'general']);
-const POST_KEYS = ['title', 'description', 'tags', 'audience', 'thumbnail', 'lang', 'synthetic'];
+const POST_KEYS = ['title', 'description', 'tags', 'audience', 'thumbnail', 'lang', 'synthetic', 'credits'];
 const TARGET_KEYS = ['target', 'name', 'from', 'to', 'header', 'crop', 'captions', 'limits', 'scale'];
 
 /** The adapter interface: what every platform adapter must say. Returns the adapter; refuses naming what is missing. */
@@ -90,7 +90,8 @@ export function readPost(post) {
   if (typeof (post.description ?? '') !== 'string') throw new TypeError('post.description is text');
   if (!AUDIENCES.includes(post.audience)) throw new TypeError(`post.audience must be ${AUDIENCES.map(a => `'${a}'`).join(' or ')}: 'kids' when the film is made for children (YouTube marks it made for kids; platforms for older people refuse it), 'general' otherwise (a teaser for parents is 'general')`);
   if (post.tags !== undefined && !(Array.isArray(post.tags) && post.tags.every(t => typeof t === 'string' && t.trim()))) throw new TypeError('post.tags is a list of words');
-  return {description: '', tags: [], synthetic: [], ...post};
+  if (post.credits !== undefined && !(Array.isArray(post.credits) && post.credits.every(c => typeof c === 'string' && c.trim()))) throw new TypeError("post.credits lists what the film uses that the maker brought, one line each (e.g. 'Icons: Simple Icons, CC0'): they go into CREDITS.txt");
+  return {description: '', tags: [], synthetic: [], credits: [], ...post};
 }
 
 /**
@@ -131,6 +132,18 @@ async function checkThumbnail(adapter, file) {
   if (Math.abs(img.width / img.height - width / height) > .01) refuse(adapter, [{problem: `the thumbnail is ${img.width}×${img.height}, not the ${width}×${height} shape`, fix: `make it ${width}×${height}`}]);
   if (maxBytes && bytes > maxBytes) refuse(adapter, [{problem: `the thumbnail is ${(bytes / 1e6).toFixed(1)} MB, over ${(maxBytes / 1e6).toFixed(1)} MB`, fix: 'save it as a smaller JPEG'}]);
   return file;
+}
+
+/**
+ * What the film was made with, for the post (CREDITS.txt): StoryReel and every tool its record lists (name, version,
+ * licence, what for), then what the maker brought (post.credits), and the synthetic voice when the post declares one.
+ */
+export function creditsText(post, tools) {
+  const own = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const line = t => `- ${t.name}${t.version ? ` ${t.version}` : ''} (${t.license})${t.detail ? ` — ${t.detail}` : ''}`;
+  return [`Credits — ${post.title}`, '', 'Made with', line({name: own.name, version: own.version, license: own.license, detail: 'the film, drawn in code'}), ...tools.map(line),
+    ...(post.credits?.length ? ['', 'From the maker', ...post.credits.map(c => `- ${c}`)] : []),
+    ...(post.synthetic?.includes('voice') ? ['', 'The narration is a synthetic voice.'] : []), ''].join('\n');
 }
 
 /** The folder (inside a release's `out`) that holds each target's working files and record, apart from what is posted. */
@@ -204,7 +217,8 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
       ...(thumbnail ? {thumbnail: path.basename(thumbnail)} : {}), seconds: +result.seconds.toFixed(2), format: adapter.video.format, audience: p.audience, ...(p.synthetic.length ? {synthetic: p.synthetic} : {}), ...(p.lang ? {lang: p.lang} : {}), facts: adapter.facts};
     writeFileSync(path.join(dir, 'post.json'), JSON.stringify(record, null, 2));
     writeFileSync(path.join(dir, 'post.txt'), postText(adapter, fields));
-    released.push({target: options.name, dir, video, captions, thumbnail, post: fields, makingOf: result.makingOf, work});
+    const credits = path.join(dir, 'CREDITS.txt'); writeFileSync(credits, creditsText(p, JSON.parse(readFileSync(result.makingOf, 'utf8')).tools ?? []));
+    released.push({target: options.name, dir, video, captions, thumbnail, credits, post: fields, makingOf: result.makingOf, work});
   }
   return released;
 }

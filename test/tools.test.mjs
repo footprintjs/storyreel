@@ -15,7 +15,7 @@ const has = cmd => !spawnSync(cmd, ['-version']).error;
 test('the tools read the project\'s film: its timeline and its review as text, a still as one picture', async () => {
   const out = mkdtempSync(path.join(tmpdir(), 'storyreel-tools-')), p = await loadProject({cwd: project, out});
   assert.match(await timeline(p, {scene: 'two', handles: 0}), /^two: [\d.]+–[\d.]+ s of [\d.]+ s \(times from its start\)\n0\.00  ── two$/m);
-  assert.match(await review(p), /review \(under-captions, words-overlap, cut-off, still\):\n0:02\.0–0:03\.8 one · words over words: "Alpha" and "Beta"/);
+  assert.match(await review(p), /review \(under-captions, words-overlap, cut-off, hook, text-density, still\):\n0:02\.0–0:03\.8 one · words over words: "Alpha" and "Beta"/);
   const s = await still(p, {at: 'one+2.5,two+0'});
   assert.ok(existsSync(s.file) && s.file.endsWith('.png'), s.text);
   await assert.rejects(still(p, {at: 'three+1'}), /"three\+1" is not a moment \(scene\+seconds, or seconds; the scenes are one, two\)/);

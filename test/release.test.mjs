@@ -73,7 +73,7 @@ test('a release: each target its own folder — the video in its shape, captions
   const out = mkdtempSync(path.join(tmpdir(), 'release-'));
   await assert.rejects(makeRelease({...film, out: path.join(out, 'no'), targets: ['youtube', 'tiktok'], post: kids}), /TikTok is for people aged 13/);
   assert.equal(existsSync(path.join(out, 'no')), false, 'refused before anything rendered, even the YouTube version');
-  const done = await makeRelease({...film, render: {quality: 'high'}, out, targets: ['youtube', {target: 'youtube-shorts', name: 'short', to: 6}], post: {...kids, thumbnail: 'poster', synthetic: ['voice']}});
+  const done = await makeRelease({...film, render: {quality: 'high'}, out, targets: ['youtube', {target: 'youtube-shorts', name: 'short', to: 6}], post: {...kids, thumbnail: 'poster', synthetic: ['voice'], credits: ['Sheep drawn by hand']}});
   const [yt, short] = done;
   assert.equal(probe(yt.video), '1920,1080'); assert.equal(probe(short.video), '1080,1920');
   assert.equal(probe(yt.video, 'color_space,color_transfer,color_primaries'), 'bt709,bt709,bt709', 'the high-quality encode: colours converted and tagged as HD video\'s');
@@ -82,8 +82,11 @@ test('a release: each target its own folder — the video in its shape, captions
   const thumb = await loadImage(readFileSync(yt.thumbnail)); assert.deepEqual([thumb.width, thumb.height], [1280, 720], 'the poster, drawn at YouTube\'s thumbnail size');
   assert.ok(existsSync(path.join(yt.dir, 'captions.srt')) && existsSync(path.join(yt.dir, 'thumbnail.jpg')), 'YouTube: caption files and the thumbnail beside the video');
   assert.equal(short.thumbnail, null, 'Shorts pick their own frame');
-  assert.deepEqual(readdirSync(yt.dir).sort(), ['captions.srt', 'captions.vtt', 'post.json', 'post.txt', 'release-test.mp4', 'thumbnail.jpg'], 'the folder holds what is posted and nothing else');
-  assert.deepEqual(readdirSync(short.dir).sort(), ['post.json', 'post.txt', 'release-test.mp4']);
+  assert.deepEqual(readdirSync(yt.dir).sort(), ['CREDITS.txt', 'captions.srt', 'captions.vtt', 'post.json', 'post.txt', 'release-test.mp4', 'thumbnail.jpg'], 'the folder holds what is posted and nothing else');
+  assert.deepEqual(readdirSync(short.dir).sort(), ['CREDITS.txt', 'post.json', 'post.txt', 'release-test.mp4']);
+  const credits = readFileSync(yt.credits, 'utf8');
+  assert.match(credits, /^Credits — Pebbles\n\nMade with\n- footprint-storyreel [\d.]+ \(MIT\) — the film, drawn in code\n- footprintjs [\d.]+ \(MIT\)/);
+  assert.match(credits, /From the maker\n- Sheep drawn by hand\n\nThe narration is a synthetic voice\.\n$/);
   assert.ok(existsSync(yt.makingOf) && yt.makingOf.startsWith(path.join(out, 'work', 'youtube')), 'the record and the working files are kept apart, in work/<target>/');
   await assert.rejects(makeRelease({...film, out, targets: [{target: 'youtube', name: 'work'}], post: kids}), /a target cannot be called "work"/);
   const post = JSON.parse(readFileSync(path.join(yt.dir, 'post.json'), 'utf8'));

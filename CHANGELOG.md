@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### A director's checks, credits with every release, the skill as a plugin
+- **A director's checks in the review** (each a strategy, picked when it fits): `hook` — nothing moves in the first
+  3 s of the film; `text-density` — more than `maxWords` (35) words on screen at once; `silences` — fewer than two
+  real silences (a pause of `minSilence`, 0.8 s, with no effect playing) in a spoken part of 30 s or more. On a
+  real 2:26 episode: no hook or silence finding, and one honest "too much to read" (40 words for 2 s at the end).
+- **CREDITS.txt with every release:** StoryReel and every tool the film's record lists (version, licence, what
+  for), what the maker brought (`post.credits`, one line each) and the synthetic voice when declared.
+- **The skill as a Claude Code plugin:** `claude plugin marketplace add footprintjs/storyreel`, then
+  `claude plugin install storyreel@storyreel`. The skill moved to `plugin/skills/storyreel-review/SKILL.md`.
+
 ## 0.8.0 — read first: edit one part, review it as text, the tools for people and agents
 
 ### Speech in scripts with vowel signs

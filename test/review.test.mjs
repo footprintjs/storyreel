@@ -32,7 +32,8 @@ test('wordsAt reads every line a frame draws, with its box through the transform
 
 test('a review picks its checks by what the part has, runs each as its own subflow, and names what it finds with times', async () => {
   const r = await reviewPart(film, {layout: {format: 'landscape', captions: true, scale: 2}});
-  assert.deepEqual([...r.ran].sort(), ['cut-off', 'still', 'under-captions', 'words-overlap']);
+  assert.deepEqual([...r.ran].sort(), ['cut-off', 'hook', 'still', 'text-density', 'under-captions', 'words-overlap'], 'a director\'s checks too: the hook (the part starts the film), how much there is to read');
+  assert.equal(r.findings.filter(f => ['hook', 'text-density'].includes(f.kind)).length, 0, 'the square moves from the first frame, and there is little to read');
   const one = kind => r.findings.filter(f => f.kind === kind);
   const [overlap] = one('words-overlap'), [under] = one('under-captions'), [edge] = one('cut-off'), [still] = one('still');
   assert.ok(overlap && overlap.what === '"Alpha" and "Beta"' && near(overlap.from, 2) && near(overlap.to, 3.75), JSON.stringify(overlap));
@@ -49,8 +50,26 @@ test('a review picks its checks by what the part has, runs each as its own subfl
 test('a check that does not fit is not picked (no caption band, no caption check); a check of your own has the same shape', async () => {
   const titled = {label: 'The title is there', why: 'always', when: () => true, find: ({samples}) => samples.filter(s => !s.words.some(w => w.text === 'TITLE')).map(s => ({kind: 'no-title', t: s.t, what: 'no title'}))};
   const r = await reviewPart(film, {from: 1, to: 4, checks: {...REVIEW_CHECKS, titled}});
-  assert.deepEqual([...r.ran].sort(), ['cut-off', 'titled', 'words-overlap'], 'no captions without a layout, and 3 s is too short to stand still');
+  assert.deepEqual([...r.ran].sort(), ['cut-off', 'text-density', 'titled', 'words-overlap'], 'no captions without a layout, no hook after the start, and 3 s is too short to stand still');
   assert.equal(r.findings.filter(f => f.kind === 'no-title').length, 0);
   await assert.rejects(reviewPart(film, {checks: {broken: {label: 'x'}}}), /review check "broken" must be \{label, why\?, when\(scope\), find\(review\)\}/);
   assert.equal(findingsText([{kind: 'still', from: 61.25, to: 67, scene: 'end', what: 'the picture does not change'}]), '1:01.3–1:07.0 end · nothing changes: the picture does not change');
+});
+
+test('a director\'s checks: no hook when nothing moves in the first 3 s; too much to read at once; no breath when the voice never pauses', async () => {
+  const board = {title: 'Director', scenes: [{id: 'a', narration: Array.from({length: 36}, (_, i) => `word${i}`).join(' ') + '.'}, {id: 'b', narration: Array.from({length: 36}, (_, i) => `more${i}`).join(' ') + '.'}]};
+  const lines = Array.from({length: 8}, (_, i) => `this is line ${i} of a long block`);
+  const kit = {name: 'still-start', story: {compile: () => ({hang: 1, draw: (c, t) => {
+    c.fillStyle = '#eee'; c.fillRect(0, 0, 1600, 900); c.fillStyle = '#222'; c.font = '30px sans-serif'; c.textBaseline = 'middle'; c.textAlign = 'left';
+    if (t >= 3.5) c.fillRect(100 + t * 20, 700, 40, 40);              // nothing moves until 3.5 s
+    if (t >= 10 && t < 13) lines.forEach((l, i) => c.fillText(l, 200, 150 + i * 60));   // 64 words for 3 s
+  }})}};
+  const tight = await compileFilm({storyboard: board, timings: evenTimings(board, {wordSeconds: .5, tail: .3}), recipe: {story: {kit: 'still-start'}}, kits: [kit]});
+  const r = await reviewPart(tight);
+  const of = kind => r.findings.filter(f => f.kind === kind);
+  assert.ok(of('hook').length === 1 && of('hook')[0].from === 0 && near(of('hook')[0].to, 3), JSON.stringify(of('hook')));
+  assert.ok(of('text-density').length === 1 && near(of('text-density')[0].from, 10) && near(of('text-density')[0].to, 12.75) && of('text-density')[0].what === 'more than 35 words on screen');
+  assert.match(of('silences')[0]?.what ?? '', /^no real silence \(0\.8 s or more with nothing playing\)/);
+  const paused = await compileFilm({storyboard: board, timings: evenTimings(board, {wordSeconds: .5, tail: 1.5}), recipe: {story: {kit: 'still-start'}}, kits: [kit]});
+  assert.match((await reviewPart(paused)).findings.find(f => f.kind === 'silences')?.what ?? '', /^only one real silence/, 'the pause between the two scenes is one breath');
 });
