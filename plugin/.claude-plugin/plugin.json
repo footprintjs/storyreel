@@ -1,0 +1,7 @@
+{
+  "name": "storyreel",
+  "description": "Review and fix a StoryReel film by reading it first: when each beat lands, what is wrong (as text), a quick part render, one still last.",
+  "author": {"name": "footprintjs", "url": "https://github.com/footprintjs"},
+  "homepage": "https://github.com/footprintjs/storyreel",
+  "license": "MIT"
+}

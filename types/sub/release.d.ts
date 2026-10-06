@@ -7,7 +7,7 @@ export type Audience = 'kids' | 'general';
  * or 'poster' (the film's poster, drawn at the platform's size); `synthetic` lists what in the film is realistic and
  * made with AI (['voice'] for a synthetic voice narrating), so platforms that ask are told.
  */
-export interface ReleasePost {title: string; description?: string; tags?: string[]; audience: Audience; thumbnail?: string | 'poster'; lang?: string; synthetic?: string[]}
+export interface ReleasePost {title: string; description?: string; tags?: string[]; audience: Audience; thumbnail?: string | 'poster'; lang?: string; synthetic?: string[]; credits?: string[]}
 /** A platform adapter: the interface every target implements (src/targets/*.mjs are the built-in ones). */
 export interface ReleaseAdapter {
   name: string;
@@ -27,9 +27,11 @@ export type TargetName = 'youtube' | 'youtube-shorts' | 'linkedin' | 'tiktok' | 
 /** A target: a built-in name, an adapter, or one with options (a part from/to, a crop for the tall shapes, limits overridden). */
 export type ReleaseTarget = TargetName | ReleaseAdapter | {target: TargetName | ReleaseAdapter; name?: string; from?: number; to?: number; header?: {title: string; sub?: string}; crop?: unknown[]; captions?: boolean | object; limits?: Partial<ReleaseAdapter['limits']>; scale?: number};
 /** One target released: `dir` holds what is posted and nothing else; `work` the render's working files and its record. */
-export interface Released {target: string; dir: string; video: string; captions: {srt?: string; vtt?: string} | null; thumbnail: string | null; post: Record<string, unknown>; makingOf: string; work: string}
+export interface Released {target: string; dir: string; video: string; captions: {srt?: string; vtt?: string} | null; thumbnail: string | null; credits: string; post: Record<string, unknown>; makingOf: string; work: string}
 /** The folder inside a release's `out` that holds each target's working files and record. */
 export const WORK: 'work';
+/** CREDITS.txt's text: StoryReel and the tools its record lists, what the maker brought (post.credits), the synthetic voice. */
+export function creditsText(post: ReleasePost, tools: {name: string; version?: string; license: string; detail?: string}[]): string;
 
 export const TARGETS: Readonly<Record<TargetName, () => Promise<{default: ReleaseAdapter}>>>;
 export const TARGET_NAMES: readonly TargetName[];

@@ -3,7 +3,8 @@
  * The picture is read as text — every line a frame draws (fillText / strokeText) with its box in output pixels
  * and the alpha it was drawn at (wordsAt) — and fingerprinted, a few times a second over the part; then checks
  * name what is wrong, with times: words under the captions while a caption shows, words over other words, words
- * cut off at the frame's edge, a picture that does not change for a while.
+ * cut off at the frame's edge, a picture that does not change for a while — and a director's checks on the
+ * whole: a hook in the first 3 s, not too much to read at once, and real silences (a breath before the peak).
  *
  * The review is a footprintjs flowchart, so it leaves its own record — what was read, which checks ran and why
  * (the selector's evidence), what each found:
@@ -102,6 +103,25 @@ export const REVIEW_CHECKS = Object.freeze({
     find: ({samples}) => samples.flatMap(({t, words}) => words.flatMap((a, i) => words.slice(i + 1).filter(b => !same(a, b) && meet(a.quad, b.quad) > .2 * Math.min(area(a.quad), area(b.quad))).map(b => ({kind: 'words-overlap', t, what: `"${a.text}" and "${b.text}"`}))))},
   'cut-off': {label: 'Words cut off at the edge', why: 'the part draws words', when: s => s.facts.words > 0,
     find: ({samples, width, height}) => samples.flatMap(({t, words}) => words.filter(w => w.quad.some(([x, y]) => x < -2 || y < -2 || x > width + 2 || y > height + 2)).map(w => ({kind: 'cut-off', t, what: `"${w.text}"`})))},
+  hook: {label: 'A hook in the first 3 s', why: 'the part starts the film', when: s => s.facts.from === 0 && s.facts.seconds >= 3,
+    find: ({samples, hashes}) => {
+      const first = samples.filter(x => x.t <= 3 + 1e-9);
+      return first.length > 1 && first.every(x => hashes[x.t] === hashes[first[0].t]) ? first.map(x => ({kind: 'hook', t: x.t, what: 'nothing moves in the first 3 s'})) : [];
+    }},
+  'text-density': {label: 'Too much to read at once', why: 'the part draws words', when: s => s.facts.words > 0,
+    find: ({samples, maxWords}) => samples.flatMap(({t, words}) => words.reduce((n, w) => n + w.text.split(/\s+/).filter(Boolean).length, 0) > maxWords ? [{kind: 'text-density', t, what: `more than ${maxWords} words on screen`}] : [])},
+  silences: {label: 'Real silences', why: 'the part is spoken and long enough to need a breath', when: s => s.facts.spoken && s.facts.seconds >= 30,
+    find: ({film, window, samples, minSilence}) => {
+      // The pauses between spoken words (scene tails included) with no effect sound in them.
+      const said = film.timings.scenes.flatMap((sc, i) => (sc.words ?? []).map(w => [film.clock.offsets[i] + w.start, film.clock.offsets[i] + w.end]))
+        .filter(([a, b]) => b > window.from && a < window.to).sort((x, y) => x[0] - y[0]);
+      const sounds = (film.sounds ?? []).map(s => s.time), quiet = [];
+      for (let i = 1; i < said.length; i++) {
+        const [from, to] = [said[i - 1][1], said[i][0]];
+        if (to - from >= minSilence && !sounds.some(t => t > from - .1 && t < to)) quiet.push([from, to]);
+      }
+      return quiet.length >= 2 ? [] : samples.map(({t}) => ({kind: 'silences', t, what: `${quiet.length ? 'only one real silence' : 'no real silence'} (${minSilence} s or more with nothing playing): give the film a breath before its peak`}));
+    }},
   still: {label: 'Nothing changes', why: 'the part is long enough to stand still', when: s => s.facts.seconds >= s.facts.stillFor,
     find: ({samples, hashes, stillFor}) => {
       const out = []; let run = [];
@@ -111,7 +131,7 @@ export const REVIEW_CHECKS = Object.freeze({
     }},
 });
 
-const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes'};
+const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes', hook: 'no hook', 'text-density': 'too much to read', silences: 'no breath'};
 const clock = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
 /** The findings as lines: "1:21.5–1:23.0 chapters · under the captions: \"requests in\"". */
 export const findingsText = findings => findings.map(f => `${clock(f.from)}–${clock(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}`).join('\n');
@@ -128,29 +148,31 @@ function spans(film, hits, every, lasting) {
     for (const t of ts.slice(1)) { if (t - last > every * 1.5) { out.push({kind, from, to: last, what}); from = t; } last = t; }
     out.push({kind, from, to: last, what});
   }
-  return out.filter(f => f.kind === 'still' || f.to - f.from + every >= lasting - 1e-9).sort((a, b) => a.from - b.from || a.kind.localeCompare(b.kind)).map(f => ({...f, scene: sceneAt(f.from)}));
+  return out.filter(f => ['still', 'hook', 'silences'].includes(f.kind) || f.to - f.from + every >= lasting - 1e-9).sort((a, b) => a.from - b.from || a.kind.localeCompare(b.kind)).map(f => ({...f, scene: sceneAt(f.from)}));
 }
 
 /**
  * Review a part of the film (or all of it) by reading it. part: {scenes, handles?} (render.mjs · partWindow), or
  * from/to on the film clock; layout: the render's layout spec (read at the format's own size, whatever its scale).
  * Words count when drawn at `minAlpha` (0.5) or more and for `lasting` seconds (1) or more — shorter is a fade or a
- * page turning; the picture is still when unchanged for `stillFor` seconds (5).
+ * page turning; the picture is still when unchanged for `stillFor` seconds (5); more than `maxWords` (35) words on
+ * screen at once is too much to read; a real silence is a pause of `minSilence` seconds (0.8) with nothing playing.
  * Returns {window, facts, findings, text, timeline, ran, record}: findings [{kind, from, to, scene, what}] on the
  * film clock, text as lines, the part's timeline (scenes and beats), the checks that ran, and the review's own
  * footprintjs record.
  */
-export async function reviewPart(film, {part = null, from = 0, to = film.total, layout = null, every = .25, stillFor = 5, lasting = 1, minAlpha = .5, checks = REVIEW_CHECKS} = {}) {
+export async function reviewPart(film, {part = null, from = 0, to = film.total, layout = null, every = .25, stillFor = 5, lasting = 1, minAlpha = .5, maxWords = 35, minSilence = .8, checks = REVIEW_CHECKS} = {}) {
   const window = part ? partWindow(film, part) : {from, to};
   const framed = layout ? compileLayout(film, (({scale, ...rest}) => rest)(layout)) : null;
   for (const [id, c] of Object.entries(checks)) if (!c || typeof c.find !== 'function' || typeof c.when !== 'function' || typeof c.label !== 'string') throw new Error(`review check "${id}" must be {label, why?, when(scope), find(review)}`);
-  const review = {film, layout: framed, width: framed?.width ?? 1600, height: framed?.height ?? 900, every, stillFor, samples: [], hashes: {}};
+  const review = {film, window, layout: framed, width: framed?.width ?? 1600, height: framed?.height ?? 900, every, stillFor, maxWords, minSilence, samples: [], hashes: {}};
   let findings = [];
   const read = async s => {
     const times = []; for (let t = window.from; t <= window.to + 1e-9; t += every) times.push(+t.toFixed(3));
     review.samples = times.map(t => ({t, words: wordsAt(film, t, {layout: framed}).filter(w => w.alpha >= minAlpha)}));
     review.hashes = frameHashes(film, {times, width: 160});
-    s.facts = {from: window.from, to: window.to, seconds: +(window.to - window.from).toFixed(3), stillFor, captions: Boolean(framed?.boxes.captions), samples: times.length, words: review.samples.reduce((n, x) => n + x.words.length, 0)};
+    s.facts = {from: window.from, to: window.to, seconds: +(window.to - window.from).toFixed(3), stillFor, captions: Boolean(framed?.boxes.captions), samples: times.length, words: review.samples.reduce((n, x) => n + x.words.length, 0),
+      spoken: film.timings.scenes.some((sc, i) => (sc.words ?? []).some(w => film.clock.offsets[i] + w.end > window.from && film.clock.offsets[i] + w.start < window.to))};
     s.ran = []; s.hits = [];
   };
   let chart = flowChart('read-part', read, 'read-part', 'The part read as text and fingerprinted, once for every check')

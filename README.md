@@ -691,8 +691,9 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
 - **The same, from the command line — and as a skill for agents.** `npx storyreel timeline | review | part | still
   --scene <id>` (the film named in the project's `storyreel.config.mjs`: `export default {film: flags =>
   ({storyboard, recipe, kits, root, narrationDir?, pacing?, layout?})}`; every flag also reaches `film()`). The
-  package ships `skills/storyreel-review/SKILL.md`, which teaches the order — timeline, review, fix, part, one
-  still last — copy it into a project's `.claude/skills/`. `footprint-storyreel/tools` is the one core both use.
+  package ships the skill that teaches the order — timeline, review, fix, part, one still last — as a Claude Code
+  plugin: `claude plugin marketplace add footprintjs/storyreel`, then `claude plugin install storyreel@storyreel`
+  (or copy `plugin/skills/storyreel-review/SKILL.md` into a project's `.claude/skills/`). `footprint-storyreel/tools` is the one core both use.
 - **And as an MCP server,** for any assistant that speaks MCP: `storyreel mcp [--flag value …]` serves the same
   four tools over stdio (the flags are every call's defaults; a still comes back as the picture). Each call runs in
   a fresh process, so an edit to a kit between two calls is always seen:
