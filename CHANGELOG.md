@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### A soft edge on the veil
+- The `dim` and `spotlight` veils fade to nothing over a soft edge around the named thing (thin rings, still plain
+  rectangles the review can read), instead of a hard-edged hole that showed as a pale box on empty paper.
+
 ### Focus strategies compose; the review sees a veil
 - **`focus.strategy` may be a list**, applied in order: `["camera", "dim"]` moves the camera and veils the rest of
   its view (at most one of them may move the camera). The record names it `camera+dim`.
