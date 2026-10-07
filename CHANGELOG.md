@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### One clock for the review and the render
+- **`paceTimings` keeps a voice's audio**: when a scene's timing names its audio (a voice's timings.json), the
+  scene ends where the voiced cut ends it — the later of the audio's end and the last word plus the tail — not at
+  the last word plus the tail. The review tools (`storyreel timeline | review | still`) read a voice folder without
+  touching its audio, so their film ran short of the rendered one (a voiced opener: 3.1 s short by the end, every
+  beat after the first scene early). They now see the rendered film's clock.
+
 ### Emphasis on the thing
 - **`emphasis` strategy `label`**: the words sit on the thing in focus — just above its top-left corner, travelling
   with the camera — or at the top middle when nothing is in focus. Emphasis strategies get the focus view

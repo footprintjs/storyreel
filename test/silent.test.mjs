@@ -195,3 +195,13 @@ test('who is speaking: the clock knows each scene\'s said words and its speaker,
   assert.equal(clock.speaking(clock.words('end')[0].start + .01).speaker, null, 'a scene with no speaker names none');
   assert.throws(() => makeClock({scenes: [{id: 'x', speaker: 3, narration: 'Hi.'}]}, evenTimings({scenes: [{id: 'x', narration: 'Hi.'}]})), /speaker must name who says the scene/);
 });
+
+test('a voice folder read without its audio (the review tools) gets the rendered film\'s clock: every scene keeps all of its audio', async () => {
+  const dir = voiceFolder(), raw = JSON.parse(readFileSync(path.join(dir, 'timings.json'), 'utf8'));
+  const silentCut = paceTimings(storyboard, structuredClone(raw), pacing), voiced = await applyPacing({runDir: dir, board: storyboard, timings: structuredClone(raw), pacing});
+  assert.ok(raw.scenes.some(s => s.duration > s.words.at(-1).end + (pacing.tails?.[s.id] ?? pacing.sceneTail) + .5), 'the fixture\'s audio runs on past the last word and its tail');
+  silentCut.scenes.forEach((s, i) => {
+    assert.ok(Math.abs(s.duration - voiced.scenes[i].duration) < 1e-3, `${s.id}: ${s.duration} s without the audio, ${voiced.scenes[i].duration} s with it`);
+    s.words.forEach((w, k) => assert.ok(Math.abs(w.start - voiced.scenes[i].words[k].start) < 1e-3, `${s.id}: "${w.text}" starts at the same moment`));
+  });
+});
