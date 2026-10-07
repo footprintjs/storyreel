@@ -14,7 +14,8 @@
  * Every move is a spring (motion.mjs · FEELS), so a camera that is still easing toward one thing
  * turns smoothly toward the next. Emphasis (EMPHASIS): `pop` lands the words big on their beat, then settles them
  * into a label in the top corner until the next words; `corner` is the label only; `label` sits the words on the
- * thing in focus (above its top-left corner, travelling with the camera), or at the top middle with no focus; `none`.
+ * thing in focus (above its top-left corner, travelling with the camera), or at the top middle with no focus, gliding
+ * between the two as the focus comes and goes; `none`.
  *
  * A strategy of your own has the same shape, passed to compileFilm (and makeFilm) as
  * `strategies: {focus: {name: {show(ctx, view, paint, theme)}}, emphasis: {name: {draw(ctx, t, word, theme)}}}`:
@@ -101,12 +102,14 @@ export const EMPHASIS = Object.freeze({
   }}),
   label: Object.freeze({name: 'label', draw(ctx, t, word, theme, view) {
     // The words sit on the thing the voice is about (the focus), just above its top-left corner, and travel with it;
-    // with nothing in focus they sit at the top of the frame, in the middle.
+    // with nothing in focus they sit at the top of the frame, in the middle — and glide between the two as the focus
+    // comes and goes (by how focused the view is), never jumping.
     const a = clamp01((t - word.t) / .25) * (1 - clamp01((t - (word.next - .25)) / .25)); if (!(a > 0)) return;
     const font = theme?.type?.sans ?? SANS; ctx.save(); ctx.font = `800 24px ${font}`; const w = ctx.measureText(word.text).width + 32; ctx.restore();
-    const focused = view && view.w > .5 ? onFrame(view.box, view) : null;
-    const x = focused ? Math.max(16, Math.min(W - w - 16, focused[0])) : W / 2 - w / 2, y = focused ? Math.max(12, focused[1] - 52) : 20;
-    chip(ctx, word.text, a, theme, {x, y, k: .7 + .3 * clamp01(pop(t, word.t, 'snappy'))});
+    const home = [W / 2 - w / 2, 20], f = view ? ease(clamp01((view.w - .2) / .6)) : 0;
+    const on = f > 0 ? onFrame(view.box, view) : null;
+    const spot = on ? [Math.max(16, Math.min(W - w - 16, on[0])), Math.max(12, Math.min(H - 64, on[1] - 52))] : home;
+    chip(ctx, word.text, a, theme, {x: home[0] + (spot[0] - home[0]) * f, y: home[1] + (spot[1] - home[1]) * f, k: .7 + .3 * clamp01(pop(t, word.t, 'snappy'))});
   }}),
   corner: Object.freeze({name: 'corner', draw(ctx, t, word, theme) { chip(ctx, word.text, clamp01((t - word.t) / .25) * (1 - clamp01((t - (word.next - .25)) / .25)), theme); }}),
   none: Object.freeze({name: 'none', draw() {}}),

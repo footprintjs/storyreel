@@ -5,7 +5,7 @@
 ### Emphasis on the thing
 - **`emphasis` strategy `label`**: the words sit on the thing in focus — just above its top-left corner, travelling
   with the camera — or at the top middle when nothing is in focus. Emphasis strategies get the focus view
-  (`draw(ctx, t, word, theme, view)`).
+  (`draw(ctx, t, word, theme, view)`). The words glide between the two as the focus comes and goes — never a jump.
 
 ## 0.9.0 — where the viewer looks: focus and emphasis as strategies, motion with a feel, a director's checks
 
