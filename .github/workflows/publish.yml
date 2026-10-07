@@ -21,7 +21,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npx publint
-      - run: npx @arethetypeswrong/cli --pack --profile esm-only --entrypoints . clock pacing ease pins sheet render segments pipeline approval film strings theme reading shots regions review tools captions layout transitions acting finished listening release kits/whiteboard kits/cartoon studio  # the typed entry points (README: the drawing internals are untyped)
+      - run: npx @arethetypeswrong/cli --pack --profile esm-only --entrypoints . clock pacing ease pins sheet render segments pipeline approval film strings theme reading shots regions review tools motion attention captions layout transitions acting finished listening release kits/whiteboard kits/cartoon studio  # the typed entry points (README: the drawing internals are untyped)
       - name: Pack the publishable tarball
         run: |
           npm pack

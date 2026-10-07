@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Where the viewer looks: focus and emphasis, as strategies; motion with a feel
+- **`focus`** in the recipe: keys name a thing in the picture (or `"wide"`) on a beat; a strategy shows it —
+  `camera` (eases to frame it: medium, close, insert), `spotlight`, `dim`, `none` — or one of your own
+  (`compileFilm`/`makeFilm`'s `strategies.focus`). `film.attention` records it; `film.focusAt(t)` says where it is.
+- **`emphasis`** in the recipe: words that land on their beat — `pop` (big, then a label in the corner until the
+  next), `corner`, `none` — or your own (`strategies.emphasis`).
+- **`footprint-storyreel/motion`**: closed-form springs with named feels (`snappy`, `default`, `heavy`, `playful`, or
+  `{k, d}`): `spring`, `pop`, and `track` for a value with many targets.
+
 ### A director's checks, credits with every release, the skill as a plugin
 - **A director's checks in the review** (each a strategy, picked when it fits): `hook` — nothing moves in the first
   3 s of the film; `text-density` — more than `maxWords` (35) words on screen at once; `silences` — fewer than two
