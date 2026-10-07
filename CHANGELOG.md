@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Focus strategies compose; the review sees a veil
+- **`focus.strategy` may be a list**, applied in order: `["camera", "dim"]` moves the camera and veils the rest of
+  its view (at most one of them may move the camera). The record names it `camera+dim`.
+- **The veils are four rectangles** around the named thing, and **the review counts a word under a filled rectangle as
+  veiled**, as much as the fill is opaque — a card over a label, a veil over the page. On a real 1:23 film the
+  camera alone left 20 findings (frames full of words, words cut at the edge); camera and dim, none.
+
 ### The camera frames above the captions; the review sees what is veiled and what is framed out
 - **`focus.safe`** ([x0, y0, x1, y1]): where a framed thing may sit — a film with burned-in captions keeps it above
   them ([0, 0, 1600, 700]); the thing is sized to and centred in it, and the picture still covers the frame.

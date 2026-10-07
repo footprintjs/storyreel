@@ -88,3 +88,18 @@ test('a safe area: a framed thing sits at its centre (above burned-in captions),
   assert.deepEqual(film.attention.focus.safe, [0, 0, 1600, 700]);
   await assert.rejects(make({focus: {...focus(), safe: [0, 0, 100, 100]}}), /focus\.safe is \[x0, y0, x1, y1\] on the 1600×900 frame, at least 200 × 200/);
 });
+
+test('strategies compose: ["camera", "dim"] moves the camera and veils the rest of its view — and a reader of the picture sees the veil', async () => {
+  const {wordsAt: read} = await import('../src/review.mjs');
+  const labelled = {name: 'labelled', story: {compile: () => ({hang: 1,
+    draw: c => { c.fillStyle = '#f3eee3'; c.fillRect(0, 0, 1600, 900); c.fillStyle = '#c0392b'; c.fillRect(200, 200, 200, 150); c.fillStyle = '#222'; c.font = '30px sans-serif'; c.textBaseline = 'middle'; c.fillText('NEAR', 230, 280); c.fillText('FAR', 600, 330); c.fillRect(1100, 500, 240, 160); },
+    regionsAt: () => [{box: [200, 200, 400, 350], path: 'red', label: 'red', name: 'red'}, {box: [1100, 500, 1340, 660], path: 'blue', label: 'blue', name: 'blue'}],
+  })}};
+  const film = await compileFilm({storyboard, timings: evenTimings(storyboard, {wordSeconds: .5}), recipe: {story: {kit: 'labelled'}, focus: {...focus(), strategy: ['camera', 'dim']}}, kits: [labelled]});
+  const t = at(film, 'b', 'the blue one') - .05, words = read(film, t);
+  assert.equal(film.attention.focus.strategy, 'camera+dim');
+  assert.equal(words.find(w => w.text === 'NEAR').alpha, 1, 'the named thing is clear');
+  assert.ok(words.find(w => w.text === 'FAR').alpha < .5, `the rest is veiled: ${JSON.stringify(words.find(w => w.text === 'FAR'))}`);
+  assert.ok(film.focusAt(t).z > 2, 'and the camera framed it');
+  await assert.rejects(make({focus: {...focus(), strategy: ['camera', 'mover']}}, {strategies: {focus: {mover: {moves: true, show: (c, v, p) => p(c)}}}}), /only one of them may move the camera/);
+});

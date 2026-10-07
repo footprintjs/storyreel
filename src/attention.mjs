@@ -10,7 +10,8 @@
  *
  * Focus (FOCUS): `camera` eases the camera to frame the named thing (sizes as a director's push: medium, close,
  * insert; `on: "wide"` is the whole frame); `spotlight` darkens the rest; `dim` lays a veil of the paper over the
- * rest; `none`. Every move is a spring (motion.mjs · FEELS), so a camera that is still easing toward one thing
+ * rest; `none`. A list composes them in order — ["camera", "dim"] moves the camera and veils the rest of its view.
+ * Every move is a spring (motion.mjs · FEELS), so a camera that is still easing toward one thing
  * turns smoothly toward the next. Emphasis (EMPHASIS): `pop` lands the words big on their beat, then settles them
  * into a label in the top corner until the next words; `corner` is the label only; `none`.
  *
@@ -39,9 +40,10 @@ function withAlphaOf(color, a) {
 /** Everything but the named thing (with a margin), under a colour, as strong as the view is focused. */
 function veil(ctx, v, color) {
   if (!(v.w > .01)) return;
-  const [x0, y0, x1, y1] = v.box, m = 18;
+  const m = 18, [x0, y0, x1, y1] = [v.box[0] - m, v.box[1] - m, v.box[2] + m, v.box[3] + m];
   ctx.save(); ctx.globalAlpha *= clamp01(v.w); ctx.fillStyle = color;
-  ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.roundRect(x0 - m, y0 - m, x1 - x0 + 2 * m, y1 - y0 + 2 * m, 22); ctx.fill('evenodd');
+  // Four bands around the named thing (plain rectangles: a reader of the picture sees which words they cover).
+  ctx.fillRect(0, 0, W, Math.max(0, y0)); ctx.fillRect(0, y1, W, Math.max(0, H - y1)); ctx.fillRect(0, y0, Math.max(0, x0), y1 - y0); ctx.fillRect(x1, y0, Math.max(0, W - x1), y1 - y0);
   ctx.restore();
 }
 
@@ -101,7 +103,13 @@ const inOrder = (list, kind) => list.forEach((k, i) => { if (i && k.t < list[i -
 function readFocus(spec, {clock, named, strategies, pushes, theme}) {
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) throw new Error('focus must be {strategy, keys: [{at, on, size?}], feel?}');
   for (const key of Object.keys(spec)) if (!FOCUS_KEYS.includes(key)) throw new Error(`focus has unsupported key ${key} (focus takes ${FOCUS_KEYS.join(', ')})`);
-  const strategy = pick('focus', spec.strategy, FOCUS, strategies?.focus, 'show'), feel = readFeel(spec.feel ?? 'heavy');
+  const list = Array.isArray(spec.strategy) ? spec.strategy : [spec.strategy];
+  if (!list.length) throw new Error('focus.strategy is a name, or a list of names applied in order (e.g. ["camera", "dim"])');
+  const parts = list.map(name => pick('focus', name, FOCUS, strategies?.focus, 'show'));
+  if (parts.filter(p => p.moves).length > 1) throw new Error(`focus.strategy lists ${parts.filter(p => p.moves).map(p => `"${p.name}"`).join(' and ')}: only one of them may move the camera`);
+  const strategy = parts.length === 1 ? parts[0] : {name: parts.map(p => p.name).join('+'), moves: parts.some(p => p.moves),
+    show: (ctx, v, paint, theme) => parts.reduceRight((inner, p) => c => p.show(c, v, inner, theme), paint)(ctx)};
+  const feel = readFeel(spec.feel ?? 'heavy');
   const safe = spec.safe ?? [0, 0, W, H];
   if (!(Array.isArray(safe) && safe.length === 4 && safe.every(Number.isFinite) && safe[0] >= 0 && safe[1] >= 0 && safe[2] <= W && safe[3] <= H && safe[2] - safe[0] >= 200 && safe[3] - safe[1] >= 200))
     throw new Error('focus.safe is [x0, y0, x1, y1] on the 1600×900 frame, at least 200 × 200: where a framed thing may sit (e.g. [0, 0, 1600, 700] above burned-in captions)');
