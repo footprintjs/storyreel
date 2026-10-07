@@ -169,7 +169,9 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
   let findings = [];
   const read = async s => {
     const times = []; for (let t = window.from; t <= window.to + 1e-9; t += every) times.push(+t.toFixed(3));
-    review.samples = times.map(t => ({t, words: wordsAt(film, t, {layout: framed}).filter(w => w.alpha >= minAlpha)}));
+    // Only what is on screen counts: a word the camera has framed out is not shown (its box misses the frame).
+    const W = framed?.width ?? 1600, H = framed?.height ?? 900, shown = w => w.box[2] > 0 && w.box[0] < W && w.box[3] > 0 && w.box[1] < H;
+    review.samples = times.map(t => ({t, words: wordsAt(film, t, {layout: framed}).filter(w => w.alpha >= minAlpha && shown(w))}));
     review.hashes = frameHashes(film, {times, width: 160});
     s.facts = {from: window.from, to: window.to, seconds: +(window.to - window.from).toFixed(3), stillFor, captions: Boolean(framed?.boxes.captions), samples: times.length, words: review.samples.reduce((n, x) => n + x.words.length, 0),
       spoken: film.timings.scenes.some((sc, i) => (sc.words ?? []).some(w => film.clock.offsets[i] + w.end > window.from && film.clock.offsets[i] + w.start < window.to))};
