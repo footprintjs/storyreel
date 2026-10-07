@@ -41,8 +41,11 @@ export function wordsAt(film, t, {layout = null} = {}) {
 const corners = ([x0, y0, x1, y1]) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
 const apply = (T, quad) => quad.map(([x, y]) => [T.a * x + T.c * y + T.e, T.b * x + T.d * y + T.f]);
 const bounds = quad => [Math.min(...quad.map(p => p[0])), Math.min(...quad.map(p => p[1])), Math.max(...quad.map(p => p[0])), Math.max(...quad.map(p => p[1]))];
+const clamp01 = v => Math.max(0, Math.min(1, v));
+/** How opaque a fill style is: an rgba()/hsla() alpha or a #rrggbbaa alpha; a solid colour, a gradient or a pattern is opaque. */
+const fillAlpha = style => { if (typeof style !== 'string') return 1; const m = /^(?:rgba|hsla)\(([^)]+)\)$/.exec(style.trim()); if (m) { const p = m[1].split(/[,/\s]+/).filter(Boolean); return p.length === 4 ? Number(p[3]) : 1; } const h = /^#[0-9a-f]{6}([0-9a-f]{2})$/i.exec(style.trim()); return h ? parseInt(h[1], 16) / 255 : 1; };
 function readWords(canvas, paint) {
-  const proto = Object.getPrototypeOf(canvas.getContext('2d')), original = {fillText: proto.fillText, strokeText: proto.strokeText, drawImage: proto.drawImage, clearRect: proto.clearRect};
+  const proto = Object.getPrototypeOf(canvas.getContext('2d')), original = {fillText: proto.fillText, strokeText: proto.strokeText, drawImage: proto.drawImage, clearRect: proto.clearRect, fillRect: proto.fillRect};
   const notes = new WeakMap(), on = c => { if (!notes.has(c)) notes.set(c, []); return notes.get(c); };
   const note = (ctx, text, x, y) => {
     const s = String(text); if (!s.trim()) return;
@@ -55,6 +58,11 @@ function readWords(canvas, paint) {
     const [x0, y0, x1, y1] = bounds(apply(this.getTransform(), corners([x, y, x + w, y + h])));
     if (x0 <= 0 && y0 <= 0 && x1 >= this.canvas.width && y1 >= this.canvas.height) notes.set(this.canvas, []);
     return original.clearRect.call(this, x, y, w, h);
+  };
+  proto.fillRect = function (x, y, w, h) {   // a fill over the whole canvas veils the words under it, as much as it is opaque
+    const [x0, y0, x1, y1] = bounds(apply(this.getTransform(), corners([x, y, x + w, y + h])));
+    if (x0 <= 0 && y0 <= 0 && x1 >= this.canvas.width && y1 >= this.canvas.height) { const a = clamp01(this.globalAlpha * fillAlpha(this.fillStyle)); for (const n of on(this.canvas)) n.alpha *= 1 - a; }
+    return original.fillRect.call(this, x, y, w, h);
   };
   proto.drawImage = function (src, ...args) {   // a canvas drawn here brings its words, mapped from its pixels to these
     const carried = src && notes.get(src);
@@ -170,8 +178,12 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
   const read = async s => {
     const times = []; for (let t = window.from; t <= window.to + 1e-9; t += every) times.push(+t.toFixed(3));
     // Only what is on screen counts: a word the camera has framed out is not shown (its box misses the frame).
-    const W = framed?.width ?? 1600, H = framed?.height ?? 900, shown = w => w.box[2] > 0 && w.box[0] < W && w.box[3] > 0 && w.box[1] < H;
-    review.samples = times.map(t => ({t, words: wordsAt(film, t, {layout: framed}).filter(w => w.alpha >= minAlpha && shown(w))}));
+    // What is on screen counts. While the film's camera is pushed in (its focus), a word with less than half of it in
+    // the frame has been framed out — a camera crops the page — and is not shown; at the camera's rest every word
+    // that reaches the frame counts, so a word running off the edge of the layout is still cut off.
+    const W = framed?.width ?? 1600, H = framed?.height ?? 900, inside = b => Math.max(0, Math.min(b[2], W) - Math.max(b[0], 0)) * Math.max(0, Math.min(b[3], H) - Math.max(b[1], 0));
+    const shown = (w, zoomed) => inside(w.box) >= (zoomed ? .5 * Math.max(1, (w.box[2] - w.box[0]) * (w.box[3] - w.box[1])) : 1e-6);
+    review.samples = times.map(t => { const zoomed = (film.focusAt?.(t)?.z ?? 1) > 1.001; return {t, words: wordsAt(film, t, {layout: framed}).filter(w => w.alpha >= minAlpha && shown(w, zoomed))}; });
     review.hashes = frameHashes(film, {times, width: 160});
     s.facts = {from: window.from, to: window.to, seconds: +(window.to - window.from).toFixed(3), stillFor, captions: Boolean(framed?.boxes.captions), samples: times.length, words: review.samples.reduce((n, x) => n + x.words.length, 0),
       spoken: film.timings.scenes.some((sc, i) => (sc.words ?? []).some(w => film.clock.offsets[i] + w.end > window.from && film.clock.offsets[i] + w.start < window.to))};

@@ -16,14 +16,16 @@
  *
  * A strategy of your own has the same shape, passed to compileFilm (and makeFilm) as
  * `strategies: {focus: {name: {show(ctx, view, paint, theme)}}, emphasis: {name: {draw(ctx, t, word, theme)}}}`:
- * view = {cx, cy, z, box, w} (the point framed, the zoom, the named thing's box, how focused, 0–1).
+ * view = {cx, cy, z, sx, sy, box, w} (the point framed, the zoom, where on the frame it sits, the named thing's box,
+ * how focused, 0–1). `safe` ([x0, y0, x1, y1] on the 1600×900 frame) is where a framed thing may sit — a film with
+ * burned-in captions keeps it above them ([0, 0, 1600, 700]); it is centred there and sized to it.
  */
 import {FRAMINGS} from './notes.mjs';
 import {track, pop, readFeel} from './motion.mjs';
 import {inOut as ease} from './ease.mjs';
 
 const W = 1600, H = 900;
-const FOCUS_KEYS = ['strategy', 'feel', 'keys'], KEY_KEYS = ['at', 'on', 'size'];
+const FOCUS_KEYS = ['strategy', 'feel', 'keys', 'safe'], KEY_KEYS = ['at', 'on', 'size'];
 const EMPHASIS_KEYS = ['strategy', 'feel', 'words'], WORD_KEYS = ['at', 'text', 'until'];
 const clamp01 = v => Math.max(0, Math.min(1, v));
 
@@ -46,7 +48,7 @@ function veil(ctx, v, color) {
 /** The focus strategies: how a frame shows what the voice is about. */
 export const FOCUS = Object.freeze({
   camera: Object.freeze({name: 'camera', moves: true, show(ctx, v, paint) {
-    ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(v.z, v.z); ctx.translate(-v.cx, -v.cy); paint(ctx); ctx.restore();
+    ctx.save(); ctx.translate(v.sx, v.sy); ctx.scale(v.z, v.z); ctx.translate(-v.cx, -v.cy); paint(ctx); ctx.restore();
   }}),
   spotlight: Object.freeze({name: 'spotlight', show(ctx, v, paint) { paint(ctx); veil(ctx, v, 'rgba(18, 16, 26, .58)'); }}),
   dim: Object.freeze({name: 'dim', show(ctx, v, paint, theme) { paint(ctx); veil(ctx, v, withAlphaOf(theme?.palette?.bg, .62)); }}),
@@ -69,6 +71,9 @@ export const EMPHASIS = Object.freeze({
     const u = t - word.t, leave = 1 - clamp01((t - (word.next - .25)) / .25), settle = ease(clamp01((u - 1.1) / .6));
     if (settle < 1) {
       const ink = theme?.palette?.ink ?? '#23211c', bg = theme?.palette?.bg ?? '#f3eee3', font = theme?.type?.sans ?? SANS;
+      // A veil of the paper under the words while they are big: they read alone, then the picture comes back.
+      const veil = .78 * clamp01(u / .2) * (1 - settle) * leave;
+      if (veil > 0) { ctx.save(); ctx.globalAlpha *= veil; ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H); ctx.restore(); }
       const size = 96 + (24 - 96) * settle, k = pop(t, word.t, word.feel);
       ctx.save(); ctx.globalAlpha *= leave * (1 - settle * .4);
       ctx.font = `900 ${size}px ${font}`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
@@ -97,6 +102,10 @@ function readFocus(spec, {clock, named, strategies, pushes, theme}) {
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) throw new Error('focus must be {strategy, keys: [{at, on, size?}], feel?}');
   for (const key of Object.keys(spec)) if (!FOCUS_KEYS.includes(key)) throw new Error(`focus has unsupported key ${key} (focus takes ${FOCUS_KEYS.join(', ')})`);
   const strategy = pick('focus', spec.strategy, FOCUS, strategies?.focus, 'show'), feel = readFeel(spec.feel ?? 'heavy');
+  const safe = spec.safe ?? [0, 0, W, H];
+  if (!(Array.isArray(safe) && safe.length === 4 && safe.every(Number.isFinite) && safe[0] >= 0 && safe[1] >= 0 && safe[2] <= W && safe[3] <= H && safe[2] - safe[0] >= 200 && safe[3] - safe[1] >= 200))
+    throw new Error('focus.safe is [x0, y0, x1, y1] on the 1600×900 frame, at least 200 × 200: where a framed thing may sit (e.g. [0, 0, 1600, 700] above burned-in captions)');
+  const [sw, sh] = [safe[2] - safe[0], safe[3] - safe[1]], [scx, scy] = [(safe[0] + safe[2]) / 2, (safe[1] + safe[3]) / 2];
   if (strategy.moves && pushes.length) throw new Error(`focus "${strategy.name}" moves the camera, and the director's notes push it too: a film has one camera — leave the push notes out, or show the focus with "spotlight" or "dim"`);
   if (!Array.isArray(spec.keys) || !spec.keys.length) throw new Error('focus.keys is a list of {at: beat, on: a named thing or "wide", size?}');
   const keys = spec.keys.map((k, i) => {
@@ -108,20 +117,22 @@ function readFocus(spec, {clock, named, strategies, pushes, theme}) {
     const size = k.size ?? 'medium';
     if (!Object.hasOwn(FRAMINGS, size)) throw new Error(`focus.keys[${i}].size is ${Object.keys(FRAMINGS).join(', ')} (how much of the frame "${k.on}" fills), not ${JSON.stringify(size)}`);
     let box; try { box = named(k.on, t); } catch (e) { throw new Error(`focus.keys[${i}]: ${e.message}`, {cause: e}); }
-    const [x0, y0, x1, y1] = box, share = Math.max((x1 - x0) / W, (y1 - y0) / H);
+    const [x0, y0, x1, y1] = box, share = Math.max((x1 - x0) / sw, (y1 - y0) / sh);
     return {t, on: k.on, size, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, z: Math.max(1, Math.min(3, FRAMINGS[size] / share)), box: [...box], w: 1};
   });
   inOrder(keys, 'focus.keys');
-  const along = pick => [[0, pick({cx: W / 2, cy: H / 2, z: 1, box: [0, 0, W, H], w: 0})], ...keys.map(k => [k.t, pick(k)])];
-  const tracks = {cx: along(k => k.cx), cy: along(k => k.cy), z: along(k => k.z), w: along(k => k.w), box: [0, 1, 2, 3].map(i => along(k => k.box[i]))};
-  /** Where the focus is at t: the camera's point and zoom (the picture always covers the frame), the box, how focused. */
+  // A wide key sits at the frame's centre; a framed thing at the safe area's centre.
+  keys.forEach(k => { k.sx = k.on === 'wide' ? W / 2 : scx; k.sy = k.on === 'wide' ? H / 2 : scy; });
+  const along = pick => [[0, pick({cx: W / 2, cy: H / 2, z: 1, sx: W / 2, sy: H / 2, box: [0, 0, W, H], w: 0})], ...keys.map(k => [k.t, pick(k)])];
+  const tracks = {cx: along(k => k.cx), cy: along(k => k.cy), z: along(k => k.z), sx: along(k => k.sx), sy: along(k => k.sy), w: along(k => k.w), box: [0, 1, 2, 3].map(i => along(k => k.box[i]))};
+  /** Where the focus is at t: the camera's point, zoom and place on the frame (the picture always covers the frame), the box, how focused. */
   const viewAt = t => {
-    const z = Math.max(1, track(t, tracks.z, feel)), hw = W / 2 / z, hh = H / 2 / z;
-    return {cx: Math.min(W - hw, Math.max(hw, track(t, tracks.cx, feel))), cy: Math.min(H - hh, Math.max(hh, track(t, tracks.cy, feel))), z,
+    const z = Math.max(1, track(t, tracks.z, feel)), sx = track(t, tracks.sx, feel), sy = track(t, tracks.sy, feel);
+    return {cx: Math.min(W - (W - sx) / z, Math.max(sx / z, track(t, tracks.cx, feel))), cy: Math.min(H - (H - sy) / z, Math.max(sy / z, track(t, tracks.cy, feel))), z, sx, sy,
       box: tracks.box.map(b => track(t, b, feel)), w: clamp01(track(t, tracks.w, feel))};
   };
   return {strategy: strategy.name, viewAt, show: (ctx, t, paint) => strategy.show(ctx, viewAt(t), paint, theme),
-    record: {strategy: strategy.name, keys: keys.map(k => ({t: +k.t.toFixed(3), on: k.on, ...(k.size ? {size: k.size} : {})}))}};
+    record: {strategy: strategy.name, ...(spec.safe ? {safe} : {}), keys: keys.map(k => ({t: +k.t.toFixed(3), on: k.on, ...(k.size ? {size: k.size} : {})}))}};
 }
 
 /** The emphasis as written, checked and placed on the clock: {strategy, draw(ctx, t), record}. */
