@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 — where the viewer looks: focus and emphasis as strategies, motion with a feel, a director's checks
 
 ### Text too small to read is texture
 - The review does not count text smaller than `minHeight` of the frame (0.011: 12 px at 1080) — a photo of a
