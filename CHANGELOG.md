@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Text too small to read is texture
+- The review does not count text smaller than `minHeight` of the frame (0.011: 12 px at 1080) — a photo of a
+  page on screen is a picture, not reading.
+
 ### A soft edge on the veil
 - The `dim` and `spotlight` veils fade to nothing over a soft edge around the named thing (thin rings, still plain
   rectangles the review can read), instead of a hard-edged hole that showed as a pale box on empty paper.

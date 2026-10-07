@@ -85,3 +85,15 @@ test('a fill over the whole frame veils the words under it: under a near-opaque 
   const after = wordsAt(f, 1.5);
   assert.ok(after.find(w => w.text === 'UNDER').alpha < .2, 'veiled'); assert.equal(after.find(w => w.text === 'OVER').alpha, 1);
 });
+
+test('text too small to read is texture: a photo of a page does not count as words on screen', async () => {
+  const kit = {name: 'tiny', story: {compile: () => ({hang: 1, draw: c => {
+    c.fillStyle = '#eeeeee'; c.fillRect(0, 0, 1600, 900); c.fillStyle = '#222'; c.textBaseline = 'middle';
+    c.font = '40px sans-serif'; c.fillText('READ ME', 200, 200);
+    c.font = '6px sans-serif'; for (let i = 0; i < 60; i++) c.fillText('tiny words here', 600 + (i % 6) * 60, 400 + Math.floor(i / 6) * 9);
+  }})}};
+  const f = await compileFilm({storyboard, timings: evenTimings(storyboard, {wordSeconds: .5}), recipe: {story: {kit: 'tiny'}}, kits: [kit]});
+  const r = await reviewPart(f, {from: 1, to: 3});
+  assert.equal(r.findings.filter(x => x.kind === 'text-density').length, 0, '180 tiny words are not reading');
+  assert.equal((await reviewPart(f, {from: 1, to: 3, minHeight: .001})).findings.filter(x => x.kind === 'text-density').length, 1, 'counted when asked to');
+});

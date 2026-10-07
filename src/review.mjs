@@ -164,12 +164,13 @@ function spans(film, hits, every, lasting) {
  * from/to on the film clock; layout: the render's layout spec (read at the format's own size, whatever its scale).
  * Words count when drawn at `minAlpha` (0.5) or more and for `lasting` seconds (1) or more — shorter is a fade or a
  * page turning; the picture is still when unchanged for `stillFor` seconds (5); more than `maxWords` (35) words on
- * screen at once is too much to read; a real silence is a pause of `minSilence` seconds (0.8) with nothing playing.
+ * screen at once is too much to read; a real silence is a pause of `minSilence` seconds (0.8) with nothing playing;
+ * text smaller than `minHeight` of the frame (0.011: 12 px at 1080) is texture, not reading, and is not counted.
  * Returns {window, facts, findings, text, timeline, ran, record}: findings [{kind, from, to, scene, what}] on the
  * film clock, text as lines, the part's timeline (scenes and beats), the checks that ran, and the review's own
  * footprintjs record.
  */
-export async function reviewPart(film, {part = null, from = 0, to = film.total, layout = null, every = .25, stillFor = 5, lasting = 1, minAlpha = .5, maxWords = 35, minSilence = .8, checks = REVIEW_CHECKS} = {}) {
+export async function reviewPart(film, {part = null, from = 0, to = film.total, layout = null, every = .25, stillFor = 5, lasting = 1, minAlpha = .5, minHeight = .011, maxWords = 35, minSilence = .8, checks = REVIEW_CHECKS} = {}) {
   const window = part ? partWindow(film, part) : {from, to};
   const framed = layout ? compileLayout(film, (({scale, ...rest}) => rest)(layout)) : null;
   for (const [id, c] of Object.entries(checks)) if (!c || typeof c.find !== 'function' || typeof c.when !== 'function' || typeof c.label !== 'string') throw new Error(`review check "${id}" must be {label, why?, when(scope), find(review)}`);
@@ -183,7 +184,9 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
     // that reaches the frame counts, so a word running off the edge of the layout is still cut off.
     const W = framed?.width ?? 1600, H = framed?.height ?? 900, inside = b => Math.max(0, Math.min(b[2], W) - Math.max(b[0], 0)) * Math.max(0, Math.min(b[3], H) - Math.max(b[1], 0));
     const shown = (w, zoomed) => inside(w.box) >= (zoomed ? .5 * Math.max(1, (w.box[2] - w.box[0]) * (w.box[3] - w.box[1])) : 1e-6);
-    review.samples = times.map(t => { const zoomed = (film.focusAt?.(t)?.z ?? 1) > 1.001; return {t, words: wordsAt(film, t, {layout: framed}).filter(w => w.alpha >= minAlpha && shown(w, zoomed))}; });
+    // Text smaller than `minHeight` of the frame (1.1 %: 12 px at 1080) cannot be read: it is texture (a photo of a page), not reading.
+    const legible = w => w.box[3] - w.box[1] >= minHeight * H;
+    review.samples = times.map(t => { const zoomed = (film.focusAt?.(t)?.z ?? 1) > 1.001; return {t, words: wordsAt(film, t, {layout: framed}).filter(w => w.alpha >= minAlpha && legible(w) && shown(w, zoomed))}; });
     review.hashes = frameHashes(film, {times, width: 160});
     s.facts = {from: window.from, to: window.to, seconds: +(window.to - window.from).toFixed(3), stillFor, captions: Boolean(framed?.boxes.captions), samples: times.length, words: review.samples.reduce((n, x) => n + x.words.length, 0),
       spoken: film.timings.scenes.some((sc, i) => (sc.words ?? []).some(w => film.clock.offsets[i] + w.end > window.from && film.clock.offsets[i] + w.start < window.to))};
