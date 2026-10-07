@@ -141,7 +141,11 @@ export function shiftWords(words, plan) {
 /**
  * Pace word timings without audio (a silent cut): each hold shifts the words after its phrase,
  * and each scene ends its tail after its last word — the same holds and tails a voiced cut gets,
- * so a picture that waits on a pause (a pause-and-guess) waits in the silent cut too. Pure.
+ * so a picture that waits on a pause (a pause-and-guess) waits in the silent cut too. When the timing
+ * names its audio (a voice's timings.json), the scene keeps all of that audio, as the voiced cut does:
+ * it ends at the later of the audio's end and the last word's end plus the tail (applyPacing) — so a
+ * film read from a voice folder without touching its audio (the review tools) has the rendered film's
+ * clock. Pure.
  */
 export function paceTimings(board, timings, pacing) {
   validatePacing({voiceSpeed: 1, ...pacing}, board);
@@ -156,9 +160,11 @@ export function paceTimings(board, timings, pacing) {
       if (!match) throw new Error(`Pacing phrase not found in ${scene.id}: "${hold.after}"`);
       return {after: hold.after, seconds: hold.seconds, time: match.end};
     }).sort((a, b) => a.time - b.time);
-    // Like applyPacing: the last word's end plus EVERY hold (one after the last phrase shifts no word) plus the tail.
+    // Like applyPacing: the last word's end plus EVERY hold (one after the last phrase shifts no word) plus the tail —
+    // or, when the timing names its audio, all of that audio plus the holds, if it runs longer.
     const words = shiftWords(timing.words, plan), last = timing.words.filter(w => w.text.replace(/[^\p{L}\p{N}]/gu, '')).at(-1).end;
-    return {...timing, words, duration: +(last + plan.reduce((n, h) => n + h.seconds, 0) + tailFor(pacing, scene.id)).toFixed(5),
+    const held = plan.reduce((n, h) => n + h.seconds, 0), audio = timing.audio && Number.isFinite(timing.duration) ? timing.duration + held : 0;
+    return {...timing, words, duration: +Math.max(audio, last + held + tailFor(pacing, scene.id)).toFixed(5),
       pacing: {holds: plan.map(({after, seconds, time}) => ({after, seconds, at: +time.toFixed(3)})), sceneTail: tailFor(pacing, scene.id), method: scene.silent ? 'silent scene: the directions\' seconds, then the tail; no audio' : 'silent cut: word times shifted by each hold; no audio'}};
   });
   return {...timings, scenes, pacing: {sceneTail: pacing.sceneTail, holds: pacing.holds.length, silent: true}};
