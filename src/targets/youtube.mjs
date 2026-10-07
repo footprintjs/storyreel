@@ -5,19 +5,7 @@
  * or synthetic content" set when the post declares something realistic made with AI (YouTube asks, e.g. for a
  * synthetic voice narrating).
  */
-export const chapterLine = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-
-/** The film's chapters as YouTube takes them: [[seconds, name]] → lines, or [] when fewer than three would stand. */
-export function youtubeChapters(chapters, seconds, {min = 10} = {}) {
-  const kept = [];
-  for (const [t, name] of chapters) {
-    if (!kept.length) { kept.push([0, name]); continue; }
-    if (t - kept.at(-1)[0] < min) { if (kept.length === 1 && t < min) kept[0] = [0, name]; continue; }   // too close: the earlier one covers it
-    kept.push([t, name]);
-  }
-  if (kept.length && seconds - kept.at(-1)[0] < min) kept.pop();   // the last must last 10 s too
-  return kept.length >= 3 ? kept.map(([t, name]) => `${chapterLine(t)} ${name}`) : [];
-}
+import {youtubeChapters} from 'footprint-narration';
 
 export default {
   name: 'youtube', label: 'YouTube',
@@ -27,7 +15,7 @@ export default {
   thumbnail: {width: 1280, height: 720, maxBytes: 2 * 1024 * 1024},
   facts: {checked: '2026-10-02', sources: ['https://support.google.com/youtube/answer/9884579', 'https://developers.google.com/youtube/v3/docs/videos#snippet.title', 'https://blog.youtube/news-and-events/disclosing-ai-generated-content']},
   post(post, {chapters, seconds}) {
-    const lines = youtubeChapters(chapters, seconds);
+    const {lines} = youtubeChapters(chapters.map(([at, title]) => ({at, title})), {length: seconds});   // footprint-narration's rule
     return {title: post.title, description: [post.description, lines.join('\n')].filter(Boolean).join('\n\n'), tags: post.tags, madeForKids: post.audience === 'kids', alteredOrSynthetic: (post.synthetic ?? []).length > 0};
   },
 };

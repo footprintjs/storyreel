@@ -110,7 +110,9 @@ beat may name a phrase either way (`["frame", "takes 16.67 ms"]` and `["frame", 
 seven milliseconds"]` are the same moment); the captions and caption files show `16.67 ms`, timed from the
 first spoken word of the slot to its last. Each `shown` must appear in the narration, in order, and
 `spoken` is words only. `unsaidNumbers(storyboard)` lists digits left without a slot, so a voice tool can
-refuse them before it speaks.
+refuse them before it speaks. The slots are [footprint-narration](https://github.com/footprintjs/footprint-narration)'s
+(`spokenMap`, `checkSlots`, `shownWords`, `normSpeech`), the package StoryReel shares with StoryDeck — which
+also says, automatically, what a voice should read for the text nobody marked (`autoRules`).
 
 **Listen back.** Forced alignment fits every script word somewhere in the audio, so a word the voice
 dropped still gets a slot and a plausible time. The voice tools' word check also transcribes the audio
@@ -558,7 +560,8 @@ await renderFilm({film, storyboard, timings, narrationDir, out: 'out/shorts/teas
 - **Caption files.** `captionFiles: true` writes `captions.vtt` and `captions.srt` beside the video, on
   its clock (a partial render or an intro moves them), in cues of whole sentences on at most two lines —
   YouTube, LinkedIn and X play their own captions from a file, so a landscape version can carry a file
-  instead of burned-in words.
+  instead of burned-in words. The chunks and the files are footprint-narration's (`captionChunks` over the
+  film's `spokenTracks(film)`, `captionFile`, `readCaptions`).
 - **Motion blur.** `motionBlur: 4` (or `{subframes, shutter}`) makes each frame the average of that many
   moments over half the frame's time, so a fast push or a whip streaks as a camera's would. It costs one
   drawing per subframe; the bands and the poster are never blurred.
@@ -1063,11 +1066,11 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?, hostKeys?, record?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `reading`, `shots` (each shot's intent, facts and moments), `watching`, `rows` (the rows of pictures segments are planned from), `moments()`, `regionsAt(t)`, `pointAt(t, x, y)`, `posterAt`, `theme`; with `record: true`, `record` (the compile as a footprintjs run) |
 | `renderFilm({film, storyboard, timings, narrationDir?, out, width?, height?, fps?, intro?, stamp?, from?, to?, poster?, loudness?, layout?, motionBlur?, captionFiles?, quality?, video?})` | the MP4 (FFmpeg), its chapters (one per titled scene), its poster, its loudness (two passes); a version for a platform, motion blur, caption files; the picture in one pass or in cached segments |
 | `compileLayout(film, layout)` · `FORMAT_NAMES` | a format's picture and bands, drawn at any t (`footprint-storyreel/layout` adds `formatOf`, `cropWindow`) |
-| `captionChunks(film, {maxWords?, maxChars?, breaks?})` · `captionFile(chunks, 'vtt' \| 'srt', {offset?, from?, to?})` | the spoken words in caption chunks; a WebVTT or SRT file (`footprint-storyreel/captions` adds `captionAt`, `drawCaption`) |
+| `spokenTracks(film)` | the film's speech as tracks: chunk them with footprint-narration's `captionChunks`, write files with its `captionFile` (`footprint-storyreel/captions` adds `drawCaption`) |
 | `TRANSITIONS` · `TRANSITION_NAMES` · `transitionCatalog(kits)` · `transitionSheet({catalog?, moments?, width?})` | the transitions a shot can enter with, a kit's own added, on one PNG (`footprint-storyreel/transitions` adds `readEntrance`, `ghostPainter`) |
 | `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?})` | compile + render as a footprintjs pipeline, with `making-of.json` (a segmented render: one subflow per segment) |
 | `approveFilm({record, by, note?})` · `checkApproval(approval, inputs)` | the approval lock: approve a watched render from its making-of.json, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
-| `checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})` · `readCaptions(text)` · `FINISHED_CHECK_NAMES` | checks on the finished file: lengths, blank runs, flash frames, hand-overs and joins, the voice, captions (`footprint-storyreel/finished` adds `ffmpegProbe`, `FINISHED_CHECKS`, `FINISHED`) |
+| `checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})` · `FINISHED_CHECK_NAMES` | checks on the finished file: lengths, blank runs, flash frames, hand-overs and joins, the voice, captions (`footprint-storyreel/finished` adds `ffmpegProbe`, `FINISHED_CHECKS`, `FINISHED`) |
 | `segmentedVideo({store, recipe, code?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir)` · `ffmpegJoin()` · `planSegments(film, {fps})` · `segmentKey(…)` · `codeFingerprint(paths)` | re-render only what changed: the picture in cached segments, joined (`renderFilm({…, video})`) |
 | `footprint-storyreel/release` → `makeRelease({targets, post, out, …})` · `loadTarget` · `checkAdapter` · `planProblems` · `TARGET_NAMES` | the post for each platform: the video in its shape, captions, thumbnail, the text to paste, checked against the platform's limits and audience |
 | `readCast(cast)` · `castText(text, cast)` · `withCast(value, cast)` | the cast: `{{role}}` in any text becomes the role's name; kits read the rest from `context.cast` |
@@ -1118,6 +1121,7 @@ in [BACKLOG.md](BACKLOG.md).
 | perfect-freehand | MIT | marker strokes |
 | roughjs | MIT | sketched shapes |
 | shiki | MIT | code tokens |
+| footprint-narration | MIT | the spoken text and the captions |
 | Caveat (font, bundled) | SIL OFL 1.1 | handwriting |
 | FFmpeg (separate program, on PATH) | LGPL/GPL | encoding and mixing |
 

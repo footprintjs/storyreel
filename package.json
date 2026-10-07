@@ -188,7 +188,8 @@
     "perfect-freehand": "^1.2.3",
     "roughjs": "^4.6.6",
     "shiki": "^3.23.0",
-    "footprintjs": "^9.27.0"
+    "footprintjs": "^9.27.0",
+    "footprint-narration": "file:../footprint-narration"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

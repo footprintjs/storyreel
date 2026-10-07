@@ -11,7 +11,8 @@ import {createHash} from 'node:crypto';
 import {createCanvas} from '@napi-rs/canvas';
 import {createMotionSound, soundsByScene} from './sound.mjs';
 import {compileLayout} from './layout.mjs';
-import {captionChunks, captionFile, FILE_CHUNKS} from './captions.mjs';
+import {captionChunks, captionFile, FILE_CHUNKS, clockText} from 'footprint-narration';
+import {spokenTracks} from './captions.mjs';
 import {effectsUnderVoice} from './listening.mjs';
 
 /**
@@ -155,7 +156,6 @@ function joinVoice(run, {dir, storyboard, timings, narrationDir, voice}) {
   run(['-f', 'concat', '-safe', '0', '-i', path.join(dir, 'film-narration.txt'), '-ar', '48000', '-ac', '1', voice]);
 }
 
-const clock = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 /** The motionBlur option: null, a number of subframes, or {subframes 2–16, shutter 0.1–1 (default 0.5)}. */
 export function readMotionBlur(v) {
@@ -217,7 +217,7 @@ export function makePainter({film, framed, blur, width, height, fps, ctx}) {
  * @param motionBlur {subframes, shutter?} (or a number of subframes): each frame is the average of that many moments
  *                   spread over `shutter` (0.5 by default) of the frame's time, so fast moves blur as a camera's would
  * @param captionFiles true (both) or a list of 'vtt' / 'srt': caption files beside the video (captions.vtt,
- *                   captions.srt) on the video's clock, for players that show their own captions (captions.mjs · captionFile)
+ *                   captions.srt) on the video's clock, for players that show their own captions (footprint-narration · captionFile)
  * @param video      how the picture is made (a strategy, segments.mjs): wholeVideo() — every frame in one pass, the
  *                   default — or segmentedVideo({...}) — the film in segments, each reused from a cache when nothing
  *                   that draws it changed, then joined. The sound is always mixed for the whole film, once.
@@ -447,14 +447,14 @@ export async function finishRender(job, video) {
   // Chapters on the output's clock, for review and YouTube.
   const lead = withIntro ? intro.seconds : 0;
   const chapters = [...(withIntro ? [[0, intro.title ?? 'Title']] : []), ...sceneChapters(storyboard.scenes, film.clock.offsets).map(([t, name]) => [lead + t - start, name])].filter(([t]) => t >= 0);
-  writeFileSync(path.join(dir, 'chapters.txt'), chapters.map(([t, n]) => `${clock(t)} ${n}`).join('\n') + '\n');
+  writeFileSync(path.join(dir, 'chapters.txt'), chapters.map(([t, n]) => `${clockText(t)} ${n}`).join('\n') + '\n');
   // Caption files on the output's clock too (the same shift as the chapters), for the cues the render covers.
   const captions = {};
   if (captionKinds.length) {
-    const chunks = captionChunks(film, FILE_CHUNKS);
+    const chunks = captionChunks(spokenTracks(film), FILE_CHUNKS);
     for (const kind of captionKinds) { captions[kind] = path.join(dir, `captions.${kind}`); writeFileSync(captions[kind], captionFile(chunks, kind, {offset: lead - start, from: start, to})); }
   }
-  return {out: path.resolve(job.out), seconds: lead + to - start, chapters: chapters.map(([t, n]) => `${clock(t)} ${n}`), loudness: {...loudnessSet, roles}, listening: tooLoud ? [tooLoud] : [],
+  return {out: path.resolve(job.out), seconds: lead + to - start, chapters: chapters.map(([t, n]) => `${clockText(t)} ${n}`), loudness: {...loudnessSet, roles}, listening: tooLoud ? [tooLoud] : [],
     ...(posterFile ? {poster: posterFile} : {}), ...(framed ? {format: framed.format} : {}), ...(captionKinds.length ? {captions} : {}), ...(video.report ? {video: video.report} : {})};
 }
 

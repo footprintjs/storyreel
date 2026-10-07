@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### The narration code moves into footprint-narration (breaking: imports move)
+StoryReel and StoryDeck each kept the same narration code — what a voice says for a number, the captions, YouTube's
+chapter rule — and the copies had started to disagree. It now lives in one package both use,
+[footprint-narration](https://github.com/footprintjs/footprint-narration). **What a film says, its captions and its
+chapters are unchanged** (moved code, pinned there by differential tests against 0.9.0's, and by every test here).
+- **Moved out, imported from `footprint-narration` now**: `normSpeech`, `shownWords` (it takes a spoken map:
+  `film.clock.shownWords(i)` is unchanged), `captionChunks` (it takes tracks — `captionChunks(spokenTracks(film))`),
+  `captionAt`, `captionFile`, `FILE_CHUNKS`, `readCaptions`, and `youtubeChapters` (`youtubeChapters(marks,
+  { length }).lines`, marks as `{ at, title }`; `chapterLine` → `clockText`). No forwarders are left behind.
+- **New: `spokenTracks(film)`** — the film's speech as tracks (each spoken scene at its offset, its words as shown).
+- `checkScene` refuses a scene's `say` with the same messages, through footprint-narration's `checkSlots`;
+  `spokenText` and `unsaidNumbers` refuse a `say` list `checkScene` would refuse (0.9.0 used the slots up to the
+  first one it could not find).
+- A chapter line of a film an hour long or more reads `1:02:05` (it read `62:05`); `chapters.txt` and the release
+  read both.
+- WebVTT caption files escape `& < >` in a word (they were written raw), and `readCaptions` reads them back.
+- Segment caches draw once more after this upgrade: footprint-narration is part of every segment's key
+  (`versions.mjs · DRAWING`), since the burned-in captions' words come from it. Its version is named in the
+  making-of record and the release's CREDITS.txt.
+
 ### One clock for the review and the render
 - **`paceTimings` keeps a voice's audio**: when a scene's timing names its audio (a voice's timings.json), the
   scene ends where the voiced cut ends it — the later of the audio's end and the last word plus the tail — not at

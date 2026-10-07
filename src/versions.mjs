@@ -15,5 +15,5 @@ export function installedVersion(name) {
   return 'unknown';
 }
 
-/** What draws a frame: the canvas, the marker strokes, the sketched shapes, the code tokens. */
-export const DRAWING = Object.freeze(['@napi-rs/canvas', 'perfect-freehand', 'roughjs', 'shiki']);
+/** What draws a frame: the canvas, the marker strokes, the sketched shapes, the code tokens, the burned-in captions' words. */
+export const DRAWING = Object.freeze(['@napi-rs/canvas', 'perfect-freehand', 'roughjs', 'shiki', 'footprint-narration']);

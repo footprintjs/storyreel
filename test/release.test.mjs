@@ -7,7 +7,10 @@ import path from 'node:path';
 import {loadImage} from '@napi-rs/canvas';
 import {evenTimings} from '../src/index.mjs';
 import {makeRelease, loadTarget, checkAdapter, planProblems, readPost, TARGETS, TARGET_NAMES} from '../src/release.mjs';
-import {youtubeChapters} from '../src/targets/youtube.mjs';
+import {youtubeChapters as chaptersOf} from 'footprint-narration';
+
+/** YouTube's chapter lines for [[seconds, name]] (the adapter's input) over a video of `length` s. */
+const youtubeChapters = (pairs, length) => chaptersOf(pairs.map(([at, title]) => ({at, title})), {length}).lines;
 import {sceneChapters} from '../src/render.mjs';
 
 const storyboard = {title: 'Release Test', scenes: [

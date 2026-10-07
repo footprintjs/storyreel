@@ -8,7 +8,7 @@ export {renderFilm, wholeVideo} from './render.mjs';
 export {segmentedVideo, folderStore, ffmpegJoin, planSegments, segmentKey, codeFingerprint} from './segments.mjs';
 export {makeFilm} from './pipeline.mjs';
 export {approveFilm, checkApproval} from './approval.mjs';
-export {checkVideo, readCaptions, FINISHED_CHECK_NAMES} from './finished.mjs';
+export {checkVideo, FINISHED_CHECK_NAMES} from './finished.mjs';
 export {applyPacing, validatePacing, tailFor, paceTimings} from './pacing.mjs';
 export {withStrings} from './strings.mjs';
 export {createMotionSound as createSound} from './sound.mjs';
@@ -18,6 +18,6 @@ export {cartoonKit} from './kits/cartoon/index.mjs';
 export {frameHashes, changedFrames} from './pins.mjs';
 export {contactSheet, transitionSheet} from './sheet.mjs';
 export {compileLayout, FORMAT_NAMES} from './layout.mjs';
-export {captionChunks, captionFile} from './captions.mjs';
+export {spokenTracks} from './captions.mjs';   // chunk them, and write caption files, with footprint-narration
 export {TRANSITIONS, TRANSITION_NAMES, transitionCatalog} from './transitions.mjs';
 export {readCast, castText, withCast} from './cast.mjs';

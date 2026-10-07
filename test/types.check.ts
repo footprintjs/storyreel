@@ -68,14 +68,14 @@ export const unsaid: ContextKit = {name: 'unsaid', story: {compile: (spec: unkno
 export const writeContext = (context: KitContext) => { context.root = '/'; };
 
 // The documented subpaths carry types too.
-import type {makeClock, normSpeech} from '../types/sub/clock.js';
+import type {makeClock, checkScene} from '../types/sub/clock.js';
 import type {hitTest, View} from '../types/sub/regions.js';
 import type {tooShortToRead} from '../types/sub/reading.js';
 import type {compileWhiteboard, Board} from '../types/sub/whiteboard.js';
 import type {compileCartoon} from '../types/sub/cartoon.js';
 import type {paceTimings, shiftWords} from '../types/sub/pacing.js';
 import type {EASES, easeNamed, Ease, EaseName} from '../types/sub/ease.js';
-export type Subpaths = [typeof makeClock, typeof normSpeech, typeof hitTest, View, typeof tooShortToRead, typeof compileWhiteboard, Board, typeof compileCartoon, typeof paceTimings, typeof shiftWords, typeof EASES, typeof easeNamed, Ease, EaseName];
+export type Subpaths = [typeof makeClock, typeof checkScene, typeof hitTest, View, typeof tooShortToRead, typeof compileWhiteboard, Board, typeof compileCartoon, typeof paceTimings, typeof shiftWords, typeof EASES, typeof easeNamed, Ease, EaseName];
 export const backEase = (table: typeof EASES): Ease => table.back;
 export const springEase = (table: typeof EASES): Ease => table.spring;
 // @ts-expect-error bounce is not in the table yet

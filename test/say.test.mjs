@@ -2,8 +2,12 @@
 // is spoken; a beat may name a phrase as shown or as spoken; numbers left as digits are listed.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {checkScene, spokenText, shownWords, unsaidNumbers, makeClock, evenTimings, sceneText} from '../src/clock.mjs';
-import {compileFilm, captionChunks, captionFile} from '../src/index.mjs';
+import {captionChunks, captionFile} from 'footprint-narration';
+import {checkScene, spokenText, unsaidNumbers, makeClock, evenTimings, sceneText} from '../src/clock.mjs';
+import {compileFilm, spokenTracks} from '../src/index.mjs';
+
+/** The words a caption shows for one scene, through the clock (footprint-narration's shownWords over the scene's slots). */
+const shownWords = (scene, words) => makeClock({scenes: [scene]}, {scenes: [{...evenTimings({scenes: [scene]}).scenes[0], words}]}).shownWords(0);
 
 const scene = {id: 'frame', narration: 'One frame takes 16.67 ms, at 60 Hz.', say: [['16.67 ms', 'sixteen point six seven milliseconds'], ['60 Hz', 'sixty hertz']]};
 
@@ -41,10 +45,10 @@ test('numbers left as digits are listed for the voice tool to refuse', () => {
 test('a film\'s captions and caption file show the digits the voice said in words', async () => {
   const storyboard = {scenes: [scene, {id: 'next', narration: 'That is one frame.'}]};
   const film = await compileFilm({storyboard, timings: evenTimings(storyboard), recipe: {story: {kit: 'whiteboard', items: [{at: ['frame', 'takes 16.67 ms'], dur: .8, write: '16.67 ms', x: 800, y: 400, size: 60, align: 'center'}]}}});
-  const words = captionChunks(film).flatMap(c => c.words.map(w => w.text));
+  const words = captionChunks(spokenTracks(film)).flatMap(c => c.words.map(w => w.text));
   assert.ok(words.includes('16.67 ms,') && words.includes('60 Hz.'), words.join(' '));
   assert.ok(!words.includes('sixteen'), 'the spoken run is not captioned word by word');
-  assert.match(captionFile(captionChunks(film, {maxWords: 12, breaks: 'sentence'}), 'srt'), /16\.67 ms, at 60 Hz\./);
+  assert.match(captionFile(captionChunks(spokenTracks(film), {maxWords: 12, breaks: 'sentence'}), 'srt'), /16\.67 ms, at 60 Hz\./);
 });
 
 test('makeFilm reads the voice folder\'s word check: words not heard are listed, or refused', async () => {

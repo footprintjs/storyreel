@@ -28,6 +28,7 @@ const TOOLS = () => [
   {name: 'perfect-freehand', version: version('perfect-freehand'), license: 'MIT', detail: 'marker strokes'},
   {name: 'roughjs', version: version('roughjs'), license: 'MIT', detail: 'sketched shapes'},
   {name: 'shiki', version: version('shiki'), license: 'MIT', detail: 'code tokens'},
+  {name: 'footprint-narration', version: version('footprint-narration'), license: 'MIT', detail: 'the spoken text and the captions'},
   {name: 'Caveat', license: 'SIL OFL 1.1', detail: 'handwriting font'},
   {name: 'FFmpeg', license: 'LGPL/GPL (separate program)', detail: 'encoding and mixing'},
 ];
