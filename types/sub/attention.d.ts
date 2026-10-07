@@ -3,6 +3,6 @@ export interface FocusView {cx: number; cy: number; z: number; sx: number; sy: n
 /** A focus strategy: shows the picture (paint) for a view. */
 export interface FocusStrategy {name?: string; moves?: boolean; show(ctx: any, view: FocusView, paint: (ctx: any) => void, theme: unknown): void}
 /** An emphasis strategy: draws the current words. */
-export interface EmphasisStrategy {name?: string; draw(ctx: any, t: number, word: {t: number; text: string; next: number; until: number}, theme: unknown): void}
+export interface EmphasisStrategy {name?: string; draw(ctx: any, t: number, word: {t: number; text: string; next: number; until: number}, theme: unknown, view: FocusView | null): void}
 export const FOCUS: Readonly<Record<'camera' | 'spotlight' | 'dim' | 'none', FocusStrategy>>;
-export const EMPHASIS: Readonly<Record<'pop' | 'corner' | 'none', EmphasisStrategy>>;
+export const EMPHASIS: Readonly<Record<'pop' | 'label' | 'corner' | 'none', EmphasisStrategy>>;

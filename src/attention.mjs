@@ -13,7 +13,8 @@
  * rest; `none`. A list composes them in order — ["camera", "dim"] moves the camera and veils the rest of its view.
  * Every move is a spring (motion.mjs · FEELS), so a camera that is still easing toward one thing
  * turns smoothly toward the next. Emphasis (EMPHASIS): `pop` lands the words big on their beat, then settles them
- * into a label in the top corner until the next words; `corner` is the label only; `none`.
+ * into a label in the top corner until the next words; `corner` is the label only; `label` sits the words on the
+ * thing in focus (above its top-left corner, travelling with the camera), or at the top middle with no focus; `none`.
  *
  * A strategy of your own has the same shape, passed to compileFilm (and makeFilm) as
  * `strategies: {focus: {name: {show(ctx, view, paint, theme)}}, emphasis: {name: {draw(ctx, t, word, theme)}}}`:
@@ -66,14 +67,18 @@ export const FOCUS = Object.freeze({
 
 const SANS = '"Helvetica Neue", Helvetica, Arial, sans-serif';
 /** A word's label in the top corner: ink ground, paper letters. */
-function chip(ctx, text, alpha, theme) {
+function chip(ctx, text, alpha, theme, {x = 40, y = 26, k = 1} = {}) {
   const ink = theme?.palette?.ink ?? '#23211c', bg = theme?.palette?.bg ?? '#f3eee3', font = theme?.type?.sans ?? SANS;
   ctx.save(); ctx.globalAlpha *= alpha; ctx.font = `800 24px ${font}`;
   const w = ctx.measureText(text).width + 32;
-  ctx.fillStyle = ink; ctx.beginPath(); ctx.roundRect(40, 26, w, 40, 20); ctx.fill();
-  ctx.fillStyle = bg; ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillText(text, 56, 47);
+  ctx.translate(x + w / 2, y + 20); ctx.scale(k, k); ctx.translate(-(x + w / 2), -(y + 20));
+  ctx.fillStyle = ink; ctx.beginPath(); ctx.roundRect(x, y, w, 40, 20); ctx.fill();
+  ctx.fillStyle = bg; ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillText(text, x + 16, y + 21);
   ctx.restore();
+  return w;
 }
+/** Where a box in the picture lands on the frame, through the focus view (the camera), or as it is without one. */
+const onFrame = (box, v) => !v ? box : [(box[0] - v.cx) * v.z + v.sx, (box[1] - v.cy) * v.z + v.sy, (box[2] - v.cx) * v.z + v.sx, (box[3] - v.cy) * v.z + v.sy];
 /** The emphasis strategies: how the words of a beat are put in front of the viewer. */
 export const EMPHASIS = Object.freeze({
   pop: Object.freeze({name: 'pop', draw(ctx, t, word, theme) {
@@ -93,6 +98,15 @@ export const EMPHASIS = Object.freeze({
       ctx.restore();
     }
     if (settle > .5) chip(ctx, word.text, leave * clamp01((settle - .5) * 2), theme);
+  }}),
+  label: Object.freeze({name: 'label', draw(ctx, t, word, theme, view) {
+    // The words sit on the thing the voice is about (the focus), just above its top-left corner, and travel with it;
+    // with nothing in focus they sit at the top of the frame, in the middle.
+    const a = clamp01((t - word.t) / .25) * (1 - clamp01((t - (word.next - .25)) / .25)); if (!(a > 0)) return;
+    const font = theme?.type?.sans ?? SANS; ctx.save(); ctx.font = `800 24px ${font}`; const w = ctx.measureText(word.text).width + 32; ctx.restore();
+    const focused = view && view.w > .5 ? onFrame(view.box, view) : null;
+    const x = focused ? Math.max(16, Math.min(W - w - 16, focused[0])) : W / 2 - w / 2, y = focused ? Math.max(12, focused[1] - 52) : 20;
+    chip(ctx, word.text, a, theme, {x, y, k: .7 + .3 * clamp01(pop(t, word.t, 'snappy'))});
   }}),
   corner: Object.freeze({name: 'corner', draw(ctx, t, word, theme) { chip(ctx, word.text, clamp01((t - word.t) / .25) * (1 - clamp01((t - (word.next - .25)) / .25)), theme); }}),
   none: Object.freeze({name: 'none', draw() {}}),
@@ -151,7 +165,7 @@ function readFocus(spec, {clock, named, strategies, pushes, theme}) {
 }
 
 /** The emphasis as written, checked and placed on the clock: {strategy, draw(ctx, t), record}. */
-function readEmphasis(spec, {clock, strategies, theme}) {
+function readEmphasis(spec, {clock, strategies, theme, focus = null}) {
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) throw new Error('emphasis must be {strategy, words: [{at, text, until?}], feel?}');
   for (const key of Object.keys(spec)) if (!EMPHASIS_KEYS.includes(key)) throw new Error(`emphasis has unsupported key ${key} (emphasis takes ${EMPHASIS_KEYS.join(', ')})`);
   const strategy = pick('emphasis', spec.strategy, EMPHASIS, strategies?.emphasis, 'draw'), feel = readFeel(spec.feel ?? 'playful');
@@ -164,7 +178,7 @@ function readEmphasis(spec, {clock, strategies, theme}) {
   });
   inOrder(words, 'emphasis.words');
   words.forEach((w, i) => { w.next = Math.min(w.until, words[i + 1]?.t ?? Infinity); });
-  return {strategy: strategy.name, draw(ctx, t) { const w = words.findLast(x => t >= x.t); if (w && t < w.next) strategy.draw(ctx, t, w, theme); },
+  return {strategy: strategy.name, draw(ctx, t) { const w = words.findLast(x => t >= x.t); if (w && t < w.next) strategy.draw(ctx, t, w, theme, focus?.viewAt(t) ?? null); },
     record: {strategy: strategy.name, words: words.map(w => ({t: +w.t.toFixed(3), text: w.text}))}};
 }
 
@@ -175,7 +189,7 @@ function readEmphasis(spec, {clock, strategies, theme}) {
 export function readAttention(recipe, {clock, named, strategies = null, pushes = [], theme = null}) {
   if (strategies !== null && (typeof strategies !== 'object' || Array.isArray(strategies))) throw new Error('strategies is {focus?: {name: strategy}, emphasis?: {name: strategy}}');
   const focus = recipe.focus === undefined ? null : readFocus(recipe.focus, {clock, named, strategies, pushes, theme});
-  const emphasis = recipe.emphasis === undefined ? null : readEmphasis(recipe.emphasis, {clock, strategies, theme});
+  const emphasis = recipe.emphasis === undefined ? null : readEmphasis(recipe.emphasis, {clock, strategies, theme, focus});
   if (!focus && !emphasis) return null;
   return {focus, emphasis, record: {...(focus ? {focus: focus.record} : {}), ...(emphasis ? {emphasis: emphasis.record} : {})}};
 }

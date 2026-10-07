@@ -67,7 +67,7 @@ test('emphasis: the words land big on their beat, then settle into a label in th
   assert.ok(big && big.box[3] - big.box[1] > 50 && Math.abs((big.box[0] + big.box[2]) / 2 - 800) < 10, `big and centred: ${JSON.stringify(big)}`);
   assert.ok(small && small.box[0] < 120 && small.box[3] < 80 && small.box[3] - small.box[1] < 30, `a label in the corner: ${JSON.stringify(small)}`);
   assert.equal(wordsAt(film, at(film, 'b', 'the blue one') + .5).some(w => w.text === 'RED'), false, 'gone when the next words come');
-  assert.deepEqual(Object.keys(EMPHASIS), ['pop', 'corner', 'none']);
+  assert.deepEqual(Object.keys(EMPHASIS), ['pop', 'label', 'corner', 'none']);
 });
 
 test('refusals name the fix; a strategy of your own has the same shape', async () => {
@@ -102,4 +102,14 @@ test('strategies compose: ["camera", "dim"] moves the camera and veils the rest 
   assert.ok(words.find(w => w.text === 'FAR').alpha < .5, `the rest is veiled: ${JSON.stringify(words.find(w => w.text === 'FAR'))}`);
   assert.ok(film.focusAt(t).z > 2, 'and the camera framed it');
   await assert.rejects(make({focus: {...focus(), strategy: ['camera', 'mover']}}, {strategies: {focus: {mover: {moves: true, show: (c, v, p) => p(c)}}}}), /only one of them may move the camera/);
+});
+
+test('emphasis "label": the words sit on the thing in focus, above its top-left corner, and travel with the camera', async () => {
+  const film = await make({focus: focus('camera'), emphasis: {strategy: 'label', words: [{at: ['a', 'red square'], text: 'RED'}, {at: ['b', 'the blue one'], text: 'BLUE'}]}});
+  const t = at(film, 'b', 'the blue one') - .05, v = film.focusAt(t);
+  const red = [(200 - v.cx) * v.z + v.sx, (200 - v.cy) * v.z + v.sy];   // the red square's top-left corner on the frame
+  const label = wordsAt(film, t).find(w => w.text === 'RED');
+  assert.ok(label && Math.abs(label.box[0] - (Math.max(16, red[0]) + 16)) < 6 && label.box[3] < red[1], `on the red square: ${JSON.stringify({label, red})}`);
+  const wide = await make({emphasis: {strategy: 'label', words: [{at: ['a', 'red square'], text: 'RED'}]}}), alone = wordsAt(wide, at(wide, 'a', 'red square') + 1).find(w => w.text === 'RED');
+  assert.ok(alone && Math.abs((alone.box[0] + alone.box[2]) / 2 - 800) < 4 && alone.box[1] < 70, 'no focus: at the top, in the middle');
 });
