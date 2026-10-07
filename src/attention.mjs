@@ -40,10 +40,17 @@ function withAlphaOf(color, a) {
 /** Everything but the named thing (with a margin), under a colour, as strong as the view is focused. */
 function veil(ctx, v, color) {
   if (!(v.w > .01)) return;
-  const m = 18, [x0, y0, x1, y1] = [v.box[0] - m, v.box[1] - m, v.box[2] + m, v.box[3] + m];
-  ctx.save(); ctx.globalAlpha *= clamp01(v.w); ctx.fillStyle = color;
-  // Four bands around the named thing (plain rectangles: a reader of the picture sees which words they cover).
-  ctx.fillRect(0, 0, W, Math.max(0, y0)); ctx.fillRect(0, y1, W, Math.max(0, H - y1)); ctx.fillRect(0, y0, Math.max(0, x0), y1 - y0); ctx.fillRect(x1, y0, Math.max(0, W - x1), y1 - y0);
+  const m = 18, feather = 54, steps = 6, base = ctx.globalAlpha * clamp01(v.w);
+  // Bands around the named thing, plain rectangles (a reader of the picture sees which words they cover): the far
+  // ones at full strength, then a soft edge of thin rings fading to nothing at the thing — no hard-edged hole.
+  const around = ([x0, y0, x1, y1], [X0, Y0, X1, Y1]) => {   // the ring between an inner and an outer rectangle
+    ctx.fillRect(X0, Y0, X1 - X0, Math.max(0, y0 - Y0)); ctx.fillRect(X0, y1, X1 - X0, Math.max(0, Y1 - y1));
+    ctx.fillRect(X0, y0, Math.max(0, x0 - X0), y1 - y0); ctx.fillRect(x1, y0, Math.max(0, X1 - x1), y1 - y0);
+  };
+  const grow = d => [v.box[0] - m - d, v.box[1] - m - d, v.box[2] + m + d, v.box[3] + m + d];
+  ctx.save(); ctx.fillStyle = color;
+  ctx.globalAlpha = base; around(grow(feather), [Math.min(0, grow(feather)[0]), Math.min(0, grow(feather)[1]), Math.max(W, grow(feather)[2]), Math.max(H, grow(feather)[3])]);
+  for (let i = 0; i < steps; i++) { ctx.globalAlpha = base * (i + .5) / steps; around(grow(feather * i / steps), grow(feather * (i + 1) / steps)); }
   ctx.restore();
 }
 
