@@ -13,5 +13,5 @@ export interface Finding {kind: string; from: number; to: number; scene: string 
 export function findingsText(findings: Finding[]): string;
 /** Review a part (or the film) by reading it: a footprintjs flowchart that leaves its own record. */
 export function reviewPart(film: Film, options?: {part?: {scenes: string[]; handles?: number} | {scene: string; handles?: number} | null; from?: number; to?: number; layout?: Layout | null;
-  every?: number; stillFor?: number; lasting?: number; minAlpha?: number; maxWords?: number; minSilence?: number; checks?: Record<string, ReviewCheck>}): Promise<{window: {from: number; to: number}; facts: Record<string, unknown> | null;
+  every?: number; stillFor?: number; lasting?: number; minAlpha?: number; minHeight?: number; maxWords?: number; minSilence?: number; checks?: Record<string, ReviewCheck>}): Promise<{window: {from: number; to: number}; facts: Record<string, unknown> | null;
   findings: Finding[]; text: string; timeline: string; ran: string[]; record: unknown[]}>;
