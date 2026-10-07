@@ -59,9 +59,9 @@ function readWords(canvas, paint) {
     if (x0 <= 0 && y0 <= 0 && x1 >= this.canvas.width && y1 >= this.canvas.height) notes.set(this.canvas, []);
     return original.clearRect.call(this, x, y, w, h);
   };
-  proto.fillRect = function (x, y, w, h) {   // a fill over the whole canvas veils the words under it, as much as it is opaque
-    const [x0, y0, x1, y1] = bounds(apply(this.getTransform(), corners([x, y, x + w, y + h])));
-    if (x0 <= 0 && y0 <= 0 && x1 >= this.canvas.width && y1 >= this.canvas.height) { const a = clamp01(this.globalAlpha * fillAlpha(this.fillStyle)); for (const n of on(this.canvas)) n.alpha *= 1 - a; }
+  proto.fillRect = function (x, y, w, h) {   // a rectangle filled over words veils them, as much as it is opaque
+    const [x0, y0, x1, y1] = bounds(apply(this.getTransform(), corners([x, y, x + w, y + h]))), a = clamp01(this.globalAlpha * fillAlpha(this.fillStyle));
+    if (a > 0) for (const n of on(this.canvas)) { const [bx0, by0, bx1, by1] = bounds(n.quad); if (bx0 >= x0 - 1 && by0 >= y0 - 1 && bx1 <= x1 + 1 && by1 <= y1 + 1) n.alpha *= 1 - a; }
     return original.fillRect.call(this, x, y, w, h);
   };
   proto.drawImage = function (src, ...args) {   // a canvas drawn here brings its words, mapped from its pixels to these
