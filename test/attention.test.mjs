@@ -113,3 +113,17 @@ test('emphasis "label": the words sit on the thing in focus, above its top-left 
   const wide = await make({emphasis: {strategy: 'label', words: [{at: ['a', 'red square'], text: 'RED'}]}}), alone = wordsAt(wide, at(wide, 'a', 'red square') + 1).find(w => w.text === 'RED');
   assert.ok(alone && Math.abs((alone.box[0] + alone.box[2]) / 2 - 800) < 4 && alone.box[1] < 70, 'no focus: at the top, in the middle');
 });
+
+test('emphasis "label" glides as the focus comes and goes: no jump between the top middle and the thing', async () => {
+  const film = await make({focus: focus('camera'), emphasis: {strategy: 'label', words: [{at: ['a', 'red square'], text: 'RED'}]}});
+  // Where the view turns from wide to focused (and back), the label moves no more than a smooth move would in 1/240 s.
+  const turns = [];
+  for (let t = .05; t < film.total; t += .05) if ((film.focusAt(t - .05).w - .5) * (film.focusAt(t).w - .5) <= 0) turns.push(t);
+  assert.ok(turns.length >= 2, 'the view turns focused and back');
+  for (const turn of turns) {
+    const spots = [];
+    for (let t = turn - .15; t < turn + .15; t += 1 / 240) { const w = wordsAt(film, t).find(x => x.text === 'RED'); if (w) spots.push(w.box); }
+    const step = Math.max(...spots.slice(1).map((b, i) => Math.hypot(b[0] - spots[i][0], b[1] - spots[i][1])));
+    assert.ok(spots.length > 40 && step < 30, `near ${turn.toFixed(2)} s the label moves at most ${step.toFixed(1)} px in 1/240 s`);
+  }
+});
