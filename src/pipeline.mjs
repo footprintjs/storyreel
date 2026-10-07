@@ -93,7 +93,7 @@ const MAX_PARTS = 256;
  *                     (the record's `finished` lists what they found) or 'refuse' (a problem refuses the film);
  *                     `expect: {seconds, tolerance?}` is the length the brief asks for
  */
-export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report', code = null, check = null, expect = {}, cast = null}) {
+export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report', code = null, check = null, expect = {}, cast = null, strategies = null}) {
   // The cast's names into the text before anything reads it: the pacing, the voice check, the chapters (cast.mjs).
   if (cast) { const c = readCast(cast); storyboard = withCast(storyboard, c, 'storyboard'); recipe = withCast(recipe, c, 'recipe'); if (strings) strings = withCast(strings, c, 'strings'); }
   if (check !== null && check !== 'report' && check !== 'refuse') throw new Error(`check is 'report' (the record lists what the checks on the finished file found), 'refuse' (a problem refuses the film) or left out, not ${JSON.stringify(check)}`);
@@ -136,7 +136,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       scope.pacing = paced.pacing ?? null;
     },
     'compile-film': async scope => {
-      film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings, hostKeys, cast, record: true});
+      film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings, hostKeys, cast, strategies, record: true});
       scope.beats = film.beats.length; scope.sounds = film.sounds.length; scope.total = +film.total.toFixed(3);
       // What the film is made from (film.inputs, and the pacing, the voice, the kits' code): an approval locks all of it.
       inputs = {...film.inputs, pacing: hashOf(pacing), ...(narrationDir ? {voice: voiceHash(narrationDir)} : {}), ...(code ? {code} : {})};

@@ -31,6 +31,7 @@ import {whiteboardKit} from './kits/whiteboard/index.mjs';
 import {icons} from './kits/whiteboard/board.mjs';
 import {drawCard, drawStage, drawSummary, drawConnector, cardEdge, PANEL, drawRecap, recapSlotBox, drawRecallFramed, drawGuess, GUESS_PLACES, GUESS_FLIP, cardPlacement, cardRowBoxes, stageBoxes} from './kits/paper/paper.mjs';
 import {tokenize, excerpt} from './kits/paper/code.mjs';
+import {readAttention} from './attention.mjs';
 import {readNotes, placePushes, pushAt} from './notes.mjs';
 import {view, then, about, through, back} from './regions.mjs';
 import {tooShortToRead, readingMode, readingPace} from './reading.mjs';
@@ -41,7 +42,7 @@ import {step, drainSteps, recordSteps} from './record.mjs';
 import {readEntrance, transitionCatalog, ghostPainter, layerCrossfader, CUT} from './transitions.mjs';
 
 /** The recipe's own top-level keys: anything else refuses, unless the host application names it in `hostKeys`. */
-const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle'];
+const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle', 'focus', 'emphasis'];
 /** What every shot may say about itself (shots.mjs): what it is for, and what is true when it starts and ends. */
 const PLAN_KEYS = ['intent', 'continuity', 'reads'];
 const STAGE_KEYS = new Set(['type', 'scene', 'chip', 'chipDark', 'title', 'file', 'label', 'code', 'lh', 'reveal', 'focus', 'glows', 'footer', 'list', 'loop', 'cards', 'closing', 'hero', 'frames', 'keys', 'teaser', 'enter', 'chrome', 'marks', 'columns', 'card', ...PLAN_KEYS]);
@@ -171,7 +172,7 @@ export async function compileFilm(options) {
  * summary)`, where `summary()` (called only when recording) says what the segment read and wrote.
  * The segments run the same code in the same order whether or not the compile is recorded.
  */
-async function* compileSteps({storyboard, board, timings, recipe, data, capture, kits = [], theme, root = process.cwd(), strings = null, hostKeys = [], cast = null}) {
+async function* compileSteps({storyboard, board, timings, recipe, data, capture, kits = [], theme, root = process.cwd(), strings = null, hostKeys = [], cast = null, strategies = null}) {
   storyboard ??= board; data ??= capture ?? null;
   checkRecipeKeys(recipe, hostKeys);
   // The cast's names go into the text first ({{role}} → name; cast.mjs), so every reader sees the film as it is said.
@@ -554,12 +555,17 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   function frame(ctx, t) {
     if (teaser && t >= teaser.at) { drawTeaser(ctx, t); return; }
     // A director's push moves the camera over the picture; the guess cards stay where they are.
-    const cam = pushAt(pushes, t);
-    if (cam) { ctx.save(); aim(ctx, cam); }
-    if (push) drawPushed(ctx, t); else drawShots(ctx, t);
-    if (cam) ctx.restore();
+    const picture = c => {
+      const cam = pushAt(pushes, t);
+      if (cam) { c.save(); aim(c, cam); }
+      if (push) drawPushed(c, t); else drawShots(c, t);
+      if (cam) c.restore();
+    };
+    // The focus strategy shows the picture (a camera frames the named thing, a spotlight darkens the rest…).
+    if (attention?.focus) attention.focus.show(ctx, t, picture); else picture(ctx);
     if (!push) drawOverlays(ctx, t);
     for (const g of guesses) if (t >= g.start && t <= g.until + .5) drawGuess(ctx, makePen(ctx, paper, {baseScale: 1}), paper, g, t);
+    attention?.emphasis?.draw(ctx, t);
   }
 
   /**
@@ -736,6 +742,8 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     return Object.freeze([...box]);
   }
   const pushes = placePushes(notes.pushes, {clock, speed: notes.speed, changes: pictureChanges(), spotlight: spotlightAt, total: clock.total, named});
+  // Where the viewer looks (attention.mjs): the recipe's focus and emphasis, each shown by a strategy.
+  const attention = readAttention(recipe, {clock, named, strategies, pushes, theme: paper});
 
   // The notes as applied, in the order written: the making-of record says what each one changed.
   const applied = new Map();
@@ -877,7 +885,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     data: data === null ? null : hashOf(data), theme: hashOf(paper), files: Object.freeze(files.list()), ...(castGiven ? {cast: hashOf(castGiven)} : {})});
   // What is drawn over every shot for a while: the guess cards, from their question to the card gone.
   const overlays = Object.freeze(guesses.map((g, n) => Object.freeze({path: `guesses[${n}]`, from: g.start, to: g.until + .5})));
-  return {total: clock.total, clock, timings, sounds, listening, frame, beats, strings: [...used], notes: notesApplied, reading, reads, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching,
+  return {total: clock.total, clock, timings, sounds, listening, frame, beats, strings: [...used], notes: notesApplied, attention: attention?.record ?? null, focusAt: attention?.focus?.viewAt ?? null, reading, reads, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching,
     rows: Object.freeze(rows().map(Object.freeze)), overlays, inputs, mouthsAt};
 }
 

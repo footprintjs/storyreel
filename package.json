@@ -114,6 +114,14 @@
       "types": "./types/sub/review.d.ts",
       "default": "./src/review.mjs"
     },
+    "./motion": {
+      "types": "./types/sub/motion.d.ts",
+      "default": "./src/motion.mjs"
+    },
+    "./attention": {
+      "types": "./types/sub/attention.d.ts",
+      "default": "./src/attention.mjs"
+    },
     "./tools": {
       "types": "./types/sub/tools.d.ts",
       "default": "./src/tools.mjs"

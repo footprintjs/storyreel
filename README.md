@@ -630,6 +630,29 @@ await makeFilm({storyboard, recipe, cast, narrationDir, out});   // storyboard: 
 - The cast is part of what the film is made from (`film.inputs.cast`): an approval locks it. A `{{role}}` the cast
   lacks, or a role without a name, refuses with the fix.
 
+## Where the viewer looks: focus and emphasis, as strategies
+
+The recipe says WHAT the voice is about and WHEN — a beat and a thing the kit names in its regions — and a
+strategy says HOW, so the same film can be shown another way by changing one word:
+
+```json
+"focus": {"strategy": "camera", "feel": "heavy", "keys": [
+  {"at": ["leak", "leaves the building"], "on": "database", "size": "medium"},
+  {"at": ["turn", "the front door"], "on": "wide"}]},
+"emphasis": {"strategy": "pop", "words": [{"at": ["rules", "acts as"], "text": "YOUR RULES"}]}
+```
+
+- **Focus strategies** (`footprint-storyreel/attention` · `FOCUS`): `camera` eases the camera to frame the named
+  thing (medium, close, insert — as a director's push; `"wide"` is the whole frame), `spotlight` darkens the rest,
+  `dim` veils the rest in the paper, `none`. A camera focus and the director's push notes cannot share the camera.
+- **Emphasis strategies** (`EMPHASIS`): `pop` lands the words big on their beat and settles them into a label in
+  the top corner until the next words; `corner` is the label only; `none`.
+- **Your own strategy** has the same shape, by name: `compileFilm({…, strategies: {focus: {mine: {show(ctx, view,
+  paint, theme)}}, emphasis: {mine: {draw(ctx, t, word, theme)}}}})`.
+- **Every move is a spring** (`footprint-storyreel/motion`): named feels — `snappy`, `default`, `heavy` (cameras),
+  `playful` (pops) — or `{k, d}`; `spring(t, feel)`, `pop(t, at)`, and `track(t, keys)` for a value with many
+  targets (one spring per change, so it never jumps). Kits use the same functions for their own motion.
+
 ## Re-render only what changed
 
 A film is edited many times. Fixing one word, one beat or one drawing should not mean drawing all

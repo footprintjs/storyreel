@@ -92,6 +92,10 @@ export interface Recipe {
   watching?: 'report' | 'refuse';
   /** What the sound asks of the ear (listening.mjs): 'report' (the default: film.listening lists it) or 'refuse'. */
   listening?: 'report' | 'refuse';
+  /** Where the viewer looks (attention.mjs): keys name a thing in the picture (or "wide") on a beat; the strategy shows it (camera, spotlight, dim, none, or your own). */
+  focus?: {strategy: string; feel?: string | {k: number; d: number}; keys: {at: Beat; on: string; size?: 'medium' | 'close' | 'insert'}[]};
+  /** Words put in front of the viewer on their beat (pop: big, then a label in the corner; corner; none; or your own). */
+  emphasis?: {strategy: string; feel?: string | {k: number; d: number}; words: {at: Beat; text: string; until?: Beat}[]};
   [key: string]: unknown;
 }
 
@@ -205,6 +209,10 @@ export interface Film {
   strings: string[];
   /** The director's notes as applied, in the order written. */
   notes: Record<string, unknown>[];
+  /** The recipe's focus and emphasis as placed on the clock (strategy, keys/words with their times), or null. */
+  attention: {focus?: {strategy: string; keys: {t: number; on: string; size?: string}[]}; emphasis?: {strategy: string; words: {t: number; text: string}[]}} | null;
+  /** Where the focus is at t (the camera's point and zoom, the named thing's box, how focused 0–1), or null without a focus. */
+  focusAt: ((t: number) => {cx: number; cy: number; z: number; box: [number, number, number, number]; w: number}) | null;
   /** Lines shown for less time than they need to be read. */
   reading: {path: string; text: string; at: number; seconds: number; needs: number}[];
   /** Every declared read (ShotPlan.reads), timed, with what is wrong with it if anything (two at once, too late, a region not there). */
@@ -344,6 +352,8 @@ export interface CompileFilmOptions<K = Kit | ContextKit> {
   cast?: Record<string, {name: string} & Record<string, unknown>> | null;
   /** true: the compile runs as a footprintjs flowchart and the film carries `record` (default false: no record). */
   record?: boolean;
+  /** Strategies of your own for the recipe's focus and emphasis (attention.mjs), by name. */
+  strategies?: {focus?: Record<string, {show(ctx: any, view: {cx: number; cy: number; z: number; box: number[]; w: number}, paint: (ctx: any) => void, theme: unknown): void}>; emphasis?: Record<string, {draw(ctx: any, t: number, word: {t: number; text: string; next: number}, theme: unknown): void}>} | null;
 }
 // Two signatures, so a kit written inline on today's contract keeps its contextual types (a list that
 // mixes both contracts cannot give them: TypeScript cannot tell an unmarked story kit apart from the union).
@@ -508,6 +518,7 @@ export const FINISHED_CHECK_NAMES: readonly FinishedCheckName[];
 /** makeFilm's options; `K` is the kits it takes (two signatures, as compileFilm). */
 export interface MakeFilmOptions<K = Kit | ContextKit> {
   storyboard: Storyboard; recipe: Recipe; data?: unknown; kits?: K[]; theme?: string | Record<string, unknown>; root?: string; hostKeys?: string[]; cast?: Record<string, {name: string} & Record<string, unknown>> | null;
+  strategies?: CompileFilmOptions['strategies'];
   narrationDir?: string | null; timings?: Timings | null; pacing?: Pacing | null; strings?: Record<string, string> | null; lang?: string | null;
   out: string; render?: Record<string, unknown>;
   /** Refuse to render anything but what this approval locked: anything the film is made from, changed since (the record keeps who approved it, when, and what is not locked). */
