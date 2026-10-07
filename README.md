@@ -645,6 +645,7 @@ strategy says HOW, so the same film can be shown another way by changing one wor
 - **Focus strategies** (`footprint-storyreel/attention` · `FOCUS`): `camera` eases the camera to frame the named
   thing (medium, close, insert — as a director's push; `"wide"` is the whole frame), `spotlight` darkens the rest,
   `dim` veils the rest in the paper, `none`. A camera focus and the director's push notes cannot share the camera.
+  `safe` keeps framed things where captions cannot cover them (`[0, 0, 1600, 700]` above burned-in captions).
 - **Emphasis strategies** (`EMPHASIS`): `pop` lands the words big on their beat and settles them into a label in
   the top corner until the next words; `corner` is the label only; `none`.
 - **Your own strategy** has the same shape, by name: `compileFilm({…, strategies: {focus: {mine: {show(ctx, view,

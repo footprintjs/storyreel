@@ -93,7 +93,7 @@ export interface Recipe {
   /** What the sound asks of the ear (listening.mjs): 'report' (the default: film.listening lists it) or 'refuse'. */
   listening?: 'report' | 'refuse';
   /** Where the viewer looks (attention.mjs): keys name a thing in the picture (or "wide") on a beat; the strategy shows it (camera, spotlight, dim, none, or your own). */
-  focus?: {strategy: string; feel?: string | {k: number; d: number}; keys: {at: Beat; on: string; size?: 'medium' | 'close' | 'insert'}[]};
+  focus?: {strategy: string; feel?: string | {k: number; d: number}; safe?: [number, number, number, number]; keys: {at: Beat; on: string; size?: 'medium' | 'close' | 'insert'}[]};
   /** Words put in front of the viewer on their beat (pop: big, then a label in the corner; corner; none; or your own). */
   emphasis?: {strategy: string; feel?: string | {k: number; d: number}; words: {at: Beat; text: string; until?: Beat}[]};
   [key: string]: unknown;

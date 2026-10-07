@@ -73,3 +73,15 @@ test('a director\'s checks: no hook when nothing moves in the first 3 s; too muc
   const paused = await compileFilm({storyboard: board, timings: evenTimings(board, {wordSeconds: .5, tail: 1.5}), recipe: {story: {kit: 'still-start'}}, kits: [kit]});
   assert.match((await reviewPart(paused)).findings.find(f => f.kind === 'silences')?.what ?? '', /^only one real silence/, 'the pause between the two scenes is one breath');
 });
+
+test('a fill over the whole frame veils the words under it: under a near-opaque one they are not on screen', async () => {
+  const kit = {name: 'veiled', story: {compile: () => ({hang: 1, draw: (c, t) => {
+    c.fillStyle = '#eeeeee'; c.fillRect(0, 0, 1600, 900); c.fillStyle = '#222'; c.font = '40px sans-serif'; c.textBaseline = 'middle'; c.fillText('UNDER', 400, 400);
+    if (t >= 1) { c.fillStyle = 'rgba(20, 20, 30, .9)'; c.fillRect(0, 0, 1600, 900); }
+    c.fillStyle = '#ffffff'; c.fillText('OVER', 800, 400);
+  }})}};
+  const f = await compileFilm({storyboard, timings: evenTimings(storyboard, {wordSeconds: .5}), recipe: {story: {kit: 'veiled'}}, kits: [kit]});
+  assert.equal(wordsAt(f, .5).find(w => w.text === 'UNDER').alpha, 1);
+  const after = wordsAt(f, 1.5);
+  assert.ok(after.find(w => w.text === 'UNDER').alpha < .2, 'veiled'); assert.equal(after.find(w => w.text === 'OVER').alpha, 1);
+});

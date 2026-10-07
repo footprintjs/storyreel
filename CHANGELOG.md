@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### The camera frames above the captions; the review sees what is veiled and what is framed out
+- **`focus.safe`** ([x0, y0, x1, y1]): where a framed thing may sit — a film with burned-in captions keeps it above
+  them ([0, 0, 1600, 700]); the thing is sized to and centred in it, and the picture still covers the frame.
+- **`pop` lands on a veil of the paper**: while the words are big, the picture steps back under them, then returns.
+- **The review**: a fill over the whole frame veils the words under it (as much as it is opaque), so words under a
+  title card or a veil are not counted as on screen; while the film's camera is pushed in, a word less than half in
+  the frame is framed out, not cut off.
+
 ### Where the viewer looks: focus and emphasis, as strategies; motion with a feel
 - **`focus`** in the recipe: keys name a thing in the picture (or `"wide"`) on a beat; a strategy shows it —
   `camera` (eases to frame it: medium, close, insert), `spotlight`, `dim`, `none` — or one of your own

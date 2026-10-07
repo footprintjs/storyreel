@@ -80,3 +80,11 @@ test('refusals name the fix; a strategy of your own has the same shape', async (
   film.frame(createCanvas(1600, 900).getContext('2d'), at(film, 'b', 'the blue one'));
   assert.equal(film.attention.focus.strategy, 'mine'); assert.equal(seen.length, 1);
 });
+
+test('a safe area: a framed thing sits at its centre (above burned-in captions), and the picture still covers the frame', async () => {
+  const film = await make({focus: {...focus(), safe: [0, 0, 1600, 700]}}), v = film.focusAt(at(film, 'b', 'the blue one') - .05);
+  assert.ok(Math.abs(v.sy - 350) < 1 && Math.abs(v.sx - 800) < 1, JSON.stringify(v));
+  assert.ok(v.cx - v.sx / v.z >= -1e-6 && v.cx + (1600 - v.sx) / v.z <= 1600 + 1e-6 && v.cy - v.sy / v.z >= -1e-6 && v.cy + (900 - v.sy) / v.z <= 900 + 1e-6, 'the picture covers the frame');
+  assert.deepEqual(film.attention.focus.safe, [0, 0, 1600, 700]);
+  await assert.rejects(make({focus: {...focus(), safe: [0, 0, 100, 100]}}), /focus\.safe is \[x0, y0, x1, y1\] on the 1600×900 frame, at least 200 × 200/);
+});
