@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### One word changed redraws only where it shows
+- **A segment's key holds only the strings its own entries name** (`{"$string": key}` in its recipe entries, the
+  guess cards over it and what its entrance also draws), not the whole string table: changing one word — a guess
+  card's answer — redraws the segments that show it instead of every segment of the film. `film.stringHashes`
+  (each string's own hash) carries it; `film.inputs.strings` (the table's hash, what an approval locks) is
+  unchanged. Measured on a 1:22 episode: before, changing one answer redrew 3 of 3 segments.
+- **The cast is in every segment's key** (a kit draws its people from `context.cast`): a changed look or name used
+  to leave every kept segment in place, so a re-render could reuse pictures of the old cast.
+
 ### One clock for the review and the render
 - **`paceTimings` keeps a voice's audio**: when a scene's timing names its audio (a voice's timings.json), the
   scene ends where the voiced cut ends it — the later of the audio's end and the last word plus the tail — not at

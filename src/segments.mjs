@@ -154,6 +154,8 @@ export function planSegments(film, {fps = 30, frames = Math.ceil(film.total * fp
 /** The recipe entry at a path ('story', 'whiteboard', 'pushIn', 'card', 'stages[3]', 'guesses[0]'). */
 const entryAt = (recipe, p) => { const m = p.match(/^(stages|guesses)\[(\d+)\]$/); return m ? recipe[m[1]]?.[+m[2]] : recipe[p]; };
 const round = n => +n.toFixed(4);
+/** Every string-table key a value names ({"$string": key}, at any depth). */
+const stringRefs = (v, out = new Set()) => { if (Array.isArray(v)) v.forEach(x => stringRefs(x, out)); else if (v && typeof v === 'object') { if (typeof v.$string === 'string') out.add(v.$string); for (const x of Object.values(v)) stringRefs(x, out); } return out; };
 const inside = (p, paths) => paths.some(q => p === q || p.startsWith(`${q}.`));
 
 /**
@@ -176,16 +178,21 @@ export function segmentMaterial(film, seg, {recipe, storyboard = null, pixels, c
         ...(board ? {said: board.narration ?? board.silent ?? null, say: board.say ?? null, speaker: board.speaker ?? null} : {})};
     });
   const near = t => spans.some(([f, to]) => t >= f - margin && t <= to + margin);
-  const {strings = null, data = null, theme = null, files = {}} = film.inputs ?? {};
+  const {strings = null, data = null, theme = null, files = {}, cast = null} = film.inputs ?? {};
+  const entries = paths.map(p => [p, entryAt(recipe, p) ?? null]);
+  // The words it shows: only the strings its own entries name (a word changed elsewhere does not redraw it); a film
+  // compiled without per-string hashes keys on the whole table, as before.
+  const words = film.stringHashes ? Object.fromEntries([...stringRefs(entries)].sort().map(k => [k, film.stringHashes[k] ?? null])) : strings;
   return {
-    v: 2, storyreel: storyreelCode(), code: typeof code === 'function' ? code(paths.map(p => entryAt(recipe, p)).filter(Boolean)) : code, frames: seg.f1 - seg.f0, fps,
+    v: 3, storyreel: storyreelCode(), code: typeof code === 'function' ? code(paths.map(p => entryAt(recipe, p)).filter(Boolean)) : code, frames: seg.f1 - seg.f0, fps,
     pixels: {...pixels, poster: seg.index === 0 && pixels.poster !== null ? 'drawn' : null},
-    entries: paths.map(p => [p, entryAt(recipe, p) ?? null]),
+    entries,
     lines: film.beats.filter(b => b.path && (inside(b.path, paths) || (b.path.startsWith('guesses') && near(b.t)))).map(b => [b.path, at(b.t)]),
     // A camera speed is the whole film's; a push or a cut counts where it happens.
     notes: (film.notes ?? []).filter(n => n.speed !== undefined || (n.push ? over(n.from, n.to) : near(n.at ?? -Infinity)))
       .map(n => ({...n, ...(n.from === undefined ? {} : {from: at(n.from)}), ...(n.to === undefined ? {} : {to: at(n.to)}), ...(n.at === undefined ? {} : {at: at(n.at)})})),
-    scenes, inputs: {strings, data, theme, files},
+    // The cast reaches every frame a kit draws its people in (context.cast): a changed look redraws every segment.
+    scenes, inputs: {strings: words, data, theme, files, cast},
   };
 }
 

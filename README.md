@@ -677,8 +677,9 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
 - **A key is on the segment's own clock.** It is built from what draws the segment, timed from its first
   frame: its recipe entries (and the shot an entrance, or a blurred cut, also draws; a push-in film's
   `pushIn` and `card`; every row a teaser rewinds through), the guess cards over it, every line they
-  resolved, the words spoken in and around it (captions and mouths), the director's notes over it, what
-  reaches every frame — the strings, the data, the theme and every file the film read (`film.inputs`) —
+  resolved, the words spoken in and around it (captions and mouths), the director's notes over it, the
+  strings its entries name (`{"$string": key}`: one word changed redraws only the segments that show it),
+  what reaches every frame — the data, the theme, the cast and every file the film read (`film.inputs`) —
   the frame settings (size, layout, stamp, motion blur, poster) and the drawing code (StoryReel's own, its
   fonts and the versions it draws with, and yours). So a scene near the start that grows by whole frames
   changes the keys of the segments around it, not of the ones further on.

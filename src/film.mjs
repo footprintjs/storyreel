@@ -883,10 +883,13 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   // film was built.
   const inputs = Object.freeze({storyboard: hashOf(storyboard), timings: hashOf(timings), recipe: hashOf(given), strings: strings ? hashOf(strings) : null,
     data: data === null ? null : hashOf(data), theme: hashOf(paper), files: Object.freeze(files.list()), ...(castGiven ? {cast: hashOf(castGiven)} : {})});
+  // Each string's own hash (segments.mjs): a segment's key holds only the strings its entries name, so changing one
+  // word redraws the segments that show it, not the whole film. Not part of `inputs` (the table's hash is).
+  const stringHashes = strings ? Object.freeze(Object.fromEntries(Object.keys(strings).map(k => [k, hashOf(strings[k])]))) : null;
   // What is drawn over every shot for a while: the guess cards, from their question to the card gone.
   const overlays = Object.freeze(guesses.map((g, n) => Object.freeze({path: `guesses[${n}]`, from: g.start, to: g.until + .5})));
   return {total: clock.total, clock, timings, sounds, listening, frame, beats, strings: [...used], notes: notesApplied, attention: attention?.record ?? null, focusAt: attention?.focus?.viewAt ?? null, reading, reads, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching,
-    rows: Object.freeze(rows().map(Object.freeze)), overlays, inputs, mouthsAt};
+    rows: Object.freeze(rows().map(Object.freeze)), overlays, inputs, stringHashes, mouthsAt};
 }
 
 /** What reading the inputs gave (record.mjs): the recipe's top-level keys, each scene's seconds, the notes, the strings used. */

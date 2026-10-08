@@ -139,7 +139,7 @@ test('a long entrance that starts before the row ahead of it: segments still cov
   assert.ok(blurred.slice(1).every(s => s.before), 'with motion blur, a segment starting at a cut draws the row before it too');
 });
 
-test('a key holds what reaches its frames: the guess card over it, the strings, every file the film read', async () => {
+test('a key holds what reaches its frames: the guess card over it, the strings its entries name, the cast, every file the film read', async () => {
   const a = await worlds(), ka = keysOf(a), guessed = planSegments(a.film, {fps: 10}).findIndex(s => s.from < a.film.overlays[0].to && s.to > a.film.overlays[0].from);
   const answer = structuredClone(a.recipe); answer.guesses[0].answer = 'Four sheep.';
   const kb = keysOf(await worlds({recipe: answer}));
@@ -148,7 +148,12 @@ test('a key holds what reaches its frames: the guess card over it, the strings, 
   const storyboard = read('storyboard.json'), timings = paceTimings(storyboard, evenTimings(storyboard, {tail: .8}), read('pacing.json'));
   const withStrings = async strings => compileFilm({storyboard, timings, recipe: a.recipe, kits: [cartoonKit], root: dir, strings});
   const reworded = await withStrings({...read('strings/en.json'), 'valley.caption': 'They all came back.'});
-  assert.notDeepEqual(keysOf({film: reworded, recipe: a.recipe, storyboard}), ka, 'a string\'s text is in the keys');
+  const kr = keysOf({film: reworded, recipe: a.recipe, storyboard}), uses = planSegments(a.film, {fps: 10}).map(seg => JSON.stringify([...seg.paths, ...(seg.before ?? [])].map(p => p.startsWith('stages[') ? a.recipe.stages[+p.slice(7, -1)] : a.recipe[p])).includes('"valley.caption"'));
+  assert.notDeepEqual(kr, ka, 'a string\'s text is in the keys'); assert.ok(uses.some(u => !u), 'the example has segments that do not show it');
+  assert.ok(kr.every((k, i) => (k !== ka[i]) === uses[i]), 'only in the keys of the segments whose entries name it: one word changed redraws only where it shows');
+  const cast = async look => compileFilm({storyboard, timings, recipe: a.recipe, kits: [cartoonKit], root: dir, strings: read('strings/en.json'), cast: {hero: {name: 'Mia', look}}});
+  const [k1, k2] = [keysOf({film: await cast('red'), recipe: a.recipe, storyboard}), keysOf({film: await cast('blue'), recipe: a.recipe, storyboard})];
+  assert.ok(k1.every((k, i) => k !== k2[i]), 'the cast reaches every frame: a changed look is in every key');
   const copy = mkdtempSync(path.join(tmpdir(), 'storyreel-files-')); cpSync(dir, copy, {recursive: true});
   writeFileSync(path.join(copy, 'count.ts'), readFileSync(path.join(copy, 'count.ts'), 'utf8') + '\n// one more line\n');
   const edited = await compileFilm({storyboard, timings, recipe: a.recipe, kits: [cartoonKit], root: copy, strings: read('strings/en.json')});
