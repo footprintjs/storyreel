@@ -117,3 +117,18 @@ test('two slots in one spoken word both show, and the slots after them still col
   assert.equal(capt({id: 'a', narration: 'A 3-4 split.', say: [['3', 'three'], ['4', 'four']]}), 'A 3-4 split.');
   assert.equal(capt({id: 'a', narration: 'Score 3-4 then 5 more.', say: [['3', 'three'], ['4', 'four'], ['5', 'five']]}), 'Score 3-4 then 5 more.');
 });
+
+// Review 2026-10-08 (footprint-narration): a scene's own slots, named as the storyboard names them.
+test('two scenes with one id each show their own digits', () => {
+  const board = {scenes: [{id: 'x', narration: 'At 60 Hz.', say: [['60 Hz', 'sixty hertz']]}, {id: 'x', narration: 'Wait 2 s.', say: [['2 s', 'two seconds']]}]};
+  const clock = makeClock(board, evenTimings(board));
+  assert.deepEqual(clock.shownWords(0).map(w => w.text), ['At', '60 Hz.']);
+  assert.deepEqual(clock.shownWords(1).map(w => w.text), ['Wait', '2 s.']);
+});
+
+test('spokenText and unsaidNumbers refuse a say list as checkScene does, naming the scene', () => {
+  const wrong = {id: 'a', narration: 'One 16 ms.', say: [['17 ms', 'seventeen milliseconds']]};
+  assert.throws(() => spokenText(wrong), /^Error: storyboard scene a: say\[0\] shows "17 ms", which the narration does not have/);
+  assert.throws(() => unsaidNumbers({scenes: [wrong]}), /storyboard scene a: say\[0\]/);
+  assert.throws(() => spokenText({id: 'b', narration: 'x', say: []}), /storyboard scene b: say must list pairs/);
+});

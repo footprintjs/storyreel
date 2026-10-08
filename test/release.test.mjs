@@ -46,6 +46,7 @@ test('limits: text and length checked against each platform, and a target may ov
   const yt = (await loadTarget('youtube')).adapter, shorts = (await loadTarget('youtube-shorts')).adapter;
   assert.match(planProblems(yt, readPost({...kids, title: 'x'.repeat(101)}))[0].problem, /title is 101 characters, more than its 100/);
   assert.match(planProblems(shorts, readPost(kids), {seconds: 200})[0].fix, /release a part: \{target: 'youtube-shorts', from, to\} at most 180 s long/);
+  assert.match(planProblems(yt, readPost(kids), {seconds: -30})[0].problem, /shorter than YouTube takes/, 'a part that ends before it starts is the release\'s refusal, not the chapter rule\'s');
   const longer = (await loadTarget({target: 'tiktok', limits: {seconds: {max: 3600}}})).adapter;
   assert.equal(longer.limits.seconds.max, 3600); assert.equal(longer.limits.seconds.min, 1, 'the rest of the limit stays');
 });
@@ -78,6 +79,7 @@ test('a release: each target its own folder — the video in its shape, captions
   assert.equal(existsSync(path.join(out, 'no')), false, 'refused before anything rendered, even the YouTube version');
   const done = await makeRelease({...film, render: {quality: 'high'}, out, targets: ['youtube', {target: 'youtube-shorts', name: 'short', to: 6}], post: {...kids, thumbnail: 'poster', synthetic: ['voice'], credits: ['Sheep drawn by hand']}});
   const [yt, short] = done;
+  assert.equal(readFileSync(path.join(path.dirname(short.makingOf), 'chapters.txt'), 'utf8'), '0:00 The start\n', 'a part lists only the chapters it shows (the middle and the end start after its 6 s)');
   assert.equal(probe(yt.video), '1920,1080'); assert.equal(probe(short.video), '1080,1920');
   assert.equal(probe(yt.video, 'color_space,color_transfer,color_primaries'), 'bt709,bt709,bt709', 'the high-quality encode: colours converted and tagged as HD video\'s');
   const firstFrame = (file, x, y) => [...spawnSync('ffmpeg', ['-v', 'error', '-i', file, '-frames:v', '1', '-vf', `crop=1:1:${x}:${y}`, '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], {encoding: 'buffer'}).stdout];

@@ -446,7 +446,8 @@ export async function finishRender(job, video) {
   const loudnessSet = muxWithLoudness({ffmpeg, video: video.file, wav: path.join(dir, 'film-audio.wav'), out: path.resolve(job.out), target: loudness, seconds: pictureSeconds});
   // Chapters on the output's clock, for review and YouTube.
   const lead = withIntro ? intro.seconds : 0;
-  const chapters = [...(withIntro ? [[0, intro.title ?? 'Title']] : []), ...sceneChapters(storyboard.scenes, film.clock.offsets).map(([t, name]) => [lead + t - start, name])].filter(([t]) => t >= 0);
+  const length = lead + to - start;   // a part's chapters are the ones it shows: none before its start or past its end
+  const chapters = [...(withIntro ? [[0, String(intro.title ?? '').trim() || 'Title']] : []), ...sceneChapters(storyboard.scenes, film.clock.offsets).map(([t, name]) => [lead + t - start, name])].filter(([t]) => t >= 0 && t < length);
   writeFileSync(path.join(dir, 'chapters.txt'), chapters.map(([t, n]) => `${clockText(t)} ${n}`).join('\n') + '\n');
   // Caption files on the output's clock too (the same shift as the chapters), for the cues the render covers.
   const captions = {};
@@ -454,7 +455,7 @@ export async function finishRender(job, video) {
     const chunks = captionChunks(spokenTracks(film), FILE_CHUNKS);
     for (const kind of captionKinds) { captions[kind] = path.join(dir, `captions.${kind}`); writeFileSync(captions[kind], captionFile(chunks, kind, {offset: lead - start, from: start, to})); }
   }
-  return {out: path.resolve(job.out), seconds: lead + to - start, chapters: chapters.map(([t, n]) => `${clockText(t)} ${n}`), loudness: {...loudnessSet, roles}, listening: tooLoud ? [tooLoud] : [],
+  return {out: path.resolve(job.out), seconds: length, chapters: chapters.map(([t, n]) => `${clockText(t)} ${n}`), loudness: {...loudnessSet, roles}, listening: tooLoud ? [tooLoud] : [],
     ...(posterFile ? {poster: posterFile} : {}), ...(framed ? {format: framed.format} : {}), ...(captionKinds.length ? {captions} : {}), ...(video.report ? {video: video.report} : {})};
 }
 

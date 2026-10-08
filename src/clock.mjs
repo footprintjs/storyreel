@@ -44,12 +44,17 @@ export function checkScene(scene, i = 0) {
  * in words and shown on screen in digits. The slots are footprint-narration's (spokenMap, checkSlots): a slot is a
  * POSITION — each shown text where it stands whole, in order — and a scene's map is made from them.
  */
-const slotsOf = scene => (scene?.say && scene.narration !== undefined ? spokenMap(scene.narration, {slots: scene.say}) : null);
+/** A spoken scene's map, its slots checked first as the storyboard names them (`storyboard scene <id>: say[k] …`). */
+function sceneMap(scene) {
+  if (scene.say !== undefined) checkSlots(scene.narration, scene.say, {name: `storyboard scene ${scene.id}`, field: 'say'});
+  return spokenMap(scene.narration, {slots: scene.say ?? []});
+}
+const slotsOf = scene => (scene?.say !== undefined && scene.narration !== undefined ? sceneMap(scene) : null);
 
 /** What the voice says for a scene: its narration with each number slot's spoken words in place of what is shown. */
 export function spokenText(scene) {
-  if (!scene.say) return scene.narration;
-  return spokenMap(scene.narration, {slots: scene.say}).spoken;
+  if (scene.say === undefined) return scene.narration;
+  return sceneMap(scene).spoken;
 }
 
 /**
@@ -59,7 +64,7 @@ export function spokenText(scene) {
  */
 export function unsaidNumbers(storyboard) {
   return storyboard.scenes.flatMap(scene => (scene.narration === undefined ? []
-    : unsaidDigits(spokenMap(scene.narration, {slots: scene.say ?? []})).map(text => ({scene: scene.id, text}))));
+    : unsaidDigits(sceneMap(scene)).map(text => ({scene: scene.id, text}))));
 }
 
 /** A scene's text, checked (clock.mjs · checkScene): what its words spell — the narration as spoken (number slots in words), or its directions joined. */
@@ -145,7 +150,7 @@ export function phraseMatches(index, phrase) {
 
 export function makeClock(board, timings) {
   if (timings.scenes.length !== board.scenes.length) throw new Error(`Scene timing count mismatch${board.scenes.some(s => s?.silent) ? ' (a voice that leaves out the silent scenes: fill them with withDirections(storyboard, timings))' : ''}`);
-  const offsets = [], speech = {}, spoken = {}, byId = {};
+  const offsets = [], speech = {}, spoken = {}, byId = {}, maps = [];   // maps[i]: scene i's own spoken map (ids may repeat)
   let at = 0;
   board.scenes.forEach((scene, i) => {
     checkScene(scene, i);
@@ -154,6 +159,7 @@ export function makeClock(board, timings) {
     offsets.push(at); byId[scene.id] = i;
     speech[scene.id] = speechIndex(scene, timing);
     if (!speech[scene.id]) throw new Error(`Complete word timings are required for ${scene.id}`);
+    maps[i] = speech[scene.id].slots;
     const words = timing.words.filter(w => w.text.replace(/[^\p{L}\p{N}]/gu, ''));
     spoken[scene.id] = {first: words[0].start, last: words.at(-1).end};
     at += timing.duration;
@@ -213,7 +219,7 @@ export function makeClock(board, timings) {
       return {index: i, id: board.scenes[i].id, time: t - offsets[i]};
     },
     /** The words to show for scene i (captions): its timed words with number slots collapsed into what is shown, on the scene's own clock. */
-    shownWords: i => shownWords(speech[board.scenes[i].id].slots, timings.scenes[i].words ?? []),
+    shownWords: i => shownWords(maps[i], timings.scenes[i].words ?? []),
     /** The words said in scene `id`, on the whole-lesson clock: [{text, start, end}] (none in a silent scene). */
     words: id => said[sceneIndex(id)].map(({text, start, end, speaker, own}) => Object.freeze({text, start, end, ...(own ? {speaker} : {})})),
     /**
