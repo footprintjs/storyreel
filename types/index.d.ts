@@ -233,6 +233,8 @@ export interface Film {
   overlays: readonly {path: string; from: number; to: number}[];
   /** What the film was made from, hashed: its storyboard, timings, recipe, strings, data, theme and every file it read through its root. */
   inputs: FilmInputs;
+  /** Each string's own hash (a segment's key holds only the strings its entries name); null without a string table. */
+  stringHashes: Readonly<Record<string, string>> | null;
   /** The mouths drawn at t (each kit on screen that draws one says so: mouthsAt), with the recipe entry that drew it. */
   mouthsAt(t: number): {who: string | null; open: number; path: string}[];
   /** The recipe's poster frame (seconds), or null. */

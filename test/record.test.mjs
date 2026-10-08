@@ -11,7 +11,7 @@ import {COMPILE_STAGES} from '../src/record.mjs';
 
 const golden = JSON.parse(readFileSync(new URL('./golden.json', import.meta.url), 'utf8'));
 const recipeOf = name => JSON.parse(readFileSync(new URL(`../examples/${name}/recipe.json`, import.meta.url), 'utf8'));
-const FILM_KEYS = ['total', 'clock', 'timings', 'sounds', 'listening', 'frame', 'beats', 'strings', 'notes', 'attention', 'focusAt', 'reading', 'reads', 'posterAt', 'moments', 'regionsAt', 'pointAt', 'theme', 'shots', 'watching', 'rows', 'overlays', 'inputs', 'mouthsAt'];
+const FILM_KEYS = ['total', 'clock', 'timings', 'sounds', 'listening', 'frame', 'beats', 'strings', 'notes', 'attention', 'focusAt', 'reading', 'reads', 'posterAt', 'moments', 'regionsAt', 'pointAt', 'theme', 'shots', 'watching', 'rows', 'overlays', 'inputs', 'stringHashes', 'mouthsAt'];
 /** A slice from a key in a record, its reads taken from the record's own execution tree. */
 const sliceOf = (record, key) => sliceForKey(record.snapshot.commitLog, key, keysReadFromExecutionTree(record.snapshot.executionTree));
 /** The stages a slice walked through (sliceToJSON keys its nodes by runtimeStageId). */
