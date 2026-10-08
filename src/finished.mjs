@@ -222,7 +222,9 @@ export const FINISHED_CHECKS = Object.freeze({
       // word's end with the silence after it, and the mouth closes that much late); FINISHED.silentMouth or more is a problem.
       for (let i = 0; i < n;) {
         if (!(open[i] > FINISHED.open && dB(voice[i]) < FINISHED.quiet)) { i++; continue; }
-        let g = i; while (g < n && (open[g] > .05 || g - i < 5) && dB(voice[g]) < FINISHED.quiet) g++;
+        // The run goes on while the mouth MOVES: open past FINISHED.open, or still opening or closing (a syllable's close
+        // passes near shut). A mouth held still is not moving, however open: a slit kept between words, through a pause.
+        let g = i; while (g < n && (open[g] > FINISHED.open || Math.abs(open[g] - open[g - 1]) > .005 || g - i < 5) && dB(voice[g]) < FINISHED.quiet) g++;
         const run = (g - i) * step;
         if (run >= .1 - 1e-9) out.push({at: when(i), severity: run >= FINISHED.silentMouth - 1e-9 ? 'problem' : 'look',
           text: `${name}'s mouth moves for ${run.toFixed(2)} s at ${when(i).toFixed(2)} s while nothing is heard${run < FINISHED.silentMouth ? ' (short: often a word\'s end timed into the silence after it)' : ''}`});

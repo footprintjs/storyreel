@@ -172,6 +172,20 @@ test('lip sync: a mouth moving while nothing is heard, and a voice heard from a 
   assert.match(heard ?? '', /robot is heard saying \d+ words with the mouth shut \(from "Hello" at/);
 });
 
+test('lip sync: a mouth held a little open through a pause (a slit between words) is not moving', async () => {
+  // A kit whose mouth never quite shuts while its owner talks: a slit (.08) between words and through the pause
+  // between the two scenes. The voice fades a moment before the last word of the first scene ends.
+  const f0 = await talker(), w = f0.clock.words('a').at(-1), from = f0.clock.words('a')[0].start, to = f0.clock.words('b').at(-1).end;
+  const slit = {name: 'mouths', story: {compile: (spec, clock) => ({hang: 1, draw: c => { c.fillStyle = '#334'; c.fillRect(0, 0, 1600, 900); },
+    mouthsAt: t => [{who: 'robot', open: t >= from && t < to ? .08 + .72 * mouthAt(clock, t, 'robot') : 0}]})}};
+  const f = await compileFilm({storyboard: talking, timings: evenTimings(talking), kits: [slit], recipe: {story: {kit: 'mouths'}}});
+  const found = await lips(f, voiceOf(f, {quiet: [w.end - .04, w.end]}));
+  assert.ok(!found.some(t => /moves for/.test(t)), found.join(' | '));
+  // The same slit with the voice gone for a while inside a word: still found (the mouth moves there).
+  const words = f.clock.words('b'), gone = await lips(f, voiceOf(f, {quiet: [words[3].start, words[6].end]}));
+  assert.ok(gone.some(t => /robot's mouth moves for [\d.]+ s/.test(t)), gone.join(' | '));
+});
+
 test('mouthAt: open only while its owner says a word, once a syllable or so; never for someone else', async () => {
   const f = await talker(), w = f.clock.words('a')[0], mid = (w.start + w.end) / 2;
   assert.ok(mouthAt(f.clock, mid, 'robot') >= 0 && mouthAt(f.clock, mid, 'robot') <= 1);
