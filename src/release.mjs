@@ -17,8 +17,11 @@
  * a release's job: a platform's upload needs the account owner's sign-in and stays a separate step.
  *
  * A platform's limits change: every adapter says when its facts were checked and where (`facts`), and a target
- * may override a limit (`{target: 'tiktok', limits: {seconds: {max: 3600}}}`) without a new release of the library.
- * An adapter of your own is an object of the same shape (checkAdapter says what is missing), passed in `targets`.
+ * may override a limit (`{target: 'tiktok', limits: {seconds: {max: 3600}}}`) without a new release of the library;
+ * the limits as overridden are checked as an adapter's are, and a key given as undefined is not given (the
+ * platform's value stays). An adapter of your own is an object of the same shape (checkAdapter says what is
+ * missing), passed in `targets`. A platform that takes a video only up to some size says so (`limits.frame`: the
+ * largest frames, one per orientation), and a render larger than that is refused before it starts.
  *
  * For a big screen a target may ask for a larger picture (`{target: 'youtube', scale: 2}`: 3840×2160, every line
  * redrawn sharp, layout.mjs · formatScale) and the film's render for the finer encode (`render: {quality: 'high'}`).
@@ -30,7 +33,7 @@ import {readChapters} from 'footprint-narration';
 import {mkdirSync, writeFileSync, copyFileSync, readFileSync, statSync, linkSync, rmSync} from 'node:fs';
 import path from 'node:path';
 import {makeFilm} from './pipeline.mjs';
-import {FORMAT_NAMES, formatScale} from './layout.mjs';
+import {FORMAT_NAMES, formatOf, formatScale} from './layout.mjs';
 
 /** The built-in adapters, each loaded on first use. */
 export const TARGETS = Object.freeze({
@@ -58,6 +61,8 @@ export function checkAdapter(a) {
     if (!(Number.isInteger(l.max) && l.max > 0)) throw new TypeError(`${where}: limits.text.${field}.max must be a whole number`);
     if (l.count !== undefined && typeof l.count !== 'function') throw new TypeError(`${where}: limits.text.${field}.count, when given, is how the platform counts a text (text → number)`);
   }
+  const whole = n => Number.isInteger(n) && n > 0, frame = a.limits.frame;
+  if (frame !== undefined && !(Array.isArray(frame) && frame.length && frame.every(f => whole(f?.width) && whole(f?.height)))) throw new TypeError(`${where}: limits.frame, when given, lists the largest frames the platform takes ([{width, height}], one per orientation)`);
   if (!(a.audience && (a.audience.kids === 'madeForKids' || a.audience.kids === 'refuse') && Number.isInteger(a.audience.minAge))) throw new TypeError(`${where}: audience {minAge, kids: 'madeForKids' | 'refuse'} says who the platform is for`);
   if (a.thumbnail !== null && !(a.thumbnail && a.thumbnail.width > 0 && a.thumbnail.height > 0)) throw new TypeError(`${where}: thumbnail is {width, height, maxBytes?} or null (the platform picks a frame)`);
   if (!(a.facts?.checked && Array.isArray(a.facts.sources))) throw new TypeError(`${where}: facts {checked: date, sources: [url]} says when its limits were checked`);
@@ -78,10 +83,13 @@ export async function loadTarget(spec) {
   checkAdapter(adapter);
   if (given.scale !== undefined) formatScale(adapter.video.format, given.scale);   // known before a frame is drawn
   const limits = given.limits ? mergeLimits(adapter.limits, given.limits) : adapter.limits;
+  if (given.limits) checkAdapter({...adapter, limits});   // the limits as overridden answer to the same interface
   return {adapter: {...adapter, limits}, options: {name: given.name ?? adapter.name, from: given.from, to: given.to, header: given.header, crop: given.crop, captions: given.captions, scale: given.scale}};
 }
-const mergeLimits = (base, over) => ({...base, ...over, seconds: {...base.seconds, ...over.seconds},
-  text: Object.fromEntries([...new Set([...Object.keys(base.text ?? {}), ...Object.keys(over.text ?? {})])].map(f => [f, {...base.text?.[f], ...over.text?.[f]}]))});   // a field keeps how it is counted
+// A key given as undefined is not given: the platform's value stays ({count: undefined} keeps how X counts).
+const given = o => Object.fromEntries(Object.entries(o ?? {}).filter(([, v]) => v !== undefined));
+const mergeLimits = (base, over) => ({...base, ...given(over), seconds: {...base.seconds, ...given(over.seconds)},
+  text: Object.fromEntries([...new Set([...Object.keys(base.text ?? {}), ...Object.keys(over.text ?? {})])].map(f => [f, {...base.text?.[f], ...given(over.text?.[f])}]))});   // a field keeps how it is counted
 
 /**
  * The post as given, checked: {title, description, tags?, audience, thumbnail?, lang?, synthetic?}. thumbnail: an image
@@ -103,18 +111,28 @@ export function readPost(post) {
 /**
  * Everything a release can know before rendering, for one target: [{problem, fix}] (empty: go ahead). `seconds` is
  * the part's length when it is known (from/to given), else left for after the render; `poster` whether the film has
- * one (null: not known).
+ * one (null: not known); `scale` the target's (the render's size, checked against the platform's largest frame).
  */
-export function planProblems(adapter, post, {seconds = null, poster = null} = {}) {
-  const problems = [], {limits} = adapter;
+export function planProblems(adapter, post, {seconds = null, poster = null, scale} = {}) {
+  const problems = [];
   if (post.audience === 'kids' && adapter.audience.kids === 'refuse')
     problems.push({problem: `${adapter.label} is for people aged ${adapter.audience.minAge} and over, and this film is made for kids`, fix: `post the full film where children watch (YouTube, marked made for kids); here, post a teaser for parents with audience: 'general'`});
   if (post.thumbnail === 'poster' && adapter.thumbnail && poster === false)
     problems.push({problem: 'the thumbnail is to be the film\'s poster, and the film has none', fix: 'name the poster in the recipe (poster: a phrase that is said), or give post.thumbnail an image file'});
   if (seconds !== null) problems.push(...lengthProblems(adapter, seconds));
+  problems.push(...frameProblems(adapter, scale));
   const text = adapter.post(post, {chapters: [], seconds: seconds ?? 0, limits: adapter.limits});
   problems.push(...textProblems(adapter, text));
   return problems;
+}
+/** A render larger than every frame the platform takes (limits.frame), refused with the scale that fits. */
+function frameProblems(adapter, scale) {
+  const frames = adapter.limits.frame; if (!frames) return [];
+  const {width: w, height: h} = formatOf(adapter.video.format), k = formatScale(adapter.video.format, scale), width = w * k, height = h * k;
+  if (frames.some(f => width <= f.width && height <= f.height)) return [];
+  const most = Math.max(...frames.map(f => Math.min(f.width / w, f.height / h)));   // the largest scale that fits one of them
+  return [{problem: `${width}×${height} is larger than ${adapter.label} takes, at most ${frames.map(f => `${f.width}×${f.height}`).join(' or ')}`,
+    fix: most >= 1 ? `release it at scale 1: {target: '${adapter.name}'} makes ${w}×${h}` : `release it at a scale of at most ${Math.floor(most * 100) / 100}`}];
 }
 function lengthProblems(adapter, seconds) {
   const {min = 0, max} = adapter.limits.seconds;
@@ -201,7 +219,7 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
   const poster = film.render && 'poster' in film.render ? film.render.poster != null : film.recipe?.poster != null;
   for (const {adapter, options} of loaded) {
     const part = options.from !== undefined && options.to !== undefined ? options.to - options.from : null;
-    refuse(adapter, planProblems(adapter, p, {seconds: part, poster}));
+    refuse(adapter, planProblems(adapter, p, {seconds: part, poster, scale: options.scale}));
     if (p.thumbnail !== 'poster') await checkThumbnail(adapter, p.thumbnail);
   }
   const stem = base ?? (String(film.storyboard?.title ?? 'film').toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'film');

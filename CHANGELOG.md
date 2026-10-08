@@ -4,11 +4,27 @@
 
 ### X: a release target
 - **`x`**: a square 1080×1080 video with the title band and burned-in captions, up to 140 s, a post of at most 280
-  characters as X counts them (`xLength`: NFC, a link 23, an emoji 2, most scripts beyond Latin 2), the film's
-  chapters in the post when it has room (X makes the times clickable), audience 13 and over. Facts checked
-  2026-10-08 against X's help pages, its counting rules and its terms.
+  characters as X counts them, the film's chapters in the post when there are at most 50 and the post has room (in a
+  post with one video, X makes a time a link to that moment — on iOS for now, X says), audience 13 and over. Facts
+  checked 2026-10-08 against X's help pages, its counting rules and its terms.
+- **`xLength` is twitter-text 3.1.0's count** (`parseTweet(text).weightedLength`, config v3), the library X publishes
+  for counting a post, ported into `src/targets/x-count/` (Apache-2.0, its licence beside it; the emoji list is
+  twemoji-parser 11.0.2's, MIT) and pinned to it: `test/fixtures/x-counts.json` holds over 300 texts with
+  twitter-text's count, and `xLength` must give every one. `scripts/x-counts.mjs` remakes the table from a scratch
+  install of twitter-text@3.1.0, never a dependency. Links as twitter-text finds them (a known top-level domain;
+  punctuation after a link is text; no link in an address, after `#`, `$` or `-`, or for localhost and IP
+  addresses), emoji as twemoji-parser finds them, code points weighed by X's ranges (1 up to U+10FF and in the
+  general punctuation's spaces, dashes, quotes and primes, else 2). An emoji newer than that library counts here as
+  its parts, never less than the 2 X counts.
 - An adapter may say how a text field is counted (`limits.text.<field>.count`); raising a limit keeps the count.
-  `post()` also gets the target's `limits`, so it can tell what fits.
+  `post()` also gets the target's `limits` (overrides included), and X's post decides with that count.
+- **Limits overridden are checked** as an adapter's are, so a count that is not a function or a `max` that is not a
+  whole number is refused when the target loads, naming the field; a key given as `undefined` is not given (the
+  platform's value stays: `{count: undefined}` keeps how X counts).
+- **The largest frame**: an adapter may say the largest frames its platform takes (`limits.frame`, one per
+  orientation), and a render larger than that is refused before it starts, naming the scale that fits. X takes at
+  most 1920×1200 (1200×1900 tall), so `{target: 'x', scale: 2}` (2160×2160) is refused: release it at scale 1. The
+  other adapters declare none and are unchanged. `planProblems` takes the target's `scale`.
 
 ### The narration code moves into footprint-narration (breaking: imports move)
 StoryReel and StoryDeck each kept the same narration code — what a voice says for a number, the captions, YouTube's

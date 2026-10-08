@@ -1,34 +1,33 @@
 /**
- * X (a video in a post): square 1080×1080 with the title band and burned-in captions — the feed autoplays muted,
- * and X's own captions are speech-to-text — up to 140 seconds for an account without Premium (Premium posts far
- * longer videos: override limits.seconds), and a post of at most 280 characters as X counts them (xLength: a link is
- * 23, an emoji 2, most scripts beyond Latin 2; Premium posts up to 25,000: override limits.text). X takes no caption
- * file and no thumbnail with a post, and its largest picture is 1920×1200 (1200×1900 tall): keep the scale at 1. A
- * post with one video makes the chapters' times ("1:05") clickable, so they go in when the post has room for them.
- * X is for people aged 13 and over: a film made for kids goes as a teaser for parents (audience 'general').
+ * X (a video in a post): square 1080×1080 with the title band and burned-in captions — X autoplays videos in the
+ * timeline, and its own captions are speech-to-text and not on every video — up to 140 seconds for an account
+ * without Premium (Premium posts far longer videos: override limits.seconds). The release gives X no caption file and
+ * no thumbnail. X takes a video of at most 1920×1200 (1200×1900 tall): a larger render (scale 2 makes 2160×2160) is
+ * refused before it starts (limits.frame).
+ *
+ * The post is at most 280 as X counts it (Premium posts up to 25,000: override limits.text): xLength is twitter-text
+ * 3.1.0's count, the library X publishes for counting a post, ported (x-count/count.mjs) and pinned to it by
+ * test/fixtures/x-counts.json — a link 23, an emoji 2, a code point 1 or 2 by its range. An emoji newer than that
+ * library (Emoji 11.0) counts here as its parts, 2 or more, where X counts it 2: never less than X.
+ *
+ * A time written in a post with one video ("1:05") becomes a link to that moment — on iOS for now, X says, and at most
+ * 50 in a post — so the film's chapters go in when there are at most 50 and the post has room for them. X is for
+ * people aged 13 and over: a film made for kids goes as a teaser for parents (audience 'general').
  */
 import {clockText} from 'footprint-narration';
+import {weightedLength} from './x-count/count.mjs';
 
-// X's own weights (twitter-text, config v3): these code points count 1, every other 2; a link counts 23, an emoji 2.
-const LIGHT = [[0, 4351], [8192, 8205], [8208, 8223], [8242, 8247]];
-const LINK = /\bhttps?:\/\/[^\s<>"]+|\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s<>"]*)?/giu;
-const EMOJI = /\p{Extended_Pictographic}(?:‍\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}️])*|\p{Regional_Indicator}{2}/gu;
-const weight = (cp) => (LIGHT.some(([a, b]) => cp >= a && cp <= b) ? 1 : 2);
-
-/** A post's length as X counts it (NFC first): a link is 23, an emoji 2, a code point of a light range 1, any other 2. */
+/** A post's length as X counts it: twitter-text 3.1.0's weighted length (x-count/count.mjs). */
 export function xLength(text) {
-  let n = 0;
-  const rest = String(text).normalize('NFC').replace(LINK, () => { n += 23; return ''; }).replace(EMOJI, () => { n += 2; return ''; });
-  for (const ch of rest) n += weight(ch.codePointAt(0));
-  return n;
+  return weightedLength(String(text));
 }
 
-const MAX = 280;
+const MAX = 280, TIMES = 50;   // a post's length without Premium; the times in a post X makes into links
 
 export default {
   name: 'x', label: 'X',
   video: {format: 'square', header: true, captions: true},
-  limits: {seconds: {min: 0.5, max: 140}, text: {text: {max: MAX, count: xLength}}},
+  limits: {seconds: {min: 0.5, max: 140}, text: {text: {max: MAX, count: xLength}}, frame: [{width: 1920, height: 1200}, {width: 1200, height: 1900}]},
   audience: {minAge: 13, kids: 'refuse'},
   thumbnail: null,
   facts: {checked: '2026-10-08', sources: ['https://help.x.com/en/using-x/x-videos', 'https://help.x.com/en/using-x/x-premium', 'https://docs.x.com/resources/fundamentals/counting-characters', 'https://github.com/twitter/twitter-text/blob/master/config/v3.json', 'https://x.com/en/tos']},
@@ -36,7 +35,7 @@ export default {
     const tags = post.tags.map(t => `#${t.replace(/\s+/g, '')}`).join(' ');
     const text = [post.title, post.description, tags].filter(Boolean).join('\n\n');
     const withChapters = [post.title, post.description, chapters.map(([t, name]) => `${clockText(t)} ${name}`).join('\n'), tags].filter(Boolean).join('\n\n');
-    const room = limits?.text?.text?.max ?? MAX;   // a Premium account's limit, when the release raises it
-    return {text: chapters.length && xLength(withChapters) <= room ? withChapters : text};
+    const max = limits?.text?.text?.max ?? MAX, count = limits?.text?.text?.count ?? xLength;   // the target's, overrides included
+    return {text: chapters.length && chapters.length <= TIMES && count(withChapters) <= max ? withChapters : text};
   },
 };

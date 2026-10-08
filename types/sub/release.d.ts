@@ -14,8 +14,11 @@ export interface ReleaseAdapter {
   label: string;
   /** The video's shape: a layout format, with the title band and burned-in captions where the platform wants them. */
   video: {format: 'landscape' | 'square' | 'portrait' | 'vertical'; header?: boolean; captions?: boolean; captionFiles?: ('srt' | 'vtt')[]};
-  /** The length it takes, and its text fields' limits — counted as the platform counts (`count`), else by code points. */
-  limits: {seconds: {min?: number; max: number}; text?: Record<string, {max: number; count?: (text: string) => number}>};
+  /**
+   * The length it takes, its text fields' limits — counted as the platform counts (`count`), else by code points — and,
+   * when it has one, the largest frame it takes (`frame`, one per orientation: a larger render is refused before it starts).
+   */
+  limits: {seconds: {min?: number; max: number}; text?: Record<string, {max: number; count?: (text: string) => number}>; frame?: {width: number; height: number}[]};
   /** Who the platform is for: its minimum age, and what it does with a film made for kids. */
   audience: {minAge: number; kids: 'madeForKids' | 'refuse'};
   thumbnail: {width: number; height: number; maxBytes?: number} | null;
@@ -25,8 +28,10 @@ export interface ReleaseAdapter {
   post(post: Required<Pick<ReleasePost, 'title' | 'description' | 'tags' | 'audience'>> & ReleasePost, context: {chapters: [number, string][]; seconds: number; limits: ReleaseAdapter['limits']}): Record<string, unknown>;
 }
 export type TargetName = 'youtube' | 'youtube-shorts' | 'linkedin' | 'tiktok' | 'instagram-reels' | 'x';
+/** Limits overridden: only what changes (a key given as undefined is not given; the platform's value stays). */
+export interface ReleaseLimits {seconds?: {min?: number; max?: number}; text?: Record<string, {max?: number; count?: (text: string) => number}>; frame?: {width: number; height: number}[]}
 /** A target: a built-in name, an adapter, or one with options (a part from/to, a crop for the tall shapes, limits overridden). */
-export type ReleaseTarget = TargetName | ReleaseAdapter | {target: TargetName | ReleaseAdapter; name?: string; from?: number; to?: number; header?: {title: string; sub?: string}; crop?: unknown[]; captions?: boolean | object; limits?: Partial<ReleaseAdapter['limits']>; scale?: number};
+export type ReleaseTarget = TargetName | ReleaseAdapter | {target: TargetName | ReleaseAdapter; name?: string; from?: number; to?: number; header?: {title: string; sub?: string}; crop?: unknown[]; captions?: boolean | object; limits?: ReleaseLimits; scale?: number};
 /** One target released: `dir` holds what is posted and nothing else; `work` the render's working files and its record. */
 export interface Released {target: string; dir: string; video: string; captions: {srt?: string; vtt?: string} | null; thumbnail: string | null; credits: string; post: Record<string, unknown>; makingOf: string; work: string}
 /** The folder inside a release's `out` that holds each target's working files and record. */
@@ -40,6 +45,6 @@ export const AUDIENCES: readonly Audience[];
 export function checkAdapter(adapter: unknown): ReleaseAdapter;
 export function loadTarget(spec: ReleaseTarget): Promise<{adapter: ReleaseAdapter; options: {name: string; from?: number; to?: number; header?: object; crop?: unknown[]; captions?: unknown; scale?: number}}>;
 export function readPost(post: unknown): ReleasePost & {description: string; tags: string[]; synthetic: string[]};
-export function planProblems(adapter: ReleaseAdapter, post: ReleasePost, options?: {seconds?: number | null; poster?: boolean | null}): {problem: string; fix: string}[];
+export function planProblems(adapter: ReleaseAdapter, post: ReleasePost, options?: {seconds?: number | null; poster?: boolean | null; scale?: number}): {problem: string; fix: string}[];
 /** Release a film to each target: <out>/<target>/ the video in its shape, caption files, thumbnail, post.json + post.txt. */
 export function makeRelease(options: Omit<MakeFilmOptions, 'out'> & {targets: ReleaseTarget[]; post: ReleasePost; out: string; base?: string}): Promise<Released[]>;

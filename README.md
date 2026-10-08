@@ -596,13 +596,29 @@ await makeRelease({storyboard, recipe, narrationDir, pacing, out: 'release/ep01'
   TikTok, Instagram, X (13 and over) and LinkedIn (16 and over) refuse it, with the fix: the full film goes where
   children watch, and a teaser for parents goes there as `'general'`.
 - **Refused before a frame is drawn** when it can be known then (the audience, a title over the limit, a
-  thumbnail of the wrong shape, a part too long); the film's own length and the text with its chapters are
-  checked after the render.
-- **X** takes a square video of at most 140 s and a post of 280 (an account with Premium posts longer videos and up to
-  25,000 characters: `{target: 'x', limits: {seconds: {max: 3 * 3600}, text: {text: {max: 25000}}}}` — how X counts
-  stays). Its feed plays muted, so the captions are burned in; it takes no caption file and no thumbnail.
+  thumbnail of the wrong shape, a part too long, a picture larger than the platform takes); the film's own length
+  and the text with its chapters are checked after the render.
+- **X** takes a square video of at most 140 s and a post of 280 as X counts it (an account with Premium posts longer
+  videos and up to 25,000 characters: `{target: 'x', limits: {seconds: {max: 3 * 3600}, text: {text: {max: 25000}}}}`
+  — how X counts stays). X autoplays videos in the timeline and its own captions are speech-to-text, not on every
+  video, so the captions are burned in; the release gives X no caption file and no thumbnail. X takes a picture of at
+  most 1920×1200 (1200×1900 tall): `{target: 'x', scale: 2}` (2160×2160) is refused before it renders. A time in a
+  post with one video (`1:05`) becomes a link to that moment — on iOS for now, X says, and at most 50 in a post — so
+  the chapters go in when there are at most 50 and the post has room.
+- **How X counts.** `xLength` is twitter-text 3.1.0's count (`parseTweet(text).weightedLength`), the library X
+  publishes for counting a post, ported (`src/targets/x-count/`, Apache-2.0, its licence beside it) and pinned to it:
+  `test/fixtures/x-counts.json` holds over 300 texts with twitter-text's count, and `xLength` gives every one. A link is 23
+  — a name with a dot only when it ends in a top-level domain twitter-text knows (`storyreel.dev` is a link, `Node.js`
+  is not, `README.md` is: md is Moldova's), and not in an address, after `#`, `$` or `-`, or for localhost and IP
+  addresses; punctuation after a link is text. An emoji is 2; a code point 1 up to U+10FF (Latin, Greek, Cyrillic,
+  Hebrew, Arabic, the Indic scripts…) or among the general punctuation's spaces, dashes, quotes and primes, else 2
+  (Chinese, Japanese, Korean, the ellipsis…). An emoji newer than that library (Emoji 11.0) counts here as its
+  parts, never less than the 2 X counts. `scripts/x-counts.mjs` remakes the table from a scratch install of
+  twitter-text@3.1.0 — never a dependency.
 - **Limits change.** Each adapter says when its facts were checked and where (`facts`); a target may override
-  one (`{target: 'tiktok', limits: {seconds: {max: 3600}}}`). An adapter of your own is an object of the same
+  one (`{target: 'tiktok', limits: {seconds: {max: 3600}}}`), checked as the adapter's are; a key given as
+  `undefined` is not given (the platform's value stays). A platform that takes a picture only up to some size says
+  so (`limits.frame`, the largest frames, one per orientation). An adapter of your own is an object of the same
   shape (`checkAdapter` names what is missing), passed in `targets`.
 - **Uploading is not a release's job:** it needs the account owner's sign-in, and stays a separate step.
 - **For a big screen.** `{target: 'youtube', scale: 2}` makes the picture 3840×2160 (4K): every line and word is
