@@ -758,8 +758,13 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   read when "the network does the waiting" lands instead of rendering stills to guess.
 - **Review a part by reading it.** `reviewPart(film, {part, layout})` (`footprint-storyreel/review`) reads the
   picture as text — every line a frame draws, where it lands and how faint — and names what is wrong, with times:
-  words under the captions while a caption shows, words over other words, words cut off at the edge, nothing
-  changing for 5 s. Read the findings and the timeline first; look at a frame only to confirm:
+  words under the captions while a caption shows, words over other words, words cut off at the edge, the picture
+  frozen for 5 s (`still`), nothing new for 5 s while it moves (`stale`: no scene, no beat and no new words —
+  `newEvery`), and — with `loop: true`, for a part made to loop — an end that does not come round to its start (the
+  part's own scenes, not its handles: its last moment against its first, as the eye takes them in and word for word).
+  Motion that steps rather than runs (a flipbook, a blink, a part drawn on twos) is read one drawing short of coming
+  round, so such a loop reads as a jump even when it loops cleanly: look at a strip of the seam before changing it.
+  Read the findings and the timeline first; look at a frame only to confirm:
 
   ```js
   import {reviewPart} from 'footprint-storyreel/review';
@@ -769,15 +774,19 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   ```
   The review is a footprintjs flowchart: a selector picks each check by what the part has (no caption band, no
   caption check), each check runs as its own subflow, and `r.record` says what ran and why. A check of your own
-  is `{label, why, when(scope), find(review)}` in `checks`.
-- **The same, from the command line — and as a skill for agents.** `npx storyreel timeline | review | part | still
-  --scene <id>` (the film named in the project's `storyreel.config.mjs`: `export default {film: flags =>
+  is `{label, why, when(scope), find(review)}` in `checks`; `find` answers at once with its hits, `[{kind, t, what}]`.
+  A check that throws, or answers with anything else (a promise, no list, a hit without its time or its words),
+  fails the review with one error naming every check that failed, so a review that returns has run every check it
+  picked.
+- **The same, from the command line — and as a skill for agents.** `npx storyreel timeline | review | part | still |
+  strip --scene <id>` (`strip --at <scene>+<seconds>`: a fast move frame by frame — 12 consecutive frames around
+  the moment, side by side — to catch a pop, a jump or two things crossing) (the film named in the project's `storyreel.config.mjs`: `export default {film: flags =>
   ({storyboard, recipe, kits, root, narrationDir?, pacing?, layout?})}`; every flag also reaches `film()`). The
   package ships the skill that teaches the order — timeline, review, fix, part, one still last — as a Claude Code
   plugin: `claude plugin marketplace add footprintjs/storyreel`, then `claude plugin install storyreel@storyreel`
   (or copy `plugin/skills/storyreel-review/SKILL.md` into a project's `.claude/skills/`). `footprint-storyreel/tools` is the one core both use.
 - **And as an MCP server,** for any assistant that speaks MCP: `storyreel mcp [--flag value …]` serves the same
-  four tools over stdio (the flags are every call's defaults; a still comes back as the picture). Each call runs in
+  five tools over stdio (the flags are every call's defaults; a still or a strip comes back as the picture). Each call runs in
   a fresh process, so an edit to a kit between two calls is always seen:
 
   ```bash

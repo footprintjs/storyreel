@@ -104,7 +104,9 @@ test('a layout at a scale draws the same picture larger: 2 makes landscape 3840Ã
 test('a part with its handles: the scenes asked for and a moment of the film either side; refusals name the fix', () => {
   assert.deepEqual(partWindow(film, {scene: 'talk', handles: 1}), {from: +(film.clock.start('talk') - 1).toFixed(3), to: +(film.clock.end('talk') + 1).toFixed(3)});
   assert.equal(partWindow(film, {scenes: ['open']}).from, 0, 'never before the film starts');
-  assert.equal(partWindow(film, {scenes: ['talk', 'end'], handles: 5}).to, +film.total.toFixed(3), 'nor after it ends');
+  assert.equal(partWindow(film, {scenes: ['talk', 'end'], handles: 5}).to, film.total, 'nor after it ends');
+  const late = {timings: {scenes: [{id: 'a'}, {id: 'c'}]}, total: 21.299999999999997, clock: {start: id => ({a: 0, c: 14.2})[id], end: id => ({a: 14.2, c: 21.299999999999997})[id]}};
+  assert.equal(partWindow(late, {scene: 'c'}).to, late.total, 'an end between two milliseconds stays the end: rounded first, then held to the film (21.3 is past it)');
   assert.throws(() => partWindow(film, {scene: 'middle'}), /no scene called "middle" \(the scenes are open, talk, end\)/);
   assert.throws(() => partWindow(film, {scene: 'talk', handles: 20}), /handles is the seconds shown before and after the part/);
   assert.throws(() => prepareRender({film, part: {scene: 'talk'}, from: 0}), /a part or from\/to, not both/);

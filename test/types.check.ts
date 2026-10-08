@@ -215,6 +215,8 @@ export const loudFilm: Recipe = {listening: 'loud'};
 // Review (types/sub/review.d.ts): a part read as text; a check of your own has the same shape.
 import type {ReviewCheck} from '../types/sub/review.js';
 export const mineCheck: ReviewCheck = {label: 'The title is there', when: () => true, find: ({samples}) => samples.filter(s => !s.words.length).map(s => ({kind: 'empty', t: s.t, what: 'no words'}))};
+// A check sees the part itself (no handles), the frozen stretches, and which checks run beside it.
+export const frozenCheck: ReviewCheck = {label: 'Frozen', when: () => true, find: ({part, frozen, picked}) => picked.includes('still') ? [] : frozen.map(r => ({kind: 'frozen', t: Math.max(r.from, part.from), what: `frozen until ${r.to}`}))};
 // @ts-expect-error a check finds with find(review)
 export const badCheck: ReviewCheck = {label: 'x', when: () => true};
 // Release (types/sub/release.d.ts): targets by name, with options, or an adapter of your own; a post says who it is for.

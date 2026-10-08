@@ -29,6 +29,29 @@
   most 1920×1200 (1200×1900 tall), so `{target: 'x', scale: 2}` (2160×2160) is refused: release it at scale 1. The
   other adapters declare none and are unchanged. `planProblems` takes the target's `scale`.
 
+### Review: nothing new, a loop that comes round; strip
+- **Nothing new** (`stale`, on by default past `newEvery` seconds, 5): something new — a scene, a beat, a word that was
+  not on screen a moment before — should come at least every few seconds. A gap is reported once, "nothing new for
+  7.1 s since 0:07.1"; a frozen picture is left to `still` (the picture does not change) when that check runs too.
+- **A loop that comes round** (`loop: true`, opt-in, `--loop true`): the picture at the part's end must be its start.
+  The part is its own scenes (no handles), exactly where they lie (`partScenes`, unrounded: a scene a voice paced to
+  10 µs is never read into its neighbour); its end is read at its last moment, never after the cut; the two
+  pictures are compared at the film's size the way the eye takes them in (4×4-pixel cells: none more than 32
+  levels apart, the mean under 0.02), and the words drawn at both ends must be the same. Measured: 0 of 1,800
+  seamless loops read as a jump, 1,800 of 1,800 loops 0.2% of a turn short caught. Motion that steps rather than
+  runs (a flipbook, a blink, a part drawn on twos) is read one drawing short of coming round, so such a loop reads
+  as a jump even when it loops cleanly: look at a strip of the seam.
+- **A check that fails fails the review**, naming it: one whose `find` or `when` throws or gives a promise, whose
+  `find` gives something that is not a list of hits (or a list with a hole, or a hit without its name, time or
+  words), or whose result could not be kept. A check's hits are copied as plain `{kind, t, what}`. The engine's own
+  log lines are kept for that message, never printed.
+- **`strip`** (tool and MCP): 12 consecutive frames around a moment, as one picture, for a fast move; MCP returns
+  the picture itself for `still` and `strip` (the last line of the output that names a picture).
+- `still`'s finding reads "the picture does not change for 7.0 s from 0:07.5" (one per stretch); a part's window
+  is held to the film's length (a float total no longer reads past the end); times print as 1:00.0, never 0:60.0 —
+  in the review, on contact sheets and strips, and in the studio (one `clockTenths`, `footprint-storyreel/clock` — a film time to the tenth, `1:21.5`, beside footprint-narration's `clockText`, a chapter time, `1:21`; the
+  studio page keeps a copy, as it runs in the browser on its own).
+
 ### The narration code moves into footprint-narration (breaking: imports move)
 StoryReel and StoryDeck each kept the same narration code — what a voice says for a number, the captions, YouTube's
 chapter rule — and the copies had started to disagree. It now lives in one package both use,

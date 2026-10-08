@@ -6,8 +6,7 @@
 import {createCanvas} from '@napi-rs/canvas';
 import {TRANSITIONS, readEntrance, ghostPainter} from './transitions.mjs';
 import {loadTheme} from './theme.mjs';
-
-const clockText = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+import {clockTenths} from './clock.mjs';
 
 /**
  * @param film     from compileFilm
@@ -23,7 +22,7 @@ export async function contactSheet(film, {moments = film.moments(), columns = 4,
     const x = pad + (i % columns) * (w + pad), y = pad + Math.floor(i / columns) * (h + label + pad);
     c.save(); c.translate(x, y); c.beginPath(); c.rect(0, 0, w, h); c.clip(); c.scale(w / 1600, w / 1600); film.frame(c, m.t); c.restore();
     c.fillStyle = m.kind === 'moving' ? '#f5b400' : '#c9cdd4'; c.font = '600 13px Menlo'; c.textBaseline = 'middle';
-    c.fillText(`${clockText(m.t)}  ${m.label}`.slice(0, Math.floor(w / 8)), x, y + h + label / 2);
+    c.fillText(`${clockTenths(m.t)}  ${m.label}`.slice(0, Math.floor(w / 8)), x, y + h + label / 2);
   });
   return sheet.encode('png');
 }

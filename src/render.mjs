@@ -284,20 +284,29 @@ export function sceneChapters(scenes, offsets) {
  * strategy (segments.mjs) decides only WHICH frames to encode into which files.
  */
 /**
- * A part of the film with its handles, as a render's from/to (seconds on the film clock): the part's scenes, and
- * `handles` seconds of the film before and after them (1.5 by default) — the end of the part before and the start
- * of the part after, so both of its cuts are seen. part: {scenes: [id, …], handles?} or {scene: id, handles?}.
+ * Where a part's own scenes lie on the film clock, exactly: {from, to}, the first one's start and the last one's end
+ * (held to the film). Unrounded: a voice paces a scene to 10 µs (pacing.mjs), and a millisecond either way is inside
+ * its neighbour. part: {scenes: [id, …], handles?} or {scene: id, handles?}.
  */
-export function partWindow(film, part) {
+export function partScenes(film, part) {
   const scenes = typeof part?.scene === 'string' ? [part.scene] : part?.scenes;
   if (!Array.isArray(scenes) || !scenes.length || !scenes.every(s => typeof s === 'string')) throw new Error('part must be {scenes: [scene id, …], handles?} or {scene: id, handles?}');
   for (const key of Object.keys(part)) if (!['scene', 'scenes', 'handles'].includes(key)) throw new Error(`part has unsupported key ${key} (a part is {scenes | scene, handles?})`);
   const ids = film.timings.scenes.map(s => s.id), missing = scenes.filter(s => !ids.includes(s));
   if (missing.length) throw new Error(`part: no scene called ${missing.map(s => `"${s}"`).join(', ')} (the scenes are ${ids.join(', ')})`);
-  const handles = part.handles ?? 1.5;
+  return {from: Math.min(...scenes.map(id => film.clock.start(id))), to: Math.min(film.total, Math.max(...scenes.map(id => film.clock.end(id))))};
+}
+
+/**
+ * A part of the film with its handles, as a render's from/to (seconds on the film clock): the part's scenes, and
+ * `handles` seconds of the film before and after them (1.5 by default) — the end of the part before and the start
+ * of the part after, so both of its cuts are seen. part: {scenes: [id, …], handles?} or {scene: id, handles?}.
+ */
+export function partWindow(film, part) {
+  const {from, to} = partScenes(film, part), handles = part.handles ?? 1.5;
   if (!(typeof handles === 'number' && handles >= 0 && handles <= 10)) throw new Error('part.handles is the seconds shown before and after the part, 0–10 (1.5 by default)');
-  const from = Math.min(...scenes.map(id => film.clock.start(id))), to = Math.max(...scenes.map(id => film.clock.end(id)));
-  return {from: +Math.max(0, from - handles).toFixed(3), to: +Math.min(film.total, to + handles).toFixed(3)};
+  // Rounded to the millisecond, then held to the film: rounding after would carry an end of 21.2999…97 to 21.3, past it.
+  return {from: Math.max(0, +(from - handles).toFixed(3)), to: Math.min(film.total, +(to + handles).toFixed(3))};
 }
 const withPart = options => {
   if (options.part === undefined || options.part === null) return options;

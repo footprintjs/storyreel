@@ -1,28 +1,39 @@
 /**
  * The review tools as an MCP server (stdio), so any assistant that speaks the Model Context Protocol — Claude Code,
- * Claude Desktop, VS Code's Copilot, Cursor — calls timeline, review, part and still directly. An adapter over the
- * same core as the command line (tools.mjs): each call runs the command line in a fresh process in the project's
+ * Claude Desktop, VS Code's Copilot, Cursor — calls timeline, review, part, still and strip directly. An adapter over
+ * the same core as the command line (tools.mjs): each call runs the command line in a fresh process in the project's
  * folder, so an edit to a kit between two calls is always seen (a long-lived process would keep the old module).
- * A still comes back as the picture itself (and its path); everything else as text.
+ * A still or a strip comes back as the picture itself (and its path); everything else as text.
  *
  *   claude mcp add storyreel -- npx storyreel mcp --ep ep1 --voice work/ep1/voice
  * The flags given at start are every call's defaults; a call's arguments override them.
  */
 import {spawn} from 'node:child_process';
-import {readFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
+import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createInterface} from 'node:readline';
 import {TOOLS} from './tools.mjs';
 
 const CLI = fileURLToPath(new URL('./cli.mjs', import.meta.url));
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
-const REQUIRED = {part: ['scene'], still: ['at']};
+const REQUIRED = {part: ['scene'], still: ['at'], strip: ['at']};
 
 /** The tools as MCP lists them: name, what it does, its arguments (strings) and which are required. */
 export const mcpTools = () => Object.entries(TOOLS).map(([name, t]) => ({name, description: t.about,
   inputSchema: {type: 'object', properties: Object.fromEntries(Object.entries(t.args).map(([a, d]) => [a, {type: 'string', description: d}])), ...(REQUIRED[name] ? {required: REQUIRED[name]} : {})}}));
 
-/** One call: the command line in a fresh process; its text (and a still's picture) as MCP content. */
+/**
+ * The picture a tool printed: the path on the LAST line that starts with one (absolute, as the tools print it, ending
+ * in .png, then " · " or the line's end), so a line a kit or a library printed before it (a logger's, on stdout)
+ * never hides it; null unless that file is there.
+ */
+export function pictureIn(text) {
+  const named = text.split('\n').map(line => /^(.+?\.png)(?: · |$)/.exec(line.trimEnd())?.[1]).filter(p => p && path.isAbsolute(p)).at(-1);
+  return named && existsSync(named) ? named : null;
+}
+
+/** One call: the command line in a fresh process; its text (and a still's or a strip's picture) as MCP content. */
 export function callTool(name, args = {}, {defaults = {}, cwd = process.cwd()} = {}) {
   if (!TOOLS[name]) return Promise.resolve({isError: true, content: [{type: 'text', text: `no tool called "${name}" (the tools are ${Object.keys(TOOLS).join(', ')})`}]});
   const flags = Object.entries({...defaults, ...args}).flatMap(([k, v]) => [`--${k}`, String(v)]);
@@ -33,8 +44,8 @@ export function callTool(name, args = {}, {defaults = {}, cwd = process.cwd()} =
       const text = Buffer.concat(out).toString('utf8').trim(), problem = Buffer.concat(err).toString('utf8').trim();
       if (code !== 0) return resolve({isError: true, content: [{type: 'text', text: problem || `storyreel ${name} stopped (${code})`}]});
       const content = [{type: 'text', text}];
-      const png = name === 'still' && text.split(' · ')[0];
-      if (png) try { content.push({type: 'image', mimeType: 'image/png', data: readFileSync(png).toString('base64')}); } catch { /* the path is in the text */ }
+      const png = TOOLS[name].picture ? pictureIn(text) : null;   // a tool that makes a picture: it comes back as the image
+      if (png) try { content.push({type: 'image', mimeType: 'image/png', data: readFileSync(png).toString('base64')}); } catch { /* unreadable: the path is in the text */ }
       resolve({content});
     });
   });
