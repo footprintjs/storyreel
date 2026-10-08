@@ -5,7 +5,7 @@
  * no thumbnail. X takes a video of at most 1920×1200 (1200×1900 tall): a larger render (scale 2 makes 2160×2160) is
  * refused before it starts (limits.frame).
  *
- * The post is at most 280 as X counts it (Premium posts up to 25,000: override limits.text): xLength is twitter-text
+ * The post is at most 280 as twitter-text 3.1.0 counts it, X's published counter (Premium posts up to 25,000: override limits.text): xLength is twitter-text
  * 3.1.0's count, the library X publishes for counting a post, ported (x-count/count.mjs) and pinned to it by
  * test/fixtures/x-counts.json — a link 23, an emoji 2, a code point 1 or 2 by its range. An emoji newer than that
  * library (Emoji 11.0) counts here as its parts, 2 or more, where X counts it 2: never less than X.
@@ -17,7 +17,7 @@
 import {clockText} from 'footprint-narration';
 import {weightedLength} from './x-count/count.mjs';
 
-/** A post's length as X counts it: twitter-text 3.1.0's weighted length (x-count/count.mjs). */
+/** A post's length as twitter-text 3.1.0 counts it (X's published counter; its TLD list is from 2019): its weighted length (x-count/count.mjs). */
 export function xLength(text) {
   return weightedLength(String(text));
 }

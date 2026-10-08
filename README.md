@@ -605,12 +605,14 @@ await makeRelease({storyboard, recipe, narrationDir, pacing, out: 'release/ep01'
   most 1920×1200 (1200×1900 tall): `{target: 'x', scale: 2}` (2160×2160) is refused before it renders. A time in a
   post with one video (`1:05`) becomes a link to that moment — on iOS for now, X says, and at most 50 in a post — so
   the chapters go in when there are at most 50 and the post has room.
-- **How X counts.** `xLength` is twitter-text 3.1.0's count (`parseTweet(text).weightedLength`), the library X
+- **How X counts.** The X target counts a post with twitter-text 3.1.0's count (`parseTweet(text).weightedLength`; the
+  function is the adapter's `limits.text.text.count`, `(await loadTarget('x')).adapter.limits.text.text.count`), the library X
   publishes for counting a post, ported (`src/targets/x-count/`, Apache-2.0, its licence beside it) and pinned to it:
   `test/fixtures/x-counts.json` holds over 300 texts with twitter-text's count, and `xLength` gives every one. A link is 23
   — a name with a dot only when it ends in a top-level domain twitter-text knows (`storyreel.dev` is a link, `Node.js`
   is not, `README.md` is: md is Moldova's), and not in an address, after `#`, `$` or `-`, or for localhost and IP
-  addresses; punctuation after a link is text. An emoji is 2; a code point 1 up to U+10FF (Latin, Greek, Cyrillic,
+  addresses; punctuation after a link is text. Its top-level domains are its own 2019 list: a name under a newer one
+  (`film.music`) counts as text here though X may make it a link (23), so keep such names out of a post near the limit. An emoji is 2; a code point 1 up to U+10FF (Latin, Greek, Cyrillic,
   Hebrew, Arabic, the Indic scripts…) or among the general punctuation's spaces, dashes, quotes and primes, else 2
   (Chinese, Japanese, Korean, the ellipsis…). An emoji newer than that library (Emoji 11.0) counts here as its
   parts, never less than the 2 X counts. `scripts/x-counts.mjs` remakes the table from a scratch install of
