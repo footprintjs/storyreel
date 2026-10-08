@@ -175,10 +175,12 @@ test('a voiced cut with a silent opening renders: paced (generated silence in th
   await assert.rejects(renderFilm({film, storyboard, timings: missing, narrationDir: unpaced, out: path.join(tmp(), 'x.mp4'), ...small, from: 0, to: 1}), /scene story has no audio in its timing: only a silent scene's audio is generated/);
 });
 
-test('a voice folder given as a symbolic link is copied, never paced in place through the link', {skip: ffmpeg ? false : 'ffmpeg not on PATH'}, async () => {
+test('a voice given through symbolic links is copied by its contents, never paced in place through a link', {skip: ffmpeg ? false : 'ffmpeg not on PATH'}, async () => {
+  // Two ways in: the voice folder itself a link, and a real folder whose timings.json and audio files are links.
   const voice = voiceFolder(), link = path.join(tmp(), 'voice-link'); symlinkSync(voice, link, 'dir');
+  const inner = tmp(); for (const f of readdirSync(voice)) symlinkSync(path.join(voice, f), path.join(inner, f));
   const before = Object.fromEntries(readdirSync(voice).map(f => [f, readFileSync(path.join(voice, f))]));
-  for (const run of ['first', 'second']) await makeFilm({storyboard, recipe, root: hello, narrationDir: link, pacing, out: path.join(tmp(), `${run}.mp4`), render: small});
+  for (const [run, narrationDir] of [['first', link], ['second', link], ['inner', inner], ['inner again', inner]]) await makeFilm({storyboard, recipe, root: hello, narrationDir, pacing, out: path.join(tmp(), `${run}.mp4`), render: small});
   // The voice is as it was: no .unpaced.wav beside its audio, the same audio and the same (unpaced) timings.json.
   assert.deepEqual(readdirSync(voice).sort(), Object.keys(before).sort());
   for (const [f, bytes] of Object.entries(before)) assert.ok(readFileSync(path.join(voice, f)).equals(bytes), `${f} unchanged`);

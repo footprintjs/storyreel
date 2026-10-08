@@ -1,10 +1,10 @@
 import test, {after} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, mkdirSync, writeFileSync, symlinkSync, readFileSync, realpathSync, rmSync} from 'node:fs';
+import {mkdtempSync, mkdirSync, writeFileSync, symlinkSync, readFileSync, realpathSync, rmSync, lstatSync, readdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {insideRoot} from '../src/files.mjs';
+import {insideRoot, copyRealFiles} from '../src/files.mjs';
 import {compileFilm, evenTimings} from '../src/index.mjs';
 
 // A film folder beside a private one whose name begins the same way: /…/film and /…/film-private.
@@ -54,4 +54,20 @@ test('compileFilm loads a code excerpt only from inside root', async () => {
   await assert.rejects(compileFilm({storyboard, timings, recipe: withFile('link.ts'), root}), /is outside/);
   const film = await compileFilm({storyboard, timings, recipe: withFile('code/rule.ts'), root});
   assert.ok(film.total > 0);
+});
+
+test('copyRealFiles: a folder copied by its contents — no link survives, wherever it was, and writing into the copy changes nothing it came from', () => {
+  const from = mkdtempSync(path.join(tmpdir(), 'storyreel-copy-')), real = mkdtempSync(path.join(tmpdir(), 'storyreel-real-'));
+  mkdirSync(path.join(real, 'audio')); writeFileSync(path.join(real, 'audio', 'a.wav'), 'A'); writeFileSync(path.join(real, 'timings.json'), '{}');
+  symlinkSync(path.join(real, 'audio'), path.join(from, 'audio'), 'dir'); symlinkSync(path.join(real, 'timings.json'), path.join(from, 'timings.json'));
+  const link = path.join(mkdtempSync(path.join(tmpdir(), 'storyreel-link-')), 'voice'); symlinkSync(from, link, 'dir');
+  const to = path.join(mkdtempSync(path.join(tmpdir(), 'storyreel-to-')), 'copy');
+  copyRealFiles(link, to);
+  const kinds = p => { const s = lstatSync(p); return s.isSymbolicLink() ? 'link' : s.isDirectory() ? 'dir' : 'file'; };
+  assert.deepEqual([kinds(to), kinds(path.join(to, 'audio')), kinds(path.join(to, 'audio', 'a.wav')), kinds(path.join(to, 'timings.json'))], ['dir', 'dir', 'file', 'file']);
+  writeFileSync(path.join(to, 'audio', 'a.wav'), 'paced'); writeFileSync(path.join(to, 'timings.json'), '{"paced": true}');
+  assert.equal(readFileSync(path.join(real, 'audio', 'a.wav'), 'utf8'), 'A'); assert.equal(readFileSync(path.join(real, 'timings.json'), 'utf8'), '{}');
+  // A link back into a folder being copied would never end: refused, naming it.
+  symlinkSync(from, path.join(real, 'audio', 'loop'), 'dir');
+  assert.throws(() => copyRealFiles(from, path.join(mkdtempSync(path.join(tmpdir(), 'storyreel-to-')), 'copy')), /leads back into .* a folder being copied \(a link loop\): remove the link/);
 });

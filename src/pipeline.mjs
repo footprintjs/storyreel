@@ -9,7 +9,8 @@
  * pass small values and file paths, as footprintjs expects.
  */
 import {readCast, withCast} from './cast.mjs';
-import {readFileSync, writeFileSync, mkdirSync, cpSync, rmSync, existsSync, statSync, renameSync} from 'node:fs';
+import {readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync, renameSync} from 'node:fs';
+import {copyRealFiles} from './files.mjs';
 import path from 'node:path';
 import {flowChart, narrative} from 'footprintjs';
 import {applyPacing, validatePacing, paceTimings} from './pacing.mjs';
@@ -115,10 +116,10 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     'pace-narration': async scope => {
       if (narrationDir) {
         // Paced in a folder of its own: it takes the place of <out dir>/narration only once the film is allowed
-        // (an approval refused leaves the approved render's narration as it was). The voice's files are copied, never
-        // linked: a voice folder given as a symbolic link (or holding links) would otherwise be paced in place, through
-        // the link — its audio rewritten and its timings.json replaced by the paced ones.
-        const copy = path.join(dir, `.narration-${process.pid}`); rmSync(copy, {recursive: true, force: true}); cpSync(narrationDir, copy, {recursive: true, dereference: true});
+        // (an approval refused leaves the approved render's narration as it was). The voice is copied by its contents
+        // (files.mjs · copyRealFiles), never as links: a voice folder given as a link, or holding links, would
+        // otherwise be paced in place through them — its audio rewritten and its timings.json replaced by the paced ones.
+        const copy = path.join(dir, `.narration-${process.pid}`); rmSync(copy, {recursive: true, force: true}); copyRealFiles(narrationDir, copy);
         const raw = JSON.parse(readFileSync(path.join(copy, 'timings.json'), 'utf8'));
         // A voice knows only the spoken scenes: a silent scene it left out gets its directions' timing (clock.mjs · withDirections).
         paced = pacing ? await applyPacing({runDir: copy, board: storyboard, timings: raw, pacing}) : withDirections(storyboard, raw);
