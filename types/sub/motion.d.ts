@@ -28,7 +28,8 @@ export interface FollowOptions {from?: number; feel?: FeelName | Feel; drag?: nu
  * Follow-through: where a part that hangs off a moving body has got to at t. It hangs on a springy joint (playful by
  * default): it swings back as the body sets off, on past as it stops, and settles; while the body moves steadily it
  * hangs as at rest. `drag` adds the air (a hem trails a moving body by drag × speed ÷ k). At rest on the body before
- * `from`. A pure function of t; pass the same body function every frame and the steps already taken are kept for it.
+ * `from` (give the scene's start). A pure function of t, each 1/240 s step solved exactly; pass the same body function
+ * every frame and the steps already taken are kept for it.
  */
 export function follow<P extends Hanging>(body: (u: number) => P, t: number, options?: FollowOptions): P;
 /** How far the part trails the body at t (follow − body): 0 at rest and at a steady pace; back as it sets off, past as it stops. */

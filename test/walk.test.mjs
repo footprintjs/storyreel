@@ -36,8 +36,9 @@ test('the whole flow is smooth: nothing jumps from one millisecond to the next, 
     let prev = null;
     for (const [t, p] of samples(w)) {
       if (prev) {
-        assert.ok(Math.abs(p.x - prev.x) < 2, `${style}: x jumps at ${t}`);
-        for (const k of ['lift', 'lean', 'swing', 'turn']) assert.ok(Math.abs(p[k] - prev[k]) < .05 * (k === 'lift' ? 40 : 1), `${style}: ${k} jumps at ${t} (${prev[k]} → ${p[k]})`);
+        // Per millisecond, from standing to standing: a snap of a hundredth of a radian (5 px at the head) fails.
+        const most = {x: 2, lift: 1, lean: .002, swing: .012, turn: .01};
+        for (const [k, limit] of Object.entries(most)) assert.ok(Math.abs(p[k] - prev[k]) < limit, `${style}: ${k} jumps at ${t} (${prev[k]} → ${p[k]})`);
       }
       prev = p;
     }
@@ -54,6 +55,7 @@ test('before, during and after: it sets off (dips, leans back, turns), steps (le
   const settle = samples(w).map(([, p]) => p).filter(p => p.phase === 'settle');
   assert.ok(Math.max(...settle.map(p => p.lean)) > S.rock * .9, 'it rocks on past its feet as it stops');
   assert.ok(w.at(w.end - .001).turn < .01 && w.at(w.end).turn === 0, 'and turns back to us');
+  assert.ok(Math.abs(w.at(w.end - 1e-6).lean) < 1e-6 && w.at(w.end).phase === 'after', 'the rock has come back to 0 when it ends');
 });
 
 test('the steps come from the distance and the figure\'s size; `seconds` fits them to a length; a style is a strategy', () => {
@@ -70,13 +72,24 @@ test('the steps come from the distance and the figure\'s size; `seconds` fits th
   assert.ok(plain.at(.01).turn > 0 && plain.at(.01).turn < 1, 'no set-off: it turns during its first step');
   assert.equal(plain.at(plain.end).turn, 0);
   assert.deepEqual(WALK_NAMES, ['stroll', 'brisk', 'bouncy', 'tiptoe']);
+  // A style of your own is copied when the walk is planned: changing it afterwards changes no walk.
+  const own = {...WALKS.stroll}, planned = walk({from: 0, to: 900, start: 0, size: 500, style: own}), before = planned.at(2);
+  own.bob = 1; own.cadence = 9; assert.deepEqual(planned.at(2), before);
+  // Nowhere to go: no steps, standing there before and after.
+  const still = walk({from: 40, to: 40, start: 1, size: 400});
+  assert.deepEqual([still.steps, still.at(0).phase, still.at(2).phase, still.at(2).x, still.end], [0, 'before', 'after', 40, 1]);
+  // A tiny shuffle lifts its feet a little, not a full step's height.
+  assert.ok(Math.max(...samples(walk({from: 0, to: 2, start: 0, size: 500})).flatMap(([, p]) => p.feet.map(f => f.lift))) < 1);
 });
 
 test('walk refusals name the fix', () => {
   assert.throws(() => readWalk('skip'), /no walk called "skip" \(the walks are stroll, brisk, bouncy, tiptoe, or \{cadence, stride, bob, bounce, lift, lean, arms, anticipate, dip, settle, rock\} of your own\)/);
   assert.throws(() => readWalk({...WALKS.stroll, cadence: 0}), /cadence and stride above 0/);
   assert.throws(() => readWalk({...WALKS.stroll, bob: -1}), /check bob/);
-  assert.throws(() => readWalk({...WALKS.stroll, bounce: 2}), /bounce 0–1/);
+  assert.throws(() => readWalk({...WALKS.stroll, bounce: 2}), /bounce and arms 0–1/);
+  assert.throws(() => readWalk({...WALKS.stroll, arms: 2}), /bounce and arms 0–1/);
+  assert.throws(() => readWalk('constructor'), /no walk called "constructor"/);
+  assert.throws(() => walk({from: 0, to: 900, start: 0, size: 500, seconds: .05}), /5 steps in 0.05 s is 100.00 steps a second, and this style walks 1.8 — give between 1.39 and 5.56 seconds/);
   assert.throws(() => walk({from: 0, to: 100, start: 0}), /size is the figure's standing height in px/);
   assert.throws(() => walk({from: 0, to: NaN, start: 0, size: 400}), /from and to are places on the floor/);
   assert.throws(() => walk({from: 0, to: 100, start: 0, size: 400, seconds: 0}), /seconds is how long the stepping takes/);

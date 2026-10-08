@@ -14,3 +14,6 @@ export function partTimeline(film: import('../index.js').Film, window?: {from?: 
 export function timelineText(rows: TimelineRow[]): string;
 /** The captionFiles option, checked: the kinds to write. */
 export function readCaptionFiles(v: unknown): ('vtt' | 'srt')[];
+
+/** The moments one frame's motion blur averages: `subframes` spread over `shutter` of the frame, always strictly inside it. */
+export function blurMoments(t: number, blur: {subframes: number; shutter: number}, fps: number): number[];

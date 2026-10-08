@@ -25,7 +25,7 @@ export const FEEL_NAMES = Object.freeze(Object.keys(FEELS));
 /** A feel as given (a name, or {k, d}) → {k, d}; anything else refuses, naming the feels. */
 export function readFeel(feel = 'default') {
   if (typeof feel === 'string') {
-    if (!FEELS[feel]) throw new Error(`no feel called "${feel}" (the feels are ${FEEL_NAMES.join(', ')}, or {k, d} of your own)`);
+    if (!Object.hasOwn(FEELS, feel)) throw new Error(`no feel called "${feel}" (the feels are ${FEEL_NAMES.join(', ')}, or {k, d} of your own)`);
     return FEELS[feel];
   }
   if (!(feel && Number.isFinite(feel.k) && Number.isFinite(feel.d) && feel.k > 0 && feel.d > 0)) throw new Error(`a feel is a name (${FEEL_NAMES.join(', ')}) or {k, d}: a stiffness and a damping, both above 0`);
@@ -66,7 +66,7 @@ export const TIMING_NAMES = Object.freeze(Object.keys(TIMINGS));
 
 const readTiming = timing => {
   if (typeof timing === 'string') {
-    if (!TIMINGS[timing]) throw new Error(`no timing called "${timing}" (the timings are ${TIMING_NAMES.join(', ')}, or the frames each drawing holds, 1–8)`);
+    if (!Object.hasOwn(TIMINGS, timing)) throw new Error(`no timing called "${timing}" (the timings are ${TIMING_NAMES.join(', ')}, or the frames each drawing holds, 1–8)`);
     return TIMINGS[timing];
   }
   if (!(Number.isInteger(timing) && timing >= 1 && timing <= 8)) throw new Error(`a timing is a name (${TIMING_NAMES.join(', ')}) or the frames each drawing holds, 1–8, not ${JSON.stringify(timing)}`);
@@ -82,19 +82,21 @@ const readTiming = timing => {
  * within half a frame, share their frame's drawing. On ones it is t itself.
  */
 export function heldTime(t, timing = 'twos', {fps = 30} = {}) {
+  if (!Number.isFinite(t)) throw new Error(`heldTime: t is seconds, not ${JSON.stringify(t)}`);
   const n = readTiming(timing);
   if (!(Number.isFinite(fps) && fps > 0)) throw new Error(`heldTime: fps is the film's frames a second (30 unless it is rendered at another rate), not ${JSON.stringify(fps)}`);
   if (n === 1) return t;
   return Math.floor(Math.round(t * fps) / n) * n / fps + 0;   // (+ 0: a sub-moment just before 0 holds 0, not -0)
 }
 
-// follow steps 240 times a second, and keeps the state at every 240th step (each second of steps), per body function
-// and per (from, feel, drag), so the next frame starts from there instead of from `from`.
+// follow reads the body 240 times a second (between two readings it takes the body to move in a straight line), and
+// keeps the state at every 240th step (each second of steps), per body function and per (from, feel, drag), so the
+// next frame starts from there instead of from `from`.
 const STEPS = 240, followed = new WeakMap();
 
 /** A body's value as a list of numbers ([x] for a number), refused unless every number is finite. */
 const pointOf = (value, u, size) => {
-  const p = typeof value === 'number' ? [value] : Array.isArray(value) ? value : null;
+  const p = typeof value === 'number' ? [value] : Array.isArray(value) ? [...value] : null;   // (a copy: a body may reuse its array)
   if (!p || !p.length || !p.every(Number.isFinite) || (size !== undefined && p.length !== size)) {
     throw new Error(`follow: body(u) gives the point the part hangs from, a number or [x, y], the same shape at every moment from \`from\` to t — at u = ${+u.toFixed(4)} it gave ${JSON.stringify(value)} (give the place even while the body is out of sight)`);
   }
@@ -102,14 +104,33 @@ const pointOf = (value, u, size) => {
 };
 
 /**
- * One step of dt from a to b (the body's places at the step's two ends): the joint's spring pulls the part toward
- * the body and damps how fast it moves AGAINST the body (so a steady walk needs no pull), and the air, when there is
- * drag, holds the part back as it moves (semi-implicit Euler).
+ * One step of dt from a to b (the body's places at the step's two ends; it moves between them at one speed, vb). In
+ * the part's offset from the body, e, the joint's spring pulls it back (k), the joint damps how fast it moves AGAINST
+ * the body (d: a steady walk needs no pull) and the air, when there is drag, holds back how fast it moves at all:
+ * e'' + (d + drag) e' + k e = −drag · vb. That is solved exactly over the step (no step is too long for a stiff or a
+ * heavily damped joint); where the body changes speed, between steps, e' jumps by the change, as a jolt does.
  */
 const stepped = ({p, v}, a, b, dt, {k, d}, drag) => {
-  const nv = v.map((vi, j) => { const vb = (b[j] - a[j]) / dt; return vi + (k * (a[j] - p[j]) + d * (vb - vi) - drag * vi) * dt; });
-  return {p: p.map((pj, j) => pj + nv[j] * dt), v: nv};
+  const w = Math.sqrt(k), z = (d + drag) / (2 * w), out = {p: [], v: []};
+  for (let j = 0; j < p.length; j++) {
+    const vb = (b[j] - a[j]) / dt, rest = -drag * vb / k, x0 = p[j] - a[j] - rest, x1 = v[j] - vb;
+    const [x, dx] = settle(x0, x1, w, z, dt);
+    out.p.push(b[j] + rest + x); out.v.push(vb + dx);
+  }
+  return out;
 };
+
+/** x'' + 2zw x' + w² x = 0 from x0, x1 (x, x') after dt: the damped spring's exact path, under-, critically or over-damped. */
+function settle(x0, x1, w, z, dt) {
+  if (Math.abs(z - 1) < 1e-9) { const B = x1 + w * x0, e = Math.exp(-w * dt); return [(x0 + B * dt) * e, (B - w * (x0 + B * dt)) * e]; }
+  if (z < 1) {
+    const wd = w * Math.sqrt(1 - z * z), B = (x1 + z * w * x0) / wd, e = Math.exp(-z * w * dt), c = Math.cos(wd * dt), sn = Math.sin(wd * dt);
+    return [e * (x0 * c + B * sn), e * ((B * wd - z * w * x0) * c - (x0 * wd + z * w * B) * sn)];
+  }
+  const q = Math.sqrt(z * z - 1), r1 = -w * (z - q), r2 = -w * (z + q), C1 = (x1 - r2 * x0) / (r1 - r2), C2 = x0 - C1;
+  const e1 = Math.exp(r1 * dt), e2 = Math.exp(r2 * dt);
+  return [C1 * e1 + C2 * e2, C1 * r1 * e1 + C2 * r2 * e2];
+}
 
 /**
  * Follow-through: where a part that hangs off a moving body has got to at t. The part hangs on a springy joint with a
@@ -118,17 +139,16 @@ const stepped = ({p, v}, a, b, dt, {k, d}, drag) => {
  * at rest. `drag` (per second, 0 by default) adds the air: a hem or a scarf also trails a moving body, by drag × speed
  * ÷ k. body: u → a number or [x, y], the point the part hangs from, for every moment from `from` to t; before `from`
  * the part is at rest on the body (`from`: a moment the body is still, the start of the scene, say). The swing is
- * `lag`. A pure function of t: it steps from `from` in steps of 1/240 s, always the same steps, so frame 812 is the
- * same whichever frames were drawn before it. Make the body function once (when the world is compiled) and pass that
- * same function every frame: the steps already taken are kept for it.
+ * `lag`. A pure function of t: it steps from `from` in steps of 1/240 s (each solved exactly), always the same steps,
+ * so frame 812 is the same whichever frames were drawn before it. Make the body function once (when the world is
+ * compiled) and pass that same function every frame: the steps already taken are kept for it; and set `from` to the
+ * start of the scene, not 0, so a frame late in a long film does not step through the whole film first.
  */
 export function follow(body, t, {from = 0, feel = 'playful', drag = 0} = {}) {
   if (typeof body !== 'function') throw new Error('follow: body is a function of time, u → the point the part hangs from (a number or [x, y])');
   if (!(Number.isFinite(t) && Number.isFinite(from))) throw new Error(`follow: t and from are seconds, not ${JSON.stringify({t, from})}`);
-  if (!(Number.isFinite(drag) && drag >= 0 && drag <= 240)) throw new Error(`follow: drag is how hard the air holds the part back, per second, 0–240 (0: none), not ${JSON.stringify(drag)}`);
+  if (!(Number.isFinite(drag) && drag >= 0)) throw new Error(`follow: drag is how hard the air holds the part back, per second, 0 or more (0: none), not ${JSON.stringify(drag)}`);
   const f = readFeel(feel), scalar = typeof body(from) === 'number', shape = p => (scalar ? p[0] : [...p]);
-  // Steps of 1/240 s keep a spring this soft steady and close to the real one; a stiffer one would ring or blow up.
-  if (f.k > 20000 || f.d > 240) throw new Error(`follow: a feel this stiff ({k: ${f.k}, d: ${f.d}}) moves faster than follow's steps of 1/240 s: k up to 20 000 and d up to 240 (a part that should not swing at all is the body itself)`);
   if (t <= from) return shape(pointOf(body(t), t));
   const at = u => pointOf(body(u), u, size), size = pointOf(body(from), from).length;
   // The state after n whole steps, from the nearest kept state at or before it. At `from` the part is at rest on

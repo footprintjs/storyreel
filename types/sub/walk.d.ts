@@ -18,7 +18,7 @@ export interface WalkPose {
   lean: number;
   /** Each foot's place on the floor and its height off it (feet[0] steps first). A planted foot never moves. */
   feet: [{x: number; lift: number}, {x: number; lift: number}];
-  /** −1…1: + while feet[0] is ahead (so the arm on feet[1]'s side is forward). */
+  /** −arms…arms (the style's 0–1): + while feet[0] is ahead (so the arm on feet[1]'s side is forward); it eases in and out in the half steps that start and end the walk. */
   swing: number;
   /** 0 facing us … 1 turned along the way. */
   turn: number;
@@ -32,6 +32,7 @@ export interface Walk {
   readonly arrive: number;
   /** When it has settled. */
   readonly end: number;
+  /** How many steps (0 when from is to: it stands there). */
   readonly steps: number;
   readonly stepSeconds: number;
   readonly facing: 1 | -1;

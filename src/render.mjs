@@ -175,6 +175,17 @@ export function readMotionBlur(v) {
  * takes no blur and no caption (a thumbnail shows the picture and the title band). Every call leaves ctx
  * with an identity transform and full alpha.
  */
+/**
+ * The moments one frame's motion blur averages: `subframes` of them spread evenly over `shutter` of the frame's time,
+ * centred on it. Always strictly inside the frame (a shutter of 1 reaches 0.4999995 of a frame either side, not the
+ * half-way point the next frame shares), so a drawing held on twos (motion.mjs · heldTime) is the same drawing at
+ * every moment of its frame.
+ */
+export function blurMoments(t, {subframes: n, shutter}, fps) {
+  const span = Math.min(shutter, 1 - 1e-6) / fps;
+  return Array.from({length: n}, (_, i) => t + (i / (n - 1) - .5) * span);
+}
+
 export function makePainter({film, framed, blur, width, height, fps, ctx}) {
   const k = width / 1600;
   const picture = (c, t) => { c.resetTransform(); c.globalAlpha = 1; c.clearRect(0, 0, width, height); if (framed) framed.picture(c, t); else { c.scale(k, k); film.frame(c, t); } c.resetTransform(); };
@@ -183,9 +194,8 @@ export function makePainter({film, framed, blur, width, height, fps, ctx}) {
     if (!blur || still) picture(ctx, t);
     else {
       // A running average: subframe i is laid over the first i at 1 / (i + 1), so each counts once.
-      const span = blur.shutter / fps, n = blur.subframes;
-      for (let i = 0; i < n; i++) {
-        const at = Math.max(0, Math.min(film.total, t + (i / (n - 1) - .5) * span));
+      const moments = blurMoments(t, blur, fps).map(at => Math.max(0, Math.min(film.total, at)));
+      for (const [i, at] of moments.entries()) {
         if (i === 0) { picture(ctx, at); continue; }
         picture(subCtx, at); ctx.globalAlpha = 1 / (i + 1); ctx.drawImage(sub, 0, 0); ctx.globalAlpha = 1;
       }

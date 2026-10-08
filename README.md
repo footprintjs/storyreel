@@ -665,11 +665,13 @@ strategy says HOW, so the same film can be shown another way by changing one wor
   a hem, a bag) hangs on a springy joint: it swings back as the body sets off, on past as the body stops, and
   settles; while the body moves steadily it hangs as it does at rest. `drag` adds the air: a hem or a scarf also
   trails a moving body. `body` is the point the part hangs from (`u → x` or `u → [x, y]`); `lag` is how far the part
-  trails it, the number a kit bends the part by. Still a pure function of time (fixed steps of 1/240 s from `from`).
+  trails it, the number a kit bends the part by. Still a pure function of time: steps of 1/240 s from `from`, each
+  solved exactly, so any stiffness is steady. Give `from` as the scene's start (not 0) and make `body` once.
   ```js
   const momX = u => momAt(u).x;                                  // made once, when the world is compiled
   const th = heldTime(t, 'twos');                                // her drawing on twos; the camera stays on t
-  drawMom(ctx, th, {x: momX(th), hair: lag(momX, th), hem: lag(momX, th, {drag: 5})});
+  const from = clock.start('shop');                              // the scene's start: the steps begin there
+  drawMom(ctx, th, {x: momX(th), hair: lag(momX, th, {from}), hem: lag(momX, th, {from, drag: 5})});
   ```
 
 - **A walk, the whole flow of it** (`footprint-storyreel/walk`): feet that never slide. `walk({from, to, start, size,
@@ -680,8 +682,8 @@ strategy says HOW, so the same film can be shown another way by changing one wor
   are strategies: `stroll`, `brisk`, `bouncy`, `tiptoe`, or `{cadence, stride, bob, …}` of your own. A kit draws the
   legs to the feet it is given (its adapter); the walk never draws.
   ```js
-  const out = walk({from: 130, to: 1800, start: clock.at(['shop', 'Mom goes']), size: 475, style: 'stroll'});
-  const p = out.at(heldTime(t));        // her walk, on twos
+  const exit = walk({from: 130, to: 1800, start: clock.at(['shop', 'Mom goes']), size: 475, style: 'stroll'});
+  const p = exit.at(heldTime(t));       // her walk, on twos
   drawMom(ctx, heldTime(t), {x: p.x, walk: p});
   ```
 
