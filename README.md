@@ -672,6 +672,19 @@ strategy says HOW, so the same film can be shown another way by changing one wor
   drawMom(ctx, th, {x: momX(th), hair: lag(momX, th), hem: lag(momX, th, {drag: 5})});
   ```
 
+- **A walk, the whole flow of it** (`footprint-storyreel/walk`): feet that never slide. `walk({from, to, start, size,
+  style})` plans it once; `at(t)` gives the body's place, its rise and lean, each foot's place and lift, the arm
+  swing and the turn. It sets off (a dip and a lean back, turning to face the way it goes), steps (each foot planted
+  where the body passes over it; the body bobs, the arms swing against the legs), stops with the feet together and
+  settles (it rocks on past its feet and turns back). The steps come from the distance and the figure's size. Styles
+  are strategies: `stroll`, `brisk`, `bouncy`, `tiptoe`, or `{cadence, stride, bob, …}` of your own. A kit draws the
+  legs to the feet it is given (its adapter); the walk never draws.
+  ```js
+  const out = walk({from: 130, to: 1800, start: clock.at(['shop', 'Mom goes']), size: 475, style: 'stroll'});
+  const p = out.at(heldTime(t));        // her walk, on twos
+  drawMom(ctx, heldTime(t), {x: p.x, walk: p});
+  ```
+
 ## Re-render only what changed
 
 A film is edited many times. Fixing one word, one beat or one drawing should not mean drawing all
