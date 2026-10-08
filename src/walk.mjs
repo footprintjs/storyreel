@@ -20,6 +20,8 @@
  *   w.arrive    when the feet come together at `to`; w.end: when it has settled; w.steps: how many steps
  */
 const clamp01 = n => Math.max(0, Math.min(1, n));
+/** A value as a message shows it: a number as itself (NaN, Infinity), anything else as JSON. */
+const shown = v => (typeof v === 'number' ? String(v) : JSON.stringify(v));
 
 /**
  * The named styles. Lengths are shares of the figure's size (its standing height); cadence is steps a second.
@@ -59,7 +61,7 @@ const ROCK_PEAK = Math.max(...Array.from({length: 1001}, (_, i) => rockShape(i /
 const rockAt = u => rockShape(u) / ROCK_PEAK;
 /** Standing at x: before `start` or after it (a walk with nowhere to go). */
 const standing = (t, x, start, facing) => {
-  if (!Number.isFinite(t)) throw new Error(`walk: at(t) takes seconds, not ${JSON.stringify(t)}`);
+  if (!Number.isFinite(t)) throw new Error(`walk: at(t) takes seconds, not ${shown(t)}`);
   return {x, lift: 0, lean: 0, feet: [{x, lift: 0}, {x, lift: 0}], swing: 0, turn: 0, facing, walking: false, phase: t < start ? 'before' : 'after'};
 };
 
@@ -70,9 +72,9 @@ const standing = (t, x, start, facing) => {
  * steps, stepSeconds, facing}.
  */
 export function walk({from, to, start, size, style = 'stroll', seconds = null} = {}) {
-  if (![from, to, start].every(Number.isFinite)) throw new Error(`walk: from and to are places on the floor (px) and start is seconds, not ${JSON.stringify({from, to, start})}`);
-  if (!(Number.isFinite(size) && size > 0)) throw new Error(`walk: size is the figure's standing height in px (it sets the length of a step), not ${JSON.stringify(size)}`);
-  if (seconds !== null && !(Number.isFinite(seconds) && seconds > 0)) throw new Error(`walk: seconds is how long the stepping takes (more than 0), or null for the style's own pace, not ${JSON.stringify(seconds)}`);
+  if (![from, to, start].every(Number.isFinite)) throw new Error(`walk: from and to are places on the floor (px) and start is seconds, not from ${shown(from)}, to ${shown(to)}, start ${shown(start)}`);
+  if (!(Number.isFinite(size) && size > 0)) throw new Error(`walk: size is the figure's standing height in px (it sets the length of a step), not ${shown(size)}`);
+  if (seconds !== null && !(Number.isFinite(seconds) && seconds > 0)) throw new Error(`walk: seconds is how long the stepping takes (more than 0), or null for the style's own pace, not ${shown(seconds)}`);
   const S = readWalk(style), facing = to < from ? -1 : 1, d = Math.abs(to - from);
   // Nowhere to go: standing where it is, before and after `start`.
   if (d === 0) return Object.freeze({at: t => standing(t, from, start, facing), arrive: start, end: start, steps: 0, stepSeconds: 0, facing, from, to, start});
@@ -101,7 +103,7 @@ export function walk({from, to, start, size, style = 'stroll', seconds = null} =
   const still = (x, phase, extra = {}, feetAt = x) => ({x, lift: 0, lean: 0, feet: [{x: feetAt, lift: 0}, {x: feetAt, lift: 0}], swing: 0, turn: 0, facing, walking: false, phase, ...extra});
 
   function at(t) {
-    if (!Number.isFinite(t)) throw new Error(`walk: at(t) takes seconds, not ${JSON.stringify(t)}`);
+    if (!Number.isFinite(t)) throw new Error(`walk: at(t) takes seconds, not ${shown(t)}`);
     if (t < start) return still(from, 'before');
     if (t < t0) {
       // Setting off: a dip and a lean back (and a hair back from the way it goes), turning to face along it.

@@ -170,12 +170,6 @@ export function readMotionBlur(v) {
 }
 
 /**
- * The painter: one output picture at film time t into ctx — the film (in its layout, if any), averaged
- * over the motion-blur subframes, then the layout's bands on top (never blurred). A still (the poster)
- * takes no blur and no caption (a thumbnail shows the picture and the title band). Every call leaves ctx
- * with an identity transform and full alpha.
- */
-/**
  * The moments one frame's motion blur averages: `subframes` of them spread evenly over `shutter` of the frame's time,
  * centred on it. Always strictly inside the frame (a shutter of 1 reaches 0.4999995 of a frame either side, not the
  * half-way point the next frame shares), so a drawing held on twos (motion.mjs · heldTime) is the same drawing at
@@ -186,6 +180,12 @@ export function blurMoments(t, {subframes: n, shutter}, fps) {
   return Array.from({length: n}, (_, i) => t + (i / (n - 1) - .5) * span);
 }
 
+/**
+ * The painter: one output picture at film time t into ctx — the film (in its layout, if any), averaged
+ * over the motion-blur subframes, then the layout's bands on top (never blurred). A still (the poster)
+ * takes no blur and no caption (a thumbnail shows the picture and the title band). Every call leaves ctx
+ * with an identity transform and full alpha.
+ */
 export function makePainter({film, framed, blur, width, height, fps, ctx}) {
   const k = width / 1600;
   const picture = (c, t) => { c.resetTransform(); c.globalAlpha = 1; c.clearRect(0, 0, width, height); if (framed) framed.picture(c, t); else { c.scale(k, k); film.frame(c, t); } c.resetTransform(); };
@@ -329,7 +329,9 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   if (framed && intro && framed.format !== 'landscape') throw new Error(`renderFilm: an intro is drawn for the landscape frame; the ${framed.format} layout takes none (leave intro out)`);
   const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
   to = Math.min(to, film.total);
-  const withIntro = intro && from < 0, start = Math.max(0, from);
+  // A render starts on the film's frame grid (a part's window is rounded to the millisecond): frame f shows film second
+  // start + f / fps, so a drawing held on twos (motion.mjs · heldTime) pairs the same frames in a part as in the film.
+  const withIntro = intro && from < 0, start = Math.floor(Math.max(0, from) * fps + 1e-6) / fps;
   const job = {film, storyboard, timings, narrationDir, out, dir, width, height, fps, intro, withIntro, stamp, start, to, poster, posterFrame, peakCeilingDBFS, loudness, layout, framed, blur, captionKinds, ffmpeg,
     /** How many frames the film part has (the intro's are extra). */
     frames: Math.ceil((to - start) * fps),

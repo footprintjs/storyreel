@@ -22,6 +22,9 @@ export const FEELS = Object.freeze({
 });
 export const FEEL_NAMES = Object.freeze(Object.keys(FEELS));
 
+/** A value as a message shows it: a number as itself (NaN, Infinity), anything else as JSON. */
+const shown = v => (typeof v === 'number' ? String(v) : JSON.stringify(v));
+
 /** A feel as given (a name, or {k, d}) → {k, d}; anything else refuses, naming the feels. */
 export function readFeel(feel = 'default') {
   if (typeof feel === 'string') {
@@ -69,7 +72,7 @@ const readTiming = timing => {
     if (!Object.hasOwn(TIMINGS, timing)) throw new Error(`no timing called "${timing}" (the timings are ${TIMING_NAMES.join(', ')}, or the frames each drawing holds, 1–8)`);
     return TIMINGS[timing];
   }
-  if (!(Number.isInteger(timing) && timing >= 1 && timing <= 8)) throw new Error(`a timing is a name (${TIMING_NAMES.join(', ')}) or the frames each drawing holds, 1–8, not ${JSON.stringify(timing)}`);
+  if (!(Number.isInteger(timing) && timing >= 1 && timing <= 8)) throw new Error(`a timing is a name (${TIMING_NAMES.join(', ')}) or the frames each drawing holds, 1–8, not ${shown(timing)}`);
   return timing;
 };
 
@@ -82,9 +85,9 @@ const readTiming = timing => {
  * within half a frame, share their frame's drawing. On ones it is t itself.
  */
 export function heldTime(t, timing = 'twos', {fps = 30} = {}) {
-  if (!Number.isFinite(t)) throw new Error(`heldTime: t is seconds, not ${JSON.stringify(t)}`);
+  if (!Number.isFinite(t)) throw new Error(`heldTime: t is seconds, not ${shown(t)}`);
   const n = readTiming(timing);
-  if (!(Number.isFinite(fps) && fps > 0)) throw new Error(`heldTime: fps is the film's frames a second (30 unless it is rendered at another rate), not ${JSON.stringify(fps)}`);
+  if (!(Number.isFinite(fps) && fps > 0)) throw new Error(`heldTime: fps is the film's frames a second (30 unless it is rendered at another rate), not ${shown(fps)}`);
   if (n === 1) return t;
   return Math.floor(Math.round(t * fps) / n) * n / fps + 0;   // (+ 0: a sub-moment just before 0 holds 0, not -0)
 }
@@ -146,8 +149,8 @@ function settle(x0, x1, w, z, dt) {
  */
 export function follow(body, t, {from = 0, feel = 'playful', drag = 0} = {}) {
   if (typeof body !== 'function') throw new Error('follow: body is a function of time, u → the point the part hangs from (a number or [x, y])');
-  if (!(Number.isFinite(t) && Number.isFinite(from))) throw new Error(`follow: t and from are seconds, not ${JSON.stringify({t, from})}`);
-  if (!(Number.isFinite(drag) && drag >= 0)) throw new Error(`follow: drag is how hard the air holds the part back, per second, 0 or more (0: none), not ${JSON.stringify(drag)}`);
+  if (!(Number.isFinite(t) && Number.isFinite(from))) throw new Error(`follow: t and from are seconds, not t ${shown(t)}, from ${shown(from)}`);
+  if (!(Number.isFinite(drag) && drag >= 0)) throw new Error(`follow: drag is how hard the air holds the part back, per second, 0 or more (0: none), not ${shown(drag)}`);
   const f = readFeel(feel), scalar = typeof body(from) === 'number', shape = p => (scalar ? p[0] : [...p]);
   if (t <= from) return shape(pointOf(body(t), t));
   const at = u => pointOf(body(u), u, size), size = pointOf(body(from), from).length;
@@ -167,6 +170,7 @@ export function follow(body, t, {from = 0, feel = 'playful', drag = 0} = {}) {
   // The last part of a step, to t itself (never kept: the kept states are whole steps only).
   const rest = t - (from + n / STEPS);
   if (rest > 1e-12) s = stepped(s, here, at(t), rest, f, drag);
+  if (!s.p.every(Number.isFinite)) throw new Error(`follow: the feel {k: ${f.k}, d: ${f.d}} with drag ${drag} gives no finite swing: give a feel nearer the named ones (k from about 1 to 1e8, d from 0 to about 1e4)`);
   return shape(s.p);
 }
 
