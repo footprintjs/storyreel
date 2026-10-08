@@ -1,15 +1,33 @@
 # Changelog
 
-## 0.10.0 — one word changed redraws only where it shows; one clock for the review and the render; emphasis on the thing
+## Unreleased
 
-### One word changed redraws only where it shows
-- **A segment's key holds only the strings its own entries name** (`{"$string": key}` in its recipe entries, the
-  guess cards over it and what its entrance also draws), not the whole string table: changing one word — a guess
-  card's answer — redraws the segments that show it instead of every segment of the film. `film.stringHashes`
-  (each string's own hash) carries it; `film.inputs.strings` (the table's hash, what an approval locks) is
-  unchanged. Measured on a 1:22 episode: before, changing one answer redrew 3 of 3 segments.
-- **The cast is in every segment's key** (a kit draws its people from `context.cast`): a changed look or name used
-  to leave every kept segment in place, so a re-render could reuse pictures of the old cast.
+### X: a release target
+- **`x`**: a square 1080×1080 video with the title band and burned-in captions, up to 140 s, a post of at most 280
+  characters as X counts them, the film's chapters in the post when there are at most 50 and the post has room (in a
+  post with one video, X makes a time a link to that moment — on iOS for now, X says), audience 13 and over. Facts
+  checked 2026-10-08 against X's help pages, its counting rules and its terms.
+- **`xLength` is twitter-text 3.1.0's count** (`parseTweet(text).weightedLength`, config v3), the library X publishes
+  for counting a post, ported into `src/targets/x-count/` (Apache-2.0, its licence beside it; the emoji list is
+  twemoji-parser 11.0.2's, MIT) and pinned to it: `test/fixtures/x-counts.json` holds over 300 texts with
+  twitter-text's count, and `xLength` must give every one. `scripts/x-counts.mjs` remakes the table from a scratch
+  install of twitter-text@3.1.0, never a dependency. Links as twitter-text finds them (a known top-level domain;
+  punctuation after a link is text; no link in an address, after `#`, `$` or `-`, or for localhost and IP
+  addresses), emoji as twemoji-parser finds them, code points weighed by X's ranges (1 up to U+10FF and in the
+  general punctuation's spaces, dashes, quotes and primes, else 2). An emoji newer than that library counts here as
+  its parts, never less than the 2 X counts.
+- **The package now includes Apache-2.0 code**: the X counter, ported from twitter-text, with its licence file
+  (`src/targets/x-count/LICENSE-twitter-text`). Its licence is `MIT AND Apache-2.0` in package.json and in a
+  release's CREDITS.txt; StoryReel's own code stays MIT.
+- An adapter may say how a text field is counted (`limits.text.<field>.count`); raising a limit keeps the count.
+  `post()` also gets the target's `limits` (overrides included), and X's post decides with that count.
+- **Limits overridden are checked** as an adapter's are, so a count that is not a function or a `max` that is not a
+  whole number is refused when the target loads, naming the field; a key given as `undefined` is not given (the
+  platform's value stays: `{count: undefined}` keeps how X counts).
+- **The largest frame**: an adapter may say the largest frames its platform takes (`limits.frame`, one per
+  orientation), and a render larger than that is refused before it starts, naming the scale that fits. X takes at
+  most 1920×1200 (1200×1900 tall), so `{target: 'x', scale: 2}` (2160×2160) is refused: release it at scale 1. The
+  other adapters declare none and are unchanged. `planProblems` takes the target's `scale`.
 
 ### The narration code moves into footprint-narration (breaking: imports move)
 StoryReel and StoryDeck each kept the same narration code — what a voice says for a number, the captions, YouTube's
@@ -37,6 +55,17 @@ every test here); a part's chapters change as named below.
 - Segment caches draw once more after this upgrade: footprint-narration is part of every segment's key
   (`versions.mjs · DRAWING`), since the burned-in captions' words come from it. Its version is named in the
   making-of record and the release's CREDITS.txt.
+
+## 0.10.0 — one word changed redraws only where it shows; one clock for the review and the render; emphasis on the thing
+
+### One word changed redraws only where it shows
+- **A segment's key holds only the strings its own entries name** (`{"$string": key}` in its recipe entries, the
+  guess cards over it and what its entrance also draws), not the whole string table: changing one word — a guess
+  card's answer — redraws the segments that show it instead of every segment of the film. `film.stringHashes`
+  (each string's own hash) carries it; `film.inputs.strings` (the table's hash, what an approval locks) is
+  unchanged. Measured on a 1:22 episode: before, changing one answer redrew 3 of 3 segments.
+- **The cast is in every segment's key** (a kit draws its people from `context.cast`): a changed look or name used
+  to leave every kept segment in place, so a re-render could reuse pictures of the old cast.
 
 ### One clock for the review and the render
 - **`paceTimings` keeps a voice's audio**: when a scene's timing names its audio (a voice's timings.json), the

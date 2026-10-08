@@ -7,6 +7,7 @@ import path from 'node:path';
 import {loadImage} from '@napi-rs/canvas';
 import {evenTimings} from '../src/index.mjs';
 import {makeRelease, loadTarget, checkAdapter, planProblems, readPost, TARGETS, TARGET_NAMES} from '../src/release.mjs';
+import {xLength} from '../src/targets/x.mjs';
 import {youtubeChapters as chaptersOf} from 'footprint-narration';
 
 /** YouTube's chapter lines for [[seconds, name]] (the adapter's input) over a video of `length` s. */
@@ -24,7 +25,7 @@ const kids = {title: 'Pebbles', description: 'How counting began.', audience: 'k
 const probe = (file, entries = 'width,height') => spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', `stream=${entries}`, '-of', 'csv=p=0', file], {encoding: 'utf8'}).stdout.trim();
 
 test('one interface, an adapter per platform, each loaded only when a release names it', async () => {
-  assert.deepEqual(TARGET_NAMES, ['youtube', 'youtube-shorts', 'linkedin', 'tiktok', 'instagram-reels']);
+  assert.deepEqual(TARGET_NAMES, ['youtube', 'youtube-shorts', 'linkedin', 'tiktok', 'instagram-reels', 'x']);
   assert.ok(Object.values(TARGETS).every(load => typeof load === 'function'), 'a loader, not a module: nothing is imported until asked');
   for (const name of TARGET_NAMES) { const {adapter} = await loadTarget(name); assert.equal(adapter.name, name); assert.ok(adapter.facts.checked && adapter.facts.sources.length, `${name} says when its facts were checked`); }
   await assert.rejects(loadTarget('myspace'), /no release target called "myspace" \(built in: youtube/);
@@ -49,6 +50,89 @@ test('limits: text and length checked against each platform, and a target may ov
   assert.match(planProblems(yt, readPost(kids), {seconds: -30})[0].problem, /shorter than YouTube takes/, 'a part that ends before it starts is the release\'s refusal, not the chapter rule\'s');
   const longer = (await loadTarget({target: 'tiktok', limits: {seconds: {max: 3600}}})).adapter;
   assert.equal(longer.limits.seconds.max, 3600); assert.equal(longer.limits.seconds.min, 1, 'the rest of the limit stays');
+});
+
+test('X: a post counted as twitter-text 3.1.0 counts it, the library X publishes — a link 23, an emoji 2, a code point 1 or 2, NFC first', () => {
+  assert.equal(xLength('hello'), 5);
+  assert.equal(xLength('see https://example.com/a/very/long/path?q=1'), 4 + 23);
+  assert.equal(xLength('see https://example.com.'), 4 + 23 + 1, 'the full stop after a link is text');
+  assert.equal(xLength('storyreel.dev and node.js'), 23 + 5 + 7, 'a name with a dot is a link only when it ends in a top-level domain X knows: js is none');
+  assert.equal(xLength('Node.js, footprint.mjs, index.html, package.json'), 48, 'file names are text, letter by letter');
+  assert.equal(xLength('README.md'), 23, '…unless one ends in a country\'s domain (md, Moldova): then it is a link to X too');
+  assert.equal(xLength('mail sanjay@example.com now'), 27, 'an address: the domain after @ is no link');
+  assert.equal(xLength('#node.js $x.com -x.com'), 8 + 1 + 6 + 1 + 6, 'nor after #, $ or -');
+  assert.equal(xLength('http://localhost:3000'), 21, 'a host without a top-level domain is no link');
+  assert.equal(xLength('👋🏽 🇱🇺 👨\u{200D}👩\u{200D}👧'), 2 + 1 + 2 + 1 + 2);
+  assert.equal(xLength('1\u{FE0F}\u{20E3} 🏴\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}'), 2 + 1 + 2, 'a keycap, the England flag: one emoji each');
+  assert.equal(xLength('© ©\u{FE0F}'), 1 + 1 + 2, '© is a sign of the light range until U+FE0F makes it an emoji');
+  assert.equal(xLength('日本 مرحبا'), 4 + 1 + 5, 'Chinese and Japanese 2 each; Arabic, like Latin, 1');
+  assert.equal(xLength('e\u{301}'), 1, 'composed first: é is one');
+  assert.equal(xLength('— “quoted” …'), 1 + 1 + 1 + 6 + 1 + 1 + 2, 'dashes and quotes count 1; the ellipsis (U+2026) is outside X\'s light ranges: 2');
+});
+
+test('X: xLength is twitter-text 3.1.0\'s count, row by row (test/fixtures/x-counts.json, made from it by scripts/x-counts.mjs)', () => {
+  const {versions, rows} = JSON.parse(readFileSync(new URL('./fixtures/x-counts.json', import.meta.url), 'utf8'));
+  assert.deepEqual(versions, {'twitter-text': '3.1.0', 'twemoji-parser': '11.0.2'});
+  assert.ok(rows.length >= 150, `${rows.length} rows`);
+  assert.deepEqual(rows.filter(r => xLength(r.text) !== r.weightedLength).map(r => ({...r, xLength: xLength(r.text)})), [], 'every row as twitter-text counts it');
+  const newer = rows.filter(r => r.group === 'newer emoji');
+  assert.ok(newer.length >= 10 && newer.every(r => r.weightedLength >= 2), 'an emoji newer than twemoji-parser 11.0.2 counts as its parts: never less than the 2 X counts');
+});
+
+test('X: a square post up to 140 s, at most 280 as X counts, the chapters when they fit, a teaser for parents', async () => {
+  const x = (await loadTarget('x')).adapter;
+  assert.deepEqual([x.video.format, x.limits.seconds.max, x.thumbnail], ['square', 140, null]);
+  assert.deepEqual(planProblems(x, readPost({...kids, audience: 'general'})), []);
+  assert.match(planProblems(x, readPost(kids))[0].problem, /X is for people aged 13 and over/);
+  assert.match(planProblems(x, readPost({...kids, audience: 'general'}), {seconds: 200})[0].fix, /release a part: \{target: 'x', from, to\} at most 140 s long/);
+  const long = readPost({...kids, audience: 'general', description: '日本 '.repeat(60)});
+  assert.match(planProblems(x, long)[0].problem, /X's text is 3\d\d characters, more than its 280/, 'counted as X counts: each of those characters is 2');
+  const p = readPost({...kids, audience: 'general'}), chapters = [[0, 'The start'], [20, 'The middle'], [40, 'The end']];
+  assert.equal(x.post(p, {chapters, seconds: 60, limits: x.limits}).text, 'Pebbles\n\nHow counting began.\n\n0:00 The start\n0:20 The middle\n0:40 The end\n\n#counting #kidsmaths');
+  const crowded = readPost({...kids, audience: 'general', description: 'x'.repeat(230)});
+  assert.doesNotMatch(x.post(crowded, {chapters, seconds: 60, limits: x.limits}).text, /0:00/, 'no room: the post goes without them');
+  const premium = (await loadTarget({target: 'x', limits: {seconds: {max: 3 * 3600}, text: {text: {max: 25000}}}})).adapter;
+  assert.equal(premium.limits.text.text.count, xLength, 'raising a limit keeps how X counts');
+  assert.match(premium.post(crowded, {chapters, seconds: 60, limits: premium.limits}).text, /0:00 The start/, 'a Premium post has room');
+  const many = Array.from({length: 51}, (_, i) => [i * 10, `Part ${i + 1}`]);
+  assert.match(premium.post(p, {chapters: many.slice(0, 50), seconds: 600, limits: premium.limits}).text, /8:10 Part 50/, 'fifty times go in');
+  assert.doesNotMatch(premium.post(p, {chapters: many, seconds: 600, limits: premium.limits}).text, /0:00/, 'X makes at most 50 times in a post into links: past that, the chapters stay out');
+  assert.throws(() => checkAdapter({...x, limits: {seconds: {max: 1}, text: {text: {max: 1, count: 'x'}}}}), /limits.text.text.count, when given, is how the platform counts a text/);
+});
+
+test('X: a count given to the target decides, in the post as in the check', async () => {
+  const x = (await loadTarget('x')).adapter, strict = s => xLength(s) + 50;
+  const counted = (await loadTarget({target: 'x', limits: {text: {text: {count: strict}}}})).adapter;
+  assert.equal(counted.limits.text.text.count, strict); assert.equal(counted.limits.text.text.max, 280, 'the rest of the limit stays');
+  const roomy = readPost({...kids, audience: 'general', description: 'd'.repeat(200)}), chapters = [[0, 'The start'], [20, 'The middle'], [40, 'The end']];
+  assert.match(x.post(roomy, {chapters, seconds: 60, limits: x.limits}).text, /0:00 The start/, 'as X counts, the chapters fit');
+  assert.doesNotMatch(counted.post(roomy, {chapters, seconds: 60, limits: counted.limits}).text, /0:00/, 'as the target counts, they do not: the post goes without them');
+  const full = readPost({...kids, audience: 'general', description: 'd'.repeat(240)});
+  assert.deepEqual(planProblems(x, full), []);
+  assert.match(planProblems(counted, full)[0].problem, /X's text is 321 characters, more than its 280/, 'and the check counts as the target does');
+});
+
+test('limits overridden are checked as an adapter\'s are; a key given as undefined is not given', async () => {
+  for (const [limits, refusal] of [[{text: {text: {count: 'x'}}}, /release target "x": limits\.text\.text\.count, when given, is how the platform counts a text/], [{text: {text: {max: '10'}}}, /limits\.text\.text\.max must be a whole number/],
+    [{seconds: {max: 0}}, /limits\.seconds \{min\?, max\} is the length the platform takes/], [{frame: [{width: 1920}]}, /limits\.frame, when given, lists the largest frames the platform takes/]])
+    await assert.rejects(loadTarget({target: 'x', limits}), refusal);
+  const x = (await loadTarget('x')).adapter;
+  const kept = (await loadTarget({target: 'x', limits: {seconds: {max: undefined}, text: {text: {max: 25000, count: undefined}}, frame: undefined}})).adapter;
+  assert.equal(kept.limits.text.text.count, xLength, 'count: undefined keeps how X counts');
+  assert.deepEqual([kept.limits.text.text.max, kept.limits.seconds.max, kept.limits.frame], [25000, 140, x.limits.frame], 'the rest as the platform has it');
+});
+
+test('X takes a video of at most 1920×1200 (1200×1900 tall): a larger render is refused before a frame is drawn, with the scale that fits', async () => {
+  const x = (await loadTarget('x')).adapter, p = {...kids, audience: 'general'};
+  assert.deepEqual(x.limits.frame, [{width: 1920, height: 1200}, {width: 1200, height: 1900}]);
+  assert.deepEqual([planProblems(x, readPost(p)), planProblems(x, readPost(p), {scale: 1.1})], [[], []], '1080×1080 and 1188×1188 fit');
+  assert.deepEqual(planProblems(x, readPost(p), {scale: 2}), [{problem: '2160×2160 is larger than X takes, at most 1920×1200 or 1200×1900', fix: "release it at scale 1: {target: 'x'} makes 1080×1080"}]);
+  const out = mkdtempSync(path.join(tmpdir(), 'release-'));
+  await assert.rejects(makeRelease({...film, out, targets: [{target: 'x', scale: 2}], post: p}), /release to X: 2160×2160 is larger than X takes, at most 1920×1200 or 1200×1900 \(release it at scale 1/);
+  assert.equal(existsSync(path.join(out, 'x')), false, 'nothing rendered');
+  for (const name of TARGET_NAMES.filter(n => n !== 'x')) assert.equal((await loadTarget(name)).adapter.limits.frame, undefined, `${name} declares no largest frame`);
+  assert.deepEqual(planProblems((await loadTarget('youtube')).adapter, readPost(kids), {scale: 2}), [], 'so YouTube takes 4K, as before');
+  assert.match(planProblems((await loadTarget({target: 'x', limits: {frame: [{width: 720, height: 720}]}})).adapter, readPost(p))[0].fix, /a scale of at most 0\.66/, 'a frame smaller than the format names the scale');
 });
 
 test('YouTube chapters: the first at 0:00, each at least 10 s (a shorter one joins the one before), at least three or none', () => {
@@ -90,7 +174,7 @@ test('a release: each target its own folder — the video in its shape, captions
   assert.deepEqual(readdirSync(yt.dir).sort(), ['CREDITS.txt', 'captions.srt', 'captions.vtt', 'post.json', 'post.txt', 'release-test.mp4', 'thumbnail.jpg'], 'the folder holds what is posted and nothing else');
   assert.deepEqual(readdirSync(short.dir).sort(), ['CREDITS.txt', 'post.json', 'post.txt', 'release-test.mp4']);
   const credits = readFileSync(yt.credits, 'utf8');
-  assert.match(credits, /^Credits — Pebbles\n\nMade with\n- footprint-storyreel [\d.]+ \(MIT\) — the film, drawn in code\n- footprintjs [\d.]+ \(MIT\)/);
+  assert.match(credits, /^Credits — Pebbles\n\nMade with\n- footprint-storyreel [\d.]+ \(MIT AND Apache-2\.0\) — the film, drawn in code\n- footprintjs [\d.]+ \(MIT\)/, 'StoryReel\'s licence as package.json gives it: its own code MIT, the X counter Apache-2.0');
   assert.match(credits, /From the maker\n- Sheep drawn by hand\n\nThe narration is a synthetic voice\.\n$/);
   assert.ok(existsSync(yt.makingOf) && yt.makingOf.startsWith(path.join(out, 'work', 'youtube')), 'the record and the working files are kept apart, in work/<target>/');
   await assert.rejects(makeRelease({...film, out, targets: [{target: 'youtube', name: 'work'}], post: kids}), /a target cannot be called "work"/);

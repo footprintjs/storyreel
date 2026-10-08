@@ -226,6 +226,10 @@ const mine: ReleaseAdapter = {name: 'mine', label: 'Mine', video: {format: 'squa
 export const targets: ReleaseTarget[] = ['youtube', {target: 'youtube-shorts', from: 0, to: 60}, mine];
 export const teaser: ReleasePost = {title: 'Pebbles', audience: 'general'};
 export const big: ReleaseTarget = {target: 'youtube', scale: 2};
+export const framed: ReleaseAdapter = {...mine, limits: {seconds: {max: 60}, frame: [{width: 1920, height: 1200}, {width: 1200, height: 1900}]}};
+export const counted: ReleaseTarget = {target: 'x', limits: {text: {text: {count: (s: string) => [...s].length}}}};
+// @ts-expect-error a frame is {width, height}
+export const halfFramed: ReleaseTarget = {target: 'x', limits: {frame: [{width: 1920}]}};
 export const voiced: ReleasePost = {title: 'Pebbles', audience: 'general', thumbnail: 'poster', synthetic: ['voice']};
 // @ts-expect-error synthetic is a list of words
 export const voicedWrong: ReleasePost = {title: 'Pebbles', audience: 'general', synthetic: 'voice'};
