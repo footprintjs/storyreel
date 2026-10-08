@@ -705,10 +705,10 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   read when "the network does the waiting" lands instead of rendering stills to guess.
 - **Review a part by reading it.** `reviewPart(film, {part, layout})` (`footprint-storyreel/review`) reads the
   picture as text — every line a frame draws, where it lands and how faint — and names what is wrong, with times:
-  words under the captions while a caption shows, words over other words, words cut off at the edge, nothing
-  changing for 5 s, nothing new for 5 s (no scene, no beat and no new words: `newEvery`), and — with `loop: true`, for
-  a part made to loop — an end that is not its start. Read the findings and the timeline first; look at a frame only
-  to confirm:
+  words under the captions while a caption shows, words over other words, words cut off at the edge, the picture
+  frozen for 5 s (`still`), nothing new for 5 s while it moves (`stale`: no scene, no beat and no new words —
+  `newEvery`), and — with `loop: true`, for a part made to loop — an end that does not come round to its start (the
+  part's own scenes, not its handles). Read the findings and the timeline first; look at a frame only to confirm:
 
   ```js
   import {reviewPart} from 'footprint-storyreel/review';
@@ -718,7 +718,8 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   ```
   The review is a footprintjs flowchart: a selector picks each check by what the part has (no caption band, no
   caption check), each check runs as its own subflow, and `r.record` says what ran and why. A check of your own
-  is `{label, why, when(scope), find(review)}` in `checks`.
+  is `{label, why, when(scope), find(review)}` in `checks`. A check that throws fails the review with one error
+  naming every check that failed, so a review that returns has run every check it picked.
 - **The same, from the command line — and as a skill for agents.** `npx storyreel timeline | review | part | still |
   strip --scene <id>` (`strip --at <scene>+<seconds>`: a fast move frame by frame — 12 consecutive frames around
   the moment, side by side — to catch a pop, a jump or two things crossing) (the film named in the project's `storyreel.config.mjs`: `export default {film: flags =>

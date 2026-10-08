@@ -274,7 +274,8 @@ export function partWindow(film, part) {
   const handles = part.handles ?? 1.5;
   if (!(typeof handles === 'number' && handles >= 0 && handles <= 10)) throw new Error('part.handles is the seconds shown before and after the part, 0–10 (1.5 by default)');
   const from = Math.min(...scenes.map(id => film.clock.start(id))), to = Math.max(...scenes.map(id => film.clock.end(id)));
-  return {from: +Math.max(0, from - handles).toFixed(3), to: +Math.min(film.total, to + handles).toFixed(3)};
+  // Rounded to the millisecond, then held to the film: rounding after would carry an end of 21.2999…97 to 21.3, past it.
+  return {from: Math.max(0, +(from - handles).toFixed(3)), to: Math.min(film.total, +(to + handles).toFixed(3))};
 }
 const withPart = options => {
   if (options.part === undefined || options.part === null) return options;

@@ -16,9 +16,10 @@ root, narrationDir?, pacing?, layout?, out?})}`); every flag also reaches `film(
 1. **When does it happen?** `npx storyreel timeline --scene <id>` — every scene start and every beat with its
    time, the phrase it waits for and the recipe entry it moves. Never guess a time: read it here.
 2. **What is wrong?** `npx storyreel review --scene <id>` (or the whole film without `--scene`, about 2 s) —
-   words under the captions while a caption shows, words over other words, words cut off at the edge, nothing
-   changing for 5 s or more, nothing new for 5 s or more (no scene, no beat, no new words); each with its times on
-   the film clock and its scene. `--loop true` for a part made to loop: its end must be its start.
+   words under the captions while a caption shows, words over other words, words cut off at the edge, the picture
+   frozen for 5 s or more ("nothing changes"), nothing new for 5 s or more while it moves (no scene, no beat, no new
+   words); each with its times on the film clock and its scene. `--loop true` for a part made to loop: the end of its
+   own scenes (the handles are not the part) must come round to their start.
 3. **Fix** the one problem that matters most, in the code or data the finding points to (the recipe entry in the
    timeline names it). One fix per round, so the next review shows what that fix did.
 4. **Look again, quickly:** `npx storyreel part --scene <id>` — the scenes with 1.5 s of the film either side (so
@@ -33,7 +34,9 @@ root, narrationDir?, pacing?, layout?, out?})}`); every flag also reaches `film(
 
 - A time comes from the timeline, never from a guess; a still is taken at a moment the timeline named.
 - The review's findings are facts about the drawing (where each word landed, when); fix them before polishing.
-- "Nothing changes" and "nothing new" are advice, not errors: a held title, or one picture the voice explains, can be
-  right — say why if you keep it.
+- "Nothing changes" (the picture is frozen) and "nothing new" (it moves, but nothing new comes) are advice, not
+  errors: a held title, or one picture the voice explains, can be right — say why if you keep it.
+- A review that stops with an error has not checked the part: its message names the check that failed. Fix it or
+  report it; it is never "nothing found".
 - Text drawn into a fading scratch picture, and drawings that are not text, are not read: those need the still.
 - Render the whole film only when the parts are clean; it reuses every segment nothing changed.

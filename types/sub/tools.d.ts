@@ -8,7 +8,7 @@ export const CONFIG: 'storyreel.config.mjs';
 export function loadProject(options?: {config?: string; cwd?: string; [flag: string]: unknown}): Promise<Project>;
 export interface PartArgs {scene?: string | string[]; scenes?: string | string[]; handles?: number | string}
 export function timeline(project: Project, args?: PartArgs): Promise<string>;
-/** loop: 'true' (or true) when the part is made to loop — its end must be its start. */
+/** loop: 'true' (or true) when the part is made to loop — the end of its own scenes (not the handles) must come round to their start. */
 export function review(project: Project, args?: PartArgs & {loop?: boolean | string}): Promise<string>;
 export function part(project: Project, args: PartArgs): Promise<string>;
 export function still(project: Project, args: {at: string | string[]; width?: number | string}): Promise<{text: string; file: string}>;
