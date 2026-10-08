@@ -25,7 +25,8 @@
  * (film.theme) unless the layout names a background or ink; a band's box may be moved (`box`) when an
  * app's controls change.
  */
-import {captionChunks, captionAt, drawCaption} from './captions.mjs';
+import {captionChunks, captionAt} from 'footprint-narration';
+import {spokenTracks, drawCaption} from './captions.mjs';
 import {inOut} from './ease.mjs';
 
 const FORMATS = Object.freeze({
@@ -63,7 +64,7 @@ export function compileLayout(film, spec) {
   if (spec.crop !== undefined && !f.crop) throw new Error(`layout.crop: the ${spec.format} format shows the whole frame; a crop applies to portrait and vertical`);
   for (const key of ['background', 'ink']) if (spec[key] !== undefined && !(typeof spec[key] === 'string' && spec[key].trim())) throw new Error(`layout.${key} must be a colour (e.g. "#f3eee3")`);
   const crop = f.crop ? cropKeys(film, spec.crop ?? [], f.crop) : null;
-  const chunks = captions ? captionChunks(film, {maxWords: captions.maxWords}) : null;
+  const chunks = captions ? captionChunks(spokenTracks(film), {maxWords: captions.maxWords}) : null;
   const palette = film.theme?.palette ?? {}, sans = film.theme?.type?.sans ?? SANS;
   const bg = spec.background ?? palette.bg ?? '#f3eee3', ink = spec.ink ?? palette.ink ?? '#23211c';
   const sized = b => b.map(v => v * k);   // the boxes in output pixels; the bands themselves are drawn in the format's

@@ -2,8 +2,12 @@
 // is spoken; a beat may name a phrase as shown or as spoken; numbers left as digits are listed.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {checkScene, spokenText, shownWords, unsaidNumbers, makeClock, evenTimings, sceneText} from '../src/clock.mjs';
-import {compileFilm, captionChunks, captionFile} from '../src/index.mjs';
+import {captionChunks, captionFile} from 'footprint-narration';
+import {checkScene, spokenText, unsaidNumbers, makeClock, evenTimings, sceneText} from '../src/clock.mjs';
+import {compileFilm, spokenTracks} from '../src/index.mjs';
+
+/** The words a caption shows for one scene, through the clock (footprint-narration's shownWords over the scene's slots). */
+const shownWords = (scene, words) => makeClock({scenes: [scene]}, {scenes: [{...evenTimings({scenes: [scene]}).scenes[0], words}]}).shownWords(0);
 
 const scene = {id: 'frame', narration: 'One frame takes 16.67 ms, at 60 Hz.', say: [['16.67 ms', 'sixteen point six seven milliseconds'], ['60 Hz', 'sixty hertz']]};
 
@@ -41,10 +45,10 @@ test('numbers left as digits are listed for the voice tool to refuse', () => {
 test('a film\'s captions and caption file show the digits the voice said in words', async () => {
   const storyboard = {scenes: [scene, {id: 'next', narration: 'That is one frame.'}]};
   const film = await compileFilm({storyboard, timings: evenTimings(storyboard), recipe: {story: {kit: 'whiteboard', items: [{at: ['frame', 'takes 16.67 ms'], dur: .8, write: '16.67 ms', x: 800, y: 400, size: 60, align: 'center'}]}}});
-  const words = captionChunks(film).flatMap(c => c.words.map(w => w.text));
+  const words = captionChunks(spokenTracks(film)).flatMap(c => c.words.map(w => w.text));
   assert.ok(words.includes('16.67 ms,') && words.includes('60 Hz.'), words.join(' '));
   assert.ok(!words.includes('sixteen'), 'the spoken run is not captioned word by word');
-  assert.match(captionFile(captionChunks(film, {maxWords: 12, breaks: 'sentence'}), 'srt'), /16\.67 ms, at 60 Hz\./);
+  assert.match(captionFile(captionChunks(spokenTracks(film), {maxWords: 12, breaks: 'sentence'}), 'srt'), /16\.67 ms, at 60 Hz\./);
 });
 
 test('makeFilm reads the voice folder\'s word check: words not heard are listed, or refused', async () => {
@@ -112,4 +116,19 @@ test('a slot stands whole: "2" is not found inside 12, B2 or 2012', () => {
 test('two slots in one spoken word both show, and the slots after them still collapse', () => {
   assert.equal(capt({id: 'a', narration: 'A 3-4 split.', say: [['3', 'three'], ['4', 'four']]}), 'A 3-4 split.');
   assert.equal(capt({id: 'a', narration: 'Score 3-4 then 5 more.', say: [['3', 'three'], ['4', 'four'], ['5', 'five']]}), 'Score 3-4 then 5 more.');
+});
+
+// Review 2026-10-08 (footprint-narration): a scene's own slots, named as the storyboard names them.
+test('two scenes with one id each show their own digits', () => {
+  const board = {scenes: [{id: 'x', narration: 'At 60 Hz.', say: [['60 Hz', 'sixty hertz']]}, {id: 'x', narration: 'Wait 2 s.', say: [['2 s', 'two seconds']]}]};
+  const clock = makeClock(board, evenTimings(board));
+  assert.deepEqual(clock.shownWords(0).map(w => w.text), ['At', '60 Hz.']);
+  assert.deepEqual(clock.shownWords(1).map(w => w.text), ['Wait', '2 s.']);
+});
+
+test('spokenText and unsaidNumbers refuse a say list as checkScene does, naming the scene', () => {
+  const wrong = {id: 'a', narration: 'One 16 ms.', say: [['17 ms', 'seventeen milliseconds']]};
+  assert.throws(() => spokenText(wrong), /^Error: storyboard scene a: say\[0\] shows "17 ms", which the narration does not have/);
+  assert.throws(() => unsaidNumbers({scenes: [wrong]}), /storyboard scene a: say\[0\]/);
+  assert.throws(() => spokenText({id: 'b', narration: 'x', say: []}), /storyboard scene b: say must list pairs/);
 });

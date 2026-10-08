@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {makeClock, evenTimings} from '../src/index.mjs';
-import {normSpeech} from '../src/clock.mjs';
+import {normSpeech} from 'footprint-narration';
 
 test('a vowel sign is part of the word: the phrase is found where it is said, not where its bare letters first appear', () => {
   assert.equal(normSpeech('கடை!'), 'கடை'); assert.notEqual(normSpeech('கடை'), normSpeech('கட'));

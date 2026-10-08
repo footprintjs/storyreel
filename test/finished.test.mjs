@@ -9,8 +9,11 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {createCanvas} from '@napi-rs/canvas';
-import {compileFilm, evenTimings, paceTimings, renderFilm, makeFilm, cartoonKit, captionChunks, captionFile} from '../src/index.mjs';
-import {checkVideo, readCaptions, FINISHED_CHECK_NAMES, FINISHED} from '../src/finished.mjs';
+import {captionChunks as chunksOf, captionFile, readCaptions} from 'footprint-narration';
+import {compileFilm, evenTimings, paceTimings, renderFilm, makeFilm, cartoonKit, spokenTracks} from '../src/index.mjs';
+import {checkVideo, FINISHED_CHECK_NAMES, FINISHED} from '../src/finished.mjs';
+
+const captionChunks = (film, options) => chunksOf(spokenTracks(film), options);
 
 const W = 160, H = 90, fps = 10;
 /** A probe that reads frames and sound made to order (grey levels, W×H) instead of a file. */

@@ -1,4 +1,4 @@
-export {checkVideo, readCaptions, FINISHED_CHECK_NAMES} from '../index.js';
+export {checkVideo, FINISHED_CHECK_NAMES} from '../index.js';
 export type {FinishedFinding, FinishedReport, FinishedCheckName, VideoProbe} from '../index.js';
 import type {VideoProbe, FinishedFinding} from '../index.js';
 /** The thresholds the checks use: frame width read, blank spread, blank run length, a visible change, a quiet word (dBFS), caption drift (s), how far sound may lead or trail a mouth (s), a moving mouth, how long a mouth may move in silence before it is a problem (s). */

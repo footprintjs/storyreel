@@ -26,6 +26,7 @@
  * in the film is realistic and made with AI is declared (`post.synthetic: ['voice']` for a synthetic voice
  * narrating), and an adapter whose platform asks for it says so in the post (YouTube: altered or synthetic content).
  */
+import {readChapters} from 'footprint-narration';
 import {mkdirSync, writeFileSync, copyFileSync, readFileSync, statSync, linkSync, rmSync} from 'node:fs';
 import path from 'node:path';
 import {makeFilm} from './pipeline.mjs';
@@ -172,8 +173,8 @@ async function placeThumbnail(adapter, given, poster, dir) {
   refuse(adapter, [{problem: `the poster is over ${(maxBytes / 1e6).toFixed(1)} MB even as a plainer JPEG`, fix: 'give post.thumbnail an image file'}]);
 }
 
-/** A render's chapter line ("1:05 The middle") → [seconds, name], as adapters take it. */
-const chapterOf = line => { const [, stamp, name] = /^(\S+)\s+(.*)$/.exec(line); return [stamp.split(':').reduce((s, part) => s * 60 + +part, 0), name]; };
+/** A render's chapter lines ("1:05 The middle") → [[seconds, name]], as adapters take them (footprint-narration · readChapters). */
+const chaptersOf = lines => readChapters(lines.join('\n')).map(({at, title}) => [at, title]);
 
 /** The text ready to paste, one field after another. */
 const postText = (adapter, fields) => `${adapter.label}\n\n${Object.entries(fields).map(([k, v]) => `## ${k}\n${Array.isArray(v) ? v.join(', ') : typeof v === 'boolean' ? (v ? 'yes' : 'no') : v}`).join('\n\n')}\n`;
@@ -209,7 +210,7 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
       ...(options.from !== undefined ? {from: options.from} : {}), ...(options.to !== undefined ? {to: options.to} : {})};
     const result = await makeFilm({...film, out: path.join(work, `${stem}.mp4`), render});
     refuse(adapter, lengthProblems(adapter, result.seconds));
-    const fields = adapter.post(p, {chapters: (result.chapters ?? []).map(chapterOf), seconds: result.seconds});
+    const fields = adapter.post(p, {chapters: chaptersOf(result.chapters ?? []), seconds: result.seconds});
     refuse(adapter, textProblems(adapter, fields));
     const video = deliver(result.out, dir), captions = result.captions ? Object.fromEntries(Object.entries(result.captions).map(([kind, file]) => [kind, deliver(file, dir)])) : null;
     const thumbnail = await placeThumbnail(adapter, p.thumbnail, result.poster, dir);

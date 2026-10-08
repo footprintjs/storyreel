@@ -18,7 +18,8 @@ import {spawn, spawnSync} from 'node:child_process';
 import {readFileSync, existsSync} from 'node:fs';
 import path from 'node:path';
 import {createCanvas} from '@napi-rs/canvas';
-import {normSpeech} from './clock.mjs';
+import {normSpeech, readCaptions} from 'footprint-narration';
+import {spokenTracks} from './captions.mjs';
 
 /** The thresholds the checks use, on the mean grey level difference between frames (0–255) and on loudness. */
 export const FINISHED = Object.freeze({
@@ -265,17 +266,6 @@ export const FINISHED_CHECKS = Object.freeze({
 });
 export const FINISHED_CHECK_NAMES = Object.freeze(Object.keys(FINISHED_CHECKS));
 
-/** A caption file's cues: [{start, end, text}] (WebVTT or SRT). */
-export function readCaptions(text) {
-  const time = s => { const p = s.trim().replace(',', '.').split(':').map(Number); return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1]; };
-  return String(text).replace(/\r/g, '').split(/\n{2,}/).map(block => {
-    const lines = block.split('\n'), at = lines.findIndex(l => l.includes('-->'));
-    if (at < 0) return null;
-    const [a, b] = lines[at].split('-->');
-    return {start: time(a), end: time(b.trim().split(/\s+/)[0]), text: lines.slice(at + 1).join(' ').trim()};
-  }).filter(Boolean);
-}
-
 /**
  * Check a finished video. Returns {file, seconds, fps, frames, checked: [names], skipped: [{check, why}],
  * findings: [{check, at, severity, text}], ok}.
@@ -316,7 +306,7 @@ export async function checkVideo({file, film = null, intro = 0, from = 0, to = n
   const firstFrameAt = s => { let f = Math.max(0, Math.ceil((s - from) * fps) - 1); while (from + f / fps < s) f++; while (f > 0 && from + (f - 1) / fps >= s) f--; return f; };
   if (film?.rows) c.cuts = film.rows.filter(r => r.enter?.type === 'cut' && r.start > from && r.start < part.to).map(r => ({frame: introFrames + firstFrameAt(r.start), what: r.stage ?? r.paths[0]}));
   // What is said, as the captions show it: spoken scenes only (a silent scene's directions are never captioned).
-  if (film) c.words = film.timings.scenes.flatMap((s, i) => s.alignment?.method === 'directions' ? [] : (film.clock.shownWords?.(i) ?? []).filter(w => normSpeech(w.text)).map(w => ({text: w.text, start: film.clock.offsets[i] + w.start}))).filter(c.inPart);
+  if (film) c.words = spokenTracks(film).flatMap(t => t.words.filter(w => normSpeech(w.text)).map(w => ({text: w.text, start: t.offset + w.start}))).filter(c.inPart);
   if (run.some(n => FINISHED_CHECKS[n].needs.includes('frames'))) {
     const width = FINISHED.width, height = Math.max(2, 2 * Math.round(width * meta.video.height / meta.video.width / 2));
     const d = [0], skip = [0, 0], spreads = []; let prev = null, prev2 = null;

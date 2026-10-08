@@ -10,7 +10,7 @@
 import {readFileSync, writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {speechIndex, phraseMatches} from '../src/index.mjs';
-import {normSpeech} from '../src/clock.mjs';
+import {normSpeech} from 'footprint-narration';
 import {FILMS, compileExample} from './golden.mjs';
 
 const here = fileURLToPath(new URL('.', import.meta.url));

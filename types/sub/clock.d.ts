@@ -4,7 +4,3 @@ import type {StoryboardScene} from '../index.js';
 export const DIRECTION_SECONDS: readonly [number, number];
 /** Refuses a scene that is not exactly one of spoken (narration) or silent (directions); says which it is. */
 export function checkScene(scene: StoryboardScene, index?: number): 'spoken' | 'silent';
-/** Letters and digits only, lower case: how narration text and spoken words are compared. */
-export function normSpeech(text: string): string;
-/** The words to show for a scene (captions): each number slot's spoken run collapsed back into what is shown, where the slot is; punctuation around it kept. */
-export function shownWords<W extends {text: string; start: number; end: number}>(scene: StoryboardScene, words: W[]): {text: string; start: number; end: number}[];

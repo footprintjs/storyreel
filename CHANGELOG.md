@@ -11,6 +11,33 @@
 - **The cast is in every segment's key** (a kit draws its people from `context.cast`): a changed look or name used
   to leave every kept segment in place, so a re-render could reuse pictures of the old cast.
 
+### The narration code moves into footprint-narration (breaking: imports move)
+StoryReel and StoryDeck each kept the same narration code — what a voice says for a number, the captions, YouTube's
+chapter rule — and the copies had started to disagree. It now lives in one package both use,
+[footprint-narration](https://github.com/footprintjs/footprint-narration). **What a film says, its captions and its
+chapters are unchanged** for a whole film (moved code, pinned there by differential tests against 0.9.0's, and by
+every test here); a part's chapters change as named below.
+- **Moved out, imported from `footprint-narration` now**: `normSpeech`, `shownWords` (it takes a spoken map:
+  `film.clock.shownWords(i)` is unchanged), `captionChunks` (it takes tracks — `captionChunks(spokenTracks(film))`),
+  `captionAt`, `captionFile`, `FILE_CHUNKS`, `readCaptions`, and `youtubeChapters` (`youtubeChapters(marks,
+  { length }).lines`, marks as `{ at, title }`; `chapterLine` → `clockText`). No forwarders are left behind.
+- **New: `spokenTracks(film)`** — the film's speech as tracks (each spoken scene at its offset, its words as shown).
+- `checkScene` refuses a scene's `say` with the same messages, through footprint-narration's `checkSlots`;
+  `spokenText` and `unsaidNumbers` now refuse a `say` list `checkScene` would refuse, with its messages
+  (`storyboard scene <id>: say[k] …`; an empty list too) — 0.9.0 used the slots up to the first one it could not find.
+- `speechIndex(scene, timing).slots` is footprint-narration's spoken map (`phraseMatches` reads `slots.norm`); the
+  `CaptionChunk` type is gone (footprint-narration's `WordCue`).
+- **A part's chapters are the ones it shows.** A render of a part (`from`, `to`) lists in `chapters.txt` and in
+  its result only the chapters that start inside it (0.9.0 listed every scene after its end too, and YouTube's
+  rule then dropped one of them), so a release of a part posts only those. A blank intro title names its chapter
+  `Title` (0.9.0 wrote a chapter with no name); a chapter title is one line (white space tidied).
+- A chapter line of a film an hour long or more reads `1:02:05` (it read `62:05`); `chapters.txt` and the release
+  read both.
+- WebVTT caption files escape `& < >` in a word (they were written raw), and `readCaptions` reads them back.
+- Segment caches draw once more after this upgrade: footprint-narration is part of every segment's key
+  (`versions.mjs · DRAWING`), since the burned-in captions' words come from it. Its version is named in the
+  making-of record and the release's CREDITS.txt.
+
 ### One clock for the review and the render
 - **`paceTimings` keeps a voice's audio**: when a scene's timing names its audio (a voice's timings.json), the
   scene ends where the voiced cut ends it — the later of the audio's end and the last word plus the tail — not at

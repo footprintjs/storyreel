@@ -3,7 +3,8 @@
 // word speakers, nothing changes. And captions end a sentence that ends inside a quote.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {makeClock, evenTimings, compileFilm, captionChunks} from '../src/index.mjs';
+import {captionChunks} from 'footprint-narration';
+import {makeClock, evenTimings, compileFilm, spokenTracks} from '../src/index.mjs';
 import {mouthAt} from '../src/acting.mjs';
 
 const board = {scenes: [{id: 'shop', narration: 'Amaira is helping today. Amaira, can you count the cups? Yes! One, two, three. Good. Then Mom goes on.'}]};
@@ -41,6 +42,6 @@ test('without word speakers nothing changes: a scene\'s speaker is one turn, as 
 test('captions end a sentence that ends inside a quote', async () => {
   const quoted = {scenes: [{id: 'q', narration: 'She said, "We open tomorrow!" Then she smiled. "Can you help me?" he asked.'}]};
   const film = await compileFilm({storyboard: quoted, timings: evenTimings(quoted), recipe: {story: {kit: 'whiteboard', items: []}}});
-  const lines = captionChunks(film, {maxWords: 20, breaks: 'sentence'}).map(c => c.words.map(w => w.text).join(' '));
+  const lines = captionChunks(spokenTracks(film), {maxWords: 20, breaks: 'sentence'}).map(c => c.words.map(w => w.text).join(' '));
   assert.deepEqual(lines, ['She said, "We open tomorrow!"', 'Then she smiled.', '"Can you help me?"', 'he asked.']);
 });
