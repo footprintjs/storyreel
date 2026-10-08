@@ -240,6 +240,15 @@ test('a voice paced in place before (an .unpaced.wav beside each audio file) is 
   await assert.rejects(makeFilm({storyboard, recipe, root: hello, narrationDir: voice, pacing, out: path.join(tmp(), 'film.mp4'), render: small}), /Pacing already applied to open/);
 });
 
+test('a quote in a path is fine: audio named "it\'s.wav" renders into a folder called "Sanjay\'s films"', {skip: ffmpeg ? false : 'ffmpeg not on PATH'}, async () => {
+  const voice = voiceFolder(), timings = JSON.parse(readFileSync(path.join(voice, 'timings.json'), 'utf8'));
+  copyFileSync(path.join(voice, timings.scenes[0].audio), path.join(voice, "it's.wav")); timings.scenes[0].audio = "it's.wav";
+  writeFileSync(path.join(voice, 'timings.json'), JSON.stringify(timings));
+  const out = path.join(tmp(), "Sanjay's films", 'quoted.mp4');
+  const result = await makeFilm({storyboard, recipe, root: hello, narrationDir: voice, pacing, out, render: small});
+  assert.ok(existsSync(result.out) && result.seconds > 0);
+});
+
 test('who is speaking: the clock knows each scene\'s said words and its speaker, so a kit can move the right mouth', async () => {
   const {makeClock, evenTimings} = await import('../src/clock.mjs');
   const board = {scenes: [

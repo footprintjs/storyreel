@@ -105,6 +105,7 @@ test('copyVoice: a scene\'s audio named outside the voice folder is refused befo
   refuses(path.join(voice, 'a.wav'), /names its audio ".*voice\/a\.wav", outside the voice folder/);
   refuses('/..'.repeat(40) + path.join(voice, 'a.wav'), /names its audio "(\/\.\.)+.*voice\/a\.wav", outside the voice folder/);
   refuses(42, /names its audio 42, outside the voice folder/);
+  refuses('audio/a.wav\nfile \'/etc/hosts', /names its audio "audio\/a\.wav\\nfile '\/etc\/hosts", outside the voice folder/);   // a line break would splice another file into ffmpeg's list
   assert.equal(readFileSync(path.join(voice, 'a.wav'), 'utf8'), 'V');
   assert.equal(readFileSync(path.join(takes, 'a.wav'), 'utf8'), 'A');
   assert.throws(() => copyVoice(takes, path.join(made('to'), 'copy')), new RegExp(`voice: ${esc(takes)} has no timings.json: give narrationDir the voice folder`));

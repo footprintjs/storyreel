@@ -136,6 +136,19 @@ export function checkLoudnessTarget(loudness) {
 }
 
 /**
+ * An ffmpeg concat list of files: each path absolute and quoted, a quote in it written '\'' (a folder called
+ * "Sanjay's films" is fine). A line break cannot be written in such a list (it would end the entry and start another,
+ * naming any file), so a path with one is refused.
+ */
+function concatList(files) {
+  return files.map(f => {
+    const p = path.resolve(f);
+    if (/[\r\n]/.test(p)) throw new Error(`render: ${JSON.stringify(p)} has a line break, which ffmpeg's concat list cannot hold: rename it`);
+    return `file '${p.replace(/'/g, "'\\''")}'`;
+  }).join('\n') + '\n';
+}
+
+/**
  * The voice, scene by scene, into `voice`: each scene's audio from narrationDir, and generated silence
  * of its duration for a silent scene whose timing names no audio (clock.mjs · directionTimings). FFmpeg's
  * concat joins only files of one format, so when any silence is generated every part is first made
@@ -152,7 +165,7 @@ function joinVoice(run, {dir, storyboard, timings, narrationDir, voice}) {
     run(file ? ['-i', file, '-ar', '48000', '-ac', '1', part] : ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', String(timings.scenes[i].duration), part]);
     return part;
   });
-  writeFileSync(path.join(dir, 'film-narration.txt'), parts.map(f => `file '${f}'`).join('\n') + '\n');
+  writeFileSync(path.join(dir, 'film-narration.txt'), concatList(parts));
   run(['-f', 'concat', '-safe', '0', '-i', path.join(dir, 'film-narration.txt'), '-ar', '48000', '-ac', '1', voice]);
 }
 
@@ -426,7 +439,7 @@ export async function finishRender(job, video) {
     writeFileSync(file, createMotionSound({duration: s.duration, events: byScene[i], peakCeilingDBFS}).wav);
     return file;
   });
-  writeFileSync(path.join(dir, 'film-sfx.txt'), sfxParts.map(f => `file '${f}'`).join('\n') + '\n');
+  writeFileSync(path.join(dir, 'film-sfx.txt'), concatList(sfxParts));
   run(['-f', 'concat', '-safe', '0', '-i', path.join(dir, 'film-sfx.txt'), '-ar', '48000', '-ac', '1', path.join(dir, 'film-sfx.wav')]);
   // Each role measured apart (listening.mjs): the effects stay well under the voice, so the words stay clear.
   const integrated = wav => integratedLoudness(ffmpeg, wav);
@@ -440,7 +453,7 @@ export async function finishRender(job, video) {
     run(['-i', introWav, '-ar', '48000', '-ac', '1', path.join(dir, 'film-intro48.wav')]); parts.push(path.join(dir, 'film-intro48.wav'));
   }
   run(['-ss', String(start), '-t', String(to - start), '-i', path.join(dir, 'film-lesson.wav'), path.join(dir, 'film-part.wav')]); parts.push(path.join(dir, 'film-part.wav'));
-  writeFileSync(path.join(dir, 'film-audio.txt'), parts.map(p => `file '${p}'`).join('\n') + '\n');
+  writeFileSync(path.join(dir, 'film-audio.txt'), concatList(parts));
   run(['-f', 'concat', '-safe', '0', '-i', path.join(dir, 'film-audio.txt'), '-ar', '48000', '-ac', '1', path.join(dir, 'film-audio.wav')]);
   const pictureSeconds = (job.frames + (withIntro ? Math.round(intro.seconds * job.fps) : 0)) / job.fps;
   const loudnessSet = muxWithLoudness({ffmpeg, video: video.file, wav: path.join(dir, 'film-audio.wav'), out: path.resolve(job.out), target: loudness, seconds: pictureSeconds});

@@ -68,7 +68,8 @@ export function copyVoice(voice, to) {
     // as resolved: a relative path that stays inside. An absolute one resolves from the disk's root but joins below
     // the copy, and its "/../.." can join back up to the voice itself, so it is refused even when it names a file inside.
     const rel = typeof scene.audio === 'string' ? path.normalize(scene.audio) : '';
-    if (!rel || path.isAbsolute(scene.audio) || rel === '..' || rel.startsWith(`..${path.sep}`)) throw new Error(`voice: scene "${scene.id}" names its audio ${JSON.stringify(scene.audio)}, outside the voice folder ${voice}: name each scene's audio by a path inside the voice folder, relative to it (audio/${scene.id}.wav)`);
+    // (A control character — a line break — has no place in a file's name: it would break the lists ffmpeg is given.)
+    if (!rel || path.isAbsolute(scene.audio) || /[\u0000-\u001f\u007f]/.test(scene.audio) || rel === '..' || rel.startsWith(`..${path.sep}`)) throw new Error(`voice: scene "${scene.id}" names its audio ${JSON.stringify(scene.audio)}, outside the voice folder ${voice}: name each scene's audio by a path inside the voice folder, relative to it (audio/${scene.id}.wav)`);
     const file = path.join(base, rel);
     for (const f of [file, file.replace(/\.wav$/, '.unpaced.wav')]) if (existsSync(f)) files.add(path.relative(base, f));
   }
