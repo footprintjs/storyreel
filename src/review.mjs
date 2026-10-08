@@ -26,7 +26,8 @@ import {createCanvas} from '@napi-rs/canvas';
 import {flowChart, narrative, select} from 'footprintjs';
 import {compileLayout} from './layout.mjs';
 import {frameHashes} from './pins.mjs';
-import {partWindow, partTimeline, timelineText} from './render.mjs';
+import {partScenes, partWindow, partTimeline, timelineText} from './render.mjs';
+import {clockText} from './clock.mjs';
 
 /**
  * The words a frame draws at t: [{text, box: [x0, y0, x1, y1], alpha}], in the layout's output pixels (or on the
@@ -103,8 +104,6 @@ function meet(subject, clipper) {
 const band = ([x, y, w, h]) => corners([x, y, x + w, y + h]);
 const same = (a, b) => a.text === b.text && a.box.every((v, i) => Math.abs(v - b.box[i]) <= 4);   // drawn twice: an outline, a shadow
 
-/** A time as the findings say it: m:ss.s on the film clock, rounded to the tenth first (59.96 s is 1:00.0, never 0:60.0). */
-const clock = s => { const tenths = Math.round(s * 10); return `${Math.floor(tenths / 600)}:${(tenths % 600 / 10).toFixed(1).padStart(4, '0')}`; };
 /**
  * A moment on the film clock to the millisecond (how frameHashes keys it), never past the film's end: rounding can
  * carry the end over it (21.299999999999997 is 21.300 to the millisecond, a moment the film never reaches).
@@ -125,9 +124,9 @@ function cellsAt(film, t) {
 }
 /**
  * Two pictures the same to the eye: no cell more than 32 levels apart, and less than 0.02 of a level apart on average.
- * Measured over 1,200 seamless loops (cards, images, hands and words turning, read at their last moment): a cell at
- * most 18.9 levels off, 0.0061 on average. A jump is far past one or the other: a 12-px dot 600 px away is 221 off in
- * a cell, a 1-px hand turned 90° is 64, a 300×120 card 32 levels bluer is 0.53 off on average.
+ * Measured over 1,800 seamless loops (cards, images, hands, dots and words turning, read at their last moment): a
+ * cell at most 18.9 levels off, 0.0061 on average. A jump is far past one or the other: a 12-px dot 600 px away is
+ * 221 off in a cell, a 1-px hand turned 90° is 64, a 300×120 card 32 levels bluer is 0.53 off on average.
  */
 function alike(p, q) {
   let sum = 0, most = 0;
@@ -198,7 +197,7 @@ export const REVIEW_CHECKS = Object.freeze({
       for (let i = 1; i < edges.length; i++) {
         const [a, b] = [edges[i - 1], edges[i]];
         if (!(b - a > newEvery)) continue;
-        const what = `nothing new for ${(b - a).toFixed(1)} s since ${clock(a)} (no scene, no beat, no new words)`;   // its own words: two gaps never merge into one span
+        const what = `nothing new for ${(b - a).toFixed(1)} s since ${clockText(a)} (no scene, no beat, no new words)`;   // its own words: two gaps never merge into one span
         out.push(...samples.filter(x => x.t >= a - 1e-9 && x.t <= b + 1e-9 && quiet(x.t)).map(x => ({kind: 'stale', t: x.t, what})));
       }
       return out;
@@ -218,14 +217,14 @@ export const REVIEW_CHECKS = Object.freeze({
   // The picture is frozen: the same frame for stillFor seconds or more.
   still: {label: 'Nothing changes', why: 'the part is long enough to stand still', when: s => s.facts.seconds >= s.facts.stillFor,
     find: ({samples, frozen}) => frozen.flatMap(({from, to}) => {
-      const what = `the picture does not change for ${(to - from).toFixed(1)} s from ${clock(from)}`;   // its own words: two stretches never merge into one span
+      const what = `the picture does not change for ${(to - from).toFixed(1)} s from ${clockText(from)}`;   // its own words: two stretches never merge into one span
       return samples.filter(x => x.t >= from && x.t <= to).map(x => ({kind: 'still', t: x.t, what}));
     })},
 });
 
 const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes', hook: 'no hook', 'text-density': 'too much to read', silences: 'no breath', stale: 'nothing new', loop: 'the loop jumps'};
 /** The findings as lines: "1:21.5–1:23.0 chapters · under the captions: \"requests in\"". */
-export const findingsText = findings => findings.map(f => `${clock(f.from)}–${clock(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}`).join('\n');
+export const findingsText = findings => findings.map(f => `${clockText(f.from)}–${clockText(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}`).join('\n');
 
 /**
  * What a check found, as plain {kind, t, what}: all the review's record can copy and its report reads. Anything else
@@ -235,8 +234,8 @@ export const findingsText = findings => findings.map(f => `${clock(f.from)}–${
 function plainHits(hits) {
   if (typeof hits?.then === 'function') { Promise.resolve(hits).catch(() => {}); throw new Error('find returned a promise: a check reads the shared samples and returns its hits, [{kind, t, what}]'); }
   if (!Array.isArray(hits)) throw new Error(`find must return a list of hits, [{kind, t, what}], not ${hits === null ? 'null' : typeof hits}`);
-  return hits.map((h, i) => {
-    const wrong = typeof h?.kind !== 'string' ? 'kind must be a name (a string)' : !Number.isFinite(h.t) ? 't must be seconds on the film clock' : typeof h.what !== 'string' ? 'what must be words (a string)' : null;
+  return Array.from(hits, (h, i) => {   // every slot, a hole too (map would pass it by)
+    const wrong = h == null ? 'there is none (an empty slot)' : typeof h.kind !== 'string' ? 'kind must be a name (a string)' : !Number.isFinite(h.t) ? 't must be seconds on the film clock' : typeof h.what !== 'string' ? 'what must be words (a string)' : null;
     if (wrong) throw new Error(`find's hit ${i}: ${wrong}; a hit is {kind, t, what}`);
     return {kind: h.kind, t: h.t, what: h.what};
   });
@@ -266,9 +265,12 @@ function spans(film, hits, every, lasting) {
  * with nothing playing; text smaller than `minHeight` of the frame (0.011: 12 px at 1080) is texture, not reading, and
  * is not counted; something new (a scene, a beat, a word not on screen a moment before) should come at least every
  * `newEvery` seconds (5) while the picture moves (the stale check); `loop: true` says the part is made to loop: the
- * picture at the end of its own scenes (a part's handles are not the part) must be the picture at their start.
- * A window past the film's ends is held to the film. A check that throws fails the review: one error names every
- * check that failed and why.
+ * picture at the end of its own scenes (a part's handles are not the part), read at its last moment, must be the
+ * picture at their start. Motion that steps rather than runs (a flipbook, a blink, a part drawn on twos) is read one
+ * drawing short of coming round — its last moment still shows its last drawing — so such a loop reads as a jump even
+ * when it loops cleanly: look at a strip of the seam before changing it.
+ * A window past the film's ends is held to the film. A check that fails (it throws, or answers with anything but
+ * what it should) fails the review: one error names every check that failed and why.
  * Returns {window, facts, findings, text, timeline, ran, record}: findings [{kind, from, to, scene, what}] on the
  * film clock, text as lines, the part's timeline (scenes and beats), the checks that ran, and the review's own
  * footprintjs record.
@@ -278,8 +280,9 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
   // What is read: a part with its handles, or from/to held to the film as a render's is (no moment past its ends).
   const window = part ? partWindow(film, part) : {from: Math.max(0, from), to: Math.min(film.total, to)};
   if (!(window.from <= window.to)) throw new Error(`review: nothing to read in ${window.from.toFixed(2)}–${window.to.toFixed(2)} s: from must come before to, inside the film (0–${film.total.toFixed(2)} s)`);
-  // The part itself, its own scenes without the handles (what a loop comes round on); the window when no part is named.
-  const own = part ? partWindow(film, {...part, handles: 0}) : window;
+  // The part itself, its own scenes without the handles and exactly where they lie (what a loop comes round on: rounded
+  // to the millisecond, a scene paced to 10 µs is read inside its neighbour); the window when no part is named.
+  const own = part ? partScenes(film, part) : window;
   const framed = layout ? compileLayout(film, (({scale, ...rest}) => rest)(layout)) : null;
   for (const [id, c] of Object.entries(checks)) if (!c || typeof c.find !== 'function' || typeof c.when !== 'function' || typeof c.label !== 'string') throw new Error(`review check "${id}" must be {label, why?, when(scope), find(review)}`);
   const review = {film, window, part: own, layout: framed, width: framed?.width ?? 1600, height: framed?.height ?? 900, every, stillFor, maxWords, minSilence, newEvery, minAlpha, samples: [], hashes: {}, frozen: [], picked: []};
@@ -306,8 +309,14 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
   };
   // The picks go on the review too, so a check can leave a finding to another that runs. A when() that throws is a
   // failure, not a check that does not fit: select() records it as unmatched and goes on, so it is carried out here.
+  // So is a when() that answers with a promise, which select() would take for yes.
+  const answers = c => s => {
+    const fits = c.when(s);
+    if (typeof fits?.then === 'function') { Promise.resolve(fits).catch(() => {}); throw new Error('when returned a promise: a check says at once whether it fits the part (true or false)'); }
+    return fits;
+  };
   const pick = s => {
-    const picked = select(s, Object.entries(checks).map(([id, c]) => ({when: c.when, then: id, label: c.why ?? c.label})));
+    const picked = select(s, Object.entries(checks).map(([id, c]) => ({when: answers(c), then: id, label: c.why ?? c.label})));
     review.picked = picked.branches;
     s.failed = picked.evidence.rules.filter(r => r.matchError !== undefined).map(r => ({id: r.branch, message: r.matchError}));
     return picked;

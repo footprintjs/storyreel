@@ -201,6 +201,31 @@ test('a loop that jumps at its seam is caught however small the jump: a dot, a t
   }
 });
 
+test('a paced scene loops on its own: its ends are read exactly where it lies, never a moment into its neighbour', async () => {
+  // A voice paces a scene to 10 µs. Rounded to the millisecond, the end of a scene 7.10051 s long (7.101) is the next
+  // scene's ground, and the start of a scene at 7.10037 (7.1) is the last one's. Each scene is a seamless orbit.
+  const board = {title: 'Paced', scenes: [{id: 'one', narration: twelve}, {id: 'two', narration: twelve}]};
+  let cuts = [0, Infinity], total = Infinity, turns = 1;
+  const kit = {name: 'paced', story: {compile: () => ({hang: 1, draw: (c, t) => {
+    const i = t >= cuts[1] ? 1 : 0, k = 2 * Math.PI * turns * (t - cuts[i]) / (i ? total - cuts[1] : cuts[1]);
+    c.fillStyle = i ? '#1e293b' : '#eeeeee'; c.fillRect(0, 0, 1600, 900);
+    c.fillStyle = '#c00'; c.beginPath(); c.arc(800 + 300 * Math.cos(k), 450 + 300 * Math.sin(k), 60, 0, 2 * Math.PI); c.fill();
+  }})}};
+  for (const durations of [[7.10051, 7.10021], [7.10037, 7.10021]]) {
+    const timings = evenTimings(board, {wordSeconds: .5}); timings.scenes.forEach((s, i) => { s.duration = durations[i]; });
+    const f = await compileFilm({storyboard: board, timings, recipe: {story: {kit: 'paced'}}, kits: [kit]});
+    cuts = f.clock.offsets.slice(); total = f.total;
+    assert.notEqual(cuts[1], +cuts[1].toFixed(3), 'the cut lies between two milliseconds');
+    for (const [round, jumps] of [[1, 0], [1.004, 1]]) {
+      turns = round;
+      for (const scene of ['one', 'two']) {
+        const r = await reviewPart(f, {part: {scene}, loop: true, checks: {loop: REVIEW_CHECKS.loop}});
+        assert.equal(r.findings.length, jumps, `${scene} of a film paced to ${durations.join(' + ')} s: ${jumps ? '0.4% short of a turn, it jumps' : 'it comes round'}`);
+      }
+    }
+  }
+});
+
 test('the window is held to the film, and every moment read is inside it, however its end rounds', async () => {
   const past = await reviewPart(colours, {to: colours.total + 3, checks: {still: REVIEW_CHECKS.still}});
   assert.deepEqual(past.window, {from: 0, to: colours.total}, 'past the end is the end, as a render\'s is');
@@ -229,7 +254,10 @@ test('a check answers with its hits, [{kind, t, what}]: anything else fails the 
     [() => {}, /"mine": find must return a list of hits, \[\{kind, t, what\}\], not undefined/],
     [() => [{kind: 'x', t: NaN, what: 'w'}], /"mine": find's hit 0: t must be seconds on the film clock; a hit is \{kind, t, what\}/],
     [() => [{kind: 'x', t: 1, what: Symbol('w')}], /"mine": find's hit 0: what must be words \(a string\)/],
+    [() => [, {kind: 'x', t: 1, what: 'w'}], /"mine": find's hit 0: there is none \(an empty slot\)/],   // eslint-disable-line no-sparse-arrays
   ]) await assert.rejects(mine(find), said);
+  const eager = {label: 'Eager', when: async () => true, find: () => []};
+  await assert.rejects(reviewPart(film, {from: 1, to: 3, checks: {eager}}), /"eager": when returned a promise: a check says at once whether it fits the part \(true or false\)/, 'a promise is not a yes');
   const kept = await mine(({film: f}) => [2, 2.25, 2.5, 2.75, 3].map(t => ({kind: 'x', t, what: 'w', film: f, format: () => 'w'})));
   assert.deepEqual(kept.findings.map(({kind, from, to, what}) => ({kind, from, to, what})), [{kind: 'x', from: 2, to: 3, what: 'w'}], 'a hit is copied as {kind, t, what}: the film and a function it held stay out of the record');
   // A result the record cannot copy at the commit (simulated) never reaches the review: that is a failure too, in the engine's words.

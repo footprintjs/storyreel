@@ -5,7 +5,7 @@ const state = {film: null, version: -1, t: 0, playing: false, clock0: 0, busy: f
   beat: null, hit: null, sceneIndex: -1, nearKey: '', drag: false};
 const COLOURS = {story: '#3867d6', whiteboard: '#3867d6', stages: '#1e9e6a', card: '#d9822b', guesses: '#8e44ad', notes: '#c0392b', pushIn: '#7f8c8d', recalls: '#7f8c8d'};
 const colourOf = path => COLOURS[(path ?? '').match(/^[a-zA-Z]+/)?.[0]] ?? '#95a5a6';
-const clockText = t => { const m = Math.floor(t / 60), s = t - m * 60; return `${m}:${s.toFixed(1).padStart(4, '0')}`; };
+const clockText = t => { const tenths = Math.round(t * 10); return `${Math.floor(tenths / 600)}:${(tenths % 600 / 10).toFixed(1).padStart(4, '0')}`; };   // clock.mjs · clockText's copy (this page runs on its own): 59.96 s is 1:00.0
 /** The entry a phrase belongs to: its path without the last step ("story.items[3].at" → "story.items[3]"). */
 const ownerOf = path => path.replace(/(\.[^.[\]]+|\[\d+\])$/, '');
 const el = (tag, props = {}, ...kids) => { const n = document.createElement(tag); Object.assign(n, props); for (const k of kids) n.append(k); return n; };

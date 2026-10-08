@@ -731,6 +731,8 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   frozen for 5 s (`still`), nothing new for 5 s while it moves (`stale`: no scene, no beat and no new words —
   `newEvery`), and — with `loop: true`, for a part made to loop — an end that does not come round to its start (the
   part's own scenes, not its handles: its last moment against its first, as the eye takes them in and word for word).
+  Motion that steps rather than runs (a flipbook, a blink, a part drawn on twos) is read one drawing short of coming
+  round, so such a loop reads as a jump even when it loops cleanly: look at a strip of the seam before changing it.
   Read the findings and the timeline first; look at a frame only to confirm:
 
   ```js

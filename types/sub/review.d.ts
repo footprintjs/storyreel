@@ -31,5 +31,5 @@ export function reviewPart(film: Film, options?: {part?: {scenes: string[]; hand
   /** the picture is frozen when unchanged this many seconds (5): the still check */ stillFor?: number;
   every?: number; lasting?: number; minAlpha?: number; minHeight?: number; maxWords?: number; minSilence?: number;
   /** something new (a scene, a beat, a new word) at least every this many seconds (5) while the picture moves: the stale check */ newEvery?: number;
-  /** the part is made to loop: the end of its own scenes (not its handles) must come round to their start */ loop?: boolean; checks?: Record<string, ReviewCheck>}): Promise<{window: {from: number; to: number}; facts: Record<string, unknown> | null;
+  /** the part is made to loop: the end of its own scenes (not its handles) must come round to their start; motion that steps (a flipbook, drawing on twos) reads one drawing short there */ loop?: boolean; checks?: Record<string, ReviewCheck>}): Promise<{window: {from: number; to: number}; facts: Record<string, unknown> | null;
   findings: Finding[]; text: string; timeline: string; ran: string[]; record: unknown[]}>;

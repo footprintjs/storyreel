@@ -6,8 +6,7 @@
 import {createCanvas} from '@napi-rs/canvas';
 import {TRANSITIONS, readEntrance, ghostPainter} from './transitions.mjs';
 import {loadTheme} from './theme.mjs';
-
-const clockText = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+import {clockText} from './clock.mjs';
 
 /**
  * @param film     from compileFilm

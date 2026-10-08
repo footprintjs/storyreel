@@ -4,3 +4,5 @@ import type {StoryboardScene} from '../index.js';
 export const DIRECTION_SECONDS: readonly [number, number];
 /** Refuses a scene that is not exactly one of spoken (narration) or silent (directions); says which it is. */
 export function checkScene(scene: StoryboardScene, index?: number): 'spoken' | 'silent';
+/** A time on the film clock as people read it, m:ss.s, rounded to the tenth first: 59.96 s is 1:00.0, never 0:60.0. */
+export function clockText(t: number): string;

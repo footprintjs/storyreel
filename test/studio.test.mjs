@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {compileFilm, evenTimings} from '../src/index.mjs';
 import {startStudio} from '../src/studio/server.mjs';
 import {jsonLines, valueAt} from '../src/studio/lines.mjs';
+import {clockText} from '../src/clock.mjs';
 
 const hello = fileURLToPath(new URL('../examples/hello/', import.meta.url));
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -77,4 +78,12 @@ test('the studio: frames, the film, what drew a spot; loopback only, read only; 
     assert.equal(kept.error, refused.error);
     assert.deepEqual(kept.notes.map(n => n.note), ['A quicker push-in'], 'the last good film is still served');
   } finally { await studio.close(); }
+});
+
+test('the studio page writes a time as the film clock does: its own copy, since the page runs in the browser on its own', () => {
+  const line = /^const clockText = .*$/m.exec(readFileSync(new URL('../src/studio/page.js', import.meta.url), 'utf8'))?.[0];
+  assert.ok(line, 'the page keeps its clockText on one line');
+  const pageClock = new Function(`${line}\nreturn clockText;`)();
+  for (const t of [0, .04, 7.25, 59.94, 59.96, 61.25, 119.97, 3599.96]) assert.equal(pageClock(t), clockText(t), `${t} s`);
+  assert.equal(clockText(59.96), '1:00.0', 'rounded to the tenth before the minutes: never 0:60.0');
 });

@@ -36,6 +36,9 @@ root, narrationDir?, pacing?, layout?, out?})}`); every flag also reaches `film(
 - The review's findings are facts about the drawing (where each word landed, when); fix them before polishing.
 - "Nothing changes" (the picture is frozen) and "nothing new" (it moves, but nothing new comes) are advice, not
   errors: a held title, or one picture the voice explains, can be right — say why if you keep it.
+- "The loop jumps" on motion that steps rather than runs (a flipbook, a blink, a part drawn on twos) may be a clean
+  loop: its last moment still shows its last drawing, one short of coming round. Look at a strip of the seam
+  (`strip --at <scene>+<seconds>` at the part's end) before changing it.
 - A review that stops with an error has not checked the part: its message names the check that failed. Fix it or
   report it; it is never "nothing found".
 - Text drawn into a fading scratch picture, and drawings that are not text, are not read: those need the still.
