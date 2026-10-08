@@ -576,9 +576,10 @@ refuses (it has no band), a crop key out of spoken order refuses. Only the lands
 
 A layout makes a version; a **release** makes the whole post for each place it goes. One interface,
 `makeRelease`, and one adapter per platform (`youtube`, `youtube-shorts`, `linkedin`, `tiktok`,
-`instagram-reels`), each imported only when a release names it. What differs between platforms lives in
-the adapter as data: the video's shape, its length, the text fields and their limits, the thumbnail, who the
-platform is for, and how the text is composed (YouTube's description gets the film's chapters).
+`instagram-reels`, `x`), each imported only when a release names it. What differs between platforms lives in
+the adapter as data: the video's shape, its length, the text fields and their limits — counted as the platform
+counts them (X: a link is 23, an emoji 2) — the thumbnail, who the platform is for, and how the text is composed
+(YouTube's description gets the film's chapters; X's post gets them when it has room).
 
 ```js
 import {makeRelease} from 'footprint-storyreel/release';
@@ -592,11 +593,14 @@ await makeRelease({storyboard, recipe, narrationDir, pacing, out: 'release/ep01'
 ```
 
 - **Who it is for.** `post.audience` is `'kids'` or `'general'`. YouTube marks a kids' film made for kids;
-  TikTok, Instagram (13 and over) and LinkedIn (16 and over) refuse it, with the fix: the full film goes where
+  TikTok, Instagram, X (13 and over) and LinkedIn (16 and over) refuse it, with the fix: the full film goes where
   children watch, and a teaser for parents goes there as `'general'`.
 - **Refused before a frame is drawn** when it can be known then (the audience, a title over the limit, a
   thumbnail of the wrong shape, a part too long); the film's own length and the text with its chapters are
   checked after the render.
+- **X** takes a square video of at most 140 s and a post of 280 (an account with Premium posts longer videos and up to
+  25,000 characters: `{target: 'x', limits: {seconds: {max: 3 * 3600}, text: {text: {max: 25000}}}}` — how X counts
+  stays). Its feed plays muted, so the captions are burned in; it takes no caption file and no thumbnail.
 - **Limits change.** Each adapter says when its facts were checked and where (`facts`); a target may override
   one (`{target: 'tiktok', limits: {seconds: {max: 3600}}}`). An adapter of your own is an object of the same
   shape (`checkAdapter` names what is missing), passed in `targets`.

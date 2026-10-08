@@ -1,15 +1,14 @@
 # Changelog
 
-## 0.10.0 — one word changed redraws only where it shows; one clock for the review and the render; emphasis on the thing
+## Unreleased
 
-### One word changed redraws only where it shows
-- **A segment's key holds only the strings its own entries name** (`{"$string": key}` in its recipe entries, the
-  guess cards over it and what its entrance also draws), not the whole string table: changing one word — a guess
-  card's answer — redraws the segments that show it instead of every segment of the film. `film.stringHashes`
-  (each string's own hash) carries it; `film.inputs.strings` (the table's hash, what an approval locks) is
-  unchanged. Measured on a 1:22 episode: before, changing one answer redrew 3 of 3 segments.
-- **The cast is in every segment's key** (a kit draws its people from `context.cast`): a changed look or name used
-  to leave every kept segment in place, so a re-render could reuse pictures of the old cast.
+### X: a release target
+- **`x`**: a square 1080×1080 video with the title band and burned-in captions, up to 140 s, a post of at most 280
+  characters as X counts them (`xLength`: NFC, a link 23, an emoji 2, most scripts beyond Latin 2), the film's
+  chapters in the post when it has room (X makes the times clickable), audience 13 and over. Facts checked
+  2026-10-08 against X's help pages, its counting rules and its terms.
+- An adapter may say how a text field is counted (`limits.text.<field>.count`); raising a limit keeps the count.
+  `post()` also gets the target's `limits`, so it can tell what fits.
 
 ### The narration code moves into footprint-narration (breaking: imports move)
 StoryReel and StoryDeck each kept the same narration code — what a voice says for a number, the captions, YouTube's
@@ -37,6 +36,17 @@ every test here); a part's chapters change as named below.
 - Segment caches draw once more after this upgrade: footprint-narration is part of every segment's key
   (`versions.mjs · DRAWING`), since the burned-in captions' words come from it. Its version is named in the
   making-of record and the release's CREDITS.txt.
+
+## 0.10.0 — one word changed redraws only where it shows; one clock for the review and the render; emphasis on the thing
+
+### One word changed redraws only where it shows
+- **A segment's key holds only the strings its own entries name** (`{"$string": key}` in its recipe entries, the
+  guess cards over it and what its entrance also draws), not the whole string table: changing one word — a guess
+  card's answer — redraws the segments that show it instead of every segment of the film. `film.stringHashes`
+  (each string's own hash) carries it; `film.inputs.strings` (the table's hash, what an approval locks) is
+  unchanged. Measured on a 1:22 episode: before, changing one answer redrew 3 of 3 segments.
+- **The cast is in every segment's key** (a kit draws its people from `context.cast`): a changed look or name used
+  to leave every kept segment in place, so a re-render could reuse pictures of the old cast.
 
 ### One clock for the review and the render
 - **`paceTimings` keeps a voice's audio**: when a scene's timing names its audio (a voice's timings.json), the

@@ -7,6 +7,7 @@ import path from 'node:path';
 import {loadImage} from '@napi-rs/canvas';
 import {evenTimings} from '../src/index.mjs';
 import {makeRelease, loadTarget, checkAdapter, planProblems, readPost, TARGETS, TARGET_NAMES} from '../src/release.mjs';
+import {xLength} from '../src/targets/x.mjs';
 import {youtubeChapters as chaptersOf} from 'footprint-narration';
 
 /** YouTube's chapter lines for [[seconds, name]] (the adapter's input) over a video of `length` s. */
@@ -24,7 +25,7 @@ const kids = {title: 'Pebbles', description: 'How counting began.', audience: 'k
 const probe = (file, entries = 'width,height') => spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', `stream=${entries}`, '-of', 'csv=p=0', file], {encoding: 'utf8'}).stdout.trim();
 
 test('one interface, an adapter per platform, each loaded only when a release names it', async () => {
-  assert.deepEqual(TARGET_NAMES, ['youtube', 'youtube-shorts', 'linkedin', 'tiktok', 'instagram-reels']);
+  assert.deepEqual(TARGET_NAMES, ['youtube', 'youtube-shorts', 'linkedin', 'tiktok', 'instagram-reels', 'x']);
   assert.ok(Object.values(TARGETS).every(load => typeof load === 'function'), 'a loader, not a module: nothing is imported until asked');
   for (const name of TARGET_NAMES) { const {adapter} = await loadTarget(name); assert.equal(adapter.name, name); assert.ok(adapter.facts.checked && adapter.facts.sources.length, `${name} says when its facts were checked`); }
   await assert.rejects(loadTarget('myspace'), /no release target called "myspace" \(built in: youtube/);
@@ -49,6 +50,34 @@ test('limits: text and length checked against each platform, and a target may ov
   assert.match(planProblems(yt, readPost(kids), {seconds: -30})[0].problem, /shorter than YouTube takes/, 'a part that ends before it starts is the release\'s refusal, not the chapter rule\'s');
   const longer = (await loadTarget({target: 'tiktok', limits: {seconds: {max: 3600}}})).adapter;
   assert.equal(longer.limits.seconds.max, 3600); assert.equal(longer.limits.seconds.min, 1, 'the rest of the limit stays');
+});
+
+test('X: a post counted as X counts it — a link 23, an emoji 2, most scripts beyond Latin 2, NFC first', () => {
+  assert.equal(xLength('hello'), 5);
+  assert.equal(xLength('see https://example.com/a/very/long/path?q=1'), 4 + 23);
+  assert.equal(xLength('storyreel.dev and node.js'), 23 + 5 + 23, 'a bare name with a dot counts as a link (erring long: X never refuses what this passes)');
+  assert.equal(xLength('👋🏽 🇱🇺 👨‍👩‍👧'), 2 + 1 + 2 + 1 + 2);
+  assert.equal(xLength('日本'), 4);
+  assert.equal(xLength('e\u0301'), 1, 'composed first: é is one');
+  assert.equal(xLength('— “quoted” …'), 1 + 1 + 1 + 6 + 1 + 1 + 2, 'dashes and quotes count 1; the ellipsis (U+2026) is outside X\'s light ranges: 2');
+});
+
+test('X: a square post up to 140 s, at most 280 as X counts, the chapters when they fit, a teaser for parents', async () => {
+  const x = (await loadTarget('x')).adapter;
+  assert.deepEqual([x.video.format, x.limits.seconds.max, x.thumbnail], ['square', 140, null]);
+  assert.deepEqual(planProblems(x, readPost({...kids, audience: 'general'})), []);
+  assert.match(planProblems(x, readPost(kids))[0].problem, /X is for people aged 13 and over/);
+  assert.match(planProblems(x, readPost({...kids, audience: 'general'}), {seconds: 200})[0].fix, /release a part: \{target: 'x', from, to\} at most 140 s long/);
+  const long = readPost({...kids, audience: 'general', description: '日本 '.repeat(60)});
+  assert.match(planProblems(x, long)[0].problem, /X's text is 3\d\d characters, more than its 280/, 'counted as X counts: each of those characters is 2');
+  const p = readPost({...kids, audience: 'general'}), chapters = [[0, 'The start'], [20, 'The middle'], [40, 'The end']];
+  assert.equal(x.post(p, {chapters, seconds: 60, limits: x.limits}).text, 'Pebbles\n\nHow counting began.\n\n0:00 The start\n0:20 The middle\n0:40 The end\n\n#counting #kidsmaths');
+  const crowded = readPost({...kids, audience: 'general', description: 'x'.repeat(230)});
+  assert.doesNotMatch(x.post(crowded, {chapters, seconds: 60, limits: x.limits}).text, /0:00/, 'no room: the post goes without them');
+  const premium = (await loadTarget({target: 'x', limits: {seconds: {max: 3 * 3600}, text: {text: {max: 25000}}}})).adapter;
+  assert.equal(premium.limits.text.text.count, xLength, 'raising a limit keeps how X counts');
+  assert.match(premium.post(crowded, {chapters, seconds: 60, limits: premium.limits}).text, /0:00 The start/, 'a Premium post has room');
+  assert.throws(() => checkAdapter({...x, limits: {seconds: {max: 1}, text: {text: {max: 1, count: 'x'}}}}), /limits.text.text.count, when given, is how the platform counts a text/);
 });
 
 test('YouTube chapters: the first at 0:00, each at least 10 s (a shorter one joins the one before), at least three or none', () => {

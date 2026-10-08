@@ -14,16 +14,17 @@ export interface ReleaseAdapter {
   label: string;
   /** The video's shape: a layout format, with the title band and burned-in captions where the platform wants them. */
   video: {format: 'landscape' | 'square' | 'portrait' | 'vertical'; header?: boolean; captions?: boolean; captionFiles?: ('srt' | 'vtt')[]};
-  limits: {seconds: {min?: number; max: number}; text?: Record<string, {max: number}>};
+  /** The length it takes, and its text fields' limits — counted as the platform counts (`count`), else by code points. */
+  limits: {seconds: {min?: number; max: number}; text?: Record<string, {max: number; count?: (text: string) => number}>};
   /** Who the platform is for: its minimum age, and what it does with a film made for kids. */
   audience: {minAge: number; kids: 'madeForKids' | 'refuse'};
   thumbnail: {width: number; height: number; maxBytes?: number} | null;
   /** When the limits were checked, and where. */
   facts: {checked: string; sources: string[]};
-  /** The text fields for this platform (chapters: [seconds, name] of the rendered part). */
-  post(post: Required<Pick<ReleasePost, 'title' | 'description' | 'tags' | 'audience'>> & ReleasePost, context: {chapters: [number, string][]; seconds: number}): Record<string, unknown>;
+  /** The text fields for this platform (chapters: [seconds, name] of the rendered part; limits: the target's, overrides included). */
+  post(post: Required<Pick<ReleasePost, 'title' | 'description' | 'tags' | 'audience'>> & ReleasePost, context: {chapters: [number, string][]; seconds: number; limits: ReleaseAdapter['limits']}): Record<string, unknown>;
 }
-export type TargetName = 'youtube' | 'youtube-shorts' | 'linkedin' | 'tiktok' | 'instagram-reels';
+export type TargetName = 'youtube' | 'youtube-shorts' | 'linkedin' | 'tiktok' | 'instagram-reels' | 'x';
 /** A target: a built-in name, an adapter, or one with options (a part from/to, a crop for the tall shapes, limits overridden). */
 export type ReleaseTarget = TargetName | ReleaseAdapter | {target: TargetName | ReleaseAdapter; name?: string; from?: number; to?: number; header?: {title: string; sub?: string}; crop?: unknown[]; captions?: boolean | object; limits?: Partial<ReleaseAdapter['limits']>; scale?: number};
 /** One target released: `dir` holds what is posted and nothing else; `work` the render's working files and its record. */

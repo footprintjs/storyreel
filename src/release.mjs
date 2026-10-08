@@ -39,6 +39,7 @@ export const TARGETS = Object.freeze({
   linkedin: () => import('./targets/linkedin.mjs'),
   tiktok: () => import('./targets/tiktok.mjs'),
   'instagram-reels': () => import('./targets/instagram-reels.mjs'),
+  x: () => import('./targets/x.mjs'),
 });
 export const TARGET_NAMES = Object.freeze(Object.keys(TARGETS));
 /** Who a film is made for: 'kids' (directed at children) or 'general' (anyone, a teaser for parents included). */
@@ -53,11 +54,14 @@ export function checkAdapter(a) {
   for (const key of ['name', 'label']) if (!(typeof a[key] === 'string' && a[key].trim())) throw new TypeError(`${where}: ${key} must be a word`);
   if (!FORMAT_NAMES.includes(a.video?.format)) throw new TypeError(`${where}: video.format must be ${FORMAT_NAMES.join(', ')}`);
   if (!(a.limits?.seconds && a.limits.seconds.max > 0)) throw new TypeError(`${where}: limits.seconds {min?, max} is the length the platform takes`);
-  for (const [field, l] of Object.entries(a.limits.text ?? {})) if (!(Number.isInteger(l.max) && l.max > 0)) throw new TypeError(`${where}: limits.text.${field}.max must be a whole number`);
+  for (const [field, l] of Object.entries(a.limits.text ?? {})) {
+    if (!(Number.isInteger(l.max) && l.max > 0)) throw new TypeError(`${where}: limits.text.${field}.max must be a whole number`);
+    if (l.count !== undefined && typeof l.count !== 'function') throw new TypeError(`${where}: limits.text.${field}.count, when given, is how the platform counts a text (text → number)`);
+  }
   if (!(a.audience && (a.audience.kids === 'madeForKids' || a.audience.kids === 'refuse') && Number.isInteger(a.audience.minAge))) throw new TypeError(`${where}: audience {minAge, kids: 'madeForKids' | 'refuse'} says who the platform is for`);
   if (a.thumbnail !== null && !(a.thumbnail && a.thumbnail.width > 0 && a.thumbnail.height > 0)) throw new TypeError(`${where}: thumbnail is {width, height, maxBytes?} or null (the platform picks a frame)`);
   if (!(a.facts?.checked && Array.isArray(a.facts.sources))) throw new TypeError(`${where}: facts {checked: date, sources: [url]} says when its limits were checked`);
-  if (typeof a.post !== 'function') throw new TypeError(`${where}: post(post, {chapters, seconds}) composes the text fields`);
+  if (typeof a.post !== 'function') throw new TypeError(`${where}: post(post, {chapters, seconds, limits}) composes the text fields`);
   return a;
 }
 
@@ -76,7 +80,8 @@ export async function loadTarget(spec) {
   const limits = given.limits ? mergeLimits(adapter.limits, given.limits) : adapter.limits;
   return {adapter: {...adapter, limits}, options: {name: given.name ?? adapter.name, from: given.from, to: given.to, header: given.header, crop: given.crop, captions: given.captions, scale: given.scale}};
 }
-const mergeLimits = (base, over) => ({...base, ...over, seconds: {...base.seconds, ...over.seconds}, text: {...base.text, ...over.text}});
+const mergeLimits = (base, over) => ({...base, ...over, seconds: {...base.seconds, ...over.seconds},
+  text: Object.fromEntries([...new Set([...Object.keys(base.text ?? {}), ...Object.keys(over.text ?? {})])].map(f => [f, {...base.text?.[f], ...over.text?.[f]}]))});   // a field keeps how it is counted
 
 /**
  * The post as given, checked: {title, description, tags?, audience, thumbnail?, lang?, synthetic?}. thumbnail: an image
@@ -107,7 +112,7 @@ export function planProblems(adapter, post, {seconds = null, poster = null} = {}
   if (post.thumbnail === 'poster' && adapter.thumbnail && poster === false)
     problems.push({problem: 'the thumbnail is to be the film\'s poster, and the film has none', fix: 'name the poster in the recipe (poster: a phrase that is said), or give post.thumbnail an image file'});
   if (seconds !== null) problems.push(...lengthProblems(adapter, seconds));
-  const text = adapter.post(post, {chapters: [], seconds: seconds ?? 0});
+  const text = adapter.post(post, {chapters: [], seconds: seconds ?? 0, limits: adapter.limits});
   problems.push(...textProblems(adapter, text));
   return problems;
 }
@@ -118,8 +123,8 @@ function lengthProblems(adapter, seconds) {
   return [];
 }
 function textProblems(adapter, text) {
-  return Object.entries(adapter.limits.text ?? {}).flatMap(([field, {max}]) => {
-    const n = [...String(text[field] ?? '')].length;
+  return Object.entries(adapter.limits.text ?? {}).flatMap(([field, {max, count = s => [...s].length}]) => {
+    const n = count(String(text[field] ?? ''));   // as the platform counts (X: links 23, emoji 2), else code points
     return n > max ? [{problem: `${adapter.label}'s ${field} is ${n} characters, more than its ${max}`, fix: `shorten the ${field}`}] : [];
   });
 }
@@ -210,7 +215,7 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
       ...(options.from !== undefined ? {from: options.from} : {}), ...(options.to !== undefined ? {to: options.to} : {})};
     const result = await makeFilm({...film, out: path.join(work, `${stem}.mp4`), render});
     refuse(adapter, lengthProblems(adapter, result.seconds));
-    const fields = adapter.post(p, {chapters: chaptersOf(result.chapters ?? []), seconds: result.seconds});
+    const fields = adapter.post(p, {chapters: chaptersOf(result.chapters ?? []), seconds: result.seconds, limits: adapter.limits});
     refuse(adapter, textProblems(adapter, fields));
     const video = deliver(result.out, dir), captions = result.captions ? Object.fromEntries(Object.entries(result.captions).map(([kind, file]) => [kind, deliver(file, dir)])) : null;
     const thumbnail = await placeThumbnail(adapter, p.thumbnail, result.poster, dir);
