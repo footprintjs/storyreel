@@ -115,8 +115,10 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     'pace-narration': async scope => {
       if (narrationDir) {
         // Paced in a folder of its own: it takes the place of <out dir>/narration only once the film is allowed
-        // (an approval refused leaves the approved render's narration as it was).
-        const copy = path.join(dir, `.narration-${process.pid}`); rmSync(copy, {recursive: true, force: true}); cpSync(narrationDir, copy, {recursive: true});
+        // (an approval refused leaves the approved render's narration as it was). The voice's files are copied, never
+        // linked: a voice folder given as a symbolic link (or holding links) would otherwise be paced in place, through
+        // the link — its audio rewritten and its timings.json replaced by the paced ones.
+        const copy = path.join(dir, `.narration-${process.pid}`); rmSync(copy, {recursive: true, force: true}); cpSync(narrationDir, copy, {recursive: true, dereference: true});
         const raw = JSON.parse(readFileSync(path.join(copy, 'timings.json'), 'utf8'));
         // A voice knows only the spoken scenes: a silent scene it left out gets its directions' timing (clock.mjs · withDirections).
         paced = pacing ? await applyPacing({runDir: copy, board: storyboard, timings: raw, pacing}) : withDirections(storyboard, raw);

@@ -4,7 +4,7 @@
 // render.mjs · joinVoice); the studio marks its words as not spoken.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync, writeFileSync, mkdtempSync, existsSync, copyFileSync} from 'node:fs';
+import {readFileSync, writeFileSync, mkdtempSync, existsSync, copyFileSync, symlinkSync, readdirSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -173,6 +173,15 @@ test('a voiced cut with a silent opening renders: paced (generated silence in th
   // A spoken scene with no audio is not silence: it refuses.
   const missing = {...timings, scenes: timings.scenes.map((s, i) => i === 1 ? {...s, audio: undefined} : s)};
   await assert.rejects(renderFilm({film, storyboard, timings: missing, narrationDir: unpaced, out: path.join(tmp(), 'x.mp4'), ...small, from: 0, to: 1}), /scene story has no audio in its timing: only a silent scene's audio is generated/);
+});
+
+test('a voice folder given as a symbolic link is copied, never paced in place through the link', {skip: ffmpeg ? false : 'ffmpeg not on PATH'}, async () => {
+  const voice = voiceFolder(), link = path.join(tmp(), 'voice-link'); symlinkSync(voice, link, 'dir');
+  const before = Object.fromEntries(readdirSync(voice).map(f => [f, readFileSync(path.join(voice, f))]));
+  for (const run of ['first', 'second']) await makeFilm({storyboard, recipe, root: hello, narrationDir: link, pacing, out: path.join(tmp(), `${run}.mp4`), render: small});
+  // The voice is as it was: no .unpaced.wav beside its audio, the same audio and the same (unpaced) timings.json.
+  assert.deepEqual(readdirSync(voice).sort(), Object.keys(before).sort());
+  for (const [f, bytes] of Object.entries(before)) assert.ok(readFileSync(path.join(voice, f)).equals(bytes), `${f} unchanged`);
 });
 
 test('who is speaking: the clock knows each scene\'s said words and its speaker, so a kit can move the right mouth', async () => {
