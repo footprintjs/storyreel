@@ -47,7 +47,8 @@ export async function timeline(project, args = {}) {
 
 /** What is wrong, read from the picture as text (review.mjs): times on the film clock. */
 export async function review(project, args = {}) {
-  const part = partOf(args), r = await reviewPart(project.film, {...(part ? {part} : {}), layout: project.inputs.layout ?? null});
+  const part = partOf(args), loop = args.loop === true || args.loop === 'true';
+  const r = await reviewPart(project.film, {...(part ? {part} : {}), layout: project.inputs.layout ?? null, loop});
   return `${head(project.film, part, r.window)} — review (${r.ran.join(', ') || 'no check fits'}):\n${r.text || 'nothing found'}`;
 }
 
@@ -82,14 +83,36 @@ export async function still(project, args = {}) {
   return {text: `${file} · ${moments.length} frame${moments.length > 1 ? 's' : ''}: ${moments.map(m => `${m.label} (${m.t.toFixed(2)} s)`).join(', ')}`, file};
 }
 
+/**
+ * A strip: consecutive frames around one moment, side by side as a PNG — a fast move read frame by frame, so a
+ * pop, a jump or two things crossing shows. Returns {text, file}.
+ */
+export async function strip(project, args = {}) {
+  const [moment, more] = momentsOf(project.film, args.at), frames = +(args.frames ?? 12), fps = +(args.fps ?? 30);
+  if (more) throw new Error('strip: name one moment (at: "scene+seconds"); a still shows several');
+  if (!(Number.isInteger(frames) && frames >= 2 && frames <= 30)) throw new Error(`strip: frames must be a whole number 2–30, not ${JSON.stringify(args.frames)}`);
+  if (!(Number.isFinite(fps) && fps >= 1 && fps <= 120)) throw new Error(`strip: fps must be 1–120 frames a second, not ${JSON.stringify(args.fps)}`);
+  const first = moment.t - Math.floor(frames / 2) / fps, moments = [];
+  for (let k = 0; k < frames; k++) {
+    const t = +(first + k / fps).toFixed(3);
+    if (t >= 0 && t < project.film.total) moments.push({t, label: `${k - Math.floor(frames / 2) >= 0 ? '+' : ''}${k - Math.floor(frames / 2)}`});
+  }
+  const file = path.resolve(project.cwd, project.inputs.out ?? 'out', 'stills', `strip-${moment.label.replace(/[^\w+.-]/g, '-')}.png`);
+  mkdirSync(path.dirname(file), {recursive: true});
+  writeFileSync(file, await contactSheet(project.film, {moments, columns: Math.min(6, moments.length), width: +(args.width ?? 1200)}));
+  return {text: `${file} · ${moments.length} frames at ${fps} fps around ${moment.label} (${moment.t.toFixed(2)} s): frame 0 is the moment`, file};
+}
+
 /** The tools, as the command line and an MCP server list them: what each does and what it takes. */
 export const TOOLS = Object.freeze({
   timeline: {run: timeline, about: 'When each scene starts and each beat lands, as text (times from the part\'s start). Read it before choosing a moment to look at.',
     args: {scene: 'scene ids, comma-separated (default: the whole film)', handles: 'seconds of the film shown either side of the scenes (1.5)'}},
-  review: {run: review, about: 'What is wrong, read from the picture as text: words under the captions, over each other, cut off at the edge, nothing changing for 5 s. Times on the film clock.',
-    args: {scene: 'scene ids, comma-separated (default: the whole film)', handles: 'seconds either side (1.5)'}},
+  review: {run: review, about: 'What is wrong, read from the picture as text: words under the captions, over each other, cut off at the edge, nothing changing for 5 s, nothing new for 5 s. Times on the film clock.',
+    args: {scene: 'scene ids, comma-separated (default: the whole film)', handles: 'seconds either side (1.5)', loop: 'true when the part is made to loop: its last frame must be its first'}},
   part: {run: part, about: 'A quick look at scenes: rendered with 1.5 s of the film either side (both cuts seen), half size, draft encode; reviewed first. Prints the video\'s path.',
     args: {scene: 'scene ids, comma-separated (required)', handles: 'seconds either side (1.5)'}},
-  still: {run: still, about: 'One picture to confirm the look: frames at the moments given, side by side, as a PNG. Look at it last, after the timeline and the review.',
+  still: {run: still, picture: true, about: 'One picture to confirm the look: frames at the moments given, side by side, as a PNG. Look at it last, after the timeline and the review.',
     args: {at: 'moments: scene+seconds (or seconds), comma-separated (required)', width: 'the picture\'s width in pixels (1200)'}},
+  strip: {run: strip, picture: true, about: 'A fast move frame by frame: consecutive frames around one moment, side by side, as a PNG — to catch a pop, a jump or two things crossing.',
+    args: {at: 'the moment: scene+seconds (or seconds) (required)', frames: 'how many frames (12)', fps: 'frames a second (30)', width: 'the picture\'s width in pixels (1200)'}},
 });

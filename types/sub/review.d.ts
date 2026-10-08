@@ -4,14 +4,16 @@ export interface Word {text: string; box: [number, number, number, number]; quad
 /** The words a frame draws at t, followed from each world's sheet onto the frame (through the layout when given). */
 export function wordsAt(film: Film, t: number, options?: {layout?: ReturnType<typeof import('../index.js').compileLayout> | null}): Word[];
 /** What a check sees: the shared samples (words every `every` s), frame hashes, the layout, the output size. */
-export interface Review {film: Film; window: {from: number; to: number}; maxWords: number; minSilence: number; layout: ReturnType<typeof import('../index.js').compileLayout> | null; width: number; height: number; every: number; stillFor: number; samples: {t: number; words: Word[]}[]; hashes: Record<number, string>}
-/** A check: a strategy run as its own subflow, picked when `when(scope)` is true (scope.facts: {seconds, stillFor, captions, samples, words}). */
+export interface Review {film: Film; window: {from: number; to: number}; maxWords: number; minSilence: number; layout: ReturnType<typeof import('../index.js').compileLayout> | null; width: number; height: number; every: number; stillFor: number; newEvery: number; samples: {t: number; words: Word[]}[]; hashes: Record<number, string>}
+/** A check: a strategy run as its own subflow, picked when `when(scope)` is true (scope.facts: {seconds, stillFor, newEvery, loop, captions, samples, words, spoken}). */
 export interface ReviewCheck {label: string; why?: string; when(scope: any): boolean; find(review: Review): {kind: string; t: number; what: string}[]}
-export const REVIEW_CHECKS: Readonly<Record<'under-captions' | 'words-overlap' | 'cut-off' | 'hook' | 'text-density' | 'silences' | 'still', ReviewCheck>>;
+export const REVIEW_CHECKS: Readonly<Record<'under-captions' | 'words-overlap' | 'cut-off' | 'hook' | 'text-density' | 'silences' | 'stale' | 'loop' | 'still', ReviewCheck>>;
 /** A finding: a span on the film clock, the scene it starts in. */
 export interface Finding {kind: string; from: number; to: number; scene: string | null; what: string}
 export function findingsText(findings: Finding[]): string;
 /** Review a part (or the film) by reading it: a footprintjs flowchart that leaves its own record. */
 export function reviewPart(film: Film, options?: {part?: {scenes: string[]; handles?: number} | {scene: string; handles?: number} | null; from?: number; to?: number; layout?: Layout | null;
-  every?: number; stillFor?: number; lasting?: number; minAlpha?: number; minHeight?: number; maxWords?: number; minSilence?: number; checks?: Record<string, ReviewCheck>}): Promise<{window: {from: number; to: number}; facts: Record<string, unknown> | null;
+  every?: number; stillFor?: number; lasting?: number; minAlpha?: number; minHeight?: number; maxWords?: number; minSilence?: number;
+  /** something new (a scene, a beat, a new word) at least every this many seconds (5) */ newEvery?: number;
+  /** the part is made to loop: its end must be its start */ loop?: boolean; checks?: Record<string, ReviewCheck>}): Promise<{window: {from: number; to: number}; facts: Record<string, unknown> | null;
   findings: Finding[]; text: string; timeline: string; ran: string[]; record: unknown[]}>;

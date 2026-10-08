@@ -4,7 +4,8 @@
  * and the alpha it was drawn at (wordsAt) — and fingerprinted, a few times a second over the part; then checks
  * name what is wrong, with times: words under the captions while a caption shows, words over other words, words
  * cut off at the frame's edge, a picture that does not change for a while — and a director's checks on the
- * whole: a hook in the first 3 s, not too much to read at once, and real silences (a breath before the peak).
+ * whole: a hook in the first 3 s, not too much to read at once, real silences (a breath before the peak), something
+ * new every few seconds, and — for a part made to loop — a last frame that is its first.
  *
  * The review is a footprintjs flowchart, so it leaves its own record — what was read, which checks ran and why
  * (the selector's evidence), what each found:
@@ -130,6 +131,26 @@ export const REVIEW_CHECKS = Object.freeze({
       }
       return quiet.length >= 2 ? [] : samples.map(({t}) => ({kind: 'silences', t, what: `${quiet.length ? 'only one real silence' : 'no real silence'} (${minSilence} s or more with nothing playing): give the film a breath before its peak`}));
     }},
+  stale: {label: 'Nothing new', why: 'the part is long enough to need something new every few seconds', when: s => s.facts.seconds > s.facts.newEvery,
+    find: ({film, window, samples, newEvery}) => {
+      // What is new: a scene starting, a beat landing (the recipe acting on a phrase), a word that was not on screen a moment before.
+      const inside = t => t >= window.from - 1e-6 && t <= window.to + 1e-6;
+      const moments = [window.from, ...film.clock.offsets.filter(inside), ...(film.beats ?? []).map(b => b.t).filter(inside)];
+      samples.forEach((x, i) => { if (i && x.words.some(w => !samples[i - 1].words.some(p => p.text === w.text))) moments.push(x.t); });
+      const times = [...new Set(moments.map(t => +t.toFixed(3)))].sort((a, b) => a - b).concat(window.to), out = [];
+      for (let i = 1; i < times.length; i++) {
+        const [a, b] = [times[i - 1], times[i]];
+        if (b - a > newEvery) out.push(...samples.filter(x => x.t >= a - 1e-9 && x.t <= b + 1e-9).map(x => ({kind: 'stale', t: x.t, what: `nothing new for ${(b - a).toFixed(1)} s (no scene, no beat, no new words)`})));
+      }
+      return out;
+    }},
+  loop: {label: 'The loop seam', why: 'the part is made to loop', when: s => s.facts.loop && s.facts.seconds > .1,
+    find: ({film, window}) => {
+      // A clip that loops goes from its end straight to its start: the picture at its end must be the picture at its
+      // start (motion that runs on comes round to where it began), or the loop jumps.
+      const [a, b] = [+window.from.toFixed(3), +window.to.toFixed(3)], h = frameHashes(film, {times: [a, b], width: 160});
+      return h[a] === h[b] ? [] : [{kind: 'loop', t: b, what: 'the end is not the start: the loop jumps'}];
+    }},
   still: {label: 'Nothing changes', why: 'the part is long enough to stand still', when: s => s.facts.seconds >= s.facts.stillFor,
     find: ({samples, hashes, stillFor}) => {
       const out = []; let run = [];
@@ -139,7 +160,7 @@ export const REVIEW_CHECKS = Object.freeze({
     }},
 });
 
-const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes', hook: 'no hook', 'text-density': 'too much to read', silences: 'no breath'};
+const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes', hook: 'no hook', 'text-density': 'too much to read', silences: 'no breath', stale: 'nothing new', loop: 'the loop jumps'};
 const clock = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
 /** The findings as lines: "1:21.5–1:23.0 chapters · under the captions: \"requests in\"". */
 export const findingsText = findings => findings.map(f => `${clock(f.from)}–${clock(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}`).join('\n');
@@ -156,7 +177,7 @@ function spans(film, hits, every, lasting) {
     for (const t of ts.slice(1)) { if (t - last > every * 1.5) { out.push({kind, from, to: last, what}); from = t; } last = t; }
     out.push({kind, from, to: last, what});
   }
-  return out.filter(f => ['still', 'hook', 'silences'].includes(f.kind) || f.to - f.from + every >= lasting - 1e-9).sort((a, b) => a.from - b.from || a.kind.localeCompare(b.kind)).map(f => ({...f, scene: sceneAt(f.from)}));
+  return out.filter(f => ['still', 'hook', 'silences', 'stale', 'loop'].includes(f.kind) || f.to - f.from + every >= lasting - 1e-9).sort((a, b) => a.from - b.from || a.kind.localeCompare(b.kind)).map(f => ({...f, scene: sceneAt(f.from)}));
 }
 
 /**
@@ -165,16 +186,19 @@ function spans(film, hits, every, lasting) {
  * Words count when drawn at `minAlpha` (0.5) or more and for `lasting` seconds (1) or more — shorter is a fade or a
  * page turning; the picture is still when unchanged for `stillFor` seconds (5); more than `maxWords` (35) words on
  * screen at once is too much to read; a real silence is a pause of `minSilence` seconds (0.8) with nothing playing;
- * text smaller than `minHeight` of the frame (0.011: 12 px at 1080) is texture, not reading, and is not counted.
+ * text smaller than `minHeight` of the frame (0.011: 12 px at 1080) is texture, not reading, and is not counted;
+ * something new (a scene, a beat, a word not on screen a moment before) should come at least every `newEvery` seconds
+ * (5); `loop: true` says the part is made to loop, so its last frame must be its first.
  * Returns {window, facts, findings, text, timeline, ran, record}: findings [{kind, from, to, scene, what}] on the
  * film clock, text as lines, the part's timeline (scenes and beats), the checks that ran, and the review's own
  * footprintjs record.
  */
-export async function reviewPart(film, {part = null, from = 0, to = film.total, layout = null, every = .25, stillFor = 5, lasting = 1, minAlpha = .5, minHeight = .011, maxWords = 35, minSilence = .8, checks = REVIEW_CHECKS} = {}) {
+export async function reviewPart(film, {part = null, from = 0, to = film.total, layout = null, every = .25, stillFor = 5, lasting = 1, minAlpha = .5, minHeight = .011, maxWords = 35, minSilence = .8, newEvery = 5, loop = false, checks = REVIEW_CHECKS} = {}) {
+  if (!(Number.isFinite(newEvery) && newEvery > 0)) throw new Error(`review: newEvery must be seconds, more than 0, not ${JSON.stringify(newEvery)}`);
   const window = part ? partWindow(film, part) : {from, to};
   const framed = layout ? compileLayout(film, (({scale, ...rest}) => rest)(layout)) : null;
   for (const [id, c] of Object.entries(checks)) if (!c || typeof c.find !== 'function' || typeof c.when !== 'function' || typeof c.label !== 'string') throw new Error(`review check "${id}" must be {label, why?, when(scope), find(review)}`);
-  const review = {film, window, layout: framed, width: framed?.width ?? 1600, height: framed?.height ?? 900, every, stillFor, maxWords, minSilence, samples: [], hashes: {}};
+  const review = {film, window, layout: framed, width: framed?.width ?? 1600, height: framed?.height ?? 900, every, stillFor, maxWords, minSilence, newEvery, samples: [], hashes: {}};
   let findings = [];
   const read = async s => {
     const times = []; for (let t = window.from; t <= window.to + 1e-9; t += every) times.push(+t.toFixed(3));
@@ -188,7 +212,7 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
     const legible = w => w.box[3] - w.box[1] >= minHeight * H;
     review.samples = times.map(t => { const zoomed = (film.focusAt?.(t)?.z ?? 1) > 1.001; return {t, words: wordsAt(film, t, {layout: framed}).filter(w => w.alpha >= minAlpha && legible(w) && shown(w, zoomed))}; });
     review.hashes = frameHashes(film, {times, width: 160});
-    s.facts = {from: window.from, to: window.to, seconds: +(window.to - window.from).toFixed(3), stillFor, captions: Boolean(framed?.boxes.captions), samples: times.length, words: review.samples.reduce((n, x) => n + x.words.length, 0),
+    s.facts = {from: window.from, to: window.to, seconds: +(window.to - window.from).toFixed(3), stillFor, newEvery, loop: Boolean(loop), captions: Boolean(framed?.boxes.captions), samples: times.length, words: review.samples.reduce((n, x) => n + x.words.length, 0),
       spoken: film.timings.scenes.some((sc, i) => (sc.words ?? []).some(w => film.clock.offsets[i] + w.end > window.from && film.clock.offsets[i] + w.start < window.to))};
     s.ran = []; s.hits = [];
   };

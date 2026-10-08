@@ -32,7 +32,7 @@ test('wordsAt reads every line a frame draws, with its box through the transform
 
 test('a review picks its checks by what the part has, runs each as its own subflow, and names what it finds with times', async () => {
   const r = await reviewPart(film, {layout: {format: 'landscape', captions: true, scale: 2}});
-  assert.deepEqual([...r.ran].sort(), ['cut-off', 'hook', 'still', 'text-density', 'under-captions', 'words-overlap'], 'a director\'s checks too: the hook (the part starts the film), how much there is to read');
+  assert.deepEqual([...r.ran].sort(), ['cut-off', 'hook', 'stale', 'still', 'text-density', 'under-captions', 'words-overlap'], 'a director\'s checks too: the hook (the part starts the film), how much there is to read, something new every few seconds');
   assert.equal(r.findings.filter(f => ['hook', 'text-density'].includes(f.kind)).length, 0, 'the square moves from the first frame, and there is little to read');
   const one = kind => r.findings.filter(f => f.kind === kind);
   const [overlap] = one('words-overlap'), [under] = one('under-captions'), [edge] = one('cut-off'), [still] = one('still');
@@ -96,4 +96,25 @@ test('text too small to read is texture: a photo of a page does not count as wor
   const r = await reviewPart(f, {from: 1, to: 3});
   assert.equal(r.findings.filter(x => x.kind === 'text-density').length, 0, '180 tiny words are not reading');
   assert.equal((await reviewPart(f, {from: 1, to: 3, minHeight: .001})).findings.filter(x => x.kind === 'text-density').length, 1, 'counted when asked to');
+});
+
+// Borrowed from motion directors (2026-10-08): something new every few seconds, and a loop that comes round.
+test('nothing new: a stretch with no scene, no beat and no new words on screen, longer than newEvery', async () => {
+  const r = await reviewPart(film);
+  const [stale] = r.findings.filter(f => f.kind === 'stale');
+  assert.ok(stale && near(stale.from, 5) && near(stale.to, film.total, .3), `from the last new words ("Under", at 5 s) to the end: ${JSON.stringify(stale)}`);
+  assert.match(stale.what, /^nothing new for \d+\.\d s \(no scene, no beat, no new words\)$/);
+  assert.equal((await reviewPart(film, {newEvery: 20})).findings.filter(f => f.kind === 'stale').length, 0, 'a longer allowance finds none');
+  assert.ok(!(await reviewPart(film, {from: 1, to: 4})).ran.includes('stale'), 'a part shorter than the allowance is not checked');
+  await assert.rejects(reviewPart(film, {newEvery: 0}), /newEvery must be seconds, more than 0/);
+});
+
+test('a part made to loop: its end must be its start, or the loop jumps', async () => {
+  const moving = await reviewPart(film, {loop: true});
+  assert.ok(moving.ran.includes('loop'));
+  assert.deepEqual(moving.findings.filter(f => f.kind === 'loop').map(f => f.what), ['the end is not the start: the loop jumps']);
+  const card = {name: 'card', story: {compile: () => ({hang: 1, draw: c => { c.fillStyle = '#123'; c.fillRect(0, 0, 1600, 900); }})}};
+  const still = await compileFilm({storyboard, timings: evenTimings(storyboard, {wordSeconds: .5}), recipe: {story: {kit: 'card'}}, kits: [card]});
+  assert.equal((await reviewPart(still, {loop: true})).findings.filter(f => f.kind === 'loop').length, 0, 'the same picture at both ends: it comes round');
+  assert.ok(!(await reviewPart(film)).ran.includes('loop'), 'checked only when the part is made to loop');
 });

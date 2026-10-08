@@ -16,7 +16,7 @@ import {TOOLS} from './tools.mjs';
 
 const CLI = fileURLToPath(new URL('./cli.mjs', import.meta.url));
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
-const REQUIRED = {part: ['scene'], still: ['at']};
+const REQUIRED = {part: ['scene'], still: ['at'], strip: ['at']};
 
 /** The tools as MCP lists them: name, what it does, its arguments (strings) and which are required. */
 export const mcpTools = () => Object.entries(TOOLS).map(([name, t]) => ({name, description: t.about,
@@ -33,7 +33,7 @@ export function callTool(name, args = {}, {defaults = {}, cwd = process.cwd()} =
       const text = Buffer.concat(out).toString('utf8').trim(), problem = Buffer.concat(err).toString('utf8').trim();
       if (code !== 0) return resolve({isError: true, content: [{type: 'text', text: problem || `storyreel ${name} stopped (${code})`}]});
       const content = [{type: 'text', text}];
-      const png = name === 'still' && text.split(' · ')[0];
+      const png = TOOLS[name].picture && text.split(' · ')[0];   // a tool that makes a picture: it comes back as the image
       if (png) try { content.push({type: 'image', mimeType: 'image/png', data: readFileSync(png).toString('base64')}); } catch { /* the path is in the text */ }
       resolve({content});
     });
