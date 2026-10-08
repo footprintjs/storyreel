@@ -103,24 +103,39 @@ function meet(subject, clipper) {
 const band = ([x, y, w, h]) => corners([x, y, x + w, y + h]);
 const same = (a, b) => a.text === b.text && a.box.every((v, i) => Math.abs(v - b.box[i]) <= 4);   // drawn twice: an outline, a shadow
 
-/** A time as the findings say it: m:ss.s on the film clock. */
-const clock = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
+/** A time as the findings say it: m:ss.s on the film clock, rounded to the tenth first (59.96 s is 1:00.0, never 0:60.0). */
+const clock = s => { const tenths = Math.round(s * 10); return `${Math.floor(tenths / 600)}:${(tenths % 600 / 10).toFixed(1).padStart(4, '0')}`; };
 /**
  * A moment on the film clock to the millisecond (how frameHashes keys it), never past the film's end: rounding can
  * carry the end over it (21.299999999999997 is 21.300 to the millisecond, a moment the film never reaches).
  */
 const onClock = (film, t) => Math.min(film.total, +t.toFixed(3));
-/** The picture at t exactly (frameHashes keys a moment to the millisecond), 160 px wide, as its pixels. */
-const pictureAt = (film, t) => { const c = createCanvas(160, 90), x = c.getContext('2d'); x.scale(.1, .1); film.frame(x, t); return c.data(); };
+/** The last moment before t: the largest number under it, near enough (one or two steps of a double below). */
+const justBefore = t => t - Math.abs(t) * Number.EPSILON;
 /**
- * Two pictures the same to the eye: no channel of a pixel off by more than 32 levels (a step of anti-aliasing is not
- * a jump; a thing that moved is) and less than one level on average (a fade that does not come back is a jump too).
+ * The picture at t exactly, as the eye takes it in: drawn at the film's own size (drawn smaller, a thin line or small
+ * text drops out) and averaged over cells of 4×4 pixels, RGB. Something turned a hair (an image, a card, a word) is
+ * redrawn a few pixels off along its edges where nothing moved; the average loses that and keeps a jump.
+ */
+function cellsAt(film, t) {
+  const c = createCanvas(1600, 900); film.frame(c.getContext('2d'), t);
+  const px = c.data(), cells = new Float32Array(400 * 225 * 3);
+  for (let y = 0; y < 900; y++) for (let x = 0; x < 1600; x++) { const i = (y * 1600 + x) * 4, o = ((y >> 2) * 400 + (x >> 2)) * 3; cells[o] += px[i]; cells[o + 1] += px[i + 1]; cells[o + 2] += px[i + 2]; }
+  return cells.map(v => v / 16);
+}
+/**
+ * Two pictures the same to the eye: no cell more than 32 levels apart, and less than 0.02 of a level apart on average.
+ * Measured over 1,200 seamless loops (cards, images, hands and words turning, read at their last moment): a cell at
+ * most 18.9 levels off, 0.0061 on average. A jump is far past one or the other: a 12-px dot 600 px away is 221 off in
+ * a cell, a 1-px hand turned 90° is 64, a 300×120 card 32 levels bluer is 0.53 off on average.
  */
 function alike(p, q) {
-  let sum = 0;
-  for (let i = 0; i < p.length; i++) { const d = Math.abs(p[i] - q[i]); if (d > 32) return false; sum += d; }
-  return sum < p.length;
+  let sum = 0, most = 0;
+  for (let i = 0; i < p.length; i++) { const d = Math.abs(p[i] - q[i]); sum += d; if (d > most) most = d; }
+  return most <= 32 && sum / p.length < .02;
 }
+/** The words drawn at t that the review counts (at minAlpha or more), as one text: a label's digit can change in fewer pixels than a turning card's edges are redrawn. */
+const wordsSaid = (film, t, minAlpha) => wordsAt(film, t).filter(w => w.alpha >= minAlpha).map(w => w.text).sort().join('\n');
 
 /**
  * The stretches where the picture is frozen — the same from sample to sample for `stillFor` seconds or more — as
@@ -137,9 +152,10 @@ function frozenRuns({samples, hashes, stillFor}) {
 /**
  * The checks, each a strategy: label, why (said when it is picked), when(scope) (picked when true: scope.facts
  * holds {seconds, captions, words}), find(review) → [{kind, t, what}] from the shared samples. Same shape for a
- * check of your own, passed in reviewPart's `checks`. A find that throws fails the review, naming the check;
- * review.picked says which checks run beside it, so one can leave a finding to another (stale leaves a frozen
- * picture to still). A check's `what` names one stretch: hits with the same kind and `what` merge into one span.
+ * check of your own, passed in reviewPart's `checks`. find answers at once, and its hits are copied as {kind, t, what}
+ * (plainHits): a find that throws or returns anything else fails the review, naming the check. review.picked says
+ * which checks run beside it, so one can leave a finding to another (stale leaves a frozen picture to still). A
+ * check's `what` names one stretch: hits with the same kind and `what` merge into one span.
  */
 export const REVIEW_CHECKS = Object.freeze({
   'under-captions': {label: 'Words under the captions', why: 'the layout shows captions', when: s => s.facts.captions,
@@ -188,15 +204,15 @@ export const REVIEW_CHECKS = Object.freeze({
       return out;
     }},
   loop: {label: 'The loop seam', why: 'the part is made to loop', when: s => s.facts.loop && s.facts.seconds > .1,
-    find: ({film, part}) => {
-      // A clip that loops goes from its end straight to its start: the picture at its end must be the picture at its
+    find: ({film, part, minAlpha}) => {
+      // A clip that loops goes from its end straight to its start: what it shows at its end must be what it shows at its
       // start (motion that runs on comes round to where it began), or the loop jumps. The part is its own scenes, not
-      // their handles. Its end is read from inside it, a nanosecond before it ends — a frame is a pure function of
-      // time, so that is the picture the part ends on, never one after the cut (the next scene, a handle) — and the
-      // two are compared to the eye (alike): read a millisecond early, a dot circling at 18 px a second has moved on,
-      // and a loop that comes round would read as a jump.
-      const end = Math.max(part.from, part.to - 1e-9);
-      if (alike(pictureAt(film, part.from), pictureAt(film, end))) return [];
+      // their handles. Its end is read at its last moment (justBefore) — a frame is a pure function of time, so that is
+      // the picture the part ends on, never one after the cut (the next scene, a handle); read a millisecond early, a
+      // dot circling at 18 px a second has moved on — and the two ends are compared as the eye takes them in (cellsAt,
+      // alike) and as words (wordsSaid).
+      const end = Math.max(part.from, justBefore(part.to));
+      if (wordsSaid(film, part.from, minAlpha) === wordsSaid(film, end, minAlpha) && alike(cellsAt(film, part.from), cellsAt(film, end))) return [];
       return [{kind: 'loop', t: onClock(film, Math.max(part.from, part.to - .001)), what: 'the end is not the start: the loop jumps'}];   // said in the part's last millisecond, so in its own scene
     }},
   // The picture is frozen: the same frame for stillFor seconds or more.
@@ -210,6 +226,21 @@ export const REVIEW_CHECKS = Object.freeze({
 const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes', hook: 'no hook', 'text-density': 'too much to read', silences: 'no breath', stale: 'nothing new', loop: 'the loop jumps'};
 /** The findings as lines: "1:21.5–1:23.0 chapters · under the captions: \"requests in\"". */
 export const findingsText = findings => findings.map(f => `${clock(f.from)}–${clock(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}`).join('\n');
+
+/**
+ * What a check found, as plain {kind, t, what}: all the review's record can copy and its report reads. Anything else
+ * is refused, saying what find returned instead — a promise (a check reads the shared samples and answers at once),
+ * no list, or a hit without its name, its time or its words.
+ */
+function plainHits(hits) {
+  if (typeof hits?.then === 'function') { Promise.resolve(hits).catch(() => {}); throw new Error('find returned a promise: a check reads the shared samples and returns its hits, [{kind, t, what}]'); }
+  if (!Array.isArray(hits)) throw new Error(`find must return a list of hits, [{kind, t, what}], not ${hits === null ? 'null' : typeof hits}`);
+  return hits.map((h, i) => {
+    const wrong = typeof h?.kind !== 'string' ? 'kind must be a name (a string)' : !Number.isFinite(h.t) ? 't must be seconds on the film clock' : typeof h.what !== 'string' ? 'what must be words (a string)' : null;
+    if (wrong) throw new Error(`find's hit ${i}: ${wrong}; a hit is {kind, t, what}`);
+    return {kind: h.kind, t: h.t, what: h.what};
+  });
+}
 
 /** Hits on sample times → spans of the same thing, each with the scene it starts in; a word's span shorter than `lasting` is passing (a fade, a page turning) and dropped. */
 function spans(film, hits, every, lasting) {
@@ -251,7 +282,7 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
   const own = part ? partWindow(film, {...part, handles: 0}) : window;
   const framed = layout ? compileLayout(film, (({scale, ...rest}) => rest)(layout)) : null;
   for (const [id, c] of Object.entries(checks)) if (!c || typeof c.find !== 'function' || typeof c.when !== 'function' || typeof c.label !== 'string') throw new Error(`review check "${id}" must be {label, why?, when(scope), find(review)}`);
-  const review = {film, window, part: own, layout: framed, width: framed?.width ?? 1600, height: framed?.height ?? 900, every, stillFor, maxWords, minSilence, newEvery, samples: [], hashes: {}, frozen: [], picked: []};
+  const review = {film, window, part: own, layout: framed, width: framed?.width ?? 1600, height: framed?.height ?? 900, every, stillFor, maxWords, minSilence, newEvery, minAlpha, samples: [], hashes: {}, frozen: [], picked: []};
   let findings = [];
   const read = async s => {
     const times = []; for (let t = window.from; t <= window.to + 1e-9; t += every) times.push(onClock(film, t));
@@ -281,16 +312,22 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
     s.failed = picked.evidence.rules.filter(r => r.matchError !== undefined).map(r => ({id: r.branch, message: r.matchError}));
     return picked;
   };
-  // A check that throws is carried out as a failure too: left to the selector, its error would be contained — the
-  // check missing from `ran`, a log line on stdout, the review clean.
+  // A check that throws, or finds what the record cannot keep (plainHits), is carried out as a failure too: left to the
+  // selector, its error would be contained — the check missing from `ran`, the review clean.
   const told = e => { try { return e instanceof Error ? e.message : String(e); } catch { return 'a thrown value that cannot be printed'; } };
-  const runCheck = (id, c) => async s => { try { s.hits = c.find(review); } catch (e) { s.failed = [{id, message: told(e)}]; } };
+  const runCheck = (id, c) => async s => { try { s.hits = plainHits(c.find(review)); } catch (e) { s.failed = [{id, message: told(e)}]; } };
+  // The engine's own lines (an error it contained, say) are kept for the report, never printed: stdout is where a
+  // tool's answer goes (an MCP client reads it as the answer).
+  const engine = [], heard = (message, detail) => { engine.push(detail?.error === undefined ? String(message) : `${message} ${told(detail.error)}`); };
   let chart = flowChart('read-part', read, 'read-part', 'The part read as text and fingerprinted, once for every check')
     .addSelectorFunction('pick-checks', pick, 'pick-checks', 'Each check that fits the part');
   for (const [id, c] of Object.entries(checks)) chart = chart.addSubFlowChartBranch(id, flowChart(c.label, runCheck(id, c), id).build(), c.label, {outputMapper: out => ({hits: out.hits ?? [], ran: [id], failed: out.failed ?? []})});
-  const built = chart.end().addFunction('report', async s => { findings = spans(film, s.hits ?? [], every, lasting); s.findings = findings.length; }, 'report', 'The findings as spans, each with its scene').build();
+  const built = chart.end().addFunction('report', async s => { findings = spans(film, s.hits ?? [], every, lasting); s.findings = findings.length; }, 'report', 'The findings as spans, each with its scene')
+    .setLogger({info: heard, warn: heard, error: heard, log() {}, debug() {}}).build();
   const trace = narrative(), run = await built.recorder(trace).run();
-  const state = run?.state ?? run?.sharedState ?? {}, failed = state.failed ?? [];
+  const state = run?.state ?? run?.sharedState ?? {}, failed = [...(state.failed ?? [])], ran = new Set(state.ran ?? []);
+  // A check picked that neither ran nor failed was lost on the way (its result never reached the review): a failure too.
+  for (const id of review.picked) if (!ran.has(id) && !failed.some(f => f.id === id)) failed.push({id, message: `it did not finish${engine.length ? ` (the engine: ${engine.join('; ')})` : ''}`});
   if (failed.length) throw new Error(`review: ${failed.length > 1 ? `${failed.length} checks` : 'a check'} failed, so the review is incomplete — ${failed.map(f => `"${f.id}": ${f.message}`).join('; ')}`);
   return {window, facts: state.facts ?? null, findings, text: findingsText(findings), timeline: timelineText(partTimeline(film, window)), ran: state.ran ?? [], record: trace.getEntries()};
 }

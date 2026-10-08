@@ -2,6 +2,7 @@
 // by what the part has, each run as its own subflow; findings as spans on the film clock, as text; the record.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createCanvas} from '@napi-rs/canvas';
 import {compileFilm, evenTimings} from '../src/index.mjs';
 import {compileLayout} from '../src/layout.mjs';
 import {wordsAt, reviewPart, findingsText, REVIEW_CHECKS} from '../src/review.mjs';
@@ -54,6 +55,7 @@ test('a check that does not fit is not picked (no caption band, no caption check
   assert.equal(r.findings.filter(f => f.kind === 'no-title').length, 0);
   await assert.rejects(reviewPart(film, {checks: {broken: {label: 'x'}}}), /review check "broken" must be \{label, why\?, when\(scope\), find\(review\)\}/);
   assert.equal(findingsText([{kind: 'still', from: 61.25, to: 67, scene: 'end', what: 'the picture does not change'}]), '1:01.3–1:07.0 end · nothing changes: the picture does not change');
+  assert.equal(findingsText([{kind: 'loop', from: 59.96, to: 119.97, scene: 'end', what: 'x'}]), '1:00.0–2:00.0 end · the loop jumps: x', 'rounded to the tenth before the minutes: never 0:60.0');
 });
 
 test('a director\'s checks: no hook when nothing moves in the first 3 s; too much to read at once; no breath when the voice never pauses', async () => {
@@ -155,13 +157,19 @@ test('a part made to loop: the end of its own scenes must come round to their st
 });
 
 test('a loop in motion comes round when its motion does: the end is read at the end, not a moment before it', async () => {
-  // A dot and a word circle once a scene: 265 px a second, so a millisecond before the end they are a quarter of a pixel short.
+  // Once a scene a dot circles (265 px a second: a millisecond before the end it is a quarter of a pixel short), and a
+  // hand, a card, a picture and a word turn — redrawn a hair apart, their edges come out a few levels off where nothing moved.
   const board = {title: 'Orbit', scenes: [{id: 'one', narration: twelve}, {id: 'two', narration: twelve}]};
+  const sprite = createCanvas(200, 120), sx = sprite.getContext('2d');
+  sx.fillStyle = '#3b82f6'; sx.fillRect(0, 0, 200, 120); sx.fillStyle = '#fff'; sx.font = '40px sans-serif'; sx.fillText('Card', 20, 75);
   let starts = [0, Infinity];
   const orbit = (name, turns) => ({name, story: {compile: () => ({hang: 1, draw: (c, t) => {
     const i = t >= starts[1] ? 1 : 0, k = 2 * Math.PI * turns * (t - starts[i]) / (starts[1] - starts[0]);
     c.fillStyle = '#eee'; c.fillRect(0, 0, 1600, 900); c.fillStyle = '#c00'; c.beginPath(); c.arc(800 + 300 * Math.cos(k), 450 + 300 * Math.sin(k), 60, 0, 2 * Math.PI); c.fill();
-    c.fillStyle = '#222'; c.font = '60px sans-serif'; c.fillText('round', 700 + 200 * Math.sin(k), 300);
+    c.strokeStyle = '#000'; c.lineWidth = 4; c.beginPath(); c.moveTo(800, 450); c.lineTo(800 + 200 * Math.cos(k), 450 + 200 * Math.sin(k)); c.stroke();
+    c.save(); c.translate(350, 450); c.rotate(k); c.fillStyle = '#0a0'; c.fillRect(-120, -40, 240, 80); c.restore();
+    c.save(); c.translate(1250, 450); c.rotate(k); c.drawImage(sprite, -100, -60); c.restore();
+    c.save(); c.translate(800, 150); c.rotate(k); c.fillStyle = '#222'; c.font = '60px sans-serif'; c.fillText('round', -70, 20); c.restore();
   }})}});
   for (const [name, turns, jumps] of [['orbit-round', 1, 0], ['orbit-short', 1.01, 1]]) {
     const kit = orbit(name, turns), f = await compileFilm({storyboard: board, timings: evenTimings(board, {wordSeconds: .5}), recipe: {story: {kit: kit.name}}, kits: [kit]});
@@ -170,6 +178,26 @@ test('a loop in motion comes round when its motion does: the end is read at the 
       const r = await reviewPart(f, {part: {scene}, loop: true, checks: {loop: REVIEW_CHECKS.loop}});
       assert.equal(r.findings.length, jumps, `${turns} turns in ${scene}: ${jumps ? 'a hundredth of a turn short, it jumps' : 'it comes round'}`);
     }
+  }
+});
+
+test('a loop that jumps at its seam is caught however small the jump: a dot, a thin hand, a label, a shade, a digit', async () => {
+  // Each film cuts to a second picture 2 s before its end, so its end is not its start.
+  const board = {title: 'Seam', scenes: [{id: 'one', narration: twelve}]};
+  const ground = (c, colour) => { c.fillStyle = colour; c.fillRect(0, 0, 1600, 900); };
+  const JUMPS = {
+    'a 12-px dot moves 600 px': (c, end) => { ground(c, '#eee'); c.fillStyle = '#111'; c.beginPath(); c.arc(end ? 1200 : 400, 450, 6, 0, 2 * Math.PI); c.fill(); },
+    'a 4-px clock hand turns 90°': (c, end) => { ground(c, '#fff'); c.strokeStyle = '#000'; c.lineWidth = 4; c.beginPath(); c.moveTo(800, 450); c.lineTo(end ? 1000 : 800, end ? 450 : 250); c.stroke(); },
+    'a 20-px label goes from "Step 1" to "Step 9"': (c, end) => { ground(c, '#fff'); c.fillStyle = '#222'; c.font = '20px sans-serif'; c.fillText(end ? 'Step 9' : 'Step 1', 100, 100); },
+    'a 300×120 card turns 32 levels bluer': (c, end) => { ground(c, '#fff'); c.fillStyle = end ? '#5ba2f6' : '#3b82f6'; c.fillRect(650, 390, 300, 120); },
+    'a 12-px counter goes from 12:00 to 12:01 (too few pixels: the words say it)': (c, end) => { ground(c, '#fff'); c.fillStyle = '#222'; c.font = '12px sans-serif'; c.fillText(end ? '12:01' : '12:00', 700, 450); },
+  };
+  let seamAt = Infinity;
+  for (const [jump, draw] of Object.entries(JUMPS)) {
+    const kit = {name: 'seam', story: {compile: () => ({hang: 1, draw: (c, t) => draw(c, t >= seamAt)})}};
+    const f = await compileFilm({storyboard: board, timings: evenTimings(board, {wordSeconds: .5}), recipe: {story: {kit: 'seam'}}, kits: [kit]});
+    seamAt = f.total - 2;
+    assert.equal((await reviewPart(f, {part: {scene: 'one'}, loop: true, checks: {loop: REVIEW_CHECKS.loop}})).findings.length, 1, `${jump}: the loop jumps`);
   }
 });
 
@@ -189,4 +217,24 @@ test('a check that throws fails the review, naming it: it is never just missing 
   const picky = {label: 'Picky', when: () => { throw new Error('no facts'); }, find: () => []};
   await assert.rejects(reviewPart(film, {from: 1, to: 4, checks: {broken, picky}}), /review: 2 checks failed, so the review is incomplete — "picky": no facts; "broken": no picture to read/, 'a when() that throws is a failure too, not a check that does not fit');
   assert.equal(printed.reduce((n, m) => n + m.mock.callCount(), 0), 0, 'nothing printed on stdout, where an MCP client would take it for the answer');
+});
+
+test('a check answers with its hits, [{kind, t, what}]: anything else fails the review, naming the check, and so does a result lost on the way', async t => {
+  const printed = [t.mock.method(console, 'info'), t.mock.method(console, 'log')];
+  const mine = find => reviewPart(film, {from: 1, to: 3, checks: {mine: {label: 'Mine', when: () => true, find}}});
+  for (const [find, said] of [
+    [async () => [], /"mine": find returned a promise: a check reads the shared samples and returns its hits/],
+    [async () => { throw new Error('too late'); }, /"mine": find returned a promise/],
+    [() => 7, /"mine": find must return a list of hits, \[\{kind, t, what\}\], not number/],
+    [() => {}, /"mine": find must return a list of hits, \[\{kind, t, what\}\], not undefined/],
+    [() => [{kind: 'x', t: NaN, what: 'w'}], /"mine": find's hit 0: t must be seconds on the film clock; a hit is \{kind, t, what\}/],
+    [() => [{kind: 'x', t: 1, what: Symbol('w')}], /"mine": find's hit 0: what must be words \(a string\)/],
+  ]) await assert.rejects(mine(find), said);
+  const kept = await mine(({film: f}) => [2, 2.25, 2.5, 2.75, 3].map(t => ({kind: 'x', t, what: 'w', film: f, format: () => 'w'})));
+  assert.deepEqual(kept.findings.map(({kind, from, to, what}) => ({kind, from, to, what})), [{kind: 'x', from: 2, to: 3, what: 'w'}], 'a hit is copied as {kind, t, what}: the film and a function it held stay out of the record');
+  // A result the record cannot copy at the commit (simulated) never reaches the review: that is a failure too, in the engine's words.
+  const clone = globalThis.structuredClone, poisoned = v => { try { return (JSON.stringify(v) ?? '').includes('LOST'); } catch { return false; } };
+  t.mock.method(globalThis, 'structuredClone', (v, o) => { if (poisoned(v)) throw new DOMException('LOST could not be cloned.', 'DataCloneError'); return clone(v, o); });
+  await assert.rejects(mine(() => [{kind: 'x', t: 1, what: 'LOST'}]), /review: a check failed, so the review is incomplete — "mine": it did not finish \(the engine: .*LOST could not be cloned/);
+  assert.equal(printed.reduce((n, m) => n + m.mock.callCount(), 0), 0, 'the engine\'s own lines are kept for the report, never printed on stdout');
 });

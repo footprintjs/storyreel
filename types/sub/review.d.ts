@@ -7,13 +7,16 @@ export function wordsAt(film: Film, t: number, options?: {layout?: ReturnType<ty
  * What a check sees: the shared samples (words every `every` s), frame hashes (keyed by each sample's time), the
  * layout, the output size; `window`, what is read (a part with its handles), and `part`, the part itself (its own
  * scenes, without the handles; the window when the review was given from/to); `frozen`, the stretches where the
- * picture does not change for `stillFor` s or more; `picked`, the checks that run, so one can leave a finding to another.
+ * picture does not change for `stillFor` s or more; `picked`, the checks that run, so one can leave a finding to another;
+ * `minAlpha`, how opaque a word must be drawn to count.
  */
-export interface Review {film: Film; window: {from: number; to: number}; part: {from: number; to: number}; maxWords: number; minSilence: number; layout: ReturnType<typeof import('../index.js').compileLayout> | null; width: number; height: number; every: number; stillFor: number; newEvery: number;
+export interface Review {film: Film; window: {from: number; to: number}; part: {from: number; to: number}; maxWords: number; minSilence: number; minAlpha: number; layout: ReturnType<typeof import('../index.js').compileLayout> | null; width: number; height: number; every: number; stillFor: number; newEvery: number;
   samples: {t: number; words: Word[]}[]; hashes: Record<number, string>; frozen: {from: number; to: number}[]; picked: string[]}
 /**
  * A check: a strategy run as its own subflow, picked when `when(scope)` is true (scope.facts: {seconds, stillFor, newEvery, loop, captions, samples, words, spoken}).
- * A `when` or a `find` that throws fails the review, naming the check. Hits with the same kind and `what` merge into one span, so `what` names one stretch.
+ * `find` answers at once with its hits, copied as {kind, t, what}; a `when` or a `find` that throws, or a `find` that returns anything else
+ * (a promise, no list, a hit without a name, a time or words), fails the review, naming the check. Hits with the same kind and `what` merge
+ * into one span, so `what` names one stretch.
  */
 export interface ReviewCheck {label: string; why?: string; when(scope: any): boolean; find(review: Review): {kind: string; t: number; what: string}[]}
 export const REVIEW_CHECKS: Readonly<Record<'under-captions' | 'words-overlap' | 'cut-off' | 'hook' | 'text-density' | 'silences' | 'stale' | 'loop' | 'still', ReviewCheck>>;
