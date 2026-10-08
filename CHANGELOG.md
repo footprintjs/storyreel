@@ -49,7 +49,7 @@
   the picture itself for `still` and `strip` (the last line of the output that names a picture).
 - `still`'s finding reads "the picture does not change for 7.0 s from 0:07.5" (one per stretch); a part's window
   is held to the film's length (a float total no longer reads past the end); times print as 1:00.0, never 0:60.0 —
-  in the review, on contact sheets and strips, and in the studio (one `clockText`, `footprint-storyreel/clock`; the
+  in the review, on contact sheets and strips, and in the studio (one `clockTenths`, `footprint-storyreel/clock` — a film time to the tenth, `1:21.5`, beside footprint-narration's `clockText`, a chapter time, `1:21`; the
   studio page keeps a copy, as it runs in the browser on its own).
 
 ### The narration code moves into footprint-narration (breaking: imports move)

@@ -27,7 +27,7 @@ import {flowChart, narrative, select} from 'footprintjs';
 import {compileLayout} from './layout.mjs';
 import {frameHashes} from './pins.mjs';
 import {partScenes, partWindow, partTimeline, timelineText} from './render.mjs';
-import {clockText} from './clock.mjs';
+import {clockTenths} from './clock.mjs';
 
 /**
  * The words a frame draws at t: [{text, box: [x0, y0, x1, y1], alpha}], in the layout's output pixels (or on the
@@ -197,7 +197,7 @@ export const REVIEW_CHECKS = Object.freeze({
       for (let i = 1; i < edges.length; i++) {
         const [a, b] = [edges[i - 1], edges[i]];
         if (!(b - a > newEvery)) continue;
-        const what = `nothing new for ${(b - a).toFixed(1)} s since ${clockText(a)} (no scene, no beat, no new words)`;   // its own words: two gaps never merge into one span
+        const what = `nothing new for ${(b - a).toFixed(1)} s since ${clockTenths(a)} (no scene, no beat, no new words)`;   // its own words: two gaps never merge into one span
         out.push(...samples.filter(x => x.t >= a - 1e-9 && x.t <= b + 1e-9 && quiet(x.t)).map(x => ({kind: 'stale', t: x.t, what})));
       }
       return out;
@@ -217,14 +217,14 @@ export const REVIEW_CHECKS = Object.freeze({
   // The picture is frozen: the same frame for stillFor seconds or more.
   still: {label: 'Nothing changes', why: 'the part is long enough to stand still', when: s => s.facts.seconds >= s.facts.stillFor,
     find: ({samples, frozen}) => frozen.flatMap(({from, to}) => {
-      const what = `the picture does not change for ${(to - from).toFixed(1)} s from ${clockText(from)}`;   // its own words: two stretches never merge into one span
+      const what = `the picture does not change for ${(to - from).toFixed(1)} s from ${clockTenths(from)}`;   // its own words: two stretches never merge into one span
       return samples.filter(x => x.t >= from && x.t <= to).map(x => ({kind: 'still', t: x.t, what}));
     })},
 });
 
 const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes', hook: 'no hook', 'text-density': 'too much to read', silences: 'no breath', stale: 'nothing new', loop: 'the loop jumps'};
 /** The findings as lines: "1:21.5–1:23.0 chapters · under the captions: \"requests in\"". */
-export const findingsText = findings => findings.map(f => `${clockText(f.from)}–${clockText(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}`).join('\n');
+export const findingsText = findings => findings.map(f => `${clockTenths(f.from)}–${clockTenths(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}`).join('\n');
 
 /**
  * What a check found, as plain {kind, t, what}: all the review's record can copy and its report reads. Anything else

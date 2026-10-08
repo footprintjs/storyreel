@@ -272,7 +272,7 @@ export const ramp = (t, at, d = .5) => Math.max(0, Math.min(1, (t - at) / d));
  * before it is split into minutes, so 59.96 s is 1:00.0, never 0:60.0. (The studio page keeps a copy: it runs in the
  * browser on its own.)
  */
-export const clockText = t => { const tenths = Math.round(t * 10); return `${Math.floor(tenths / 600)}:${(tenths % 600 / 10).toFixed(1).padStart(4, '0')}`; };
+export const clockTenths = t => { const tenths = Math.round(t * 10); return `${Math.floor(tenths / 600)}:${(tenths % 600 / 10).toFixed(1).padStart(4, '0')}`; };
 /** A head turning: slow, fast, slow. */
 const easeTurn = u => (u < .5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2);
 

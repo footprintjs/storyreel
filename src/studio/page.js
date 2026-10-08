@@ -5,7 +5,7 @@ const state = {film: null, version: -1, t: 0, playing: false, clock0: 0, busy: f
   beat: null, hit: null, sceneIndex: -1, nearKey: '', drag: false};
 const COLOURS = {story: '#3867d6', whiteboard: '#3867d6', stages: '#1e9e6a', card: '#d9822b', guesses: '#8e44ad', notes: '#c0392b', pushIn: '#7f8c8d', recalls: '#7f8c8d'};
 const colourOf = path => COLOURS[(path ?? '').match(/^[a-zA-Z]+/)?.[0]] ?? '#95a5a6';
-const clockText = t => { const tenths = Math.round(t * 10); return `${Math.floor(tenths / 600)}:${(tenths % 600 / 10).toFixed(1).padStart(4, '0')}`; };   // clock.mjs · clockText's copy (this page runs on its own): 59.96 s is 1:00.0
+const clockTenths = t => { const tenths = Math.round(t * 10); return `${Math.floor(tenths / 600)}:${(tenths % 600 / 10).toFixed(1).padStart(4, '0')}`; };   // clock.mjs · clockTenths's copy (this page runs on its own): 59.96 s is 1:00.0
 /** The entry a phrase belongs to: its path without the last step ("story.items[3].at" → "story.items[3]"). */
 const ownerOf = path => path.replace(/(\.[^.[\]]+|\[\d+\])$/, '');
 const el = (tag, props = {}, ...kids) => { const n = document.createElement(tag); Object.assign(n, props); for (const k of kids) n.append(k); return n; };
@@ -57,7 +57,7 @@ function seek(t) {
   if (!state.film) return;
   state.t = Math.max(0, Math.min(state.film.total, t)); state.dirty = true;
   requestFrame();
-  $('time').textContent = `${clockText(state.t)} / ${clockText(state.film.total)}`;
+  $('time').textContent = `${clockTenths(state.t)} / ${clockTenths(state.film.total)}`;
   const i = sceneIndexAt(state.t);
   if (i !== state.sceneIndex) { state.sceneIndex = i; $('scene').textContent = state.film.scenes[i]?.title ?? ''; renderTranscript(); }
   markWord(); renderNear(); drawTimeline();
@@ -126,7 +126,7 @@ function onTimelineHover(e) {
   if (!state.film) return;
   const r = $('timeline').getBoundingClientRect(), b = beatNear(e.clientX - r.left), tip = $('tip');
   if (!b) { tip.hidden = true; return; }
-  tip.textContent = `${clockText(b.t)} · “${b.said.phrase}”${b.said.plus ? ` +${b.said.plus}s` : ''} → ${b.path ?? 'made by a kit'}`;
+  tip.textContent = `${clockTenths(b.t)} · “${b.said.phrase}”${b.said.plus ? ` +${b.said.plus}s` : ''} → ${b.path ?? 'made by a kit'}`;
   tip.hidden = false; tip.style.left = `${Math.min(e.clientX - r.left + 8, r.width - 300)}px`; tip.style.top = '-34px';
 }
 
@@ -140,7 +140,7 @@ function renderNear() {
   const film = state.film, near = film.beats.filter(b => Math.abs(b.t - state.t) <= 2.5).sort((a, b) => a.t - b.t), key = near.map(b => b.t + b.path).join('|') + (state.beat?.t ?? '');
   if (key === state.nearKey) return; state.nearKey = key;
   $('now').replaceChildren(...near.map(b => {
-    const li = el('li', {className: state.beat === b ? 'on' : ''}, el('span', {className: 'at', textContent: clockText(b.t)}),
+    const li = el('li', {className: state.beat === b ? 'on' : ''}, el('span', {className: 'at', textContent: clockTenths(b.t)}),
       el('span', {}, el('span', {className: 'swatch'}), `“${b.said.phrase}” `, el('span', {className: 'path', textContent: b.path ?? '(a kit)'})));
     li.querySelector('.swatch').style.background = colourOf(b.path);
     li.addEventListener('click', () => selectBeat(b));
@@ -169,7 +169,7 @@ function renderNotes() {
   $('notes').replaceChildren(...notes.map(n => {
     const what = n.speed !== undefined ? `camera speed ${n.speed}×` : n.cut ? `cut into ${n.cut} (was ${n.was})` : n.push.on ? `push ${n.push.size} on ${n.push.on} (×${n.push.zoom})` : `push ×${n.push.zoom} at [${n.push.at.join(', ')}]`;
     const at = n.cut ? n.at : n.push ? n.from : 0;
-    const li = el('li', {}, el('span', {className: 'at', textContent: n.speed !== undefined ? 'film' : clockText(at)}), el('span', {}, el('strong', {textContent: what}), el('br'), el('span', {className: 'label', textContent: n.note})));
+    const li = el('li', {}, el('span', {className: 'at', textContent: n.speed !== undefined ? 'film' : clockTenths(at)}), el('span', {}, el('strong', {textContent: what}), el('br'), el('span', {className: 'label', textContent: n.note})));
     li.addEventListener('click', () => seek(at));
     return li;
   }));
@@ -179,7 +179,7 @@ function renderReading() {
   const short = state.film.reading ?? [];
   if (!short.length) { $('reading').replaceChildren(el('li', {className: 'muted empty', textContent: 'Every line stays up long enough to read (0.3 s a word).'})); return; }
   $('reading').replaceChildren(...short.map(l => {
-    const li = el('li', {}, el('span', {className: 'at', textContent: clockText(l.at)}), el('span', {}, `“${l.text.slice(0, 60)}” `, el('span', {className: 'label', textContent: `${l.seconds} s of ${l.needs} s`}), el('br'), el('span', {className: 'path', textContent: l.path})));
+    const li = el('li', {}, el('span', {className: 'at', textContent: clockTenths(l.at)}), el('span', {}, `“${l.text.slice(0, 60)}” `, el('span', {className: 'label', textContent: `${l.seconds} s of ${l.needs} s`}), el('br'), el('span', {className: 'path', textContent: l.path})));
     li.addEventListener('click', () => { seek(l.at + .05); showEntry(l.path.replace(/\.(question|answer)$/, '')); });
     return li;
   }));
@@ -190,7 +190,7 @@ function renderShots() {
   $('shots').replaceChildren(...shots.map(s => {
     const facts = (side, f) => f && Object.keys(f).length ? `${side} ${Object.entries(f).map(([k, v]) => `${k} = ${v}`).join(', ')}` : '';
     const said = [`${s.moments} moments`, facts('starts:', s.start), facts('ends:', s.end)].filter(Boolean).join(' · ');
-    const li = el('li', {}, el('span', {className: 'at', textContent: clockText(s.from)}), el('span', {},
+    const li = el('li', {}, el('span', {className: 'at', textContent: clockTenths(s.from)}), el('span', {},
       el('strong', {textContent: s.intent ?? '(no intent)'}), el('br'), el('span', {className: 'path', textContent: s.path}), said ? el('span', {className: 'label', textContent: ` ${said}`}) : ''));
     if (!s.intent) li.classList.add('muted');
     li.addEventListener('click', () => { seek(s.from + .05); showEntry(s.path); });
@@ -202,7 +202,7 @@ function renderWatching() {
   if (!found.length) { $('watching').replaceChildren(el('li', {className: 'muted empty', textContent: 'No burst: no shot shows more than 4 moments in 2 s.'})); return; }
   $('watching').replaceChildren(...found.map(w => {
     const what = `${w.moments} moments in ${w.seconds} s`;
-    const li = el('li', {}, el('span', {className: 'at', textContent: clockText(w.at)}), el('span', {}, el('strong', {textContent: what}), el('br'), el('span', {className: 'path', textContent: w.path})));
+    const li = el('li', {}, el('span', {className: 'at', textContent: clockTenths(w.at)}), el('span', {}, el('strong', {textContent: what}), el('br'), el('span', {className: 'path', textContent: w.path})));
     li.addEventListener('click', () => { seek(w.at + .05); showEntry(w.path); });
     return li;
   }));
@@ -215,7 +215,7 @@ async function ask(e) {
   const answer = await getJson(`/api/hit?t=${state.t.toFixed(3)}&x=${x.toFixed(1)}&y=${y.toFixed(1)}`);
   state.hit = answer;
   const dot = $('dot'); dot.hidden = false; dot.style.left = `${x / 16}%`; dot.style.top = `${y / 9}%`;
-  const coords = el('div', {className: 'coords'}, el('span', {className: 'label', textContent: `at ${clockText(answer.t)}`}), coordinate('frame', answer.point.frame, 'a push note\'s at'));
+  const coords = el('div', {className: 'coords'}, el('span', {className: 'label', textContent: `at ${clockTenths(answer.t)}`}), coordinate('frame', answer.point.frame, 'a push note\'s at'));
   if (answer.point.world) coords.append(coordinate(answer.point.world.path, answer.point.world.at, 'a new item on this world'));
   const list = el('ol', {className: 'hits'}, ...answer.hits.map((h, i) => {
     const li = el('li', {className: i === 0 ? 'on' : ''}, el('span', {className: 'swatch'}), el('span', {className: 'path', textContent: h.path}), ' ', el('span', {className: 'label', textContent: h.label ? `«${h.label.slice(0, 60)}»` : ''}));
