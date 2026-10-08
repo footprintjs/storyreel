@@ -136,6 +136,19 @@ export function checkLoudnessTarget(loudness) {
 }
 
 /**
+ * An ffmpeg concat list of files: each path absolute and quoted, a quote in it written '\'' (a folder called
+ * "Sanjay's films" is fine). A line break cannot be written in such a list (it would end the entry and start another,
+ * naming any file), so a path with one is refused.
+ */
+function concatList(files) {
+  return files.map(f => {
+    const p = path.resolve(f);
+    if (/[\r\n]/.test(p)) throw new Error(`render: ${JSON.stringify(p)} has a line break, which ffmpeg's concat list cannot hold: rename it`);
+    return `file '${p.replace(/'/g, "'\\''")}'`;
+  }).join('\n') + '\n';
+}
+
+/**
  * The voice, scene by scene, into `voice`: each scene's audio from narrationDir, and generated silence
  * of its duration for a silent scene whose timing names no audio (clock.mjs · directionTimings). FFmpeg's
  * concat joins only files of one format, so when any silence is generated every part is first made
@@ -152,7 +165,7 @@ function joinVoice(run, {dir, storyboard, timings, narrationDir, voice}) {
     run(file ? ['-i', file, '-ar', '48000', '-ac', '1', part] : ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', String(timings.scenes[i].duration), part]);
     return part;
   });
-  writeFileSync(path.join(dir, 'film-narration.txt'), parts.map(f => `file '${f}'`).join('\n') + '\n');
+  writeFileSync(path.join(dir, 'film-narration.txt'), concatList(parts));
   run(['-f', 'concat', '-safe', '0', '-i', path.join(dir, 'film-narration.txt'), '-ar', '48000', '-ac', '1', voice]);
 }
 
@@ -170,6 +183,17 @@ export function readMotionBlur(v) {
 }
 
 /**
+ * The moments one frame's motion blur averages: `subframes` of them spread evenly over `shutter` of the frame's time,
+ * centred on it. Always strictly inside the frame (a shutter of 1 reaches 0.4999995 of a frame either side, not the
+ * half-way point the next frame shares), so a drawing held on twos (motion.mjs · heldTime) is the same drawing at
+ * every moment of its frame.
+ */
+export function blurMoments(t, {subframes: n, shutter}, fps) {
+  const span = Math.min(shutter, 1 - 1e-6) / fps;
+  return Array.from({length: n}, (_, i) => t + (i / (n - 1) - .5) * span);
+}
+
+/**
  * The painter: one output picture at film time t into ctx — the film (in its layout, if any), averaged
  * over the motion-blur subframes, then the layout's bands on top (never blurred). A still (the poster)
  * takes no blur and no caption (a thumbnail shows the picture and the title band). Every call leaves ctx
@@ -183,9 +207,8 @@ export function makePainter({film, framed, blur, width, height, fps, ctx}) {
     if (!blur || still) picture(ctx, t);
     else {
       // A running average: subframe i is laid over the first i at 1 / (i + 1), so each counts once.
-      const span = blur.shutter / fps, n = blur.subframes;
-      for (let i = 0; i < n; i++) {
-        const at = Math.max(0, Math.min(film.total, t + (i / (n - 1) - .5) * span));
+      const moments = blurMoments(t, blur, fps).map(at => Math.max(0, Math.min(film.total, at)));
+      for (const [i, at] of moments.entries()) {
         if (i === 0) { picture(ctx, at); continue; }
         picture(subCtx, at); ctx.globalAlpha = 1 / (i + 1); ctx.drawImage(sub, 0, 0); ctx.globalAlpha = 1;
       }
@@ -328,7 +351,9 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   if (framed && intro && framed.format !== 'landscape') throw new Error(`renderFilm: an intro is drawn for the landscape frame; the ${framed.format} layout takes none (leave intro out)`);
   const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
   to = Math.min(to, film.total);
-  const withIntro = intro && from < 0, start = Math.max(0, from);
+  // A render starts on the film's frame grid (a part's window is rounded to the millisecond): frame f shows film second
+  // start + f / fps, so a drawing held on twos (motion.mjs · heldTime) pairs the same frames in a part as in the film.
+  const withIntro = intro && from < 0, start = Math.floor(Math.max(0, from) * fps + 1e-6) / fps;
   const job = {film, storyboard, timings, narrationDir, out, dir, width, height, fps, intro, withIntro, stamp, start, to, poster, posterFrame, peakCeilingDBFS, loudness, layout, framed, blur, captionKinds, ffmpeg,
     /** How many frames the film part has (the intro's are extra). */
     frames: Math.ceil((to - start) * fps),
@@ -435,7 +460,7 @@ export async function finishRender(job, video) {
     writeFileSync(file, createMotionSound({duration: s.duration, events: byScene[i], peakCeilingDBFS}).wav);
     return file;
   });
-  writeFileSync(path.join(dir, 'film-sfx.txt'), sfxParts.map(f => `file '${f}'`).join('\n') + '\n');
+  writeFileSync(path.join(dir, 'film-sfx.txt'), concatList(sfxParts));
   run(['-f', 'concat', '-safe', '0', '-i', path.join(dir, 'film-sfx.txt'), '-ar', '48000', '-ac', '1', path.join(dir, 'film-sfx.wav')]);
   // Each role measured apart (listening.mjs): the effects stay well under the voice, so the words stay clear.
   const integrated = wav => integratedLoudness(ffmpeg, wav);
@@ -449,7 +474,7 @@ export async function finishRender(job, video) {
     run(['-i', introWav, '-ar', '48000', '-ac', '1', path.join(dir, 'film-intro48.wav')]); parts.push(path.join(dir, 'film-intro48.wav'));
   }
   run(['-ss', String(start), '-t', String(to - start), '-i', path.join(dir, 'film-lesson.wav'), path.join(dir, 'film-part.wav')]); parts.push(path.join(dir, 'film-part.wav'));
-  writeFileSync(path.join(dir, 'film-audio.txt'), parts.map(p => `file '${p}'`).join('\n') + '\n');
+  writeFileSync(path.join(dir, 'film-audio.txt'), concatList(parts));
   run(['-f', 'concat', '-safe', '0', '-i', path.join(dir, 'film-audio.txt'), '-ar', '48000', '-ac', '1', path.join(dir, 'film-audio.wav')]);
   const pictureSeconds = (job.frames + (withIntro ? Math.round(intro.seconds * job.fps) : 0)) / job.fps;
   const loudnessSet = muxWithLoudness({ffmpeg, video: video.file, wav: path.join(dir, 'film-audio.wav'), out: path.resolve(job.out), target: loudness, seconds: pictureSeconds});

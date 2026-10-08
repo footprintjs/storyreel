@@ -242,3 +242,20 @@ export const heroDress = (ctx: CastContext): unknown => ctx.cast?.hero?.dress;
 export const cast: Cast = {hero: {name: 'Amaira', outfit: 'stripes'}};
 // @ts-expect-error a role needs its name
 export const nameless: Cast = {hero: {outfit: 'stripes'}};
+
+// Cartoon habits (motion.ts) and walks (walk.ts): a held drawing, a part that swings, a walk's pose.
+import {heldTime, follow, lag, TIMING_NAMES} from '../types/sub/motion.js';
+import {walk, WALKS, WALK_NAMES, readWalk, type WalkPose, type WalkStyle} from '../types/sub/walk.js';
+export const held: number = heldTime(1.23, 'twos', {fps: 30}) + heldTime(1, 3);
+export const swingX: number = lag((u: number) => u * 100, 2, {from: 0, feel: 'playful', drag: 5});
+export const swingXY: number[] = follow((u: number) => [u * 100, 40], 2, {from: 0});
+export const timings: readonly string[] = TIMING_NAMES;
+// @ts-expect-error a timing is a name or a number of frames
+heldTime(1, 'fours');
+const strollWalk = walk({from: 130, to: 1800, start: 13.6, size: 475, style: 'stroll'});
+export const pose: WalkPose = strollWalk.at(14);
+export const footX: number = pose.feet[0].x + strollWalk.arrive + strollWalk.end + strollWalk.steps;
+export const springier: WalkStyle = readWalk({...WALKS.bouncy, bob: .06});
+export const walkNames: readonly string[] = WALK_NAMES;
+// @ts-expect-error a walk needs the figure's size
+walk({from: 0, to: 100, start: 0});

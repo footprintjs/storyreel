@@ -110,6 +110,11 @@ test('a part with its handles: the scenes asked for and a moment of the film eit
   assert.throws(() => partWindow(film, {scene: 'middle'}), /no scene called "middle" \(the scenes are open, talk, end\)/);
   assert.throws(() => partWindow(film, {scene: 'talk', handles: 20}), /handles is the seconds shown before and after the part/);
   assert.throws(() => prepareRender({film, part: {scene: 'talk'}, from: 0}), /a part or from\/to, not both/);
+  // A render starts on the film's frame grid, so drawings held on twos pair the same frames in a part as in the film.
+  for (const from of [4.55, 7.116, 7.101, 2]) {
+    const job = prepareRender({film, storyboard, timings: film.timings, out: path.join(mkdtempSync(path.join(tmpdir(), 'grid-')), 'x.mp4'), from, to: from + 1});
+    assert.ok(Math.abs(job.start * 30 - Math.round(job.start * 30)) < 1e-9 && job.start <= from && from - job.start < 1 / 30, `from ${from} starts at ${job.start}`);
+  }
 });
 
 test('a part\'s timeline: the scenes and beats in it as text, on the part\'s own clock, each once', () => {

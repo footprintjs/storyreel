@@ -118,6 +118,10 @@
       "types": "./types/sub/motion.d.ts",
       "default": "./src/motion.mjs"
     },
+    "./walk": {
+      "types": "./types/sub/walk.d.ts",
+      "default": "./src/walk.mjs"
+    },
     "./attention": {
       "types": "./types/sub/attention.d.ts",
       "default": "./src/attention.mjs"

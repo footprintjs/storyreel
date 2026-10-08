@@ -93,7 +93,9 @@ beside the scene audio as `timings.json`; pass the folder as `narrationDir`. For
 word times for any voice (the AgentFootprint course uses Chatterbox with torchaudio MMS_FA; Kokoro
 reports its own). **Pacing** — `{sceneTail, holds: [{scene, after: 'a phrase', seconds}], tails}` —
 inserts silence after phrases so the pictures can land; with a voice it is cut into the audio, and in a
-silent cut `paceTimings` shifts the word times the same way.
+silent cut `paceTimings` shifts the word times the same way. `makeFilm` only reads the voice folder: it
+paces a copy of what the render reads (`timings.json` and each scene's audio, which must be named inside
+the folder) and moves it to `<out dir>/narration`, so an out folder that overlaps the voice folder refuses.
 
 ### Numbers: shown in digits, said in words
 
@@ -679,6 +681,35 @@ strategy says HOW, so the same film can be shown another way by changing one wor
 - **Every move is a spring** (`footprint-storyreel/motion`): named feels — `snappy`, `default`, `heavy` (cameras),
   `playful` (pops) — or `{k, d}`; `spring(t, feel)`, `pop(t, at)`, and `track(t, keys)` for a value with many
   targets (one spring per change, so it never jumps). Kits use the same functions for their own motion.
+- **Drawn on twos** (`heldTime(t, 'twos')`): a hand-drawn cartoon holds each drawing for two frames while its camera
+  moves on every frame; a figure that changes on every frame slides like a puppet. A kit works out everything about
+  a figure (its pose, its place, its mouth) from `heldTime(t)` and leaves the camera and the room on `t`. Timings:
+  `ones`, `twos`, `threes`, or a number of frames; frames are counted at 30 a second (`{fps}` for another rate).
+- **Follow-through** (`follow(body, t, {from, feel, drag})`, `lag`): a part that hangs off a moving body (hair,
+  a hem, a bag) hangs on a springy joint: it swings back as the body sets off, on past as the body stops, and
+  settles; while the body moves steadily it hangs as it does at rest. `drag` adds the air: a hem or a scarf also
+  trails a moving body. `body` is the point the part hangs from (`u → x` or `u → [x, y]`); `lag` is how far the part
+  trails it, the number a kit bends the part by. Still a pure function of time: steps of 1/240 s from `from`, each
+  solved exactly, so any stiffness is steady. Give `from` as the scene's start (not 0) and make `body` once.
+  ```js
+  const momX = u => momAt(u).x;                                  // made once, when the world is compiled
+  const th = heldTime(t, 'twos');                                // her drawing on twos; the camera stays on t
+  const from = clock.start('shop');                              // the scene's start: the steps begin there
+  drawMom(ctx, th, {x: momX(th), hair: lag(momX, th, {from}), hem: lag(momX, th, {from, drag: 5})});
+  ```
+
+- **A walk, the whole flow of it** (`footprint-storyreel/walk`): feet that never slide. `walk({from, to, start, size,
+  style})` plans it once; `at(t)` gives the body's place, its rise and lean, each foot's place and lift, the arm
+  swing and the turn. It sets off (a dip and a lean back, turning to face the way it goes), steps (each foot planted
+  where the body passes over it; the body bobs, the arms swing against the legs), stops with the feet together and
+  settles (it rocks on past its feet and turns back). The steps come from the distance and the figure's size. Styles
+  are strategies: `stroll`, `brisk`, `bouncy`, `tiptoe`, or `{cadence, stride, bob, …}` of your own. A kit draws the
+  legs to the feet it is given (its adapter); the walk never draws.
+  ```js
+  const exit = walk({from: 130, to: 1800, start: clock.at(['shop', 'Mom goes']), size: 475, style: 'stroll'});
+  const p = exit.at(heldTime(t));       // her walk, on twos
+  drawMom(ctx, heldTime(t), {x: p.x, walk: p});
+  ```
 
 ## Re-render only what changed
 
