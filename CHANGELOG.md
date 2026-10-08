@@ -22,7 +22,6 @@ every test here); a part's chapters change as named below.
   its result only the chapters that start inside it (0.9.0 listed every scene after its end too, and YouTube's
   rule then dropped one of them), so a release of a part posts only those. A blank intro title names its chapter
   `Title` (0.9.0 wrote a chapter with no name); a chapter title is one line (white space tidied).
-- Scenes that share an id each keep their own number slots in `film.clock.shownWords(i)`.
 - A chapter line of a film an hour long or more reads `1:02:05` (it read `62:05`); `chapters.txt` and the release
   read both.
 - WebVTT caption files escape `& < >` in a word (they were written raw), and `readCaptions` reads them back.

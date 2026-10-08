@@ -44,9 +44,9 @@ export function checkScene(scene, i = 0) {
  * in words and shown on screen in digits. The slots are footprint-narration's (spokenMap, checkSlots): a slot is a
  * POSITION — each shown text where it stands whole, in order — and a scene's map is made from them.
  */
-/** A spoken scene's map, its slots checked first as the storyboard names them (`storyboard scene <id>: say[k] …`). */
-function sceneMap(scene) {
-  if (scene.say !== undefined) checkSlots(scene.narration, scene.say, {name: `storyboard scene ${scene.id}`, field: 'say'});
+/** A spoken scene's map, its slots checked first as the storyboard names them (`storyboard scene <id or index>: say[k] …`). */
+function sceneMap(scene, i) {
+  if (scene.say !== undefined) checkSlots(scene.narration, scene.say, {name: `storyboard scene ${scene.id ?? i ?? '(no id)'}`, field: 'say'});
   return spokenMap(scene.narration, {slots: scene.say ?? []});
 }
 const slotsOf = scene => (scene?.say !== undefined && scene.narration !== undefined ? sceneMap(scene) : null);
@@ -63,8 +63,8 @@ export function spokenText(scene) {
  * A voice tool can refuse these before it speaks (a voice drops or garbles digits); write them as `say` slots.
  */
 export function unsaidNumbers(storyboard) {
-  return storyboard.scenes.flatMap(scene => (scene.narration === undefined ? []
-    : unsaidDigits(sceneMap(scene)).map(text => ({scene: scene.id, text}))));
+  return storyboard.scenes.flatMap((scene, i) => (scene.narration === undefined ? []
+    : unsaidDigits(sceneMap(scene, i)).map(text => ({scene: scene.id, text}))));
 }
 
 /** A scene's text, checked (clock.mjs · checkScene): what its words spell — the narration as spoken (number slots in words), or its directions joined. */
