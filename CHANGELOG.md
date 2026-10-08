@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.10.0 — one word changed redraws only where it shows; one clock for the review and the render; emphasis on the thing
 
 ### One word changed redraws only where it shows
 - **A segment's key holds only the strings its own entries name** (`{"$string": key}` in its recipe entries, the
