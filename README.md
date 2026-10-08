@@ -1144,7 +1144,10 @@ in [BACKLOG.md](BACKLOG.md).
 | shiki | MIT | code tokens |
 | footprint-narration | MIT | the spoken text and the captions |
 | Caveat (font, bundled) | SIL OFL 1.1 | handwriting |
+| twitter-text 3.1.0 (ported, bundled) | Apache-2.0 | X's count of a post |
+| twemoji-parser 11.0.2 (its emoji list, bundled) | MIT | the emoji X counts as 2 |
 | FFmpeg (separate program, on PATH) | LGPL/GPL | encoding and mixing |
 
-Node 22+. Licence: MIT (the bundled Caveat font: SIL OFL 1.1, `fonts/caveat/OFL.txt`).
+Node 22+. Licence: MIT AND Apache-2.0 — StoryReel's own code is MIT; the X counter is ported from twitter-text,
+Apache-2.0 (`src/targets/x-count/LICENSE-twitter-text`); the bundled Caveat font is SIL OFL 1.1 (`fonts/caveat/OFL.txt`).
 First user: the AgentFootprint video course.

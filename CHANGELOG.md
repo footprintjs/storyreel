@@ -16,6 +16,9 @@
   addresses), emoji as twemoji-parser finds them, code points weighed by X's ranges (1 up to U+10FF and in the
   general punctuation's spaces, dashes, quotes and primes, else 2). An emoji newer than that library counts here as
   its parts, never less than the 2 X counts.
+- **The package now includes Apache-2.0 code**: the X counter, ported from twitter-text, with its licence file
+  (`src/targets/x-count/LICENSE-twitter-text`). Its licence is `MIT AND Apache-2.0` in package.json and in a
+  release's CREDITS.txt; StoryReel's own code stays MIT.
 - An adapter may say how a text field is counted (`limits.text.<field>.count`); raising a limit keeps the count.
   `post()` also gets the target's `limits` (overrides included), and X's post decides with that count.
 - **Limits overridden are checked** as an adapter's are, so a count that is not a function or a `max` that is not a

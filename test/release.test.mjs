@@ -174,7 +174,7 @@ test('a release: each target its own folder — the video in its shape, captions
   assert.deepEqual(readdirSync(yt.dir).sort(), ['CREDITS.txt', 'captions.srt', 'captions.vtt', 'post.json', 'post.txt', 'release-test.mp4', 'thumbnail.jpg'], 'the folder holds what is posted and nothing else');
   assert.deepEqual(readdirSync(short.dir).sort(), ['CREDITS.txt', 'post.json', 'post.txt', 'release-test.mp4']);
   const credits = readFileSync(yt.credits, 'utf8');
-  assert.match(credits, /^Credits — Pebbles\n\nMade with\n- footprint-storyreel [\d.]+ \(MIT\) — the film, drawn in code\n- footprintjs [\d.]+ \(MIT\)/);
+  assert.match(credits, /^Credits — Pebbles\n\nMade with\n- footprint-storyreel [\d.]+ \(MIT AND Apache-2\.0\) — the film, drawn in code\n- footprintjs [\d.]+ \(MIT\)/, 'StoryReel\'s licence as package.json gives it: its own code MIT, the X counter Apache-2.0');
   assert.match(credits, /From the maker\n- Sheep drawn by hand\n\nThe narration is a synthetic voice\.\n$/);
   assert.ok(existsSync(yt.makingOf) && yt.makingOf.startsWith(path.join(out, 'work', 'youtube')), 'the record and the working files are kept apart, in work/<target>/');
   await assert.rejects(makeRelease({...film, out, targets: [{target: 'youtube', name: 'work'}], post: kids}), /a target cannot be called "work"/);
