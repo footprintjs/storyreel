@@ -96,9 +96,16 @@ test('copyVoice: a scene\'s audio named outside the voice folder is refused befo
     assert.throws(() => copyVoice(voice, to), why);
     assert.ok(!existsSync(to), `${audio}: nothing is written`);
   };
-  refuses('../takes/a.wav', new RegExp(`voice: scene "story" names its audio \\.\\./takes/a\\.wav, outside the voice folder ${esc(voice)}: keep each scene's audio inside the voice folder$`));
-  refuses(path.join(takes, 'a.wav'), /names its audio .*takes\/a\.wav, outside the voice folder/);   // an absolute path
-  refuses('audio/../../takes/a.wav', /names its audio audio\/\.\.\/\.\.\/takes\/a\.wav, outside the voice folder/);
+  refuses('../takes/a.wav', new RegExp(`voice: scene "story" names its audio "\\.\\./takes/a\\.wav", outside the voice folder ${esc(voice)}: name each scene's audio by a path inside the voice folder, relative to it \\(audio/story\\.wav\\)$`));
+  refuses(path.join(takes, 'a.wav'), /names its audio ".*takes\/a\.wav", outside the voice folder/);   // an absolute path
+  refuses('audio/../../takes/a.wav', /names its audio "audio\/\.\.\/\.\.\/takes\/a\.wav", outside the voice folder/);
+  // Absolute names are refused even inside the folder: pacing JOINS a name to the copy, and "/../../…/voice/x.wav"
+  // resolves inside the voice but joins back up to the voice itself — pacing would rewrite the voice in place.
+  writeFileSync(path.join(voice, 'a.wav'), 'V');
+  refuses(path.join(voice, 'a.wav'), /names its audio ".*voice\/a\.wav", outside the voice folder/);
+  refuses('/..'.repeat(40) + path.join(voice, 'a.wav'), /names its audio "(\/\.\.)+.*voice\/a\.wav", outside the voice folder/);
+  refuses(42, /names its audio 42, outside the voice folder/);
+  assert.equal(readFileSync(path.join(voice, 'a.wav'), 'utf8'), 'V');
   assert.equal(readFileSync(path.join(takes, 'a.wav'), 'utf8'), 'A');
   assert.throws(() => copyVoice(takes, path.join(made('to'), 'copy')), new RegExp(`voice: ${esc(takes)} has no timings.json: give narrationDir the voice folder`));
 });

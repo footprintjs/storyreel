@@ -228,7 +228,7 @@ test('a voice whose timings name audio outside its folder is refused before anyt
   writeFileSync(path.join(voice, 'timings.json'), JSON.stringify(spoken));
   const before = snapshot(takes);
   await assert.rejects(makeFilm({storyboard, recipe, root: hello, narrationDir: voice, pacing, out: path.join(proj, 'film.mp4'), render: small}),
-    new RegExp(`voice: scene "story" names its audio \\.\\./takes/scene-0\\.wav, outside the voice folder ${esc(voice)}: keep each scene's audio inside the voice folder`));
+    new RegExp(`voice: scene "story" names its audio "\\.\\./takes/scene-0\\.wav", outside the voice folder ${esc(voice)}: name each scene's audio by a path inside the voice folder`));
   assert.deepEqual(snapshot(takes), before, 'the takes are as they were');
   assert.deepEqual(readdirSync(proj).sort(), ['takes', 'voice'], 'no copy was begun');
 });

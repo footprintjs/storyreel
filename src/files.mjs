@@ -64,8 +64,12 @@ export function copyVoice(voice, to) {
   const bytes = readFileSync(timingsFile), timings = JSON.parse(bytes.toString('utf8')), files = new Set();
   for (const scene of Array.isArray(timings?.scenes) ? timings.scenes : []) {
     if (!scene?.audio) continue;
-    const file = path.resolve(base, scene.audio);
-    if (!within(base, file)) throw new Error(`voice: scene "${scene.id}" names its audio ${scene.audio}, outside the voice folder ${voice}: keep each scene's audio inside the voice folder`);
+    // Pacing and the render JOIN the name to the copy's folder (path.join), so the name must mean the same thing joined
+    // as resolved: a relative path that stays inside. An absolute one resolves from the disk's root but joins below
+    // the copy, and its "/../.." can join back up to the voice itself, so it is refused even when it names a file inside.
+    const rel = typeof scene.audio === 'string' ? path.normalize(scene.audio) : '';
+    if (!rel || path.isAbsolute(scene.audio) || rel === '..' || rel.startsWith(`..${path.sep}`)) throw new Error(`voice: scene "${scene.id}" names its audio ${JSON.stringify(scene.audio)}, outside the voice folder ${voice}: name each scene's audio by a path inside the voice folder, relative to it (audio/${scene.id}.wav)`);
+    const file = path.join(base, rel);
     for (const f of [file, file.replace(/\.wav$/, '.unpaced.wav')]) if (existsSync(f)) files.add(path.relative(base, f));
   }
   mkdirSync(to);
