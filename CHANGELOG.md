@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.11.0 — X as a release target; the review asks for something new and a loop that comes round; a voice never paced in place; cartoon motion (twos, follow-through, walks); the narration code in footprint-narration
 
 ### X: a release target
 - **`x`**: a square 1080×1080 video with the title band and burned-in captions, up to 140 s, a post of at most 280
@@ -51,6 +51,38 @@
   is held to the film's length (a float total no longer reads past the end); times print as 1:00.0, never 0:60.0 —
   in the review, on contact sheets and strips, and in the studio (one `clockTenths`, `footprint-storyreel/clock` — a film time to the tenth, `1:21.5`, beside footprint-narration's `clockText`, a chapter time, `1:21`; the
   studio page keeps a copy, as it runs in the browser on its own).
+
+### A voice is paced in a copy, never in place
+- **`makeFilm` paces a copy of exactly what the render reads**, the voice's `timings.json` and each scene's audio (and
+  a `.unpaced.wav` beside one, so a voice paced before is still refused), each a new, writable file read through
+  any link. Before, the voice folder was copied with `cpSync`, which copies a symbolic link as a link: a voice
+  folder given as a link, or holding links, was paced in place through them, its audio rewritten and its
+  `timings.json` replaced. Nothing else in the voice folder is copied or even listed.
+- **A scene's audio is a relative name inside the voice folder**: one that leads out of it (`../takes/a.wav`), an
+  absolute one, or one with a control character is refused before anything is written.
+- **A render whose out folder overlaps the voice folder is refused** before anything is written: an out folder inside
+  the voice, or a voice that is, holds or lies inside `<out dir>/narration` (which the render replaces), compared
+  by real path as the disk spells it.
+- **Every path in ffmpeg's lists is quoted**: an audio name or an out folder with an apostrophe ("Sanjay's films")
+  renders; a path with a line break is refused.
+
+### Cartoon motion: drawn on twos, follow-through, and a walk whose feet never slide
+- **Drawn on twos** (`footprint-storyreel/motion · heldTime(t, 'twos')`): the moment the drawing shown at `t` was made;
+  each drawing holds for two frames while the camera moves on every frame. Timings `ones`, `twos`, `threes` or a
+  number of frames, counted at 30 a second (`{fps}`).
+- **Follow-through** (`follow(body, t, {from, feel, drag})`, `lag`): a part that hangs off a moving body hangs on a
+  springy joint — it swings back as the body sets off, on past as it stops, and settles, and hangs as at rest at a
+  steady pace; `drag` adds the air (a hem trails). Each 1/240 s step is solved exactly, so any feel is steady; a pure
+  function of time.
+- **A walk, the whole flow of it** (`footprint-storyreel/walk`): `walk({from, to, start, size, style}).at(t)` gives
+  the body's place, rise and lean, each foot's place and lift, the arm swing and the turn: it sets off (a dip, a
+  lean back, a turn), steps with each foot planted where the body passes over it (the feet never slide), and
+  settles (it rocks on past its feet and turns back). Styles: `stroll`, `brisk`, `bouncy`, `tiptoe`, or your own.
+  The walk never draws: a kit draws the legs to the feet it is given.
+- **Motion blur stays inside its frame** (`render.mjs · blurMoments`): at a shutter of 1 the outermost moments were
+  the half-way point the next frame shares, so drawings held on twos mixed; byte-identical below a shutter of 1.
+- **A render starts on the film's frame grid**: a part preview starts at most a frame earlier than its window, so
+  drawings held on twos pair the same frames as in the whole film. Whole films start at 0, unchanged.
 
 ### The narration code moves into footprint-narration (breaking: imports move)
 StoryReel and StoryDeck each kept the same narration code — what a voice says for a number, the captions, YouTube's
