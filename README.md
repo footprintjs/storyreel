@@ -657,6 +657,20 @@ strategy says HOW, so the same film can be shown another way by changing one wor
 - **Every move is a spring** (`footprint-storyreel/motion`): named feels — `snappy`, `default`, `heavy` (cameras),
   `playful` (pops) — or `{k, d}`; `spring(t, feel)`, `pop(t, at)`, and `track(t, keys)` for a value with many
   targets (one spring per change, so it never jumps). Kits use the same functions for their own motion.
+- **Drawn on twos** (`heldTime(t, 'twos')`): a hand-drawn cartoon holds each drawing for two frames while its camera
+  moves on every frame; a figure that changes on every frame slides like a puppet. A kit works out everything about
+  a figure (its pose, its place, its mouth) from `heldTime(t)` and leaves the camera and the room on `t`. Timings:
+  `ones`, `twos`, `threes`, or a number of frames; frames are counted at 30 a second (`{fps}` for another rate).
+- **Follow-through** (`follow(body, t, {from, feel, drag})`, `lag`): a part that hangs off a moving body (hair,
+  a hem, a bag) hangs on a springy joint: it swings back as the body sets off, on past as the body stops, and
+  settles; while the body moves steadily it hangs as it does at rest. `drag` adds the air: a hem or a scarf also
+  trails a moving body. `body` is the point the part hangs from (`u → x` or `u → [x, y]`); `lag` is how far the part
+  trails it, the number a kit bends the part by. Still a pure function of time (fixed steps of 1/240 s from `from`).
+  ```js
+  const momX = u => momAt(u).x;                                  // made once, when the world is compiled
+  const th = heldTime(t, 'twos');                                // her drawing on twos; the camera stays on t
+  drawMom(ctx, th, {x: momX(th), hair: lag(momX, th), hem: lag(momX, th, {drag: 5})});
+  ```
 
 ## Re-render only what changed
 
