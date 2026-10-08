@@ -185,11 +185,11 @@
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.9",
+    "footprint-narration": "^0.1.0",
+    "footprintjs": "^9.27.0",
     "perfect-freehand": "^1.2.3",
     "roughjs": "^4.6.6",
-    "shiki": "^3.23.0",
-    "footprintjs": "^9.27.0",
-    "footprint-narration": "file:../footprint-narration"
+    "shiki": "^3.23.0"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
