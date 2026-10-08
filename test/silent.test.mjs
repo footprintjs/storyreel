@@ -4,7 +4,7 @@
 // render.mjs · joinVoice); the studio marks its words as not spoken.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync, writeFileSync, mkdtempSync, existsSync, copyFileSync, symlinkSync, readdirSync} from 'node:fs';
+import {readFileSync, writeFileSync, mkdtempSync, mkdirSync, existsSync, copyFileSync, symlinkSync, readdirSync, lstatSync, readlinkSync, chmodSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -108,13 +108,20 @@ function toneWav(seconds, rate = 24000) {
   header.write('data', 36, 'ascii'); header.writeUInt32LE(body.length, 40);
   return Buffer.concat([header, body]);
 }
-/** A fake voice folder: audio and timings for the SPOKEN scenes only (a voice never says a direction). */
-function voiceFolder() {
-  const dir = tmp(), spoken = evenTimings({scenes: storyboard.scenes.filter(s => !s.silent)}, {tail: 4});
+/** A fake voice folder (in `dir`, made if need be): audio and timings for the SPOKEN scenes only (a voice never says a direction). */
+function voiceFolder(dir = tmp()) {
+  const spoken = evenTimings({scenes: storyboard.scenes.filter(s => !s.silent)}, {tail: 4});
+  mkdirSync(dir, {recursive: true});
   spoken.scenes.forEach((s, i) => { s.audio = `scene-${i}.wav`; writeFileSync(path.join(dir, s.audio), toneWav(s.duration)); });
   writeFileSync(path.join(dir, 'timings.json'), JSON.stringify(spoken));
   return dir;
 }
+/** A folder as it is, at every depth, never following a link: each path and what it holds (a file's bytes, a link's target). */
+const snapshot = (dir, at = '') => Object.fromEntries(readdirSync(path.join(dir, at)).sort().flatMap(name => {
+  const rel = path.join(at, name), p = path.join(dir, rel), s = lstatSync(p);
+  return s.isSymbolicLink() ? [[rel, `link to ${readlinkSync(p)}`]] : s.isDirectory() ? [[rel, 'folder'], ...Object.entries(snapshot(dir, rel))] : [[rel, readFileSync(p)]];
+}));
+const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const samplesOf = buffer => { const data = buffer.subarray(44); return Array.from({length: data.length / 2}, (_, i) => data.readInt16LE(i * 2)); };
 
 test('a voiced cut with a silent opening: pacing writes generated silence of the right length at the voice\'s rate, and the film compiles', async () => {
@@ -184,6 +191,53 @@ test('a voice given through symbolic links is copied by its contents, never pace
   // The voice is as it was: no .unpaced.wav beside its audio, the same audio and the same (unpaced) timings.json.
   assert.deepEqual(readdirSync(voice).sort(), Object.keys(before).sort());
   for (const [f, bytes] of Object.entries(before)) assert.ok(readFileSync(path.join(voice, f)).equals(bytes), `${f} unchanged`);
+});
+
+test('a voice renders whatever else its folder holds — a dangling link, read-only files, a linked folder of takes — and its copy holds only what the render reads', {skip: ffmpeg ? false : 'ffmpeg not on PATH'}, async () => {
+  const voice = voiceFolder(), takes = tmp(), outFolder = tmp();
+  for (const f of readdirSync(voice)) chmodSync(path.join(voice, f), 0o444);   // finished takes are often read-only
+  symlinkSync(path.join(tmp(), 'deleted-take.wav'), path.join(voice, 'latest.wav'));   // a take since deleted
+  // A folder of takes that links back into itself (a walk of it would never end), and a link to where the film is rendered.
+  writeFileSync(path.join(takes, 'take-1.wav'), toneWav(1)); symlinkSync(takes, path.join(takes, 'again'), 'dir');
+  symlinkSync(takes, path.join(voice, 'takes'), 'dir'); symlinkSync(outFolder, path.join(voice, 'renders'), 'dir');
+  const before = snapshot(voice);
+  await makeFilm({storyboard, recipe, root: hello, narrationDir: voice, pacing, out: path.join(outFolder, 'film.mp4'), render: small});
+  assert.deepEqual(readdirSync(path.join(outFolder, 'narration')).sort(), ['scene-0.unpaced.wav', 'scene-0.wav', 'scene-1.unpaced.wav', 'scene-1.wav', 'silent-open.unpaced.wav', 'silent-open.wav', 'timings.json'],
+    'timings.json and the scene audio, and what pacing writes beside them: no takes, no links');
+  assert.deepEqual(snapshot(voice), before, 'the voice is as it was');
+});
+
+test('a render whose out folder overlaps the voice folder is refused before anything is written: the voice is unchanged', async () => {
+  const overlap = /voice: the voice folder .* and the render's out folder .* overlap — .*: keep the voice folder outside the render's out folder, and render outside the voice folder/;
+  // The out folder inside the voice: the render would pace its copy there, in the voice.
+  const voice = voiceFolder(), before = snapshot(voice);
+  await assert.rejects(makeFilm({storyboard, recipe, root: hello, narrationDir: voice, pacing, out: path.join(voice, 'renders', 'film.mp4'), render: small}), overlap);
+  assert.deepEqual(snapshot(voice), before, 'nothing is written into the voice, not even the out folder');
+  // The voice IS <out dir>/narration: the render would replace it with its paced copy (and the next render refuse, "Pacing already applied").
+  const proj = tmp(), named = voiceFolder(path.join(proj, 'narration')), was = snapshot(named);
+  for (const run of [1, 2]) await assert.rejects(makeFilm({storyboard, recipe, root: hello, narrationDir: named, pacing, out: path.join(proj, 'film.mp4'), render: small}), overlap, `render ${run}`);
+  assert.deepEqual(snapshot(named), was, 'the voice is as it was');
+  assert.deepEqual(readdirSync(proj), ['narration'], 'and nothing is written beside it');
+});
+
+test('a voice whose timings name audio outside its folder is refused before anything is written: the take it names is unchanged', async () => {
+  // A voice beside its takes, its timings.json naming them (../takes/scene-0.wav): pacing would rewrite the takes themselves.
+  const proj = tmp(), voice = path.join(proj, 'voice'), takes = path.join(proj, 'takes'); mkdirSync(voice); mkdirSync(takes);
+  const spoken = evenTimings({scenes: storyboard.scenes.filter(s => !s.silent)}, {tail: 4});
+  spoken.scenes.forEach((s, i) => { s.audio = `../takes/scene-${i}.wav`; writeFileSync(path.join(takes, `scene-${i}.wav`), toneWav(s.duration)); });
+  writeFileSync(path.join(voice, 'timings.json'), JSON.stringify(spoken));
+  const before = snapshot(takes);
+  await assert.rejects(makeFilm({storyboard, recipe, root: hello, narrationDir: voice, pacing, out: path.join(proj, 'film.mp4'), render: small}),
+    new RegExp(`voice: scene "story" names its audio \\.\\./takes/scene-0\\.wav, outside the voice folder ${esc(voice)}: keep each scene's audio inside the voice folder`));
+  assert.deepEqual(snapshot(takes), before, 'the takes are as they were');
+  assert.deepEqual(readdirSync(proj).sort(), ['takes', 'voice'], 'no copy was begun');
+});
+
+test('a voice paced in place before (an .unpaced.wav beside each audio file) is still refused by pacing: its copy carries those files', async () => {
+  // What a render through a linked voice folder used to leave behind: the voice paced, its timings.json the paced one.
+  const voice = voiceFolder(), raw = JSON.parse(readFileSync(path.join(voice, 'timings.json'), 'utf8'));
+  writeFileSync(path.join(voice, 'timings.json'), JSON.stringify(await applyPacing({runDir: voice, board: storyboard, timings: raw, pacing})));
+  await assert.rejects(makeFilm({storyboard, recipe, root: hello, narrationDir: voice, pacing, out: path.join(tmp(), 'film.mp4'), render: small}), /Pacing already applied to open/);
 });
 
 test('who is speaking: the clock knows each scene\'s said words and its speaker, so a kit can move the right mouth', async () => {

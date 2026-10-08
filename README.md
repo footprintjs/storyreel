@@ -93,7 +93,9 @@ beside the scene audio as `timings.json`; pass the folder as `narrationDir`. For
 word times for any voice (the AgentFootprint course uses Chatterbox with torchaudio MMS_FA; Kokoro
 reports its own). **Pacing** — `{sceneTail, holds: [{scene, after: 'a phrase', seconds}], tails}` —
 inserts silence after phrases so the pictures can land; with a voice it is cut into the audio, and in a
-silent cut `paceTimings` shifts the word times the same way.
+silent cut `paceTimings` shifts the word times the same way. `makeFilm` only reads the voice folder: it
+paces a copy of what the render reads (`timings.json` and each scene's audio, which must be named inside
+the folder) and moves it to `<out dir>/narration`, so an out folder that overlaps the voice folder refuses.
 
 ### Numbers: shown in digits, said in words
 

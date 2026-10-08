@@ -10,7 +10,7 @@
  */
 import {readCast, withCast} from './cast.mjs';
 import {readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync, renameSync} from 'node:fs';
-import {copyRealFiles} from './files.mjs';
+import {copyVoice, requireVoiceApart} from './files.mjs';
 import path from 'node:path';
 import {flowChart, narrative} from 'footprintjs';
 import {applyPacing, validatePacing, paceTimings} from './pacing.mjs';
@@ -74,7 +74,10 @@ const MAX_PARTS = 256;
 /**
  * @param storyboard, recipe, data, kits, theme, root, hostKeys — as compileFilm
  * @param narrationDir a folder with the UNPACED timings.json and the scene audio (or null → silent;
- *                     then pass `timings` with word times, e.g. evenTimings(storyboard))
+ *                     then pass `timings` with word times, e.g. evenTimings(storyboard)). It is only ever read: the
+ *                     render paces a copy of what it reads — timings.json and each scene's audio, which must be named
+ *                     inside the folder (files.mjs · copyVoice) — and that copy becomes <out dir>/narration, so an out
+ *                     folder that overlaps the voice folder is refused before anything is written (requireVoiceApart)
  * @param pacing       {sceneTail, holds, tails?, voiceSpeed?} — applied to a copy of the narration, or
  *                     to the word times of a silent cut (the same holds, so a pause-and-guess waits)
  * @param strings      the string table for the film's language ({key: text}); lang names it
@@ -102,7 +105,11 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   if (voiceCheck !== 'report' && voiceCheck !== 'refuse') throw new Error(`voiceCheck is 'report' (the record lists words the voice check did not hear) or 'refuse' (the film refuses them), not ${JSON.stringify(voiceCheck)}`);
   if (code !== null && !(typeof code === 'string' && code.trim())) throw new Error("code is a fingerprint of the kits' drawing code (codeFingerprint([kitsFolder])), or left out");
   if (approval) readApproval(approval);
-  const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
+  const dir = path.dirname(path.resolve(out));
+  // Before anything is written, even the out folder: the voice is paced in the out folder and then replaces its
+  // narration folder, so the two must not overlap (files.mjs · requireVoiceApart).
+  if (narrationDir) requireVoiceApart(narrationDir, dir);
+  mkdirSync(dir, {recursive: true});
   let film, paced, result, job, plan, inputs, finished = null, voice = null;
   const video = checkVideoStrategy(render.video ?? wholeVideo()), done = [];
   const stages = {
@@ -116,11 +123,11 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     'pace-narration': async scope => {
       if (narrationDir) {
         // Paced in a folder of its own: it takes the place of <out dir>/narration only once the film is allowed
-        // (an approval refused leaves the approved render's narration as it was). The voice is copied by its contents
-        // (files.mjs · copyRealFiles), never as links: a voice folder given as a link, or holding links, would
-        // otherwise be paced in place through them — its audio rewritten and its timings.json replaced by the paced ones.
-        const copy = path.join(dir, `.narration-${process.pid}`); rmSync(copy, {recursive: true, force: true}); copyRealFiles(narrationDir, copy);
-        const raw = JSON.parse(readFileSync(path.join(copy, 'timings.json'), 'utf8'));
+        // (an approval refused leaves the approved render's narration as it was). The copy holds exactly what the
+        // render reads — timings.json and each scene's audio — as new files (files.mjs · copyVoice): pacing rewrites
+        // them, and a voice given through links, or read-only, is never paced in place. Nothing else is copied.
+        const copy = path.join(dir, `.narration-${process.pid}`); rmSync(copy, {recursive: true, force: true});
+        const raw = copyVoice(narrationDir, copy);
         // A voice knows only the spoken scenes: a silent scene it left out gets its directions' timing (clock.mjs · withDirections).
         paced = pacing ? await applyPacing({runDir: copy, board: storyboard, timings: raw, pacing}) : withDirections(storyboard, raw);
         writeFileSync(path.join(copy, 'timings.json'), JSON.stringify(paced, null, 2));
