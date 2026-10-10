@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {sliceForKey, sliceToJSON, formatSlice, keysReadFromExecutionTree} from 'footprintjs/trace';
+import {sliceForKey, sliceToJSON, formatSlice, keysReadFromExecutionTree} from 'foottrace';
 import {FILMS, compileExample, PINS_HERE} from './golden.mjs';
 import {frameHashes} from '../src/index.mjs';
 import {COMPILE_STAGES} from '../src/record.mjs';

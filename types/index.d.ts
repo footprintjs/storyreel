@@ -254,7 +254,7 @@ export interface Film {
  * and stages, guesses and notes, checks, resolve lines. Scope keys: `recipe`, `lines`, `notes`, `strings`,
  * `world.<path>`, `stage.stages[i]`, `guess.guesses[n]`, `note.notes[i]`, `checks.reading|watching|continuity|sounds|ready`, and
  * `when.<recipe path>` (seconds) for every line resolved. Detached: it survives structuredClone. Read a
- * slice with footprintjs/trace: `sliceForKey(snapshot.commitLog, key, keysReadFromExecutionTree(snapshot.executionTree))`.
+ * slice with foottrace: `sliceForKey(snapshot.commitLog, key, keysReadFromExecutionTree(snapshot.executionTree))`.
  */
 export interface CompileRecord {
   /** The footprintjs narrative, without its live raw values. */
