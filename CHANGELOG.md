@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.11.1 — Read compile records with Foottrace; accept footprintjs 10
+
+- Record readers now come from `foottrace` (`^1.0.0`), which ships as a dependency. The README's slice
+  example and the compile-record tests use its public reader door.
+- The engine dependency accepts `footprintjs ^9.27.0 || ^10.0.0`; the lockfile uses the fixed 9.48.3
+  release. The pipeline, narrative and snapshot types still come from footprintjs.
+- No public export, film, pixel pin or behaviour fixture changes. The TypeScript check proves that
+  Foottrace can read StoryReel's compile record without a cast or a second record representation.
+
 ## 0.11.0 — X as a release target; the review asks for something new and a loop that comes round; a voice never paced in place; cartoon motion (twos, follow-through, walks); the narration code in footprint-narration
 
 ### X: a release target

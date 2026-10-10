@@ -5,7 +5,7 @@
  * (numbers, strings, recipe paths; never a canvas or a function). Drawing a frame is never recorded.
  *
  * With writeProvenance 'reads-prefix', every write keeps the keys its stage read first, so
- * sliceForKey(commitLog, 'when.story.items[0].at', …) (footprintjs/trace) walks back from a line's
+ * sliceForKey(commitLog, 'when.story.items[0].at', …) (foottrace) walks back from a line's
  * seconds to the stage that read the scene timings. Off (the default), compileFilm only drains the
  * segments: the same code in the same order, with no record.
  */

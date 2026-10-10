@@ -1,6 +1,7 @@
 // Checked by test/types.test.mjs with tsc: what the types accept, and what they refuse.
 import type {Recipe, DirectorNote, Film, Kit, ContextKit, KitContext, Loudness, Storyboard, frameHashes, compileFilm} from '../types/index.js';
 import type {startStudio} from '../types/studio.js';
+import {sliceForKey, keysReadFromExecutionTree} from 'foottrace';
 
 const notes: DirectorNote[] = [
   {note: 'The zooms feel rushed', speed: .7},
@@ -16,6 +17,10 @@ export type HostKeys = Parameters<typeof compileFilm>[0]['hostKeys'];
 // The compile record: its narrative and snapshot are footprintjs's own types.
 export const firstStage = (film: Film): string | undefined => film.record?.narrative.find(e => e.type === 'stage')?.stageId;
 export const commits = (film: Film): number => film.record?.snapshot.commitLog.length ?? 0;
+// The engine owns the snapshot; the independent record reader accepts it without casts or adapters.
+export const sliceRecord = (film: Film, key: string) => film.record
+  ? sliceForKey(film.record.snapshot.commitLog, key, keysReadFromExecutionTree(film.record.snapshot.executionTree))
+  : undefined;
 export const recorded = (film: typeof compileFilm, board: Storyboard, timings: Parameters<typeof compileFilm>[0]['timings']) => film({storyboard: board, timings, recipe: {}, record: true});
 export const atMoments = (film: Film, hash: typeof frameHashes) => hash(film, {times: film.moments().map(m => m.t), width: 320});
 

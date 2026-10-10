@@ -805,7 +805,7 @@ Each decision favours what keeps the library general and lets a film choose, ove
 | apply notes | `keys.*`, `notes` | changed key times, each naming its note (the law 7 fingerprint) |
 | checks | everything above | `checks.<law>`: passed, reported or refused, with the items and lines involved |
 
-- **Why each value is what it is.** With the `writeProvenance: 'reads-prefix'` option, every write records the keys its stage read first. So `sliceForKey('items.hook/q')` (from `footprintjs/trace`) walks back from the item to the device use, the line it rests on, the phrase and the word timing behind that line. `formatSlice` prints the walk in plain lines.
+- **Why each value is what it is.** With the `writeProvenance: 'reads-prefix'` option, every write records the keys its stage read first. So `sliceForKey('items.hook/q')` (from `foottrace`) walks back from the item to the device use, the line it rests on, the phrase and the word timing behind that line. `formatSlice` prints the walk in plain lines.
 - **Choices carry their reasons.** Where the engine chooses (a chip above or below its area, a departure added on a swap layer, the moment a `reach` resolves to), it uses `decide()`, so the record keeps the evidence: "below, because above would leave the frame by 38 px".
 - **Refusals keep their record.** footprintjs commits a failing stage's writes before it rethrows, so a refused build still has a record that says which check refused, on which items and lines.
 - **Tags as bookmarks.** Stages carry `.tag('device')`, `.tag('check')`, so `tagStops` (time travel over the finished record) jumps straight to every expansion or every check.

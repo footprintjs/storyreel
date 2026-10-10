@@ -911,7 +911,7 @@ so *resolve lines* writes them all once the build is done (a line no recipe entr
 (footprintjs `writeProvenance: 'reads-prefix'`), so a slice walks back from any value:
 
 ```js
-import {sliceForKey, formatSlice, keysReadFromExecutionTree} from 'footprintjs/trace';
+import {sliceForKey, formatSlice, keysReadFromExecutionTree} from 'foottrace';
 const film = await compileFilm({storyboard, timings, recipe, record: true});
 const {snapshot} = film.record;
 console.log(formatSlice(sliceForKey(snapshot.commitLog, 'when.story.items[0].at', keysReadFromExecutionTree(snapshot.executionTree))));
