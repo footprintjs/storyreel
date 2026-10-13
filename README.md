@@ -1121,6 +1121,99 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 // type: 'dor' → the story kit "farm" makes a sound "dor"; the sounds are slide, settle, tap, … crumble
 ```
 
+## Motion from a video
+
+A walk planned by numbers looks like a walk; a child's wave filmed on a phone looks like that child. Real people
+hesitate, lean, overshoot and settle, and that timing is hard to key by hand. `footprint-storyreel/mocap` copies it
+from a video onto a 2D cartoon figure: the person's 2D keypoints, frame by frame, become a **motion source** that any
+kit draws. No 3D body model is needed. The 3D route (SMPL-X, then a rig) is licensed for research only and downloads
+gigabytes of weights, and a flat cartoon needs only the joints it can see.
+
+**One port for everything that moves a figure** (`footprint-storyreel/pose`): a motion source is `{name, poseAt(t)}`,
+and the pose is the one the kits already draw from a walk: `{x, lift, lean, feet, swing, turn, facing, walking,
+phase}`, plus optional `joints`, the angles a kit may bend limbs by (radians, + forward):
+`{torso, neck, arms: [{shoulder, elbow}, …], legs: [{hip, knee}, …]}`, where `arms[j]` and `legs[j]` are on `feet[j]`'s
+side. `walkSource(walk({…}))` is the planned walk as one adapter, and `fromPose` is another. `motionSource` checks a
+source of your own; `checkPose` names every key a pose gets wrong. A kit never asks where a pose came from:
+
+```js
+import {readFileSync} from 'node:fs';
+import {walkSource} from 'footprint-storyreel/pose';
+import {fromPose} from 'footprint-storyreel/mocap';
+import {drawFigure} from 'footprint-storyreel/kits/cartoon/figure';
+
+const keypoints = JSON.parse(readFileSync('wave.pose.json', 'utf8'));                // tools/pose-from-video.py wrote it
+const wave = await fromPose(keypoints, {x: 900, size: 420, start: 6, from: 1.2, to: 4}); // made once, before compileFilm
+const enter = walkSource({from: 100, to: 900, start: 0, size: 420});
+// in the kit's draw(ctx, t): the same figure walks in, then waves as the child did
+drawFigure(ctx, (t < wave.start ? enter : wave).poseAt(t), {floor: 760, size: 420});
+```
+
+**Getting the keypoints.** `tools/pose-from-video.py` reads a video with MediaPipe Pose (Apache-2.0) and writes the
+JSON; it is optional, and nothing in the package installs or runs it:
+
+```sh
+pip install mediapipe opencv-python                        # once, in a virtual environment of your own
+python tools/pose-from-video.py wave.mp4 wave.pose.json    # --model lite|full|heavy (default full)
+```
+
+On first use it **downloads MediaPipe's pose model** (lite about 6 MB, full about 9 MB, heavy about 30 MB) from
+Google's model storage into `~/.cache/storyreel` (`--models DIR`) and reuses it after that; the video never leaves
+the machine. Any COCO-17 detector's output fits the same JSON:
+
+```json
+{"scheme": "coco-17", "fps": 30, "coordinates": "pixels", "width": 1280, "height": 720,
+ "frames": [[[640, 210, 0.98], [636, 202, 0.95], …17 points], null, {"nose": [641, 211, 0.97], …}]}
+```
+
+`scheme` is `coco-17` or `mediapipe-33`; a frame is the scheme's points in its order or by name (a name left out was
+not seen), or `null` where nobody was found; a point is `[x, y, confidence]` (0..1) or `null`. `coordinates` is
+`pixels` or `normalised` (shares of the width and the height, which are then needed). Only the thirteen joints a figure
+is drawn from are read (nose, shoulders, elbows, wrists, hips, knees, ankles); every point is checked.
+
+**The conversion is a flowchart** (footprintjs), so each run explains itself in `source.record`, to a person or a
+model. Every verdict carries `decide()`'s evidence (the facts, the rule, the thresholds) and a sentence that says why:
+
+| stage | what it does | what the record keeps |
+|---|---|---|
+| read-keypoints | reads and checks the JSON; keeps `from`–`to` (seconds of the video); a point under `minConfidence` (0.5) is not seen | `kept`, `nobody`, `dropouts` |
+| fill-gaps | each run of missing frames, per joint: bridged (short, seen on both sides), held (short, at an edge) or refused | `gaps` (`how`, `why`, `evidence`) |
+| smooth | One Euro, forward then back, so no lag: a foot lands on the frame it landed on | `torso` (px), `smoothing` |
+| normalise | hips as the origin, one torso length as the unit, y up, `mirror` if asked; which way it faces (asked, travel, nose) | `facing` |
+| joint-angles | torso, neck, shoulders, elbows, hips, knees; each track continuous (an arm passing overhead never jumps a turn) | `angles` |
+| plant-feet | each still stretch of a foot: planted (still for `minContact`, on the floor), aloft (the top of a jump) or passing; a planted foot is locked to its spot, and the legs are re-solved to it | `contacts` (frames and film seconds), `notPlanted`, `floor`, `standing`, `reach` |
+| retime | the video's frames onto film seconds (`start`, `speed`); played once it holds its last frame; `loop: true` repeats, carrying on from where it left off | `timing` (and a loop's `seam`) |
+| motion-source | `poseAt(t)`: drawn straight between the frames around t | `source` |
+
+```js
+const wave = await fromPose(keypoints, {x: 900, size: 420, start: 6, from: .4, to: 2});   // the tests' wave, 25 fps
+wave.record.contacts[0]
+// {foot: 'left', frames: [10, 50], lasts: 1.64, overFloor: 0.001, how: 'planted', spot: 0.232, film: [6, 7.6],
+//  why: 'still long enough, on the floor: planted: stillSeconds 1.64 ≥ 0.1 ✓, overFloor 0.001 ≤ 0.15 ✓', evidence: {…}}
+```
+
+**A planted foot never slides**: through a contact the pose's foot is the same number every millisecond, and the
+cartoon figure draws it there (its knees bend to reach; a foot out of reach brings the hips down, never the foot up).
+**A gap too long to guess refuses**, naming the joint, the video's frames and the fixes:
+
+```
+fromPose "video": 1 gap is too long to fill: left_knee is missing in frames 30–45 (16 frames, 0.533 s). At most
+0.2 s (maxGap) is filled in: trim the clip past it (from, to: seconds of the video), film it again with the whole
+body in view, or raise maxGap
+```
+
+A refusal carries the record so far as `error.record`. The settings (`MOCAP`) are seconds, or torso lengths (hips to
+shoulders), so they read the same at any size of video: `maxGap` 0.2 s, `stillSpeed` 0.6, `minContact` 0.1 s,
+`floorBand` 0.15, `blend` 0.1 s, `smooth` `{minCutoff: 1.5, beta: 0.5, dCutoff: 1}` (or `null`). The same keypoints
+give the same record and the same poses every run. `node examples/mocap/strip.mjs [keypoints.json] [out.png]` draws
+eight moments of a clip and prints what was found (in a checkout it defaults to the tests' synthetic walk).
+
+What it cannot see, so film for it: one person, from a steady phone, the whole body in view, moving across the frame
+(walking toward the camera changes their size, and the floor is taken as flat and level in the picture). Depth is
+lost; `turn` is how wide the shoulders look against `frontal`. The ankle stands for the foot, so a heel rising before
+the toes leave is locked with the foot. A loop's seam is measured (`timing.seam`), not hidden: trim the clip to whole
+cycles to bring it to 0.
+
 
 ## API
 
@@ -1143,12 +1236,15 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `footprint-storyreel/shots` → `readIntent` · `readContinuity` · `checkContinuity` · `tooMuchTooFast` · `distinctMoments` · `WATCHING` | the shot plan's checks, on their own |
 | `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `inOut` | the one ease table (`linear in out inOut back walk jump spring`) |
 | `footprint-storyreel/acting` → `moodAt(keys, t)` · `idleAt(t, {seed})` · `follows(f, delay?)` · `ACTING` | a mood change acted (anticipation, a take, a cross-fade), an idle layer that never moves in step |
+| `footprint-storyreel/pose` → `motionSource({name, poseAt})` · `walkSource(walk)` · `checkPose(pose)` · `POSE_KEYS` · `TORSO_SHARE` | the motion-source port: one pose shape for everything that moves a figure; the planned walk as one adapter |
+| `footprint-storyreel/mocap` → `fromPose(keypoints, {x, size, …})` · `MOCAP` · `SCHEMES` · `RIG_JOINTS` | motion copied from a video's 2D keypoints (COCO-17, MediaPipe-33), as a motion source with its record |
+| `footprint-storyreel/kits/cartoon/figure` → `drawFigure(ctx, pose, {floor, size})` · `figureAt` · `FIGURE_COLORS` | a cartoon figure any motion source moves; planted feet stay put |
 | `contactSheet(film, {moments?, columns?, width?})` | a PNG of stills |
 | `frameHashes(film, {count?, width?, times?})` · `changedFrames(pinned, now)` | pixel pins |
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`, `/pose`, `/mocap`, `/kits/cartoon/figure`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws
@@ -1189,6 +1285,7 @@ in [BACKLOG.md](BACKLOG.md).
 | twitter-text 3.1.0 (ported, bundled) | Apache-2.0 | X's count of a post |
 | twemoji-parser 11.0.2 (its emoji list, bundled) | MIT | the emoji X counts as 2 |
 | FFmpeg (separate program, on PATH) | LGPL/GPL | encoding and mixing |
+| MediaPipe Pose (optional, `tools/pose-from-video.py`; not installed) | Apache-2.0 | keypoints from a video |
 
 Node 22+. Licence: MIT AND Apache-2.0 — StoryReel's own code is MIT; the X counter is ported from twitter-text,
 Apache-2.0 (`src/targets/x-count/LICENSE-twitter-text`); the bundled Caveat font is SIL OFL 1.1 (`fonts/caveat/OFL.txt`).
