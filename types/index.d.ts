@@ -373,10 +373,10 @@ export interface Loudness {
   /** Why the pass was skipped: 'the audio is silent: …' for pure silence, else 'could not read: <fields>'. */
   reason?: string;
   /** Each role measured apart before the mix (integrated loudness, LUFS; null when there is none): the effects stay well under the voice. */
-  roles?: {voice: number | null; effects: number | null};
+  roles?: {voice: number | null; effects: number | null; music?: number | null};
 }
 /** One thing the sound asks too much of the ear for (listening.mjs). */
-export interface ListeningFinding { kind: 'every-change' | 'same-twice' | 'effects-loud'; at: number; where?: string; text: string }
+export interface ListeningFinding { kind: 'every-change' | 'same-twice' | 'effects-loud' | 'music-loud'; at: number; where?: string; text: string }
 
 /** The shapes a film is posted in (layout.mjs): landscape 1920×1080, square 1080×1080, portrait 1080×1350, vertical 1080×1920 (portrait and vertical show a 4:3 crop). */
 export type FormatName = 'landscape' | 'square' | 'portrait' | 'vertical';
@@ -439,6 +439,10 @@ export function renderFilm(options: {
   posterFrame?: boolean;
   /** How the picture is made: wholeVideo() (the default: every frame in one pass) or segmentedVideo({...}) (cached segments, joined). */
   video?: VideoStrategy;
+  /** A song under the film: its first second plays at film second `start` (negative: it begins that far in), at `gain` (0.2), fading over the last `fadeOut` seconds (1.5). */
+  music?: import('./sub/music.js').SongPlacement | null;
+  /** 'start' (the default: each sound begins on its moment) or 'peak' (each sound's loudest transient lands on it). */
+  soundAt?: 'start' | 'peak';
 }): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; format?: FormatName; captions?: {vtt?: string; srt?: string}; loudness: Loudness; listening: ListeningFinding[]; video?: SegmentsReport}>;
 
 /** A way to make the picture (segments.mjs): plan the parts, make each one, join them; render runs the three in order. */
@@ -530,6 +534,8 @@ export interface MakeFilmOptions<K = Kit | ContextKit> {
   check?: 'report' | 'refuse' | null;
   /** The length the brief asks for, for the duration check. */
   expect?: {seconds?: number; tolerance?: number};
+  /** A song under the film: its beat map and the fit (scene starts onto the beat, the drop on a key moment) run as stages of their own; the record keeps both. */
+  music?: import('./sub/music.js').MusicOptions | null;
 }
 export function makeFilm(options: MakeFilmOptions<Kit>): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;
 export function makeFilm(options: MakeFilmOptions<Kit | ContextKit>): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;
@@ -554,7 +560,7 @@ export function speechIndex(scene: Storyboard['scenes'][number], timing: SceneTi
 export function phraseMatches(index: unknown, phrase: string): {start: number; end: number}[];
 export function ramp(t: number, at: number, d?: number): number;
 export function withStrings<T>(recipe: T, strings: Record<string, string> | null, used?: Set<string>): T;
-export function createSound(options: {duration: number; events: SoundEvent[]; peakCeilingDBFS?: number}): {wav: Uint8Array};
+export function createSound(options: {duration: number; events: SoundEvent[]; peakCeilingDBFS?: number; soundAt?: 'start' | 'peak'}): {wav: Uint8Array};
 export function loadTheme(name?: string): Record<string, unknown>;
 export function validateTheme(theme: unknown): void;
 export const whiteboardKit: Kit;

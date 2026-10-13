@@ -159,6 +159,14 @@
       "types": "./types/sub/transitions.d.ts",
       "default": "./src/transitions.mjs"
     },
+    "./beats": {
+      "types": "./types/sub/beats.d.ts",
+      "default": "./src/beats.mjs"
+    },
+    "./music": {
+      "types": "./types/sub/music.d.ts",
+      "default": "./src/music.mjs"
+    },
     "./package.json": "./package.json"
   },
   "types": "./types/index.d.ts",

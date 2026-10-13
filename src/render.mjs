@@ -9,11 +9,12 @@ import {spawn, spawnSync} from 'node:child_process';
 import {once} from 'node:events';
 import {createHash} from 'node:crypto';
 import {createCanvas} from '@napi-rs/canvas';
-import {createMotionSound, soundsByScene} from './sound.mjs';
+import {createMotionSound, soundsByScene, SOUND_AT} from './sound.mjs';
 import {compileLayout} from './layout.mjs';
 import {captionChunks, captionFile, FILE_CHUNKS, clockText} from 'footprint-narration';
 import {spokenTracks} from './captions.mjs';
-import {effectsUnderVoice} from './listening.mjs';
+import {effectsUnderVoice, musicUnderVoice} from './listening.mjs';
+import {readSongPlacement} from './music.mjs';
 
 /**
  * Loudness in two passes (FFmpeg's loudnorm): measure the whole mixed film, then set it with ONE fixed
@@ -247,6 +248,11 @@ export function makePainter({film, framed, blur, width, height, fps, ctx}) {
  * @param quality    'standard' (the default: quick to make, fine to watch), 'draft' (quickest, for looking while
  *                   editing) or 'high' (for posting: a slower, finer
  *                   encode, its colours converted and tagged as HD video's, BT.709, the way players read them)
+ * @param music      a song under the film: {file, start?, gain?, fadeOut?} (music.mjs · readSongPlacement) — its first
+ *                   second plays at film second `start` (negative: the song begins that far in), at `gain` (0..1 of its
+ *                   own level, 0.2), fading out over the film's last `fadeOut` seconds (1.5); measured apart as a role
+ * @param soundAt    'start' (the default: each sound begins on its moment) or 'peak' (each sound's loudest transient
+ *                   lands on its moment: sound.mjs · soundPeak)
  * @returns {out, seconds, chapters, poster?, format?, captions?: {vtt?, srt?}, loudness: {type, target, measured, reason?},
  *          video?: the strategy's report (segmentedVideo: each segment, rendered or reused)}
  */
@@ -339,8 +345,10 @@ export const prepareRender = options => prepareJob(withPart(options));
 
 function prepareJob({film, storyboard, timings, narrationDir = null, out, width: givenWidth, height: givenHeight, fps = 30, intro = null, stamp = null,
   from = intro ? -intro.seconds : 0, to = film.total, poster = film.posterAt ?? null, posterFrame = true, peakCeilingDBFS = -20, loudness = {I: -16, TP: -1.5}, layout = null, motionBlur = null,
-  captionFiles = false, quality = 'standard', ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', video: _strategy}) {
+  captionFiles = false, quality = 'standard', ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', video: _strategy, music = null, soundAt = 'start'}) {
   checkLoudnessTarget(loudness);
+  if (!SOUND_AT.includes(soundAt)) throw new Error(`soundAt is 'start' (each sound begins on its moment, the default) or 'peak' (its loudest transient lands on it), not ${JSON.stringify(soundAt)}`);
+  const song = music === null || music === undefined ? null : readSongPlacement(music);
   if (typeof posterFrame !== 'boolean') throw new Error('posterFrame must be true (the poster replaces the first frame) or false (written beside the video only)');
   if (!ENCODE[quality]) throw new Error(`quality must be ${QUALITIES.map(q => `'${q}'`).join(' or ')}`);
   const blur = readMotionBlur(motionBlur), captionKinds = readCaptionFiles(captionFiles);
@@ -354,7 +362,7 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   // A render starts on the film's frame grid (a part's window is rounded to the millisecond): frame f shows film second
   // start + f / fps, so a drawing held on twos (motion.mjs · heldTime) pairs the same frames in a part as in the film.
   const withIntro = intro && from < 0, start = Math.floor(Math.max(0, from) * fps + 1e-6) / fps;
-  const job = {film, storyboard, timings, narrationDir, out, dir, width, height, fps, intro, withIntro, stamp, start, to, poster, posterFrame, peakCeilingDBFS, loudness, layout, framed, blur, captionKinds, ffmpeg,
+  const job = {film, storyboard, timings, narrationDir, out, dir, width, height, fps, intro, withIntro, stamp, start, to, poster, posterFrame, peakCeilingDBFS, loudness, layout, framed, blur, captionKinds, ffmpeg, song, soundAt,
     /** How many frames the film part has (the intro's are extra). */
     frames: Math.ceil((to - start) * fps),
     /** What changes a frame's pixels besides the film itself: a segment's cache key includes it (segments.mjs). */
@@ -446,7 +454,7 @@ async function writePoster(job) {
 
 /** The sound (mixed for the whole part, once), the mux with loudness, the chapters and the caption files. */
 export async function finishRender(job, video) {
-  const {film, storyboard, timings, narrationDir, dir, intro, withIntro, start, to, peakCeilingDBFS, loudness, framed, captionKinds, ffmpeg} = job;
+  const {film, storyboard, timings, narrationDir, dir, intro, withIntro, start, to, peakCeilingDBFS, loudness, framed, captionKinds, ffmpeg, song, soundAt} = job;
   const posterFile = await writePoster(job);
   // Audio: narration end to end (or silence), the accents on the same clock, the intro's sound first.
   const run = args => { const r = spawnSync(ffmpeg, ['-y', '-loglevel', 'error', ...args], {stdio: 'inherit'}); if (r.status) throw new Error(`ffmpeg failed: ${args.join(' ').slice(0, 200)}`); };
@@ -457,7 +465,7 @@ export async function finishRender(job, video) {
   const byScene = soundsByScene(film.sounds, film.clock.offsets, timings.scenes.map(s => s.duration));
   const sfxParts = timings.scenes.map((s, i) => {
     const file = path.join(dir, `film-sfx-${i}.wav`);
-    writeFileSync(file, createMotionSound({duration: s.duration, events: byScene[i], peakCeilingDBFS}).wav);
+    writeFileSync(file, createMotionSound({duration: s.duration, events: byScene[i], peakCeilingDBFS, soundAt}).wav);
     return file;
   });
   writeFileSync(path.join(dir, 'film-sfx.txt'), concatList(sfxParts));
@@ -465,8 +473,10 @@ export async function finishRender(job, video) {
   // Each role measured apart (listening.mjs): the effects stay well under the voice, so the words stay clear.
   const integrated = wav => integratedLoudness(ffmpeg, wav);
   const roles = {voice: narrationDir ? integrated(voice) : null, effects: film.sounds.length ? integrated(path.join(dir, 'film-sfx.wav')) : null};
-  const tooLoud = effectsUnderVoice(roles);
-  run(['-i', voice, '-i', path.join(dir, 'film-sfx.wav'), '-filter_complex', '[0:a]aresample=48000[a];[1:a]aresample=48000[b];[a][b]amix=inputs=2:normalize=0:duration=first', '-ac', '1', path.join(dir, 'film-lesson.wav')]);
+  const tooLoud = effectsUnderVoice(roles), lesson = path.join(dir, 'film-lesson.wav');
+  run(['-i', voice, '-i', path.join(dir, 'film-sfx.wav'), '-filter_complex', '[0:a]aresample=48000[a];[1:a]aresample=48000[b];[a][b]amix=inputs=2:normalize=0:duration=first', '-ac', '1', song ? path.join(dir, 'film-dry.wav') : lesson]);
+  // The song, when there is one, under the voice and the effects: placed on the film clock, measured as its own role.
+  const musicLoud = song ? mixSong(run, {song, total: film.total, dir, lesson, roles, integrated}) : null;
   const parts = [];
   if (withIntro) {
     const introWav = path.join(dir, 'film-intro.wav');
@@ -489,8 +499,23 @@ export async function finishRender(job, video) {
     const chunks = captionChunks(spokenTracks(film), FILE_CHUNKS);
     for (const kind of captionKinds) { captions[kind] = path.join(dir, `captions.${kind}`); writeFileSync(captions[kind], captionFile(chunks, kind, {offset: lead - start, from: start, to})); }
   }
-  return {out: path.resolve(job.out), seconds: length, chapters: chapters.map(([t, n]) => `${clockText(t)} ${n}`), loudness: {...loudnessSet, roles}, listening: tooLoud ? [tooLoud] : [],
+  return {out: path.resolve(job.out), seconds: length, chapters: chapters.map(([t, n]) => `${clockText(t)} ${n}`), loudness: {...loudnessSet, roles}, listening: [tooLoud, musicLoud].filter(Boolean),
     ...(posterFile ? {poster: posterFile} : {}), ...(framed ? {format: framed.format} : {}), ...(captionKinds.length ? {captions} : {}), ...(video.report ? {video: video.report} : {})};
+}
+
+/**
+ * The song on the film clock, mixed under the lesson (render.mjs · finishRender): it begins at film second `start` (a
+ * negative start begins the song that far in), at its gain, padded or cut to the film's length and faded out over its
+ * last `fadeOut` seconds, mono at 48 kHz like the voice. Its loudness joins the roles; returns the music-loud finding, or null.
+ */
+function mixSong(run, {song, total, dir, lesson, roles, integrated}) {
+  const placed = path.join(dir, 'film-music.wav'), seek = song.start < 0 ? ['-ss', String(-song.start)] : [];
+  const delay = song.start > 0 ? `adelay=delays=${Math.round(song.start * 48000)}S:all=1,` : '';
+  const fade = song.fadeOut > 0 ? `,afade=t=out:st=${Math.max(0, total - song.fadeOut)}:d=${Math.min(song.fadeOut, total)}` : '';
+  run([...seek, '-i', song.file, '-af', `aresample=48000,${delay}volume=${song.gain},apad${fade}`, '-t', String(total), '-ac', '1', placed]);
+  roles.music = integrated(placed);
+  run(['-i', path.join(dir, 'film-dry.wav'), '-i', placed, '-filter_complex', '[0:a][1:a]amix=inputs=2:normalize=0:duration=first', '-ac', '1', lesson]);
+  return musicUnderVoice(roles);
 }
 
 /** The captionFiles option: false, true (both kinds) or a list of 'vtt' / 'srt'. */

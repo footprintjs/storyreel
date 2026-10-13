@@ -264,3 +264,16 @@ export const springier: WalkStyle = readWalk({...WALKS.bouncy, bob: .06});
 export const walkNames: readonly string[] = WALK_NAMES;
 // @ts-expect-error a walk needs the figure's size
 walk({from: 0, to: 100, start: 0});
+
+// The beat map (beats.ts) and music under a film (music.ts): a map's questions, the fit's verdicts, the options.
+import {beatMap, peakOf, BEATS, type BeatMap} from '../types/sub/beats.js';
+import {fitToMusic, MUSIC, type MusicOptions, type MusicCut} from '../types/sub/music.js';
+export const mapped: Promise<BeatMap> = beatMap('song.mp3', {bpm: 120, range: [80, 160]});
+export const onTheBeat = (map: BeatMap): boolean => map.onBeat(map.nearestBeat(3) ?? 0, BEATS.onBeat) && map.nextBeat(1) !== null && map.drop !== 0;
+export const hitAt: number = peakOf('door.wav');
+export const musicOptions: MusicOptions = {file: 'song.mp3', gain: .2, snap: {tolerance: MUSIC.tolerance}, dropOn: ['story', 'came home', .5]};
+export const fitted = (storyboard: Storyboard, timings: import('../types/index.js').Timings, map: BeatMap): Promise<MusicCut[]> => fitToMusic({storyboard, timings, beats: map, snap: true}).then(f => f.cuts);
+// @ts-expect-error dropOn is a key, not a scene id
+export const badDrop: MusicOptions = {file: 'song.mp3', dropOn: 'story'};
+// @ts-expect-error soundAt is 'start' or 'peak'
+export const badAt: Parameters<typeof RenderFilm>[0]['soundAt'] = 'middle';

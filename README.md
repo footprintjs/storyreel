@@ -855,6 +855,75 @@ start to bury the words. `"listening": "refuse"` refuses the film's own findings
 "stages": [{"scene": "loop", "enter": {"type": "zoom", "sound": "whoosh"}}, {"scene": "frame", "enter": {"type": "push", "sound": false}}]
 ```
 
+## Music: cut on the beat
+
+A cut that lands just off the beat feels late even when nobody can say why, so an editor cuts on the beat — and does
+not trust an automatic beat grid blindly: a grid can be a half or a double of the real tempo, and a song's drop is not
+always where its loudest moment is. StoryReel measures the song, says how sure it is and what else the tempo could be,
+and fits the film to it only where asked, never further than you allow.
+
+```js
+import {beatMap, peakOf} from 'footprint-storyreel/beats';
+
+const map = await beatMap('music/theme.mp3');
+map.bpm;            // 123 — a line through the beats
+map.beats;          // [0.3, 0.788, 1.275, …] seconds, each on the transient it sits on
+map.bars;           // every bar's first beat (a 4/4 guess; the downbeat from low-band onsets)
+map.drop;           // 8.105 — the largest sustained rise in low and mid energy after a quieter build, on its beat (null: none)
+map.confidence;     // 0..1: the share of beats that sit on a measured onset
+map.alternatives;   // [{bpm: 123.02, score: 1}, {bpm: 61.51, score: 0.82}, …] — the tempos the onsets also fit
+map.nearestBeat(12.4); map.nextBeat(12.4); map.onBeat(12.4, .05);
+peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and its thud lands on the event
+```
+
+- **How it measures** (plain functions, `src/dsp.mjs`): the song read through FFmpeg as mono samples; onset strength as
+  spectral flux on a radix-2 FFT, log-compressed and split into low (< 200 Hz), mid and high bands; the tempo by
+  autocorrelation of the onsets, weighed by a prior that prefers 70–180 BPM (`range`), with the ranked alternatives;
+  the beats by dynamic programming (Ellis 2007), each moved onto the transient it sits on; the bars from low-band onsets;
+  the drop where low and mid energy rise most and hold.
+- **The map is a flowchart, and its record explains it.** decode → onsets → choose-tempo → track-beats → find-bars →
+  measure-rise → find-drop, each verdict `decide()` evidence in `map.record`:
+  `It examined "The strongest period stands clear of the next": strongest=123.02, next=61.51, clarity=0.184, and chose
+  tempo-measured.` A close second is `tempo-close`; no beat in four standing out is `bars-guessed`; no rise that holds is
+  `drop-none` (`drop: null`).
+- **Override what it got wrong**: `beatMap(file, {bpm: 128, drop: 42.5})` — the record then says the tempo and the drop
+  were given. `beatMapOf(samples, 22050)` maps samples already in hand.
+
+**Into a film**, all opt-in — a film without `music` renders byte for byte as before:
+
+```js
+await makeFilm({storyboard, recipe, narrationDir, pacing, out: 'out/film.mp4',
+  music: {file: 'music/theme.mp3', gain: .2,
+    snap: {tolerance: .15},                      // scene starts onto the nearest beat, never further than 0.15 s
+    dropOn: ['story', 'came home']},             // the song starts so its drop lands on this phrase
+  render: {soundAt: 'peak'}});                   // every sound effect's loudest moment on its moment
+```
+
+- **Snapping** (`music.mjs · fitToMusic`) moves each scene start — a cut, and the transition anchored on it (three
+  quarters of its change before the start) — onto the nearest beat within the tolerance. It changes only how long a
+  scene's silence after its last word lasts, so every word, drawing and caption keeps its place inside its scene; a
+  scene is never cut shorter than its last word plus 0.1 s (`MUSIC.clear`): a beat that would need that is passed over
+  for the next nearest, and a cut with no such beat stays where it is, saying why. Each cut moves at most the tolerance
+  against the song; the film after a moved cut moves with it.
+- **The drop on a key moment.** With `dropOn`, the song starts where its drop lands on that phrase (before the film, the
+  song begins part way in; after, the film plays without it until then). That scene's own start is then held by the drop;
+  the cuts after it are fitted forward and the ones before it backward from it. A song with no drop the map can find
+  refuses with the fix: give `music.drop`, the second it drops.
+- **A voice follows.** In a voiced cut, each moved scene's audio in the run's copy of the voice is padded with silence or
+  cut short (faded over 10 ms) to its new length, by whole samples (`fitVoice`; a 16-bit PCM WAV voice, as pacing needs);
+  the voice folder itself is never touched.
+- **The record.** `map-beats` and `fit-to-music` run as stages of the pipeline, after the pacing; `making-of.json` gets
+  `music`: the song, its gain, where it starts, its beat map (tempo, alternatives, drop, confidence) and every cut's
+  verdict, with both flowcharts' records. The song and every setting are part of what an approval locks
+  (`inputs.music`).
+- **In the mix.** The song plays under the voice and the effects at `gain` (0..1 of its own level), fading out over the
+  film's last `fadeOut` seconds (1.5), measured apart as a role (`result.loudness.roles.music`); a song less than 10 LU
+  under the voice is a listening finding, as loud effects are. `renderFilm({…, music: {file, start, gain?, fadeOut?}})`
+  places a song by hand.
+- **Sounds by their peaks.** `soundAt: 'peak'` starts each sound its peak earlier (`sound.mjs · soundPeak`: a door thuds
+  0.32 s in, a whoosh swells to its middle, a click is at once), never before its scene starts; left out, every sound
+  begins on its moment as before. `peakOf(file)` gives the same for a sound file of your own.
+
 ## Check the finished file
 
 A render can pass every check before it and still come out wrong: a segment joined a frame off, a voice
@@ -1112,6 +1181,8 @@ short, quiet and made by procedural synthesis (no samples). A kit's sound is `{t
   `whoosh` .8, `crumble` .7). **A gain is relative to its scene**: each scene's sounds are scaled by one
   factor, set by the loudest moment in that scene (`sound.mjs · createMotionSound`), so a loud door turns
   down every tap in the same scene.
+- **Where it sits on its moment**: a sound begins on its moment; `renderFilm({…, soundAt: 'peak'})` starts each one its
+  peak earlier, so its hit lands there instead (a door's thud, a whoosh's swell; see *Music: cut on the beat*).
 - Names, gains and the count are checked when the film is built (`compileFilm`), not after rendering: a
   misspelled name refuses, naming the kit and the sounds there are, and a scene with more than 64 sounds
   (the engine's and every kit's together) refuses, naming the scene.
@@ -1143,12 +1214,14 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `footprint-storyreel/shots` → `readIntent` · `readContinuity` · `checkContinuity` · `tooMuchTooFast` · `distinctMoments` · `WATCHING` | the shot plan's checks, on their own |
 | `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `inOut` | the one ease table (`linear in out inOut back walk jump spring`) |
 | `footprint-storyreel/acting` → `moodAt(keys, t)` · `idleAt(t, {seed})` · `follows(f, delay?)` · `ACTING` | a mood change acted (anticipation, a take, a cross-fade), an idle layer that never moves in step |
+| `footprint-storyreel/beats` → `beatMap(file, {bpm?, drop?, range?})` · `beatMapOf(samples, 22050)` · `peakOf(file)` · `peakOfSamples` · `BEATS` | a song's tempo, beats, bars and drop, with the alternatives and how sure (its record: every verdict with its evidence); a sound's peak |
+| `footprint-storyreel/music` → `fitToMusic({storyboard, timings, beats, snap?, dropOn?})` · `fitVoice(runDir, before, after)` · `MUSIC` | scene starts onto the beat within a tolerance, never past a word; the song started so its drop lands on a key moment (`makeFilm({…, music})` runs both) |
 | `contactSheet(film, {moments?, columns?, width?})` | a PNG of stills |
 | `frameHashes(film, {count?, width?, times?})` · `changedFrames(pinned, now)` | pixel pins |
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/beats`, `/music`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws
