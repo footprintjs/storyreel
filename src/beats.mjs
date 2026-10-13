@@ -10,19 +10,21 @@ import {existsSync} from 'node:fs';
 import path from 'node:path';
 import {flowChart, narrative, decide} from 'footprintjs';
 import {QUIET, plainNarrative} from './record.mjs';
-import {ANALYSIS, onsetStrength, tempoCandidates, metricalRelatives, trackBeats, refineBeats, gridTempo, onsetSupport, downbeatScores, dropCandidate, peakOfSamples, firstAtOrAfter} from './dsp.mjs';
+import {ANALYSIS, onsetStrength, tempoCandidates, metricalRelatives, betweenSupport, trackBeats, refineBeats, gridTempo, onsetSupport, downbeatScores, dropCandidate, peakOfSamples, firstAtOrAfter} from './dsp.mjs';
 
 /**
  * The beat map's rules. range: the tempos preferred (BPM; others are weighed down, never refused). clear: how far the
- * strongest tempo must stand above the next (1 − the next one's share of it) to count as measured, not close. octave:
- * the wider margin it must keep over the same beat at another level (half, double, a third, triple: dsp.mjs ·
- * metricalRelatives), which the onsets cannot always tell apart. meter: beats in a bar (a 4/4 guess). downbeat: the
+ * strongest tempo must stand above the next (1 − the next one's share of it; its slower echoes, ½ and ⅓, aside) to
+ * count as measured, not close. octave: the wider margin it must keep over a faster level of the same beat (2×, 3×:
+ * dsp.mjs · metricalRelatives), which may be the beat heard at half speed. between: how full the beats in between
+ * must be (their onsets against the beats', dsp.mjs · betweenSupport) for that faster level to be the beat. meter:
+ * beats in a bar (a 4/4 guess). downbeat: the
  * margin for the beat that starts a bar. drop: the dB a drop's rise must hold, both halves of the window after it.
  * window: the seconds of song either side a drop is judged over. fade, sudden: a rise that takes longer than `fade`
  * seconds to climb and makes less than `sudden` of itself at once is a fade-in, not a drop. onBeat: the tolerance
  * onBeat(t) takes by default (seconds).
  */
-export const BEATS = Object.freeze({range: Object.freeze([70, 180]), clear: .1, octave: .3, meter: 4, downbeat: .1, drop: 3, window: 4, fade: 2, sudden: .5, onBeat: .05});
+export const BEATS = Object.freeze({range: Object.freeze([70, 180]), clear: .1, octave: .3, between: .6, meter: 4, downbeat: .1, drop: 3, window: 4, fade: 2, sudden: .5, onBeat: .05});
 const OPTION_KEYS = ['bpm', 'drop', 'range', 'ffmpeg'];
 const ffmpegOf = given => given ?? process.env.FFMPEG_BIN ?? 'ffmpeg';
 
@@ -60,8 +62,10 @@ async function analyse(read, source, options) {
   const o = readOptions(options), work = {};
   const tempoRules = [
     {when: s => s.bpmGiven !== null, then: 'tempo-given', label: 'The tempo was given (options.bpm)'},
-    {when: s => s.strongest !== null && (s.next === null || s.clarity >= BEATS.clear) && (s.relative === null || s.relativeMargin >= BEATS.octave),
-      then: 'tempo-measured', label: `The strongest period stands clear of the next, and ${BEATS.octave} clear of its half, double, third and triple`},
+    {when: s => s.faster !== null && s.fasterMargin < BEATS.octave && s.between >= BEATS.between,
+      then: 'tempo-faster', label: `A faster level (twice or three times) comes within ${BEATS.octave}, and onsets fill the beats in between: the beat is the faster level`},
+    {when: s => s.strongest !== null && (s.next === null || s.clarity >= BEATS.clear) && (s.faster === null || s.fasterMargin >= BEATS.octave),
+      then: 'tempo-measured', label: `The strongest period stands clear of the next (its slower echoes aside), and no faster level comes within ${BEATS.octave}`},
   ];
   const barRules = [{when: s => s.barClarity >= BEATS.downbeat, then: 'bars-measured', label: `Low-band onsets mark one beat in ${BEATS.meter}: the bars start there`}];
   const dropRules = [
@@ -87,14 +91,21 @@ async function analyse(read, source, options) {
       work.candidates = tempoCandidates(work.onsets.flux.all, work.onsets.frameRate, {range: o.range});
       if (!work.candidates.length && o.bpm === null) throw new Error(`beatMap: ${source} has no repeating onsets to measure a tempo from; give options.bpm to lay a grid anyway`);
       s.alternatives = work.candidates.map(({bpm, score}) => ({bpm, score}));
-      s.bpmGiven = o.bpm; s.strongest = work.candidates[0]?.bpm ?? null; s.next = work.candidates[1]?.bpm ?? null;
-      s.clarity = work.candidates.length > 1 ? round(1 - work.candidates[1].score, 3) : 1;
-      // The same beat at another level (half, double, a third, triple) is the doubt the onsets cannot settle.
-      const relative = work.candidates.length ? metricalRelatives(work.candidates[0].bpm, work.candidates.slice(1))[0] ?? null : null;
-      s.relative = relative?.bpm ?? null; s.relativeMargin = relative ? round(1 - relative.score, 3) : null;
-      return decide(s, tempoRules, {branch: 'tempo-close', label: 'The next period is nearly as strong: the strongest is taken, and the alternatives say what else it could be'});
+      const [strongest, ...others] = work.candidates;
+      s.bpmGiven = o.bpm; s.strongest = strongest?.bpm ?? null;
+      // A slower relative (½, ⅓) is the echo of any steady pulse, not a doubt: the margin is against the best of the rest.
+      const echoes = new Set(strongest ? metricalRelatives(strongest.bpm, others, {faster: false}) : []), next = others.find(c => !echoes.has(c)) ?? null;
+      s.next = next?.bpm ?? null; s.clarity = next ? round(1 - next.score, 3) : 1;
+      // A faster relative (2×, 3×) close behind may be the beat itself, heard at half (a third) speed: onsets at the
+      // beats in between settle it (dsp.mjs · betweenSupport).
+      work.faster = strongest ? metricalRelatives(strongest.bpm, others)[0] ?? null : null;
+      s.faster = work.faster?.bpm ?? null; s.fasterMargin = work.faster ? round(1 - work.faster.score, 3) : null;
+      s.between = work.faster && s.fasterMargin < BEATS.octave ? round(betweenSupport(work.onsets.flux.all, work.onsets.frameRate,
+        trackBeats(work.onsets.flux.all, strongest.period).map(f => f / work.onsets.frameRate), Math.round(work.faster.bpm / strongest.bpm)), 3) : null;
+      return decide(s, tempoRules, {branch: 'tempo-close', label: 'Another period is nearly as strong, or a faster level is and the beats in between are empty: the strongest is taken, and the alternatives say what else it could be'});
     }, 'choose-tempo', 'The tempo: the onsets\' autocorrelation, weighed by the preferred range')
     .addFunctionBranch('tempo-given', 'tempo-given', s => useTempo(s, o.bpm), 'the given tempo')
+    .addFunctionBranch('tempo-faster', 'tempo-faster', s => useTempo(s, work.faster.bpm), 'the faster level, its beats filled')
     .addFunctionBranch('tempo-measured', 'tempo-measured', s => useTempo(s, work.candidates[0].bpm), 'the measured tempo')
     .addFunctionBranch('tempo-close', 'tempo-close', s => useTempo(s, work.candidates[0].bpm), 'the strongest tempo, the others close')
     .end()

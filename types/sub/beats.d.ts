@@ -20,7 +20,7 @@ export interface BeatMap {
   readonly drop: number | null;
   /** The share of the beats that sit on a measured onset, 0..1. */
   readonly confidence: number;
-  /** The tempos the onsets fit, best first: a close second — often the same beat at half or double — is a doubt worth reading (the record says `tempo-close`). */
+  /** The tempos the onsets fit, best first: the half and third of the beat always score well (echoes); a close faster level is settled by the onsets in between (`tempo-faster`), any other close second is a doubt worth reading (`tempo-close`). */
   readonly alternatives: readonly TempoAlternative[];
   /** The song's length. */
   readonly seconds: number;
@@ -36,8 +36,8 @@ export interface BeatMap {
 /** bpm and drop override the measured ones; range is the tempos preferred ([70, 180]); ffmpeg names the FFmpeg to read with. */
 export interface BeatMapOptions { bpm?: number | null; drop?: number | null; range?: [number, number]; ffmpeg?: string }
 
-/** The beat map's rules: the preferred tempos, the margins a verdict needs (over the next tempo, and over one at another level), the meter, the drop's dB, its window, what makes a fade-in, onBeat's tolerance. */
-export const BEATS: Readonly<{range: readonly [number, number]; clear: number; octave: number; meter: number; downbeat: number; drop: number; window: number; fade: number; sudden: number; onBeat: number}>;
+/** The beat map's rules: the preferred tempos, the margins a verdict needs (over the next tempo, and over a faster level of the same beat), how full the beats in between must be for the faster level, the meter, the drop's dB, its window, what makes a fade-in, onBeat's tolerance. */
+export const BEATS: Readonly<{range: readonly [number, number]; clear: number; octave: number; between: number; meter: number; downbeat: number; drop: number; window: number; fade: number; sudden: number; onBeat: number}>;
 /** A song's beat map, read through FFmpeg (any audio it reads). */
 export function beatMap(audioFile: string, options?: BeatMapOptions): Promise<BeatMap>;
 /** The same from mono samples at 22050 Hz (-1..1). */
