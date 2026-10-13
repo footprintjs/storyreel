@@ -11,8 +11,10 @@
  * frame; what a foot or a swing looks like is the kit's drawing.
  *
  *   const w = walk({from: 130, to: 1800, start: 13.6, size: 475, style: 'stroll'})
- *   w.at(t)     → {x, lift, lean, feet: [{x, lift}, {x, lift}], swing, turn, facing, walking, phase}
+ *   w.at(t)     → {x, lift, lean, feet: [{x, lift, angle}, {x, lift, angle}], swing, turn, facing, walking, phase}
  *     x       the body's place on the floor (between its feet); lift: how far it rises (+) or sinks (−) from standing
+ *     angle   each foot's roll, radians, + toes up: a heel strike as it lands, flattening onto the floor, the heel
+ *             rising as the body passes over it, the toe pushing off as it lifts (the style's roll; 0 standing)
  *     lean    radians, + toward the way it walks; feet: each foot's place on the floor and its height off it (feet[0]
  *             steps first); swing: −arms…arms (the style's 0–1), + while feet[0] is ahead (so the arm on feet[1]'s side is
  *             forward) — in the half steps that start and end the walk it eases in and out from 0
@@ -27,25 +29,28 @@ const shown = v => (typeof v === 'number' ? String(v) : JSON.stringify(v));
  * The named styles. Lengths are shares of the figure's size (its standing height); cadence is steps a second.
  *   stroll  a grown-up's calm walk          brisk   quicker, longer steps, leaning into it
  *   bouncy  a cartoon child's springy walk  tiptoe  slow, high, careful steps, hunched a little
+ * roll: radians a foot rolls, heel to toe (a heel strike lands toes up, a toe-off pushes heel up); tiptoe never rolls.
  */
 export const WALKS = Object.freeze({
-  stroll: Object.freeze({cadence: 1.8, stride: .42, bob: .02, bounce: 0, lift: .05, lean: .03, arms: .8, anticipate: .3, dip: .02, settle: .6, rock: .05}),
-  brisk: Object.freeze({cadence: 2.2, stride: .46, bob: .022, bounce: .2, lift: .06, lean: .08, arms: 1, anticipate: .25, dip: .025, settle: .55, rock: .07}),
-  bouncy: Object.freeze({cadence: 2.6, stride: .34, bob: .05, bounce: 1, lift: .08, lean: .02, arms: 1, anticipate: .3, dip: .045, settle: .6, rock: .06}),
-  tiptoe: Object.freeze({cadence: 1.3, stride: .24, bob: .012, bounce: 0, lift: .11, lean: .14, arms: .3, anticipate: .45, dip: .04, settle: .7, rock: .03}),
+  stroll: Object.freeze({cadence: 1.8, stride: .42, bob: .02, bounce: 0, lift: .05, lean: .03, arms: .8, anticipate: .3, dip: .02, settle: .6, rock: .05, roll: .32}),
+  brisk: Object.freeze({cadence: 2.2, stride: .46, bob: .022, bounce: .2, lift: .06, lean: .08, arms: 1, anticipate: .25, dip: .025, settle: .55, rock: .07, roll: .38}),
+  bouncy: Object.freeze({cadence: 2.6, stride: .34, bob: .05, bounce: 1, lift: .08, lean: .02, arms: 1, anticipate: .3, dip: .045, settle: .6, rock: .06, roll: .26}),
+  tiptoe: Object.freeze({cadence: 1.3, stride: .24, bob: .012, bounce: 0, lift: .11, lean: .14, arms: .3, anticipate: .45, dip: .04, settle: .7, rock: .03, roll: 0}),
 });
 export const WALK_NAMES = Object.freeze(Object.keys(WALKS));
 const KEYS = Object.keys(WALKS.stroll);
 
 /** A style as given (a name, or an object with every key of a named one, numbers ≥ 0, cadence and stride above 0) → the style. */
 export function readWalk(style = 'stroll') {
+  // (roll came later than the other keys: a style of your own without it rolls its feet like a stroll)
+  if (style && typeof style === 'object' && style.roll === undefined) style = {...style, roll: WALKS.stroll.roll};
   if (typeof style === 'string') {
     if (!Object.hasOwn(WALKS, style)) throw new Error(`no walk called "${style}" (the walks are ${WALK_NAMES.join(', ')}, or {${KEYS.join(', ')}} of your own)`);
     return WALKS[style];
   }
   const bad = !style || typeof style !== 'object' ? KEYS : KEYS.filter(k => !(Number.isFinite(style[k]) && style[k] >= 0));
-  if (bad.length || !(style.cadence > 0 && style.stride > 0) || style.bounce > 1 || style.arms > 1) {
-    throw new Error(`a walk style is a name (${WALK_NAMES.join(', ')}) or {${KEYS.join(', ')}}: numbers of 0 or more, cadence and stride above 0, bounce and arms 0–1${bad.length && style && typeof style === 'object' ? ` (check ${bad.join(', ')})` : ''}`);
+  if (bad.length || !(style.cadence > 0 && style.stride > 0) || style.bounce > 1 || style.arms > 1 || style.roll > 1) {
+    throw new Error(`a walk style is a name (${WALK_NAMES.join(', ')}) or {${KEYS.join(', ')}}: numbers of 0 or more, cadence and stride above 0, bounce and arms 0–1, roll 0–1 radians (left out: a stroll's)${bad.length && style && typeof style === 'object' ? ` (check ${bad.join(', ')})` : ''}`);
   }
   return Object.freeze(Object.fromEntries(KEYS.map(k => [k, style[k]])));   // (a copy: changing the object later changes no walk)
 }
@@ -62,7 +67,7 @@ const rockAt = u => rockShape(u) / ROCK_PEAK;
 /** Standing at x: before `start` or after it (a walk with nowhere to go). */
 const standing = (t, x, start, facing) => {
   if (!Number.isFinite(t)) throw new Error(`walk: at(t) takes seconds, not ${shown(t)}`);
-  return {x, lift: 0, lean: 0, feet: [{x, lift: 0}, {x, lift: 0}], swing: 0, turn: 0, facing, walking: false, phase: t < start ? 'before' : 'after'};
+  return {x, lift: 0, lean: 0, feet: [{x, lift: 0, angle: 0}, {x, lift: 0, angle: 0}], swing: 0, turn: 0, facing, walking: false, phase: t < start ? 'before' : 'after'};
 };
 
 /**
@@ -100,7 +105,17 @@ export function walk({from, to, start, size, style = 'stroll', seconds = null} =
     return from + facing * ((k - 1.5) * s + s * u);
   };
   const ramp = (k, u) => (k === 1 ? smooth(u) : k === n ? 1 - smooth(u) : 1);   // the walk's weight: it grows in the first step, fades in the last
-  const still = (x, phase, extra = {}, feetAt = x) => ({x, lift: 0, lean: 0, feet: [{x: feetAt, lift: 0}, {x: feetAt, lift: 0}], swing: 0, turn: 0, facing, walking: false, phase, ...extra});
+  const still = (x, phase, extra = {}, feetAt = x) => ({x, lift: 0, lean: 0, feet: [{x: feetAt, lift: 0, angle: 0}, {x: feetAt, lift: 0, angle: 0}], swing: 0, turn: 0, facing, walking: false, phase, ...extra});
+  // The feet roll heel to toe (radians, + toes up). The foot that moves pushes off its toe, swings flat and lands on
+  // its heel; the planted one flattens from its heel strike, then lifts its heel as the body passes over it, ready to
+  // push off on the next step. The first step starts flat and the last lands flat (the feet come together), so a
+  // foot's roll is continuous from standing to standing.
+  const R = S.roll, strike = .8 * R;   // (a heel strike lands a little flatter than the toe-off pushes)
+  const rollOf = (k, u, moving) => {
+    if (!R) return 0;
+    if (moving) { const off = k === 1 ? 0 : -R, land = k === n ? 0 : strike; return u < .5 ? off * (1 - smooth(u / .5)) : land * smooth((u - .5) / .5); }
+    return (k > 1 ? strike * (1 - smooth(u / .25)) : 0) + (k < n ? -R * smooth((u - .55) / .45) : 0);
+  };
 
   function at(t) {
     if (!Number.isFinite(t)) throw new Error(`walk: at(t) takes seconds, not ${shown(t)}`);
@@ -113,7 +128,7 @@ export function walk({from, to, start, size, style = 'stroll', seconds = null} =
     if (t < arrive) {
       const k = Math.min(n, Math.floor((t - t0) / T) + 1), u = (t - t0) / T - (k - 1), w = ramp(k, u);
       const [p, q] = [planted(k - 1), planted(k)], mover = k % 2 === 1 ? 0 : 1, a = smooth(u);
-      const feet = [0, 1].map(j => (j === mover ? {x: p[j] + (q[j] - p[j]) * a, lift: lift * Math.sin(Math.PI * u)} : {x: p[j], lift: 0}));
+      const feet = [0, 1].map(j => (j === mover ? {x: p[j] + (q[j] - p[j]) * a, lift: lift * Math.sin(Math.PI * u), angle: rollOf(k, u, true)} : {x: p[j], lift: 0, angle: rollOf(k, u, false)}));
       // The arms swing against the legs: the arm opposite the foot that last went forward is forward.
       const swing = S.arms * w * Math.sin(Math.PI * (k - 1 + u - .5));
       // (A style with no set-off turns during its first step; one with no settle turns back during its last.)

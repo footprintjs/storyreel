@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — walks with feet that roll heel to toe; a turn that reads as a turn
+
+- **The feet roll heel to toe** (`walk(…).at(t).feet[j].angle`, radians, + toes up): a heel strike as a foot lands,
+  flat while the body passes over it, the heel rising before the toe pushes off. A new style key, `roll` (stroll .32,
+  brisk .38, bouncy .26, tiptoe 0); a style of your own without it rolls like a stroll (the one key that may be left
+  out), and one above 1 radian is refused. The first step starts flat and the last lands flat: a foot's roll changes
+  by less than 0.06 rad in any 1/240 s, in every style (tested). A standing foot's angle is 0.
+- **`turnaround(turn, {views, depth, window})`** (`footprint-storyreel/motion`): which drawing of a cartoon turnaround
+  to show for a walk's `turn` (front … side) and a squash across each swap (1 − depth at the swap, 1 away from it,
+  never jumping), so a swap of drawings reads as the body turning.
+- The refusal of an unknown walk names `roll` among the keys of a style of your own.
+
 ## 0.11.1 — Read compile records with Foottrace; accept footprintjs 10
 
 - Record readers now come from `foottrace` (`^1.0.0`), which ships as a dependency. The README's slice
