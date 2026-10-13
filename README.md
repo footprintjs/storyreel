@@ -710,6 +710,20 @@ strategy says HOW, so the same film can be shown another way by changing one wor
   const p = exit.at(heldTime(t));       // her walk, on twos
   drawMom(ctx, heldTime(t), {x: p.x, walk: p});
   ```
+  **The feet roll heel to toe** (`feet[j].angle`, radians, + toes up): a foot lands on its heel, flattens while the
+  body passes over it, lifts its heel before it pushes off its toe — what makes a walk read as a person's, not a
+  puppet's. How far is the style's `roll` (stroll .32, brisk .38, bouncy .26, tiptoe 0; a style of your own without it
+  rolls like a stroll). The first step starts flat and the last lands flat, so a foot's roll never snaps. A kit turns
+  the shoe about its heel: `ctx.rotate(-foot.angle)` in a figure drawn facing +x.
+- **A turn that reads as a turn** (`footprint-storyreel/motion · turnaround`): a cartoon turnaround swaps drawings —
+  front, three-quarter, side — as a walk's `turn` passes each step between them, and `turnaround(turn, {views})`
+  says which drawing (`view`) and how wide to draw it (`squash`): the figure narrows for a moment across each swap,
+  so the change reads as the body turning, not a jump. Two drawings (front and side) swap at half way.
+  ```js
+  const {view, squash} = turnaround(p.turn, {views: 2});
+  ctx.save(); ctx.translate(p.x, y); ctx.scale(squash, 1); ctx.translate(-p.x, -y);
+  (view ? drawSide : drawFront)(ctx, t, p); ctx.restore();
+  ```
 
 ## Re-render only what changed
 
