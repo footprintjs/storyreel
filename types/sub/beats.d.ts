@@ -16,11 +16,11 @@ export interface BeatMap {
   readonly beats: readonly number[];
   /** Every bar's first beat (a 4/4 guess; the downbeat from low-band onsets). */
   readonly bars: readonly number[];
-  /** Where the song drops (the largest sustained rise in low and mid energy after a quieter build), on its beat; null when nothing rises and holds. */
+  /** Where the song drops (the largest sustained rise in low and mid energy after a quieter build, arriving at once), on its beat; null when nothing rises and holds, or the rise is a fade-in. */
   readonly drop: number | null;
   /** The share of the beats that sit on a measured onset, 0..1. */
   readonly confidence: number;
-  /** The tempos the onsets fit, best first: a close second is a doubt worth reading. */
+  /** The tempos the onsets fit, best first: a close second — often the same beat at half or double — is a doubt worth reading (the record says `tempo-close`). */
   readonly alternatives: readonly TempoAlternative[];
   /** The song's length. */
   readonly seconds: number;
@@ -36,8 +36,8 @@ export interface BeatMap {
 /** bpm and drop override the measured ones; range is the tempos preferred ([70, 180]); ffmpeg names the FFmpeg to read with. */
 export interface BeatMapOptions { bpm?: number | null; drop?: number | null; range?: [number, number]; ffmpeg?: string }
 
-/** The beat map's rules: the preferred tempos, the margins a verdict needs, the meter, the drop's dB, its window, onBeat's tolerance. */
-export const BEATS: Readonly<{range: readonly [number, number]; clear: number; meter: number; downbeat: number; drop: number; window: number; onBeat: number}>;
+/** The beat map's rules: the preferred tempos, the margins a verdict needs (over the next tempo, and over one at another level), the meter, the drop's dB, its window, what makes a fade-in, onBeat's tolerance. */
+export const BEATS: Readonly<{range: readonly [number, number]; clear: number; octave: number; meter: number; downbeat: number; drop: number; window: number; fade: number; sudden: number; onBeat: number}>;
 /** A song's beat map, read through FFmpeg (any audio it reads). */
 export function beatMap(audioFile: string, options?: BeatMapOptions): Promise<BeatMap>;
 /** The same from mono samples at 22050 Hz (-1..1). */

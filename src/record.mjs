@@ -54,9 +54,12 @@ function segmentStage(steps, id, last, written, done) {
  */
 export const QUIET = Object.freeze({info() {}, log() {}, debug() {}, error() {}, warn: (...args) => console.warn(...args)});
 
+/** A flowchart's narrative without its live raw values (the beat map and the music's fit keep theirs this way too). */
+export const plainNarrative = trace => trace.getEntries().map(({rawValue, ...entry}) => entry);
+
 /** The record: the narrative (without its live raw values) and the snapshot, detached so it survives structuredClone. */
 function recordOf(executor, trace) {
-  return {narrative: trace.getEntries().map(({rawValue, ...entry}) => entry), snapshot: structuredClone(executor.getSnapshot())};
+  return {narrative: plainNarrative(trace), snapshot: structuredClone(executor.getSnapshot())};
 }
 
 /**

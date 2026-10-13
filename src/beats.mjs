@@ -9,17 +9,20 @@ import {spawnSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import path from 'node:path';
 import {flowChart, narrative, decide} from 'footprintjs';
-import {QUIET} from './record.mjs';
-import {ANALYSIS, onsetStrength, tempoCandidates, trackBeats, refineBeats, gridTempo, onsetSupport, downbeatScores, dropCandidate, peakOfSamples, firstAtOrAfter} from './dsp.mjs';
+import {QUIET, plainNarrative} from './record.mjs';
+import {ANALYSIS, onsetStrength, tempoCandidates, metricalRelatives, trackBeats, refineBeats, gridTempo, onsetSupport, downbeatScores, dropCandidate, peakOfSamples, firstAtOrAfter} from './dsp.mjs';
 
 /**
  * The beat map's rules. range: the tempos preferred (BPM; others are weighed down, never refused). clear: how far the
- * strongest tempo must stand above the next (1 − the next one's share of it) to count as measured, not close. meter:
- * beats in a bar (a 4/4 guess). downbeat: the same margin for the beat that starts a bar. drop: the dB a drop's rise
- * must hold, both halves of the window after it. window: the seconds of song either side a drop is judged over.
- * onBeat: the tolerance onBeat(t) takes by default (seconds).
+ * strongest tempo must stand above the next (1 − the next one's share of it) to count as measured, not close. octave:
+ * the wider margin it must keep over the same beat at another level (half, double, a third, triple: dsp.mjs ·
+ * metricalRelatives), which the onsets cannot always tell apart. meter: beats in a bar (a 4/4 guess). downbeat: the
+ * margin for the beat that starts a bar. drop: the dB a drop's rise must hold, both halves of the window after it.
+ * window: the seconds of song either side a drop is judged over. fade, sudden: a rise that takes longer than `fade`
+ * seconds to climb and makes less than `sudden` of itself at once is a fade-in, not a drop. onBeat: the tolerance
+ * onBeat(t) takes by default (seconds).
  */
-export const BEATS = Object.freeze({range: Object.freeze([70, 180]), clear: .1, meter: 4, downbeat: .1, drop: 3, window: 4, onBeat: .05});
+export const BEATS = Object.freeze({range: Object.freeze([70, 180]), clear: .1, octave: .3, meter: 4, downbeat: .1, drop: 3, window: 4, fade: 2, sudden: .5, onBeat: .05});
 const OPTION_KEYS = ['bpm', 'drop', 'range', 'ffmpeg'];
 const ffmpegOf = given => given ?? process.env.FFMPEG_BIN ?? 'ffmpeg';
 
@@ -57,12 +60,14 @@ async function analyse(read, source, options) {
   const o = readOptions(options), work = {};
   const tempoRules = [
     {when: s => s.bpmGiven !== null, then: 'tempo-given', label: 'The tempo was given (options.bpm)'},
-    {when: s => s.strongest !== null && (s.next === null || s.clarity >= BEATS.clear), then: 'tempo-measured', label: 'The strongest period stands clear of the next'},
+    {when: s => s.strongest !== null && (s.next === null || s.clarity >= BEATS.clear) && (s.relative === null || s.relativeMargin >= BEATS.octave),
+      then: 'tempo-measured', label: `The strongest period stands clear of the next, and ${BEATS.octave} clear of its half, double, third and triple`},
   ];
   const barRules = [{when: s => s.barClarity >= BEATS.downbeat, then: 'bars-measured', label: `Low-band onsets mark one beat in ${BEATS.meter}: the bars start there`}];
   const dropRules = [
     {when: s => s.dropGiven !== null, then: 'drop-given', label: 'The drop was given (options.drop)'},
-    {when: s => (s.held ?? -Infinity) >= BEATS.drop, then: 'drop-measured', label: `The largest rise in low and mid energy that holds ${BEATS.drop} dB or more, after a quieter build`},
+    {when: s => (s.held ?? -Infinity) >= BEATS.drop && (s.ramp <= BEATS.fade || s.sudden >= BEATS.sudden), then: 'drop-measured', label: `The largest rise in low and mid energy that holds ${BEATS.drop} dB or more, after a quieter build, arriving at once`},
+    {when: s => (s.held ?? -Infinity) >= BEATS.drop && s.ramp > BEATS.fade && s.sudden < BEATS.sudden, then: 'drop-fade', label: `The rise holds, but it is a fade-in: it climbs over more than ${BEATS.fade} s with no hit at its start, so the song has no drop`},
   ];
   /** The tempo's period in frames, and the BPM it is written as. */
   const useTempo = (s, bpm) => { work.period = 60 * work.onsets.frameRate / bpm; s.tempo = round(bpm, 2); };
@@ -72,6 +77,7 @@ async function analyse(read, source, options) {
     work.samples = read(); work.rate = ANALYSIS.rate;
     if (!work.samples.length) throw new Error(`beatMap: ${source} has no sound to measure`);
     s.source = source; s.seconds = round(work.samples.length / work.rate, 3); s.rate = work.rate;
+    if (o.drop !== null && o.drop > s.seconds) throw new Error(`beatMap: drop ${o.drop} s is past the end of ${source} (${s.seconds} s): give the second the song drops, inside it`);
   }, 'decode', 'The song read as mono samples')
     .addFunction('onsets', s => {
       work.onsets = onsetStrength(work.samples, work.rate);
@@ -83,6 +89,9 @@ async function analyse(read, source, options) {
       s.alternatives = work.candidates.map(({bpm, score}) => ({bpm, score}));
       s.bpmGiven = o.bpm; s.strongest = work.candidates[0]?.bpm ?? null; s.next = work.candidates[1]?.bpm ?? null;
       s.clarity = work.candidates.length > 1 ? round(1 - work.candidates[1].score, 3) : 1;
+      // The same beat at another level (half, double, a third, triple) is the doubt the onsets cannot settle.
+      const relative = work.candidates.length ? metricalRelatives(work.candidates[0].bpm, work.candidates.slice(1))[0] ?? null : null;
+      s.relative = relative?.bpm ?? null; s.relativeMargin = relative ? round(1 - relative.score, 3) : null;
       return decide(s, tempoRules, {branch: 'tempo-close', label: 'The next period is nearly as strong: the strongest is taken, and the alternatives say what else it could be'});
     }, 'choose-tempo', 'The tempo: the onsets\' autocorrelation, weighed by the preferred range')
     .addFunctionBranch('tempo-given', 'tempo-given', s => useTempo(s, o.bpm), 'the given tempo')
@@ -110,7 +119,8 @@ async function analyse(read, source, options) {
       const {low, mid} = work.onsets.power, found = dropCandidate(Float32Array.from(low, (v, i) => v + mid[i]), work.onsets.frameRate, {window: BEATS.window});
       work.measuredDrop = found?.at ?? null;
       s.measuredDrop = found ? round(found.at, 3) : null; s.rise = found?.rise ?? null; s.held = found?.held ?? null; s.build = found?.build ?? null;
-    }, 'measure-rise', `The largest rise in low and mid energy: ${BEATS.window} s after against ${BEATS.window} s before, each half after held`)
+      s.ramp = found?.ramp ?? null; s.sudden = found?.sudden ?? null;
+    }, 'measure-rise', `The largest rise in low and mid energy: ${BEATS.window} s after against ${BEATS.window} s before, each half after held; how long it climbs, how much at once`)
     .addDeciderFunction('find-drop', s => {
       s.dropGiven = o.drop;
       return decide(s, dropRules, {branch: 'drop-none', label: 'Nothing rises and holds after a quieter build: the song has no drop'});
@@ -122,12 +132,13 @@ async function analyse(read, source, options) {
       work.drop = near !== null && Math.abs(near - work.measuredDrop) <= quarter ? near : round(work.measuredDrop);
       s.drop = work.drop; s.dropOnBeat = work.drop === near;
     }, 'the measured drop, on its beat')
+    .addFunctionBranch('drop-fade', 'drop-fade', s => { work.drop = null; s.drop = null; s.fadeIn = work.measuredDrop === null ? null : round(work.measuredDrop, 3); }, 'a fade-in, not a drop')
     .addFunctionBranch('drop-none', 'drop-none', s => { work.drop = null; s.drop = null; }, 'no drop')
     .end();
   const trace = narrative();
   await chart.setLogger(QUIET).build().recorder(trace).run();
   return {bpm: work.bpm, beats: work.beats, bars: work.bars, drop: work.drop, confidence: work.confidence,
-    alternatives: work.candidates.map(({bpm, score}) => ({bpm, score})), seconds: round(work.samples.length / work.rate, 3), record: trace.getEntries()};
+    alternatives: work.candidates.map(({bpm, score}) => ({bpm, score})), seconds: round(work.samples.length / work.rate, 3), record: plainNarrative(trace)};
 }
 
 /** The beat nearest t in an ascending list (the earlier one on a tie), or null for none. */

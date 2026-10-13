@@ -14,7 +14,7 @@ import {compileLayout} from './layout.mjs';
 import {captionChunks, captionFile, FILE_CHUNKS, clockText} from 'footprint-narration';
 import {spokenTracks} from './captions.mjs';
 import {effectsUnderVoice, musicUnderVoice} from './listening.mjs';
-import {readSongPlacement} from './music.mjs';
+import {readSongPlacement, requireOverlap} from './music.mjs';
 
 /**
  * Loudness in two passes (FFmpeg's loudnorm): measure the whole mixed film, then set it with ONE fixed
@@ -349,6 +349,8 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   checkLoudnessTarget(loudness);
   if (!SOUND_AT.includes(soundAt)) throw new Error(`soundAt is 'start' (each sound begins on its moment, the default) or 'peak' (its loudest transient lands on it), not ${JSON.stringify(soundAt)}`);
   const song = music === null || music === undefined ? null : readSongPlacement(music);
+  // A song placed where it never plays during the film refuses before a frame is drawn (it would be mixed as silence).
+  if (song) requireOverlap({start: song.start, seconds: songSeconds(ffmpeg, song.file), total: film.total, who: 'renderFilm music'});
   if (typeof posterFrame !== 'boolean') throw new Error('posterFrame must be true (the poster replaces the first frame) or false (written beside the video only)');
   if (!ENCODE[quality]) throw new Error(`quality must be ${QUALITIES.map(q => `'${q}'`).join(' or ')}`);
   const blur = readMotionBlur(motionBlur), captionKinds = readCaptionFiles(captionFiles);
@@ -501,6 +503,13 @@ export async function finishRender(job, video) {
   }
   return {out: path.resolve(job.out), seconds: length, chapters: chapters.map(([t, n]) => `${clockText(t)} ${n}`), loudness: {...loudnessSet, roles}, listening: [tooLoud, musicLoud].filter(Boolean),
     ...(posterFile ? {poster: posterFile} : {}), ...(framed ? {format: framed.format} : {}), ...(captionKinds.length ? {captions} : {}), ...(video.report ? {video: video.report} : {})};
+}
+
+/** A sound file's length as FFmpeg reports it (its Duration line), or null when it reports none. */
+function songSeconds(ffmpeg, file) {
+  const r = spawnSync(ffmpeg, ['-hide_banner', '-nostdin', '-i', file], {encoding: 'utf8'});
+  const m = String(r.stderr ?? '').match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+  return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : null;
 }
 
 /**

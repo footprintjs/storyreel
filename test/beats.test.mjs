@@ -32,13 +32,16 @@ test('a click track with a build and a drop: BPM within 1, every beat within 20 
   assert.ok(map.confidence >= .9, `confidence ${map.confidence}`);
   assert.equal(map.alternatives[0].score, 1);
   assert.ok(map.alternatives.some(a => Math.abs(a.bpm - 61.5) < 1), 'the half tempo is reported as an alternative');
+  assert.ok(map.record.every(e => !('rawValue' in e)), 'the record keeps no live values');
   assert.ok(Math.abs(map.seconds - s.samples.length / s.rate) < .01);
   // Every verdict is decide() evidence in the record, with what it weighed.
-  const lines = verdicts(map.record);
-  assert.match(lines[0], /strongest period stands clear of the next.*strongest=123.*next=61.*clarity=.*chose tempo-measured/);
+  const lines = verdicts(map.record), writes = map.record.filter(e => e.type === 'step').map(e => e.text);
+  // The half tempo scores 0.83 of the strongest: the same beat at another level, close enough to be said so.
+  assert.match(lines[0], /fell back to default "The next period is nearly as strong.*tempo-close/);
+  assert.ok(writes.some(t => /Write strongest = 123/.test(t)) && writes.some(t => /Write relative = 61\.5/.test(t)) && writes.some(t => /Write relativeMargin = 0\.1/.test(t)), 'the record says what it weighed');
   assert.match(lines[1], /Low-band onsets mark one beat in 4.*chose bars-measured/);
-  assert.match(lines[2], /largest rise in low and mid energy.*held=.*chose drop-measured/);
-  assert.deepEqual(map.record.filter(e => e.type === 'stage').map(e => e.stageId), ['decode', 'onsets', 'choose-tempo', 'tempo-measured', 'track-beats', 'find-bars', 'bars-measured', 'measure-rise', 'find-drop', 'drop-measured']);
+  assert.match(lines[2], /largest rise in low and mid energy.*arriving at once.*held=.*ramp=.*chose drop-measured/);
+  assert.deepEqual(map.record.filter(e => e.type === 'stage').map(e => e.stageId), ['decode', 'onsets', 'choose-tempo', 'tempo-close', 'track-beats', 'find-bars', 'bars-measured', 'measure-rise', 'find-drop', 'drop-measured']);
   assert.doesNotThrow(() => structuredClone(map.record));
 });
 
@@ -49,7 +52,36 @@ test('another tempo, and a song with no drop: the beats follow it, and no drop i
   assert.ok(worst(map.beats, s.beats) <= .02 && worst(s.beats, map.beats) <= .02);
   assert.ok(worst(map.bars, s.bars) <= .02);
   assert.equal(map.drop, null);
+  assert.match(verdicts(map.record)[0], /stands clear of the next, and 0\.3 clear of its half, double, third and triple.*strongest=92.*relative=46.*relativeMargin=0\.8.*chose tempo-measured/);
   assert.match(verdicts(map.record)[2], /Nothing rises and holds after a quieter build: the song has no drop.*drop-none/);
+});
+
+for (const bpm of [175, 210]) test(`${bpm} BPM, where the half (or a third) fits the onsets as well: the right tempo, or an honest "close" with it among the alternatives`, async () => {
+  const s = song({bpm, count: 64, rate: 22050}), map = await beatMapOf(s.samples, 22050);
+  const right = Math.abs(map.bpm - bpm) <= 1, offered = map.alternatives.some(a => Math.abs(a.bpm - bpm) <= 1);
+  assert.ok(right || offered, `${map.bpm} BPM, and ${bpm} is not among ${JSON.stringify(map.alternatives)}`);
+  if (!right) {
+    assert.match(verdicts(map.record)[0], /tempo-close/, 'a tempo at another level is never recorded as clear');
+    assert.ok([2, 3].some(k => Math.abs(map.bpm * k - bpm) <= 2), `${map.bpm} is the same beat at another level`);
+  }
+});
+
+test('a song whose first click is in its first 16 ms: the first beat is found there, never before the song starts', async () => {
+  const s = song({bpm: 120, count: 24, lead: .008, rate: 22050}), map = await beatMapOf(s.samples, 22050);
+  assert.ok(Math.abs(map.beats[0] - .008) <= .02, `first beat ${map.beats[0]}`);
+  assert.ok(map.beats.every(b => b >= 0));
+  assert.ok(worst(map.beats, s.beats) <= .02 && worst(s.beats, map.beats) <= .02);
+});
+
+test('a slow fade-in is not a drop (the record says it is a fade-in); a step to the same level is', async () => {
+  const quiet = .05, fade = song({bpm: 120, count: 44, dropAt: 0, lead: 0, rate: 22050, envelope: t => (t < 6 ? quiet : t < 12 ? quiet + (1 - quiet) * (t - 6) / 6 : 1)});
+  const faded = await beatMapOf(fade.samples, 22050);
+  assert.equal(faded.drop, null);
+  assert.match(verdicts(faded.record)[2], /The rise holds, but it is a fade-in: it climbs over more than 2 s with no hit at its start.*ramp=.*sudden=.*chose drop-fade/);
+  const step = song({bpm: 120, count: 44, dropAt: 0, lead: 0, rate: 22050, envelope: t => (t < 6 ? quiet : 1)});
+  const stepped = await beatMapOf(step.samples, 22050);
+  assert.ok(Math.abs(stepped.drop - 6) <= .25, `drop ${stepped.drop}`);
+  assert.match(verdicts(stepped.record)[2], /arriving at once.*drop-measured/);
 });
 
 test('a tempo and a drop given override the measured ones, and the record says they were given', needs, async () => {
@@ -100,6 +132,7 @@ test('options and inputs are checked, each refusal naming the fix', async () => 
   await assert.rejects(beatMapOf(new Float32Array(10), 44100), /must be at 22050 Hz, not 44100/);
   await assert.rejects(beatMapOf([0, 0], 22050), /Float32Array/);
   await assert.rejects(beatMapOf(new Float32Array(22050), 22050), /no repeating onsets to measure a tempo from; give options\.bpm/);
+  await assert.rejects(beatMapOf(song({bpm: 120, count: 8, rate: 22050}).samples, 22050, {drop: 99}), /drop 99 s is past the end of samples \(5\.3 s\): give the second the song drops, inside it/);
   assert.throws(() => peakOf(''), /peakOf: give the sound as a file path/);
 });
 

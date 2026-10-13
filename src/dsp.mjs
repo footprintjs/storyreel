@@ -47,12 +47,13 @@ export function onsetStrength(samples, rate, {size = ANALYSIS.size, hop = ANALYS
     const from = f * hop - size / 2;
     for (let i = 0; i < size; i++) { const at = from + i; re[i] = at >= 0 && at < samples.length ? samples[at] * win[i] : 0; im[i] = 0; }
     fft(re, im);
-    // The DC bin carries no onset: bins 1 … size/2.
+    // The DC bin carries no onset: bins 1 … size/2. Frame 0 rises from silence (`before` starts at zero), so a
+    // sound in the song's first milliseconds is an onset too.
     for (let k = 1; k < bins; k++) {
       const m2 = re[k] * re[k] + im[k] * im[k], b = band(k);
       now[k] = Math.log1p(compression * Math.sqrt(m2));
       power[b][f] += m2;
-      if (f > 0) flux[b][f] += Math.max(0, now[k] - before[k]);
+      flux[b][f] += Math.max(0, now[k] - before[k]);
     }
     [before, now] = [now, before];
   }
@@ -174,7 +175,7 @@ function energyIndex(samples) {
  * Each beat moved onto the transient it sits on: within `reach` seconds, the moment the energy of the next `attack`
  * seconds rises most over the `before` seconds ahead of it — if that rise is at least `least` times (a transient);
  * otherwise the beat stays where the frames put it. The frames are 11.6 ms apart and an onset registers as the
- * window reaches it, so a beat is placed on the sample its sound starts at.
+ * window reaches it, so a beat is placed on the sample its sound starts at — never before the song's first.
  */
 export function refineBeats(samples, rate, times, {reach = .035, attack = .005, before = .01, least = 2, step = .0005} = {}) {
   const energy = energyIndex(samples), a = Math.round(attack * rate), b = Math.round(before * rate), floor = 1e-12;
@@ -184,7 +185,7 @@ export function refineBeats(samples, rate, times, {reach = .035, attack = .005, 
       const i = Math.round(s * rate), ratio = (energy(i, i + a) + floor) / (energy(i - b, i) + floor);
       if (ratio > best) { best = ratio; at = i / rate; }
     }
-    return best >= least ? at : t;
+    return Math.max(0, best >= least ? at : t);
   });
 }
 
@@ -234,16 +235,19 @@ export function downbeatScores(lowFlux, frameRate, times, meter = 4) {
  * when each half of the window after holds above the build (`held`: the weaker half's rise). A build that is silence is
  * not a build (more than `quiet` dB under the song's loudest window). Long windows find where the song rises; a build
  * that itself rises (a riser) pulls them early, so the drop is then placed by its first hit: within a quarter of the
- * window of it, the frame whose power (two frames, 23 ms) rises most over the `focus` seconds before it. Returns {at (seconds),
- * rise, held, build (dB under the loudest window)}, or null when the song is too short to hold two windows or nothing
- * rises and holds.
+ * window of it, the frame whose power (two frames, 23 ms) rises most over the `focus` seconds before it.
+ * How it arrives tells a drop from a fade-in: `ramp`, the seconds from the drop until the level (smoothed over twice
+ * `focus`) comes within 1.5 dB of where it settles (its highest in the two windows after), and `sudden`, the share of
+ * that whole climb made across the `focus` seconds either side of the drop. A drop is there at once; a fade-in keeps
+ * climbing. Returns {at (seconds), rise, held, build (dB under the loudest window), ramp, sudden}, or null when the song
+ * is too short to hold two windows or nothing rises and holds.
  */
 export function dropCandidate(power, frameRate, {window = 4, focus = .5, quiet = 50} = {}) {
   const n = power.length, sums = new Float64Array(n + 1);
   for (let i = 0; i < n; i++) sums[i + 1] = sums[i] + power[i];
   const w = Math.min(Math.round(window * frameRate), Math.floor(n / 3)), h = Math.max(1, w >> 1), f = Math.max(1, Math.min(Math.round(focus * frameRate), h));
   if (w < 2) return null;
-  const mean = (a, b) => (sums[b] - sums[a]) / (b - a), db = p => 10 * Math.log10(p + 1e-20);
+  const mean = (a, b) => { a = Math.max(0, a); b = Math.min(n, b); return b > a ? (sums[b] - sums[a]) / (b - a) : 0; }, db = p => 10 * Math.log10(p + 1e-20);
   let loudest = 0;
   for (let i = 0; i + w <= n; i++) loudest = Math.max(loudest, mean(i, i + w));
   const measure = i => { const build = db(mean(i - w, i)); return {i, build, rise: db(mean(i, i + w)) - build, held: db(Math.min(mean(i, i + h), mean(i + h, i + w))) - build}; };
@@ -258,7 +262,21 @@ export function dropCandidate(power, frameRate, {window = 4, focus = .5, quiet =
     const m = measure(i), step = db(mean(i, i + 2)) - db(mean(i - f, i));
     if (m.held > 0 && step > jump) { jump = step; sharpest = m; }
   }
-  return {at: sharpest.i / frameRate, rise: +sharpest.rise.toFixed(2), held: +sharpest.held.toFixed(2), build: +(db(loudest) - sharpest.build).toFixed(2)};
+  const {i, build, rise} = sharpest, level = j => db(mean(j - f, j + f + 1)), end = Math.min(n - 1, i + 2 * w);
+  // Where the level settles after the drop, and how long it takes to get within 1.5 dB of it.
+  let settles = -Infinity, there = i;
+  for (let j = i; j <= end; j++) settles = Math.max(settles, level(j));
+  while (there < end && level(there) < settles - 1.5) there++;
+  return {at: i / frameRate, rise: +rise.toFixed(2), held: +sharpest.held.toFixed(2), build: +(db(loudest) - build).toFixed(2),
+    ramp: +((there - i) / frameRate).toFixed(2), sudden: +Math.max(0, (db(mean(i, i + f)) - db(mean(i - f, i))) / Math.max(1e-9, settles - build)).toFixed(2)};
+}
+
+/**
+ * Which tempos are the same beat at another level: the ones at about 2, 3, ½ or ⅓ times `bpm` (within `within` of an
+ * octave). A tracker that hears every other beat finds the half tempo; the onsets cannot always tell them apart.
+ */
+export function metricalRelatives(bpm, candidates, within = .04) {
+  return candidates.filter(c => [2, 3, 1 / 2, 1 / 3].some(k => Math.abs(Math.log2(c.bpm / bpm) - Math.log2(k)) <= within));
 }
 
 /**

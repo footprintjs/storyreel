@@ -8,9 +8,9 @@ export const noiseFrom = seed => () => { seed = (seed * 1664525 + 1013904223) >>
 /**
  * A song: `count` beats at `bpm` from `lead` seconds — a click on every beat, a 60 Hz kick on beat `one` of each bar —
  * quiet until beat `dropAt` (when given), then loud: a louder kick, a bass note on every beat and a wash of noise. The
- * truth comes back with it: every beat, every bar, the drop.
+ * truth comes back with it: every beat, every bar, the drop. `envelope(t)` scales the whole song (a fade-in).
  */
-export function song({bpm, count = 40, dropAt = null, one = 1, lead = .3, tail = 1, rate = 44100}) {
+export function song({bpm, count = 40, dropAt = null, one = 1, lead = .3, tail = 1, rate = 44100, envelope = null}) {
   const beat = 60 / bpm, x = new Float32Array(Math.round((lead + count * beat + tail) * rate)), noise = noiseFrom(7);
   const add = (t0, seconds, f) => { const a = Math.round(t0 * rate); for (let i = 0; i < seconds * rate && a + i < x.length; i++) x[a + i] += f(i / rate); };
   const beats = [], drop = dropAt === null ? null : lead + dropAt * beat;
@@ -22,6 +22,8 @@ export function song({bpm, count = 40, dropAt = null, one = 1, lead = .3, tail =
     if (loud) add(t, .25, a => .25 * Math.exp(-a * 8) * Math.sin(2 * Math.PI * 110 * a));
   }
   for (let i = 0; i < x.length; i++) x[i] += (drop !== null && i / rate >= drop ? .08 : .005) * noise();
+  // A level over the whole song (a fade-in, say): gain at each second.
+  if (envelope) for (let i = 0; i < x.length; i++) x[i] *= envelope(i / rate);
   return {samples: x, rate, beats, bars: beats.filter((_, k) => k % 4 === one), drop};
 }
 

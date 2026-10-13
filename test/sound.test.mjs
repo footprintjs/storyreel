@@ -23,7 +23,8 @@ test('a sound is the same every time (deterministic synthesis), and the first fi
   // Pinned from the synthesis before the five new sounds came (0.2.0): gain 1 by default changes no sample.
   assert.equal(sha(createSound({duration: 4, events})), '36fe1093bf6670bf');
   const all = SOUND_NAMES.map((type, i) => ({type, time: .1 + i * .35}));
-  assert.equal(sha(createSound({duration: 5, events: all})), sha(createSound({duration: 5, events: all})));
+  // Pinned on main before soundAt came (and on its branch): sounds placed on their moments, as always, by default.
+  assert.equal(sha(createSound({duration: 5, events: all})), '105f1d46c65866fc');
 });
 
 test('gain 0.5 is quieter than gain 1, and an event gain overrides the sound default', () => {

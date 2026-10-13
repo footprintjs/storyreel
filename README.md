@@ -877,45 +877,59 @@ peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and it
 ```
 
 - **How it measures** (plain functions, `src/dsp.mjs`): the song read through FFmpeg as mono samples; onset strength as
-  spectral flux on a radix-2 FFT, log-compressed and split into low (< 200 Hz), mid and high bands; the tempo by
-  autocorrelation of the onsets, weighed by a prior that prefers 70–180 BPM (`range`), with the ranked alternatives;
-  the beats by dynamic programming (Ellis 2007), each moved onto the transient it sits on; the bars from low-band onsets;
-  the drop where low and mid energy rise most and hold.
+  spectral flux on a radix-2 FFT, log-compressed and split into low (< 200 Hz), mid and high bands (the first frame
+  rises from silence, so a hit in the song's first milliseconds is a beat too); the tempo by autocorrelation of the
+  onsets, weighed by a prior that prefers 70–180 BPM (`range`), with the ranked alternatives; the beats by dynamic
+  programming (Ellis 2007), each moved onto the transient it sits on; the bars from low-band onsets; the drop where low
+  and mid energy rise most and hold, and arrive at once.
 - **The map is a flowchart, and its record explains it.** decode → onsets → choose-tempo → track-beats → find-bars →
   measure-rise → find-drop, each verdict `decide()` evidence in `map.record`:
-  `It examined "The strongest period stands clear of the next": strongest=123.02, next=61.51, clarity=0.184, and chose
-  tempo-measured.` A close second is `tempo-close`; no beat in four standing out is `bars-guessed`; no rise that holds is
-  `drop-none` (`drop: null`).
+  `It examined "The strongest period stands clear of the next, and 0.3 clear of its half, double, third and triple":
+  strongest=92.1, next=46.03, clarity=0.827, relative=46.03, relativeMargin=0.827, and chose tempo-measured.`
+- **It says when it is unsure.** The same beat heard at another level — half, double, a third, triple — often fits the
+  onsets nearly as well (a click track at 175 BPM fits 87.5 too). Unless the strongest tempo stands 0.3 clear of such a
+  relative (`BEATS.octave`), the verdict is `tempo-close`: the strongest is taken and `alternatives` lists the others,
+  so read them, and give `bpm` when the map took the wrong level. No beat in four standing out is `bars-guessed`; no
+  rise that holds is `drop-none`; a rise that climbs for more than 2 s with no hit at its start is `drop-fade` — a
+  fade-in, not a drop (`drop: null` both ways).
 - **Override what it got wrong**: `beatMap(file, {bpm: 128, drop: 42.5})` — the record then says the tempo and the drop
-  were given. `beatMapOf(samples, 22050)` maps samples already in hand.
+  were given (a drop past the song's end refuses). `beatMapOf(samples, 22050)` maps samples already in hand.
 
 **Into a film**, all opt-in — a film without `music` renders byte for byte as before:
 
 ```js
 await makeFilm({storyboard, recipe, narrationDir, pacing, out: 'out/film.mp4',
   music: {file: 'music/theme.mp3', gain: .2,
-    snap: {tolerance: .15},                      // scene starts onto the nearest beat, never further than 0.15 s
+    snap: {tolerance: .15},                      // scene starts onto a beat, no scene's length changed by more than 0.15 s
     dropOn: ['story', 'came home']},             // the song starts so its drop lands on this phrase
   render: {soundAt: 'peak'}});                   // every sound effect's loudest moment on its moment
 ```
 
 - **Snapping** (`music.mjs · fitToMusic`) moves each scene start — a cut, and the transition anchored on it (three
   quarters of its change before the start) — onto the nearest beat within the tolerance. It changes only how long a
-  scene's silence after its last word lasts, so every word, drawing and caption keeps its place inside its scene; a
-  scene is never cut shorter than its last word plus 0.1 s (`MUSIC.clear`): a beat that would need that is passed over
-  for the next nearest, and a cut with no such beat stays where it is, saying why. Each cut moves at most the tolerance
-  against the song; the film after a moved cut moves with it.
+  scene's silence after its last word lasts, and **each scene's length changes by at most the tolerance**, so every
+  word, drawing and caption keeps its place inside its scene. A scene is never made shorter than its last word, its
+  latest keyed moment (a drawing at `["story", "came home", 0.4]` lands after the last word) and then the silence
+  after them: 0.1 s (`MUSIC.clear`), or the lead of the entrance into the next scene, which plays in this scene's tail
+  (three quarters of a transition; 0.65 s for a hand-over on the page). A beat that would need more is passed over, and
+  a cut with no such beat stays where it is, saying why.
+- **The moves add up.** The film after a moved cut moves with it, so a cut can end up further from where it was than
+  the tolerance: the record keeps each cut's drift (how far it now sits from where it was, against the film's start or
+  the key moment), and when two beats are within the tolerance, the one that brings the drift back is taken. Twelve
+  scenes, each landing 0.17 s further past a beat than the last, keep every cut within the tolerance of its place.
 - **The drop on a key moment.** With `dropOn`, the song starts where its drop lands on that phrase (before the film, the
   song begins part way in; after, the film plays without it until then). That scene's own start is then held by the drop;
   the cuts after it are fitted forward and the ones before it backward from it. A song with no drop the map can find
-  refuses with the fix: give `music.drop`, the second it drops.
+  refuses with the fix: give `music.drop`, the second it drops. So does anything that would lose the song silently: a
+  key moment outside the film, a drop past the song's end, a song placed where it never plays during the film.
 - **A voice follows.** In a voiced cut, each moved scene's audio in the run's copy of the voice is padded with silence or
   cut short (faded over 10 ms) to its new length, by whole samples (`fitVoice`; a 16-bit PCM WAV voice, as pacing needs);
   the voice folder itself is never touched.
 - **The record.** `map-beats` and `fit-to-music` run as stages of the pipeline, after the pacing; `making-of.json` gets
   `music`: the song, its gain, where it starts, its beat map (tempo, alternatives, drop, confidence) and every cut's
   verdict, with both flowcharts' records. The song and every setting are part of what an approval locks
-  (`inputs.music`).
+  (`inputs.music`), and so is `soundAt: 'peak'` when it is asked for (`inputs.soundAt`): a film without either keeps
+  the inputs it had.
 - **In the mix.** The song plays under the voice and the effects at `gain` (0..1 of its own level), fading out over the
   film's last `fadeOut` seconds (1.5), measured apart as a role (`result.loudness.roles.music`); a song less than 10 LU
   under the voice is a listening finding, as loud effects are. `renderFilm({…, music: {file, start, gain?, fadeOut?}})`
@@ -1215,7 +1229,7 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `inOut` | the one ease table (`linear in out inOut back walk jump spring`) |
 | `footprint-storyreel/acting` → `moodAt(keys, t)` · `idleAt(t, {seed})` · `follows(f, delay?)` · `ACTING` | a mood change acted (anticipation, a take, a cross-fade), an idle layer that never moves in step |
 | `footprint-storyreel/beats` → `beatMap(file, {bpm?, drop?, range?})` · `beatMapOf(samples, 22050)` · `peakOf(file)` · `peakOfSamples` · `BEATS` | a song's tempo, beats, bars and drop, with the alternatives and how sure (its record: every verdict with its evidence); a sound's peak |
-| `footprint-storyreel/music` → `fitToMusic({storyboard, timings, beats, snap?, dropOn?})` · `fitVoice(runDir, before, after)` · `MUSIC` | scene starts onto the beat within a tolerance, never past a word; the song started so its drop lands on a key moment (`makeFilm({…, music})` runs both) |
+| `footprint-storyreel/music` → `fitToMusic({storyboard, timings, beats, snap?, dropOn?, recipe?, kits?})` · `fitVoice(runDir, before, after)` · `MUSIC` | scene starts onto the beat (each scene's length changed by at most a tolerance, never past its words, keys or the next entrance's lead; off unless `snap` is given); the song started so its drop lands on a key moment (`makeFilm({…, music})` runs both) |
 | `contactSheet(film, {moments?, columns?, width?})` | a PNG of stills |
 | `frameHashes(film, {count?, width?, times?})` · `changedFrames(pinned, now)` | pixel pins |
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |

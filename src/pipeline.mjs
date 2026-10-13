@@ -168,11 +168,11 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     // The song's beat map: its own flowchart, its record kept in making-of.json (music.beats.record).
     'map-beats': async scope => {
       beats = await beatMap(song.file, {...song.beats, ...(render.ffmpeg ? {ffmpeg: render.ffmpeg} : {})});
-      scope.bpm = beats.bpm; scope.beats = beats.beats.length; scope.drop = beats.drop; scope.confidence = beats.confidence;
+      scope.bpm = beats.bpm; scope.songBeats = beats.beats.length; scope.drop = beats.drop; scope.confidence = beats.confidence;
     },
     // The film fitted to it: scene starts onto the beat, the drop on its key moment; a voiced cut's audio follows.
     'fit-to-music': async scope => {
-      fit = await fitToMusic({storyboard, timings: paced, beats, snap: song.snap ?? false, dropOn: song.dropOn});
+      fit = await fitToMusic({storyboard, timings: paced, beats, snap: song.snap ?? false, dropOn: song.dropOn, recipe, kits});
       paced = scope.narration ? fitVoice(scope.narration, paced, fit.timings) : fit.timings;
       if (scope.narration) writeFileSync(path.join(scope.narration, 'timings.json'), JSON.stringify(paced, null, 2));
       scope.start = fit.start; scope.moved = fit.cuts.filter(c => c.verdict === 'moved').length;
@@ -182,7 +182,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings, hostKeys, cast, strategies, record: true});
       scope.beats = film.beats.length; scope.sounds = film.sounds.length; scope.total = +film.total.toFixed(3);
       // What the film is made from (film.inputs, and the pacing, the voice, the kits' code): an approval locks all of it.
-      inputs = {...film.inputs, pacing: hashOf(pacing), ...(narrationDir ? {voice: voiceHash(narrationDir)} : {}), ...(code ? {code} : {}), ...(song ? {music: musicHash(song)} : {})};
+      // Sounds placed by their peaks change what is heard, so an approval locks that too — only when it is asked for.
+      inputs = {...film.inputs, pacing: hashOf(pacing), ...(narrationDir ? {voice: voiceHash(narrationDir)} : {}), ...(code ? {code} : {}), ...(song ? {music: musicHash(song)} : {}), ...(render.soundAt === 'peak' ? {soundAt: 'peak'} : {})};
       if (approval) {
         try { requireApproval(approval, inputs); } catch (e) { if (scope.narration) rmSync(scope.narration, {recursive: true, force: true}); throw e; }
         scope.approvedBy = approval.by;
