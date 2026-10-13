@@ -91,11 +91,15 @@ test('view moves: a dolly in keeps its zoom and goes toward its thing as far as 
   const red = boxOf(film, q + .5, 'red');
   assert.ok(Math.abs(red[0] - ((200 - held.x) * 1.3 + 800)) < 1e-6 && Math.abs(red[2] - red[0] - 260) < 1e-6, `red, 1.3 times larger: ${red}`);
   const rolled = film.cameraAt(c + settleTime('heavy') + .1);
-  assert.ok(Math.abs(rolled.r - 6 * Math.PI / 180) < 1e-9 && rolled.z > 1.3, `rolled 6°, scaled up to cover: ${JSON.stringify(rolled)}`);
-  assert.equal(rolled.z, coverZoom(rolled));
+  // Held on red, the dolly keeps its zoom as the frame rolls: it recentres for the roll instead of scaling up.
+  assert.ok(Math.abs(rolled.r - 6 * Math.PI / 180) < 1e-9 && rolled.z === 1.3, `rolled 6°, still ×1.3: ${JSON.stringify(rolled)}`);
+  assert.ok(coverZoom(rolled) <= rolled.z + 1e-9 && rolled.x > held.x, `recentred for the roll, still covering: ${JSON.stringify(rolled)}`);
   const d = picture(film, c + 2);
   for (const [x, y] of [[0, 0], [1599, 0], [0, 899], [1599, 899]]) assert.ok([GROUND, RED, BLUE].some(rgb => near(d, x, y, rgb, 4)), `the frame's corner (${x}, ${y}) shows the picture, not the paper under it`);
-  assert.deepEqual(film.camera.moves.map(m => [m.move, m.played, m.covers ?? null]), [['dolly-in', 'move', null], ['dutch', 'move', +rolled.z.toFixed(3)]]);
+  assert.deepEqual(film.camera.moves.map(m => [m.move, m.played, m.covers ?? null]), [['dolly-in', 'move', null], ['dutch', 'move', null]]);
+  // A dutch with nothing held on a thing scales up just enough to cover.
+  const dutch = await make({camera: [{move: 'dutch', at: ['a', 'corner'], amount: 6}]}), tilted = dutch.cameraAt(c + 2);
+  assert.ok(tilted.z > 1 && tilted.z === coverZoom(tilted) && dutch.camera.moves[0].covers === +tilted.z.toFixed(3), `scaled up to cover: ${JSON.stringify(tilted)}`);
   const pan = await make({camera: [{move: 'pan', at: ['a', 'red square'], amount: 240}]}), panned = pan.cameraAt(at(pan, 'a', 'red square') + 2.5);
   assert.equal(panned.x, 1040); assert.ok(Math.abs(panned.z - 800 / 560) < 1e-9, 'scaled just enough for the slide');
   assert.equal(pan.camera.moves[0].covers, +(800 / 560).toFixed(3));
@@ -326,4 +330,47 @@ test('a freeze over the voice is a review finding: a drawing the voice names und
   assert.ok(r.findings.some(f => f.kind === 'frozen-voice' && /the voice names "story\.show" while the picture is frozen \(it appears when the freeze ends\); a mouth stays still while the narrator speaks/.test(f.what)), JSON.stringify(r.findings));
   const plain = await compileFilm({storyboard, timings, kits: [shows], recipe: {story: {kit: 'shows', show: ['a', 'quietly']}}});
   assert.deepEqual((await reviewPart(plain, {from: 1, to: 6, checks: {'frozen-voice': REVIEW_CHECKS['frozen-voice']}})).ran, [], 'not picked without a freeze');
+});
+
+test('frozen-voice names only what the freeze holds: the emphasis and the focus run on the voice\'s clock, so their beats under a freeze are no finding', async () => {
+  const film = await make({camera: [{move: 'freeze', at: ['a', 'sits'], until: ['a', 'corner']}],
+    emphasis: {strategy: 'pop', words: [{at: ['a', 'quietly'], text: 'QUIET'}]}, focus: {strategy: 'spotlight', keys: [{at: ['a', 'here'], on: 'red'}]}});
+  const r = await reviewPart(film, {from: 1, to: 6, checks: {'frozen-voice': REVIEW_CHECKS['frozen-voice']}});
+  assert.deepEqual(r.ran, ['frozen-voice'], 'picked: the part has a freeze');
+  assert.deepEqual(r.findings, [], `the words and the spotlight are not frozen: ${JSON.stringify(r.findings)}`);
+});
+
+test('a move that starts while another runs aims from where that one is going — and under reduced motion from where a follow will cut to, so both versions end on the same framing', async () => {
+  const beside = await make({camera: [{move: 'pan', at: ['a', 'red square'], until: ['a', 'quietly'], amount: 240}, {move: 'dolly-in', at: ['a', 'sits'], seconds: 2, amount: 1.3}]});
+  const after = await make({camera: [{move: 'pan', at: ['a', 'red square'], until: ['a', 'quietly'], amount: 240}, {move: 'dolly-in', at: ['a', 'corner'], seconds: 2, amount: 1.3}]});
+  const s = at(beside, 'a', 'sits');
+  assert.ok(Math.abs(beside.cameraAt(s + 2.5).z - 1.3 * 800 / 560) < 1e-9, `×1.3 of the zoom the pan ends on, not of its middle: ${beside.cameraAt(s + 2.5).z}`);
+  assert.equal(beside.camera.moves[1].ends.z, after.camera.moves[1].ends.z, 'the same as a dolly after the pan');
+  const steps = Array.from({length: 30}, (_, i) => beside.cameraAt(s - .1 + i / 60).z);
+  assert.ok(Math.max(...steps.slice(1).map((z, i) => Math.abs(z - steps[i]))) < .03, 'it starts from what is on screen: no jump');
+  const camera = [{move: 'track', at: ['a', 'red square'], until: ['a', 'corner'], on: 'red'}, {move: 'dolly-in', at: ['a', 'sits'], seconds: 1, amount: 1.3}];
+  const [moving, calm] = await Promise.all([make({camera}, {}, 'mover'), make({camera}, {reducedMotion: true}, 'mover')]);
+  const end = at(moving, 'a', 'corner') + 1, cover = 450 / 275;   // where the track ends, (588, 275), needs ×1.636 to cover
+  assert.ok(Math.abs(moving.cameraAt(end).z - 1.3 * cover) < 1e-6, `moving: ${moving.cameraAt(end).z}`);
+  assert.ok(Math.abs(calm.cameraAt(end).z - moving.cameraAt(end).z) < 1e-9, `reduced motion ends on the same framing: ${calm.cameraAt(end).z}`);
+  for (const k of ['x', 'y', 'z', 'r']) assert.ok(Math.abs(calm.cameraAt(end)[k] - moving.cameraAt(end)[k]) < 1e-9, `the same ${k} once both have arrived`);
+  assert.equal(calm.camera.moves[1].ends.z, moving.camera.moves[1].ends.z, 'the dolly resolves to the same zoom');
+});
+
+test('a dolly on a thing never passes ×4 after it ends: as it re-aims it recentres for the roll the camera has then, and every moment it re-aims is checked', async () => {
+  const FAR = [1440, 400, 1560, 500];
+  const farKit = {name: 'far', story: {compile: () => ({hang: 1, regionsAt: () => [{box: FAR, path: 'far', label: 'far', name: 'far'}],
+    draw: c => { fill(c, GROUND, [0, 0, 1600, 900]); fill(c, RED, FAR); }})}};
+  // The focus frames "far" (×3, as near the middle as the picture allows); a small pan; a dolly ×3 on "far"; a 30°
+  // dutch; then the focus goes wide, and "far" slides to the edge of the frame under the held camera.
+  const film = await compileFilm({storyboard, timings, kits: [farKit], recipe: {story: {kit: 'far'},
+    focus: {strategy: 'camera', keys: [{at: ['a', 'First'], on: 'far'}, {at: ['b', 'Then'], on: 'wide'}]},
+    camera: [{move: 'pan', at: ['a', 'red square'], seconds: .8, amount: 133}, {move: 'dolly-in', at: ['a', 'sits'], seconds: 1, on: 'far', amount: 3},
+      {move: 'dutch', at: ['a', 'quietly'], seconds: 1, amount: 30}]}});
+  const z = film.camera.moves[1].ends.z, hold = Array.from({length: 120}, (_, i) => film.cameraAt(at(film, 'b', 'Then') + 1 + i / 20));
+  assert.ok(z > 3.5 && z <= 4, `the dolly's zoom: ${z}`);
+  assert.ok(hold.every(v => v.z <= 4 && Math.abs(v.z - z) < 1e-3), `held at ×${z} after it ends, never past ×4: ${Math.max(...hold.map(v => v.z))}`);
+  const v = hold.at(-1);
+  assert.ok(v.x < 1600 - 800 / v.z - 1, `it gave up centring for the roll (x ${v.x.toFixed(1)}, an unrolled camera would stop at ${(1600 - 800 / v.z).toFixed(1)})`);
+  assert.ok(coverZoom(v) <= v.z + 1e-9, 'and the frame is covered at the zoom it has');
 });

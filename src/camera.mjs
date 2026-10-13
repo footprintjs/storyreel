@@ -23,7 +23,9 @@
  * "scale to fill" does, and a pan at the whole frame scales up just enough to slide (so the camera looks at most 600
  * px across and 337 px up or down from the middle: ×4). A dolly keeps the zoom it asks for instead, starting from the
  * zoom on screen (a pan's or a dutch's cover included): it moves toward its named thing only as far as the picture's
- * edges allow, as a push does, and stays on the thing's place in the picture if a push or the focus under it moves.
+ * edges allow, as a push does, and stays on the thing's place in the picture if a push or the focus under it moves
+ * (keeping its zoom: it recentres for the roll the camera has then). A move aims from where the moves already running
+ * are going (camerawork.mjs · viewLanes).
  *
  * DEPTH. A world gives its layers a depth (StoryWorld · layers, back to front, and drawLayer(ctx, t, name, spot)):
  * how far the layer is from the camera, as a multiple of the subject's distance. 1 is the subject's plane, 2 twice

@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **The review's `frozen-voice` names only what a freeze holds.** An emphasis word, a focus key or a guess card is drawn
+  on the voice's clock, so its beat under a freeze is no longer reported as "appears when the freeze ends".
+- **A camera move that starts while another runs aims from where that one is going.** A dolly beside a pan takes the
+  zoom the pan ends on, not its middle, and still starts from what is on screen. Under reduced motion, a move during a
+  follow aims from where the follow cuts to, so both versions end on the same framing.
+- **A dolly on a thing never passes ×4 after it ends.** As it re-aims (a push or the focus moving the picture under
+  it), it keeps its zoom and recentres for the roll the camera has then. The ×4 check samples every moment it re-aims,
+  until its picture changes. So a dutch after a dolly on a thing now moves the look point in a little, rather than
+  scaling up.
+
 ## 0.12.0 — walks with feet that roll heel to toe; a turn that reads as a turn
 
 - **The feet roll heel to toe** (`walk(…).at(t).feet[j].angle`, radians, + toes up): a heel strike as a foot lands,

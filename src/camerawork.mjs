@@ -193,27 +193,38 @@ const spanOf = (m, cuts) => (!cuts ? [m.at, m.until] : m.family === 'follow' ? [
  * as it starts (the zoom that covers the frame included, so a dolly after a pan or a dutch angle is a change of what
  * is on screen), and back to rest over each change of picture.
  */
-function viewLanes(moves, {changes, named, under, clockAt, cuts}) {
+function viewLanes(moves, {changes, named, under, clockAt, cuts, total}) {
   const lanes = {x: [], y: [], z: [], r: []}, stateAt = t => Object.fromEntries(VIEW_AXES.map(axis => [axis, laneAt(lanes[axis], t, REST[axis])]));
+  const rollAt = t => laneAt(lanes.r, t, REST.r);
+  // Where every move started so far is going (each axis's last change, at its end): a move aims from there — not from
+  // the middle of a move still running beside it, and not, under reduced motion, from before a follow that cuts later.
+  const settled = {...REST};
   const events = [...moves.filter(m => m.family === 'view' || m.family === 'follow').map(m => ({t: m.at, m})), ...changes.map(c => ({t: c.from, c}))]
     .sort((a, b) => a.t - b.t || (a.c ? -1 : 0) - (b.c ? -1 : 0));
   for (const {m, c} of events) {
     if (c) {
       const held = stateAt(c.from);
       for (const axis of VIEW_AXES) if (held[axis] !== REST[axis]) lanes[axis].push(segment(c.from, cuts ? c.from : c.to, held[axis], REST[axis], inOut));
+      Object.assign(settled, REST);
       continue;
     }
-    const [a, b] = spanOf(m, cuts), axes = m.def.axes(m.p), seen = covered(stateAt(m.at));
+    // It aims from where the camera is going, with the zoom that covers it; it starts from what is on screen (no jump).
+    const [a, b] = spanOf(m, cuts), axes = m.def.axes(m.p), base = covered(settled), now = stateAt(m.at), start = {...now, z: covered(now).z};
     if (m.family === 'view') {
-      const anchor = m.p.on ? anchorOf(m, {named, under, clockAt}) : null, end = m.def.aim(seen, m.p, anchor ? anchor(m.at) : null);
+      const anchor = m.p.on ? anchorOf(m, {named, under, clockAt}) : null, end = m.def.aim(base, m.p, anchor ? anchor(m.at) : null);
+      // A dolly on a thing re-aims as the picture moves under it, recentring for the roll the camera has then: it keeps
+      // its zoom and gives up centring, so it never needs more zoom than it was checked at (checkCover samples it all).
+      const reaim = axis => t => m.def.aim({...base, r: rollAt(t)}, m.p, anchor(t))[axis];
       for (const axis of axes) {
-        const follows = anchor && (axis === 'x' || axis === 'y');
-        lanes[axis].push(segment(a, b, seen[axis], follows ? t => m.def.aim(seen, m.p, anchor(t))[axis] : end[axis], m.ease, {live: follows}));
+        const follows = anchor && (axis === 'x' || axis === 'y'), target = follows ? reaim(axis) : end[axis];
+        lanes[axis].push(segment(a, b, start[axis], target, m.ease, {live: follows}));
+        settled[axis] = follows ? target(b) : end[axis];
       }
+      if (anchor) m.reaims = [a, Math.min(total, changes.filter(x => x.from >= b).reduce((t, x) => Math.min(t, x.from), Infinity))];
     } else {
       const {path, points} = followed(m, {named, under, clockAt});
       m.trail = points;
-      for (const axis of axes) lanes[axis].push(segment(a, b, seen[axis], t => path(t)[axis], m.ease));
+      for (const axis of axes) { lanes[axis].push(segment(a, b, start[axis], t => path(t)[axis], m.ease)); settled[axis] = path(m.until)[axis]; }
     }
   }
   return {stateAt};
@@ -247,11 +258,15 @@ function followed(m, {named, under, clockAt}) {
   return {path, points};
 }
 
-/** Each view and follow move, sampled where it plays: never past MAX_ZOOM; where it had to scale up to keep the frame covered, the record says how far. */
+/**
+ * Each view and follow move, sampled where it plays (a dolly on a thing: wherever it re-aims, its hold too): never past
+ * MAX_ZOOM; where it had to scale up to keep the frame covered, the record says how far.
+ */
 function checkCover(moves, stateAt, cuts) {
   for (const m of moves) {
     if (m.family !== 'view' && m.family !== 'follow') continue;
-    const [a, b] = spanOf(m, cuts), n = Math.max(1, Math.ceil((b - a) / SAMPLE));
+    // A dolly on a thing is checked for as long as it re-aims (until its picture changes), not only while it moves.
+    const [a, b] = m.reaims ?? spanOf(m, cuts), n = Math.max(1, Math.ceil((b - a) / SAMPLE));
     let most = 0, zoomed = {z: 0}, needed = {z: 0};   // the most it scaled to cover; the furthest it zooms, or needs to
     for (let i = 0; i <= n; i++) {
       const t = a + (b - a) * i / n, v = stateAt(t), need = coverZoom(v), z = Math.max(v.z, need);
