@@ -6,24 +6,34 @@ const lerp = (a, b, u) => a + (b - a) * u;   // a when the two are the same: a p
 
 /**
  * The clip's clock: `count` frames at `fps`, from `start` (film seconds), played at `speed` (2: twice as fast).
- * Played once, it holds its last frame after `end`; looped, it repeats for ever, each repeat carrying on from where
- * the last left off (`cycle` counts the repeats: a looped walk keeps walking). at(t) → {a, b, u, cycleA, cycleB,
- * phase}: the frames either side of t, how far between them (0..1), the repeat each is in, and before | clip | after.
+ * Played once, it shows its last frame at `end` and holds it after. Looped, its end is exclusive: the last frame is the
+ * next repeat's first, carried on, so a repeat lasts count − 1 frames (`period`) and each carries on from where the
+ * last left off (`cycle` counts the repeats: a looped walk keeps walking). at(t) → {a, b, u, cycleA, cycleB, phase}:
+ * the frames either side of t, how far between them (0..1), the repeat each is in, and before | clip | after.
  */
 export function clipClock({count, fps, start, speed, loop}) {
-  const rate = fps * speed, pass = (count - 1) / rate, end = loop ? Infinity : start + pass;
-  // (Within a frame of either end a step of the float can land a hair either side: the clamps keep a, b and u in the clip.)
+  const rate = fps * speed, pass = (count - 1) / rate, end = loop ? Infinity : start + pass, shown = count - 1;
+  // (Within a frame of either end a step of the float can land a hair either side: the clamps keep a and u in the clip.)
   const between = r => { const a = Math.max(0, Math.min(count - 2, Math.floor(r))); return {a, u: Math.max(0, Math.min(1, r - a))}; };
   const at = t => {
     if (t < start) return {a: 0, b: 0, u: 0, cycleA: 0, cycleB: 0, phase: 'before'};
-    // Played once, `end` itself shows the last frame, exactly.
     if (t >= end) return {a: count - 1, b: count - 1, u: 0, cycleA: 0, cycleB: 0, phase: 'after'};
     const r = (t - start) * rate;
     if (!loop) { const {a, u} = between(r); return {a, b: a + 1, u, cycleA: 0, cycleB: 0, phase: 'clip'}; }
-    const cycle = Math.floor(r / count), q = r - cycle * count, a = Math.max(0, Math.min(count - 1, Math.floor(q))), u = Math.max(0, Math.min(1, q - a));
-    return a + 1 < count ? {a, b: a + 1, u, cycleA: cycle, cycleB: cycle, phase: 'clip'} : {a, b: 0, u, cycleA: cycle, cycleB: cycle + 1, phase: 'clip'};
+    const cycle = Math.floor(r / shown), {a, u} = between(r - cycle * shown);
+    return a + 1 < shown ? {a, b: a + 1, u, cycleA: cycle, cycleB: cycle, phase: 'clip'} : {a, b: 0, u, cycleA: cycle, cycleB: cycle + 1, phase: 'clip'};
   };
-  return {pass, period: loop ? count / rate : null, end, at};
+  return {pass, period: loop ? pass : null, end, at};
+}
+
+/** Joint angles a repeat on: each angle carried on by whole turns (`turns`, per repeat), so it never jumps back a turn at the seam. */
+function turned(J, turns, cycle) {
+  if (!cycle || !turns) return J;
+  return {
+    torso: J.torso + cycle * turns.torso, neck: J.neck + cycle * turns.neck,
+    arms: J.arms.map((arm, j) => ({shoulder: arm.shoulder + cycle * turns.arms[j].shoulder, elbow: arm.elbow + cycle * turns.arms[j].elbow})),
+    legs: J.legs.map((leg, j) => ({hip: leg.hip + cycle * turns.legs[j].hip, knee: leg.knee + cycle * turns.legs[j].knee})),
+  };
 }
 
 /** Angles between two frames, nested as the pose has them. */
@@ -37,15 +47,16 @@ function jointsBetween(A, B, u) {
 
 /**
  * The pose between frames A and B (u of the way), in the world: `x` is where the clip's first hip centre stands
- * (px), `unit` the px of one torso length, `travel` how far one repeat of a loop carries the body (torso lengths),
- * shifted by each frame's repeat.
+ * (px), `unit` the px of one torso length, `travel` how far one repeat of a loop carries the body (torso lengths) and
+ * `turns` the whole turns it carries each angle on, both shifted by each frame's repeat. A foot's angle (its roll) is
+ * 0: the ankle stands for the whole foot.
  */
-export function poseBetween(A, B, {u, cycleA, cycleB, phase}, {x, unit, facing, travel}) {
+export function poseBetween(A, B, {u, cycleA, cycleB, phase}, {x, unit, facing, travel, turns = null}) {
   const ax = cycleA * travel, bx = cycleB * travel, along = (p, q) => x + lerp(p + ax, q + bx, u) * unit;
+  const joints = jointsBetween(turned(A.joints, turns, cycleA), turned(B.joints, turns, cycleB), u);
   return {
-    x: along(A.x, B.x), lift: lerp(A.lift, B.lift, u) * unit, lean: lerp(A.joints.torso, B.joints.torso, u),
-    feet: A.feet.map((f, j) => ({x: along(f.x, B.feet[j].x), lift: lerp(f.lift, B.feet[j].lift, u) * unit})),
-    swing: lerp(A.swing, B.swing, u), turn: lerp(A.turn, B.turn, u), facing, walking: u < .5 ? A.walking : B.walking, phase,
-    joints: jointsBetween(A.joints, B.joints, u),
+    x: along(A.x, B.x), lift: lerp(A.lift, B.lift, u) * unit, lean: joints.torso,
+    feet: A.feet.map((f, j) => ({x: along(f.x, B.feet[j].x), lift: lerp(f.lift, B.feet[j].lift, u) * unit, angle: 0})),
+    swing: lerp(A.swing, B.swing, u), turn: lerp(A.turn, B.turn, u), facing, walking: u < .5 ? A.walking : B.walking, phase, joints,
   };
 }

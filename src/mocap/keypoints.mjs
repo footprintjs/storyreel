@@ -77,7 +77,8 @@ function keptFrames(count, fps, from, to) {
   if (!(Number.isFinite(a) && a >= 0 && Number.isFinite(b) && b <= last + 1e-9 && a < b)) {
     throw new Error(`fromPose: from and to are seconds of the video, 0 ≤ from < to ≤ ${+last.toFixed(3)} (its last frame), not from ${shown(from)}, to ${shown(to)}`);
   }
-  const first = Math.max(0, Math.ceil(a * fps - 1e-9)), end = Math.floor(b * fps + 1e-9);   // (max: never −0)
+  // (A time within a thousandth of a frame of a frame is that frame: a cut written to a few decimals keeps its frames.)
+  const first = Math.max(0, Math.ceil(a * fps - 1e-3)), end = Math.floor(b * fps + 1e-3);   // (max: never −0)
   if (end - first < 1) throw new Error(`fromPose: from ${a} s to ${b} s keeps ${end - first + 1} frame; keep at least 2 (a longer stretch)`);
   return {first, last: end};
 }
@@ -91,20 +92,39 @@ export function runsOf(flags) {
 }
 
 /**
- * The keypoints, read: {scheme, fps, normalised, width, height, first, last, count, tracks, dropouts, empty}.
- *   tracks    {joint: [{x, y} | null]} in px, one entry per kept frame; a point under minConfidence is null
- *   dropouts  [{joint, frames: [a, b], lowest}]: runs of points the detector gave under minConfidence (video frame numbers)
- *   empty     how many kept frames found nobody
+ * A joint's dropouts — runs of points the detector gave under minConfidence — summed up, so a flickering detector
+ * adds one line, not one per flicker: {joint, runs, frames (in all), lowest (confidence), longest: [a, b]}.
  */
-export function readKeypoints(doc, {from = null, to = null, minConfidence = .5} = {}) {
-  const h = readHeader(doc), frames = doc.frames.map((f, k) => readFrame(f, k, h));
-  const {first, last} = keptFrames(frames.length, h.fps, from, to), kept = frames.slice(first, last + 1);
-  const tracks = {}, dropouts = [];
-  for (const joint of RIG_JOINTS) {
-    const points = kept.map(f => f?.[joint] ?? null), low = points.map(p => p !== null && p.c < minConfidence);
-    tracks[joint] = points.map((p, i) => (p === null || low[i] ? null : {x: p.x, y: p.y}));
-    for (const [a, b] of runsOf(low)) dropouts.push({joint, frames: [first + a, first + b], lowest: Math.min(...points.slice(a, b + 1).map(p => p.c))});
+function dropoutsOf(joint, points, low, first) {
+  const runs = runsOf(low);
+  if (!runs.length) return null;
+  let frames = 0, lowest = 1, longest = runs[0];
+  for (const [a, b] of runs) {
+    frames += b - a + 1;
+    if (b - a > longest[1] - longest[0]) longest = [a, b];
+    for (let i = a; i <= b; i++) if (points[i].c < lowest) lowest = points[i].c;
   }
-  dropouts.sort((p, q) => p.frames[0] - q.frames[0] || RIG_JOINTS.indexOf(p.joint) - RIG_JOINTS.indexOf(q.joint));
-  return {scheme: h.scheme, fps: h.fps, normalised: h.normalised, width: h.width, height: h.height, first, last, count: kept.length, tracks, dropouts, empty: kept.filter(f => f === null).length};
+  return {joint, runs: runs.length, frames, lowest, longest: [first + longest[0], first + longest[1]]};
+}
+
+/**
+ * The keypoints, read: {scheme, fps, normalised, width, height, first, last, count, lo, hi, tracks, dropouts, empty}.
+ *   first…last  the frames kept (from, to), count of them
+ *   lo…hi       the frames read: the kept ones and up to `context` frames either side, where the video has them —
+ *               the motion around a cut, so the cut's own frames are smoothed as they would be uncut
+ *   tracks      {joint: [{x, y} | null]} in px, one entry per frame read (lo…hi); a point under minConfidence is null
+ *   dropouts    one line per joint the detector was unsure of in the kept frames (dropoutsOf), in video frame numbers
+ *   empty       how many kept frames found nobody
+ */
+export function readKeypoints(doc, {from = null, to = null, minConfidence = .5, context = 0} = {}) {
+  const h = readHeader(doc), frames = doc.frames.map((f, k) => readFrame(f, k, h));
+  const {first, last} = keptFrames(frames.length, h.fps, from, to), lo = Math.max(0, first - context), hi = Math.min(frames.length - 1, last + context);
+  const read = frames.slice(lo, hi + 1), kept = frames.slice(first, last + 1), tracks = {}, dropouts = [];
+  for (const joint of RIG_JOINTS) {
+    const points = read.map(f => f?.[joint] ?? null), low = points.map(p => p !== null && p.c < minConfidence);
+    tracks[joint] = points.map((p, i) => (p === null || low[i] ? null : {x: p.x, y: p.y}));
+    const summed = dropoutsOf(joint, points.slice(first - lo, last - lo + 1), low.slice(first - lo, last - lo + 1), first);
+    if (summed) dropouts.push(summed);
+  }
+  return {scheme: h.scheme, fps: h.fps, normalised: h.normalised, width: h.width, height: h.height, first, last, count: kept.length, lo, hi, tracks, dropouts, empty: kept.filter(f => f === null).length};
 }

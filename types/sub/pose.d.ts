@@ -1,7 +1,7 @@
 import type {Walk, walk} from './walk.js';
 
-/** A foot: its place on the floor and its height off it (px). */
-export interface Foot {x: number; lift: number}
+/** A foot: its place on the floor and its height off it (px), and its roll (radians, + toes up; 0 flat). Main's WalkFoot is one. */
+export interface Foot {x: number; lift: number; angle: number}
 /** An arm's angles (radians, + forward): the upper arm from hanging along the torso, the forearm from the upper arm. */
 export interface ArmAngles {shoulder: number; elbow: number}
 /** A leg's angles (radians, + forward): the thigh from the torso's line, the shin from the thigh (− as the knee bends). */
@@ -23,7 +23,7 @@ export interface Pose {
   lift: number;
   /** Radians, + toward the way it faces. */
   lean: number;
-  /** Each foot's place on the floor and its height off it. A planted foot never moves. */
+  /** Each foot's place on the floor, its height off it and its roll. A planted foot never moves. */
   feet: [Foot, Foot];
   /** −1…1: + while the arm on feet[1]'s side is forward. */
   swing: number;

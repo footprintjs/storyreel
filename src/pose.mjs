@@ -6,9 +6,10 @@
  *
  * The pose is the one the kits already draw (walk.mjs · walk's `at(t)`), in the world's px:
  *
- *   {x, lift, lean, feet: [{x, lift}, {x, lift}], swing, turn, facing, walking, phase, joints?}
+ *   {x, lift, lean, feet: [{x, lift, angle}, {x, lift, angle}], swing, turn, facing, walking, phase, joints?}
  *     x        the body's place on the floor (its hips); lift: how far it rises (+) or sinks (−) from standing
- *     lean     radians, + toward the way it faces; feet: each foot's place on the floor and its height off it
+ *     lean     radians, + toward the way it faces; feet: each foot's place on the floor, its height off it and its
+ *              roll (angle: radians, + toes up; a walk rolls heel to toe, motion from a video keeps it 0)
  *     swing    −1…1: + while the arm on feet[1]'s side is forward
  *     turn     0 facing us … 1 turned along the way; facing: 1 (toward +x) or −1; walking: moving across the floor
  *     phase    where in its motion the source is, by the source's own names (a walk: before | set off | step |
@@ -60,14 +61,15 @@ export function walkSource(plan) {
 
 const isNumber = Number.isFinite;
 const PLACE = [['x', 'px'], ['lift', 'px']];
+const FOOT = [...PLACE, ['angle', 'radians, + toes up']];
 
 /** Every refusal a pose earns: '<key> is <what it should be>, not <value>'. */
 function poseProblems(pose) {
   if (!pose || typeof pose !== 'object') return [`a pose is {${POSE_KEYS.join(', ')}, joints?}, not ${shown(pose)}`];
   const out = [];
   for (const [key, what] of [...PLACE, ['lean', 'radians'], ['swing', '−1…1'], ['turn', '0…1']]) if (!isNumber(pose[key])) out.push(`${key} is a number (${what}), not ${shown(pose[key])}`);
-  if (!Array.isArray(pose.feet) || pose.feet.length !== 2) out.push(`feet is [{x, lift}, {x, lift}], not ${shown(pose.feet)}`);
-  else pose.feet.forEach((f, j) => { for (const [key] of PLACE) if (!isNumber(f?.[key])) out.push(`feet[${j}].${key} is a number (px), not ${shown(f?.[key])}`); });
+  if (!Array.isArray(pose.feet) || pose.feet.length !== 2) out.push(`feet is [{x, lift, angle}, {x, lift, angle}], not ${shown(pose.feet)}`);
+  else pose.feet.forEach((f, j) => { for (const [key, what] of FOOT) if (!isNumber(f?.[key])) out.push(`feet[${j}].${key} is a number (${what}), not ${shown(f?.[key])}`); });
   if (pose.facing !== 1 && pose.facing !== -1) out.push(`facing is 1 or -1, not ${shown(pose.facing)}`);
   if (typeof pose.walking !== 'boolean') out.push(`walking is true or false, not ${shown(pose.walking)}`);
   if (typeof pose.phase !== 'string') out.push(`phase is the source's name for where it is, not ${shown(pose.phase)}`);

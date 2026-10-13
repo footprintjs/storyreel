@@ -44,7 +44,10 @@ export interface MocapOptions {
   /** Film seconds: when the first kept frame is shown. */
   start?: number;
   speed?: number;
+  /** Repeat it, each repeat carrying on from where the last left off; its last frame is the next repeat's first. */
   loop?: boolean;
+  /** Torso lengths: looped, the feet must meet this near at the seam, or it refuses with a cut that does. */
+  seam?: number;
 }
 export const MOCAP: Readonly<Required<Omit<MocapOptions, 'x' | 'size' | 'smooth'>> & {smooth: Readonly<SmoothSettings>}>;
 export const SCHEMES: Readonly<Record<SchemeName, readonly string[]>>;
@@ -54,19 +57,21 @@ export const RIG_JOINTS: readonly string[];
 
 /** A verdict: what was decided, a sentence that says why, and decide()'s own evidence. */
 export interface Verdict<How extends string> {how: How; why: string; evidence: DecisionEvidence}
-/** A run of frames a joint was missing in (video frame numbers), and how it was filled. */
+/** One kind of gap (its length and where it lies decide it), decided once, and every place it was (video frame numbers). */
 export interface Gap extends Verdict<'bridge' | 'hold' | 'refuse'> {
-  joint: string; frames: [number, number]; missing: number; seconds: number; edge: 'inside' | 'start' | 'end' | 'whole';
+  missing: number; seconds: number; edge: 'inside' | 'start' | 'end' | 'whole';
+  at: {joint: string; frames: [number, number]}[];
 }
-/** A run of frames the detector gave a joint under minConfidence. */
-export interface Dropout {joint: string; frames: [number, number]; lowest: number}
+/** A joint the detector was unsure of (under minConfidence), summed up: how many runs, how many frames, the lowest, the longest. */
+export interface Dropout {joint: string; runs: number; frames: number; lowest: number; longest: [number, number]}
 /** A still stretch of a foot (video frame numbers), how long, how high over the floor (torso lengths), and the verdict. */
 export interface Stillness<How extends string> extends Verdict<How> {
-  foot: 'left' | 'right'; frames: [number, number]; lasts: number; overFloor: number;
+  /** Video frame numbers; a stretch across a loop's seam `wraps`: from near the end, to near the start. */
+  foot: 'left' | 'right'; frames: [number, number]; wraps?: true; lasts: number; overFloor: number;
   /** Blips of movement shorter than minContact inside the stretch, joined into it (absent when none). */
   blips?: number;
 }
-/** A planted foot: its spot (torso lengths from the first hip centre) and its film seconds (first pass). */
+/** A planted foot: its spot (torso lengths from the first hip centre) and its film seconds (the first repeat; one across a loop's seam ends in the next). */
 export interface Contact extends Stillness<'planted'> {spot: number; film: [number, number]}
 export interface MocapRecord {
   name: string; scheme: SchemeName; fps: number; coordinates: 'pixels' | 'normalised';
@@ -87,9 +92,18 @@ export interface MocapRecord {
   contacts: Contact[];
   notPlanted: Stillness<'aloft' | 'passing'>[];
   standing: {height: number; from: string; frames: number};
-  /** Frames where a planted foot was out of the leg's reach, and by how much at most (torso lengths). */
+  /** Frames where a planted foot was out of the leg's reach (by more than a hundredth of a torso), and by how much at most (torso lengths). */
   reach: {frames: number; most: number};
-  timing: {start: number; speed: number; pass: number; end: number | null; after: 'hold' | 'repeat'; why: string; evidence: DecisionEvidence; period?: number; travel?: number; seam?: number};
+  /** Each leg's bones (torso lengths, medians over the clip): [left, right]. */
+  legs: [{thigh: number; shin: number}, {thigh: number; shin: number}];
+  /** Played once, or looped: the seam measured with the feet (torso lengths, px), and what it leaves to the eye. */
+  loop: Verdict<'once' | 'loop' | 'refuse'> & {
+    foot?: 'left' | 'right'; slide?: number; px?: number; frames?: [number, number]; travel?: number; held?: string;
+    pose?: {angle: number; lift: number; x: number};
+    /** Refused: where the feet do meet (null when no two frames do). */
+    cut?: {from: number; to: number; frames: [number, number]; px: number} | null;
+  };
+  timing: {start: number; speed: number; pass: number; end: number | null; period?: number};
   source: {name: string; start: number; end: number | null; frames: number; unit: number};
   /** The run's footprintjs narrative. */
   narrative: CombinedNarrativeEntry[];

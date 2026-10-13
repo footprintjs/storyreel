@@ -3,6 +3,8 @@
  *   walk.coco.json        a walk seen from the side, COCO-17 in pixels, 30 fps: each foot planted 60% of a 1.1 s
  *                         stride, then carried on an arc to its next spot; with the gaps a detector leaves (the nose
  *                         lost for the first 2 frames, a wrist for 4, a knee unsure for 3, nobody found in frame 70)
+ *   walk-noisy.coco.json  the same walk as a cheaper detector sees it: every point off by up to 3 px, and points
+ *                         dipping to 0.4 visibility for 1–3 frames (dropouts, under fromPose's minConfidence 0.5)
  *   wave.mediapipe.json   a child facing us waving, MediaPipe-33 normalised, a portrait phone video at 25 fps: feet
  *                         still, the right forearm swinging either side of straight up (its angle crosses ±π)
  * Deterministic: a seeded jitter stands in for the detector's noise. Write the files with
@@ -73,17 +75,33 @@ function walkBody(t) {
   return p;
 }
 
-export function makeWalk() {
-  const rand = jitter(17), r2 = v => Math.round(v * 100) / 100;
-  const frames = Array.from({length: W.frames}, (_, f) => {
+/** The walk's points with up to `noise` px of jitter each way, and a confidence of .8–.99. */
+function walkFrames(seed, noise) {
+  const rand = jitter(seed), r2 = v => Math.round(v * 100) / 100;
+  return Array.from({length: W.frames}, (_, f) => {
     const p = walkBody(f / W.fps);
-    return COCO.map(name => [r2(p[name].x + (rand() - .5) * 1.2), r2(p[name].y + (rand() - .5) * 1.2), r2(.8 + .19 * rand())]);
+    return COCO.map(name => [r2(p[name].x + (rand() - .5) * 2 * noise), r2(p[name].y + (rand() - .5) * 2 * noise), r2(.8 + .19 * rand())]);
   });
+}
+
+export function makeWalk() {
+  const frames = walkFrames(17, .6);
   const at = name => COCO.indexOf(name);
   for (const f of [0, 1]) frames[f][at('nose')] = null;                 // lost at the start: held
   for (let f = 20; f <= 23; f++) frames[f][at('left_wrist')] = null;    // lost for 4 frames: bridged
   for (let f = 50; f <= 52; f++) frames[f][at('right_knee')][2] = .2;   // unsure for 3 frames: a dropout, bridged
   frames[70] = null;                                                    // nobody found: every joint bridged
+  return {scheme: 'coco-17', fps: W.fps, coordinates: 'pixels', width: 1280, height: 720, frames};
+}
+
+export function makeNoisyWalk() {
+  const frames = walkFrames(41, 3), rand = jitter(43);
+  // Dips: now and then a joint the detector is unsure of for 1–3 frames (visibility 0.4).
+  for (let f = 0; f < W.frames; f++) for (let k = 5; k < COCO.length; k++) {
+    if (rand() >= .02) continue;
+    const n = 1 + Math.floor(rand() * 3);
+    for (let i = f; i < Math.min(W.frames, f + n); i++) frames[i][k][2] = .4;
+  }
   return {scheme: 'coco-17', fps: W.fps, coordinates: 'pixels', width: 1280, height: 720, frames};
 }
 
@@ -123,5 +141,6 @@ export function makeWave() {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const here = new URL('.', import.meta.url);
   writeFileSync(new URL('walk.coco.json', here), `${JSON.stringify(makeWalk())}\n`);
+  writeFileSync(new URL('walk-noisy.coco.json', here), `${JSON.stringify(makeNoisyWalk())}\n`);
   writeFileSync(new URL('wave.mediapipe.json', here), `${JSON.stringify(makeWave())}\n`);
 }

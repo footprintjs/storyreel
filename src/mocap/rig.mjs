@@ -81,18 +81,26 @@ export function legLengths(joints, side) {
 }
 
 /**
- * The knee that joins a hip to an ankle with bones of these lengths (two-bone IK), bent to the side the video saw
- * it (`seen`, the knee before the ankle moved). An ankle out of reach straightens the leg toward it: `short` says by
- * how much it falls short (0 when it reaches).
+ * How far (torso lengths) the video's knee must sit off the hip–ankle line before its side counts: closer than this,
+ * a nearly straight leg's knee is on whichever side the noise put it, and the knee bends forward instead.
  */
-export function solveKnee(hip, ankle, seen, {thigh, shin}) {
-  const d = dist(hip, ankle);
-  if (d < 1e-9) return {knee: {x: hip.x, y: hip.y - thigh}, short: 0};
-  const u = {x: (ankle.x - hip.x) / d, y: (ankle.y - hip.y) / d};
-  if (d >= thigh + shin) return {knee: {x: hip.x + u.x * thigh, y: hip.y + u.y * thigh}, short: d - thigh - shin};
-  const along = (thigh * thigh + d * d - shin * shin) / (2 * d), out = Math.sqrt(Math.max(0, thigh * thigh - along * along));
-  const n = {x: -u.y, y: u.x}, side = (seen.x - hip.x) * n.x + (seen.y - hip.y) * n.y < 0 ? -1 : 1;
-  return {knee: {x: hip.x + u.x * along + n.x * out * side, y: hip.y + u.y * along + n.y * out * side}, short: 0};
+export const KNEE_NOISE = .05;
+
+/**
+ * The knee that joins a hip to an ankle with bones of these lengths (two-bone IK). It bends forward (the way the
+ * figure faces, F), unless the video saw it clearly to the other side (`seen` more than KNEE_NOISE off the line: a
+ * squat seen from the front). The reach is held to what the bones can do, |thigh − shin| … thigh + shin, so they
+ * never stretch or shrink: an ankle out of reach (or too near) is met as far (or as near) as the leg can, along the
+ * same line. Returns {knee, ankle, short}: the ankle the leg reaches, and how far it fell short of the one asked for
+ * (0 when it reaches).
+ */
+export function solveKnee(hip, ankle, seen, {thigh, shin}, F = 1) {
+  const d = dist(hip, ankle), u = d > 1e-9 ? {x: (ankle.x - hip.x) / d, y: (ankle.y - hip.y) / d} : {x: 0, y: -1};
+  const reach = Math.max(Math.abs(thigh - shin), Math.min(thigh + shin, d)), reached = {x: hip.x + u.x * reach, y: hip.y + u.y * reach};
+  const along = reach > 1e-9 ? (thigh * thigh + reach * reach - shin * shin) / (2 * reach) : 0, out = Math.sqrt(Math.max(0, thigh * thigh - along * along));
+  const n = {x: -u.y, y: u.x}, off = (seen.x - hip.x) * n.x + (seen.y - hip.y) * n.y;
+  const side = Math.abs(off) > KNEE_NOISE ? Math.sign(off) : (n.x * F >= 0 ? 1 : -1);
+  return {knee: {x: hip.x + u.x * along + n.x * out * side, y: hip.y + u.y * along + n.y * out * side}, ankle: reached, short: Math.abs(d - reach)};
 }
 
 /** How far the figure is turned from us (0 facing us … 1 side on), from how wide its shoulders look against `frontal`. */

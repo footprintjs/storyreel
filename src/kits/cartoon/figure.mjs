@@ -45,7 +45,8 @@ const armAngles = (pose, j) => pose.joints?.arms?.[j] ?? {shoulder: (j === 1 ? 1
 
 /**
  * The points the figure is drawn through, in px on the canvas: {hip, shoulder, head: {x, y, r}, knees, feet, elbows,
- * hands, near} — near is the side drawn in front (the left, facing +x). `floor` is the floor's y (px).
+ * hands, near} — near is the side drawn in front: facing +x the camera sees the person's right side (feet[1], arms[1]),
+ * facing −x their left. `floor` is the floor's y (px).
  */
 export function figureAt(pose, {floor, size}) {
   if (!Number.isFinite(floor) || !(size > 0)) throw new Error(`figureAt: floor is the floor's y (px) and size the figure's standing height (px, above 0), not floor ${floor}, size ${size}`);
@@ -58,7 +59,7 @@ export function figureAt(pose, {floor, size}) {
   // An arm's angle is from the torso's line, and a torso leaning forward turns that line back by its lean (pose.mjs).
   const elbows = [0, 1].map(j => toward(shoulder, armAngles(pose, j).shoulder - lean, BONES.upper * T, F));
   const hands = [0, 1].map(j => { const a = armAngles(pose, j); return toward(elbows[j], a.shoulder - lean + a.elbow, BONES.fore * T, F); });
-  return {hip, shoulder, head, knees, feet, elbows, hands, near: F === 1 ? 0 : 1, unit: T};
+  return {hip, shoulder, head, knees, feet, elbows, hands, near: F === 1 ? 1 : 0, unit: T};
 }
 
 const stroke = (ctx, points, color, width) => {
@@ -72,7 +73,9 @@ export function drawFigure(ctx, pose, {floor, size, colors = {}} = {}) {
   const C = {...FIGURE_COLORS, ...colors}, P = figureAt(pose, {floor, size}), T = P.unit, F = pose.facing, far = 1 - P.near;
   ctx.save();
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  const leg = j => { stroke(ctx, [P.hip, P.knees[j], P.feet[j]], C.legs, .26 * T); ctx.fillStyle = C.shoes; ctx.beginPath(); ctx.ellipse(P.feet[j].x + F * .1 * T, P.feet[j].y, .2 * T, .1 * T, 0, 0, 7); ctx.fill(); };
+  // A shoe points the way it faces and rolls with its foot (angle, + toes up), about the ankle.
+  const shoe = j => { ctx.save(); ctx.translate(P.feet[j].x, P.feet[j].y); ctx.scale(F, 1); ctx.rotate(-(pose.feet[j].angle ?? 0)); ctx.fillStyle = C.shoes; ctx.beginPath(); ctx.ellipse(.1 * T, 0, .2 * T, .1 * T, 0, 0, 7); ctx.fill(); ctx.restore(); };
+  const leg = j => { stroke(ctx, [P.hip, P.knees[j], P.feet[j]], C.legs, .26 * T); shoe(j); };
   const arm = j => { stroke(ctx, [P.shoulder, P.elbows[j], P.hands[j]], C.shirt, .2 * T); ctx.fillStyle = C.skin; ctx.beginPath(); ctx.arc(P.hands[j].x, P.hands[j].y, .1 * T, 0, 7); ctx.fill(); };
   // Back to front: the far arm and leg, the body, the near leg and arm, the head.
   ctx.globalAlpha *= .85; arm(far); leg(far); ctx.globalAlpha /= .85;

@@ -1,93 +1,78 @@
 // Motion copied from a video (mocap.mjs · fromPose): keypoints read, gaps filled or refused, smoothed, put on the
-// rig, angled, feet planted and locked, retimed — a footprintjs flowchart whose record says what it found and why.
-// The keypoints are synthetic, from bodies whose truth is known (test/fixtures/mocap/make.mjs).
+// rig, angled, retimed, looped or played once — a footprintjs flowchart whose record says what it found and why.
+// The keypoints are synthetic, from bodies whose truth is known (test/fixtures/mocap/make.mjs). The feet, the seam,
+// the legs and the figure are tested in mocap-feet.test.mjs.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync, existsSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {createCanvas} from '@napi-rs/canvas';
 import {fromPose, MOCAP, SCHEMES, RIG_JOINTS} from '../src/mocap.mjs';
-import {checkPose, TORSO_SHARE} from '../src/pose.mjs';
-import {oneEuro} from '../src/mocap/tracks.mjs';
-import {wrapAngle} from '../src/mocap/rig.mjs';
-import {drawFigure, figureAt} from '../src/kits/cartoon/figure.mjs';
-import {compileFilm, evenTimings, frameHashes} from '../src/index.mjs';
-import {makeWalk, makeWave, walkStances, WALK, WAVE} from './fixtures/mocap/make.mjs';
+import {checkPose} from '../src/pose.mjs';
+import {oneEuro, least, most} from '../src/mocap/tracks.mjs';
+import {makeWalk, makeNoisyWalk, makeWave, WALK, WAVE} from './fixtures/mocap/make.mjs';
 
 const fixture = name => JSON.parse(readFileSync(new URL(`./fixtures/mocap/${name}`, import.meta.url), 'utf8'));
-const WALK_JSON = fixture('walk.coco.json'), WAVE_JSON = fixture('wave.mediapipe.json');
+const WALK_JSON = fixture('walk.coco.json'), NOISY_JSON = fixture('walk-noisy.coco.json'), WAVE_JSON = fixture('wave.mediapipe.json');
 const copy = v => structuredClone(v);
 const PLACE = {x: 200, size: 400};
 /** Every angle a pose carries, by name. */
 const anglesOf = p => ({torso: p.joints.torso, neck: p.joints.neck, ...Object.fromEntries(p.joints.arms.flatMap((a, j) => [[`shoulder${j}`, a.shoulder], [`elbow${j}`, a.elbow]])),
   ...Object.fromEntries(p.joints.legs.flatMap((l, j) => [[`hip${j}`, l.hip], [`knee${j}`, l.knee]]))});
 const times = (from, to, every) => Array.from({length: Math.floor((to - from) / every + 1e-9) + 1}, (_, i) => from + i * every);
-const footOf = c => (c.foot === 'left' ? 0 : 1);
 /** Two values the same, numbers to a billionth (a moment on the film's clock is a sum of floats). */
 function near(a, b, where) {
   if (typeof a === 'number') return assert.ok(Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(b)), `${where}: ${a} is not ${b}`);
   if (a && typeof a === 'object') return Object.keys(b).forEach(k => near(a[k], b[k], `${where}.${k}`));
   assert.equal(a, b, where);
 }
+/** The places a gap of this length and edge was filled, as 'joint a–b'. */
+const placesOf = (record, missing, edge) => (record.gaps.find(g => g.missing === missing && g.edge === edge)?.at ?? []).map(p => `${p.joint} ${p.frames.join('–')}`);
 
 test('the fixtures are what make.mjs makes: synthetic keypoints with a known truth, checked in', () => {
   assert.deepEqual(WALK_JSON, copy(makeWalk()));
+  assert.deepEqual(NOISY_JSON, copy(makeNoisyWalk()));
   assert.deepEqual(WAVE_JSON, copy(makeWave()));
   assert.deepEqual(Object.keys(SCHEMES), ['coco-17', 'mediapipe-33']);
   for (const joint of RIG_JOINTS) for (const names of Object.values(SCHEMES)) assert.ok(names.includes(joint), `${joint} is named alike in both schemes`);
 });
 
-test('the record says what was found and decided: the dropouts, every gap and how it was filled, which way it faces', async () => {
+test('the record says what was found and decided: dropouts per joint, each kind of gap once with every place, which way it faces', async () => {
   const {record} = await fromPose(WALK_JSON, PLACE);
   assert.deepEqual([record.scheme, record.fps, record.kept, record.nobody], ['coco-17', 30, {frames: [0, 95], count: 96, seconds: 3.167}, 1]);
-  assert.deepEqual(record.dropouts, [{joint: 'right_knee', frames: [50, 52], lowest: .2}], 'the knee the detector was unsure of');
-  const how = record.gaps.map(g => `${g.joint} ${g.frames.join('–')} ${g.how}`);
-  for (const line of ['nose 0–1 hold', 'left_wrist 20–23 bridge', 'right_knee 50–52 bridge']) assert.ok(how.includes(line), `${line} in ${how}`);
-  assert.equal(record.gaps.filter(g => g.frames[0] === 70).length, RIG_JOINTS.length, 'nobody found in frame 70: every joint bridged');
-  assert.equal(record.gaps.length, 3 + RIG_JOINTS.length);
+  assert.deepEqual(record.dropouts, [{joint: 'right_knee', runs: 1, frames: 3, lowest: .2, longest: [50, 52]}], 'the knee the detector was unsure of');
+  assert.deepEqual(placesOf(record, 2, 'start'), ['nose 0–1']);
+  assert.deepEqual(placesOf(record, 4, 'inside'), ['left_wrist 20–23']);
+  assert.deepEqual(placesOf(record, 3, 'inside'), ['right_knee 50–52']);
+  assert.deepEqual(placesOf(record, 1, 'inside'), RIG_JOINTS.map(j => `${j} 70–70`), 'nobody found in frame 70: every joint bridged, one verdict');
+  assert.deepEqual(record.gaps.map(g => g.how), ['hold', 'bridge', 'bridge', 'bridge']);
   for (const g of record.gaps) {
     assert.equal(g.evidence.chosen, g.how, 'the evidence is decide()\'s own');
     assert.equal(g.evidence.rules[0].conditions[0].threshold, MOCAP.maxGap);
   }
-  const nose = record.gaps.find(g => g.joint === 'nose' && g.frames[0] === 0);
-  assert.equal(nose.why, 'short, at an edge of the clip: held at the nearest point seen: gapSeconds 0.067 ≤ 0.2 ✓, gapEdge "start" in ["start","end"] ✓');
+  assert.equal(record.gaps[0].why, 'short, at an edge of the clip: held at the nearest point seen: gapSeconds 0.067 ≤ 0.2 ✓, gapEdge "start" in ["start","end"] ✓');
   assert.deepEqual([record.facing.how, record.facing.facing], ['right', 1]);
   assert.match(record.facing.why, /^it travels right: travel 4\.\d+ ≥ 0\.5 ✓$/);
+  assert.deepEqual([record.loop.how, record.loop.why], ['once', 'played once: it holds its last frame: loop false = false ✓']);
   assert.deepEqual(structuredClone(record), JSON.parse(JSON.stringify(record)), 'plain data: it survives structuredClone and JSON');
   const stages = record.narrative.filter(e => e.type === 'stage').map(e => e.stageId);
-  assert.deepEqual(stages, ['read-keypoints', 'fill-gaps', 'smooth', 'normalise', 'joint-angles', 'plant-feet', 'retime', 'motion-source']);
+  assert.deepEqual(stages, ['read-keypoints', 'fill-gaps', 'smooth', 'normalise', 'joint-angles', 'plant-feet', 'close-loop', 'retime', 'motion-source']);
 });
 
-test('feet: every stretch the walk was planted is found, within a frame or two; none while a foot is carried', async () => {
-  const {record} = await fromPose(WALK_JSON, PLACE);
-  for (const j of [0, 1]) {
-    const truth = walkStances(j), found = record.contacts.filter(c => footOf(c) === j).map(c => c.frames);
-    assert.equal(found.length, truth.length, `${j ? 'right' : 'left'} foot: ${JSON.stringify(found)} against ${JSON.stringify(truth)}`);
-    found.forEach(([a, b], i) => assert.ok(Math.abs(a - truth[i][0]) <= 2 && Math.abs(b - truth[i][1]) <= 2, `contact ${a}–${b} against ${truth[i]}`));
+test('a flickering detector grows the record by places, not verdicts: its narrative stays the clean run\'s size', async () => {
+  const flicker = copy(WALK_JSON);
+  let seed = 5; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  let dips = 0;
+  for (let f = 2; f < flicker.frames.length - 4; f++) for (let k = 5; k < 17; k++) {
+    if (!flicker.frames[f] || rnd() >= .05) continue;
+    for (let i = 0, n = 1 + Math.floor(rnd() * 3); i < n; i++) if (flicker.frames[f + i]?.[k]) { flicker.frames[f + i][k][2] = .3; dips++; }
   }
-  for (const c of record.contacts) {
-    assert.match(c.why, /^still long enough, on the floor: planted: stillSeconds [\d.]+ ≥ 0\.1 ✓, overFloor -?[\d.]+ ≤ 0\.15 ✓$/);
-    assert.equal(c.evidence.chosen, 'planted');
-  }
-  assert.deepEqual(record.notPlanted, [], 'no stillness that is not a step');
-  assert.deepEqual(record.reach, {frames: 0, most: 0}, 'every planted foot is within its leg\'s reach');
-  assert.equal(record.standing.from, 'both feet planted');
-});
-
-test('a planted foot never slides: through every contact, each millisecond, it stays exactly on its spot on the floor — drawn too', async () => {
-  const sources = [await fromPose(WALK_JSON, PLACE), await fromPose(WALK_JSON, {...PLACE, start: 1.7, speed: .6}), await fromPose(WALK_JSON, {...PLACE, mirror: true}), await fromPose(WALK_JSON, {...PLACE, loop: true}), await fromPose(WAVE_JSON, PLACE)];
-  for (const source of sources) {
-    assert.ok(source.record.contacts.length > 0);
-    for (const c of source.record.contacts) {
-      const j = footOf(c), first = source.poseAt(c.film[0] + .001).feet[j], drawn = figureAt(source.poseAt(c.film[0] + .001), {floor: 760, size: 400}).feet[j];
-      for (const t of times(c.film[0] + .001, c.film[1] - .001, .001)) {
-        const p = source.poseAt(t);
-        assert.deepEqual(p.feet[j], {x: first.x, lift: 0}, `${source.name}: the ${c.foot} foot slid at ${t} (contact ${c.frames})`);
-        assert.deepEqual(figureAt(p, {floor: 760, size: 400}).feet[j], drawn, `the drawn ${c.foot} foot moved at ${t}`);
-      }
-    }
-  }
+  const [clean, flickering] = [await fromPose(WALK_JSON, PLACE), await fromPose(flicker, PLACE)];
+  assert.ok(dips > 60, `the detector flickers (${dips} unsure points)`);
+  assert.ok(flickering.record.dropouts.length <= RIG_JOINTS.length, 'one dropout line per joint at most');
+  assert.ok(flickering.record.gaps.length <= 8, `a few kinds of gap (${flickering.record.gaps.length}), each with its places`);
+  const extra = flickering.record.narrative.length - clean.record.narrative.length;
+  assert.ok(extra < 40, `the narrative grows by verdicts, not flickers (${extra} more entries for ${dips} unsure points)`);
 });
 
 test('the angles are continuous: no jump from one millisecond to the next, even where the waving forearm crosses straight up', async () => {
@@ -100,56 +85,23 @@ test('the angles are continuous: no jump from one millisecond to the next, even 
       prev = now;
     }
   }
-  // The forearm's own direction does cross ±π (half a turn either way of straight down): told the short way round
-  // each frame, it would jump by nearly a whole turn; the pose's elbow never does.
-  const wave = await fromPose(WAVE_JSON, PLACE), poses = times(0, 2.36, .01).map(t => wave.poseAt(t));
-  const raw = poses.map(p => wrapAngle(p.joints.arms[1].shoulder - p.joints.torso + p.joints.arms[1].elbow));
-  assert.ok(raw.some((a, i) => i && Math.abs(a - raw[i - 1]) > 5), 'the forearm\'s direction crosses straight up');
 });
 
 test('the angles mean what the port says: a child waving, facing us; a walker side on', async () => {
-  const wave = await fromPose(WAVE_JSON, PLACE), still = times(0, 2.3, .1).map(t => checkPose(wave.poseAt(t)));
-  for (const p of still) {
+  const wave = await fromPose(WAVE_JSON, PLACE);
+  for (const p of times(0, 2.3, .1).map(t => checkPose(wave.poseAt(t)))) {
     assert.ok(Math.abs(p.joints.arms[0].shoulder) < .15 && Math.abs(p.joints.arms[0].elbow) < .15, 'the left arm hangs');
     assert.ok(Math.abs(p.joints.arms[1].shoulder) > 2.3, `the right arm is raised (${p.joints.arms[1].shoulder})`);
     assert.ok(p.joints.legs.every(l => Math.abs(l.knee) < .1) && Math.abs(p.joints.torso) < .05, 'standing straight');
-    assert.ok(p.turn < .1 && !p.walking && p.feet.every(f => f.lift === 0), 'facing us, on both feet');
+    assert.ok(p.turn < .1 && !p.walking && p.feet.every(f => f.lift === 0 && f.angle === 0), 'facing us, on both feet, flat');
   }
-  assert.deepEqual(wave.record.contacts.map(c => [c.foot, c.frames]), [['left', [0, 59]], ['right', [0, 59]]], 'both feet planted the whole clip');
   assert.deepEqual([wave.record.gaps, wave.record.dropouts], [[], []], 'an unsure little finger is no joint of the figure: no gap, no dropout');
-  assert.equal(wave.record.facing.why, 'it neither travels nor turns its head: facing right, as a figure is drawn (facingAsked 0 = 1 ✗; facingAsked 0 = -1 ✗; travel 0.005 ≥ 0.5 ✗; travel 0.005 ≤ -0.5 ✗; noseAhead -0.001 ≥ 0.1 ✗; noseAhead -0.001 ≤ -0.1 ✗)');
+  assert.equal(wave.record.facing.why, 'it neither travels nor turns its head: facing right, as a figure is drawn (facingAsked 0 = 1 ✗; facingAsked 0 = -1 ✗; travel 0.008 ≥ 0.5 ✗; travel 0.008 ≤ -0.5 ✗; noseAhead -0.001 ≥ 0.1 ✗; noseAhead -0.001 ≤ -0.1 ✗)');
   const walk = await fromPose(WALK_JSON, PLACE), steps = times(.3, 2.9, .05).map(t => walk.poseAt(t));
   assert.ok(steps.every(p => Math.abs(p.lean - .06) < .03 && p.lean === p.joints.torso), 'it leans into its walk (0.06 rad)');
   assert.ok(steps.every(p => p.turn > .8 && p.walking), 'side on, walking');
   assert.ok(Math.min(...steps.map(p => p.joints.legs[0].knee)) < -.5, 'the knee bends as the foot is carried');
   assert.ok(Math.max(...steps.map(p => p.swing)) > .3 && Math.min(...steps.map(p => p.swing)) < -.3, 'the arms swing against the legs');
-});
-
-test('a blip of noise inside a stance is not a step: one contact, one spot, the foot never hops', async () => {
-  const blip = copy(WAVE_JSON), ankle = SCHEMES['mediapipe-33'].indexOf('left_ankle');
-  blip.frames[30][ankle][0] += 12 / WAVE.width;   // one frame, 12 px off: fast enough either side to break the stillness
-  const source = await fromPose(blip, {...PLACE, smooth: null});
-  const left = source.record.contacts.filter(c => c.foot === 'left');
-  assert.deepEqual(left.map(c => [c.frames, c.blips]), [[[0, 59], 2]], 'the stretches either side are one, two blips joined');
-  const spot = source.poseAt(0).feet[0];
-  for (const t of times(0, 2.36, .001)) assert.deepEqual(source.poseAt(t).feet[0], spot, `the left foot moved at ${t}`);
-  const split = await fromPose(blip, {...PLACE, smooth: null, minContact: .04});
-  assert.ok(split.record.contacts.filter(c => c.foot === 'left').length > 1, 'with minContact under a frame, the blip does break it');
-});
-
-test('a jump: the feet still at its top are aloft, not planted, and the body rises off its standing height', async () => {
-  const jump = copy(WAVE_JSON), up = f => (f >= 20 && f <= 40 ? 60 * (1 - ((f - 30) / 10) ** 2) : 0);
-  jump.frames.forEach((frame, f) => frame.forEach(p => { p[1] -= up(f) / WAVE.height; }));
-  const source = await fromPose(jump, PLACE), {record} = source;
-  const aloft = record.notPlanted.filter(s => s.how === 'aloft');
-  assert.deepEqual(aloft.map(s => s.foot), ['left', 'right']);
-  for (const s of aloft) {
-    assert.ok(s.frames[0] > 22 && s.frames[1] < 38, `still near the top: ${s.frames}`);
-    assert.match(s.why, /^still long enough, but off the floor \(the top of a jump\): not planted: stillSeconds [\d.]+ ≥ 0\.1 ✓$/);
-  }
-  assert.ok(record.contacts.every(c => c.frames[1] < 22 || c.frames[0] > 38), 'planted before it leaves the floor and after it lands, never in the air');
-  const top = source.poseAt(30 / WAVE.fps), unit = PLACE.size * TORSO_SHARE, rise = 60 / 180 * unit;
-  assert.ok(Math.abs(top.lift - rise) < .1 * rise && top.feet.every(f => Math.abs(f.lift - rise) < .1 * rise), `it rises ${rise.toFixed(1)} px: ${top.lift}, ${top.feet.map(f => f.lift)}`);
 });
 
 test('a gap too long to guess refuses, naming the joint, its frames and the fixes; trimming past it, or a larger maxGap, takes it', async () => {
@@ -158,14 +110,14 @@ test('a gap too long to guess refuses, naming the joint, its frames and the fixe
   const error = await fromPose(lost, PLACE).then(() => null, e => e);
   assert.ok(error, 'refused');
   assert.equal(error.message, 'fromPose "video": 1 gap is too long to fill: left_knee is missing in frames 30–45 (16 frames, 0.533 s). At most 0.2 s (maxGap) is filled in: trim the clip past it (from, to: seconds of the video), film it again with the whole body in view, or raise maxGap');
-  assert.deepEqual(error.record.refused.map(g => [g.joint, g.frames, g.how]), [['left_knee', [30, 45], 'refuse']]);
+  assert.deepEqual(error.record.refused.map(g => [g.how, g.missing, g.at]), [['refuse', 16, [{joint: 'left_knee', frames: [30, 45]}]]]);
   assert.equal(error.record.refused[0].why, 'longer than maxGap, or never seen: too long to guess (gapSeconds 0.533 ≤ 0.2 ✗)');
   assert.deepEqual(error.record.narrative.filter(e => e.type === 'stage' || e.type === 'error').map(e => `${e.type} ${e.stageId}`), ['stage read-keypoints', 'error fill-gaps'], 'the record stops where it refused');
   const trimmed = await fromPose(lost, {...PLACE, from: 1.6});
   assert.deepEqual(trimmed.record.kept.frames, [48, 95]);
   assert.ok(trimmed.record.contacts.every(c => c.frames[0] >= 48), 'frame numbers stay the video\'s');
   const patient = await fromPose(lost, {...PLACE, maxGap: .6});
-  assert.ok(patient.record.gaps.some(g => g.joint === 'left_knee' && g.frames[0] === 30 && g.how === 'bridge'));
+  assert.deepEqual(placesOf(patient.record, 16, 'inside'), ['left_knee 30–45']);
   const blind = copy(WALK_JSON);
   blind.frames.forEach(frame => { if (frame) frame[0] = null; });
   await assert.rejects(fromPose(blind, PLACE), /1 gap is too long to fill: nose is never seen \(frames 0–95\)/);
@@ -176,37 +128,22 @@ test('a gap too long to guess refuses, naming the joint, its frames and the fixe
   const away = copy(WALK_JSON);
   for (let f = 40; f <= 60; f++) away.frames[f] = null;
   await assert.rejects(fromPose(away, PLACE), /13 gaps are too long to fill: every joint \(nobody in view\) is missing in frames 40–60 \(21 frames, 0\.7 s\)/);
-  assert.equal(RIG_JOINTS.length, 13);
   const scattered = copy(WALK_JSON);
   [7, 8, 9, 10, 13, 14, 15, 16].forEach((k, i) => { for (let f = 5 + i; f <= 25 + i; f++) scattered.frames[f][k] = null; });
   await assert.rejects(fromPose(scattered, PLACE), /8 gaps are too long to fill: left_elbow is missing in frames 5–25 .*; left_knee is missing in frames 9–29 .*; and 2 more\./);
 });
 
-test('retimed: start and speed put the video\'s frames on the film\'s clock; once, it holds its last frame; looped, it walks on', async () => {
+test('retimed: start and speed put the video\'s frames on the film\'s clock; played once, it holds its last frame', async () => {
   const plain = await fromPose(WALK_JSON, PLACE), fast = await fromPose(WALK_JSON, {...PLACE, start: 3, speed: 2});
   for (let k = 0; k < WALK.frames - 1; k += 5) near(fast.poseAt(3 + k / 60), plain.poseAt(k / 30), `frame ${k}`);
-  assert.deepEqual([fast.start, fast.end, fast.record.timing.pass], [3, 3 + 95 / 60, +(95 / 60).toFixed(3)]);
+  assert.deepEqual([fast.start, fast.end, fast.record.timing], [3, 3 + 95 / 60, {start: 3, speed: 2, pass: +(95 / 60).toFixed(3), end: +(3 + 95 / 60).toFixed(3)}]);
   assert.deepEqual({...fast.poseAt(2), phase: 'clip'}, fast.poseAt(3), 'before it starts: its first frame');
   assert.equal(fast.poseAt(2).phase, 'before');
   const after = fast.poseAt(10);
   assert.deepEqual(after, fast.poseAt(fast.end), 'after its end: its last frame, held');
   assert.equal(after.phase, 'after');
   near({...after, phase: 'clip'}, {...plain.poseAt(95 / 30), phase: 'clip'}, 'the last frame');
-  assert.equal(fast.record.timing.after, 'hold');
-  assert.equal(fast.record.timing.why, 'played once: it holds its last frame (loop false = true ✗)');
   for (const c of fast.record.contacts) assert.deepEqual(c.film, c.frames.map(f => +(3 + f / 60).toFixed(3)), 'each contact on the film\'s clock');
-  const looped = await fromPose(WALK_JSON, {...PLACE, loop: true}), {timing} = looped.record;
-  assert.deepEqual([looped.end, timing.after, timing.end, timing.period], [Infinity, 'repeat', null, 3.2]);
-  assert.match(timing.why, /^asked to loop: it repeats, each time from where it left off: loop true = true ✓$/);
-  const unit = PLACE.size * TORSO_SHARE;
-  for (const t of [.2, 1.35, 3.0]) {
-    const a = looped.poseAt(t), b = looped.poseAt(t + timing.period);
-    assert.ok(Math.abs(b.x - a.x - timing.travel * unit) <= 5e-4 * unit, `each repeat carries on by the clip's travel (${b.x - a.x}; the record's travel is to a thousandth)`);
-    near(b.joints, a.joints, 'and it moves as it did');
-  }
-  assert.ok(timing.seam >= 0 && Number.isFinite(timing.seam), 'the seam between its end and its start is measured');
-  const jump = Math.abs(looped.poseAt(3.2 - 1e-6).x - looped.poseAt(3.2 + 1e-6).x);
-  assert.ok(jump < 1, `over the seam the body carries on, it does not jump back (${jump} px)`);
 });
 
 test('mirrored: the figure faces the other way, and left and right swap', async () => {
@@ -232,9 +169,11 @@ test('facing: asked wins; else how it travels, then where its nose points; else 
 });
 
 test('deterministic: the same keypoints give the same record and the same poses, run after run', async () => {
-  const [a, b] = [await fromPose(WALK_JSON, PLACE), await fromPose(WALK_JSON, PLACE)];
-  assert.equal(JSON.stringify(a.record), JSON.stringify(b.record));
-  for (const t of times(0, 3.3, .037)) assert.deepEqual(a.poseAt(t), b.poseAt(t));
+  for (const keypoints of [WALK_JSON, NOISY_JSON]) {
+    const [a, b] = [await fromPose(keypoints, PLACE), await fromPose(keypoints, PLACE)];
+    assert.equal(JSON.stringify(a.record), JSON.stringify(b.record));
+    for (const t of times(0, 3.3, .037)) assert.deepEqual(a.poseAt(t), b.poseAt(t));
+  }
 });
 
 test('points by name read the same as the scheme\'s order; normalised points are scaled by the width and the height', async () => {
@@ -276,6 +215,7 @@ test('the settings are checked before anything runs, naming the fix', async () =
     [{...PLACE, sise: 3}, /fromPose: unknown option sise; the options are x, size, name, minConfidence/],
     [{...PLACE, minConfidence: 2}, /minConfidence is 0\.\.1/],
     [{...PLACE, maxGap: -1}, /maxGap is a number, 0 or more, not -1/],
+    [{...PLACE, seam: -1}, /seam is a number, 0 or more, not -1/],
     [{...PLACE, speed: 0}, /speed is a number above 0, not 0/],
     [{...PLACE, smooth: {beta: -1}}, /smooth\.beta is 0 or more/],
     [{...PLACE, smooth: {minCutoff: 0}}, /smooth\.minCutoff is a cutoff in Hz, above 0 \(or smooth: null for none\)/],
@@ -291,40 +231,22 @@ test('the settings are checked before anything runs, naming the fix', async () =
   assert.throws(() => source.poseAt('soon'), /dad walking: poseAt\(t\) takes seconds, not "soon"/);
 });
 
-test('smoothing: One Euro forward and back steadies a still point and leaves no lag on a moving one; null turns it off', async () => {
+test('smoothing: One Euro forward and back steadies a still point, leaves no lag on a moving one, not even at the ends; null turns it off', async () => {
   let seed = 7; const noise = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 - .5; };
   const still = Array.from({length: 120}, () => 1 + .02 * noise()), steady = oneEuro(still, 30, MOCAP.smooth);
   const spread = v => Math.sqrt(v.reduce((s, x) => s + (x - 1) ** 2, 0) / v.length);
-  assert.ok(spread(steady) < spread(still) / 3, `a still point steadied (${spread(still)} → ${spread(steady)})`);
-  const ramp = Array.from({length: 120}, (_, i) => i / 30), followed = oneEuro(ramp, 30, MOCAP.smooth);
-  assert.ok(followed.slice(20, 100).every((v, i) => Math.abs(v - ramp[i + 20]) < 1e-3), 'no lag on a steady move');
+  // Reflected through its end frames, an end is steadied less than the middle (its own noise is mirrored), but never made worse.
+  assert.ok(spread(steady.slice(15, 105)) < spread(still) / 3, `a still point steadied (${spread(still)} → ${spread(steady.slice(15, 105))})`);
+  assert.ok(most(steady.map(v => Math.abs(v - 1))) <= most(still.map(v => Math.abs(v - 1))), 'and nowhere worse than it was');
+  for (const speed of [1, 3]) {
+    const ramp = Array.from({length: 120}, (_, i) => speed * i / 30), followed = oneEuro(ramp, 30, MOCAP.smooth);
+    const off = followed.map((v, i) => Math.abs(v - ramp[i]));
+    assert.ok(most(off) < .005, `no lag on a steady move of ${speed} torso lengths a second, ends included (the most: ${most(off)})`);
+  }
   const off = await fromPose(WALK_JSON, {...PLACE, smooth: null});
   assert.ok(off.record.narrative.some(e => e.text === 'Step 2: Write smoothing = "off"'), 'the record says it was not smoothed');
-});
-
-test('end to end: a cartoon figure driven by fromPose renders frames, moves, and its drawn feet stay put while planted', async () => {
-  const source = await fromPose(WALK_JSON, {x: 300, size: 420, start: .5});
-  const kit = {name: 'mocap', story: {compile: () => ({hang: 1, draw: (ctx, t) => {
-    ctx.fillStyle = '#bfe3ff'; ctx.fillRect(0, 0, 1600, 900);
-    drawFigure(ctx, source.poseAt(t), {floor: 760, size: 420});
-  }})}};
-  const storyboard = {scenes: [{id: 'walk', narration: 'He walks across the field and keeps on walking.'}]};
-  const film = await compileFilm({storyboard, timings: evenTimings(storyboard), recipe: {story: {kit: 'mocap'}}, kits: [kit]});
-  const moments = times(.5, 3.6, .1), hashes = frameHashes(film, {times: moments, width: 320});
-  assert.ok(new Set(Object.values(hashes)).size > moments.length / 2, 'the figure moves from frame to frame');
-  const canvas = createCanvas(1600, 900), ctx = canvas.getContext('2d');
-  for (const t of [.5, 1.6, 2.7, 3.6]) {
-    film.frame(ctx, t);
-    const at = figureAt(source.poseAt(t), {floor: 760, size: 420}), body = {x: (at.hip.x + at.shoulder.x) / 2, y: (at.hip.y + at.shoulder.y) / 2};
-    const [r, g, b] = ctx.getImageData(Math.round(body.x), Math.round(body.y), 1, 1).data;
-    assert.ok(r > 180 && g < 120 && b < 120, `the shirt is drawn where the pose puts the body at ${t} (${r}, ${g}, ${b})`);
-    const T = ctx.getTransform();
-    assert.deepEqual([T.a, T.b, T.c, T.d, T.e, T.f], [1, 0, 0, 1, 0, 0], 'the frame restores the canvas');
-  }
-  for (const c of source.record.contacts) {
-    const j = footOf(c), drawn = times(c.film[0] + .001, c.film[1] - .001, .01).map(t => figureAt(source.poseAt(t), {floor: 760, size: 420}).feet[j]);
-    assert.ok(drawn.every(p => p.x === drawn[0].x && p.y === 760), `the drawn ${c.foot} foot stays on its spot through ${c.film}`);
-  }
+  const long = Array.from({length: 200000}, (_, i) => i % 7);
+  assert.deepEqual([least(long), most(long)], [0, 6], 'the least and the most of a long clip, by a loop');
 });
 
 // Any TypeScript compiler will do: TSC_BIN, or one found in a sibling checkout (as types.test.mjs looks).
@@ -333,3 +255,4 @@ test('the types: a motion source, fromPose\'s options and record, and the figure
   const r = spawnSync(tsc, ['--noEmit', '--strict', '--module', 'nodenext', '--moduleResolution', 'nodenext', '--target', 'es2022', fileURLToPath(new URL('./mocap.check.ts', import.meta.url))], {encoding: 'utf8'});
   assert.equal(r.status, 0, r.stdout + r.stderr);
 });
+

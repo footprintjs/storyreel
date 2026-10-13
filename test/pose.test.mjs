@@ -36,8 +36,9 @@ test('checkPose names every key that is wrong, the joints\' too, and passes a go
   assert.equal(checkPose(good), good);
   const withJoints = {...good, joints};
   assert.equal(checkPose(withJoints), withJoints);
-  assert.throws(() => checkPose({...good, x: NaN, facing: 0, feet: [{x: 1, lift: 0}, {x: 'a', lift: 0}]}, 'frame 3'),
+  assert.throws(() => checkPose({...good, x: NaN, facing: 0, feet: [{x: 1, lift: 0, angle: 0}, {x: 'a', lift: 0, angle: 0}]}, 'frame 3'),
     /^Error: frame 3: x is a number \(px\), not NaN; feet\[1\]\.x is a number \(px\), not "a"; facing is 1 or -1, not 0$/);
+  assert.throws(() => checkPose({...good, feet: [{x: 1, lift: 0}, {x: 2, lift: 0, angle: .1}]}), /^Error: pose: feet\[0\]\.angle is a number \(radians, \+ toes up\), not undefined$/, 'a foot\'s roll is part of the pose (main\'s WalkFoot)');
   assert.throws(() => checkPose({...good, joints: {...joints, arms: [{shoulder: 1}, {shoulder: 0, elbow: 0}]}}), /joints\.arms\[0\]\.elbow is a number \(radians\), not undefined/);
   assert.throws(() => checkPose({...good, joints: {torso: 0, neck: 0, arms: [], legs: joints.legs}}), /joints\.arms is \[\{shoulder, elbow\}, \{shoulder, elbow\}\]/);
   assert.throws(() => checkPose({...good, walking: 1, phase: 2}), /walking is true or false, not 1; phase is the source's name for where it is, not 2/);
