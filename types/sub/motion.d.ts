@@ -36,3 +36,10 @@ export interface FollowOptions {from?: number; feel?: FeelName | Feel; drag?: nu
 export function follow<P extends Hanging>(body: (u: number) => P, t: number, options?: FollowOptions): P;
 /** How far the part trails the body at t (follow − body): 0 at rest and at a steady pace; back as it sets off, past as it stops. */
 export function lag<P extends Hanging>(body: (u: number) => P, t: number, options?: FollowOptions): P;
+
+/** A turn drawn as a cartoon turnaround: which drawing (0 front … views − 1 side) and how wide to draw it (1 − depth at a swap … 1). */
+export interface Turnaround { view: number; squash: number }
+/** turnaround's options: views (how many drawings, 2 or more; 3), depth (how much narrower at a swap, 0 – <1; .22), window (how much of the turn the squash spans; .2). */
+export interface TurnaroundOptions { views?: number; depth?: number; window?: number }
+/** The drawing for a turn (a walk's `turn`, 0 facing us … 1 along the way) and a squash across each swap, so the change reads as the body turning. */
+export function turnaround(turn: number, options?: TurnaroundOptions): Turnaround;

@@ -199,3 +199,23 @@ export function lag(body, t, options = {}) {
   const at = follow(body, t, options), b = body(t);
   return typeof at === 'number' ? at - b : at.map((v, j) => v - b[j]);
 }
+
+/**
+ * A turn drawn as a cartoon turnaround: `views` drawings (front … side; 3 = front, three-quarter, side) swapped as the
+ * turn passes each step between them (0 facing us … 1 turned along the way: a walk's `turn`), and a squash across
+ * each swap — the figure narrows for a moment as one drawing gives way to the next, so the change reads as the body
+ * turning, not a jump. Returns {view: 0 … views − 1, squash: the width to draw at, 1 − depth … 1}.
+ *   const {view, squash} = turnaround(p.turn, {views: 2});   // 0 front, 1 side; ctx.scale(squash, 1) about the figure's x
+ * views: how many drawings (2 or more; 3); depth: how much narrower at a swap (0 – <1; .22); window: how much of the
+ * turn the squash spans around each swap (0 – 1; .2).
+ */
+export function turnaround(turn, {views = 3, depth = .22, window = .2} = {}) {
+  if (!Number.isFinite(turn)) throw new Error(`turnaround: turn is 0 (facing us) … 1 (turned along the way), not ${turn}`);
+  if (!(Number.isInteger(views) && views >= 2)) throw new Error(`turnaround: views is how many drawings, 2 or more (front … side), not ${views}`);
+  if (!(depth >= 0 && depth < 1)) throw new Error(`turnaround: depth is how much narrower the figure is at a swap, 0 – less than 1, not ${depth}`);
+  if (!(window > 0 && window <= 1)) throw new Error(`turnaround: window is how much of the turn the squash spans, above 0 – 1, not ${window}`);
+  const u = Math.max(0, Math.min(1, turn)), view = Math.min(views - 1, Math.floor(u * views));
+  let bump = 0;
+  for (let i = 1; i < views; i++) { const d = Math.abs(u - i / views) / (window / 2); if (d < 1) { const k = 1 - d; bump = Math.max(bump, k * k * (3 - 2 * k)); } }
+  return {view, squash: 1 - depth * bump};
+}
