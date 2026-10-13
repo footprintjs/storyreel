@@ -193,6 +193,10 @@ export function segmentMaterial(film, seg, {recipe, storyboard = null, pixels, c
       .map(n => ({...n, ...(n.from === undefined ? {} : {from: at(n.from)}), ...(n.to === undefined ? {} : {to: at(n.to)}), ...(n.at === undefined ? {} : {at: at(n.at)})})),
     // The cast reaches every frame a kit draws its people in (context.cast): a changed look redraws every segment.
     scenes, inputs: {strings: words, data, theme, files, cast},
+    // The camera's moves that reach it (camerawork.mjs): each from its start until what it drew has gone (a framing holds
+    // until the next picture has arrived); absent for a film without them, so its keys are as they were.
+    ...(film.camera ? {camera: {motion: film.camera.motion, moves: film.camera.moves.filter(m => over(m.at, m.lasts ?? Infinity))
+      .map(({path, at: from, until, lasts, ...rest}) => ({path, ...rest, at: at(from), until: at(until), lasts: lasts === null ? null : at(lasts)}))}} : {}),
   };
 }
 

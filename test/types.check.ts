@@ -1,6 +1,9 @@
 // Checked by test/types.test.mjs with tsc: what the types accept, and what they refuse.
-import type {Recipe, DirectorNote, Film, Kit, ContextKit, KitContext, Loudness, Storyboard, frameHashes, compileFilm} from '../types/index.js';
+import type {Recipe, DirectorNote, Film, Kit, ContextKit, KitContext, Loudness, Storyboard, frameHashes, compileFilm, CameraMove} from '../types/index.js';
 import type {startStudio} from '../types/studio.js';
+import type {coverZoom, speedRamp, layersAt, readCameraMove} from '../types/sub/camera.js';
+import type {settleTime} from '../types/sub/motion.js';
+import type {view} from '../types/sub/regions.js';
 import {sliceForKey, keysReadFromExecutionTree} from 'foottrace';
 
 const notes: DirectorNote[] = [
@@ -9,6 +12,31 @@ const notes: DirectorNote[] = [
   {note: 'Push in on the card', push: {at: [380, 490], zoom: 1.3, from: ['build', 'The order line'], to: ['build', 'The policy line']}},
 ];
 export const recipe: Recipe = {story: {kit: 'whiteboard', items: []}, notes, reading: 'refuse', poster: ['summary', 'What to keep', 1]};
+// Camera moves by name: a beat or seconds, an ease or a feel, each move's own settings.
+export const camera: CameraMove[] = [
+  {move: 'dolly-in', at: ['leak', 'leaves the building'], until: ['leak', 'the door'], on: 'database', amount: 1.4},
+  {move: 'dutch', at: 12.5, seconds: 1, amount: 6, feel: 'heavy'},
+  {move: 'rack-focus', at: ['turn', 'look'], from: 'hills', on: 'shepherd'},
+  {move: 'handheld', at: ['turn', 'Stop'], amount: 5, seed: 2},
+  {move: 'freeze', at: ['turn', 'Stop'], seconds: 1.5},
+];
+export const moving: Recipe = {...recipe, camera};
+export const reduced = (make: typeof compileFilm, board: Storyboard, timings: Parameters<typeof compileFilm>[0]['timings']) => make({storyboard: board, timings, recipe: moving, reducedMotion: true});
+export const zoomAt = (film: Film, t: number): number => film.cameraAt?.(t)?.z ?? 1;
+export const played = (film: Film): string[] => film.camera?.moves.map(m => `${m.move}: ${m.played}`) ?? [];
+export const layered: Kit = {name: 'layered', story: {compile: () => ({draw: () => {}, layers: [{name: 'sky', depth: 8}, {name: 'hero', depth: 1}], drawLayer: (ctx, t, name) => {}})}};
+export const covering = (cover: typeof coverZoom, ramp: typeof speedRamp, settle: typeof settleTime): number => cover({x: 600, y: 450, r: .1}) + ramp(.5, .3) + settle('heavy');
+export const rolled = (v: typeof view) => v(1.2, -40, -20, .1).r;
+export const blurOf = (layers: typeof layersAt) => layers([{name: 'sky', depth: 8}], {focus: 1, blur: 8})[0].blur;
+export const placed = (read: typeof readCameraMove) => read({move: 'pan', at: 2}, 'camera[0]', {at: () => 0, total: 10}).until;
+// @ts-expect-error a freeze takes no ease
+export const easedFreeze: CameraMove = {move: 'freeze', at: 3, ease: 'out'};
+// @ts-expect-error a track follows a named thing
+export const lostTrack: CameraMove = {move: 'track', at: 3};
+// @ts-expect-error an ease or a feel, not both
+export const twoEases: CameraMove = {move: 'pan', at: 3, ease: 'out', feel: 'heavy'};
+// @ts-expect-error a whip pan is a transition, not a camera move
+export const whip: CameraMove = {move: 'whip', at: 3};
 export const kit: Kit = {name: 'plain', story: {motion: ['cameraSpeed'], compile: () => ({hang: 1, draw: () => {}})}};
 export const seconds = (film: Film): number => film.total + film.moments().length + film.reading.length;
 export type Studio = typeof startStudio;

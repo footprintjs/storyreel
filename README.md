@@ -24,9 +24,9 @@ then:       one film → a version for every place it is posted: 16:9, 1:1, 4:5,
   too short to read is reported (or refused), and every film says how it was made.
 - **The same frames every time.** `frame(ctx, t)` is a pure function of time. Pixel pins catch any
   change that moves a pixel, so a film you approved stays the film you approved.
-- **Direct it like a director.** Camera words as data (`speed`, `cut`, `push`), a collection of
-  transitions to cut between shots, and a local studio where you scrub, play with the voice, and click a
-  drawing to find the line of the recipe that drew it.
+- **Direct it like a director.** Camera words as data (`speed`, `cut`, `push`), camera moves by name (a dolly
+  in, an orbit, a rack focus, a dutch angle, a freeze…), a collection of transitions to cut between shots, and a
+  local studio where you scrub, play with the voice, and click a drawing to find the line of the recipe that drew it.
 - **One film, every platform.** The same film renders as a YouTube video, a square feed post and a
   vertical Short or Reel — with a title band, captions burned in from the voice's own word times, and a
   crop that follows the action — or with caption files for players that show their own.
@@ -415,7 +415,7 @@ Each note carries its words (`note`) and exactly one camera word:
   by `zoom` (default 1.25), easing in (`seconds`, default 1) from the phrase `from` and out from `to`.
   The picture always covers the frame; guess cards stay where they are. A push stays on one picture:
   one that runs across a hand-over, an entrance, a cut, the push-in or the teaser refuses, and so does
-  one over a spotlight or another push — one camera move at a time.
+  one over a spotlight, a kit's own camera move (`cameraMoves`) or another push — one camera move at a time.
 
 The film returns the notes as applied (`film.notes`: what each one changed, and when), and the
 making-of record lists them.
@@ -698,7 +698,8 @@ strategy says HOW, so the same film can be shown another way by changing one wor
 
 - **Focus strategies** (`footprint-storyreel/attention` · `FOCUS`): `camera` eases the camera to frame the named
   thing (medium, close, insert — as a director's push; `"wide"` is the whole frame), `spotlight` darkens the rest,
-  `dim` veils the rest in the paper, `none`. A camera focus and the director's push notes cannot share the camera.
+  `dim` veils the rest in the paper, `none`. A camera focus and the director's push notes cannot share the camera,
+  and the recipe's camera moves take turns with a moving focus ([Camera moves by name](#camera-moves-by-name)).
   `safe` keeps framed things where captions cannot cover them (`[0, 0, 1600, 700]` above burned-in captions).
   Strategies compose: `"strategy": ["camera", "dim"]` moves the camera and veils the rest of its view.
 - **Emphasis strategies** (`EMPHASIS`): `pop` lands the words big on their beat and settles them into a label in
@@ -708,6 +709,8 @@ strategy says HOW, so the same film can be shown another way by changing one wor
 - **Every move is a spring** (`footprint-storyreel/motion`): named feels — `snappy`, `default`, `heavy` (cameras),
   `playful` (pops) — or `{k, d}`; `spring(t, feel)`, `pop(t, at)`, and `track(t, keys)` for a value with many
   targets (one spring per change, so it never jumps). Kits use the same functions for their own motion.
+  `settleTime(feel)` is how long a feel's spring takes to arrive (within half a percent: `heavy` about 0.8 s) —
+  when a move on that feel stops moving, which is how the camera's moves know when a moving focus has settled.
 - **Drawn on twos** (`heldTime(t, 'twos')`): a hand-drawn cartoon holds each drawing for two frames while its camera
   moves on every frame; a figure that changes on every frame slides like a puppet. A kit works out everything about
   a figure (its pose, its place, its mouth) from `heldTime(t)` and leaves the camera and the room on `t`. Timings:
@@ -751,6 +754,123 @@ strategy says HOW, so the same film can be shown another way by changing one wor
   ctx.save(); ctx.translate(p.x, y); ctx.scale(squash, 1); ctx.translate(-p.x, -y);
   (view ? drawSide : drawFront)(ctx, t, p); ctx.restore();
   ```
+
+## Camera moves by name
+
+Directors and prompt guides name camera work — *dolly in on the shepherd*, *a slow orbit*, *rack focus to the
+hills*, *a dutch angle as it goes wrong* — and naming it gets the effect. A recipe says the same in its `camera`
+list: each move by name, on a beat (or at seconds on the film's clock), easing by a curve or a spring feel. The
+film places every move, checks it against the rest of the film, and says in its record how each one was played.
+
+```json
+"camera": [
+  {"move": "dolly-in", "at": ["farm", "shepherd"], "until": ["farm", "his sheep"], "on": "shepherd", "amount": 1.4},
+  {"move": "orbit", "at": ["farm", "at the gate"], "seconds": 2, "amount": 140},
+  {"move": "rack-focus", "at": ["farm", "the hills"], "from": "shepherd", "on": "hills"},
+  {"move": "dutch", "at": ["turn", "something is wrong"], "amount": 6, "feel": "heavy"}
+]
+```
+
+The moves (`footprint-storyreel/camera` · `CAMERA_MOVES`), a catalog like the transitions':
+
+| family | move | what it does | settings (default) | length |
+|---|---|---|---|---|
+| view | `pan` | the camera looks across the picture (at most 600 px from the middle) | `amount`: px, + right (240) | 2 s |
+| | `tilt` | it looks up or down (at most 337 px from the middle) | `amount`: px, + down (140) | 2 s |
+| | `dolly-in` | it moves closer, toward a named thing as far as the picture's edges allow | `amount`: times closer (1.3); `on`: a named thing (none: where it looks) | 2 s |
+| | `dolly-out` | it moves back, never past the whole frame, recentring as it goes | `amount` (1.3); `on` | 2 s |
+| | `crane` | it rises (or descends) and comes a little closer | `amount`: px it rises, − descends (120); `scale` (1.12) | 2.5 s |
+| | `dutch` | the frame rolls to an angle; 0 levels it again | `amount`: degrees, + clockwise (8) | 1.5 s |
+| follow | `truck` | it follows a named thing sideways | `on` (required) | 2 s |
+| | `track` | it follows a named thing wherever it goes | `on` (required) | 2 s |
+| depth | `orbit` | it circles the subject: what is behind slides one way, what is in front the other, the nearer the more | `amount`: px a layer infinitely far would slide; a layer at depth d slides `amount × (1 − 1/d)` (120) | 3 s |
+| | `dolly-zoom` | the subject keeps its size while the background grows behind it | `amount` (0.35; − gives it back) | 3 s |
+| | `rack-focus` | the focus pulls from one layer to another; the rest goes soft by its distance from the focus | `on` (required), `from`, `amount`: px of blur (8) | 1.5 s |
+| texture | `handheld` | a small, slow drift, the same every time for its `seed` | `amount`: px (6), `seed` (1) | to the film's end |
+| time | `speed-ramp` | the picture runs slow in the middle and makes the time up on either side: in step with the voice at both ends | `amount`: its speed half way (0.3) | 2 s |
+| | `freeze` | the picture holds while the voice goes on, then jumps to where the voice is | – | 1.5 s |
+
+- **When and how it eases.** `at` is a beat or seconds; `until` a beat or seconds, or `seconds` its length (left
+  out: the move's own; with a `feel`, the time its spring takes to settle). `ease` names a curve from the ease table or writes one (`cubic-bezier(…)`)
+  (`inOut` by default); `feel` a spring (`heavy`, `snappy`… or `{k, d}`), fitted to the move's seconds. A time or
+  texture move takes neither. List the moves in the order they start. A whip pan is a transition between two shots,
+  not a move inside one: `{"move": "whip"}` refuses and says to write `"enter": "whip"`.
+- **The frame stays covered.** There is nothing past the picture's edge, so a move never uncovers it: a pan at the
+  whole frame, a dutch angle or a follow scales the picture up just enough (the record says how far: `covers`). The
+  zoom it needs grows as the camera looks away from the middle — `800 / (800 − px)` across, `450 / (450 − px)` up or
+  down: a pan of 240 px from the middle needs ×1.43, of 600 px ×4 — so the camera looks at most 600 px across and
+  337 px up or down from the middle, whatever the `amount` ranges allow (they are for a camera already moved). A dolly
+  keeps the zoom it asks for, times the zoom on screen as it starts (a pan's or a dutch's included: a dolly is always a
+  change of what the viewer sees), and goes toward its thing only as far as the edges allow, as a push note does; it
+  then stays on the thing's place in the picture, so a push or the focus that moves the picture under the camera
+  later does not leave it framing an empty spot (a thing that walks away is followed by a `truck` or a `track`). A
+  move past ×4 refuses, whether it needs that to cover the frame or dollies stack up to it. Every move's framing is a
+  pure function of time.
+- **Depth.** A world gives its layers a depth: `layers: [{name, depth}]`, back to front, and `drawLayer(ctx, t, name,
+  spot)`, which draws one layer on a clear sheet (all of them, in order, draw what `draw` does). The depth is how far
+  the layer is from the camera, as a multiple of the subject's distance: **1 is the subject's plane**, 2 twice as far,
+  0.5 half way to the camera. An orbit slides each layer by `amount × (1 − 1/depth)`; a dolly zoom scales it by
+  `(1 + amount) × depth / (depth + amount)`; a rack focus blurs it by its distance from the focused plane, `|1/depth −
+  1/focused|` (a lens's circle of confusion). The farthest layer is scaled just enough to keep covering the frame. A
+  world's first rack focus starts with everything sharp: over its first third the depth of field narrows on `from`,
+  then the focus pulls to `on`; a later one starts where the last ended (`from` may be left out). A depth move on
+  paper, or on a world with no layers, refuses, naming what to add. **Cost:** a moved world draws each layer on its
+  own sheet (a plain 1080p frame of a three-layer world: about 3 ms; layered, about 8 ms), and a blur is made on a
+  copy at 1/k of the size (k about blur ÷ 1.5, at most 8; a blur under half a pixel is not drawn): a held rack focus
+  costs about 10–20 ms a 1080p frame on a laptop (a full-size blur cost about 60).
+- **One picture, one camera.** A move (handheld aside) stays on one picture: one that runs across a hand-over, an
+  entrance, a cut, the push-in or the teaser refuses, as a push does. Its framing holds until the picture changes,
+  then eases back to the whole frame over the change (at a cut, at once), so every new picture opens wide. A film has
+  one camera: a move cannot run while a moving focus (the `camera` strategy, from each key until its spring settles),
+  a push note (while it eases in or out), a world's spotlight or a world's own camera moves it (a kit says when its
+  camera moves with `cameraMoves: [{from, to}]`: the cartoon kit's `camera` keys do — a push note takes turns with
+  them too), and two moves cannot move the same thing at once (a pan and a dutch may). They take turns, and they compose: the push moves the picture, the focus frames it, and the camera's
+  moves are the outermost lens, so a dolly in after the focus has framed a thing pushes in on that framing; handheld
+  drifts over everything. The picture keeps its own clock under a freeze or a speed ramp, and so do the depth moves;
+  the push, the focus, the camera, the held layers, the guess cards and the words keep the voice's.
+- **Reduced motion.** `compileFilm({…, reducedMotion: true})` (and `makeFilm`) is the version for a viewer who asks
+  for less motion: each move cuts to its end framing on its first moment (a truck or track at its last, where its
+  thing then is), the return over a change cuts at its start, handheld is off, a speed ramp plays in step and a
+  freeze is kept — a still is not motion. It changes only these camera moves: a moving focus, the push notes, a kit's
+  own camera and spotlights, the transitions and everything a kit animates play as written (give a reduced-motion
+  version its own recipe for those). A film without camera moves is the same either way; one with them carries
+  `reducedMotion: true` in its inputs, so an approval of the moving film does not cover it.
+- **The record.** The plan is a footprintjs flowchart — read moves, one picture, one camera, a `decide()` on reduced
+  motion, cuts or moves, aim — so `film.camera` says how the film was played and why: `motion` (`moves` or `cuts`),
+  `decision` (the rule and its evidence), each move as placed (`at`, `until`, its settings, `played`: `move`, `cut`,
+  `off` or `kept`, `covers`, `lasts`, and `ends`: the framing it resolved to, `{x, y, z, r}`, with a hash of the path
+  for a follow — so an edit under it, a push a dolly aims through, changes the record and the keys) and the plan's
+  narrative. `film.cameraAt(t)` is the framing at t (`{x, y, z,
+  r}`: the point it centres, the zoom, the roll), the making-of record keeps `camera`, the compile record writes
+  `camera.camera[i]`, and a cached segment's key holds the moves that reach it, so changing one redraws only those.
+  A film without `camera` draws exactly the frames it drew before (the pixel pins hold).
+
+`node examples/camera.mjs` makes the film above and its reduced-motion version and writes stills of both:
+
+```js
+import {writeFileSync} from 'node:fs';
+import {compileFilm, evenTimings, contactSheet} from 'footprint-storyreel';
+
+const storyboard = {scenes: [{id: 'farm', narration: 'The shepherd counts his sheep at the gate, and the hills go quiet behind him.'}]};
+const paint = {hills: c => { c.fillStyle = '#9cc29a'; c.fillRect(0, 0, 1600, 900); },
+  shepherd: c => { c.fillStyle = '#8a5a2b'; c.fillRect(700, 380, 200, 420); },
+  gate: c => { c.fillStyle = '#5b4636'; for (let x = 1100; x < 1560; x += 70) c.fillRect(x, 560, 26, 340); }};
+const farm = {name: 'farm', story: {compile: () => ({hang: 1,
+  draw: c => Object.values(paint).forEach(layer => layer(c)),
+  layers: [{name: 'hills', depth: 6}, {name: 'shepherd', depth: 1}, {name: 'gate', depth: .6}],   // back to front
+  drawLayer: (c, t, name) => paint[name](c),
+  regionsAt: () => [{box: [700, 380, 900, 800], path: 'shepherd', label: 'the shepherd', name: 'shepherd'}],
+})}};
+const recipe = {story: {kit: 'farm'}, camera: [
+  {move: 'dolly-in', at: ['farm', 'shepherd'], until: ['farm', 'his sheep'], on: 'shepherd', amount: 1.4},
+  {move: 'orbit', at: ['farm', 'at the gate'], seconds: 2, amount: 140},
+  {move: 'rack-focus', at: ['farm', 'the hills'], from: 'shepherd', on: 'hills'},
+]};
+const film = await compileFilm({storyboard, timings: evenTimings(storyboard), recipe, kits: [farm]});
+console.log(film.camera.moves.map(m => `${m.move} at ${m.at} s: ${m.played}`));   // dolly-in at 0.68 s: move, …
+writeFileSync('camera.png', await contactSheet(film, {moments: [1, 2.5, 4.5, 6.5].map(t => ({t, label: `${t} s`}))}));
+// reducedMotion: true → each move a cut on its first moment: film.camera.motion === 'cuts'
+```
 
 ## Moves: motion asked for by name
 
@@ -896,7 +1016,8 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   picture as text — every line a frame draws, where it lands and how faint — and names what is wrong, with times:
   words under the captions while a caption shows, words over other words, words cut off at the edge, the picture
   frozen for 5 s (`still`), nothing new for 5 s while it moves (`stale`: no scene, no beat and no new words —
-  `newEvery`), and — with `loop: true`, for a part made to loop — an end that does not come round to its start (the
+  `newEvery`), a camera freeze over the voice (`frozen-voice`: the voice names a drawing while the picture is held, or
+  a mouth stays still while its speaker talks), and — with `loop: true`, for a part made to loop — an end that does not come round to its start (the
   part's own scenes, not its handles: its last moment against its first, as the eye takes them in and word for word).
   Motion that steps rather than runs (a flipbook, a blink, a part drawn on twos) is read one drawing short of coming
   round, so such a loop reads as a jump even when it loops cleanly: look at a strip of the seam before changing it.
@@ -1115,6 +1236,9 @@ const myKit = {name: 'cartoon', story: {
       spotAt(t) { return null; },             // optional spotlight {cx, cy, r, zoom, w}
       regionsAt(t) { return []; },            // optional, for the studio: [{box: [x0, y0, x1, y1] on the sheet, path: 'items[3]', label, name?}]
                                               // a `name` ('robot') is what a director's push can frame: {on: 'robot', size: 'close'}
+      layers: [{name: 'sky', depth: 8}, {name: 'hero', depth: 1}],  // optional, back to front: what a camera's orbit,
+      drawLayer(ctx, t, name, spot) { },      //   dolly-zoom and rack-focus move by depth (see Camera moves by name)
+      cameraMoves: [{from: 4.2, to: 5.8}],    // optional: when the kit's own camera moves (seconds): pushes and camera moves take turns with it
       texts() { return []; },                 // optional, for the reading check: [{text, from, to, path}]
       sounds: [{time: clock.at(['story', 'But wait']), type: 'chime'}],
     };
@@ -1272,11 +1396,12 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 
 | import | what it does |
 |---|---|
-| `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?, hostKeys?, record?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `reading`, `shots` (each shot's intent, facts and moments), `watching`, `rows` (the rows of pictures segments are planned from), `moments()`, `regionsAt(t)`, `pointAt(t, x, y)`, `posterAt`, `theme`; with `record: true`, `record` (the compile as a footprintjs run) |
+| `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?, hostKeys?, record?, reducedMotion?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `camera` and `cameraAt(t)` (the camera moves as played), `reading`, `shots` (each shot's intent, facts and moments), `watching`, `rows` (the rows of pictures segments are planned from), `moments()`, `regionsAt(t)`, `pointAt(t, x, y)`, `posterAt`, `theme`; with `record: true`, `record` (the compile as a footprintjs run) |
 | `renderFilm({film, storyboard, timings, narrationDir?, out, width?, height?, fps?, intro?, stamp?, from?, to?, poster?, loudness?, layout?, motionBlur?, captionFiles?, quality?, video?})` | the MP4 (FFmpeg), its chapters (one per titled scene), its poster, its loudness (two passes); a version for a platform, motion blur, caption files; the picture in one pass or in cached segments |
 | `compileLayout(film, layout)` · `FORMAT_NAMES` | a format's picture and bands, drawn at any t (`footprint-storyreel/layout` adds `formatOf`, `cropWindow`) |
 | `spokenTracks(film)` | the film's speech as tracks: chunk them with footprint-narration's `captionChunks`, write files with its `captionFile` (`footprint-storyreel/captions` adds `drawCaption`) |
 | `TRANSITIONS` · `TRANSITION_NAMES` · `transitionCatalog(kits)` · `transitionSheet({catalog?, moments?, width?})` | the transitions a shot can enter with, a kit's own added, on one PNG (`footprint-storyreel/transitions` adds `readEntrance`, `ghostPainter`) |
+| `CAMERA_MOVES` · `CAMERA_MOVE_NAMES` | the camera moves a recipe's `camera` names (`footprint-storyreel/camera` adds `readCameraMove`, `coverZoom`, `covered`, `viewOf`, `aimAt`, `speedRamp`, `handheldAt`, `layersAt`, `REST`, `MAX_ZOOM`) |
 | `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?})` | compile + render as a footprintjs pipeline, with `making-of.json` (a segmented render: one subflow per segment) |
 | `approveFilm({record, by, note?})` · `checkApproval(approval, inputs)` | the approval lock: approve a watched render from its making-of.json, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
 | `checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})` · `FINISHED_CHECK_NAMES` | checks on the finished file: lengths, blank runs, flash frames, hand-overs and joins, the voice, captions (`footprint-storyreel/finished` adds `ffmpegProbe`, `FINISHED_CHECKS`, `FINISHED`) |
@@ -1296,7 +1421,7 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/camera`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws
@@ -1305,7 +1430,7 @@ TypeScript types ship with the package: the main entry, `/studio`, and the docum
 2. **Phrases, not seconds.** Pictures follow the voice; change the voice and the film follows. Seconds appear only where the storyboard declares a silent scene, as each direction's length.
 3. **Pure function of time.** `frame(ctx, t)` draws any moment in any order, the same way every time.
 4. **Every frame restores the canvas**: no leaked transform, alpha, compositing, shadow, filter or clip (the test fills the whole frame after each one and reads its corners).
-5. **One focal point at a time**: speech is a bubble, data is a pill, the old stage leaves before the new one arrives, one camera move at a time.
+5. **One focal point at a time**: speech is a bubble, data is a pill, the old stage leaves before the new one arrives, one camera: its moves take turns with the focus, the pushes and the spotlights.
 6. **Long enough to read.** A line meant to be read stays up about 0.3 s a word.
 7. **Said in words, shown in digits.** A number the voice reads is a say slot; a word the voice did not say is caught by listening back, not by alignment.
 8. **Notes change the camera, never the beats.** Every note says what was asked; one the film cannot honour refuses.
