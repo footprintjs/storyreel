@@ -283,7 +283,7 @@ On the later list: the verbs `say` and `replay` (clips cover replay), and the wa
 - the whole group leaves when the next unit arrives on its swap layer;
 - a stagger gap shorter than the entrance is refused — between the **members of a repeat group** only (below).
 
-**Stagger at two scopes (owner ruling, 2026-10-13).** Both rules hold, each at its own scope:
+**Stagger at two scopes (decided for the library, 2026-10-13).** Both rules hold, each at its own scope:
 - **Inside one item, a cascade may overlap.** A move that splits its item (`moves.mjs` · a move's `split` and `gap`: the
   words of one line, the letters of one word) staggers the pieces of ONE item, and spacing them closer than each
   piece's entrance is the point (0.09 s between words, each word 0.45 s): the reader reads a line, not its words one

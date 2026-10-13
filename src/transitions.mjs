@@ -43,7 +43,7 @@
 import {createCanvas} from '@napi-rs/canvas';
 import {easeNamed, overshoots, EASES} from './ease.mjs';
 import {SOUND_NAMES} from './sound.mjs';
-import {readMove, moveAt, applyMove, MOVES, MOVE_NAMES} from './moves.mjs';
+import {readMove, moveAt, applyMove, MOVES, MOVE_NAMES, REST} from './moves.mjs';
 
 const W = 1600, H = 900;
 const DIRECTIONS = Object.freeze(['left', 'right', 'top', 'bottom']);
@@ -313,20 +313,66 @@ function readMoveEntrance(e, where) {
   if (e.feel !== undefined) { try { moveAt(move, 0, {feel: e.feel}); } catch (err) { throw new Error(`${where}: enter.feel: ${err.message.replace(/^moveAt: /, '')}`, {cause: err}); } }
   const sound = e.sound === false ? null : e.sound ?? null;
   if (sound !== null && !SOUND_NAMES.includes(sound)) throw new Error(`${where}: enter.sound must be false or a sound: ${SOUND_NAMES.join(', ')} (not ${JSON.stringify(sound)})`);
-  const p = Object.freeze({move, seconds, feel: e.feel ?? null, start: Object.freeze(moveAt(move, 0))});
+  const feel = e.feel ?? null;
+  const p = Object.freeze({move, seconds, feel, start: Object.freeze(moveAt(move, 0)), restAt: restMoments(move, seconds, feel)});
   return {type: 'move', move: move.name, seconds, lead: seconds * .75, ease: EASES.linear, sound, p, draw: drawMove, regions: null, names: [], at: [800, 450]};
+}
+
+/**
+ * How near its rest a property must come to count as there: a quarter of a frame pixel for x and y, the same at the
+ * frame's edge for a turn, a scale and a clip, half a step of 8-bit colour for opacity, a twentieth of a pixel of blur.
+ */
+const NEAR = Object.freeze({x: .25, y: .25, rotate: .25 / 918 * 180 / Math.PI, scale: .25 / 800, clip: .25 / 800, opacity: 1 / 512, blur: .05});
+const HELD = Object.freeze(Object.keys(NEAR));
+
+/**
+ * When each property of a move entrance first reaches its rest — u, 0..1 through the change (0: it starts there; 1: only
+ * at the end) — worked out once, when the entrance is read, so the guard stays a pure function of time. The move is
+ * sampled 2000 times over the change; a crossing is narrowed by bisection, and a touch between two samples (a bounce's
+ * landing) by closing in on the nearest approach.
+ */
+function restMoments(move, seconds, feel) {
+  const N = 2000, at = u => moveAt(move, u * seconds, {seconds, ...(feel === null ? {} : {feel})});
+  const samples = Array.from({length: N + 1}, (_, i) => at(i / N)), out = {};
+  for (const prop of HELD) {
+    const rest = REST[prop], side = Math.sign(samples[0][prop] - rest);
+    // How far from rest, on the side the move starts (at or below NEAR: there, or past it).
+    const gap = u => (at(u)[prop] - rest) * side, gapAt = i => (samples[i][prop] - rest) * side;
+    out[prop] = side === 0 ? 0 : firstNear(gap, gapAt, N, NEAR[prop]);
+  }
+  return Object.freeze(out);
+}
+/** The first u at which gap comes within `near` of 0 (1 if it never does before the end). */
+function firstNear(gap, gapAt, N, near) {
+  for (let i = 1; i <= N; i++) {
+    if (gapAt(i) <= near) return narrowed(gap, (i - 1) / N, i / N, near);
+    if (i < N && gapAt(i) < gapAt(i - 1) && gapAt(i) <= gapAt(i + 1)) {
+      let a = (i - 1) / N, b = (i + 1) / N;   // the nearest approach lies between the two neighbours: close in on it
+      for (let k = 0; k < 60; k++) { const m1 = a + (b - a) / 3, m2 = b - (b - a) / 3; if (gap(m1) <= gap(m2)) b = m2; else a = m1; }
+      if (gap((a + b) / 2) <= near) return narrowed(gap, (i - 1) / N, (a + b) / 2, near);
+    }
+  }
+  return 1;
+}
+/** Where gap first comes within `near` between lo (not yet) and hi (there), by bisection. */
+function narrowed(gap, lo, hi, near) {
+  for (let k = 0; k < 50; k++) { const mid = (lo + hi) / 2; if (gap(mid) <= near) hi = mid; else lo = mid; }
+  return hi;
 }
 
 /** v, held between a start value and the rest value (whichever way round they are). */
 const between = (v, start, rest) => Math.min(Math.max(v, Math.min(start, rest)), Math.max(start, rest));
 /**
- * The edge guard: the old picture shows only where the move's own start shows it. A picture moving in never goes
- * past its place on the far side (an overshooting curve would open a sliver of the old picture at the other edge),
- * never turns past its rest, and never grows smaller than it started or than the frame (one that starts larger than
- * the frame, a slam, stays covering it). Overshoot that only covers more — a pop growing past full size — stays.
+ * The edge guard: the old picture shows only where the move's own start shows it, and only until the move has
+ * brought the new picture to its place. On its way in, a picture never goes past its place on the far side, never
+ * turns past its rest, and never grows smaller than it started or than the frame; once a property first reaches its
+ * rest (restAt, u through the change) it is held there — a picture never bounces or wobbles back off its place, so the
+ * old picture never reappears. Growth past full size only covers more, so a pop still swells past it and settles.
  */
-function edgeGuarded(v, start) {
-  return {...v, x: between(v.x, start.x, 0), y: between(v.y, start.y, 0), rotate: between(v.rotate, start.rotate, 0), scale: Math.max(v.scale, Math.min(start.scale, 1))};
+function edgeGuarded(v, u, {start, restAt}) {
+  const out = {...v, x: between(v.x, start.x, 0), y: between(v.y, start.y, 0), rotate: between(v.rotate, start.rotate, 0), scale: Math.max(v.scale, Math.min(start.scale, 1))};
+  for (const prop of HELD) if (u >= restAt[prop]) out[prop] = prop === 'scale' ? Math.max(v.scale, REST.scale) : REST[prop];
+  return out;
 }
 
 /**
@@ -336,34 +382,43 @@ function edgeGuarded(v, start) {
  */
 function drawMove(ctx, {e, from, to, p, ghost}) {
   from(ctx);
-  const v = edgeGuarded(moveAt(p.move, e * p.seconds, {seconds: p.seconds, ...(p.feel === null ? {} : {feel: p.feel})}), p.start);
+  const v = edgeGuarded(moveAt(p.move, e * p.seconds, {seconds: p.seconds, ...(p.feel === null ? {} : {feel: p.feel})}), e, p);
   if (!(v.opacity > 0 && v.clip > 0 && v.scale > 0)) return;
   if (v.blur > 0) { blurred(ctx, v, to); return; }
-  ghost(v.opacity, c => placed(c, v, to, 0));
+  ghost(v.opacity, c => placed(c, v, to));
 }
 
-/** The arriving picture, placed by the move's values (opacity and blur are the caller's), clipped to the frame grown by `pad` frame pixels a side. */
-function placed(c, v, to, pad) {
-  c.save(); c.beginPath(); c.rect(-pad, -pad, W + 2 * pad, H + 2 * pad); c.clip();
+/** The arriving picture, placed by the move's values (opacity and blur are the caller's), clipped to the frame. */
+function placed(c, v, to) {
+  c.save(); c.beginPath(); c.rect(0, 0, W, H); c.clip();
   if (applyMove(c, {...v, opacity: 1, blur: 0})) to(c);
   c.restore();
 }
 
 /**
- * A blurred picture, blurred whole: drawn into a scratch picture with a margin of three blurs a side, a little larger
- * (by that margin) so it fills the margin too, then laid over ctx through the blur and clipped to the frame — so the
- * frame's edge blurs into the picture's own colours, never into the old picture. The scratch picture is kept per canvas
- * (and goes with it). ctx's transform must be a scale and a move, as the film's always is.
+ * A blurred picture, blurred whole: drawn exactly where it is into a scratch picture with a margin of three blurs a
+ * side, the margin filled with the picture's own edge rows and columns stretched out (the way a graphics card clamps
+ * a texture to its edge), then laid over ctx through the blur and clipped to the frame — so the frame's edge blurs into
+ * the picture's own colours, never into the old picture, and nothing moves when the blur ends. The scratch picture is
+ * kept per canvas (and goes with it). ctx's transform must be a scale and a move, as the film's always is.
  */
 const scratches = new WeakMap();
 function blurred(ctx, v, to) {
-  const m = ctx.getTransform(), k = Math.abs(m.a), radius = v.blur * k, pad = Math.ceil(3 * radius), padFrame = pad / k;
-  const w = Math.ceil(W * k) + 2 * pad, h = Math.ceil(H * Math.abs(m.d)) + 2 * pad;
+  const m = ctx.getTransform(), kx = Math.abs(m.a), ky = Math.abs(m.d), radius = v.blur * kx, pad = Math.ceil(3 * radius);
+  const fw = Math.max(1, Math.floor(W * kx)), fh = Math.max(1, Math.floor(H * ky)), w = Math.ceil(W * kx) + 2 * pad, h = Math.ceil(H * ky) + 2 * pad;
   let scratch = scratches.get(ctx.canvas);
   if (!scratch || scratch.width !== w || scratch.height !== h) scratches.set(ctx.canvas, scratch = createCanvas(w, h));
   const sc = scratch.getContext('2d');
   sc.resetTransform(); sc.clearRect(0, 0, w, h); sc.setTransform(m.a, 0, 0, m.d, pad, pad);
-  placed(sc, {...v, scale: v.scale * (1 + 2 * padFrame / H)}, to, padFrame);
+  placed(sc, v, to);
+  if (pad > 0) {
+    sc.resetTransform(); sc.imageSmoothingEnabled = false;
+    sc.drawImage(scratch, pad, pad, 1, fh, 0, pad, pad, fh);                                   // the left column, out to the left
+    sc.drawImage(scratch, pad + fw - 1, pad, 1, fh, pad + fw, pad, w - pad - fw, fh);          // the right one (over any part-pixel column)
+    sc.drawImage(scratch, 0, pad, w, 1, 0, 0, w, pad);                                         // the top row, corners and all, up
+    sc.drawImage(scratch, 0, pad + fh - 1, w, 1, 0, pad + fh, w, h - pad - fh);                // the bottom row, down
+    sc.imageSmoothingEnabled = true;
+  }
   ctx.save();
   ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
   ctx.globalAlpha *= v.opacity; ctx.filter = `blur(${+radius.toFixed(3)}px)`;

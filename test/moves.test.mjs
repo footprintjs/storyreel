@@ -244,36 +244,55 @@ test('in a film: a shot enters with a move, from the old picture to exactly the 
   assert.deepEqual(pixel(own, own.clock.start('b') - .375 + .01, 100, 450), RED, 'a move of the recipe\'s own, as data: the new picture still to the right');
 });
 
-test('a move entrance shows the old picture only where the move\'s own start shows it — never past the frame\'s edge — and ends on the new one exactly', () => {
-  // The old picture is a sentinel colour: wherever the move's start does not open the frame, none of it may show.
+/**
+ * When a move first brings a whole picture to its place — every property that moves its edges (x, y, turn, scale, clip)
+ * at rest, each for the first time — found by scanning the move itself, independently of the entrance's own reckoning.
+ */
+function coversAt(name, feel) {
+  const NEAR = {x: .1, y: .1, rotate: .005, scale: 1e-4, clip: 1e-4}, start = moveAt(name, 0), seconds = MOVES[name].seconds, first = {};
+  for (let i = 0; i <= 8000 && Object.keys(first).length < 5; i++) {
+    const v = moveAt(name, i / 8000 * seconds, feel === undefined ? {} : {feel});
+    for (const [prop, near] of Object.entries(NEAR)) if (!(prop in first) && (v[prop] - REST[prop]) * Math.sign(start[prop] - REST[prop]) <= near) first[prop] = i / 8000;
+  }
+  return Math.max(...Object.keys(NEAR).map(prop => first[prop] ?? 1));
+}
+
+test('a move entrance shows the old picture only where the move\'s own start shows it, and only until the new one is in place — never past the frame\'s edge, never again after', () => {
+  // The old picture is a sentinel colour: wherever the move's start does not open the frame, none of it may show; once
+  // the new picture has first reached its place, none of it may show anywhere at the edge (a pop's dip after its swell,
+  // a bouncy picture swinging back toward where it came from).
   const SENTINEL = [255, 0, 255], NEW = [0, 0, 255], solid = ([r, g, b]) => c => { c.fillStyle = `rgb(${r},${g},${b})`; c.fillRect(0, 0, 1600, 900); };
-  // The middle of each edge (an edge's ends may lie in the band another edge's offset opens).
-  const EDGES = {left: [[0, 112]], right: [[399, 112]], top: [[200, 0]], bottom: [[200, 224]]};
+  // The middle of each edge (an edge's ends may lie in the band another edge's offset opens), and once in place the corners.
+  const EDGES = {left: [[0, 112]], right: [[399, 112]], top: [[200, 0]], bottom: [[200, 224]]}, CORNERS = [[0, 0], [399, 0], [0, 224], [399, 224]];
   const pictureMoves = MOVE_NAMES.filter(n => { try { readEntrance({move: n}, 'test'); return true; } catch { return false; } });
   assert.equal(pictureMoves.length, 12);
+  assert.ok(coversAt('pop') < .3 && coversAt('bounce-landing') < .4 && coversAt('fade-slide', 'bouncy') < .3, 'the swell, the bounces and the swing come after the picture is first in place');
   for (const name of pictureMoves) for (const feel of [undefined, 'bouncy', {k: 400, d: 6}]) {
     const en = readEntrance(feel === undefined ? {move: name} : {move: name, feel}, 'test'), s = en.p.start, label = `${name}${feel ? ` on ${JSON.stringify(feel)}` : ''}`;
     // The edges the start opens: the side its offset leaves bare; every side when it starts smaller, turned or masked.
-    const open = new Set(s.scale < 1 || s.rotate !== 0 || s.clip < 1 ? Object.keys(EDGES) : [...(s.x > 0 ? ['left'] : s.x < 0 ? ['right'] : []), ...(s.y > 0 ? ['top'] : s.y < 0 ? ['bottom'] : [])]);
-    for (let i = 0; i <= 40; i++) {
-      const e = i / 40, c = createCanvas(400, 225), ctx = c.getContext('2d'), ghost = ghostPainter();
+    const opening = new Set(s.scale < 1 || s.rotate !== 0 || s.clip < 1 ? Object.keys(EDGES) : [...(s.x > 0 ? ['left'] : s.x < 0 ? ['right'] : []), ...(s.y > 0 ? ['top'] : s.y < 0 ? ['bottom'] : [])]);
+    const covered = coversAt(name, feel);
+    for (let i = 0; i <= 80; i++) {
+      const e = i / 80, c = createCanvas(400, 225), ctx = c.getContext('2d'), ghost = ghostPainter(), inPlace = e > covered, open = inPlace ? new Set() : opening;
       ctx.scale(.25, .25);
       en.draw(ctx, {e, from: solid(SENTINEL), to: solid(NEW), p: en.p, ghost: (alpha, paint) => ghost(ctx, alpha, paint), theme: null, boxes: {from: {}, to: {}}});
       const px = (x, y) => [...ctx.getImageData(x, y, 1, 1).data], centre = px(200, 112);
       for (const [edge, points] of Object.entries(EDGES)) if (!open.has(edge)) for (const [x, y] of points) {
         const p = px(x, y);
-        assert.ok(p[3] === 255 && p.slice(0, 3).every((v, j) => Math.abs(v - centre[j]) <= 6), `${label} at ${e}: the old picture shows at the ${edge} edge (${p} against the middle's ${centre})`);
+        assert.ok(p[3] === 255 && p.slice(0, 3).every((v, j) => Math.abs(v - centre[j]) <= 6), `${label} at ${e}${inPlace ? `, in place since ${covered}` : ''}: the old picture shows at the ${edge} edge (${p} against the middle's ${centre})`);
       }
+      if (inPlace) for (const [x, y] of CORNERS) { const p = px(x, y); assert.ok(p.slice(0, 3).every((v, j) => Math.abs(v - centre[j]) <= 6), `${label} at ${e}, in place since ${covered}: the old picture shows at the corner (${x}, ${y}) (${p})`); }
       if (e === 0) assert.deepEqual(centre.slice(0, 3), SENTINEL, `${label} starts on the old picture`);
-      if (e === 1) for (const [x, y] of [[0, 0], [399, 0], [0, 224], [399, 224], ...Object.values(EDGES).flat(), [200, 112]]) assert.deepEqual(px(x, y).slice(0, 3), NEW, `${label} ends on the new picture at (${x}, ${y})`);
+      if (e === 1) for (const [x, y] of [...CORNERS, ...Object.values(EDGES).flat(), [200, 112]]) assert.deepEqual(px(x, y).slice(0, 3), NEW, `${label} ends on the new picture at (${x}, ${y})`);
       const m = ctx.getTransform();
       assert.ok(m.a === .25 && m.d === .25 && m.e === 0 && m.f === 0 && ctx.globalAlpha === 1 && ctx.filter === 'none', `${label} at ${e} restores the canvas`);
     }
   }
 });
 
-test('a blurred move entrance blurs the picture whole, at any size of canvas, the frame\'s edge into its own colours', () => {
-  const halves = c => { c.fillStyle = '#0000ff'; c.fillRect(0, 0, 800, 900); c.fillStyle = '#00ff00'; c.fillRect(800, 0, 800, 900); };
+test('a blurred move entrance blurs the picture whole, where it is, at any size of canvas, the frame\'s edge into its own colours', () => {
+  // Blue to the left of x = 400, green to the right: a seam off the middle, so a picture drawn larger would move it.
+  const halves = c => { c.fillStyle = '#0000ff'; c.fillRect(0, 0, 400, 900); c.fillStyle = '#00ff00'; c.fillRect(400, 0, 1200, 900); };
   const en = readEntrance({move: 'blur-in'}, 'test');
   for (const scale of [.25, .5, .1]) {
     const c = createCanvas(1600 * scale, 900 * scale), ctx = c.getContext('2d'), ghost = ghostPainter();
@@ -281,9 +300,9 @@ test('a blurred move entrance blurs the picture whole, at any size of canvas, th
     // Early on (e = 0.1) the picture is faint and still well blurred: 8.7 frame pixels.
     en.draw(ctx, {e: .1, from: c2 => { c2.fillStyle = '#ff0000'; c2.fillRect(0, 0, 1600, 900); }, to: halves, p: en.p, ghost: (alpha, paint) => ghost(ctx, alpha, paint), theme: null, boxes: {from: {}, to: {}}});
     const px = (x, y) => [...ctx.getImageData(Math.floor(x * scale), Math.floor(y * scale), 1, 1).data];
-    const seam = px(800, 450), left = px(400, 450), right = px(1200, 450);
-    assert.ok(seam[1] > left[1] + 10 && seam[1] < right[1] - 10, `at ${scale}: the halves blur into each other at the seam (${seam})`);
-    assert.ok(Math.abs(px(0, 450)[2] - left[2]) <= 6 && Math.abs(px(1599, 450)[1] - right[1]) <= 6, `at ${scale}: the frame's edges keep the picture's own colours`);
+    const left = px(150, 450), right = px(1200, 450), across = (px(400 - 1 / scale, 450)[1] + px(400, 450)[1]) / 2;
+    assert.ok(Math.abs(across - (left[1] + right[1]) / 2) <= .12 * (right[1] - left[1]), `at ${scale}: the seam is blurred and still at 400, exactly where the picture has it (${across} between ${left[1]} and ${right[1]})`);
+    assert.ok(Math.abs(px(0, 450)[2] - left[2]) <= 6 && Math.abs(px(1599, 450)[1] - right[1]) <= 6 && Math.abs(px(800, 0)[1] - right[1]) <= 6, `at ${scale}: the frame's edges keep the picture's own colours`);
   }
 });
 

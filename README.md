@@ -305,10 +305,14 @@ by default). The moves a whole picture can make are the entrances that fade, mov
 `blur-in`, `scale-in`, `drop-in`, `slam`; one that counts, draws or splits text needs the thing itself, and
 refuses, naming these. A move of the recipe's own is data too: `"enter": {"move": {"name": "drift-in", "kind":
 "entrance", "feel": "soft", "uses": ["ui"], "seconds": 0.5, "ease": "outQuint", "props": {"x": [400, 0]}}}`.
-The old picture shows only where the move's own start shows it: a picture that overshoots (a bouncy feel) never
-goes past its place on the far side, where a sliver of the old picture would open at the frame's edge; it never
-grows smaller than it started or than the frame (a `pop` growing past full size still does); and a blurred
-picture is blurred whole, its edge blurring into its own colours. No kit transition setting may be called `move`.
+The old picture shows only where the move's own start shows it, and only until the new picture is in place: on
+its way in a picture never goes past its place on the far side (where a sliver of the old picture would open at
+the frame's edge) and never shrinks below the frame unless it started smaller; once each property first reaches
+its rest it is held there, so a bouncy picture never swings back off its place and a `pop` never dips below full
+size after its swell (it still swells past full size: that only covers more). The moment each property arrives is
+worked out once, when the entrance is read, so every frame is still a pure function of time. A blurred picture is
+blurred whole and exactly where it is, its edge blurring into its own colours (its edge rows stretched out under
+the blur), so nothing moves when the blur ends. No kit transition setting may be called `move`.
 Films that do not name a move draw exactly as before.
 
 **Through a thing.** `through` and `match` go through something drawn in the pictures, named the way a
