@@ -297,7 +297,7 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
     const shown = (w, zoomed) => inside(w.box) >= (zoomed ? .5 * Math.max(1, (w.box[2] - w.box[0]) * (w.box[3] - w.box[1])) : 1e-6);
     // Text smaller than `minHeight` of the frame (1.1 %: 12 px at 1080) cannot be read: it is texture (a photo of a page), not reading.
     const legible = w => w.box[3] - w.box[1] >= minHeight * H;
-    review.samples = times.map(t => { const zoomed = (film.focusAt?.(t)?.z ?? 1) > 1.001; return {t, words: wordsAt(film, t, {layout: framed}).filter(w => w.alpha >= minAlpha && legible(w) && shown(w, zoomed))}; });
+    review.samples = times.map(t => { const zoomed = (film.focusAt?.(t)?.z ?? 1) > 1.001 || (film.cameraAt?.(t)?.z ?? 1) > 1.001; return {t, words: wordsAt(film, t, {layout: framed}).filter(w => w.alpha >= minAlpha && legible(w) && shown(w, zoomed))}; });
     // frameHashes keys a moment by its millisecond, and the film's end can sit a hair under its own (21.2999…97 is
     // 21.300): the hashes are keyed by each sample's own time, so a check reads hashes[t].
     const pictures = frameHashes(film, {times, width: 160});

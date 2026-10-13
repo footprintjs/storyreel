@@ -5,6 +5,8 @@ export const FEELS: Readonly<Record<FeelName, Readonly<Feel>>>;
 export const FEEL_NAMES: readonly FeelName[];
 /** A feel as given (a name or {k, d}), checked. */
 export function readFeel(feel?: FeelName | Feel): Feel;
+/** How long a feel's spring takes to come within `within` (0.005) of its end and stay (seconds): until then, a move on that feel is still moving. */
+export function settleTime(feel?: FeelName | Feel, options?: {within?: number}): number;
 /** A damped spring 0 → 1, t seconds after it starts (0 before); under-damped feels overshoot. */
 export function spring(t: number, feel?: FeelName | Feel): number;
 /** The scale of something arriving at `at`: 0 → 1 with the feel's overshoot (playful by default). */
