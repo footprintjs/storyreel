@@ -159,6 +159,10 @@
       "types": "./types/sub/transitions.d.ts",
       "default": "./src/transitions.mjs"
     },
+    "./breakdown": {
+      "types": "./types/sub/breakdown.d.ts",
+      "default": "./src/breakdown.mjs"
+    },
     "./package.json": "./package.json"
   },
   "types": "./types/index.d.ts",

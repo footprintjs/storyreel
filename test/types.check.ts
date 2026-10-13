@@ -264,3 +264,14 @@ export const springier: WalkStyle = readWalk({...WALKS.bouncy, bob: .06});
 export const walkNames: readonly string[] = WALK_NAMES;
 // @ts-expect-error a walk needs the figure's size
 walk({from: 0, to: 100, start: 0});
+
+// Breakdown (types/sub/breakdown.d.ts): a reference film as a spec; a beat map is any function that answers {bpm, beats, drop?}.
+import {breakdown, BREAKDOWN} from '../types/sub/breakdown.js';
+import type {BeatMap, BreakdownSpec} from '../types/sub/breakdown.js';
+const beats: BeatMap = async () => ({bpm: 120, beats: [0.5, 1], drop: null});
+export const brokenDown = breakdown('ref.mp4', {out: 'ref', beatMap: beats, thresholds: {cutJump: 15}}).then(r => r.spec.shots.map(s => `${s.motion.verdict} ${s.seconds}`));
+export const onBeat = (spec: BreakdownSpec): number => (spec.audio.beats.ran ? spec.audio.beats.onBeat : 0) + BREAKDOWN.onBeat;
+// @ts-expect-error a threshold is a number
+export const wordy = breakdown('ref.mp4', {thresholds: {cutJump: 'high'}});
+// @ts-expect-error a beat map answers its beats
+export const noBeats: BeatMap = () => ({bpm: 120});

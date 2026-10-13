@@ -890,6 +890,57 @@ first run of these checks found a bug in the renderer itself: FFmpeg's `-shortes
 frames early, so the last frames of every film were lost; the sound is now padded to the picture's exact
 length instead.
 
+## Break down a reference film
+
+A director who admires a film says "match this". An agent cannot watch it, but it can read numbers and look at
+contact sheets. `breakdown(videoFile)` (`footprint-storyreel/breakdown`) reads any MP4 once, small and grey, and writes
+down what a viewer would note: every cut and what kind it is, the shots and their lengths, the pacing, where the motion
+lives and whether the camera moves, which shots carry lettering, and — given a beat map — which cuts land on the beat.
+
+```js
+import {breakdown} from 'footprint-storyreel/breakdown';
+const {spec, text, files} = await breakdown('reference.mp4', {out: 'work/reference'});
+console.log(text);   // breakdown.md, in plain words:
+// | # | from | to | length | comes in by | motion | lettering |
+// | 4 | 0:04.8 | 0:06.8 | 2 s | hard cut | things move inside the frame | – |
+// | 5 | 0:06.8 | 0:08.8 | 2 s | hard cut | the camera pans right | – |
+// | 6 | 0:08.8 | 0:10.4 | 1.6 s | dip through one colour 0.8 s | still | yes |
+spec.shots[4].motion.why.rules[1].checks;   // ['pan 0.188 ≥ 0.02 ✓', 'explained 0.97 ≥ 0.5 ✓', 'share 1 ≥ 0.6 ✓']
+```
+
+`npx storyreel breakdown reference.mp4 --out work/reference` does the same from the command line; it needs no project.
+
+- **What it writes:** `breakdown.json` (the spec), `breakdown.md` (the same in plain words), a contact sheet per shot
+  (`shots/shot-01.png`: 3 to 6 stills across it, labelled in yellow when it moves), `overview.png` (one still of every
+  shot) and `record.json`.
+- **Cuts, and their kinds.** A hard cut is one frame whose change is a peak: 12 grey levels or more, and 3 times the
+  change of the frames around it. A flash (one frame unlike the frames either side, which are alike) is reported apart
+  and splits no shot. A stretch where the picture keeps changing is a **dip** (it fades to one colour and back), a
+  **fade-in** or **fade-out** (from or to one colour), or a **dissolve** (its middle frame is the even mix of its ends,
+  the change runs one way, and no shift of the whole picture explains it); anything else that changes is motion. A fade
+  that opens or closes the film splits no shot.
+- **Shots and pacing:** each shot's start, end and length and how it comes in (a dissolve's middle is the boundary);
+  the median and mean shot, the shortest and longest, cuts a minute. A shot of one colour all through (a slug of black,
+  a colour card) says so.
+- **Motion:** per shot, a 6 × 4 grid of where the picture changes, and a verdict: **still**; **camera** (the whole
+  picture shifts together, found from the row and column means, and most of the frame changes at once; it says which
+  way the camera pans or tilts); or **inside** (things move while the frame holds). The film's motion every 0.5 s is
+  in `spec.motion.curve`.
+- **Lettering is a heuristic, and says so:** rows of sharp strokes, as lettering makes. It never reads the words (no OCR).
+- **Beats.** `beatMap(audioFile) → {bpm, beats: [seconds], drop?}` is handed the video's sound as a WAV (in a folder
+  removed after), and the spec reports the BPM, the beats, the drop and the shot on screen there, and which cuts land
+  within 0.1 s of a beat. Without a beat map, or without sound, the spec says the beats were not read, and why.
+- **Every verdict says why.** The breakdown is a footprintjs flowchart (probe → frames → cuts → gradual changes →
+  shots → stills → motion → lettering → beats → sheets → spec), and each candidate cut, gradual change and shot is
+  decided with `decide()`: each verdict in the spec carries every rule tried, its measures against the thresholds, and
+  `record.json` keeps the run's narrative — `[Condition]: It evaluated Rule 1 "the picture jumps in one frame, far more
+  than the frames around it change": jump 54.7 gte 12 ✓, ratio 54.7 gte 3 ✓, and chose cuts~0/cut.`
+- **The thresholds** are `BREAKDOWN`: `thresholds: {cutJump: 20}` changes one; an unknown name refuses, naming them.
+- **Limits.** It assumes a constant frame rate. A wipe, a push or a zoom between shots reads as motion, often as a short
+  moving shot between two cuts. A dissolve between two shots that both move is found only where its middle is still the
+  mix of its ends. A zoom is not told apart from other motion, and a slow change (a board drawn stroke by stroke) can
+  read as still. It keeps about 4 KB a frame (20 MB for a 3-minute film at 30 fps).
+
 ## The compile record
 
 `compileFilm({…, record: true})` runs the compile as a footprintjs flowchart and returns the film with
@@ -1134,6 +1185,7 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?})` | compile + render as a footprintjs pipeline, with `making-of.json` (a segmented render: one subflow per segment) |
 | `approveFilm({record, by, note?})` · `checkApproval(approval, inputs)` | the approval lock: approve a watched render from its making-of.json, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
 | `checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})` · `FINISHED_CHECK_NAMES` | checks on the finished file: lengths, blank runs, flash frames, hand-overs and joins, the voice, captions (`footprint-storyreel/finished` adds `ffmpegProbe`, `FINISHED_CHECKS`, `FINISHED`) |
+| `footprint-storyreel/breakdown` → `breakdown(videoFile, {out?, beatMap?, thresholds?, ffmpeg?, probe?})` · `breakdownText(spec)` · `BREAKDOWN` | a reference film as a spec to match: cuts and their kinds, shots, pacing, motion, lettering (a heuristic), cuts on the beat; every verdict with its evidence |
 | `segmentedVideo({store, recipe, code?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir)` · `ffmpegJoin()` · `planSegments(film, {fps})` · `segmentKey(…)` · `codeFingerprint(paths)` | re-render only what changed: the picture in cached segments, joined (`renderFilm({…, video})`) |
 | `footprint-storyreel/release` → `makeRelease({targets, post, out, …})` · `loadTarget` · `checkAdapter` · `planProblems` · `TARGET_NAMES` | the post for each platform: the video in its shape, captions, thumbnail, the text to paste, checked against the platform's limits and audience |
 | `readCast(cast)` · `castText(text, cast)` · `withCast(value, cast)` | the cast: `{{role}}` in any text becomes the role's name; kits read the rest from `context.cast` |
@@ -1148,7 +1200,7 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/breakdown`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws
