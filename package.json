@@ -122,6 +122,14 @@
       "types": "./types/sub/walk.d.ts",
       "default": "./src/walk.mjs"
     },
+    "./moves": {
+      "types": "./types/sub/moves.d.ts",
+      "default": "./src/moves.mjs"
+    },
+    "./principles": {
+      "types": "./types/sub/principles.d.ts",
+      "default": "./src/principles.mjs"
+    },
     "./attention": {
       "types": "./types/sub/attention.d.ts",
       "default": "./src/attention.mjs"

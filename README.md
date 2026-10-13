@@ -283,10 +283,37 @@ recipe names:
 "enter": {"type": "slide", "ease": "spring"}                  slides in, overshoots a little and settles
 ```
 
-Every entrance also takes `seconds` (0.2–3), `ease` (a name from the ease table) and `sound` (a sound's
-name, or `false`). An ease that goes past the end (`back`, `spring`) is refused where the frame's edge
-would show — only `slide` takes one. An unknown name, key or setting refuses, naming what the transition
+Every entrance also takes `seconds` (0.2–3), `ease` (a name from the ease table, or a four-number curve as CSS
+writes it, `"cubic-bezier(0.16, 1, 0.3, 1)"`) and `sound` (a sound's name, or `false`). An ease that goes past
+the end (`back`, `outBack`, `spring`, or a four-number curve whose y leaves 0..1) is refused where the frame's
+edge would show — only `slide` takes one. An unknown name, key or setting refuses, naming what the transition
 takes: `enter has unsupported key at (a push takes seconds, ease, sound, from)`.
+
+**A move as an entrance.** A shot can also arrive the way a card or a logo does: by a move from the
+vocabulary (see [Moves](#moves-motion-asked-for-by-name)), the new picture moving in over the old one on the
+move's own seconds and curve:
+
+```json
+"enter": {"move": "soft-rise"}                                 rises a little and fades in, gliding to rest
+"enter": {"move": "iris-open", "seconds": 0.8, "sound": "slide"}
+"enter": {"move": "pop", "feel": "heavy"}                      the same move on the heavy spring
+```
+
+A move entrance takes `move`, `seconds`, `feel` (another curve: a move feel or a spring's) and `sound` (none
+by default). The moves a whole picture can make are the entrances that fade, move, scale, blur or uncover it —
+`fade-slide`, `soft-rise`, `mask-wipe`, `iris-open`, `overshoot`, `bounce-landing`, `spring-follow`, `pop`,
+`blur-in`, `scale-in`, `drop-in`, `slam`; one that counts, draws or splits text needs the thing itself, and
+refuses, naming these. A move of the recipe's own is data too: `"enter": {"move": {"name": "drift-in", "kind":
+"entrance", "feel": "soft", "uses": ["ui"], "seconds": 0.5, "ease": "outQuint", "props": {"x": [400, 0]}}}`.
+The old picture shows only where the move's own start shows it, and only until the new picture is in place: on
+its way in a picture never goes past its place on the far side (where a sliver of the old picture would open at
+the frame's edge) and never shrinks below the frame unless it started smaller; once each property first reaches
+its rest it is held there, so a bouncy picture never swings back off its place and a `pop` never dips below full
+size after its swell (it still swells past full size: that only covers more). The moment each property arrives is
+worked out once, when the entrance is read, so every frame is still a pure function of time. A blurred picture is
+blurred whole and exactly where it is, its edge blurring into its own colours (its edge rows stretched out under
+the blur), so nothing moves when the blur ends. No kit transition setting may be called `move`.
+Films that do not name a move draw exactly as before.
 
 **Through a thing.** `through` and `match` go through something drawn in the pictures, named the way a
 kit names what it draws (`regionsAt(t) → [{box, path, label, name}]`, the names a push note frames). The
@@ -725,6 +752,101 @@ strategy says HOW, so the same film can be shown another way by changing one wor
   (view ? drawSide : drawFront)(ctx, t, p); ctx.restore();
   ```
 
+## Moves: motion asked for by name
+
+A designer asks for "a soft rise" or "a pop", not for a curve and two numbers — and a film that asks by name
+gets the timing right without anyone working it out again. `footprint-storyreel/moves` is that vocabulary,
+modelled on the motion-reference libraries that sort motions by how they **feel** (`smooth`, `crisp`, `soft`,
+`heavy`, `bouncy`) and what they are **for** (`ui`, `text`, `logo`, `character`, `3d`). Every move is data —
+`{name, kind, feel, uses, seconds, ease | spring, props}` — so a recipe can name one (or write its own), and
+a shot that enters with one says which in `film.rows`:
+
+| kind | moves |
+|---|---|
+| entrance | `fade-slide` `soft-rise` `mask-wipe` `iris-open` `overshoot` `bounce-landing` `spring-follow` `pop` `text-reveal-word` `text-reveal-letter` `count-up` `line-draw` `blur-in` `scale-in` `drop-in` `slam` |
+| exit | `fade-slide-out` `soft-sink` `mask-wipe-out` `iris-close` `pop-out` `blur-out` `scale-out` `drop-out` |
+| feedback | `shake` `wiggle` `nod` |
+| ambient | `marquee` `pulse` `float` (they loop) |
+
+The practitioners' timing rules are numbers in the data, not advice: an exit takes half its entrance's seconds
+(`pairs` names the entrance it closes, and it accelerates away on `in`); a reveal puts 0.09 s between words
+(`WORD_GAP`, a move's `gap`); overshoot moves ride `outBack`; a spring move plays its spring in real time, and its
+seconds last at least until the spring comes within 1% of rest for good (worked out exactly; a refusal gives the
+number) — a spring that would take longer than 10 s cannot drive a move. Laws every move keeps — built in or your
+own, checked by `readMove` each time you give it one: an entrance ends at rest, an exit starts at rest, feedback
+starts and ends at rest, an ambient move loops from rest.
+
+- `moveAt(name, t, {start, seconds?, feel?, reduced?})` → `{opacity, x, y, scale, rotate, blur, clip, progress,
+  mask}`: every property, at rest where the move leaves it alone (`x`/`y` and `blur` in frame pixels, `rotate` in
+  degrees, `clip` the share its `mask` uncovers, `progress` how much of the thing's own content shows — a line
+  drawn, a number counted). `seconds` stretches it; `feel` drives it on another curve (a move feel, a spring
+  feel — `snappy`, `playful` … — or `{k, d}`); `reduced: true` is reduced motion: no in-between, the end state
+  from `start` on.
+- `stagger(items, gap)` → `[{item, index, delay}]`: gap in seconds, or a text reveal's own (`'text-reveal-word'`).
+  It spaces the pieces of ONE item — the words of a line, the letters of a word — and they may overlap (0.09 s
+  apart, each word 0.45 s): the reader reads the line, not its words one by one. Such a cascade of n pieces counts
+  as arrived at (n − 1) × gap + seconds, and its reading time starts then. Separate things the narration counts
+  (the members of a repeat group) are a different matter: there each must arrive before the next starts
+  (docs/design/2026-10-motion-grammar.md, section 4.8).
+- `movesBy({feel, use, kind})` finds moves; `readMove(name | move)` checks one of your own; an unknown name
+  refuses, listing the moves by kind.
+- `applyMove(ctx, values, {box})` puts the values on a canvas for a thing drawn in `box` (opacity, offset, scale
+  and turn about its centre, mask, blur); save before, restore after; it returns false when nothing shows.
+
+```js
+import {createCanvas} from '@napi-rs/canvas';
+import {moveAt, stagger, applyMove, movesBy} from 'footprint-storyreel/moves';
+
+const ctx = createCanvas(1600, 900).getContext('2d'), t = 1.3;      // any moment: a pure function of time
+ctx.font = '700 64px sans-serif';
+let x = 200;
+for (const {item, delay} of stagger('One sheep, one pebble'.split(' '), 'text-reveal-word')) {   // 0.09 s apart
+  const v = moveAt('text-reveal-word', t, {start: 1 + delay}), w = ctx.measureText(item).width;
+  ctx.save();
+  if (applyMove(ctx, v, {box: [x, 400, x + w, 470]})) ctx.fillText(item, x, 460);
+  ctx.restore();
+  x += w + 20;
+}
+movesBy({feel: 'bouncy', use: 'logo'}).map(m => m.name);   // ['overshoot', 'bounce-landing', 'pop', 'pop-out', 'wiggle']
+moveAt('pop', 1.2, {start: 1, reduced: true}).scale;       // 1: reduced motion, already at rest
+```
+
+A shot can enter with a move too (see [Transitions](#transitions)).
+
+### The principles: anticipation, squash and stretch, one-shot events, arcs
+
+Four of the animator's principles, as plain numbers any move can use (`footprint-storyreel/principles`; pure
+functions of time, like every frame). The walk and acting already do their own versions of these — a dip before
+setting off, a squint before a change of mood; these are the same ideas for everything else.
+
+- `anticipate(t, {at, distance})` — the small counter-move before a move: over 0.15 s before `at` the thing winds
+  back by a tenth of the distance (at most 40 px), and lets go over the 0.1 s after it while the move begins.
+  `distance` is a number or `[dx, dy]`; the offset comes back the same shape.
+- `squash(t, {velocity, landings, axis})` → `{sx, sy}` with `sx × sy = 1` (the volume is kept): stretched along the
+  motion by its speed (1000 px/s stretches 20%), flattened on each landing `{at, speed}`, then a quick wobble past
+  round that settles within about a third of a second; landings that overlap add.
+- `envelope(age, shape)` and `burst(t, events, shape)` — a one-shot event (a `flash`, a `pop`, a `shake`, or
+  `{attack, decay}`): it rises over 40–120 ms (smoothstep, so it starts gently) and fades exponentially. `burst`
+  works each event out from its own age, so two events close together add instead of restarting.
+- `arc(from, to, u, {bend, toward})` — a point-to-point path that curves a little, as a hand's does: the middle
+  sits 12% of the distance off the straight line, bulging `up` unless told otherwise.
+
+```js
+import {createCanvas} from '@napi-rs/canvas';
+import {anticipate, squash, burst, arc} from 'footprint-storyreel/principles';
+import {EASES} from 'footprint-storyreel/ease';
+
+const ctx = createCanvas(1600, 900).getContext('2d'), t = 2.85;    // any moment: a pure function of time
+const go = 2, from = [200, 600], to = [1300, 600], u = EASES.inOutCubic((t - go) / .8);
+const [x, y] = arc(from, to, u);                                    // a slight curve, like a hand
+const back = anticipate(t, {at: go, distance: to[0] - from[0]});   // a step back before it goes
+const {sx, sy} = squash(t, {landings: [{at: go + .8, speed: 1400}]});
+const glow = burst(t, [go + .8], 'flash');                          // the landing flashes; two flashes add
+ctx.save(); ctx.translate(x + back, y); ctx.scale(sx, sy);         // squashed about the point it lands on
+ctx.fillStyle = `rgb(${Math.round(180 + 75 * Math.min(1, glow))}, 80, 60)`;
+ctx.beginPath(); ctx.arc(0, -40, 40, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+```
+
 ## Re-render only what changed
 
 A film is edited many times. Fixing one word, one beat or one drawing should not mean drawing all
@@ -1081,12 +1203,22 @@ fast, slow: exactly the whiteboard's `ease`, which is now this curve under its o
 about 10% and settles); `walk` (speeds up over the first fifth, steady, slows over the last fifth); `jump`
 (no in-between: the start value until the change ends); `spring` (a damped spring: arrives fast, overshoots
 about 4% and settles — the "pop" a motion designer reaches for; a formula, so any moment draws the same
-pixels). Each takes how far through its seconds a change is (0..1, clamped) and returns how far the value
-has gone. An unknown name refuses, naming the eases:
+pixels); `bounce` (lands and bounces three times, never past the end); `outCubic`, `outQuint`, `outExpo`
+(arrivals, each with a faster start and a longer glide than the last; `outExpo` reaches exactly 1); `outBack`
+(the same curve as `back`, under the name CSS libraries use); `inOutCubic`; `standard` and `emphasized`
+(Material 3's: `cubic-bezier(0.2, 0, 0, 1)`, and its two-piece emphasized path). A four-number curve is asked
+for as CSS writes it — `easeNamed("cubic-bezier(0.16, 1, 0.3, 1)")` — or made with `bezier(x1, y1, x2, y2)`:
+the same curve a browser draws (solved exactly, by Newton's method with a bisection fallback; x1 and x2 are
+times, within 0..1, and anything else refuses). `overshoots(name)` says whether an ease goes past its end on the
+way, worked out exactly for a four-number curve. Each takes how far through its seconds a change is (0..1,
+clamped) and returns how far the value has gone, exactly 0 at the start and 1 at the end. An unknown name
+refuses, naming the eases:
 
 ```js
-import {easeNamed} from 'footprint-storyreel/ease';
-const x = 200 + 600 * easeNamed('spring')((t - start) / .4);   // easeNamed('bounce') → "bounce" is not an ease; the eases are linear, in, …
+import {easeNamed, bezier, overshoots} from 'footprint-storyreel/ease';
+const x = 200 + 600 * easeNamed('spring')((t - start) / .4);   // easeNamed('wobble') → "wobble" is not an ease; the eases are linear, in, …
+const glide = bezier(.16, 1, .3, 1);                           // = easeNamed('cubic-bezier(0.16, 1, 0.3, 1)')
+overshoots('cubic-bezier(0.34, 1.56, 0.64, 1)');               // true: its y goes past 1
 ```
 
 **Acting.** A face swapped from one frame to the next reads as a glitch; a change that is acted reads as a
@@ -1155,14 +1287,16 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `directionTimings(scene, {tail?})` · `withDirections(storyboard, timings)` · `sceneText(scene)` · `spokenText(scene)` · `unsaidNumbers(storyboard)` | a silent scene's timing; a voice's timings completed with the silent scenes; a scene's text as spoken (number slots in words); digits without a slot |
 | `makeClock(storyboard, timings)` | phrases → seconds; `speaking(t)`, `turns()`, `gaze(t, who)` |
 | `footprint-storyreel/shots` → `readIntent` · `readContinuity` · `checkContinuity` · `tooMuchTooFast` · `distinctMoments` · `WATCHING` | the shot plan's checks, on their own |
-| `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `inOut` | the one ease table (`linear in out inOut back walk jump spring`) |
+| `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `bezier(x1, y1, x2, y2)` · `overshoots(name)` · `inOut` | the one ease table (`linear in out inOut back walk jump spring bounce outCubic outQuint outExpo outBack inOutCubic standard emphasized`), and four-number curves as CSS writes them |
+| `footprint-storyreel/moves` → `moveAt(move, t, {start, seconds?, feel?, reduced?})` · `stagger(items, gap)` · `movesBy({feel, use, kind})` · `readMove` · `applyMove` · `MOVES` | motion asked for by name: 30 moves as data, by feel and use, with the practitioners' timing rules |
+| `footprint-storyreel/principles` → `anticipate` · `squash` · `envelope` · `burst` · `arc` · `BURSTS` | anticipation, volume-keeping squash and stretch, one-shot events that add, paths that curve like a hand |
 | `footprint-storyreel/acting` → `moodAt(keys, t)` · `idleAt(t, {seed})` · `follows(f, delay?)` · `ACTING` | a mood change acted (anticipation, a take, a cross-fade), an idle layer that never moves in step |
 | `contactSheet(film, {moments?, columns?, width?})` | a PNG of stills |
 | `frameHashes(film, {count?, width?, times?})` · `changedFrames(pinned, now)` | pixel pins |
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws

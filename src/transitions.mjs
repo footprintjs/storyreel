@@ -36,17 +36,19 @@
  * A transition covers the whole frame at every e: the picture under it is not cleared to anything.
  * Every change happens on the film clock (most of it in the silence before the scene's first word:
  * `lead` = 0.75 of its seconds), so a frame is a pure function of time like any other.
+ *
+ * A shot may also enter with a MOVE from the vocabulary (moves.mjs), the new picture moving in over the old one
+ * the way a card or a logo would — "enter": {"move": "soft-rise"} — with the move's own seconds and curve.
  */
 import {createCanvas} from '@napi-rs/canvas';
-import {easeNamed} from './ease.mjs';
+import {easeNamed, overshoots, EASES} from './ease.mjs';
 import {SOUND_NAMES} from './sound.mjs';
+import {readMove, moveAt, applyMove, MOVES, MOVE_NAMES, REST} from './moves.mjs';
 
 const W = 1600, H = 900;
 const DIRECTIONS = Object.freeze(['left', 'right', 'top', 'bottom']);
 /** Where a picture that comes FROM a side starts, as a unit offset. */
 const FROM = {left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1]};
-/** Eases that go past 1 on the way: only a transition that says it can show that takes them. */
-const OVERSHOOTING = new Set(['back', 'spring']);
 const SHADE = 'rgba(40,32,20,.22)', SHADE_CLEAR = 'rgba(40,32,20,0)', EDGE = 'rgba(40,32,20,.28)';
 
 /** Clip to the frame moved by (x, y), with `grow` px more on every side (to close the seam under the next picture), and paint. */
@@ -253,6 +255,8 @@ export const TRANSITIONS = deepFreeze({
 });
 export const TRANSITION_NAMES = Object.freeze(Object.keys(TRANSITIONS));
 const COMMON = ['type', 'seconds', 'ease', 'sound'];
+/** The names no setting may take: every entrance's own keys, and `move` (an entrance with a move is a move entrance). */
+const RESERVED = [...COMMON, 'move'];
 const DEF_KEYS = ['family', 'seconds', 'ease', 'sound', 'overshoot', 'params', 'regions', 'draw'];
 
 /** A hard cut: the new shot is there, whole, on the scene's first frame. */
@@ -260,13 +264,15 @@ export const CUT = Object.freeze({type: 'cut', seconds: 0, lead: 0, sound: null,
 
 /**
  * A shot's entrance, read from the recipe: a transition's name, or {type, seconds?, ease?, sound?, …its
- * settings}; left out, a fade. Returns {type, seconds, lead, ease, sound, p, draw, regions, at}; a cut is CUT.
+ * settings}, or a move, {move, seconds?, feel?, sound?}; left out, a fade. Returns {type, seconds, lead, ease,
+ * sound, p, draw, regions, at} (a move's type is 'move', and `move` names it); a cut is CUT.
  */
 export function readEntrance(enter, where, catalog = TRANSITIONS) {
   const e = typeof enter === 'string' ? {type: enter} : enter ?? {type: 'fade'};
+  if (e && typeof e === 'object' && !Array.isArray(e) && e.move !== undefined) return readMoveEntrance(e, where);
   if (!e || typeof e !== 'object' || Array.isArray(e) || typeof e.type !== 'string' || !Object.hasOwn(catalog, e.type)) {
     const named = typeof e === 'object' && e && typeof e.type === 'string' ? ` (not "${e.type}")` : '';
-    throw new Error(`${where}: enter must be a transition: ${Object.keys(catalog).join(', ')}${named}`);
+    throw new Error(`${where}: enter must be a transition: ${Object.keys(catalog).join(', ')}${named}; or {"move": …}, a move a whole picture can make: ${PICTURE_MOVES.join(', ')}`);
   }
   const tr = catalog[e.type], params = tr.params ?? {};
   if (e.type === 'cut') {
@@ -278,12 +284,146 @@ export function readEntrance(enter, where, catalog = TRANSITIONS) {
   const seconds = e.seconds ?? tr.seconds;
   if (!(typeof seconds === 'number' && seconds >= .2 && seconds <= 3)) throw new Error(`${where}: enter.seconds must be between 0.2 and 3`);
   const easeName = e.ease ?? tr.ease, ease = easeNamed(easeName, `${where}: enter.ease`);
-  if (OVERSHOOTING.has(easeName) && !tr.overshoot) throw new Error(`${where}: a ${e.type} cannot take the ease "${easeName}" (it goes past the end, and the frame's edge would show); ${Object.entries(catalog).filter(([, t]) => t.overshoot).map(([n]) => n).join(', ')} can`);
+  if (overshoots(easeName) && !tr.overshoot) throw new Error(`${where}: a ${e.type} cannot take the ease "${easeName}" (it goes past the end, and the frame's edge would show); ${Object.entries(catalog).filter(([, t]) => t.overshoot).map(([n]) => n).join(', ')} can`);
   const sound = e.sound === false ? null : e.sound ?? tr.sound;
   if (sound !== null && !SOUND_NAMES.includes(sound)) throw new Error(`${where}: enter.sound must be false or a sound: ${SOUND_NAMES.join(', ')} (not ${JSON.stringify(sound)})`);
   const p = readParams(params, e, where);
   // Most of the change happens in the silence before the scene's first word.
   return {type: e.type, seconds, lead: seconds * .75, ease, sound, p, draw: tr.draw, regions: tr.regions ?? null, names: Object.keys(params).filter(k => params[k]?.name), at: p.at ?? [800, 450]};
+}
+
+/** What a whole picture can do as it arrives: be seen through, move, turn, grow, blur and be uncovered (not count, draw or split: those need the thing itself). */
+const PICTURE_PROPS = new Set(['opacity', 'x', 'y', 'scale', 'rotate', 'blur', 'clip']);
+/** Why a move cannot carry a whole picture in, or null when it can. */
+const notForPictures = m => (m.kind !== 'entrance' ? `it is ${{exit: 'an exit', feedback: 'a feedback move', ambient: 'an ambient move'}[m.kind]}, not an entrance`
+  : m.split ? `it reveals text ${m.split} by ${m.split}` : Object.keys(m.props).some(p => !PICTURE_PROPS.has(p)) ? 'it shows a thing\'s own content (progress), which a picture does not have' : null);
+/** The built-in moves a shot can enter with. */
+const PICTURE_MOVES = Object.freeze(MOVE_NAMES.filter(n => !notForPictures(MOVES[n])));
+const MOVE_ENTRANCE_KEYS = ['move', 'seconds', 'feel', 'sound'];
+
+/** An entrance by a move, {move, seconds?, feel?, sound?}: the move (a name, or one of your own as data), checked. */
+function readMoveEntrance(e, where) {
+  for (const key of Object.keys(e)) if (!MOVE_ENTRANCE_KEYS.includes(key)) throw new Error(`${where}: enter has unsupported key ${key} (a move entrance takes ${MOVE_ENTRANCE_KEYS.join(', ')}; its curve is the move's, or its feel's)`);
+  let move;
+  try { move = readMove(e.move, 'enter.move'); } catch (err) { throw new Error(`${where}: ${err.message}`, {cause: err}); }
+  const why = notForPictures(move);
+  if (why) throw new Error(`${where}: a shot cannot enter with "${move.name}": ${why}; the moves a whole picture can make are ${PICTURE_MOVES.join(', ')}`);
+  const seconds = e.seconds ?? move.seconds;
+  if (!(typeof seconds === 'number' && seconds >= .2 && seconds <= 3)) throw new Error(`${where}: enter.seconds must be between 0.2 and 3 (the move "${move.name}" takes ${move.seconds} on its own)`);
+  if (e.feel !== undefined) { try { moveAt(move, 0, {feel: e.feel}); } catch (err) { throw new Error(`${where}: enter.feel: ${err.message.replace(/^moveAt: /, '')}`, {cause: err}); } }
+  const sound = e.sound === false ? null : e.sound ?? null;
+  if (sound !== null && !SOUND_NAMES.includes(sound)) throw new Error(`${where}: enter.sound must be false or a sound: ${SOUND_NAMES.join(', ')} (not ${JSON.stringify(sound)})`);
+  const feel = e.feel ?? null;
+  const p = Object.freeze({move, seconds, feel, start: Object.freeze(moveAt(move, 0)), restAt: restMoments(move, seconds, feel)});
+  return {type: 'move', move: move.name, seconds, lead: seconds * .75, ease: EASES.linear, sound, p, draw: drawMove, regions: null, names: [], at: [800, 450]};
+}
+
+/**
+ * How near its rest a property must come to count as there: a quarter of a frame pixel for x and y, the same at the
+ * frame's edge for a turn, a scale and a clip, half a step of 8-bit colour for opacity, a twentieth of a pixel of blur.
+ */
+const NEAR = Object.freeze({x: .25, y: .25, rotate: .25 / 918 * 180 / Math.PI, scale: .25 / 800, clip: .25 / 800, opacity: 1 / 512, blur: .05});
+const HELD = Object.freeze(Object.keys(NEAR));
+
+/**
+ * When each property of a move entrance first reaches its rest — u, 0..1 through the change (0: it starts there; 1: only
+ * at the end) — worked out once, when the entrance is read, so the guard stays a pure function of time. The move is
+ * sampled 2000 times over the change; a crossing is narrowed by bisection, and a touch between two samples (a bounce's
+ * landing) by closing in on the nearest approach.
+ */
+function restMoments(move, seconds, feel) {
+  const N = 2000, at = u => moveAt(move, u * seconds, {seconds, ...(feel === null ? {} : {feel})});
+  const samples = Array.from({length: N + 1}, (_, i) => at(i / N)), out = {};
+  for (const prop of HELD) {
+    const rest = REST[prop], side = Math.sign(samples[0][prop] - rest);
+    // How far from rest, on the side the move starts (at or below NEAR: there, or past it).
+    const gap = u => (at(u)[prop] - rest) * side, gapAt = i => (samples[i][prop] - rest) * side;
+    out[prop] = side === 0 ? 0 : firstNear(gap, gapAt, N, NEAR[prop]);
+  }
+  return Object.freeze(out);
+}
+/** The first u at which gap comes within `near` of 0 (1 if it never does before the end). */
+function firstNear(gap, gapAt, N, near) {
+  for (let i = 1; i <= N; i++) {
+    if (gapAt(i) <= near) return narrowed(gap, (i - 1) / N, i / N, near);
+    if (i < N && gapAt(i) < gapAt(i - 1) && gapAt(i) <= gapAt(i + 1)) {
+      let a = (i - 1) / N, b = (i + 1) / N;   // the nearest approach lies between the two neighbours: close in on it
+      for (let k = 0; k < 60; k++) { const m1 = a + (b - a) / 3, m2 = b - (b - a) / 3; if (gap(m1) <= gap(m2)) b = m2; else a = m1; }
+      if (gap((a + b) / 2) <= near) return narrowed(gap, (i - 1) / N, (a + b) / 2, near);
+    }
+  }
+  return 1;
+}
+/** Where gap first comes within `near` between lo (not yet) and hi (there), by bisection. */
+function narrowed(gap, lo, hi, near) {
+  for (let k = 0; k < 50; k++) { const mid = (lo + hi) / 2; if (gap(mid) <= near) hi = mid; else lo = mid; }
+  return hi;
+}
+
+/** v, held between a start value and the rest value (whichever way round they are). */
+const between = (v, start, rest) => Math.min(Math.max(v, Math.min(start, rest)), Math.max(start, rest));
+/**
+ * The edge guard: the old picture shows only where the move's own start shows it, and only until the move has
+ * brought the new picture to its place. On its way in, a picture never goes past its place on the far side, never
+ * turns past its rest, and never grows smaller than it started or than the frame; once a property first reaches its
+ * rest (restAt, u through the change) it is held there — a picture never bounces or wobbles back off its place, so the
+ * old picture never reappears. Growth past full size only covers more, so a pop still swells past it and settles.
+ */
+function edgeGuarded(v, u, {start, restAt}) {
+  const out = {...v, x: between(v.x, start.x, 0), y: between(v.y, start.y, 0), rotate: between(v.rotate, start.rotate, 0), scale: Math.max(v.scale, Math.min(start.scale, 1))};
+  for (const prop of HELD) if (u >= restAt[prop]) out[prop] = prop === 'scale' ? Math.max(v.scale, REST.scale) : REST[prop];
+  return out;
+}
+
+/**
+ * A move entrance: the new picture moves in over the old one as the move says (moves.mjs · moveAt, on the change's
+ * own clock: e is how far through its seconds), edge-guarded (edgeGuarded), and drawn whole into a scratch picture so
+ * its opacity and its blur are the picture's, not its parts'. At e = 1 the move is at rest: the new picture, exactly.
+ */
+function drawMove(ctx, {e, from, to, p, ghost}) {
+  from(ctx);
+  const v = edgeGuarded(moveAt(p.move, e * p.seconds, {seconds: p.seconds, ...(p.feel === null ? {} : {feel: p.feel})}), e, p);
+  if (!(v.opacity > 0 && v.clip > 0 && v.scale > 0)) return;
+  if (v.blur > 0) { blurred(ctx, v, to); return; }
+  ghost(v.opacity, c => placed(c, v, to));
+}
+
+/** The arriving picture, placed by the move's values (opacity and blur are the caller's), clipped to the frame. */
+function placed(c, v, to) {
+  c.save(); c.beginPath(); c.rect(0, 0, W, H); c.clip();
+  if (applyMove(c, {...v, opacity: 1, blur: 0})) to(c);
+  c.restore();
+}
+
+/**
+ * A blurred picture, blurred whole: drawn exactly where it is into a scratch picture with a margin of three blurs a
+ * side, the margin filled with the picture's own edge rows and columns stretched out (the way a graphics card clamps
+ * a texture to its edge), then laid over ctx through the blur and clipped to the frame — so the frame's edge blurs into
+ * the picture's own colours, never into the old picture, and nothing moves when the blur ends. The scratch picture is
+ * kept per canvas (and goes with it). ctx's transform must be a scale and a move, as the film's always is.
+ */
+const scratches = new WeakMap();
+function blurred(ctx, v, to) {
+  const m = ctx.getTransform(), kx = Math.abs(m.a), ky = Math.abs(m.d), radius = v.blur * kx, pad = Math.ceil(3 * radius);
+  const fw = Math.max(1, Math.floor(W * kx)), fh = Math.max(1, Math.floor(H * ky)), w = Math.ceil(W * kx) + 2 * pad, h = Math.ceil(H * ky) + 2 * pad;
+  let scratch = scratches.get(ctx.canvas);
+  if (!scratch || scratch.width !== w || scratch.height !== h) scratches.set(ctx.canvas, scratch = createCanvas(w, h));
+  const sc = scratch.getContext('2d');
+  sc.resetTransform(); sc.clearRect(0, 0, w, h); sc.setTransform(m.a, 0, 0, m.d, pad, pad);
+  placed(sc, v, to);
+  if (pad > 0) {
+    sc.resetTransform(); sc.imageSmoothingEnabled = false;
+    sc.drawImage(scratch, pad, pad, 1, fh, 0, pad, pad, fh);                                   // the left column, out to the left
+    sc.drawImage(scratch, pad + fw - 1, pad, 1, fh, pad + fw, pad, w - pad - fw, fh);          // the right one (over any part-pixel column)
+    sc.drawImage(scratch, 0, pad, w, 1, 0, 0, w, pad);                                         // the top row, corners and all, up
+    sc.drawImage(scratch, 0, pad + fh - 1, w, 1, 0, pad + fh, w, h - pad - fh);                // the bottom row, down
+    sc.imageSmoothingEnabled = true;
+  }
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+  ctx.globalAlpha *= v.opacity; ctx.filter = `blur(${+radius.toFixed(3)}px)`;
+  ctx.setTransform(1, 0, 0, 1, m.e - pad, m.f - pad); ctx.drawImage(scratch, 0, 0);
+  ctx.restore();
 }
 
 /** A transition's settings from an entrance, each checked against its kind, the defaults filled in. */
@@ -338,7 +478,7 @@ function checkTransition(def, who) {
   const params = def.params ?? {};
   if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error(`${who}: params must be {name: {oneOf | point | color | number, default}}`);
   for (const [name, spec] of Object.entries(params)) {
-    if (COMMON.includes(name)) throw new Error(`${who}: a setting may not be called "${name}" (every entrance has it)`);
+    if (RESERVED.includes(name)) throw new Error(`${who}: a setting may not be called "${name}" (${name === 'move' ? 'an entrance that names a move is a move entrance' : 'every entrance has it'})`);
     const kinds = ['oneOf', 'point', 'color', 'number', 'name'].filter(k => spec?.[k] !== undefined);
     if (kinds.length !== 1 || !(spec.name === true || 'default' in spec)) throw new Error(`${who}: the setting "${name}" must be one of {oneOf: [...]}, {point: true}, {color: true}, {number: [min, max]}, with a default; or {name: true} (a thing in the picture; default: null when it may be left out)`);
     if (spec.oneOf && !(Array.isArray(spec.oneOf) && spec.oneOf.length && spec.oneOf.every(v => typeof v === 'string'))) throw new Error(`${who}: the setting "${name}" lists its choices as words`);
