@@ -46,8 +46,10 @@ test('bezier: with y within 0..1 it only goes forward, and stays within 0..1', (
 test('bezier: a refusal names the fix', () => {
   assert.throws(() => bezier(1.2, 0, .5, 1), /bezier: x1 and x2 are times, within 0..1 \(a curve cannot go back in time\), not x1 1.2, x2 0.5; y1 and y2 may leave 0..1/);
   assert.throws(() => bezier(.5, 0, -.1, 1), /x1 0.5, x2 -0.1/);
-  assert.throws(() => bezier(.5, NaN, .5, 1), /bezier: four numbers, x1, y1, x2, y2 \(as CSS's cubic-bezier takes them\), not 0.5, NaN, 0.5, 1/);
-  assert.throws(() => bezier(.5, 0, .5), /four numbers/);
+  assert.throws(() => bezier(.5, NaN, .5, 1), /bezier: four finite numbers, x1, y1, x2, y2 \(as CSS's cubic-bezier takes them\), not 0.5, NaN, 0.5, 1/);
+  assert.throws(() => bezier(.5, Infinity, .5, 1), /not 0.5, Infinity, 0.5, 1/);
+  assert.throws(() => bezier(.5, 0, .5), /four finite numbers/);
+  assert.throws(() => bezier(0, 1e308, 1, 1), /bezier: y1 and y2 are so large the curve cannot be worked out \(1e\+308, 1\)/);
 });
 
 test('easeNamed: a four-number curve as CSS writes it', () => {
@@ -55,7 +57,10 @@ test('easeNamed: a four-number curve as CSS writes it', () => {
   for (const u of grid) assert.equal(f(u), g(u));
   for (const text of ['cubic-bezier(.16,1,.3,1)', '  cubic-bezier( 0.16 , 1 , 0.3 , 1 ) ', 'cubic-bezier(1.6e-1, 1, 3e-1, 1)']) assert.equal(easeNamed(text)(.4), g(.4), text);
   assert.throws(() => easeNamed('cubic-bezier(1.5, 0, 0, 1)', 'stage b: enter.ease'), /stage b: enter.ease: "cubic-bezier\(1.5, 0, 0, 1\)" is not a curve: x1 and x2 are times, within 0..1/);
-  assert.throws(() => easeNamed('cubic-bezier(a, 0, 0, 1)', 'e'), /e: "cubic-bezier\(a, 0, 0, 1\)" is not a curve: four numbers/);
+  assert.throws(() => easeNamed('cubic-bezier(a, 0, 0, 1)', 'e'), /e: "cubic-bezier\(a, 0, 0, 1\)" is not a curve: four finite numbers, x1, y1, x2, y2, not a, 0, 0, 1/);
+  // A number that is not finite is shown as it was written, not as what parsing made of it.
+  assert.throws(() => easeNamed('cubic-bezier(Infinity, 0, 0, 1)', 'e'), /is not a curve: four finite numbers, x1, y1, x2, y2, not Infinity, 0, 0, 1/);
+  assert.throws(() => easeNamed('cubic-bezier(0, 1e999, 0, 1)', 'e'), /not 0, 1e999, 0, 1/);
   assert.throws(() => easeNamed('cubic-bezier(0, 0, 1)', 'e'), /e: "cubic-bezier\(0, 0, 1\)" is not an ease; the eases are linear, .*, or a four-number curve as CSS writes it/);
   assert.throws(() => easeNamed('steps(4)', 'e'), /"steps\(4\)" is not an ease/);
 });
@@ -68,6 +73,9 @@ test('overshoots: the named ones that do, and a four-number curve exactly when i
     assert.equal(grid.some(u => f(u) > 1 + 1e-9 || f(u) < -1e-9), past, `cubic-bezier(${c}) does what overshoots says`);
   }
   assert.equal(overshoots('cubic-bezier(0.1, 1.1, 0.3, 0.5)'), false, 'a y1 past 1 need not take the curve past 1');
+  // A y so far out that the arithmetic overflows is far past 0..1, never "within it".
+  for (const text of ['cubic-bezier(0, 1e300, 1, 1)', 'cubic-bezier(0, -1e300, 1, 1)', 'cubic-bezier(0, 1e200, 1, -1e200)', 'cubic-bezier(0, 1e999, 1, 1)']) assert.equal(overshoots(text), true, text);
+  assert.ok(easeNamed('cubic-bezier(0, 1e300, 1, 1)')(.5) > 1, 'and the curve it names does go past the end');
   assert.equal(overshoots('wobble'), false);
 });
 

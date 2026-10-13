@@ -67,7 +67,7 @@ export const MOVE_FEEL_NAMES: readonly MoveFeelName[];
 export const WORD_GAP: number;
 export const LETTER_GAP: number;
 export const EXIT_SHARE: number;
-/** A move by name, or one of your own, checked (and the laws: an entrance ends at rest, an exit starts at rest…); an unknown name refuses, naming the moves by kind. */
+/** A move by name, or one of your own, checked as a frozen copy (what you pass is never frozen; yours is checked each time, so a change counts) against the laws: an entrance ends at rest, an exit starts at rest…; a spring move lasts until its spring is within 1% of rest. An unknown name refuses, naming the moves by kind. */
 export function readMove(move: MoveName | (string & {}) | Move, where?: string): Readonly<Move>;
 /** moveAt's options: when it starts (0), its seconds (its own), another curve (a move feel, a spring feel or {k, d}), reduced motion (jump to the end). */
 export interface MoveAtOptions {start?: number; seconds?: number; feel?: MoveFeelName | FeelName | Feel; reduced?: boolean}

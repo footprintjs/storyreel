@@ -305,6 +305,10 @@ by default). The moves a whole picture can make are the entrances that fade, mov
 `blur-in`, `scale-in`, `drop-in`, `slam`; one that counts, draws or splits text needs the thing itself, and
 refuses, naming these. A move of the recipe's own is data too: `"enter": {"move": {"name": "drift-in", "kind":
 "entrance", "feel": "soft", "uses": ["ui"], "seconds": 0.5, "ease": "outQuint", "props": {"x": [400, 0]}}}`.
+The old picture shows only where the move's own start shows it: a picture that overshoots (a bouncy feel) never
+goes past its place on the far side, where a sliver of the old picture would open at the frame's edge; it never
+grows smaller than it started or than the frame (a `pop` growing past full size still does); and a blurred
+picture is blurred whole, its edge blurring into its own colours. No kit transition setting may be called `move`.
 Films that do not name a move draw exactly as before.
 
 **Through a thing.** `through` and `match` go through something drawn in the pictures, named the way a
@@ -748,9 +752,11 @@ a shot that enters with one says which in `film.rows`:
 
 The practitioners' timing rules are numbers in the data, not advice: an exit takes half its entrance's seconds
 (`pairs` names the entrance it closes, and it accelerates away on `in`); a reveal puts 0.09 s between words
-(`WORD_GAP`, a move's `gap`); overshoot moves ride `outBack`; a spring move's seconds are its spring's settling
-time, so it plays in real time. Laws every move keeps — built in or your own, checked by `readMove`: an entrance
-ends at rest, an exit starts at rest, feedback starts and ends at rest, an ambient move loops from rest.
+(`WORD_GAP`, a move's `gap`); overshoot moves ride `outBack`; a spring move plays its spring in real time, and its
+seconds last at least until the spring comes within 1% of rest for good (worked out exactly; a refusal gives the
+number) — a spring that would take longer than 10 s cannot drive a move. Laws every move keeps — built in or your
+own, checked by `readMove` each time you give it one: an entrance ends at rest, an exit starts at rest, feedback
+starts and ends at rest, an ambient move loops from rest.
 
 - `moveAt(name, t, {start, seconds?, feel?, reduced?})` → `{opacity, x, y, scale, rotate, blur, clip, progress,
   mask}`: every property, at rest where the move leaves it alone (`x`/`y` and `blur` in frame pixels, `rotate` in
@@ -759,6 +765,11 @@ ends at rest, an exit starts at rest, feedback starts and ends at rest, an ambie
   feel — `snappy`, `playful` … — or `{k, d}`); `reduced: true` is reduced motion: no in-between, the end state
   from `start` on.
 - `stagger(items, gap)` → `[{item, index, delay}]`: gap in seconds, or a text reveal's own (`'text-reveal-word'`).
+  It spaces the pieces of ONE item — the words of a line, the letters of a word — and they may overlap (0.09 s
+  apart, each word 0.45 s): the reader reads the line, not its words one by one. Such a cascade of n pieces counts
+  as arrived at (n − 1) × gap + seconds, and its reading time starts then. Separate things the narration counts
+  (the members of a repeat group) are a different matter: there each must arrive before the next starts
+  (docs/design/2026-10-motion-grammar.md, section 4.8).
 - `movesBy({feel, use, kind})` finds moves; `readMove(name | move)` checks one of your own; an unknown name
   refuses, listing the moves by kind.
 - `applyMove(ctx, values, {box})` puts the values on a canvas for a thing drawn in `box` (opacity, offset, scale

@@ -5,8 +5,8 @@ import {createCanvas} from '@napi-rs/canvas';
 import {compileFilm, evenTimings} from '../src/index.mjs';
 import {MOVES, MOVE_NAMES, MOVE_KINDS, MOVE_USES, MOVE_FEEL_NAMES, REST, WORD_GAP, EXIT_SHARE, readMove, moveAt, stagger, movesBy, applyMove} from '../src/moves.mjs';
 import {spring} from '../src/motion.mjs';
-import {overshoots} from '../src/ease.mjs';
-import {readEntrance, ghostPainter} from '../src/transitions.mjs';
+import {overshoots, EASES} from '../src/ease.mjs';
+import {readEntrance, ghostPainter, transitionCatalog} from '../src/transitions.mjs';
 
 const PROPS = Object.keys(REST);
 const atRest = v => PROPS.every(p => Math.abs(v[p] - REST[p]) < 1e-9);
@@ -138,10 +138,11 @@ test('a name that is not a move refuses, listing the moves by kind', () => {
   assert.throws(() => readMove(42), /move: a move is a name \(fade-slide, soft-rise, mask-wipe, iris-open, …\) or \{name, kind, feel, uses, seconds, ease \| spring, props\}/);
 });
 
-test('a move of your own is data, checked against the vocabulary and the laws, and checked once', () => {
+test('a move of your own is data, checked against the vocabulary and the laws', () => {
   const nudge = {name: 'nudge-in', kind: 'entrance', feel: 'crisp', uses: ['ui'], seconds: .3, ease: 'cubic-bezier(0.16, 1, 0.3, 1)', props: {x: [30, 0], opacity: [0, 1]}};
   const m = readMove(nudge);
-  assert.ok(Object.isFrozen(m) && m !== nudge && readMove(nudge) === m && readMove(m) === m, 'frozen, and the same checked move every time');
+  assert.ok(Object.isFrozen(m) && m !== nudge && !Object.isFrozen(nudge) && readMove(m) === m, 'a frozen copy, given back as it is');
+  assert.deepEqual(readMove(nudge), m, 'yours is checked each time it is given: the same move while it is the same');
   assert.ok(atRest(moveAt(nudge, 1)) && moveAt(nudge, .1).x > 0);
   const bad = (change, re) => assert.throws(() => readMove({...nudge, ...change}), re);
   bad({kind: 'arrival'}, /move "nudge-in": kind is entrance, exit, feedback, ambient, not "arrival"/);
@@ -149,7 +150,7 @@ test('a move of your own is data, checked against the vocabulary and the laws, a
   bad({uses: ['video']}, /uses lists what it is for, from ui, text, logo, character, 3d/);
   bad({spring: 'playful'}, /give it one curve: ease \(a name from the ease table\) or spring/);
   bad({ease: 'wobble'}, /move "nudge-in": ease: "wobble" is not an ease/);
-  bad({ease: undefined, spring: 'playful'}, /move "nudge-in": its spring is still moving at 0.3 s \(\d+(\.\d)?% from rest\); give it seconds of at least 0.78, the time that spring takes to settle/);
+  bad({ease: undefined, spring: 'playful'}, /move "nudge-in": its spring \(playful\) is still moving at 0.3 s: it comes within 1% of rest for good only at 0.593 s; give it seconds of at least 0.6$/);
   bad({props: {x: [30, 10]}}, /move "nudge-in": an entrance ends at rest, and its x is not at rest there \(x rests at 0\)/);
   bad({props: {spin: [1, 0]}}, /props.spin is not a property; a move animates opacity, x, y, scale, rotate, blur, clip, progress/);
   bad({props: {clip: [0, 1]}}, /a move that animates clip names its mask \(left, right, top, bottom, iris\)/);
@@ -161,6 +162,43 @@ test('a move of your own is data, checked against the vocabulary and the laws, a
   bad({name: 'Nudge In'}, /a move's name is lower-case words joined by hyphens \(e.g. "soft-rise"\), not "Nudge In"/);
   bad({speed: 2}, /a move has no key speed/);
   assert.throws(() => readMove({...nudge, kind: 'feedback', props: {x: [0, 0], y: {rest: 2, wave: 1, cycles: 1}}}), /feedback starts at rest, and its y is not at rest there/);
+});
+
+test('a spring move lasts until its spring has settled, not only until it passes its rest', () => {
+  const popIn = {name: 'cut-short', kind: 'entrance', feel: 'bouncy', uses: ['ui'], spring: 'playful', props: {scale: [0, 1]}};
+  // At 0.1558 s the playful spring is at 1 on its way up to its 19% overshoot: right where it is, but still moving.
+  assert.ok(Math.abs(spring(.1558, 'playful') - 1) < .01);
+  assert.throws(() => readMove({...popIn, seconds: .1558}), /move "cut-short": its spring \(playful\) is still moving at 0.1558 s: it comes within 1% of rest for good only at 0.593 s; give it seconds of at least 0.6$/);
+  assert.equal(readMove({...popIn, seconds: .6}).seconds, .6, 'the number the refusal gives is enough');
+  // The settling time is exact: after it the spring never strays 1% from rest again, and just before it, it does.
+  const after = Array.from({length: 4000}, (_, i) => .593 + i / 1000).map(t => Math.abs(1 - spring(t, 'playful')));
+  assert.ok(after.every(d => d < .01) && Math.abs(1 - spring(.5925, 'playful')) >= .01);
+  for (const m of Object.values(MOVES).filter(m => m.spring)) {
+    const late = Array.from({length: 200}, (_, i) => m.seconds + i / 100).map(t => Math.abs(1 - spring(t, m.spring)));
+    assert.ok(late.every(d => d < .01), `${m.name} has settled by its seconds`);
+  }
+});
+
+test('a spring that does not settle within 10 s cannot drive a move, and the refusal says how long it would take', () => {
+  assert.throws(() => moveAt('fade-slide', .1, {feel: {k: 1, d: .01}}), /moveAt: the spring \{k: 1, d: 0.01\} takes 921 s to come within 1% of rest, and a move's spring must settle within 10 s: give it more damping \(d\) or more stiffness \(k\)/);
+  assert.throws(() => readMove({name: 'lazy', kind: 'entrance', feel: 'soft', uses: ['ui'], seconds: 10, spring: {k: 1, d: .05}, props: {x: [10, 0]}}), /move "lazy": the spring \{k: 1, d: 0.05\} takes 183 s to come within 1% of rest/);
+  assert.throws(() => readEntrance({move: 'pop', feel: {k: 1, d: .5}}, 'stage b'), /stage b: enter.feel: the spring \{k: 1, d: 0.5\} takes 17.27 s to come within 1% of rest/);
+  assert.equal(moveAt('fade-slide', .4, {feel: {k: 4, d: 1}}).y, 0, 'one that settles in time is fine, however slowly (8.6 s)');
+});
+
+test('a move of yours is read as it is now: a change after its first use counts, and what you pass is never frozen', () => {
+  const mine = {name: 'nudge-in', kind: 'entrance', feel: 'crisp', uses: ['ui'], seconds: .3, ease: 'outQuint', props: {x: [30, 0]}};
+  const before = moveAt(mine, .15).x;
+  mine.seconds = 3; mine.props.x = [300, 0];
+  assert.equal(moveAt(mine, .15).x, 300 * (1 - EASES.outQuint(.05)), 'the new seconds and the new start');
+  assert.notEqual(moveAt(mine, .15).x, before);
+  mine.kind = 'nonsense';
+  assert.throws(() => moveAt(mine, 1), /moveAt "nudge-in": kind is entrance, exit, feedback, ambient, not "nonsense"/);
+  const feel = {k: 200, d: 30}, sprung = {...mine, kind: 'entrance', seconds: 1.5, ease: undefined, spring: feel};
+  const m = readMove(sprung);
+  assert.ok(!Object.isFrozen(feel) && !Object.isFrozen(sprung) && !Object.isFrozen(sprung.props) && Object.isFrozen(m.spring) && m.spring !== feel, 'your spring stays yours; the move keeps its own copy');
+  feel.d = 2;
+  assert.equal(m.spring.d, 30, 'and a change to yours does not reach the copy');
 });
 
 test('applyMove: opacity, offset, scale about the box, the mask and the blur, on a canvas', () => {
@@ -206,20 +244,46 @@ test('in a film: a shot enters with a move, from the old picture to exactly the 
   assert.deepEqual(pixel(own, own.clock.start('b') - .375 + .01, 100, 450), RED, 'a move of the recipe\'s own, as data: the new picture still to the right');
 });
 
-test('a move entrance covers the whole frame at every moment, ends on the new picture exactly, and leaves the canvas as it found it', () => {
-  const solid = color => c => { c.fillStyle = color; c.fillRect(0, 0, 1600, 900); };
+test('a move entrance shows the old picture only where the move\'s own start shows it — never past the frame\'s edge — and ends on the new one exactly', () => {
+  // The old picture is a sentinel colour: wherever the move's start does not open the frame, none of it may show.
+  const SENTINEL = [255, 0, 255], NEW = [0, 0, 255], solid = ([r, g, b]) => c => { c.fillStyle = `rgb(${r},${g},${b})`; c.fillRect(0, 0, 1600, 900); };
+  // The middle of each edge (an edge's ends may lie in the band another edge's offset opens).
+  const EDGES = {left: [[0, 112]], right: [[399, 112]], top: [[200, 0]], bottom: [[200, 224]]};
   const pictureMoves = MOVE_NAMES.filter(n => { try { readEntrance({move: n}, 'test'); return true; } catch { return false; } });
   assert.equal(pictureMoves.length, 12);
-  for (const name of pictureMoves) for (const e of [0, .1, .4, .7, 1]) {
-    const en = readEntrance({move: name}, 'test'), c = createCanvas(400, 225), ctx = c.getContext('2d'), ghost = ghostPainter();
-    ctx.scale(.25, .25);
-    en.draw(ctx, {e, from: solid('#ff0000'), to: solid('#0000ff'), p: en.p, ghost: (alpha, paint) => ghost(ctx, alpha, paint), theme: null, boxes: {from: {}, to: {}}});
-    const px = (x, y) => [...ctx.getImageData(x, y, 1, 1).data];
-    for (const [x, y] of [[1, 1], [398, 1], [1, 223], [398, 223], [200, 112]]) assert.equal(px(x, y)[3], 255, `${name} at ${e}: (${x}, ${y}) is covered`);
-    if (e === 1) for (const [x, y] of [[1, 1], [398, 223], [200, 112]]) assert.deepEqual(px(x, y).slice(0, 3), [0, 0, 255], `${name} ends on the new picture at (${x}, ${y})`);
-    if (e === 0) assert.deepEqual(px(200, 112).slice(0, 3), [255, 0, 0], `${name} starts on the old picture`);
-    const m = ctx.getTransform();
-    assert.ok(m.a === .25 && m.d === .25 && m.e === 0 && m.f === 0 && ctx.globalAlpha === 1 && ctx.filter === 'none', `${name} at ${e} restores the canvas`);
+  for (const name of pictureMoves) for (const feel of [undefined, 'bouncy', {k: 400, d: 6}]) {
+    const en = readEntrance(feel === undefined ? {move: name} : {move: name, feel}, 'test'), s = en.p.start, label = `${name}${feel ? ` on ${JSON.stringify(feel)}` : ''}`;
+    // The edges the start opens: the side its offset leaves bare; every side when it starts smaller, turned or masked.
+    const open = new Set(s.scale < 1 || s.rotate !== 0 || s.clip < 1 ? Object.keys(EDGES) : [...(s.x > 0 ? ['left'] : s.x < 0 ? ['right'] : []), ...(s.y > 0 ? ['top'] : s.y < 0 ? ['bottom'] : [])]);
+    for (let i = 0; i <= 40; i++) {
+      const e = i / 40, c = createCanvas(400, 225), ctx = c.getContext('2d'), ghost = ghostPainter();
+      ctx.scale(.25, .25);
+      en.draw(ctx, {e, from: solid(SENTINEL), to: solid(NEW), p: en.p, ghost: (alpha, paint) => ghost(ctx, alpha, paint), theme: null, boxes: {from: {}, to: {}}});
+      const px = (x, y) => [...ctx.getImageData(x, y, 1, 1).data], centre = px(200, 112);
+      for (const [edge, points] of Object.entries(EDGES)) if (!open.has(edge)) for (const [x, y] of points) {
+        const p = px(x, y);
+        assert.ok(p[3] === 255 && p.slice(0, 3).every((v, j) => Math.abs(v - centre[j]) <= 6), `${label} at ${e}: the old picture shows at the ${edge} edge (${p} against the middle's ${centre})`);
+      }
+      if (e === 0) assert.deepEqual(centre.slice(0, 3), SENTINEL, `${label} starts on the old picture`);
+      if (e === 1) for (const [x, y] of [[0, 0], [399, 0], [0, 224], [399, 224], ...Object.values(EDGES).flat(), [200, 112]]) assert.deepEqual(px(x, y).slice(0, 3), NEW, `${label} ends on the new picture at (${x}, ${y})`);
+      const m = ctx.getTransform();
+      assert.ok(m.a === .25 && m.d === .25 && m.e === 0 && m.f === 0 && ctx.globalAlpha === 1 && ctx.filter === 'none', `${label} at ${e} restores the canvas`);
+    }
+  }
+});
+
+test('a blurred move entrance blurs the picture whole, at any size of canvas, the frame\'s edge into its own colours', () => {
+  const halves = c => { c.fillStyle = '#0000ff'; c.fillRect(0, 0, 800, 900); c.fillStyle = '#00ff00'; c.fillRect(800, 0, 800, 900); };
+  const en = readEntrance({move: 'blur-in'}, 'test');
+  for (const scale of [.25, .5, .1]) {
+    const c = createCanvas(1600 * scale, 900 * scale), ctx = c.getContext('2d'), ghost = ghostPainter();
+    ctx.scale(scale, scale);
+    // Early on (e = 0.1) the picture is faint and still well blurred: 8.7 frame pixels.
+    en.draw(ctx, {e: .1, from: c2 => { c2.fillStyle = '#ff0000'; c2.fillRect(0, 0, 1600, 900); }, to: halves, p: en.p, ghost: (alpha, paint) => ghost(ctx, alpha, paint), theme: null, boxes: {from: {}, to: {}}});
+    const px = (x, y) => [...ctx.getImageData(Math.floor(x * scale), Math.floor(y * scale), 1, 1).data];
+    const seam = px(800, 450), left = px(400, 450), right = px(1200, 450);
+    assert.ok(seam[1] > left[1] + 10 && seam[1] < right[1] - 10, `at ${scale}: the halves blur into each other at the seam (${seam})`);
+    assert.ok(Math.abs(px(0, 450)[2] - left[2]) <= 6 && Math.abs(px(1599, 450)[1] - right[1]) <= 6, `at ${scale}: the frame's edges keep the picture's own colours`);
   }
 });
 
@@ -228,6 +292,7 @@ test('in a film: a move a whole picture cannot make refuses, naming the ones it 
   await assert.rejects(film({move: 'count-up'}), /stage b: a shot cannot enter with "count-up": it shows a thing's own content \(progress\), which a picture does not have/);
   await assert.rejects(film({move: 'text-reveal-word'}), /it reveals text word by word/);
   await assert.rejects(film({move: 'shake'}), /it is a feedback move, not an entrance/);
+  await assert.rejects(film({move: 'marquee'}), /it is an ambient move, not an entrance/);
   await assert.rejects(film({move: 'pop-out'}), can);
   await assert.rejects(film({move: 'pop', ease: 'out'}), /stage b: enter has unsupported key ease \(a move entrance takes move, seconds, feel, sound; its curve is the move's, or its feel's\)/);
   await assert.rejects(film({move: 'pop', type: 'push'}), /enter has unsupported key type/);
@@ -235,4 +300,8 @@ test('in a film: a move a whole picture cannot make refuses, naming the ones it 
   await assert.rejects(film({move: 'pop', feel: 'wobbly'}), /stage b: enter.feel: feel is a move feel/);
   await assert.rejects(film({move: 'nope'}), /stage b: enter.move: no move called "nope"/);
   assert.throws(() => readEntrance('dissolve', 'stage b'), /\(not "dissolve"\); or \{"move": …\}, a move a whole picture can make: fade-slide, /);
+  // A kit's transition may not take `move` as a setting: an entrance that names a move is a move entrance.
+  const curtain = {family: 'theatre', seconds: 1, ease: 'inOut', sound: null, params: {move: {oneOf: ['open', 'close'], default: 'open'}}, draw: () => {}};
+  assert.throws(() => transitionCatalog([{name: 'stage', transitions: {curtain}}]), /the kit "stage"'s transition "curtain": a setting may not be called "move" \(an entrance that names a move is a move entrance\)/);
+  assert.throws(() => transitionCatalog([{name: 'stage', transitions: {curtain: {...curtain, params: {sound: {oneOf: ['a'], default: 'a'}}}}}]), /a setting may not be called "sound" \(every entrance has it\)/);
 });

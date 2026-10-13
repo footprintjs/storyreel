@@ -122,7 +122,8 @@ function solveX(x1, x2, x) {
  */
 export function bezier(x1, y1, x2, y2) {
   const points = [x1, y1, x2, y2];
-  if (!points.every(Number.isFinite)) throw new Error(`bezier: four numbers, x1, y1, x2, y2 (as CSS's cubic-bezier takes them), not ${points.map(shown).join(', ')}`);
+  if (!points.every(Number.isFinite)) throw new Error(`bezier: four finite numbers, x1, y1, x2, y2 (as CSS's cubic-bezier takes them), not ${points.map(shown).join(', ')}`);
+  if (!Number.isFinite(9 * (Math.abs(y1) + Math.abs(y2)))) throw new Error(`bezier: y1 and y2 are so large the curve cannot be worked out (${shown(y1)}, ${shown(y2)}); an ease's y stays within a few units of 0..1`);
   if (!(x1 >= 0 && x1 <= 1 && x2 >= 0 && x2 <= 1)) throw new Error(`bezier: x1 and x2 are times, within 0..1 (a curve cannot go back in time), not x1 ${shown(x1)}, x2 ${shown(x2)}; y1 and y2 may leave 0..1`);
   if (x1 === y1 && x2 === y2) return u => clamp01(u);   // the control points on the diagonal: a straight line
   return u => {
@@ -167,18 +168,25 @@ export const EASE_NAMES = Object.freeze(Object.keys(EASES));
 const OVERSHOOTING = new Set(['back', 'outBack', 'spring']);
 const CSS_BEZIER = /^\s*cubic-bezier\(\s*([^,()]+),([^,()]+),([^,()]+),([^,()]+)\)\s*$/;
 
-/** "cubic-bezier(a, b, c, d)" → [a, b, c, d] (numbers as CSS writes them), or null when the text is not that shape. */
+/**
+ * "cubic-bezier(a, b, c, d)" → {numbers: [a, b, c, d], written: the four as written}, or null when the text is not
+ * that shape. A number is written as CSS writes one (1, 0.5, .5, 1e-1); anything else is NaN, shown as written.
+ */
 function cssPoints(text) {
   const m = typeof text === 'string' ? CSS_BEZIER.exec(text) : null;
   if (!m) return null;
-  return m.slice(1).map(s => (/^\s*[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?\s*$/i.test(s) ? Number(s) : NaN));
+  const written = m.slice(1).map(s => s.trim());
+  return {numbers: written.map(s => (/^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(s) ? Number(s) : NaN)), written};
 }
 
 /** The range a unit Bézier coordinate covers (control values a, b): its ends, and its turning points inside 0..1. */
 function bezierRange(a, b) {
-  const A = 3 * (1 + 3 * (a - b)), B = 6 * (b - 2 * a), C = 3 * a, at = [0, 1];
+  const A = 3 * (1 + 3 * (a - b)), B = 6 * (b - 2 * a), C = 3 * a, disc = B * B - 4 * A * C, at = [0, 1];
+  // A y so far out that the arithmetic overflows is far past 0..1: the curve at s = 1/3 and 2/3 is a mix of y1 and y2
+  // that cannot keep both within 0..1.
+  if (![A, B, C, disc].every(Number.isFinite)) return [-Infinity, Infinity];
   if (Math.abs(A) < 1e-12) { if (Math.abs(B) > 1e-12) at.push(-C / B); }
-  else { const disc = B * B - 4 * A * C; if (disc >= 0) at.push((-B + Math.sqrt(disc)) / (2 * A), (-B - Math.sqrt(disc)) / (2 * A)); }
+  else if (disc >= 0) at.push((-B + Math.sqrt(disc)) / (2 * A), (-B - Math.sqrt(disc)) / (2 * A));
   const values = at.filter(s => s >= 0 && s <= 1).map(s => bezierAt(a, b, s));
   return [Math.min(...values), Math.max(...values)];
 }
@@ -192,7 +200,7 @@ export function overshoots(name) {
   if (OVERSHOOTING.has(name)) return true;
   const p = cssPoints(name);
   if (!p) return false;
-  const [lo, hi] = bezierRange(p[1], p[3]);
+  const [lo, hi] = bezierRange(p.numbers[1], p.numbers[3]);
   return lo < -1e-9 || hi > 1 + 1e-9;
 }
 
@@ -204,7 +212,9 @@ export function easeNamed(name, where = 'ease') {
   if (typeof name === 'string' && Object.hasOwn(EASES, name)) return EASES[name];
   const p = cssPoints(name);
   if (p) {
-    try { return bezier(...p); } catch (e) { throw new Error(`${where}: ${JSON.stringify(name)} is not a curve: ${e.message.replace(/^bezier: /, '')}`, {cause: e}); }
+    const not = what => new Error(`${where}: ${JSON.stringify(name)} is not a curve: ${what}`);
+    if (!p.numbers.every(Number.isFinite)) throw not(`four finite numbers, x1, y1, x2, y2, not ${p.written.join(', ')}`);
+    try { return bezier(...p.numbers); } catch (e) { const err = not(e.message.replace(/^bezier: /, '')); err.cause = e; throw err; }
   }
   throw new Error(`${where}: "${name}" is not an ease; the eases are ${EASE_NAMES.join(', ')}, or a four-number curve as CSS writes it, "cubic-bezier(0.16, 1, 0.3, 1)"`);
 }

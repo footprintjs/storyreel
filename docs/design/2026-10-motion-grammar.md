@@ -281,7 +281,19 @@ On the later list: the verbs `say` and `replay` (clips cover replay), and the wa
 `stagger` (spacing a group's verb out, one after another) is on the later list. When it lands, the rules are already decided:
 - a staggered group is one focal unit, and its members never hand over to each other;
 - the whole group leaves when the next unit arrives on its swap layer;
-- a stagger gap shorter than the entrance is refused.
+- a stagger gap shorter than the entrance is refused — between the **members of a repeat group** only (below).
+
+**Stagger at two scopes (owner ruling, 2026-10-13).** Both rules hold, each at its own scope:
+- **Inside one item, a cascade may overlap.** A move that splits its item (`moves.mjs` · a move's `split` and `gap`: the
+  words of one line, the letters of one word) staggers the pieces of ONE item, and spacing them closer than each
+  piece's entrance is the point (0.09 s between words, each word 0.45 s): the reader reads a line, not its words one
+  by one. A split item of n pieces counts as **arrived at (n − 1) × gap + seconds** after it starts, and that is when
+  its reading time (law 6) starts. The kit-level helper `moves.mjs · stagger` spaces such a cascade, and refuses
+  nothing for overlapping.
+- **Between items the narration counts, no overlap.** The recipe-level `stagger` spaces the members of a repeat group —
+  separate things the voice names one by one (`chips/1`, `chips/2`) — and refuses a gap shorter than the entrance:
+  each member must have arrived before the next one starts. The refusal applies to members of a repeat group, never
+  to the pieces of one item's cascade.
 
 ### 4.9 Guides and masks
 

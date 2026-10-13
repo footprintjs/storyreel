@@ -109,26 +109,49 @@ const AMBIENT = [
 ].map(m => ({kind: 'ambient', ...m}));
 
 const MOVE_KEYS = ['name', 'kind', 'feel', 'uses', 'seconds', 'ease', 'spring', 'props', 'mask', 'split', 'gap', 'loop', 'pairs'];
-/** The moves this module checked: each move given (the table's, and each of yours) → its checked, frozen copy, so a move is checked once. */
-const checked = new WeakMap();
+/** The checked, frozen moves this module made (the table's, and each of yours as readMove returns it): given one back, it is not checked again. */
+const checked = new WeakSet();
 
-/** How long a spring feel takes to settle within 0.5% of its end, in steps of 1/240 s (at most 10 s): per feel, once. */
+/** A spring must settle within this many seconds to drive a move (the named feels settle in under a second). */
+const SETTLE_CAP = 10;
+/** A feel as a message shows it: its name, or {k, d}. */
+const feelShown = feel => (typeof feel === 'string' ? feel : `{k: ${feel.k}, d: ${feel.d}}`);
+
+/**
+ * When a spring feel comes within `within` of rest for good: the last moment |1 − x| is `within` or more. Exact, as
+ * motion.mjs · spring draws it: an under-damped swing peaks at t = nπ/ω_d, where |1 − x| = e^(−ζω₀ nπ/ω_d), so the last
+ * peak still at or above `within` is known, and after it the swing falls to its next zero, crossing `within` once on the
+ * way (found by bisection); critically damped and heavier, |1 − x| = e^(−ω₀t)(1 + ω₀t) only falls. Per feel, once.
+ */
 const settled = new Map();
-function settleTime(f) {
-  const key = `${f.k}|${f.d}`;
-  if (!settled.has(key)) {
-    let last = 0;
-    for (let i = 1; i <= 2400; i++) if (Math.abs(1 - spring(i / 240, f)) >= .005) last = i / 240;
-    settled.set(key, Math.min(10, last + 1 / 240));
+function settleTime(f, within) {
+  const key = `${f.k}|${f.d}|${within}`;
+  if (settled.has(key)) return settled.get(key);
+  const w0 = Math.sqrt(f.k), zeta = f.d / (2 * w0), off = t => Math.abs(1 - spring(t, f));
+  let lo = 0, hi = 1 / w0;
+  if (zeta < 1) {
+    const s = zeta * w0, wd = w0 * Math.sqrt(1 - zeta * zeta), n = Math.floor(Math.log(1 / within) * wd / (s * Math.PI));
+    lo = n * Math.PI / wd; hi = ((n + 1) * Math.PI - Math.atan(wd / s)) / wd;
+  } else {
+    while (off(hi) >= within) hi *= 2;
   }
-  return settled.get(key);
+  for (let i = 0; i < 100 && hi - lo > 1e-12 * Math.max(1, hi); i++) { const mid = (lo + hi) / 2; if (off(mid) >= within) lo = mid; else hi = mid; }
+  settled.set(key, hi);
+  return hi;
+}
+/** A spring feel that can drive a move, checked: one that comes within 1% of rest inside SETTLE_CAP seconds. */
+function settlingFeel(feel, where) {
+  const f = readFeel(feel), need = settleTime(f, .01);
+  if (need > SETTLE_CAP) throw new Error(`${where}: the spring ${feelShown(feel)} takes ${+need.toFixed(need < 100 ? 2 : 0)} s to come within 1% of rest, and a move's spring must settle within ${SETTLE_CAP} s: give it more damping (d) or more stiffness (k) — the named feels (${Object.keys(FEELS).join(', ')}) settle in under a second`);
+  return f;
 }
 /**
- * A spring as a curve of u: its first `window` seconds (a move's own seconds; a feel asked for instead, its settling
- * time), what is left of it closed evenly so it ends at exactly 1. A move's own spring so plays in real time.
+ * A spring as a curve of u: its first `window` seconds (a move's own seconds; a feel asked for instead, the time it
+ * takes to come within 0.5% of rest), what is left of it closed evenly so it ends at exactly 1. A move's own spring
+ * so plays in real time.
  */
 function springCurve(feel, window) {
-  const f = readFeel(feel), S = window ?? settleTime(f), end = spring(S, f);
+  const f = readFeel(feel), S = window ?? settleTime(f, .005), end = spring(S, f);
   return u => { u = clamp01(u); return u >= 1 ? 1 : spring(u * S, f) + (1 - end) * u; };
 }
 /** The curve a drive gives: {ease} → the ease table's; {spring, seconds?} → that spring, over those seconds or its settling. */
@@ -139,7 +162,9 @@ function driveOfFeel(feel, where) {
   if (typeof feel === 'string' && Object.hasOwn(MOVE_FEELS, feel)) return MOVE_FEELS[feel];
   if (typeof feel === 'string' && Object.hasOwn(FEELS, feel)) return {spring: feel};
   if (feel && typeof feel === 'object' && !Array.isArray(feel)) {
-    try { return {spring: readFeel(feel)}; } catch (e) { throw new Error(`${where}: ${e.message}`, {cause: e}); }
+    let f;
+    try { f = readFeel(feel); } catch (e) { throw new Error(`${where}: ${e.message}`, {cause: e}); }
+    return {spring: settlingFeel(f, where)};
   }
   throw new Error(`${where}: feel is a move feel (${MOVE_FEEL_NAMES.join(', ')}), a spring's (${Object.keys(FEELS).join(', ')}) or {k, d}, not ${shown(feel)}`);
 }
@@ -172,16 +197,18 @@ const byKind = names => MOVE_KINDS.map(kind => `${kind}: ${names.filter(n => MOV
 
 /**
  * A move as given — a name from the table, or {name, kind, feel, uses, seconds, ease | spring, props, …} of your
- * own — checked and frozen; a name that is not a move refuses, naming the moves by kind.
+ * own — checked, as a frozen copy (what you passed is never frozen); a name that is not a move refuses, naming the
+ * moves by kind. Yours is checked each time it is given, so a change to it counts; pass the copy this returns to
+ * skip that (a frame drawn many times over, say).
  */
 export function readMove(move, where = 'move') {
   if (typeof move === 'string') {
     if (Object.hasOwn(MOVES, move)) return MOVES[move];
     throw new Error(`${where}: no move called "${move}"; the moves are ${byKind(MOVE_NAMES)} (or {name, kind, feel, uses, seconds, ease, props} of your own)`);
   }
-  if (move && typeof move === 'object' && checked.has(move)) return checked.get(move);
-  const m = checkMove(move, where);
-  checked.set(move, m); checked.set(m, m);
+  if (checked.has(move)) return move;   // one this module made: frozen, so still as it was checked
+  const m = checkMove(move, where);   // yours, checked every time it is given (it may have changed since)
+  checked.add(m);
   return m;
 }
 
@@ -198,11 +225,13 @@ function checkMove(move, where) {
   if ((move.ease === undefined) === (move.spring === undefined)) throw new Error(`${who}: give it one curve: ease (a name from the ease table) or spring (a spring feel: ${Object.keys(FEELS).join(', ')}, or {k, d})`);
   try { curveOf(move); } catch (e) { throw new Error(`${who}: ${e.message}`, {cause: e}); }
   if (move.spring !== undefined) {
-    const f = readFeel(move.spring), left = Math.abs(1 - spring(move.seconds, f));
-    if (left > .01) throw new Error(`${who}: its spring is still moving at ${move.seconds} s (${+(left * 100).toFixed(1)}% from rest); give it seconds of at least ${+settleTime(f).toFixed(2)}, the time that spring takes to settle`);
+    const f = settlingFeel(move.spring, who), need = settleTime(f, .01);
+    if (move.seconds < need) throw new Error(`${who}: its spring (${feelShown(move.spring)}) is still moving at ${move.seconds} s: it comes within 1% of rest for good only at ${+need.toFixed(3)} s; give it seconds of at least ${Math.ceil(need * 100) / 100}`);
   }
   checkShape(move, who);
-  const props = checkProps(move, who), m = deepFreeze({...move, uses: [...move.uses], props});
+  // A copy all the way down (the spring too), so freezing it never freezes what you passed.
+  const spring = move.spring && typeof move.spring === 'object' ? {spring: {...move.spring}} : {};
+  const props = checkProps(move, who), m = deepFreeze({...move, uses: [...move.uses], props, ...spring});
   checkLaws(m, who);
   return m;
 }
@@ -258,7 +287,7 @@ function deepFreeze(v) { if (v && typeof v === 'object' && !Object.isFrozen(v)) 
 
 /** The table, by name: entrances, then exits, feedback and ambient moves. Every one passes the same check as yours. */
 export const MOVES = Object.freeze(Object.fromEntries([...ENTRANCES, ...EXITS, ...FEEDBACK, ...AMBIENT].map(m => {
-  const c = checkMove(m, 'MOVES'); checked.set(c, c); return [c.name, c];
+  const c = checkMove(m, 'MOVES'); checked.add(c); return [c.name, c];
 })));
 export const MOVE_NAMES = Object.freeze(Object.keys(MOVES));
 
