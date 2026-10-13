@@ -55,7 +55,8 @@ test('the catalog: every move by name, in five families; whip is a transition, n
   await assert.rejects(make({camera: [{move: 'dolly-in', at: red, amount: 5}]}), /camera\[0\]\.amount must be a number from 1\.05 to 3 \(times closer\), not 5/);
   await assert.rejects(make({camera: [{move: 'freeze', at: red, ease: 'out'}]}), /camera\[0\]: a freeze takes no ease or feel/);
   await assert.rejects(make({camera: [{move: 'pan', at: red, ease: 'out', feel: 'heavy'}]}), /give ease \(a curve's name\) or feel \(a spring\), not both/);
-  await assert.rejects(make({camera: [{move: 'pan', at: red, ease: 'bounce'}]}), /camera\[0\]\.ease: "bounce" is not an ease/);
+  await assert.rejects(make({camera: [{move: 'pan', at: red, ease: 'wobble'}]}), /camera\[0\]\.ease: "wobble" is not an ease/);
+  for (const ease of ['bounce', 'cubic-bezier(0.2, 0.8, 0.2, 1)']) assert.ok(await make({camera: [{move: 'pan', at: red, ease}]}), `a named or written curve eases a move: ${ease}`);
   await assert.rejects(make({camera: [{move: 'pan', at: red, until: ['a', 'First']}]}), /camera\[0\]: until \(.*\) must come after at/);
   await assert.rejects(make({camera: [{move: 'pan', at: 99}]}), /camera\[0\]\.at is seconds from 0 to the film's end \(16\.70 s\), not 99/);
   await assert.rejects(make({camera: [{move: 'pan', at: ['b', 'once']}]}), /camera\[0\]: the pan takes 2 s and the film ends .* after it starts: give until or seconds/);

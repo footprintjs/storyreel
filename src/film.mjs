@@ -628,7 +628,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (shot) {
       const e = shot.enter;
       return e.type === 'cut' ? {from: st.start, to: st.start, what: `the cut into ${st.scene}`}
-        : {from: st.start - e.lead, to: Math.max(st.start - e.lead + e.seconds, st.type === 'recap' ? st.start + 1 : 0), what: `the ${e.type} into ${st.scene}`};
+        : {from: st.start - e.lead, to: Math.max(st.start - e.lead + e.seconds, st.type === 'recap' ? st.start + 1 : 0), what: `the ${e.move ? `${e.move} move` : e.type} into ${st.scene}`};
     }
     return st.cut ? {from: st.start, to: st.start, what: `the cut into ${st.scene}`}
       : {from: st.start - .65, to: st.start + (st.type === 'recap' ? 1 : .4), what: `the hand-over to ${st.scene}`};
@@ -943,7 +943,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
         paths: j === 0 ? [storyPath] : shot.world ? [stagePath(stages.find(st => st.world === shot.world))] : teasing ? everything : shot.stages.map(stagePath),
         // The entry the row begins with (its first stage, or the story): what a check names when it means this row.
         stage: j === 0 ? storyPath : stagePath(shot.stages[0] ?? stages.find(st => st.world === shot.world)),
-        enter: j === 0 ? null : {type: shot.enter.type, seconds: shot.enter.seconds, lead: shot.enter.lead},
+        enter: j === 0 ? null : {type: shot.enter.type, ...(shot.enter.move ? {move: shot.enter.move} : {}), seconds: shot.enter.seconds, lead: shot.enter.lead},
         ...(teasing ? {rewinds: Object.freeze({from: Math.min(teaser.from, teaser.to), to: Math.max(teaser.from, teaser.to), at: teaser.at + 2.7, until: teaser.at + 4.8})} : {}),
       };
     });

@@ -1,6 +1,7 @@
 // Types for footprint-storyreel (the code is plain JavaScript; these describe its public surface).
 import type {CombinedNarrativeEntry, RuntimeSnapshot, DecisionEvidence} from 'footprintjs';
-import type {EaseName} from './sub/ease.js';
+import type {EaseSpec} from './sub/ease.js';
+import type {MoveName, Move, MoveFeelName} from './sub/moves.js';
 import type {FeelName, Feel} from './sub/motion.js';
 
 /** A spoken phrase: [scene, phrase] or [scene, phrase, plus seconds], or the object form. */
@@ -111,7 +112,7 @@ export type CameraTime = Beat | number;
 /** When a move plays: `at`, then `until` or `seconds` (left out: the move's own length; handheld: to the film's end). */
 interface CameraSpan { at: CameraTime; until?: CameraTime; seconds?: number }
 /** How a view, follow or depth move eases: a curve by name (inOut when neither is given), or a spring feel fitted to its seconds. */
-type CameraEase = {ease?: EaseName; feel?: never} | {ease?: never; feel?: FeelName | Feel};
+type CameraEase = {ease?: EaseSpec; feel?: never} | {ease?: never; feel?: FeelName | Feel};
 /**
  * A camera move. view — pan (`amount` px across, + right), tilt (px down, + down), dolly-in / dolly-out (`amount` times
  * closer / farther; `on`: toward a named thing, as far as the edges allow), crane (`amount` px it rises, `scale` times
@@ -142,7 +143,7 @@ export interface CameraMovePlayed {
   covers?: number;
   /** A view or follow move's resolved end framing, as the viewer sees it (and for a follow, a hash of the path it took). */
   ends?: CameraState & {path?: string};
-  ease?: EaseName; feel?: FeelName | Feel;
+  ease?: EaseSpec; feel?: FeelName | Feel;
   [setting: string]: unknown;
 }
 /** The camera moves as played (camerawork.mjs): moves, or cuts for reduced motion — and why (the decision's evidence) — each move placed, and the plan's footprintjs narrative. */
@@ -179,11 +180,14 @@ export type TransitionName = 'cut' | 'fade' | 'dip' | 'wipe' | 'split' | 'clock'
  * left | right | top | bottom), `line` (split: vertical | horizontal), `at` (iris, zoom: [x, y]), `color`
  * (dip: a hex colour), `region` (through, match: the name of a thing in the picture it leaves — required),
  * `into` (match: the thing's name in the new picture, when it differs), `shape` (through: box | round).
- * Left out: a fade.
+ * Left out: a fade. Or a move from the vocabulary (`footprint-storyreel/moves`) that a whole picture can make —
+ * {move: 'soft-rise', seconds?, feel?, sound?}: the new picture moves in over the old one on the move's own curve
+ * (or its `feel`'s: a move feel, a spring feel, or {k, d}); silent unless it names a sound.
  */
-export type Enter = TransitionName | (string & {}) | ({type: TransitionName | (string & {}); seconds?: number; ease?: EaseName; sound?: SoundType | false;
+export type Enter = TransitionName | (string & {}) | ({type: TransitionName | (string & {}); seconds?: number; ease?: EaseSpec; sound?: SoundType | false;
   from?: 'left' | 'right' | 'top' | 'bottom'; line?: 'vertical' | 'horizontal'; at?: [number, number]; color?: string;
-  region?: string; into?: string; shape?: 'box' | 'round'; [setting: string]: unknown});
+  region?: string; into?: string; shape?: 'box' | 'round'; move?: never; [setting: string]: unknown})
+  | {move: MoveName | (string & {}) | Move; seconds?: number; feel?: MoveFeelName | FeelName | Feel; sound?: SoundType | false; type?: never};
 /** A transition's setting: one of some words, a point, a colour or a number, each with its default; or the name of a thing in the picture (no default: the recipe must give it; default null: it may be left out). */
 export type TransitionSetting = {oneOf: readonly string[]; default: string} | {point: true; default: readonly [number, number]}
   | {color: true; default: string} | {number: readonly [number, number]; default: number} | {name: true; default?: string | null};
@@ -211,9 +215,9 @@ export interface Transition {
   family: string;
   /** Its default length, 0.2–3 s. */
   seconds: number;
-  ease: EaseName;
+  ease: EaseSpec;
   sound: SoundType | null;
-  /** true when an overshooting ease (back, spring) may drive it. */
+  /** true when an overshooting ease (back, outBack, spring, a four-number curve past 0..1) may drive it. */
   overshoot?: boolean;
   params?: Record<string, TransitionSetting>;
   /** The things it looks for, by name, in the picture it leaves (`from`) and the one it arrives at (`to`): the film finds them once and passes their boxes to draw. */
