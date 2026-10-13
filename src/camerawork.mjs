@@ -13,7 +13,8 @@
  *
  * ONE CAMERA. A camera move (view, follow or depth) cannot run while something else moves the camera: a moving
  * focus (a camera-strategy focus, from each key until its spring settles: motion.mjs · settleTime), a director's
- * push (while it eases in or out) or a world's spotlight (its kit's own camera, as a push never runs over one). They take turns, and they compose: the camera frames a held push or focus, and a
+ * push (while it eases in or out), a world's spotlight, or a world's own camera (StoryWorld · cameraMoves: the
+ * cartoon kit's camera keys) — as a push never runs over a spotlight or a kit's camera either. They take turns, and they compose: the camera frames a held push or focus, and a
  * focus that moves later frames inside the camera's held view. Two moves may run at once when they move different
  * things (a pan and a dutch), never the same one. Handheld is a texture, not a move: it runs under anything.
  *
@@ -29,7 +30,8 @@
 import {flowChart, decide, narrative} from 'footprintjs';
 import {readCameraMove, CAMERA_MOVE_NAMES, REST, MAX_ZOOM, coverZoom, covered, viewOf, aimAt, handheldAt, layersAt} from './camera.mjs';
 import {inOut} from './ease.mjs';
-import {then} from './regions.mjs';
+import {then, through} from './regions.mjs';
+import {hashOf} from './hash.mjs';
 
 const VIEW_AXES = ['x', 'y', 'z', 'r'];
 const DEPTH_REST = Object.freeze({orbit: 0, zoom: 0, focus: null, blur: 0});
@@ -44,11 +46,12 @@ const r3 = n => +n.toFixed(3);
 
 /**
  * The camera plan for a recipe's `camera` list. `env` is what the film knows: clock (at: beat → seconds), total,
- * changes ([{from, to, what}]: every change of picture), onFrame(name, t, tp) (the box of a named thing on the frame
- * before the camera: through the push and the focus at t, as drawn at the picture's time tp), worldAt(t) ({world,
- * path} on screen at t, or null on paper), focus (attention.mjs · readFocus, or null), pushes (notes.mjs ·
- * placePushes), spotlight(t) (whose spotlight shows at t, or null), reducedMotion, and ground(ctx) (what lies under
- * a moved view: the paper).
+ * changes ([{from, to, what}]: every change of picture), named(name, tp) (the box of a named thing as drawn at
+ * the picture's time tp, before any push), under(t) (the view the push and the focus put under the camera at t, or
+ * null: through it a box is where the camera sees it), worldAt(t) ({world, path} on screen at t, or null on paper),
+ * focus (attention.mjs · readFocus, or null), pushes (notes.mjs · placePushes), spotlight(t) (whose spotlight shows
+ * at t, or null), kitCamera(a, b) (a world's own camera moving between a and b while it is on screen: {path, kit,
+ * from, to}, or null), reducedMotion, and ground(ctx) (what lies under a moved view: the paper).
  * Returns {viewAt(t), viewOn(t), clockAt(t), depthAt(world, t), show(ctx, t, paint), record}.
  */
 export async function planCamera(spec, env) {
@@ -109,7 +112,7 @@ function worldOf(m, worldAt) {
 }
 
 /** Stage: one move at a time on each thing it moves, and none while the focus, a push or a world's spotlight moves the camera. */
-function oneCamera(s, {focus = null, pushes = [], spotlight = () => null}, work) {
+function oneCamera(s, {focus = null, pushes = [], spotlight = () => null, kitCamera = () => null}, work) {
   const lanes = new Map();
   for (const m of work.moves) for (const axis of m.def.axes(m.p)) {
     const key = m.family === 'depth' ? `${m.worldPath}:${axis}` : axis, before = lanes.get(key);
@@ -124,6 +127,8 @@ function oneCamera(s, {focus = null, pushes = [], spotlight = () => null}, work)
     if (o) throw new Error(`${m.path} (${m.move}, ${m.at.toFixed(2)}–${m.until.toFixed(2)} s) would move the camera while ${o.what} (${o.from.toFixed(2)}–${o.to.toFixed(2)} s); a film has one camera: ${o.fix}`);
     // A world's spotlight is its kit's own camera (StoryWorld · spotAt): a move never runs over one, as a push never does.
     for (let t = m.at; t < m.until; t += .05) { const lit = spotlight(t); if (lit) throw new Error(`${m.path} (${m.move}) runs over ${lit}'s spotlight at ${t.toFixed(2)} s; a film has one camera: move before or after the spotlight`); }
+    const own = kitCamera(m.at, m.until);
+    if (own) throw new Error(`${m.path} (${m.move}, ${m.at.toFixed(2)}–${m.until.toFixed(2)} s) would move the camera while the kit "${own.kit}" moves its own camera in the world at ${own.path} (${own.from.toFixed(2)}–${own.to.toFixed(2)} s); a film has one camera: move the camera move, or the kit's camera key, so they take turns`);
   }
   s.checked = {moves: work.moves.length, focus: (focus?.moving ?? []).length, pushes: pushes.length};
 }
@@ -141,6 +146,7 @@ function aim(s, env, work) {
   const clockAt = clockOf(moves);
   const view = viewLanes(moves, {...env, clockAt, cuts}), depth = depthLanes(moves, cuts), shakeAt = shakeOf(moves);
   checkCover(moves, view.stateAt, cuts);
+  for (const m of moves) if (m.family === 'view' || m.family === 'follow') m.ends = endsOf(covered(view.stateAt(spanOf(m, cuts)[1])), m.trail);
   const viewAt = t => { const v = view.stateAt(t); return VIEW_AXES.every(a => v[a] === REST[a]) ? null : covered(v); };
   /** The camera's whole view on the frame at t (handheld's drift over its framing), for regions and clicks; null at rest. */
   const viewOn = t => { const v = viewAt(t), k = shakeAt(t); return !v && !k ? null : !k ? viewOf(v) : !v ? viewOf(k) : then(viewOf(k), viewOf(v)); };
@@ -153,8 +159,14 @@ function aim(s, env, work) {
     paint(ctx); ctx.restore();
   };
   work.plan = {viewAt, viewOn, clockAt, depthAt: depth, show};
-  s.aimed = moves.map(m => ({path: m.path, ...(m.covers ? {covers: m.covers} : {})}));
+  s.aimed = moves.map(m => ({path: m.path, ...(m.ends ? {ends: m.ends} : {}), ...(m.covers ? {covers: m.covers} : {})}));
 }
+
+/**
+ * Where a view or follow move leaves the camera, as the record and a segment's key keep it: the framing the viewer
+ * sees as it arrives ({x, y, z, r}, rounded), and for a follow the path it took (a hash of where its thing was).
+ */
+const endsOf = (v, trail) => ({x: r3(v.x), y: r3(v.y), z: r3(v.z), r: r3(v.r), ...(trail ? {path: hashOf(trail.map(p => Object.values(p).map(r3)))} : {})});
 
 /** The picture's clock: in a freeze it holds; in a speed ramp it runs slow, then catches up; elsewhere it is the voice's. */
 function clockOf(moves) {
@@ -162,51 +174,77 @@ function clockOf(moves) {
   return t => { const w = spans.find(x => t >= x.from && t < x.to); return w ? w.from + (w.to - w.from) * w.remap((t - w.from) / (w.to - w.from)) : t; };
 }
 
-/** One change of an axis: from v0 to v1 (a number, or a function of t for a follow) between a and b, eased; a cut when a = b. */
-const segment = (a, b, v0, v1, ease) => {
+/**
+ * One change of an axis: from v0 to v1 between a and b, eased; a cut when a = b. v1 is a number, or a function of t:
+ * a follow's (held where it was at b once it arrives) or an anchor's (`live`: it keeps following after b, so a dolly
+ * on a thing stays on it while a push or the focus under the camera moves the picture).
+ */
+const segment = (a, b, v0, v1, ease, {live = false} = {}) => {
   const end = typeof v1 === 'function' ? v1 : () => v1;
-  return {from: a, at: t => (t >= b ? end(b) : v0 + (end(t) - v0) * ease((t - a) / (b - a)))};
+  return {from: a, at: t => (t >= b ? end(live ? t : b) : v0 + (end(t) - v0) * ease((t - a) / (b - a)))};
 };
 /** An axis at t: its rest, then each change that has started (they never overlap on one axis). */
 const laneAt = (lane, t, rest) => { let v = rest; for (const x of lane) { if (t < x.from) break; v = x.at(t); } return v; };
 /** When a move plays: its span, or (reduced motion) a cut on its first moment — a follow's on its last, where its thing then is. */
 const spanOf = (m, cuts) => (!cuts ? [m.at, m.until] : m.family === 'follow' ? [m.until, m.until] : [m.at, m.at]);
 
-/** The view's four axes (x, y, z, r) as lanes of changes: each view and follow move from the state before it, and back to rest over each change of picture. */
-function viewLanes(moves, {changes, onFrame, clockAt, cuts}) {
-  const lanes = {x: [], y: [], z: [], r: []}, state = {...REST};
+/**
+ * The view's four axes (x, y, z, r) as lanes of changes: each view and follow move from the framing the viewer sees
+ * as it starts (the zoom that covers the frame included, so a dolly after a pan or a dutch angle is a change of what
+ * is on screen), and back to rest over each change of picture.
+ */
+function viewLanes(moves, {changes, named, under, clockAt, cuts}) {
+  const lanes = {x: [], y: [], z: [], r: []}, stateAt = t => Object.fromEntries(VIEW_AXES.map(axis => [axis, laneAt(lanes[axis], t, REST[axis])]));
   const events = [...moves.filter(m => m.family === 'view' || m.family === 'follow').map(m => ({t: m.at, m})), ...changes.map(c => ({t: c.from, c}))]
     .sort((a, b) => a.t - b.t || (a.c ? -1 : 0) - (b.c ? -1 : 0));
   for (const {m, c} of events) {
     if (c) {
-      for (const axis of VIEW_AXES) if (state[axis] !== REST[axis]) { lanes[axis].push(segment(c.from, cuts ? c.from : c.to, state[axis], REST[axis], inOut)); state[axis] = REST[axis]; }
+      const held = stateAt(c.from);
+      for (const axis of VIEW_AXES) if (held[axis] !== REST[axis]) lanes[axis].push(segment(c.from, cuts ? c.from : c.to, held[axis], REST[axis], inOut));
       continue;
     }
-    const [a, b] = spanOf(m, cuts), axes = m.def.axes(m.p);
+    const [a, b] = spanOf(m, cuts), axes = m.def.axes(m.p), seen = covered(stateAt(m.at));
     if (m.family === 'view') {
-      const end = m.def.aim(state, m.p, m.p.on ? boxOf(m, onFrame, m.at, clockAt) : null);
-      for (const axis of axes) { lanes[axis].push(segment(a, b, state[axis], end[axis], m.ease)); state[axis] = end[axis]; }
+      const anchor = m.p.on ? anchorOf(m, {named, under, clockAt}) : null, end = m.def.aim(seen, m.p, anchor ? anchor(m.at) : null);
+      for (const axis of axes) {
+        const follows = anchor && (axis === 'x' || axis === 'y');
+        lanes[axis].push(segment(a, b, seen[axis], follows ? t => m.def.aim(seen, m.p, anchor(t))[axis] : end[axis], m.ease, {live: follows}));
+      }
     } else {
-      const path = followed(m, onFrame, clockAt);
-      for (const axis of axes) { lanes[axis].push(segment(a, b, state[axis], t => path(t)[axis], m.ease)); state[axis] = path(m.until)[axis]; }
+      const {path, points} = followed(m, {named, under, clockAt});
+      m.trail = points;
+      for (const axis of axes) lanes[axis].push(segment(a, b, seen[axis], t => path(t)[axis], m.ease));
     }
   }
-  return {stateAt: t => Object.fromEntries(VIEW_AXES.map(axis => [axis, laneAt(lanes[axis], t, REST[axis])]))};
+  return {stateAt};
 }
 
-/** The box of the thing a move names, on the frame before the camera, at t; a name not there refuses, naming the move. */
-function boxOf(m, onFrame, t, clockAt) {
-  try { return onFrame(m.p.on, t, clockAt(t)); } catch (e) { throw new Error(`${m.path} (${m.move} on "${m.p.on}"): ${e.message}`, {cause: e}); }
+/** The box of the thing a move names, as drawn at t (on the picture's clock), before the push, the focus and the camera; a name not there refuses, naming the move. */
+function rawBoxOf(m, named, t, clockAt) {
+  try { return named(m.p.on, clockAt(t)); } catch (e) { throw new Error(`${m.path} (${m.move} on "${m.p.on}"): ${e.message}`, {cause: e}); }
+}
+/** A box on the frame before the camera at t: through the push and the focus under it then (under(t): a view, or null). */
+const onFrame = (box, under, t) => { const v = under(t); return v ? through(v, box) : box; };
+
+/**
+ * Where a dolly on a thing aims at t: the thing's place in the picture as the move starts, through whatever push or
+ * focus is under the camera at t — so the camera stays on the thing when they move the picture under it. (A thing
+ * that walks away is followed by a truck or a track, not a dolly.)
+ */
+function anchorOf(m, {named, under, clockAt}) {
+  const box = rawBoxOf(m, named, m.at, clockAt);
+  return t => onFrame(box, under, t);
 }
 
-/** A follow's path: where its thing is, sampled 30 times a second over the move, in between by a straight line. */
-function followed(m, onFrame, clockAt) {
+/** A follow's path: where its thing is on the frame, sampled 30 times a second over the move, in between by a straight line. */
+function followed(m, {named, under, clockAt}) {
   const n = Math.max(1, Math.ceil((m.until - m.at) / SAMPLE)), span = m.until - m.at;
-  const points = Array.from({length: n + 1}, (_, i) => m.def.follow(boxOf(m, onFrame, m.at + span * i / n, clockAt)));
-  return t => {
+  const points = Array.from({length: n + 1}, (_, i) => { const t = m.at + span * i / n; return m.def.follow(onFrame(rawBoxOf(m, named, t, clockAt), under, t)); });
+  const path = t => {
     const u = Math.max(0, Math.min(n, (t - m.at) / span * n)), i = Math.min(n - 1, Math.floor(u)), f = u - i, a = points[i], b = points[i + 1];
     return Object.fromEntries(Object.keys(a).map(k => [k, a[k] + (b[k] - a[k]) * f]));
   };
+  return {path, points};
 }
 
 /** Each view and follow move, sampled where it plays: never past MAX_ZOOM; where it had to scale up to keep the frame covered, the record says how far. */
@@ -214,12 +252,16 @@ function checkCover(moves, stateAt, cuts) {
   for (const m of moves) {
     if (m.family !== 'view' && m.family !== 'follow') continue;
     const [a, b] = spanOf(m, cuts), n = Math.max(1, Math.ceil((b - a) / SAMPLE));
-    let most = 0;
+    let most = 0, zoomed = {z: 0}, needed = {z: 0};   // the most it scaled to cover; the furthest it zooms, or needs to
     for (let i = 0; i <= n; i++) {
       const t = a + (b - a) * i / n, v = stateAt(t), need = coverZoom(v), z = Math.max(v.z, need);
-      if (!(z <= MAX_ZOOM)) throw new Error(`${m.path} (${m.move}) would need the picture at ${Number.isFinite(z) ? `×${z.toFixed(2)}` : 'more than any zoom'} at ${t.toFixed(2)} s to keep the frame covered (a camera goes to ×${MAX_ZOOM}): move it less far, or dolly in before it so the picture has room`);
+      if (v.z > zoomed.z) zoomed = {z: v.z, t};
+      if (!(need <= needed.z)) needed = {z: need, t};
       if (need > v.z + 1e-6) most = Math.max(most, z);
     }
+    // Said with the furthest it goes (not the first moment past the limit): the number a director changes.
+    if (zoomed.z > MAX_ZOOM) throw new Error(`${m.path} (${m.move}) takes the camera to ×${zoomed.z.toFixed(2)} at ${zoomed.t.toFixed(2)} s, past the ×${MAX_ZOOM} a camera goes to (dollies multiply: each starts from the zoom on screen, a pan's or a dutch's included): dolly in less, or dolly out between them`);
+    if (!(needed.z <= MAX_ZOOM)) throw new Error(`${m.path} (${m.move}) would need the picture at ${Number.isFinite(needed.z) ? `×${needed.z.toFixed(2)}` : 'more than any zoom'} at ${needed.t.toFixed(2)} s to keep the frame covered (a camera goes to ×${MAX_ZOOM}; it looks at most 600 px across and 337 px up or down from the middle): move it less far`);
     if (most) m.covers = r3(most);
   }
 }
@@ -283,9 +325,14 @@ function shakeOf(moves) {
 /** A move as the record keeps it: where it is in the recipe, what it is, when (at, until: seconds), its settings and its ease. */
 const summary = m => ({path: m.path, move: m.move, family: m.family, at: r3(m.at), until: r3(m.until), ...m.p, ...(m.eased ?? {})});
 
-/** The record: how the moves were played (and why: the decision's evidence), each move as placed, and the flowchart's narrative. */
+/**
+ * The record: how the moves were played (and why: the decision's evidence), each move as placed — with `ends`, the
+ * framing it resolved to (so an edit under it, a push the dolly aims through, changes the record and a segment's key)
+ * — and the flowchart's narrative.
+ */
 function recordOf(work, trace) {
   return {motion: work.cuts ? 'cuts' : 'moves', decision: work.decision,
-    moves: work.moves.map(m => ({...summary(m), played: m.played, lasts: Number.isFinite(m.lasts) ? r3(m.lasts) : null, ...(m.worldPath ? {world: m.worldPath} : {}), ...(m.covers ? {covers: m.covers} : {})})),
+    moves: work.moves.map(m => ({...summary(m), played: m.played, lasts: Number.isFinite(m.lasts) ? r3(m.lasts) : null, ...(m.worldPath ? {world: m.worldPath} : {}),
+      ...(m.ends ? {ends: m.ends} : {}), ...(m.covers ? {covers: m.covers} : {})})),
     narrative: trace.getEntries().map(({rawValue, ...entry}) => entry)};
 }

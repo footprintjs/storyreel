@@ -129,6 +129,13 @@ function usesContext(storyKit, name) {
   return asked;
 }
 
+/** A world's optional `cameraMoves` (when its kit's own camera moves: [{from, to}] in seconds), checked. */
+function checkCameraMoves(instance, name, where) {
+  const moves = instance?.cameraMoves;
+  if (moves === undefined) return;
+  if (!Array.isArray(moves) || !moves.every(m => m && Number.isFinite(m.from) && Number.isFinite(m.to) && m.to > m.from)) throw new Error(`${where}: the kit "${name}" returned cameraMoves that are not [{from, to}]; cameraMoves is optional, and when given it lists when the kit's own camera moves, in seconds on the film's clock (to after from)`);
+}
+
 /**
  * A world's optional `ready` (a Promise: e.g. its images decoding), settled at once into
  * {error} | null so a refusal that comes early is never an unhandled rejection while the film is built.
@@ -214,6 +221,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (notes.speed !== 1 && !kit.motion?.includes('cameraSpeed')) throw new Error(`note "${notes.speedNote.note}": ${where} is drawn by the kit "${spec.kit}", which does not take a camera speed (a story kit that does lists motion: ['cameraSpeed'] and divides its camera moves' seconds by motion.cameraSpeed)`);
     worldKits.add(spec.kit);
     const instance = usesContext(kit, spec.kit) ? kit.compile(spec, context) : kit.compile(spec, clock, motion);
+    checkCameraMoves(instance, spec.kit, where);
     readies.push(readyOf(instance, spec.kit, where));
     return instance;
   };
@@ -483,11 +491,11 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     else ctx.drawImage(sheet, 0, 0);
     ctx.restore();
   }
-  const layerSheet = createCanvas(1600, 900);
+  const layerSheet = createCanvas(1600, 900), softSheets = new Map();
   /**
    * A world on its sheet at t (drawn as at `shown`): by its kit's draw, or — while a depth move has moved its layers
    * (camerawork.mjs · depthAt) — layer by layer, back to front, each drawn whole (drawLayer), then slid, scaled
-   * about the sheet's centre and blurred by its depth.
+   * about the sheet's centre and blurred by its depth (softened).
    */
   function paintWorld(c, w, t, shown, spot) {
     const layers = camerawork?.depthAt(w, t);
@@ -495,9 +503,22 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     const lc = layerSheet.getContext('2d');
     for (const l of layers) {
       lc.resetTransform(); lc.clearRect(0, 0, 1600, 900); w.instance.drawLayer(lc, shown, l.name, spot);
-      c.save(); if (l.blur > .05) c.filter = `blur(${l.blur.toFixed(2)}px)`;
-      c.translate(800 + l.dx, 450); c.scale(l.scale, l.scale); c.translate(-800, -450); c.drawImage(layerSheet, 0, 0); c.restore();
+      const picture = l.blur >= .5 ? softened(l.blur) : layerSheet;   // under half a pixel a blur shows nothing: not drawn
+      c.save(); c.translate(800 + l.dx, 450); c.scale(l.scale, l.scale); c.translate(-800, -450); c.drawImage(picture, 0, 0, 1600, 900); c.restore();
     }
+  }
+  /**
+   * The layer just drawn on layerSheet, blurred by `blur` px: drawn at 1/k of its size (k about blur/1.5, 1–8) with
+   * blur/k, then scaled back up as it is laid down — the same softness, a fraction of the work of a full-size blur
+   * (a rack focus costs a few times a plain frame, not thirty: README · Camera moves by name).
+   */
+  function softened(blur) {
+    const k = Math.max(1, Math.min(8, Math.round(blur / 1.5))), w = Math.ceil(1600 / k), h = Math.ceil(900 / k);
+    if (!softSheets.has(k)) softSheets.set(k, createCanvas(w, h));
+    const soft = softSheets.get(k), sc = soft.getContext('2d');
+    sc.resetTransform(); sc.clearRect(0, 0, w, h);
+    sc.save(); sc.filter = `blur(${(blur / k).toFixed(2)}px)`; sc.drawImage(layerSheet, 0, 0, w, h); sc.restore();
+    return soft;
   }
   const spotOf = (w, t) => w.instance.spotAt ? w.instance.spotAt(t) : null;
   /** A spotlight's camera on a world: {sx, sy, z, tx, ty} (translate to (tx, ty), scale z, about (sx, sy)). */
@@ -617,6 +638,20 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (teaser) out.push({from: teaser.at, to: clock.total, what: 'the teaser'});
     return out;
   }
+  /**
+   * A world's own camera moving between a and b while that world is on screen (StoryWorld · cameraMoves: e.g. the
+   * cartoon kit's camera keys): {path, kit, from, to}, or null. A push and a camera move take turns with it.
+   */
+  function kitCameraIn(a, b) {
+    const worlds = [storyWorld, ...stages.filter(st => st.world).map(st => st.world)];
+    if (!worlds.some(w => w.instance.cameraMoves?.length)) return null;
+    const starts = worlds.flatMap(w => (w.instance.cameraMoves ?? []).map(x => x.from)).filter(t => t > a && t < b);
+    for (const t of [...Array.from({length: Math.ceil((b - a) / .05)}, (_, i) => a + i * .05), ...starts]) {
+      const on = worldOnScreen(t), x = on && (on.w.instance.cameraMoves ?? []).find(m => t >= m.from && t < m.to);
+      if (x) return {path: on.path, kit: on.w.kit, from: x.from, to: x.to};
+    }
+    return null;
+  }
   /** The world whose spotlight shows at t (its name), or null. */
   function spotlightAt(t) {
     if (push) return t < boardEnd && spotOf(storyWorld, t) ? 'the story' : null;
@@ -671,9 +706,9 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   function regionsAt(t) {
     if (teaser && t >= teaser.at) return [{box: [0, 0, 1600, 900], path: `${stagePath(recapStage)}.teaser`, label: 'the teaser'}];
     const out = regionsUnder(pictureClock(t));
-    const cam = pushAt(pushes, t), pushed = cam ? out.map(r => ({...r, box: through(about(cam), r.box)})) : out;
-    // Through the camera's moves (a rolled box: the box that holds it), when it has moved.
-    const lens = camerawork?.viewOn(t), seen = lens ? pushed.map(r => ({...r, box: through(lens, r.box)})) : pushed;
+    // Through the push and the focus (underView), then the camera's moves (a rolled box: the box that holds it).
+    const under = underView(t), framed = under ? out.map(r => ({...r, box: through(under, r.box)})) : out;
+    const lens = camerawork?.viewOn(t), seen = lens ? framed.map(r => ({...r, box: through(lens, r.box)})) : framed;
     guesses.forEach((g, n) => { if (t >= g.start && t <= g.until + .5) seen.push({box: guessBox(g, t), path: `guesses[${n}]`, label: g.question}); });
     return seen;
   }
@@ -731,11 +766,11 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   }
   /**
    * A point on the frame at t in the recipe's own coordinates: `frame` (as a push note's `at` means it:
-   * before any push or camera move) and, over a world, `world` {path, at} (the sheet's, as its items are placed).
+   * before any push, focus or camera move) and, over a world, `world` {path, at} (the sheet's, as its items are placed).
    */
   function pointAt(t, x, y) {
     const teasing = teaser && t >= teaser.at, lens = teasing ? null : camerawork?.viewOn(t), [lx, ly] = lens ? back(lens, [x, y]) : [x, y];
-    const cam = teasing ? null : pushAt(pushes, t), [fx, fy] = cam ? back(about(cam), [lx, ly]) : [lx, ly], world = !teasing && worldOnScreen(pictureClock(t));
+    const under = teasing ? null : underView(t), [fx, fy] = under ? back(under, [lx, ly]) : [lx, ly], world = !teasing && worldOnScreen(pictureClock(t));
     const round = n => Math.round(n);
     return {frame: [round(fx), round(fy)], ...(world ? {world: {path: world.path, at: back(world.view, [fx, fy]).map(round)}} : {})};
   }
@@ -772,21 +807,23 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (!(w >= 4 && h >= 4)) throw new Error(`${where}: the ${type} goes through "${name}" in ${picture}, which is not on the frame at ${t.toFixed(2)} s (its box is [${box.map(n => Math.round(n)).join(', ')}])`);
     return Object.freeze([...box]);
   }
-  const pushes = placePushes(notes.pushes, {clock, speed: notes.speed, changes: pictureChanges(), spotlight: spotlightAt, total: clock.total, named});
+  const pushes = placePushes(notes.pushes, {clock, speed: notes.speed, changes: pictureChanges(), spotlight: spotlightAt, kitCamera: kitCameraIn, total: clock.total, named});
   // Where the viewer looks (attention.mjs): the recipe's focus and emphasis, each shown by a strategy.
   const attention = readAttention(recipe, {clock, named, strategies, pushes, theme: paper});
   // The camera's moves by name (camera.mjs), placed on the clock by camerawork.mjs: one picture each, one camera
   // (they take turns with a moving focus and the pushes), played as moves or (reducedMotion) as cuts.
   const camerawork = recipe.camera === undefined ? null : await planCamera(recipe.camera, {clock, total: clock.total, changes: pictureChanges(),
-    onFrame: namedOnFrame, worldAt: t => { const on = worldOnScreen(t); return on ? {world: on.w, path: on.path} : null; },
-    focus: attention?.focus ?? null, pushes, spotlight: spotlightAt, reducedMotion, ground: c => c.drawImage(blank, 0, 0)});
-  /** A named thing's box on the frame before the camera at t (drawn as at tp): through the push and a moving focus, as the camera sees it. */
-  function namedOnFrame(name, t, tp = t) {
-    let box = named(name, tp);
-    const cam = pushAt(pushes, t), f = attention?.focus;
-    if (cam) box = through(about(cam), box);
-    if (f?.moves) { const v = f.viewAt(t); box = through(about({sx: v.cx, sy: v.cy, z: v.z, tx: v.sx, ty: v.sy}), box); }
-    return box;
+    named, under: underView, worldAt: t => { const on = worldOnScreen(t); return on ? {world: on.w, path: on.path} : null; },
+    focus: attention?.focus ?? null, pushes, spotlight: spotlightAt, kitCamera: kitCameraIn, reducedMotion, ground: c => c.drawImage(blank, 0, 0)});
+  /**
+   * What lies between the picture and the camera at t, as a view (regions.mjs): the director's push, then a moving
+   * focus (attention.mjs), as frame() composes them; null when neither moves the picture. The camera, regionsAt and
+   * pointAt all read through it, so a box and a click agree with what is drawn.
+   */
+  function underView(t) {
+    const cam = pushAt(pushes, t), f = attention?.focus, v = f?.moves ? f.viewAt(t) : null;
+    const pushed = cam ? about(cam) : null, focused = v ? about({sx: v.cx, sy: v.cy, z: v.z, tx: v.sx, ty: v.sy}) : null;
+    return pushed && focused ? then(focused, pushed) : pushed ?? focused;
   }
 
   // The notes as applied, in the order written: the making-of record says what each one changed.

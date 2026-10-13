@@ -20,8 +20,10 @@
  * the whole frame) and its roll (radians, clockwise). REST is the frame as the film draws it with no camera.
  * A state never uncovers the frame: coverZoom is the least zoom that keeps the picture covering it at (x, y)
  * rolled r, and the camera always takes at least that — a dutch angle scales up a little, as an editor's
- * "scale to fill" does, and a pan at the whole frame scales up just enough to slide. A dolly keeps the zoom it
- * asks for instead: it moves toward its named thing only as far as the picture's edges allow, as a push does.
+ * "scale to fill" does, and a pan at the whole frame scales up just enough to slide (so the camera looks at most 600
+ * px across and 337 px up or down from the middle: ×4). A dolly keeps the zoom it asks for instead, starting from the
+ * zoom on screen (a pan's or a dutch's cover included): it moves toward its named thing only as far as the picture's
+ * edges allow, as a push does, and stays on the thing's place in the picture if a push or the focus under it moves.
  *
  * DEPTH. A world gives its layers a depth (StoryWorld · layers, back to front, and drawLayer(ctx, t, name, spot)):
  * how far the layer is from the camera, as a multiple of the subject's distance. 1 is the subject's plane, 2 twice
@@ -143,21 +145,21 @@ const layerByName = (layers, name) => layers.find(l => l.name === name);
 
 /** The built-in moves, by family. Each: {family, seconds (its default length), params, axes(p) (what it moves), and its family's function}. */
 export const CAMERA_MOVES = deepFreeze({
-  pan: {family: 'view', seconds: 2, params: {amount: number([-1200, 1200], 240, 'px across the frame; + looks right, − left')},
+  pan: {family: 'view', seconds: 2, params: {amount: number([-1200, 1200], 240, 'px across the frame; + looks right, − left; it looks at most 600 px from the middle, scaling up to cover: 240 from the middle needs ×1.43')},
     axes: () => ['x'], aim: (s, p) => ({x: s.x + p.amount})},
-  tilt: {family: 'view', seconds: 2, params: {amount: number([-700, 700], 140, 'px down the frame; + looks down, − up')},
+  tilt: {family: 'view', seconds: 2, params: {amount: number([-700, 700], 140, 'px down the frame; + looks down, − up; it looks at most 337 px from the middle, scaling up to cover: 140 from the middle needs ×1.45')},
     axes: () => ['y'], aim: (s, p) => ({y: s.y + p.amount})},
   'dolly-in': {family: 'view', seconds: 2, params: {amount: number([1.05, 3], 1.3, 'times closer'), on: {name: true, default: null}},
     axes: p => (p.on ? ['x', 'y', 'z'] : ['z']), aim: (s, p, box) => (box ? dolly(s, s.z * p.amount, box) : {z: s.z * p.amount})},
   'dolly-out': {family: 'view', seconds: 2, params: {amount: number([1.05, 3], 1.3, 'times farther, never past the whole frame'), on: {name: true, default: null}},
     axes: () => ['x', 'y', 'z'], aim: (s, p, box) => dolly(s, Math.max(1, s.z / p.amount), box)},
-  crane: {family: 'view', seconds: 2.5, params: {amount: number([-600, 600], 120, 'px it rises; − descends'), scale: number([.5, 2], 1.12, 'times closer as it goes; below 1 widens, never past the whole frame')},
+  crane: {family: 'view', seconds: 2.5, params: {amount: number([-600, 600], 120, 'px it rises; − descends; it looks at most 337 px from the middle, scaling up to cover'), scale: number([.5, 2], 1.12, 'times closer as it goes; below 1 widens, never past the whole frame')},
     axes: () => ['y', 'z'], aim: (s, p) => ({y: s.y - p.amount, z: Math.max(1, s.z * p.scale)})},
   dutch: {family: 'view', seconds: 1.5, params: {amount: number([-30, 30], 8, 'degrees the frame rolls to, clockwise; 0 levels it')},
     axes: () => ['r'], aim: (s, p) => ({r: p.amount * DEG})},
   truck: {family: 'follow', seconds: 2, params: {on: {name: true}}, axes: () => ['x'], follow: box => ({x: centreOf(box).x})},
   track: {family: 'follow', seconds: 2, params: {on: {name: true}}, axes: () => ['x', 'y'], follow: box => centreOf(box)},
-  orbit: {family: 'depth', seconds: 3, params: {amount: number([-400, 400], 120, 'px the farthest layer slides; + right')},
+  orbit: {family: 'depth', seconds: 3, params: {amount: number([-400, 400], 120, 'px a layer infinitely far would slide, + right; a layer at depth d slides amount × (1 − 1/d)')},
     axes: () => ['orbit'], depth: (p, layers, before) => ({orbit: before.orbit + p.amount})},
   'dolly-zoom': {family: 'depth', seconds: 3, params: {amount: number([-.8, .8], .35, 'how much the background grows behind the subject; − gives it back')},
     axes: () => ['zoom'], depth: (p, layers, before) => ({zoom: before.zoom + p.amount})},

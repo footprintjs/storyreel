@@ -5,7 +5,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createCanvas} from '@napi-rs/canvas';
-import {compileFilm, evenTimings, frameHashes, planSegments, segmentKey, CAMERA_MOVES, CAMERA_MOVE_NAMES} from '../src/index.mjs';
+import {compileFilm, evenTimings, frameHashes, planSegments, segmentKey, cartoonKit, CAMERA_MOVES, CAMERA_MOVE_NAMES} from '../src/index.mjs';
+import {segmentMaterial} from '../src/segments.mjs';
+import {reviewPart, REVIEW_CHECKS} from '../src/review.mjs';
 import {speedRamp, coverZoom, viewOf} from '../src/camera.mjs';
 import {settleTime} from '../src/motion.mjs';
 import {through} from '../src/regions.mjs';
@@ -246,4 +248,81 @@ test('regions, clicks and the canvas: boxes go through the camera (a rolled box:
     assert.deepEqual([m.a, m.b, m.c, m.d, m.e, m.f], [was.a, was.b, was.c, was.d, was.e, was.f], `the transform is restored at ${s}`);
     assert.equal(ctx.filter, 'none'); assert.equal(ctx.globalAlpha, 1);
   }
+});
+
+test('a dolly starts from what is on screen: after a pan or a dutch angle (their cover zoom included) it is still a change of the zoom the viewer sees', async () => {
+  const pan = await make({camera: [{move: 'pan', at: ['a', 'red square'], amount: 240}, {move: 'dolly-in', at: ['a', 'corner'], amount: 1.3}]});
+  const panned = pan.cameraAt(at(pan, 'a', 'corner') - .1), dollied = pan.cameraAt(at(pan, 'a', 'corner') + 2.5);
+  assert.ok(Math.abs(panned.z - 800 / 560) < 1e-9, 'the pan scaled up to cover');
+  assert.ok(Math.abs(dollied.z - 1.3 * 800 / 560) < 1e-9, `×1.3 of what was on screen: ${panned.z} → ${dollied.z}`);
+  assert.equal(pan.camera.moves[1].ends.z, +(1.3 * 800 / 560).toFixed(3));
+  const steps = Array.from({length: 40}, (_, i) => pan.cameraAt(at(pan, 'a', 'corner') - .05 + i / 30).z);
+  assert.ok(Math.max(...steps.slice(1).map((z, i) => Math.abs(z - steps[i]))) < .05, 'no jump as the dolly starts');
+  const dutch = await make({camera: [{move: 'dutch', at: ['a', 'red square'], amount: 20}, {move: 'dolly-in', at: ['a', 'corner'], amount: 1.3}]});
+  const rolled = dutch.cameraAt(at(dutch, 'a', 'corner') - .1), closer = dutch.cameraAt(at(dutch, 'a', 'corner') + 2.5);
+  assert.ok(rolled.z > 1.5 && Math.abs(closer.z - 1.3 * rolled.z) < 1e-9, `after a 20° dutch: ${rolled.z} → ${closer.z}`);
+  await assert.rejects(make({camera: [{move: 'dolly-in', at: ['a', 'red square'], amount: 2}, {move: 'dolly-in', at: ['a', 'corner'], amount: 2.5}]}),
+    /camera\[1\] \(dolly-in\) takes the camera to ×5\.00 at .*, past the ×4 a camera goes to \(dollies multiply: each starts from the zoom on screen.*\): dolly in less, or dolly out between them/);
+});
+
+test('a world\'s own camera: a camera move or a push never runs while a kit moves its own camera (the cartoon kit\'s camera keys)', async () => {
+  const clock = {at: ref => ({out: 1, home: 2, move: 3})[ref]};
+  const world = cartoonKit.story.compile({flock: {count: 1, out: {at: 'out'}, home: {at: 'home'}}, camera: [{at: 'move', to: [560, 640], zoom: 1.25}]}, clock, {cameraSpeed: 1});
+  assert.deepEqual(world.cameraMoves, [{from: 3, to: 3 + 1.6}], 'its camera keys, each over its move');
+  const worlds = JSON.parse(readFileSync(new URL('../examples/worlds/recipe.json', import.meta.url), 'utf8')), beat = ['valley', 'lets the sheep out'];
+  await assert.rejects(compileExample('worlds', {recipe: {...worlds, camera: [{move: 'dutch', at: beat, seconds: 1}]}}),
+    /camera\[0\] \(dutch, .*\) would move the camera while the kit "cartoon" moves its own camera in the world at stages\[0\]\.world \(.*\); a film has one camera: move the camera move, or the kit's camera key, so they take turns/);
+  await assert.rejects(compileExample('worlds', {recipe: {...worlds, notes: [{note: 'push in', push: {at: [600, 600], from: beat, to: ['valley', 'one by one']}}]}}),
+    /note "push in": the push runs from .* while the kit "cartoon" moves its own camera in the world at stages\[0\]\.world .*; one camera move at a time: move the push, or the kit's camera key/);
+  const after = await compileExample('worlds', {recipe: {...worlds, camera: [{move: 'dutch', at: ['valley', 'How many sheep'], seconds: 1}]}});
+  assert.equal(after.camera.moves[0].played, 'move', 'after the kit\'s move, they take turns');
+  const odd = {name: 'odd', story: {compile: () => ({draw() {}, cameraMoves: [{from: 2, to: 1}]})}};
+  await assert.rejects(compileFilm({storyboard, timings, recipe: {story: {kit: 'odd'}}, kits: [odd]}), /the story: the kit "odd" returned cameraMoves that are not \[\{from, to\}\]/);
+});
+
+test('a dolly on a thing stays on it when the push under the camera eases out; its resolved end framing is in the record and the segment keys', async () => {
+  const MID = [700, 400, 900, 500];
+  const midKit = {name: 'mid', story: {compile: () => ({hang: 1, regionsAt: () => [{box: MID, path: 'mid', label: 'mid', name: 'mid'}],
+    draw: c => { fill(c, GROUND, [0, 0, 1600, 900]); fill(c, RED, MID); }})}};
+  const film = (zoom = 1.3) => compileFilm({storyboard, timings, kits: [midKit], recipe: {story: {kit: 'mid'},
+    notes: [{note: 'push', push: {at: [400, 300], zoom, from: ['a', 'red square'], to: ['a', 'corner']}}],
+    camera: [{move: 'dolly-in', at: ['a', 'sits'], until: ['a', 'quietly'], on: 'mid', amount: 1.6}]}});
+  const f = await film(), held = f.cameraAt(at(f, 'a', 'quietly') + .2), after = f.cameraAt(at(f, 'a', 'corner') + 1.5);
+  assert.ok(Math.abs(held.x - 1040) < 1e-6 && Math.abs(held.y - 585) < 1e-6, `on mid as the push holds it: ${JSON.stringify(held)}`);
+  assert.ok(Math.abs(after.x - 800) < 1e-6 && Math.abs(after.y - 450) < 1e-6 && after.z === 1.6, `still on mid once the push has eased out: ${JSON.stringify(after)}`);
+  const centre = b => [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
+  assert.deepEqual(centre(boxOf(f, at(f, 'a', 'corner') + 1.5, 'mid')).map(Math.round), [800, 450], 'mid is where the camera put it');
+  assert.deepEqual(f.camera.moves[0].ends, {x: 1040, y: 585, z: 1.6, r: 0});
+  const g = await film(1.25);
+  assert.notDeepEqual(g.camera.moves[0].ends, f.camera.moves[0].ends, 'another push under it, another end framing');
+  const pixels = {width: 320, height: 180, fps: 10, layout: null, stamp: null, motionBlur: null, poster: null};
+  const material = x => segmentMaterial(x, planSegments(x, {fps: 10})[0], {recipe: {story: {kit: 'mid'}}, storyboard, pixels, code: 'k', fps: 10});
+  assert.notDeepEqual(material(g).camera, material(f).camera, 'and another segment key');
+  const plain = await make({}), calm = await make({}, {reducedMotion: true});
+  assert.equal('camera' in material(plain), false, 'no camera moves: no camera in a segment\'s key');
+  assert.equal('reducedMotion' in calm.inputs, false, 'no camera moves: reduced motion leaves the inputs as they were');
+  assert.deepEqual(calm.inputs, plain.inputs);
+  assert.equal((await make({camera: [{move: 'dutch', at: ['a', 'red square']}]}, {reducedMotion: true})).inputs.reducedMotion, true);
+});
+
+test('clicks and boxes through the focus, the camera and handheld: a click on a thing reads back exactly where the recipe placed it', async () => {
+  const focus = {strategy: 'camera', keys: [{at: ['a', 'red square'], on: 'red', size: 'medium'}]};
+  const film = await make({focus, camera: [{move: 'dutch', at: ['a', 'corner'], amount: 8}, {move: 'handheld', at: ['a', 'corner'], seconds: 4}]});
+  for (const t of [at(film, 'a', 'quietly'), at(film, 'a', 'corner') + 1.3]) {
+    const box = boxOf(film, t, 'red'), [fx, fy] = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
+    assert.deepEqual(film.pointAt(t, fx, fy).frame, [300, 275], `at ${t.toFixed(2)} s the click on red's centre reads back as red's centre`);
+    assert.ok(near(picture(film, t), Math.round(fx), Math.round(fy), RED), 'and red is drawn there');
+  }
+});
+
+test('a freeze over the voice is a review finding: a drawing the voice names under it, a mouth held still while its speaker talks', async () => {
+  const shows = {name: 'shows', story: {compile: (spec, clock) => { const t0 = clock.at(spec.show); return {hang: 1,
+    draw: (c, t) => { fill(c, GROUND, [0, 0, 1600, 900]); if (t >= t0) fill(c, RED, RED_BOX); },
+    mouthsAt: t => [{who: null, open: Math.abs(Math.sin(t * 9))}]}; }}};
+  const film = await compileFilm({storyboard, timings, kits: [shows], recipe: {story: {kit: 'shows', show: ['a', 'quietly']}, camera: [{move: 'freeze', at: ['a', 'sits'], until: ['a', 'corner']}]}});
+  const r = await reviewPart(film, {from: 1, to: 6, checks: {'frozen-voice': REVIEW_CHECKS['frozen-voice']}});
+  assert.deepEqual(r.ran, ['frozen-voice']);
+  assert.ok(r.findings.some(f => f.kind === 'frozen-voice' && /the voice names "story\.show" while the picture is frozen \(it appears when the freeze ends\); a mouth stays still while the narrator speaks/.test(f.what)), JSON.stringify(r.findings));
+  const plain = await compileFilm({storyboard, timings, kits: [shows], recipe: {story: {kit: 'shows', show: ['a', 'quietly']}}});
+  assert.deepEqual((await reviewPart(plain, {from: 1, to: 6, checks: {'frozen-voice': REVIEW_CHECKS['frozen-voice']}})).ran, [], 'not picked without a freeze');
 });

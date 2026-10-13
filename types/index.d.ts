@@ -116,7 +116,7 @@ type CameraEase = {ease?: EaseName; feel?: never} | {ease?: never; feel?: FeelNa
  * A camera move. view — pan (`amount` px across, + right), tilt (px down, + down), dolly-in / dolly-out (`amount` times
  * closer / farther; `on`: toward a named thing, as far as the edges allow), crane (`amount` px it rises, `scale` times
  * closer as it goes), dutch (`amount`: degrees the frame rolls to; 0 levels it); follow — truck (sideways) and track
- * (both ways) follow a named thing (`on`); depth, on a world's layers — orbit (`amount` px the farthest layer slides),
+ * (both ways) follow a named thing (`on`); depth, on a world's layers — orbit (`amount`: px a layer infinitely far would slide; a layer at depth d slides amount × (1 − 1/d)),
  * dolly-zoom (`amount`: how much the background grows behind the subject), rack-focus (from the layer `from` to the
  * layer `on`, `amount` px of blur); texture — handheld (`amount` px of drift, `seed`); time — speed-ramp (`amount`:
  * the picture's speed half way), freeze. A whip pan is a transition (`enter: "whip"`), not a move.
@@ -140,6 +140,8 @@ export interface CameraMovePlayed {
   world?: string;
   /** How far the camera scaled to keep the frame covered, when it had to (a pan at the whole frame, a dutch angle). */
   covers?: number;
+  /** A view or follow move's resolved end framing, as the viewer sees it (and for a follow, a hash of the path it took). */
+  ends?: CameraState & {path?: string};
   ease?: EaseName; feel?: FeelName | Feel;
   [setting: string]: unknown;
 }
@@ -359,6 +361,8 @@ export interface StoryWorld {
   layers?: readonly WorldLayer[];
   /** Draws one layer, by name, on a clear sheet: every layer, back to front, draws what draw does. */
   drawLayer?(ctx: any, t: number, name: string, spot: unknown): void;
+  /** When the kit's own camera moves (seconds on the film's clock): a push note and a camera move take turns with it (the cartoon kit's camera keys). */
+  cameraMoves?: readonly {from: number; to: number}[];
 }
 
 /**
@@ -432,7 +436,7 @@ export interface CompileFilmOptions<K = Kit | ContextKit> {
   cast?: Record<string, {name: string} & Record<string, unknown>> | null;
   /** true: the compile runs as a footprintjs flowchart and the film carries `record` (default false: no record). */
   record?: boolean;
-  /** true: the recipe's camera moves are cut to their end framing, handheld off, a speed ramp in step (default false). */
+  /** true: the recipe's camera moves are cut to their end framing, handheld off, a speed ramp in step (default false). Only those: a focus, push notes, a kit's camera and transitions play as written. */
   reducedMotion?: boolean;
   /** Strategies of your own for the recipe's focus and emphasis (attention.mjs), by name. */
   strategies?: {focus?: Record<string, {show(ctx: any, view: {cx: number; cy: number; z: number; box: number[]; w: number}, paint: (ctx: any) => void, theme: unknown): void}>; emphasis?: Record<string, {draw(ctx: any, t: number, word: {t: number; text: string; next: number}, theme: unknown): void}>} | null;

@@ -388,7 +388,7 @@ Each note carries its words (`note`) and exactly one camera word:
   by `zoom` (default 1.25), easing in (`seconds`, default 1) from the phrase `from` and out from `to`.
   The picture always covers the frame; guess cards stay where they are. A push stays on one picture:
   one that runs across a hand-over, an entrance, a cut, the push-in or the teaser refuses, and so does
-  one over a spotlight or another push — one camera move at a time.
+  one over a spotlight, a kit's own camera move (`cameraMoves`) or another push — one camera move at a time.
 
 The film returns the notes as applied (`film.notes`: what each one changed, and when), and the
 making-of record lists them.
@@ -748,20 +748,20 @@ The moves (`footprint-storyreel/camera` · `CAMERA_MOVES`), a catalog like the t
 
 | family | move | what it does | settings (default) | length |
 |---|---|---|---|---|
-| view | `pan` | the camera looks across the picture | `amount`: px, + right (240) | 2 s |
-| | `tilt` | it looks up or down | `amount`: px, + down (140) | 2 s |
+| view | `pan` | the camera looks across the picture (at most 600 px from the middle) | `amount`: px, + right (240) | 2 s |
+| | `tilt` | it looks up or down (at most 337 px from the middle) | `amount`: px, + down (140) | 2 s |
 | | `dolly-in` | it moves closer, toward a named thing as far as the picture's edges allow | `amount`: times closer (1.3); `on`: a named thing (none: where it looks) | 2 s |
 | | `dolly-out` | it moves back, never past the whole frame, recentring as it goes | `amount` (1.3); `on` | 2 s |
 | | `crane` | it rises (or descends) and comes a little closer | `amount`: px it rises, − descends (120); `scale` (1.12) | 2.5 s |
 | | `dutch` | the frame rolls to an angle; 0 levels it again | `amount`: degrees, + clockwise (8) | 1.5 s |
 | follow | `truck` | it follows a named thing sideways | `on` (required) | 2 s |
 | | `track` | it follows a named thing wherever it goes | `on` (required) | 2 s |
-| depth | `orbit` | it circles the subject: what is behind slides one way, what is in front the other, the nearer the more | `amount`: px the farthest layer slides (120) | 3 s |
+| depth | `orbit` | it circles the subject: what is behind slides one way, what is in front the other, the nearer the more | `amount`: px a layer infinitely far would slide; a layer at depth d slides `amount × (1 − 1/d)` (120) | 3 s |
 | | `dolly-zoom` | the subject keeps its size while the background grows behind it | `amount` (0.35; − gives it back) | 3 s |
 | | `rack-focus` | the focus pulls from one layer to another; the rest goes soft by its distance from the focus | `on` (required), `from`, `amount`: px of blur (8) | 1.5 s |
 | texture | `handheld` | a small, slow drift, the same every time for its `seed` | `amount`: px (6), `seed` (1) | to the film's end |
 | time | `speed-ramp` | the picture runs slow in the middle and makes the time up on either side: in step with the voice at both ends | `amount`: its speed half way (0.3) | 2 s |
-| | `freeze` | the picture holds while the voice goes on, then is in step again | – | 1.5 s |
+| | `freeze` | the picture holds while the voice goes on, then jumps to where the voice is | – | 1.5 s |
 
 - **When and how it eases.** `at` is a beat or seconds; `until` a beat or seconds, or `seconds` its length (left
   out: the move's own; with a `feel`, the time its spring takes to settle). `ease` names a curve from the ease table
@@ -769,9 +769,16 @@ The moves (`footprint-storyreel/camera` · `CAMERA_MOVES`), a catalog like the t
   texture move takes neither. List the moves in the order they start. A whip pan is a transition between two shots,
   not a move inside one: `{"move": "whip"}` refuses and says to write `"enter": "whip"`.
 - **The frame stays covered.** There is nothing past the picture's edge, so a move never uncovers it: a pan at the
-  whole frame, a dutch angle or a follow scales the picture up just enough (the record says how far: `covers`), and
-  a dolly keeps the zoom it asked for and goes toward its thing only as far as the edges allow, as a push note does.
-  A move that would need more than ×4 refuses. Every move's framing is a pure function of time.
+  whole frame, a dutch angle or a follow scales the picture up just enough (the record says how far: `covers`). The
+  zoom it needs grows as the camera looks away from the middle — `800 / (800 − px)` across, `450 / (450 − px)` up or
+  down: a pan of 240 px from the middle needs ×1.43, of 600 px ×4 — so the camera looks at most 600 px across and
+  337 px up or down from the middle, whatever the `amount` ranges allow (they are for a camera already moved). A dolly
+  keeps the zoom it asks for, times the zoom on screen as it starts (a pan's or a dutch's included: a dolly is always a
+  change of what the viewer sees), and goes toward its thing only as far as the edges allow, as a push note does; it
+  then stays on the thing's place in the picture, so a push or the focus that moves the picture under the camera
+  later does not leave it framing an empty spot (a thing that walks away is followed by a `truck` or a `track`). A
+  move past ×4 refuses, whether it needs that to cover the frame or dollies stack up to it. Every move's framing is a
+  pure function of time.
 - **Depth.** A world gives its layers a depth: `layers: [{name, depth}]`, back to front, and `drawLayer(ctx, t, name,
   spot)`, which draws one layer on a clear sheet (all of them, in order, draw what `draw` does). The depth is how far
   the layer is from the camera, as a multiple of the subject's distance: **1 is the subject's plane**, 2 twice as far,
@@ -780,25 +787,33 @@ The moves (`footprint-storyreel/camera` · `CAMERA_MOVES`), a catalog like the t
   1/focused|` (a lens's circle of confusion). The farthest layer is scaled just enough to keep covering the frame. A
   world's first rack focus starts with everything sharp: over its first third the depth of field narrows on `from`,
   then the focus pulls to `on`; a later one starts where the last ended (`from` may be left out). A depth move on
-  paper, or on a world with no layers, refuses, naming what to add.
+  paper, or on a world with no layers, refuses, naming what to add. **Cost:** a moved world draws each layer on its
+  own sheet (a plain 1080p frame of a three-layer world: about 3 ms; layered, about 8 ms), and a blur is made on a
+  copy at 1/k of the size (k about blur ÷ 1.5, at most 8; a blur under half a pixel is not drawn): a held rack focus
+  costs about 10–20 ms a 1080p frame on a laptop (a full-size blur cost about 60).
 - **One picture, one camera.** A move (handheld aside) stays on one picture: one that runs across a hand-over, an
   entrance, a cut, the push-in or the teaser refuses, as a push does. Its framing holds until the picture changes,
   then eases back to the whole frame over the change (at a cut, at once), so every new picture opens wide. A film has
   one camera: a move cannot run while a moving focus (the `camera` strategy, from each key until its spring settles),
-  a push note (while it eases in or out) or a world's spotlight moves it, and two moves cannot move the same thing at
-  once (a pan and a dutch may). They take turns, and they compose: the push moves the picture, the focus frames it, and the camera's
+  a push note (while it eases in or out), a world's spotlight or a world's own camera moves it (a kit says when its
+  camera moves with `cameraMoves: [{from, to}]`: the cartoon kit's `camera` keys do — a push note takes turns with
+  them too), and two moves cannot move the same thing at once (a pan and a dutch may). They take turns, and they compose: the push moves the picture, the focus frames it, and the camera's
   moves are the outermost lens, so a dolly in after the focus has framed a thing pushes in on that framing; handheld
   drifts over everything. The picture keeps its own clock under a freeze or a speed ramp, and so do the depth moves;
   the push, the focus, the camera, the held layers, the guess cards and the words keep the voice's.
 - **Reduced motion.** `compileFilm({…, reducedMotion: true})` (and `makeFilm`) is the version for a viewer who asks
   for less motion: each move cuts to its end framing on its first moment (a truck or track at its last, where its
   thing then is), the return over a change cuts at its start, handheld is off, a speed ramp plays in step and a
-  freeze is kept — a still is not motion. A film without camera moves is the same either way; one with them carries
+  freeze is kept — a still is not motion. It changes only these camera moves: a moving focus, the push notes, a kit's
+  own camera and spotlights, the transitions and everything a kit animates play as written (give a reduced-motion
+  version its own recipe for those). A film without camera moves is the same either way; one with them carries
   `reducedMotion: true` in its inputs, so an approval of the moving film does not cover it.
 - **The record.** The plan is a footprintjs flowchart — read moves, one picture, one camera, a `decide()` on reduced
   motion, cuts or moves, aim — so `film.camera` says how the film was played and why: `motion` (`moves` or `cuts`),
   `decision` (the rule and its evidence), each move as placed (`at`, `until`, its settings, `played`: `move`, `cut`,
-  `off` or `kept`, `covers`, `lasts`) and the plan's narrative. `film.cameraAt(t)` is the framing at t (`{x, y, z,
+  `off` or `kept`, `covers`, `lasts`, and `ends`: the framing it resolved to, `{x, y, z, r}`, with a hash of the path
+  for a follow — so an edit under it, a push a dolly aims through, changes the record and the keys) and the plan's
+  narrative. `film.cameraAt(t)` is the framing at t (`{x, y, z,
   r}`: the point it centres, the zoom, the roll), the making-of record keeps `camera`, the compile record writes
   `camera.camera[i]`, and a cached segment's key holds the moves that reach it, so changing one redraws only those.
   A film without `camera` draws exactly the frames it drew before (the pixel pins hold).
@@ -879,7 +894,8 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   picture as text — every line a frame draws, where it lands and how faint — and names what is wrong, with times:
   words under the captions while a caption shows, words over other words, words cut off at the edge, the picture
   frozen for 5 s (`still`), nothing new for 5 s while it moves (`stale`: no scene, no beat and no new words —
-  `newEvery`), and — with `loop: true`, for a part made to loop — an end that does not come round to its start (the
+  `newEvery`), a camera freeze over the voice (`frozen-voice`: the voice names a drawing while the picture is held, or
+  a mouth stays still while its speaker talks), and — with `loop: true`, for a part made to loop — an end that does not come round to its start (the
   part's own scenes, not its handles: its last moment against its first, as the eye takes them in and word for word).
   Motion that steps rather than runs (a flipbook, a blink, a part drawn on twos) is read one drawing short of coming
   round, so such a loop reads as a jump even when it loops cleanly: look at a strip of the seam before changing it.
@@ -1100,6 +1116,7 @@ const myKit = {name: 'cartoon', story: {
                                               // a `name` ('robot') is what a director's push can frame: {on: 'robot', size: 'close'}
       layers: [{name: 'sky', depth: 8}, {name: 'hero', depth: 1}],  // optional, back to front: what a camera's orbit,
       drawLayer(ctx, t, name, spot) { },      //   dolly-zoom and rack-focus move by depth (see Camera moves by name)
+      cameraMoves: [{from: 4.2, to: 5.8}],    // optional: when the kit's own camera moves (seconds): pushes and camera moves take turns with it
       texts() { return []; },                 // optional, for the reading check: [{text, from, to, path}]
       sounds: [{time: clock.at(['story', 'But wait']), type: 'chime'}],
     };

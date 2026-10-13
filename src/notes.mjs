@@ -80,14 +80,16 @@ function readPush(n, read) {
 /**
  * Put the pushes on the film's clock and check each against the film: a push never runs across a
  * change of picture (a hand-over, an entrance, a cut, the push-in, the teaser), never while a
- * spotlight shows, and never over another push — one camera move at a time.
+ * spotlight shows or a world's own camera moves, and never over another push — one camera move at a time.
  * @param changes    [{from, to, what}] in seconds (a cut is a change with from === to)
  * @param spotlight  t → the name of the world whose spotlight shows at t, or null
  * @param named      (name, t) → the box [x0, y0, x1, y1] on the frame of the thing called `name` at t; it
  *                   refuses (naming what is there) when nothing or more than one thing has the name
+ * @param kitCamera  (a, b) → a world's own camera moving between a and b while it is on screen ({path, kit, from,
+ *                   to}: StoryWorld · cameraMoves), or null; a push never runs over one (one camera move at a time)
  * @returns [{given (the note as written), note, at, zoom, on?, size?, a, b, seconds}] — in at a, out from b, each ease `seconds` long
  */
-export function placePushes(pushes, {clock, speed, changes, spotlight, total, named}) {
+export function placePushes(pushes, {clock, speed, changes, spotlight, total, named, kitCamera = () => null}) {
   const placed = pushes.map(n => {
     const p = n.push, seconds = (p.seconds ?? 1) / speed, a = clock.at(p.from), b = clock.at(p.to), end = b + seconds;
     const aim = p.on === undefined ? {at: p.at, zoom: p.zoom ?? 1.25} : framing(n, boxOf(n, named, a));
@@ -95,6 +97,8 @@ export function placePushes(pushes, {clock, speed, changes, spotlight, total, na
     if (end > total) throw new Error(`note "${n.note}": the push eases out after the film ends`);
     for (const c of changes) if (a < c.to && end > c.from) throw new Error(`note "${n.note}": the push runs from ${a.toFixed(2)} s to ${end.toFixed(2)} s, across ${c.what} (${c.from.toFixed(2)} s); a push stays on one picture`);
     for (let t = a; t < end; t += .05) { const lit = spotlight(t); if (lit) throw new Error(`note "${n.note}": the push runs over ${lit}'s spotlight at ${t.toFixed(2)} s; one camera move at a time`); }
+    const own = kitCamera(a, end);
+    if (own) throw new Error(`note "${n.note}": the push runs from ${a.toFixed(2)} s to ${end.toFixed(2)} s while the kit "${own.kit}" moves its own camera in the world at ${own.path} (${own.from.toFixed(2)}–${own.to.toFixed(2)} s); one camera move at a time: move the push, or the kit's camera key, so they take turns`);
     return {given: n, note: n.note, ...aim, a, b, seconds};
   }).sort((x, y) => x.a - y.a);
   placed.forEach((p, i) => { const q = placed[i + 1]; if (q && q.a < p.b + p.seconds) throw new Error(`note "${q.note}": its push starts while "${p.note}" is still pushing; one camera move at a time`); });
