@@ -1180,9 +1180,9 @@ python tools/pose-from-video.py wave.mp4 wave.pose.json     # --model lite|full|
 
 - **It downloads a model on first use**: MediaPipe's pose landmarker (lite about 6 MB, full about 9 MB, heavy about
   30 MB), at a pinned version, from Google's model storage into `~/.cache/storyreel` (`--models DIR`), and reuses it
-  after that. It checks the file's SHA-256 against `MODEL_SHA256` in the script. No hash is recorded yet: the first
-  run refuses until you check the file and pass `--trust-download`, which prints the hash to record. The video never
-  leaves the machine.
+  after that. It checks the file's SHA-256 against `MODEL_SHA256` in the script (all three are recorded) and removes
+  a download that does not match. To pin another model version, change the URL, run once with `--trust-download`
+  (it prints the new hash) and record it. The video never leaves the machine.
 - **Time**: a phone films at a variable rate, so each frame's own timestamp is read and the points are resampled onto
   a steady `--fps` (default: the video's stated rate), the rate written in the JSON.
 - **Visibility**: every point is written with MediaPipe's visibility as its confidence, so `fromPose` decides what is
