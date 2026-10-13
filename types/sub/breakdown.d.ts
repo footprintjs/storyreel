@@ -2,43 +2,56 @@ import type {VideoProbe} from '../index.js';
 
 /** The thresholds the verdicts use (grey differences and spreads are mean grey levels, 0–255, on frames read `width` wide). */
 export interface BreakdownThresholds {
-  width: number; cutJump: number; cutRatio: number; flashLasting: number; gradualFloor: number; gradualFrames: number; blank: number; maxHold: number;
-  minChange: number; coherence: number; mix: number; moved: number; maxGradual: number; stillCell: number; minPan: number; explained: number; share: number;
-  textArea: number; onBeat: number; stillWidth: number; maxCandidates: number;
+  width: number; cutJump: number; cutRatio: number; flashLasting: number; blank: number; minFade: number; maxFade: number; maxHold: number;
+  gradualFloor: number; gradualFrames: number; minChange: number; coherence: number; mix: number; moved: number; maxGradual: number;
+  stillCell: number; minPan: number; explained: number; share: number; textArea: number; onBeat: number; closeTempo: number; stillWidth: number; maxCandidates: number;
 }
 export const BREAKDOWN: Readonly<BreakdownThresholds>;
 
 /** A verdict's evidence, short: the verdict, the rule that gave it, and every rule tried with its checks ("jump 54.7 ≥ 12 ✓"). */
 export interface Why {verdict: string; because: string; rules: {then: string; met: boolean; checks: string[]; error?: string}[]}
 
-/** What a beat map answers: beats a minute, every beat (seconds into the sound), and the drop (or null when there is none). */
-export interface BeatMapAnswer {bpm: number; beats: number[]; drop?: number | null}
-/** Reads the beats of a sound: it is handed a WAV of the video's sound, in a folder removed after it answers. */
-export type BeatMap = (audioFile: string) => BeatMapAnswer | Promise<BeatMapAnswer>;
+/** A tempo the beats also fit, and its score against the best (1). */
+export interface BeatTempo {bpm: number; score: number}
+/**
+ * What a beat map answers (beats.mjs · beatMap's map fits it as it is): beats a minute, every beat (seconds into the sound),
+ * the drop (or null), and — when it says them — how sure it is and the other tempos the beats fit, best first.
+ */
+export interface BeatMapAnswer {readonly bpm: number; readonly beats: readonly number[]; readonly drop?: number | null; readonly confidence?: number; readonly alternatives?: readonly BeatTempo[]}
+/**
+ * Reads the beats of a sound: handed a WAV of the video's sound (in a folder removed after it answers) and the FFmpeg this
+ * breakdown runs. One that throws (a silent track, no tempo) leaves the beats unread, saying why.
+ */
+export type BeatReader = (audioFile: string, options: {ffmpeg: string}) => BeatMapAnswer | Promise<BeatMapAnswer>;
 
 export type TransitionKind = 'cut' | 'dissolve' | 'dip' | 'fade-in' | 'fade-out';
-/** A transition: a cut on its frame; a gradual one from `from` to `to`, at its middle. A fade that opens or closes the film splits no shots. */
-export interface BreakdownTransition {kind: TransitionKind; at: number; frame: number; from?: number; to?: number; seconds?: number; opensOrCloses?: true; why: Why}
-/** How a shot begins or ends: the transition there, or the film's own start or end. */
-export interface ShotEdge {kind: TransitionKind | 'start' | 'end'; at?: number; seconds?: number}
+/**
+ * A transition: a cut on its frame; a gradual one from `from` to `to`, at its middle (a lone fade where it meets its
+ * colour's hold). A fade that opens or closes the film splits no shot.
+ */
+export interface BreakdownTransition {kind: TransitionKind; at: number; frame: number; from?: number; to?: number; seconds?: number; opens?: true; closes?: true; why: Why}
+/** How a shot begins or ends: the transition there (others on the same frame are `also`), or the film's own start or end. */
+export interface ShotEdge {kind: TransitionKind | 'start' | 'end'; at?: number; seconds?: number; also?: TransitionKind[]}
 export interface BreakdownShot {
   index: number; start: number; end: number; seconds: number; in: ShotEdge; out: ShotEdge;
   /** one colour all through (a slug of black between two shots, a colour card) */ blank?: true;
-  /** still, the camera moves (the whole picture shifts together), or things move inside the frame; the grid is 4 rows of 6 cells, the mean change in each */
+  /** still, the camera moves (the whole picture shifts together; camera is null when it nets out to no one direction), or things move inside the frame; the grid is 4 rows of 6 cells, the mean change in each */
   motion: {verdict: 'still' | 'camera' | 'inside'; words: string; camera?: 'left' | 'right' | 'up' | 'down' | null; energy: number; busiest: number; share: number; pan: number; explained: number; grid: number[][]; why: Why};
-  /** lettered or not: a heuristic (rows of sharp strokes), never OCR */
-  text: {verdict: 'text' | 'no-text'; area: number; why: Why};
+  /** lettered or not: a heuristic (rows of sharp strokes in lines), never OCR; mark is a corner mark (a logo) left out */
+  text: {verdict: 'text' | 'no-text'; area: number; mark: number; why: Why};
   /** the shot's contact sheet, relative to the out folder */ sheet: string;
 }
 export interface BeatCut {at: number; kind: TransitionKind; beat: number | null; off: number | null; onBeat: boolean}
 export type BreakdownBeats = {ran: false; why: string}
-  | {ran: true; bpm: number; beats: number[]; drop: {at: number; shot: number; nearestCut: BeatCut | null} | null; cuts: BeatCut[]; onBeat: number; of: number; within: number};
+  | {ran: true; bpm: number; confidence?: number; alternatives?: BeatTempo[]; close?: BeatTempo; beats: number[]; drop: {at: number; shot: number; nearestCut: BeatCut | null} | null; cuts: BeatCut[]; onBeat: number; of: number; within: number};
 
 /** What breakdown.json holds. */
 export interface BreakdownSpec {
   schemaVersion: 1; file: string; made: string;
-  video: {seconds: number; fps: number; width: number; height: number; frames: number; sound: boolean};
-  read: {width: number; height: number; frames: string};
+  /** fps: the average frame rate; rate: the one read at; width and height as the picture is shown (rotation applied); variable: the rates differ */
+  video: {seconds: number; fps: number; rate: number; width: number; height: number; rotation?: number; frames: number; sound: boolean; variable?: true};
+  read: {width: number; height: number; rate: number; frames: string};
+  /** what the reader should know before trusting the times (a varying frame rate) */ warnings: string[];
   shots: BreakdownShot[];
   transitions: BreakdownTransition[];
   flashes: {at: number; frame: number; why: Why}[];
@@ -53,8 +66,8 @@ export interface BreakdownSpec {
 
 export interface BreakdownOptions {
   /** the folder written (default: <video name>-breakdown in the working folder) */ out?: string;
-  beatMap?: BeatMap | null;
-  /** the FFmpeg run for stills and sound (FFMPEG_BIN, or the one on the PATH) */ ffmpeg?: string;
+  beatMap?: BeatReader | null;
+  /** the FFmpeg run for frames, stills and sound (FFMPEG_BIN, or the one on the PATH): 5.1 or later */ ffmpeg?: string;
   /** the adapter that reads the file (finished.mjs · ffmpegProbe) */ probe?: VideoProbe;
   thresholds?: Partial<BreakdownThresholds>;
 }

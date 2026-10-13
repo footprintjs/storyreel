@@ -36,9 +36,13 @@ export const FINISHED = Object.freeze({
 });
 
 /**
- * The default probe: FFmpeg and ffprobe (beside the FFmpeg given, or on the PATH). probe(file) → {seconds, video: {seconds, fps, width, height, frames},
- * audio: {seconds} | null}; frames(file, {width, height}) → every frame as grey levels (limited range, as
- * the video stores them); sound(file, {rate}) → mono samples.
+ * The default probe: FFmpeg and ffprobe (beside the FFmpeg given, or on the PATH). probe(file) → {seconds, video: {seconds, fps, rate,
+ * width, height, rotation, frames}, audio: {seconds} | null} — fps the average frame rate, rate the nominal one (they
+ * differ in a variable-rate file), width and height as the picture is shown (FFmpeg turns a picture stored on its side
+ * as it decodes, so a rotation of ±90° swaps the stored size); frames(file, {width, height, fps?}) → every frame as grey
+ * levels (limited range, as the video stores them) — with `fps`, resampled to that constant rate on the file's own
+ * timestamps (a frame repeated where the file has none), so frame k is at k / fps whatever the file's timing;
+ * sound(file, {rate}) → mono samples.
  */
 export function ffmpegProbe({ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', ffprobe = process.env.FFPROBE_BIN || besideOrPath(ffmpeg)} = {}) {
   const run = (cmd, args) => { const r = spawnSync(cmd, args, {encoding: 'utf8', maxBuffer: 1 << 26}); if (r.error || r.status !== 0) throw new Error(`${cmd} could not read the file: ${r.error?.message ?? String(r.stderr).slice(-300)}`); return r.stdout; };
@@ -48,17 +52,25 @@ export function ffmpegProbe({ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', ffprob
       const info = JSON.parse(run(ffprobe, ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', file]));
       const v = info.streams.find(s => s.codec_type === 'video'), a = info.streams.find(s => s.codec_type === 'audio');
       if (!v) throw new Error(`checkVideo: ${file} has no picture`);
-      const [n, d] = String(v.avg_frame_rate || v.r_frame_rate).split('/').map(Number), fps = d ? n / d : n;
-      return {seconds: Number(info.format.duration), video: {seconds: Number(v.duration ?? info.format.duration), fps, width: v.width, height: v.height, frames: Number(v.nb_frames) || null},
+      const rateOf = text => { const [n, d] = String(text).split('/').map(Number); return d ? n / d : n; };
+      const fps = rateOf(v.avg_frame_rate && v.avg_frame_rate !== '0/0' ? v.avg_frame_rate : v.r_frame_rate), rate = rateOf(v.r_frame_rate);
+      const rotation = Number(v.side_data_list?.find(x => x.rotation !== undefined)?.rotation ?? v.tags?.rotate ?? 0) || 0, turned = Math.abs(rotation) % 180 === 90;
+      return {seconds: Number(info.format.duration), video: {seconds: Number(v.duration ?? info.format.duration), fps, rate: Number.isFinite(rate) && rate > 0 ? rate : fps,
+        width: turned ? v.height : v.width, height: turned ? v.width : v.height, rotation, frames: Number(v.nb_frames) || null},
         audio: a ? {seconds: Number(a.duration ?? info.format.duration)} : null};
     },
-    async frames(file, {width, height}, each) {
-      const size = width * height, ff = spawn(ffmpeg, ['-v', 'error', '-i', file, '-vf', `scale=${width}:${height}:flags=area,format=gray`, '-f', 'rawvideo', 'pipe:1'], {stdio: ['ignore', 'pipe', 'pipe']});
-      let held = Buffer.alloc(0), index = 0, err = '';
+    async frames(file, {width, height, fps = null}, each) {
+      const resample = fps ? [`fps=${fps}`] : [], vf = [...resample, `scale=${width}:${height}:flags=area`, 'format=gray'].join(',');
+      const size = width * height, ff = spawn(ffmpeg, ['-v', 'error', '-i', file, '-vf', vf, ...(fps ? ['-fps_mode', 'passthrough'] : []), '-f', 'rawvideo', 'pipe:1'], {stdio: ['ignore', 'pipe', 'pipe']});
+      // Each frame is filled in place from the chunks as they come (no buffer grown chunk by chunk), and handed over whole.
+      let grey = new Uint8Array(size), filled = 0, index = 0, err = '';
       ff.stderr.on('data', b => { err += b; });
       for await (const chunk of ff.stdout) {
-        held = held.length ? Buffer.concat([held, chunk]) : chunk;
-        while (held.length >= size) { each(index++, new Uint8Array(held.subarray(0, size))); held = held.subarray(size); }
+        for (let at = 0; at < chunk.length;) {
+          const take = Math.min(size - filled, chunk.length - at);
+          grey.set(chunk.subarray(at, at + take), filled); filled += take; at += take;
+          if (filled === size) { each(index++, grey); grey = new Uint8Array(size); filled = 0; }
+        }
       }
       const code = await new Promise(r => ff.once('close', r));
       if (code !== 0) throw new Error(`${ffmpeg} could not read the frames: ${err.slice(-300)}`);

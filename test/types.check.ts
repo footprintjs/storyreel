@@ -265,13 +265,15 @@ export const walkNames: readonly string[] = WALK_NAMES;
 // @ts-expect-error a walk needs the figure's size
 walk({from: 0, to: 100, start: 0});
 
-// Breakdown (types/sub/breakdown.d.ts): a reference film as a spec; a beat map is any function that answers {bpm, beats, drop?}.
+// Breakdown (types/sub/breakdown.d.ts): a reference film as a spec; a beat reader is any function that answers {bpm, beats, drop?}.
 import {breakdown, BREAKDOWN} from '../types/sub/breakdown.js';
-import type {BeatMap, BreakdownSpec} from '../types/sub/breakdown.js';
-const beats: BeatMap = async () => ({bpm: 120, beats: [0.5, 1], drop: null});
-export const brokenDown = breakdown('ref.mp4', {out: 'ref', beatMap: beats, thresholds: {cutJump: 15}}).then(r => r.spec.shots.map(s => `${s.motion.verdict} ${s.seconds}`));
-export const onBeat = (spec: BreakdownSpec): number => (spec.audio.beats.ran ? spec.audio.beats.onBeat : 0) + BREAKDOWN.onBeat;
+import type {BeatReader, BreakdownSpec} from '../types/sub/breakdown.js';
+const beats: BeatReader = async () => ({bpm: 120, beats: Object.freeze([0.5, 1]), drop: null, confidence: .8, alternatives: [{bpm: 60, score: .9}]});
+const wrapped: BeatReader = (file, {ffmpeg}) => ({bpm: 120, beats: [file.length, ffmpeg.length]});
+export const brokenDown = breakdown('ref.mp4', {out: 'ref', beatMap: beats, thresholds: {cutJump: 15}}).then(r => r.spec.shots.map(s => `${s.motion.verdict} ${s.seconds} ${s.in.also?.join() ?? ''}`));
+export const viaWrapper = breakdown('ref.mp4', {beatMap: wrapped});
+export const onBeat = (spec: BreakdownSpec): number => (spec.audio.beats.ran ? spec.audio.beats.onBeat + (spec.audio.beats.close?.score ?? 0) : 0) + BREAKDOWN.onBeat + spec.warnings.length;
 // @ts-expect-error a threshold is a number
 export const wordy = breakdown('ref.mp4', {thresholds: {cutJump: 'high'}});
-// @ts-expect-error a beat map answers its beats
-export const noBeats: BeatMap = () => ({bpm: 120});
+// @ts-expect-error a beat reader answers its beats
+export const noBeats: BeatReader = () => ({bpm: 120});

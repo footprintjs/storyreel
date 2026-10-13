@@ -502,8 +502,10 @@ export interface FinishedReport { file: string; seconds: number; fps: number; fr
 /** Reads a finished file for the checks (finished.mjs · ffmpegProbe is the default). */
 export interface VideoProbe {
   name: string;
-  probe(file: string): {seconds: number; video: {seconds: number; fps: number; width: number; height: number; frames: number | null}; audio: {seconds: number} | null};
-  frames(file: string, size: {width: number; height: number}, each: (index: number, grey: Uint8Array) => void): Promise<number>;
+  /** fps: the average frame rate; rate: the nominal one (they differ in a variable-rate file); width, height: as shown (a ±90° rotation swaps the stored size). */
+  probe(file: string): {seconds: number; video: {seconds: number; fps: number; rate?: number; width: number; height: number; rotation?: number; frames: number | null}; audio: {seconds: number} | null};
+  /** With fps, the frames are resampled to that constant rate on the file's own timestamps: frame k is at k / fps. */
+  frames(file: string, size: {width: number; height: number; fps?: number | null}, each: (index: number, grey: Uint8Array) => void): Promise<number>;
   sound(file: string, options?: {rate?: number}): Float32Array;
 }
 /**

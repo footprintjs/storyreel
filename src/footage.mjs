@@ -4,13 +4,12 @@
  * before (over the whole picture and in each cell of a coarse grid), how spread its grey levels are (one colour, or a
  * picture), a thumbnail to compare frames far apart, and its row and column means (projections), from which a shift of
  * the whole picture is found. On those: the candidates for a cut or a gradual change, each with the measures a rule
- * reads; a shot's motion; text-like strokes in a still; and colour stills, read in one more pass.
+ * reads (the fades found first, from the runs of one colour); and a shot's motion. Colour stills and the strokes of
+ * lettering are stills.mjs's.
  *
  * Grey levels are a video's (limited range, 16–235): differences and spreads are scaled to 0–255 (VIDEO), as
  * finished.mjs scales them.
  */
-import {spawn} from 'node:child_process';
-
 const VIDEO = 255 / 219;
 /** The coarse grid where motion is measured: 6 cells across, 4 down. */
 export const GRID = Object.freeze({cols: 6, rows: 4});
@@ -60,15 +59,16 @@ function compareFrames(f, before, grey) {
 }
 
 /**
- * Read every frame of the file once (the probe's frames, `width` pixels wide) into the measures the breakdown keeps:
+ * Read every frame of the file once (the probe's frames, `width` pixels wide, resampled to `rate` frames a second on the
+ * file's own timestamps, so a variable-rate file keeps its times: frame k is at k / rate) into the measures kept:
  * d[k] (the change from frame k-1 to k, 0–255), spread[k] (one colour under about 1.5), share[k] (how much of the grid changed at once),
  * cells[k] (the change in each grid cell), thumbs[k], cols[k] and rows[k]. Frame k is at k / fps.
  */
-export async function readFootage(probe, file, meta, {width = 160} = {}) {
+export async function readFootage(probe, file, meta, {width = 160, rate = meta.video.fps} = {}) {
   const W = width, H = Math.max(2, 2 * Math.round(width * meta.video.height / meta.video.width / 2));
-  const f = {fps: meta.video.fps, W, H, layout: layoutOf(W, H), n: 0, d: [0], share: [0], cells: [new Float32Array(GRID.cols * GRID.rows)], spread: [], thumbs: [], cols: [], rows: []};
+  const f = {fps: rate, W, H, layout: layoutOf(W, H), n: 0, d: [0], share: [0], cells: [new Float32Array(GRID.cols * GRID.rows)], spread: [], thumbs: [], cols: [], rows: []};
   let before = null;
-  f.n = await probe.frames(file, {width: W, height: H}, (_, grey) => {
+  f.n = await probe.frames(file, {width: W, height: H, fps: rate}, (_, grey) => {
     measureFrame(f, grey);
     if (before) compareFrames(f, before, grey);
     before = grey;
@@ -123,7 +123,7 @@ export function moveBetween(f, a, b) {
   return {dx: x.shift, dy: y.shift, explained: change > 1e-6 ? (x.change * x.explained + y.change * y.explained) / change : 0, change};
 }
 
-// ── Candidates for a cut ───────────────────────────────────────────────────────────────────────────────────
+// ── Candidates for a cut, and the fades ────────────────────────────────────────────────────────────────────
 
 /**
  * How much of a one-frame change lasts: the frame after it against the frame before it (a cut: about 1; a flash, the
@@ -137,13 +137,8 @@ function lasting(f, k) {
   return {value: Number.isFinite(least) ? least : 1, frame: before < after ? k - 1 : k};
 }
 
-/**
- * Every frame whose change is a peak at least half a cut's (`cutJump`, `cutRatio`), with what a rule reads: `jump` (its
- * change, 0–255), `around` (the median change of the frames around it), `ratio` (jump over around, around taken as
- * at least 1) and `lasting`; and `flashFrame`, the frame that would be a flash. Near misses are candidates too, so the
- * record says why each was not a cut.
- */
-export function cutCandidates(f, {cutJump, cutRatio}) {
+/** Every frame whose change is a peak at least half a cut's, with its jump, the median change around it, and their ratio. */
+function peaks(f, {cutJump, cutRatio}) {
   const out = [], reach = Math.max(3, Math.round(f.fps / 3));
   for (let k = 1; k < f.n; k++) {
     const jump = f.d[k];
@@ -151,21 +146,94 @@ export function cutCandidates(f, {cutJump, cutRatio}) {
     const near = [];
     for (let j = Math.max(1, k - reach); j <= Math.min(f.n - 1, k + reach); j++) if (Math.abs(j - k) > 1) near.push(f.d[j]);
     const around = median(near), ratio = jump / Math.max(around, 1);
-    if (ratio < cutRatio / 2) continue;
-    const last = lasting(f, k);
-    out.push({kind: 'cut', at: round(k / f.fps, 3), frames: [k - 1, k], flashFrame: last.frame, measures: {jump: round(jump, 1), around: round(around, 1), ratio: round(ratio, 1), lasting: round(last.value)}});
+    if (ratio >= cutRatio / 2) out.push({k, jump, around, ratio});
   }
   return out;
+}
+
+/**
+ * The runs of one-colour frames (spread under `blank`) in the film: [p, q], first and last. A jump of `jump` or more
+ * between two such frames (black cut to white, a red card cut to a blue one) starts a run of its own: one colour each.
+ */
+function blankRuns(f, blank, jump) {
+  const out = []; let p = -1;
+  for (let k = 0; k <= f.n; k++) {
+    const isBlank = k < f.n && f.spread[k] < blank;
+    if (p >= 0 && (!isBlank || f.d[k] >= jump)) { out.push([p, k - 1]); p = -1; }
+    if (isBlank && p < 0) p = k;
+  }
+  return out;
+}
+
+/** How much a frame's spread may wobble (grain, motion) and still follow one trend. */
+const wobble = v => Math.max(.3, .03 * v);
+
+/**
+ * The fade into a run of one colour starting at p: back from p while each frame before had at least the spread of the one
+ * after it (within a wobble: a fade eased in or out moves too little in a frame to rise every frame), no further than
+ * `lo`; then the frames still at the picture's own level are left out, so the fade starts where the picture starts to
+ * go. [start, p], or null when it is shorter than `minFade` frames (a cut into the colour).
+ */
+function fadeInto(f, p, lo, minFade) {
+  let s = p; while (s - 1 >= lo && f.spread[s - 1] >= f.spread[s] - wobble(f.spread[s])) s--;
+  let top = 0; for (let k = s; k <= p; k++) top = Math.max(top, f.spread[k]);
+  let start = s; for (let k = s; k < p; k++) if (f.spread[k] >= top - wobble(top)) start = k;
+  return p - start >= minFade ? [start, p] : null;
+}
+/** The fade out of a run of one colour ending at q, the same forward, no further than `hi`: [q, end], or null. */
+function fadeOutOf(f, q, hi, minFade) {
+  let e = q; while (e + 1 <= hi && f.spread[e + 1] >= f.spread[e] - wobble(f.spread[e])) e++;
+  let top = 0; for (let k = q; k <= e; k++) top = Math.max(top, f.spread[k]);
+  let end = e; for (let k = e; k > q; k--) if (f.spread[k] >= top - wobble(top)) end = k;
+  return end - q >= minFade ? [q, end] : null;
+}
+
+/**
+ * The fades: around every run of one colour, the fade into it and the fade out of it, each found by following the
+ * spread's trend (fadeInto, fadeOutOf), bounded by the runs either side, `maxFade` seconds, and every one-frame jump
+ * between two pictures (a hard cut, which no fade crosses). A fade's own last step into the colour, or its first out of
+ * it, may be a jump too: that one is inside the fade. Each: {hold: [p, q], into: [s, p] | null, out: [q, e] | null}.
+ */
+function fadesOf(f, jumps, t) {
+  const runs = blankRuns(f, t.blank, t.cutJump), most = Math.round(t.maxFade * f.fps), least = Math.max(2, Math.round(t.minFade * f.fps));
+  return runs.flatMap(([p, q], i) => {
+    const lo = Math.max(i ? runs[i - 1][1] + 1 : 0, p - most, ...jumps.filter(k => k <= p)), hi = Math.min(i + 1 < runs.length ? runs[i + 1][0] - 1 : f.n - 1, q + most, ...jumps.filter(k => k > q).map(k => k - 1));
+    const into = p > 0 ? fadeInto(f, p, lo, least) : null, out = q < f.n - 1 ? fadeOutOf(f, q, hi, least) : null;
+    return into || out ? [{hold: [p, q], into, out}] : [];
+  });
+}
+
+/** How long the fade is that the change into frame k belongs to (seconds; 0 when it is in none). */
+function fadeHolding(fades, k, fps) {
+  for (const {into, out} of fades) for (const span of [into, out]) if (span && span[0] < k && k <= span[1]) return (span[1] - span[0]) / fps;
+  return 0;
+}
+
+/**
+ * The candidates for a cut — every frame whose change is a peak at least half a cut's (`cutJump`, `cutRatio`) — with what
+ * a rule reads: `jump` (its change, 0–255), `around` (the median change of the frames around it), `ratio` (jump over
+ * around, around taken as at least 1), `lasting`, and `fade` (the length of the fade the change is a step of, or 0); and
+ * `flashFrame`, the frame that would be a flash. Near misses are candidates too, so the record says why each was not a
+ * cut. Also the fades (fadesOf), found first, so a fade's last step into its colour is never taken for a cut.
+ */
+export function cutsAndFades(f, t) {
+  const found = peaks(f, t), between = ({k}) => f.spread[k - 1] >= t.blank && f.spread[k] >= t.blank;
+  const fades = fadesOf(f, found.filter(p => p.jump >= t.cutJump && p.ratio >= t.cutRatio && between(p)).map(p => p.k), t);
+  const cuts = found.map(({k, jump, around, ratio}) => {
+    const last = lasting(f, k);
+    return {kind: 'cut', at: round(k / f.fps, 3), frames: [k - 1, k], flashFrame: last.frame,
+      measures: {jump: round(jump, 1), around: round(around, 1), ratio: round(ratio, 1), lasting: round(last.value), fade: round(fadeHolding(fades, k, f.fps), 3)}};
+  });
+  return {cuts, fades};
 }
 
 // ── Candidates for a gradual change ────────────────────────────────────────────────────────────────────────
 
 /**
  * The stretches where the picture keeps changing: frames whose change reaches `floor`, allowing one quiet frame inside;
- * a break (a cut or a flash) ends one. Each is [a, b]: a, the frame before its first change; b, the last frame that
- * changed. Two stretches are one across a hold of one colour no longer than `hold` frames (the black of a dip).
+ * a break (a cut or a flash) ends one. Each is [a, b]: a, the frame before its first change; b, the last frame that changed.
  */
-function changingStretches(f, breaks, floor, blank, hold) {
+function changingStretches(f, breaks, floor) {
   const out = []; let first = -1, last = -1, quiet = 0;
   const close = () => { if (first >= 0) out.push([first - 1, last]); first = -1; quiet = 0; };
   for (let k = 1; k < f.n; k++) {
@@ -173,40 +241,7 @@ function changingStretches(f, breaks, floor, blank, hold) {
     if (f.d[k] >= floor) { if (first < 0) first = k; last = k; quiet = 0; } else if (first >= 0 && ++quiet > 1) close();
   }
   close();
-  return joinHolds(f, out, {breaks, blank, hold});
-}
-
-/** Stretches joined across a hold: the first ends on one colour, every frame to the second is that colour, and nothing breaks in between. */
-function joinHolds(f, stretches, {breaks, blank, hold}) {
-  const out = [];
-  const held = (from, to) => { for (let k = from; k <= to; k++) if (f.spread[k] >= blank || (k > from && breaks.has(k))) return false; return true; };
-  for (const s of stretches) {
-    const before = out.at(-1);
-    if (before && s[0] - before[1] <= hold && held(before[1], s[0])) before[1] = s[1]; else out.push([...s]);
-  }
   return out;
-}
-
-/** The runs of one-colour frames (spread under `blank`) inside [a, b]. */
-function blankRuns(f, [a, b], blank) {
-  const out = []; let p = -1;
-  for (let k = a; k <= b + 1; k++) {
-    const isBlank = k <= b && f.spread[k] < blank;
-    if (isBlank && p < 0) p = k;
-    if (!isBlank && p >= 0) { out.push([p, k - 1]); p = -1; }
-  }
-  return out;
-}
-
-/**
- * The fade around a run of one colour: back while the frames before it had more spread (fading out), on while the frames
- * after it gain spread (fading in). Null when neither side fades — a run of one colour that is the picture itself (a
- * colour card, or a dissolve between two of them) is no fade.
- */
-function fadeSpan(f, [a, b], [p, q]) {
-  let s = p; while (s > a && f.spread[s - 1] >= f.spread[s] + .25) s--;
-  let e = q; while (e < b && f.spread[e + 1] >= f.spread[e] + .25) e++;
-  return s < p || e > q ? {span: [s, e], middle: (p + q) / 2} : null;
 }
 
 /**
@@ -214,14 +249,28 @@ function fadeSpan(f, [a, b], [p, q]) {
  * straight (`coherence`: that change over the path frame by frame, 1 for a mix that only moves one way), whether its
  * middle frame is the even mix of its ends (`mix`: 0 when it is), how much a shift of the whole picture explains
  * (`moved`), how long it takes (`seconds`), and the spread of its first, least and last frames (one colour: a fade).
- * Its time (`at`) is its middle, or the given frame (the middle of a fade's hold).
+ * Its time (`at`) is its middle, or the frame given (where a fade meets its colour).
  */
-function gradualMeasures(f, [a, b], middle = (a + b) / 2) {
+function gradualMeasures(f, [a, b], middle = (a + b) / 2, extra = {}) {
   const mid = Math.round((a + b) / 2), change = thumbDiff(f, a, b);
   let least = Infinity; for (let k = a; k <= b; k++) least = Math.min(least, f.spread[k]);
-  return {kind: 'gradual', at: round(middle / f.fps, 3), frames: [a, b],
+  return {kind: 'gradual', at: round(middle / f.fps, 3), frames: [a, b], ...extra,
     measures: {change: round(change, 1), coherence: round(change / Math.max(pathBetween(f, a, b), 1e-6)), mix: round(mixError(f, a, mid, b, change)), moved: round(moveBetween(f, a, b).explained),
       seconds: round((b - a) / f.fps, 3), startSpread: round(f.spread[a], 1), leastSpread: round(least, 1), endSpread: round(f.spread[b], 1)}};
+}
+
+/**
+ * The candidates a fade gives: a dip when the picture fades into the colour and out of it with a hold of at most
+ * `maxHold` seconds between (its time the hold's middle); else the fade in and the fade out apart. A lone fade owns its
+ * hold: a fade out ends where the hold does (so a cut out of the hold is the same boundary, and no slug of one colour
+ * stands between them), a fade in starts where the hold does; with both fades round a longer hold, the hold is a shot of
+ * its own. A fade in from the film's first frame opens it, a fade out to its last closes it.
+ */
+function fadeCandidates(f, {hold: [p, q], into, out}, t) {
+  if (into && out && (q - p + 1) / f.fps <= t.maxHold) return [gradualMeasures(f, [into[0], out[1]], (p + q) / 2)];
+  const fadeOut = into && gradualMeasures(f, into, out ? p : Math.min(q + 1, f.n - 1), q === f.n - 1 ? {closes: true} : {});
+  const fadeIn = out && gradualMeasures(f, out, into ? q : p, p === 0 ? {opens: true} : {});
+  return [fadeOut, fadeIn].filter(Boolean);
 }
 
 /** Close enough to a dissolve to be decided: a little looser than the rules, so near misses are recorded too. */
@@ -259,26 +308,23 @@ function dissolvesIn(f, run, t) {
   return kept.map(h => grow(f, run, h, t));
 }
 
-/** The parts of [a, b] outside the given spans. */
+/** The parts of [a, b] outside the given spans (spans that do not reach [a, b] are no part of it). */
 function outside([a, b], spans) {
   const out = []; let from = a;
-  for (const [s, e] of [...spans].sort((x, y) => x[0] - y[0])) { if (s > from) out.push([from, s]); from = Math.max(from, e); }
+  for (const [s, e] of spans.filter(([s, e]) => e > a && s < b).sort((x, y) => x[0] - y[0])) { if (s > from) out.push([from, s]); from = Math.max(from, e); }
   if (b > from) out.push([from, b]);
   return out;
 }
 
 /**
- * Every gradual change worth deciding, outside the breaks (the cuts and flashes): a fade around each run of one colour
- * that the picture fades to or from (out, in, or a dip through it), and the dissolves the rest of each changing stretch
- * may hold. A stretch is where the change from frame to frame reaches `gradualFloor` (or twice the film's quietest
- * tenth, when that is more); a hold of one colour up to `maxHold` seconds joins two.
+ * Every gradual change worth deciding: the fades (cutsAndFades), and the dissolves the changing stretches may hold
+ * outside the fades and the breaks (the cuts and flashes). A stretch is where the change from frame to frame reaches
+ * `gradualFloor` (or twice the film's quietest tenth, when that is more).
  */
-export function gradualCandidates(f, breaks, t) {
-  const floor = Math.max(t.gradualFloor, 2 * percentile(f.d.slice(1), .1));
-  return changingStretches(f, breaks, floor, t.blank, Math.round(t.maxHold * f.fps)).flatMap(run => {
-    const fades = blankRuns(f, run, t.blank).map(r => fadeSpan(f, run, r)).filter(Boolean);
-    return [...fades.map(x => gradualMeasures(f, x.span, x.middle)), ...outside(run, fades.map(x => x.span)).flatMap(piece => dissolvesIn(f, piece, t))];
-  }).sort((x, y) => x.frames[0] - y.frames[0]);
+export function gradualCandidates(f, breaks, fades, t) {
+  const floor = Math.max(t.gradualFloor, 2 * percentile(f.d.slice(1), .1)), spans = fades.flatMap(x => [x.into, x.out].filter(Boolean));
+  const dissolves = changingStretches(f, breaks, floor).flatMap(run => outside(run, spans).flatMap(piece => dissolvesIn(f, piece, t)));
+  return [...fades.flatMap(x => fadeCandidates(f, x, t)), ...dissolves].sort((x, y) => x.frames[0] - y.frames[0]);
 }
 
 // ── A shot's motion ────────────────────────────────────────────────────────────────────────────────────────
@@ -315,9 +361,10 @@ function cameraMove(f, c0, c1, panStep) {
     x += m.dx; y += m.dy; travel += Math.max(Math.abs(m.dx) / f.W, Math.abs(m.dy) / f.H);
     explained += m.explained * m.change; weight += m.change;
   }
-  const pan = seconds ? travel / seconds : 0;
-  // The content moves one way, so the camera went the other: content moving left is a camera panning right.
-  const direction = !seconds || pan < 1e-3 ? null : Math.abs(x) / f.W >= Math.abs(y) / f.H ? (x < 0 ? 'right' : 'left') : (y < 0 ? 'down' : 'up');
+  const pan = seconds ? travel / seconds : 0, net = Math.max(Math.abs(x) / f.W, Math.abs(y) / f.H) / (seconds || 1);
+  // The content moves one way, so the camera went the other: content moving left is a camera panning right. A shift that
+  // nets out (back and forth, or a shake) has no one direction: less than half its path, or under 0.5% of the frame a second.
+  const direction = !seconds || net < .005 || net < pan / 2 ? null : Math.abs(x) / f.W >= Math.abs(y) / f.H ? (x < 0 ? 'right' : 'left') : (y < 0 ? 'down' : 'up');
   return {pan, explained: weight ? explained / weight : 0, direction};
 }
 
@@ -330,58 +377,4 @@ export function energyCurve(f, breaks, every = .5) {
     out.push({t: round(i * every, 3), energy: round(ks.length ? ks.reduce((s, v) => s + v, 0) / ks.length : 0)});
   }
   return out;
-}
-
-// ── Stills and the strokes of lettering ────────────────────────────────────────────────────────────────────
-
-/**
- * Colour stills of the given frames (ascending, each once), `width` pixels wide, in one FFmpeg pass that selects them
- * by number: a Map frame → {width, height, rgb}.
- */
-export async function readStills(ffmpeg, file, frames, {width, height}) {
-  const want = [...new Set(frames)].sort((a, b) => a - b), size = width * height * 3, out = new Map();
-  if (!want.length) return out;
-  const select = `select='${want.map(k => `eq(n\\,${k})`).join('+')}',scale=${width}:${height}:flags=area`;
-  const ff = spawn(ffmpeg, ['-v', 'error', '-i', file, '-vf', select, '-fps_mode', 'passthrough', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], {stdio: ['ignore', 'pipe', 'pipe']});
-  let held = Buffer.alloc(0), err = '', i = 0;
-  ff.stderr.on('data', b => { err += b; });
-  for await (const chunk of ff.stdout) {
-    held = held.length ? Buffer.concat([held, chunk]) : chunk;
-    while (held.length >= size) { if (i < want.length) out.set(want[i++], {width, height, rgb: new Uint8Array(held.subarray(0, size))}); held = held.subarray(size); }
-  }
-  const code = await new Promise(r => ff.once('close', r));
-  if (code !== 0) throw new Error(`breakdown: ${ffmpeg} could not read the stills: ${err.slice(-300)}`);
-  return out;
-}
-
-/**
- * How much of a still looks like lettering — a heuristic, not OCR: the still is cut into 8-pixel blocks, a block is
- * stroke-like when sharp left-right edges (a step of `edge` grey levels or more) fill between 6% and 45% of it and reach
- * at least 3 of its rows, and lettering is three or more such blocks side by side. Returns the share of the still
- * (0..1) covered by such rows of blocks.
- */
-export function textArea({width, height, rgb}, {edge = 48, block = 8} = {}) {
-  const grey = new Float32Array(width * height);
-  for (let i = 0; i < grey.length; i++) grey[i] = .299 * rgb[3 * i] + .587 * rgb[3 * i + 1] + .114 * rgb[3 * i + 2];
-  const across = Math.floor(width / block), down = Math.floor(height / block);
-  const strokeLike = (bx, by) => {
-    let edges = 0, rows = 0;
-    for (let y = by * block; y < (by + 1) * block; y++) {
-      let inRow = 0;
-      for (let x = bx * block; x < (bx + 1) * block && x + 1 < width; x++) if (Math.abs(grey[y * width + x + 1] - grey[y * width + x]) >= edge) inRow++;
-      edges += inRow; if (inRow) rows++;
-    }
-    const density = edges / (block * block);
-    return density >= .06 && density <= .45 && rows >= 3;
-  };
-  let lettered = 0;
-  for (let by = 0; by < down; by++) {
-    let run = 0;
-    for (let bx = 0; bx <= across; bx++) {
-      if (bx < across && strokeLike(bx, by)) { run++; continue; }
-      if (run >= 3) lettered += run;
-      run = 0;
-    }
-  }
-  return across && down ? lettered / (across * down) : 0;
 }

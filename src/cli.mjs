@@ -6,10 +6,18 @@
  */
 import {TOOLS, CONFIG, loadProject} from './tools.mjs';
 
-const BREAKDOWN_USAGE = 'storyreel breakdown <video.mp4> [--out dir]   a reference film broken down into a spec to match: shots, cuts, pacing, motion (breakdown.mjs); it needs no project';
+const BREAKDOWN_USAGE = 'storyreel breakdown <video.mp4> [--out dir]   a reference film broken down into a spec to match: shots, cuts, pacing, motion (breakdown.mjs); it needs no project, and FFmpeg 5.1 or later';
+
+/** What a failed breakdown's record says (error.record): where it stopped, and its last decisions with their evidence. */
+function recordSoFar(record) {
+  if (!Array.isArray(record) || !record.length) return '';
+  const last = record.at(-1), decisions = record.filter(e => e.type === 'condition').slice(-5);
+  return `\nThe record so far (${record.length} ${record.length === 1 ? 'entry' : 'entries'}) stops in "${last.stageName ?? last.stageId ?? '?'}": ${last.text}${decisions.length ? `\nIts last decisions:${decisions.map(e => `\n  ${e.text}`).join('')}` : ''}`;
+}
 
 /** storyreel breakdown <video> [--out dir]: the spec, its plain words and its files (breakdown.mjs · breakdown). */
 async function breakdownCommand(args) {
+  if (args.includes('--help') || args.includes('help')) { console.log(BREAKDOWN_USAGE); return; }
   let video = null, out;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--out' && args[i + 1] && !args[i + 1].startsWith('--')) out = args[++i];
@@ -21,7 +29,7 @@ async function breakdownCommand(args) {
   try {
     const {text, files} = await breakdown(video, out ? {out} : {});
     console.log(`${text}\n${files.json}\n${files.md}\n${files.overview} · ${files.sheets.length} shot sheet${files.sheets.length === 1 ? '' : 's'} in ${files.sheets.length ? files.sheets[0].replace(/[^/\\]*$/, '') : '-'}\n${files.record}`);
-  } catch (e) { console.error(`storyreel breakdown: ${String(e?.message ?? e).replace(/^breakdown: /, '')}`); process.exit(1); }
+  } catch (e) { console.error(`storyreel breakdown: ${String(e?.message ?? e).replace(/^breakdown: /, '')}${recordSoFar(e?.record)}`); process.exit(1); }
 }
 
 const [command, ...rest] = process.argv.slice(2), flags = {};
