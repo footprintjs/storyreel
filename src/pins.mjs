@@ -10,14 +10,16 @@ import {createCanvas} from '@napi-rs/canvas';
 /**
  * {moment (seconds): hash}, drawn `width` pixels wide: at `count` evenly spaced moments across the film,
  * or at the moments in `times` (e.g. film.moments() plus the middle of a short pop that even spacing
- * would miss), not both. Each moment is rounded to the millisecond, which is also its key.
+ * would miss), not both. Each moment is rounded to the millisecond, which is also its key. `each(t, ctx)`,
+ * when given, sees every frame once it is drawn (the review reads its grey levels from the same drawing).
  */
-export function frameHashes(film, {count, width = 400, times} = {}) {
+export function frameHashes(film, {count, width = 400, times, each = null} = {}) {
   const height = Math.round(width * 9 / 16), c = createCanvas(width, height), x = c.getContext('2d'), out = {};
   if (times !== undefined && count !== undefined) throw new Error('frameHashes: give count (evenly spaced moments) or times (the moments you name), not both');
   for (const t of times === undefined ? evenMoments(film, count ?? 24) : givenMoments(film, times)) {
     x.resetTransform(); x.clearRect(0, 0, width, height); x.scale(width / 1600, width / 1600); film.frame(x, t);
     out[t] = createHash('sha256').update(c.data()).digest('hex').slice(0, 16);
+    each?.(t, x);
   }
   return out;
 }

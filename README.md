@@ -20,8 +20,9 @@ then:       one film → a version for every place it is posted: 16:9, 1:1, 4:5,
 - **Pictures follow the words, not the clock.** Every drawing is tied to a spoken phrase. Record the
   voice again, slower or in another language, and the film follows; a phrase that is not in the
   script refuses the recipe instead of drifting.
-- **Honest by construction.** Values on screen can be read from real data (a recorded run), a line
-  too short to read is reported (or refused), and every film says how it was made.
+- **Honest by construction.** Values on screen can be read from real data (a recorded run), every
+  number on screen names its source (or sits in a scene marked as example data), a line too short to
+  read is reported (or refused), and every film says how it was made.
 - **The same frames every time.** `frame(ctx, t)` is a pure function of time. Pixel pins catch any
   change that moves a pixel, so a film you approved stays the film you approved.
 - **Direct it like a director.** Camera words as data (`speed`, `cut`, `push`), a collection of
@@ -519,6 +520,150 @@ ends before one lands (lengthen the scene's tail), or when its region is not dra
   and, under `compile`, the compile stage by stage (the narrative of its record, below). A version made
   for a platform says so: `"version": {"format": "vertical", "motionBlur": 4, "captionFiles": ["captions.vtt"]}`.
 
+## Three verdicts: no slideshow, parts that hold, numbers with a source
+
+Some questions about a film have a yes or a no: is it a slideshow? Does the drawing hold together? Does every
+number on screen say where it comes from? StoryReel answers each with a **verdict** — `passed`, `failed`, or
+`not run` — decided with footprintjs's `decide()`, so the record of the run that asked keeps *why*: the rule that
+matched, the values it read and the thresholds it compared them with. A check that cannot run (no parts, no facts)
+says `not run` and why; it never passes.
+
+```js
+import {reviewPart} from 'footprint-storyreel/review';
+const r = await reviewPart(film);     // the hello example
+console.log(r.verdictText);
+// No slideshow · failed: most of the running time inside the shots is still: a slideshow (63 % of 27.8 s still; still shots: stage rule 85 %)
+// Drawn parts hold together · not run: no kit on screen gives its parts (parts(t))
+// Every number has a source · passed: the film shows no number
+r.record.filter(e => e.type === 'condition').map(e => e.text);
+// [Condition]: It evaluated Rule 2 "most of the running time inside the shots is still: a slideshow": stillShare 0.631 gt 0.5 ✓, and chose slideshow/failed.
+```
+
+`r.verdicts` is the same as data, `[{check, label, verdict, why, measured, summary}]`, every verdict check in order.
+A failed verdict's reasons are findings too (`r.findings`, `r.text`): the still shots, the parts that break, the
+numbers with no source. `npx storyreel review` prints the verdicts under the findings. A verdict check of your own
+is `{label, why, notRun, when(scope), measure(review) → {measured, hits}, verdict: {rules, passed}}` in `checks`:
+each measured value goes on the scope by its name, for the rules' filters (`{stillShare: {gt: .5}}`).
+
+### No slideshow
+
+A film whose shots do not move inside themselves is a slideshow, however well it cuts: a still picture, a cut,
+another still picture, a voice over all of it (the anti-slideshow gate huashu-art-motion's film_gate runs). It is
+measured, not guessed (`footprint-storyreel/slideshow`):
+
+- **Each shot in its middle.** A shot (`film.shots`: the story, then each stage) is measured with every change of
+  picture cut out (`film.changes`: its own entrance, the next shot's, a hand-over on its page, a cut — a cut has no
+  length, and no step crosses it), so a transition never counts as the shot moving.
+- **Frames drawn small.** The middle is read as frames 160 px wide, each pixel a 10×10 cell of the frame, a few
+  times a second (the review's own frames: the picture is drawn once for every check). A step between two frames
+  **moves** when at least `area` of the cells (0.0002: about 300 px² of the frame) changed by more than `level` (4
+  grey levels: a 1-px line of ink drawn across a cell moves it 19; the tail of a fade moves less). A frame is a pure function of time, so a picture that does not move
+  draws exactly the same pixels; on the example films the verdicts are the same for any `area` from 0.0001 to 0.001.
+- **Most of the running time.** A shot is still when more than half (`most`) of its middle is still; the film
+  **fails** when more than half of its shots' running time is. The still shots are its findings
+  (`stage rule hardly moves inside itself: 85 % of its 12.0 s is still`) — listed with a passing verdict too, as data.
+
+It is not the **stale** check, and does not repeat it: stale asks whether anything *new* comes (a scene, a beat, a
+word not on screen a moment before) while the picture moves; this asks whether the picture *moves* between the new
+things. A code stage that reveals a line every few seconds is never stale, and can still be a slide; a world that
+drifts for ten seconds with nothing new is stale, and moves. Nor is it **still**, which names one stretch frozen
+for 5 s; this names a whole shot that is mostly still. Of the example films, `shepherd` and `worlds` pass and
+`hello` and `recap` (a whiteboard and code stages, still between their reveals) read as slideshows — a camera
+drift, a breathing figure or a slow push over the still stretches would move them.
+
+```js
+import {slideshowOf, SLIDESHOW} from 'footprint-storyreel/slideshow';
+const s = slideshowOf(film);             // {shots, seconds, still, stillShare, stillShots: [{where, stillShare, …}]}
+slideshowOf(film, {rule: {...SLIDESHOW, most: .7}});   // the thresholds are data
+```
+
+### Drawn parts hold together
+
+An arm that floats off its shoulder for three frames, two legs that pass through each other, a foot that skates
+while the body walks: the eye catches these at once, and nothing that reads the picture as text can. A kit that
+wants its drawing audited gives its **parts** — the numbers it draws them from, in its own coordinates (before any
+camera) — and the audit checks them over time, as an anatomy check reads a figure (`footprint-storyreel/geometry`):
+
+```js
+parts(t) {   // on a world (a stage kit: parts(handle, t))
+  return {
+    segments: {
+      'arm left':  {a: [x - 26, y - 135], b: [x - 52, y - 110], width: 16, mount: 'robe'},   // a: the root, on its mount
+      'hand left': {a: [x - 55, y - 108], b: [x - 55, y - 108], width: 18, mount: 'staff'},  // a hand on the staff
+      'staff':     {a: [x - 58, y], b: [x - 58, y - 250], width: 9},
+      'foot 1':    {a: [fx, floor], b: [fx + 30, floor], mount: 'leg 1', contact: foot.lift === 0}, // planted (walk.mjs)
+      …},
+    regions: {robe: [x - 52, y - 150, x + 52, y]},       // boxes a part can be mounted on
+    apart: [['arm left', 'arm right']],                  // pairs that must never cross
+  };
+}
+```
+
+- **Mounted.** A segment's root `a` lands on its `mount` — a segment (touching it, both widths counted) or a region
+  (inside it) — within `reach` (2 px); `ends: 'mounted'` holds its tip `b` there too (a strap, a hand rail).
+- **Apart.** A declared pair's centre lines never cross; a joint they share (two legs from one hip) is no crossing.
+- **Planted.** A segment with `contact: true` rests on the ground: from one moment to the next while it stays
+  planted, neither end moves more than `slide` (1 px). Read it from the pose — walk.mjs's feet are planted while
+  their `lift` is 0, and a figure walked by it passes; one whose feet skate under the body fails.
+- **Sampled.** Every `every` seconds (a frame at 30 fps), over the part reviewed (`film.partsAt(t)` lists what the
+  kits on screen give). It **fails** when anything breaks, naming the part and when (`story: "foot 1" slides while
+  it is planted`); it is **not run** when no kit on screen gives its parts, or when the parts declare nothing to check.
+
+The cartoon kit gives its parts — the shepherd's staff, arms and hands, each sheep's body and legs, a standing
+sheep's feet planted — from the same numbers it draws with, so the audit checks the drawing itself.
+
+### Every number has a source
+
+A number on screen reads as a fact. Every number the film shows — its lines (titles, footers, list lines, a world's
+words, guess cards, the push-in caption), its emphasis words and its captions as shown (a number slot in its digits)
+— must match a **fact** the storyboard names, or sit in a scene marked as **example data**
+(`footprint-storyreel/claims`):
+
+```json
+{"title": "Frames", "facts": "facts.json", "scenes": [
+  {"id": "rate", "narration": "A screen draws at 60 Hz, so one frame takes 16.67 ms."},
+  {"id": "shop", "example": true, "narration": "Say a stall sells 12 cups in a morning."}]}
+```
+
+```json
+[{"value": 60, "text": "60 Hz", "source": "https://example.org/display-rates"},
+ {"value": 16.67, "source": "docs/frames.md"},
+ {"value": "3:15", "text": "at 3:15", "source": "run.json#steps[2].at"}]
+```
+
+- **A fact** is `{value, text?, source}`: `value` the number as the screen shows it (`16.67`, `1000` for "1,000", or
+  `"3:15"`); `text` the words it is shown with — they must stand around it in the line that shows it, so `60 Hz` is
+  not `60 sheep`, and `6 Hz` is not the 6 in "6 apples and 16 Hz"; `source` where it comes from: a URL, a document, or a pointer into a record. `facts` is a JSON file inside
+  the film's root (read through the root, so it is hashed into the film's inputs and an approval locks it) or the
+  list itself. A fact that is not one refuses, naming the fix.
+- **An example scene** (`"example": true`) says so on screen: an "Example data" label in the top right corner, for
+  exactly the scene's time (the emphasis corner label's look) — in a format that crops the frame (portrait, vertical),
+  in the corner of what the crop shows. `"example": "Beispieldaten"` puts the label in the film's language. Its
+  numbers need no source, and the label is in the key of every segment that shows it.
+- **The numbers** are found the way the voice tools find digits (footprint-narration's `unsaidDigits`), less a digit
+  right after a letter, which is part of a name (H2O, MP4, v2); a unit written onto a number stays a number (60Hz,
+  4K). A sign is not part of a number: a fact for "−5 °C" is `{"value": 5, "text": "−5 °C", …}`. `film.claims`
+  lists them all: `{facts, numbers: [{number, line, at, scene, path, example, source}]}`, one per number, entry and
+  scene (a number said again in the same scene's captions is the same claim).
+- **The verdict**: `failed` when a number outside an example scene has no source — each listed with its scene, its
+  recipe entry and the fix (`"120" (scene rate, story.items[1]) has no source: add {"value": 120, "source": "…"} to
+  the facts, or mark scene rate "example": true`); `not run` when the storyboard names no facts and a number shows
+  outside an example scene; `passed` otherwise (a film that shows no number passes).
+
+It is a verdict in the review, and a stage of `makeFilm`'s pipeline, `check-claims`, right after the compile: the
+making-of record keeps it (`"claims": {verdict, why, numbers, sourced, examples, unsourced: [{number, scene, path,
+at, fix}]}`) and the pipeline's record its `decide()` evidence. `makeFilm({…, claims: 'refuse'})` refuses a number
+with no source before anything is drawn — and a film whose numbers cannot be checked — leaving the voice folder and
+the last render's narration as they were:
+
+```js
+await makeFilm({storyboard, recipe, timings, out: 'out/film.mp4', claims: 'refuse'});
+// The film shows 1 number with no source (claims: 'refuse'): "120" (scene rate, story.items[1]) has no source: …
+```
+
+Not read yet: the card's rows and code (code is studied, not claimed), and a number a kit draws without listing it in
+its `texts()`.
+
 ## One film, every platform
 
 Most people meet a film in a feed, on a phone, with the sound off. `renderFilm({…, layout})` renders the
@@ -733,8 +878,8 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
 - **A key is on the segment's own clock.** It is built from what draws the segment, timed from its first
   frame: its recipe entries (and the shot an entrance, or a blurred cut, also draws; a push-in film's
   `pushIn` and `card`; every row a teaser rewinds through), the guess cards over it, every line they
-  resolved, the words spoken in and around it (captions and mouths), the director's notes over it, the
-  strings its entries name (`{"$string": key}`: one word changed redraws only the segments that show it),
+  resolved, the words spoken in and around it (captions and mouths; an example scene's label), the director's
+  notes over it, the strings its entries name (`{"$string": key}`: one word changed redraws only the segments that show it),
   what reaches every frame — the data, the theme, the cast and every file the film read (`film.inputs`) —
   the frame settings (size, layout, stamp, motion blur, poster) and the drawing code (StoryReel's own, its
   fonts and the versions it draws with, and yours). So a scene near the start that grows by whole frames
@@ -777,7 +922,8 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   is `{label, why, when(scope), find(review)}` in `checks`; `find` answers at once with its hits, `[{kind, t, what}]`.
   A check that throws, or answers with anything else (a promise, no list, a hit without its time or its words),
   fails the review with one error naming every check that failed, so a review that returns has run every check it
-  picked.
+  picked. Three checks answer with a verdict — no slideshow, drawn parts that hold together, every number with a
+  source (`r.verdicts`, `r.verdictText`; [below](#three-verdicts-no-slideshow-parts-that-hold-numbers-with-a-source)).
 - **The same, from the command line — and as a skill for agents.** `npx storyreel timeline | review | part | still |
   strip --scene <id>` (`strip --at <scene>+<seconds>`: a fast move frame by frame — 12 consecutive frames around
   the moment, side by side — to catch a pop, a jump or two things crossing) (the film named in the project's `storyreel.config.mjs`: `export default {film: flags =>
@@ -980,6 +1126,7 @@ const myKit = {name: 'cartoon', story: {
       regionsAt(t) { return []; },            // optional, for the studio: [{box: [x0, y0, x1, y1] on the sheet, path: 'items[3]', label, name?}]
                                               // a `name` ('robot') is what a director's push can frame: {on: 'robot', size: 'close'}
       texts() { return []; },                 // optional, for the reading check: [{text, from, to, path}]
+      parts(t) { return {segments: {}}; },    // optional, for the geometry audit: {segments, regions, apart} (see Three verdicts)
       sounds: [{time: clock.at(['story', 'But wait']), type: 'chime'}],
     };
   }}};
@@ -1126,12 +1273,12 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 
 | import | what it does |
 |---|---|
-| `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?, hostKeys?, record?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `reading`, `shots` (each shot's intent, facts and moments), `watching`, `rows` (the rows of pictures segments are planned from), `moments()`, `regionsAt(t)`, `pointAt(t, x, y)`, `posterAt`, `theme`; with `record: true`, `record` (the compile as a footprintjs run) |
+| `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?, hostKeys?, record?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `reading`, `lines` (every line meant to be read), `shots` (each shot's intent, facts and moments), `changes` (every change of picture), `watching`, `claims` (every number shown, with its source), `rows` (the rows of pictures segments are planned from), `moments()`, `regionsAt(t)`, `partsAt(t)`, `mouthsAt(t)`, `pointAt(t, x, y)`, `posterAt`, `theme`; with `record: true`, `record` (the compile as a footprintjs run) |
 | `renderFilm({film, storyboard, timings, narrationDir?, out, width?, height?, fps?, intro?, stamp?, from?, to?, poster?, loudness?, layout?, motionBlur?, captionFiles?, quality?, video?})` | the MP4 (FFmpeg), its chapters (one per titled scene), its poster, its loudness (two passes); a version for a platform, motion blur, caption files; the picture in one pass or in cached segments |
 | `compileLayout(film, layout)` · `FORMAT_NAMES` | a format's picture and bands, drawn at any t (`footprint-storyreel/layout` adds `formatOf`, `cropWindow`) |
 | `spokenTracks(film)` | the film's speech as tracks: chunk them with footprint-narration's `captionChunks`, write files with its `captionFile` (`footprint-storyreel/captions` adds `drawCaption`) |
 | `TRANSITIONS` · `TRANSITION_NAMES` · `transitionCatalog(kits)` · `transitionSheet({catalog?, moments?, width?})` | the transitions a shot can enter with, a kit's own added, on one PNG (`footprint-storyreel/transitions` adds `readEntrance`, `ghostPainter`) |
-| `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?})` | compile + render as a footprintjs pipeline, with `making-of.json` (a segmented render: one subflow per segment) |
+| `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?, claims?})` | compile + render as a footprintjs pipeline, with `making-of.json` (a segmented render: one subflow per segment; the claims verdict, `check-claims`) |
 | `approveFilm({record, by, note?})` · `checkApproval(approval, inputs)` | the approval lock: approve a watched render from its making-of.json, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
 | `checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})` · `FINISHED_CHECK_NAMES` | checks on the finished file: lengths, blank runs, flash frames, hand-overs and joins, the voice, captions (`footprint-storyreel/finished` adds `ffmpegProbe`, `FINISHED_CHECKS`, `FINISHED`) |
 | `segmentedVideo({store, recipe, code?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir)` · `ffmpegJoin()` · `planSegments(film, {fps})` · `segmentKey(…)` · `codeFingerprint(paths)` | re-render only what changed: the picture in cached segments, joined (`renderFilm({…, video})`) |
@@ -1141,14 +1288,18 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `directionTimings(scene, {tail?})` · `withDirections(storyboard, timings)` · `sceneText(scene)` · `spokenText(scene)` · `unsaidNumbers(storyboard)` | a silent scene's timing; a voice's timings completed with the silent scenes; a scene's text as spoken (number slots in words); digits without a slot |
 | `makeClock(storyboard, timings)` | phrases → seconds; `speaking(t)`, `turns()`, `gaze(t, who)` |
 | `footprint-storyreel/shots` → `readIntent` · `readContinuity` · `checkContinuity` · `tooMuchTooFast` · `distinctMoments` · `WATCHING` | the shot plan's checks, on their own |
+| `footprint-storyreel/review` → `reviewPart(film, {part?, layout?, checks?, …})` · `REVIEW_CHECKS` · `findingsText` · `verdictsText` · `wordsAt` | a part reviewed by reading it: findings with times, and three verdicts (passed, failed, not run) with their `decide()` evidence |
+| `footprint-storyreel/slideshow` → `slideshowOf(film, {from?, to?, every?, rule?})` · `shotMotion` · `shotInsides` · `moved` · `SLIDESHOW` · `SLIDESHOW_VERDICT` | no slideshow: how much each shot moves in its middle, and whether most of the running time is still |
+| `footprint-storyreel/geometry` → `geometryOf(film, {from?, to?, rule?})` · `auditParts` · `readParts` · `crosses` · `breakText` · `GEOMETRY` · `GEOMETRY_VERDICT` | a kit's drawn parts audited: mounted ends stay on, pairs kept apart never cross, planted parts do not slide |
+| `footprint-storyreel/claims` → `numbersIn` · `numberValue` · `readFacts` · `exampleScenes` · `findClaims` · `claimsCount` · `unsourcedClaims` · `claimText` · `CLAIMS_VERDICT` | every number on screen with its source: a fact the storyboard names, or an example scene (`film.claims`) |
 | `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `inOut` | the one ease table (`linear in out inOut back walk jump spring`) |
 | `footprint-storyreel/acting` → `moodAt(keys, t)` · `idleAt(t, {seed})` · `follows(f, delay?)` · `ACTING` | a mood change acted (anticipation, a take, a cross-fade), an idle layer that never moves in step |
 | `contactSheet(film, {moments?, columns?, width?})` | a PNG of stills |
-| `frameHashes(film, {count?, width?, times?})` · `changedFrames(pinned, now)` | pixel pins |
+| `frameHashes(film, {count?, width?, times?, each?})` · `changedFrames(pinned, now)` | pixel pins (`each(t, ctx)` sees every frame drawn) |
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/review`, `/slideshow`, `/geometry`, `/claims`, `/regions`, `/captions`, `/layout`, `/transitions`, `/kits/whiteboard`, `/kits/cartoon`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws

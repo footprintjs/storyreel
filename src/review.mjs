@@ -7,6 +7,11 @@
  * first 3 s, not too much to read at once, real silences (a breath before the peak), something new every few
  * seconds while the picture moves, and — for a part made to loop — an end that comes round to its start.
  *
+ * Three checks answer with a VERDICT (verdict.mjs: passed, failed, or not run — decided with decide(), so the record
+ * keeps the rule, the values and the thresholds): no slideshow (the shots move inside themselves: slideshow.mjs), the
+ * drawn parts hold together (geometry.mjs) and every number on screen has a source (claims.mjs). A verdict check that
+ * does not fit the part is reported as not run, never as passed.
+ *
  * The review is a footprintjs flowchart, so it leaves its own record — what was read, which checks ran and why
  * (the selector's evidence), what each found:
  *
@@ -26,8 +31,13 @@ import {createCanvas} from '@napi-rs/canvas';
 import {flowChart, narrative, select} from 'footprintjs';
 import {compileLayout} from './layout.mjs';
 import {frameHashes} from './pins.mjs';
+import {greyOf} from './finished.mjs';
 import {partScenes, partWindow, partTimeline, timelineText} from './render.mjs';
 import {clockTenths} from './clock.mjs';
+import {verdictChart, verdictsText, readVerdict} from './verdict.mjs';
+import {slideshowOf, SLIDESHOW_VERDICT} from './slideshow.mjs';
+import {geometryOf, breakText, GEOMETRY_VERDICT} from './geometry.mjs';
+import {claimsCount, unsourcedClaims, claimText, CLAIMS_VERDICT} from './claims.mjs';
 
 /**
  * The words a frame draws at t: [{text, box: [x0, y0, x1, y1], alpha}], in the layout's output pixels (or on the
@@ -148,13 +158,22 @@ function frozenRuns({samples, hashes, stillFor}) {
   close(); return out;
 }
 
+/** A share as a person reads it: 0.716 → "72 %". */
+const pct = share => `${Math.round(share * 100)} %`;
+
 /**
  * The checks, each a strategy: label, why (said when it is picked), when(scope) (picked when true: scope.facts
- * holds {seconds, captions, words}), find(review) → [{kind, t, what}] from the shared samples. Same shape for a
- * check of your own, passed in reviewPart's `checks`. find answers at once, and its hits are copied as {kind, t, what}
- * (plainHits): a find that throws or returns anything else fails the review, naming the check. review.picked says
+ * holds {seconds, captions, words, parts, claims}), find(review) → [{kind, t, what}] from the shared samples. Same shape
+ * for a check of your own, passed in reviewPart's `checks`. find answers at once, and its hits are copied as {kind, t,
+ * what} (plainHits): a find that throws or returns anything else fails the review, naming the check. review.picked says
  * which checks run beside it, so one can leave a finding to another (stale leaves a frozen picture to still). A
  * check's `what` names one stretch: hits with the same kind and `what` merge into one span.
+ *
+ * A VERDICT check (verdict.mjs) has measure(review) → {measured: {name: value}, hits} in place of find, and `verdict`:
+ * {rules: [{when, then, label}], passed}. Its subflow measures, then decides with decide() over the measured values
+ * (each on the scope by its name, for the rules' filters), then branches on the verdict; its hits are findings only
+ * when it fails (they are the reasons). `notRun` says why it cannot run when it is not picked, and `summary(measured)`
+ * puts the numbers in its line.
  */
 export const REVIEW_CHECKS = Object.freeze({
   'under-captions': {label: 'Words under the captions', why: 'the layout shows captions', when: s => s.facts.captions,
@@ -220,10 +239,49 @@ export const REVIEW_CHECKS = Object.freeze({
       const what = `the picture does not change for ${(to - from).toFixed(1)} s from ${clockTenths(from)}`;   // its own words: two stretches never merge into one span
       return samples.filter(x => x.t >= from && x.t <= to).map(x => ({kind: 'still', t: x.t, what}));
     })},
+  // The shots do not move inside themselves (slideshow.mjs). Stale's opposite, not its double: stale asks whether
+  // anything NEW comes (a scene, a beat, a word) while the picture moves; this asks whether the picture MOVES between the
+  // new things — a code stage that reveals a line every few seconds is never stale and can still be a slide. Not the
+  // still check's either: that names a stretch frozen for 5 s; this names a whole shot that is mostly still.
+  slideshow: {label: 'No slideshow', why: 'the part is long enough to hold a shot', notRun: 'the part is too short to hold a shot (stillFor)',
+    when: s => s.facts.seconds >= s.facts.stillFor,
+    measure: ({film, window, every, samples, greys}) => {
+      const m = slideshowOf(film, {from: window.from, to: window.to, every, times: samples.map(x => x.t), frameAt: t => greys.get(t)});
+      // A still shot is one finding: its middle, every moment of it (a span per piece).
+      const middle = s => s.pieces.flatMap(([a, b]) => Array.from({length: Math.max(0, Math.ceil((b - a) / every - 1e-9))}, (_, k) => +(a + k * every).toFixed(3)));
+      const hits = m.stillShots.flatMap(s => middle(s).map(t => ({kind: 'slideshow', t, what: `${s.where} hardly moves inside itself: ${pct(s.stillShare)} of its ${s.seconds.toFixed(1)} s is still`})));
+      return {measured: {shots: m.shots, seconds: m.seconds, still: m.still, stillShare: m.stillShare, stillShots: m.stillShots.map(({where, scene, seconds, stillShare}) => ({where, scene, seconds, stillShare}))}, hits};
+    },
+    summary: m => `${pct(m.stillShare)} of ${m.seconds.toFixed(1)} s still${m.stillShots.length ? `; still shots: ${m.stillShots.map(s => `${s.where} ${pct(s.stillShare)}`).join(', ')}` : ''}`,
+    verdict: SLIDESHOW_VERDICT},
+  // The drawn parts hold together (geometry.mjs): for a kit that gives its parts, a mounted end stays on, a pair kept
+  // apart never crosses, a planted part does not slide.
+  geometry: {label: 'Drawn parts hold together', why: 'a kit on screen gives its parts', notRun: 'no kit on screen gives its parts (parts(t))',
+    when: s => s.facts.parts > 0,
+    measure: ({film, window}) => {
+      const g = geometryOf(film, {from: window.from, to: window.to});
+      return {measured: {moments: g.samples, parts: g.parts, checks: g.checked.mounts + g.checked.pairs + g.checked.planted, broken: g.worst.length, worst: g.worst},
+        hits: g.breaks.map(b => ({kind: 'geometry', t: b.t, what: breakText(b)}))};
+    },
+    summary: m => `${m.parts} parts at ${m.moments} moments${m.broken ? `; ${m.worst.slice(0, 3).map(w => `${w.text}${w.px !== undefined ? ` (${w.px} px at ${clockTenths(w.t)})` : ` (at ${clockTenths(w.t)})`}`).join('; ')}${m.broken > 3 ? `; and ${m.broken - 3} more` : ''}` : ''}`,
+    verdict: GEOMETRY_VERDICT},
+  // Every number on screen has a source (claims.mjs): a fact the storyboard names, or an example scene.
+  claims: {label: 'Every number has a source', why: 'the film lists the numbers it shows', notRun: 'the film does not list the numbers it shows (compileFilm lists them as film.claims)',
+    when: s => s.facts.claims,
+    measure: ({film, window}) => {
+      const claims = {...film.claims, numbers: film.claims.numbers.filter(c => c.at >= window.from - 1e-6 && c.at <= window.to + 1e-6)}, open = unsourcedClaims(claims);
+      return {measured: {...claimsCount(claims), unsourcedNumbers: open.map(c => ({number: c.number, scene: c.scene, path: c.path, at: c.at}))}, hits: open.map(c => ({kind: 'claims', t: c.at, what: claimText(c)}))};
+    },
+    summary: m => (m.numbers ? `${m.numbers} number${m.numbers === 1 ? '' : 's'} on screen: ${m.sourced} sourced, ${m.examples} in example scenes${m.factsGiven ? `, ${m.unsourced} with no source` : `, ${m.open - m.sourced} unchecked`}` : ''),
+    verdict: CLAIMS_VERDICT},
 });
 
-const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes', hook: 'no hook', 'text-density': 'too much to read', silences: 'no breath', stale: 'nothing new', loop: 'the loop jumps'};
+const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes', hook: 'no hook', 'text-density': 'too much to read', silences: 'no breath', stale: 'nothing new', loop: 'the loop jumps',
+  slideshow: 'a slide', geometry: 'the drawing breaks', claims: 'no source'};
+/** What a verdict check's scope keeps for itself: never a measured value's name. */
+const MACHINERY = new Set(['hits', 'failed', 'measured', 'verdict', 'why', 'summary']);
 /** The findings as lines: "1:21.5–1:23.0 chapters · under the captions: \"requests in\"". */
+export {verdictsText};
 export const findingsText = findings => findings.map(f => `${clockTenths(f.from)}–${clockTenths(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}`).join('\n');
 
 /**
@@ -231,18 +289,25 @@ export const findingsText = findings => findings.map(f => `${clockTenths(f.from)
  * is refused, saying what find returned instead — a promise (a check reads the shared samples and answers at once),
  * no list, or a hit without its name, its time or its words.
  */
-function plainHits(hits) {
-  if (typeof hits?.then === 'function') { Promise.resolve(hits).catch(() => {}); throw new Error('find returned a promise: a check reads the shared samples and returns its hits, [{kind, t, what}]'); }
-  if (!Array.isArray(hits)) throw new Error(`find must return a list of hits, [{kind, t, what}], not ${hits === null ? 'null' : typeof hits}`);
+function plainHits(hits, says = SAYS.find) {
+  if (typeof hits?.then === 'function') { Promise.resolve(hits).catch(() => {}); throw new Error(`${says.promise}: a check reads the shared samples and returns its hits, [{kind, t, what}]`); }
+  if (!Array.isArray(hits)) throw new Error(`${says.list}, [{kind, t, what}], not ${hits === null ? 'null' : typeof hits}`);
   return Array.from(hits, (h, i) => {   // every slot, a hole too (map would pass it by)
     const wrong = h == null ? 'there is none (an empty slot)' : typeof h.kind !== 'string' ? 'kind must be a name (a string)' : !Number.isFinite(h.t) ? 't must be seconds on the film clock' : typeof h.what !== 'string' ? 'what must be words (a string)' : null;
-    if (wrong) throw new Error(`find's hit ${i}: ${wrong}; a hit is {kind, t, what}`);
+    if (wrong) throw new Error(`${says.hit} ${i}: ${wrong}; a hit is {kind, t, what}`);
     return {kind: h.kind, t: h.t, what: h.what};
   });
 }
 
-/** Hits on sample times → spans of the same thing, each with the scene it starts in; a word's span shorter than `lasting` is passing (a fade, a page turning) and dropped. */
+/** Who answered with the hits, in plainHits's refusals: a check's find, or a verdict check's measure. */
+const SAYS = Object.freeze({find: {promise: 'find returned a promise', list: 'find must return a list of hits', hit: "find's hit"},
+  measure: {promise: "measure's hits are a promise", list: "measure's hits must be a list of hits", hit: "measure's hit"}});
+/**
+ * Hits on sample times → spans of the same thing, each with the scene it starts in; a word's span shorter than `lasting`
+ * is passing (a fade, a page turning) and dropped — never a hit of a picture check, or of a verdict (`held`: a reason).
+ */
 function spans(film, hits, every, lasting) {
+  const held = new Set(['still', 'hook', 'silences', 'stale', 'loop', ...hits.filter(h => h.held).map(h => h.kind)]);
   const groups = new Map();
   for (const h of hits) { const k = `${h.kind}\u0000${h.what}`; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(h.t); }
   const sceneAt = t => { let id = null; film.timings.scenes.forEach((s, i) => { if (film.clock.offsets[i] <= t + 1e-6) id = s.id; }); return id; };
@@ -253,7 +318,7 @@ function spans(film, hits, every, lasting) {
     for (const t of ts.slice(1)) { if (t - last > every * 1.5) { out.push({kind, from, to: last, what}); from = t; } last = t; }
     out.push({kind, from, to: last, what});
   }
-  return out.filter(f => ['still', 'hook', 'silences', 'stale', 'loop'].includes(f.kind) || f.to - f.from + every >= lasting - 1e-9).sort((a, b) => a.from - b.from || a.kind.localeCompare(b.kind)).map(f => ({...f, scene: sceneAt(f.from)}));
+  return out.filter(f => held.has(f.kind) || f.to - f.from + every >= lasting - 1e-9).sort((a, b) => a.from - b.from || a.kind.localeCompare(b.kind)).map(f => ({...f, scene: sceneAt(f.from)}));
 }
 
 /**
@@ -271,9 +336,10 @@ function spans(film, hits, every, lasting) {
  * when it loops cleanly: look at a strip of the seam before changing it.
  * A window past the film's ends is held to the film. A check that fails (it throws, or answers with anything but
  * what it should) fails the review: one error names every check that failed and why.
- * Returns {window, facts, findings, text, timeline, ran, record}: findings [{kind, from, to, scene, what}] on the
- * film clock, text as lines, the part's timeline (scenes and beats), the checks that ran, and the review's own
- * footprintjs record.
+ * Returns {window, facts, findings, text, verdicts, verdictText, timeline, ran, record}: findings [{kind, from, to, scene,
+ * what}] on the film clock, text as lines; verdicts [{check, label, verdict, why, measured, summary?}] — every verdict
+ * check, in order, 'not run' when it did not fit the part — and verdictText as lines; the part's timeline (scenes and
+ * beats), the checks that ran, and the review's own footprintjs record (each verdict's decide() evidence in it).
  */
 export async function reviewPart(film, {part = null, from = 0, to = film.total, layout = null, every = .25, stillFor = 5, lasting = 1, minAlpha = .5, minHeight = .011, maxWords = 35, minSilence = .8, newEvery = 5, loop = false, checks = REVIEW_CHECKS} = {}) {
   if (!(Number.isFinite(newEvery) && newEvery > 0)) throw new Error(`review: newEvery must be seconds, more than 0, not ${JSON.stringify(newEvery)}`);
@@ -284,8 +350,11 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
   // to the millisecond, a scene paced to 10 µs is read inside its neighbour); the window when no part is named.
   const own = part ? partScenes(film, part) : window;
   const framed = layout ? compileLayout(film, (({scale, ...rest}) => rest)(layout)) : null;
-  for (const [id, c] of Object.entries(checks)) if (!c || typeof c.find !== 'function' || typeof c.when !== 'function' || typeof c.label !== 'string') throw new Error(`review check "${id}" must be {label, why?, when(scope), find(review)}`);
-  const review = {film, window, part: own, layout: framed, width: framed?.width ?? 1600, height: framed?.height ?? 900, every, stillFor, maxWords, minSilence, newEvery, minAlpha, samples: [], hashes: {}, frozen: [], picked: []};
+  for (const [id, c] of Object.entries(checks)) {
+    if (!c || typeof c.when !== 'function' || typeof c.label !== 'string' || (typeof c.find !== 'function' && !(typeof c.measure === 'function' && c.verdict))) throw new Error(`review check "${id}" must be {label, why?, when(scope), find(review)} — or, answering with a verdict, {label, why?, notRun?, when(scope), measure(review), verdict: {rules, passed}}`);
+    if (typeof c.find !== 'function') readVerdict(c.verdict, `review check "${id}": verdict`);
+  }
+  const review = {film, window, part: own, layout: framed, width: framed?.width ?? 1600, height: framed?.height ?? 900, every, stillFor, maxWords, minSilence, newEvery, minAlpha, samples: [], hashes: {}, greys: new Map(), frozen: [], picked: []};
   let findings = [];
   const read = async s => {
     const times = []; for (let t = window.from; t <= window.to + 1e-9; t += every) times.push(onClock(film, t));
@@ -300,12 +369,18 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
     review.samples = times.map(t => { const zoomed = (film.focusAt?.(t)?.z ?? 1) > 1.001; return {t, words: wordsAt(film, t, {layout: framed}).filter(w => w.alpha >= minAlpha && legible(w) && shown(w, zoomed))}; });
     // frameHashes keys a moment by its millisecond, and the film's end can sit a hair under its own (21.2999…97 is
     // 21.300): the hashes are keyed by each sample's own time, so a check reads hashes[t].
-    const pictures = frameHashes(film, {times, width: 160});
+    // The same drawing gives each sample's grey levels (finished.mjs · greyOf), for the slideshow check.
+    const greys = new Map(), pictures = frameHashes(film, {times, width: 160, each: (t, ctx) => greys.set(t, greyOf(ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height).data))});
+    review.greys = greys;
     review.hashes = Object.fromEntries(times.map(t => [t, pictures[+t.toFixed(3)]]));
     review.frozen = frozenRuns(review);
+    // A kit that gives its parts (geometry.mjs) at a sample: one whose parts(t) throws gives them too, so the geometry
+    // check is picked and names the error.
+    const drawsParts = t => { try { return (film.partsAt?.(t) ?? []).length > 0; } catch { return true; } };
     s.facts = {from: window.from, to: window.to, seconds: +(window.to - window.from).toFixed(3), stillFor, newEvery, loop: Boolean(loop), captions: Boolean(framed?.boxes.captions), samples: times.length, words: review.samples.reduce((n, x) => n + x.words.length, 0),
-      spoken: film.timings.scenes.some((sc, i) => (sc.words ?? []).some(w => film.clock.offsets[i] + w.end > window.from && film.clock.offsets[i] + w.start < window.to))};
-    s.ran = []; s.hits = []; s.failed = [];
+      spoken: film.timings.scenes.some((sc, i) => (sc.words ?? []).some(w => film.clock.offsets[i] + w.end > window.from && film.clock.offsets[i] + w.start < window.to)),
+      parts: times.filter(drawsParts).length, claims: Boolean(film.claims)};
+    s.ran = []; s.hits = []; s.failed = []; s.verdicts = [];
   };
   // The picks go on the review too, so a check can leave a finding to another that runs. A when() that throws is a
   // failure, not a check that does not fit: select() records it as unmatched and goes on, so it is carried out here.
@@ -325,12 +400,33 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
   // selector, its error would be contained — the check missing from `ran`, the review clean.
   const told = e => { try { return e instanceof Error ? e.message : String(e); } catch { return 'a thrown value that cannot be printed'; } };
   const runCheck = (id, c) => async s => { try { s.hits = plainHits(c.find(review)); } catch (e) { s.failed = [{id, message: told(e)}]; } };
+  // A verdict check's measure: each measured value on the scope by its name (the rules' filters read them), its hits
+  // (plainHits), its summary — and `measured: true` only once all of that has worked, so a failure is never a pass.
+  const runVerdict = (id, c) => async s => {
+    try {
+      const m = c.measure(review);
+      if (typeof m?.then === 'function') { Promise.resolve(m).catch(() => {}); throw new Error('measure returned a promise: a check measures the shared samples and answers at once, {measured, hits}'); }
+      if (!m || typeof m !== 'object' || !m.measured || typeof m.measured !== 'object' || Array.isArray(m.measured)) throw new Error('measure must return {measured: {name: value}, hits?: [{kind, t, what}]}');
+      for (const [k, v] of Object.entries(m.measured)) { if (MACHINERY.has(k)) throw new Error(`measure's measured has ${k}, a name the verdict keeps for itself (${[...MACHINERY].join(', ')})`); s[k] = v; }
+      s.hits = plainHits(m.hits ?? [], SAYS.measure);
+      if (c.summary) s.summary = String(c.summary(m.measured));
+      s.measured = true;
+    } catch (e) { s.failed = [{id, message: told(e)}]; }
+  };
+  // What a verdict check answers, for the review: its verdict, why, what it measured; its hits are findings only when it
+  // failed (they are the reasons), held whatever their length.
+  const verdictOut = (id, c) => out => ({hits: out.verdict === 'failed' ? (out.hits ?? []).map(h => ({...h, held: true})) : [], ran: [id], failed: out.failed ?? [],
+    verdicts: [{check: id, label: c.label, verdict: out.verdict ?? 'not run', why: out.why ?? '', measured: Object.fromEntries(Object.entries(out).filter(([k]) => !MACHINERY.has(k))), ...(out.summary ? {summary: out.summary} : {})}]});
   // The engine's own lines (an error it contained, say) are kept for the report, never printed: stdout is where a
   // tool's answer goes (an MCP client reads it as the answer).
   const engine = [], heard = (message, detail) => { engine.push(detail?.error === undefined ? String(message) : `${message} ${told(detail.error)}`); };
   let chart = flowChart('read-part', read, 'read-part', 'The part read as text and fingerprinted, once for every check')
     .addSelectorFunction('pick-checks', pick, 'pick-checks', 'Each check that fits the part');
-  for (const [id, c] of Object.entries(checks)) chart = chart.addSubFlowChartBranch(id, flowChart(c.label, runCheck(id, c), id).build(), c.label, {outputMapper: out => ({hits: out.hits ?? [], ran: [id], failed: out.failed ?? []})});
+  for (const [id, c] of Object.entries(checks)) {
+    chart = typeof c.find === 'function'
+      ? chart.addSubFlowChartBranch(id, flowChart(c.label, runCheck(id, c), id).build(), c.label, {outputMapper: out => ({hits: out.hits ?? [], ran: [id], failed: out.failed ?? []})})
+      : chart.addSubFlowChartBranch(id, verdictChart({name: c.label, id, measure: runVerdict(id, c), verdict: c.verdict, description: c.why ?? c.label}), c.label, {outputMapper: verdictOut(id, c)});
+  }
   const built = chart.end().addFunction('report', async s => { findings = spans(film, s.hits ?? [], every, lasting); s.findings = findings.length; }, 'report', 'The findings as spans, each with its scene')
     .setLogger({info: heard, warn: heard, error: heard, log() {}, debug() {}}).build();
   const trace = narrative(), run = await built.recorder(trace).run();
@@ -338,5 +434,9 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
   // A check picked that neither ran nor failed was lost on the way (its result never reached the review): a failure too.
   for (const id of review.picked) if (!ran.has(id) && !failed.some(f => f.id === id)) failed.push({id, message: `it did not finish${engine.length ? ` (the engine: ${engine.join('; ')})` : ''}`});
   if (failed.length) throw new Error(`review: ${failed.length > 1 ? `${failed.length} checks` : 'a check'} failed, so the review is incomplete — ${failed.map(f => `"${f.id}": ${f.message}`).join('; ')}`);
-  return {window, facts: state.facts ?? null, findings, text: findingsText(findings), timeline: timelineText(partTimeline(film, window)), ran: state.ran ?? [], record: trace.getEntries()};
+  // Every verdict check answers, in the order the checks are listed: one that did not fit the part is not run, never passed.
+  const answered = new Map((state.verdicts ?? []).map(v => [v.check, v]));
+  const verdicts = Object.entries(checks).filter(([, c]) => typeof c.find !== 'function')
+    .map(([id, c]) => answered.get(id) ?? {check: id, label: c.label, verdict: 'not run', why: c.notRun ?? `it does not fit the part (${c.why ?? c.label})`, measured: {}});
+  return {window, facts: state.facts ?? null, findings, text: findingsText(findings), verdicts, verdictText: verdictsText(verdicts), timeline: timelineText(partTimeline(film, window)), ran: state.ran ?? [], record: trace.getEntries()};
 }

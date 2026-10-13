@@ -147,6 +147,18 @@
       "types": "./types/sub/shots.d.ts",
       "default": "./src/shots.mjs"
     },
+    "./slideshow": {
+      "types": "./types/sub/slideshow.d.ts",
+      "default": "./src/slideshow.mjs"
+    },
+    "./geometry": {
+      "types": "./types/sub/geometry.d.ts",
+      "default": "./src/geometry.mjs"
+    },
+    "./claims": {
+      "types": "./types/sub/claims.d.ts",
+      "default": "./src/claims.mjs"
+    },
     "./captions": {
       "types": "./types/sub/captions.d.ts",
       "default": "./src/captions.mjs"
