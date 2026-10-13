@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — walks with feet that roll heel to toe; a turn that reads as a turn
+## 0.12.0 — walks with feet that roll heel to toe; a turn that reads as a turn
 
 - **The feet roll heel to toe** (`walk(…).at(t).feet[j].angle`, radians, + toes up): a heel strike as a foot lands,
   flat while the body passes over it, the heel rising before the toe pushes off. A new style key, `roll` (stroll .32,
