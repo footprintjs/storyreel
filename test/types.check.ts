@@ -83,8 +83,9 @@ import type {EASES, easeNamed, Ease, EaseName} from '../types/sub/ease.js';
 export type Subpaths = [typeof makeClock, typeof checkScene, typeof hitTest, View, typeof tooShortToRead, typeof compileWhiteboard, Board, typeof compileCartoon, typeof paceTimings, typeof shiftWords, typeof EASES, typeof easeNamed, Ease, EaseName];
 export const backEase = (table: typeof EASES): Ease => table.back;
 export const springEase = (table: typeof EASES): Ease => table.spring;
-// @ts-expect-error bounce is not in the table yet
 export const bounceEase = (table: typeof EASES): Ease => table.bounce;
+// @ts-expect-error wobble is not in the table
+export const wobbleEase = (table: typeof EASES): Ease => table.wobble;
 
 // Formats: a layout per platform; caption files beside the video.
 import type {Layout, Enter, Transition, renderFilm as RenderFilm, transitionCatalog as Catalog} from '../types/index.js';
@@ -277,3 +278,33 @@ export const fitted = (storyboard: Storyboard, timings: import('../types/index.j
 export const badDrop: MusicOptions = {file: 'song.mp3', dropOn: 'story'};
 // @ts-expect-error soundAt is 'start' or 'peak'
 export const badAt: Parameters<typeof RenderFilm>[0]['soundAt'] = 'middle';
+
+// Four-number curves (ease.ts), the move vocabulary (moves.ts) and the principles (principles.ts).
+import {bezier, overshoots, type EaseSpec} from '../types/sub/ease.js';
+import {moveAt, movesBy, stagger, readMove, applyMove, MOVES, type Move, type MoveValues} from '../types/sub/moves.js';
+import {anticipate, squash, envelope, burst, arc} from '../types/sub/principles.js';
+export const css: EaseSpec = 'cubic-bezier(0.16, 1, 0.3, 1)';
+export const curve: Ease = bezier(.16, 1, .3, 1);
+export const past: boolean = overshoots('outBack') && overshoots(css);
+export const kitEase: Transition = {...curtain, ease: 'cubic-bezier(0.2, 0, 0, 1)'};
+export const risen: MoveValues = moveAt('soft-rise', 1.2, {start: 1, feel: 'bouncy', reduced: false});
+export const sprung: number = moveAt('pop', 1, {feel: {k: 200, d: 12}}).scale + MOVES.pop.seconds;
+export const bouncyLogos: readonly Move[] = movesBy({feel: 'bouncy', use: 'logo', kind: 'entrance'});
+export const words: number[] = stagger(['one', 'sheep'], 'text-reveal-word').map(w => w.delay);
+export const nudge: Move = {name: 'nudge-in', kind: 'entrance', feel: 'crisp', uses: ['ui'], seconds: .3, ease: 'outQuint', props: {x: [30, 0]}};
+export const read: Readonly<Move> = readMove(nudge);
+export const shows: boolean = applyMove(null, risen, {box: [0, 0, 100, 100]});
+export const moveEntrances: Enter[] = [{move: 'soft-rise'}, {move: 'pop', seconds: .6, feel: 'heavy', sound: false}, {move: nudge}];
+// @ts-expect-error a move entrance takes no type
+export const mixedEnter: Enter = {move: 'pop', type: 'push'};
+// @ts-expect-error a move feels smooth, crisp, soft, heavy or bouncy
+movesBy({feel: 'snappy'});
+// @ts-expect-error a move's kind is entrance, exit, feedback or ambient
+export const badMove: Move = {...nudge, kind: 'arrival'};
+export const wound: number = anticipate(2, {at: 2, distance: 300});
+export const woundXY: number[] = anticipate(2, {at: 2, distance: [300, 40]});
+export const squashed: number = squash(1, {velocity: 800, landings: [{at: 1, speed: 1200}], axis: 'y'}).sx;
+export const flash: number = envelope(.05, 'flash') + burst(1, [0.9, {at: 1, strength: .5}], {attack: .06, decay: .2});
+export const curved: [number, number] = arc([0, 0], [800, 0], .5, {bend: .1, toward: 'up'});
+// @ts-expect-error a burst's shape is flash, pop, shake or {attack, decay}
+envelope(.1, 'boom');
