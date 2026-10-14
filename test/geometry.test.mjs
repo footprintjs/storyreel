@@ -14,18 +14,29 @@ import {reviewPart} from '../src/review.mjs';
 const storyboard = {title: 'Parts', scenes: [{id: 'walk', narration: 'a figure walks across the floor from one side of the frame to the other and stops there to rest'}]};
 const timings = evenTimings(storyboard, {wordSeconds: .45, tail: 1});
 
-// A figure walked by walk.mjs, drawn as two legs from its hips to its feet: each foot is planted while its lift is 0
-// (walk.mjs's pose). `skate` slides the feet along under the body instead; `loose` lets a leg come off the hips.
+// A figure walked by walk.mjs, drawn as two legs from its hips to its heels and a shoe on each: each foot is planted
+// while its lift is 0 (walk.mjs's pose), and rolls (its angle, + toes up) about the end on the floor — its heel while the
+// toes are up, its toe while the heel is up — and names that end (contact). `skate` slides the feet along under the
+// body instead; `loose` lets a leg come off the hips; `heelOnly` turns every shoe about its heel (the toe sinks as the
+// heel rises); `flat` says each planted foot rests flat, whichever way it rolls.
+const SHOE = 30;
 const walker = {name: 'walker', story: {compile: spec => {
   const w = walk({from: 200, to: 1300, start: 1, size: 400}), floor = 800;
+  const shoe = (f, facing) => {
+    const y = floor - f.lift, angle = f.angle ?? 0, about = angle >= 0 || spec.heelOnly ? 'heel' : 'toe';
+    if (about === 'heel') return {heel: [f.x, y], toe: [f.x + facing * SHOE * Math.cos(angle), y - SHOE * Math.sin(angle)]};
+    const toe = [f.x + facing * SHOE, y];
+    return {heel: [toe[0] - facing * SHOE * Math.cos(angle), y + SHOE * Math.sin(angle)], toe};
+  };
+  const rests = f => (f.lift !== 0 ? false : spec.flat ? true : (f.angle ?? 0) > 1e-9 ? 'a' : (f.angle ?? 0) < -1e-9 ? 'b' : true);
   const parts = t => {
     const p = w.at(t), hips = [p.x - 30, floor - 230 + p.lift, p.x + 30, floor - 170 + p.lift], hip = [p.x, floor - 200 + p.lift];
-    const feet = p.feet.map(f => (spec.skate ? {x: p.x, lift: 0} : f));
+    const feet = p.feet.map(f => (spec.skate ? {x: p.x, lift: 0, angle: 0} : f));
     const segments = {};
     feet.forEach((f, j) => {
-      const at = [f.x, floor - f.lift];
-      segments[`leg ${j + 1}`] = {a: spec.loose && j === 1 && t > 3 ? [hip[0], hip[1] + 60] : hip, b: at, width: 10, mount: 'hips'};
-      segments[`foot ${j + 1}`] = {a: at, b: [f.x + 30 * p.facing, at[1]], width: 8, mount: `leg ${j + 1}`, ends: 'free', contact: f.lift === 0};
+      const {heel, toe} = shoe(f, p.facing);
+      segments[`leg ${j + 1}`] = {a: spec.loose && j === 1 && t > 3 ? [hip[0], hip[1] + 60] : hip, b: heel, width: 10, mount: 'hips'};
+      segments[`foot ${j + 1}`] = {a: heel, b: toe, width: 8, mount: `leg ${j + 1}`, ends: 'free', contact: rests(f)};
     });
     return {segments, regions: {hips}, apart: [['leg 1', 'leg 2']]};
   };
@@ -117,6 +128,18 @@ test('walk.mjs plants its feet: a walked figure passes; one whose feet skate und
   assert.deepEqual(skate.worst.map(w => w.text), ['story: "foot 1" slides while it is planted', 'story: "foot 2" slides while it is planted']);
   const loose = geometryOf(await filmOf({loose: true}));
   assert.ok(loose.breaks.length && loose.breaks.every(b => b.rule === 'mount' && b.part === 'leg 2' && b.t > 3), JSON.stringify(loose.worst));
+});
+
+test('walk.mjs\'s feet roll heel to toe: drawn about the end on the floor, and naming it, a rolling foot passes', async () => {
+  const film = await filmOf({}), rolls = Array.from({length: 200}, (_, k) => k * .05).flatMap(t => walk({from: 200, to: 1300, start: 1, size: 400}).at(t).feet.map(f => f.angle));
+  assert.ok(rolls.some(a => a > .1) && rolls.some(a => a < -.1), 'the feet roll both ways (a heel strike, a heel rising)');
+  const g = geometryOf(film);
+  assert.deepEqual(g.breaks, []);
+  // Turned about its heel all the way: as the heel rises the toe it rests on moves, and the audit says so.
+  const heelOnly = geometryOf(await filmOf({heelOnly: true}));
+  assert.ok(heelOnly.breaks.length && heelOnly.breaks.every(b => b.rule === 'slide' && b.end === 'b'), JSON.stringify(heelOnly.worst));
+  // Drawn right, but said to rest flat the whole time it is planted: the end it lifts moves, and fails.
+  assert.ok(geometryOf(await filmOf({flat: true})).breaks.some(b => b.rule === 'slide'));
 });
 
 test('the review decides it with decide(): passed, failed with the breaks as findings, or not run without parts', async () => {

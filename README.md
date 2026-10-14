@@ -921,7 +921,11 @@ strategy says HOW, so the same film can be shown another way by changing one wor
   body passes over it, lifts its heel before it pushes off its toe — what makes a walk read as a person's, not a
   puppet's. How far is the style's `roll` (stroll .32, brisk .38, bouncy .26, tiptoe 0; a style of your own without it
   rolls like a stroll). The first step starts flat and the last lands flat, so a foot's roll never snaps. A kit turns
-  the shoe about its heel: `ctx.rotate(-foot.angle)` in a figure drawn facing +x.
+  the shoe about the end that rests on the floor: about its heel while the toes are up (`angle > 0`, as it lands),
+  about its toe while the heel is up (`angle < 0`, as it pushes off) — `ctx.rotate(-foot.angle)` about that point, in a
+  figure drawn facing +x, the heel at `foot.x` and the toe a shoe's length ahead — so the end on the floor never moves.
+  Turned about its heel all the way, the toe would sink into the floor as the heel rises; the geometry audit catches
+  it when the kit names the end it rests on (`contact: 'a'`, `'b'` or `true`, Three verdicts below).
 - **A turn that reads as a turn** (`footprint-storyreel/motion · turnaround`): a cartoon turnaround swaps drawings —
   front, three-quarter, side — as a walk's `turn` passes each step between them, and `turnaround(turn, {views})`
   says which drawing (`view`) and how wide to draw it (`squash`): the figure narrows for a moment across each swap,

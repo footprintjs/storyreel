@@ -108,16 +108,16 @@ test('the example films\' verdicts, as the README gives them', async () => {
   for (const name of ['hello', 'recap', 'shepherd', 'worlds']) {
     const [slides, parts, claims] = (await reviewPart(await compileExample(name))).verdicts;
     verdicts[name] = {slideshow: [slides.verdict, slides.measured.deadShare, slides.measured.deadShots.map(s => `${s.where} ${s.deadShare}`)],
-      geometry: [parts.verdict, parts.measured.checks > 0], claims: [claims.verdict, claims.measured.numbers ?? 0, claims.measured.drawn ?? 0]};
+      geometry: [parts.verdict, parts.measured.parts ?? 0], claims: [claims.verdict, claims.measured.numbers ?? 0, claims.measured.drawn ?? 0]};
   }
   assert.deepEqual(verdicts, {
     // A whiteboard and a code stage, still between their reveals: held still for a third of their time, and moving for
     // the rest. The numbers they draw (the card's "sheep 1", a 0 in the code) have no facts to be checked against.
-    hello: {slideshow: ['passed', .324, ['stage rule 0.75']], geometry: ['not run', false], claims: ['not run', 4, 4]},
-    recap: {slideshow: ['passed', .146, ['the story 0.217', 'stage code 0.371']], geometry: ['not run', false], claims: ['not run', 12, 9]},
+    hello: {slideshow: ['passed', .324, ['stage rule 0.75']], geometry: ['not run', 0], claims: ['not run', 4, 4]},
+    recap: {slideshow: ['passed', .146, ['the story 0.217', 'stage code 0.371']], geometry: ['not run', 0], claims: ['not run', 12, 9]},
     // The cartoon kit gives its parts; its world moves all the time.
-    shepherd: {slideshow: ['passed', 0, []], geometry: ['passed', true], claims: ['passed', 0, 0]},
-    worlds: {slideshow: ['passed', 0, []], geometry: ['passed', true], claims: ['not run', 3, 3]}});
+    shepherd: {slideshow: ['passed', 0, []], geometry: ['passed', 21], claims: ['passed', 0, 0]},
+    worlds: {slideshow: ['passed', 0, []], geometry: ['passed', 17], claims: ['not run', 3, 3]}});
 });
 
 test('a part too short to hold a shot is not run, never passed', async () => {
