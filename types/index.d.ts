@@ -637,13 +637,17 @@ export interface Segment { index: number; f0: number; f1: number; from: number; 
 export function planSegments(film: Film, options?: {fps?: number; frames?: number; minSeconds?: number; blur?: boolean}): Segment[];
 /** A segment's cache key (on its own clock, so a segment further on keeps it when an earlier scene grows by whole frames). */
 export function segmentKey(film: Film, segment: Segment, options: {recipe: Recipe; storyboard?: Storyboard | null; pixels: Record<string, unknown>; code?: string | SegmentCode | null; fps?: number; margin?: number; extra?: {poster?: unknown; recalls?: unknown}}): string;
-/** A fingerprint of drawing code: every file under the folders given, hashed in path order. */
+/** A fingerprint of drawing code: every file under the folders given, every file they import (relative static imports, transitively, never into node_modules) and each package they import by its installed version. */
 export function codeFingerprint(paths: string[], options?: {extensions?: string[]}): string;
+/** What a fingerprint made in this process covered: every file (absolute paths, sorted) and every package ('name@version'), or null. */
+export function codeCover(fingerprint: string): Readonly<{files: readonly string[]; packages: readonly string[]}> | null;
 
 /** What a film was made from, hashed (keys sorted first: reformatting changes nothing): film.inputs, and makeFilm adds the pacing, the voice and the kits' code. */
 export interface FilmInputs { storyboard: string; timings: string; recipe: string; strings: string | null; data: string | null; theme: string;
   /** Every file the film read through its root, by its path from the root. */
   files: Readonly<Record<string, string>>; pacing?: string; voice?: string; code?: string;
+  /** makeFilm adds the versions that draw and decide the film: StoryReel's and footprintjs's (an approval locks them). */
+  storyreel?: string; footprintjs?: string;
   /** Present when the film's camera moves were cut for reduced motion: another film, as far as an approval goes. */
   reducedMotion?: true;
   /** The facts the storyboard names (storyboard.facts), hashed on their own: an approval locks them; they are in no segment's key (they draw nothing). */

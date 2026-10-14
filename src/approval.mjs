@@ -54,12 +54,15 @@ export function readApproval(approval) {
  * Whether a film is still what was approved: {ok, changed: [what differs]}. `inputs` is what the film is
  * made from now (makeFilm: the film's inputs, the pacing, the voice, the code); a file is named by its path.
  */
+/** The library versions an approval locks (versions.mjs · lockedVersions): a change is named as a version. */
+const VERSIONS = new Set(['storyreel', 'footprintjs']);
 export function checkApproval(approval, inputs) {
   if (!inputs || typeof inputs !== 'object') throw new Error('checkApproval: give what the film is made from now (makeFilm: the film\'s inputs, the pacing, the voice, the code)');
   const was = readApproval(approval).inputs, changed = [];
   for (const key of [...new Set([...Object.keys(was), ...Object.keys(inputs)])].filter(k => k !== 'files').sort()) {
     if (stableJson(was[key] ?? null) === stableJson(inputs[key] ?? null)) continue;
-    changed.push(key === 'code' && !inputs.code ? 'the kits\' code (no fingerprint given now)' : key);
+    changed.push(key === 'code' && !inputs.code ? 'the kits\' code (no fingerprint given now)'
+      : VERSIONS.has(key) ? `${key} version (${was[key] ? `${was[key]} approved` : 'none approved'}, ${inputs[key] ?? 'none'} now)` : key);
   }
   const before = was.files ?? {}, now = inputs.files ?? {};
   for (const f of [...new Set([...Object.keys(before), ...Object.keys(now)])].sort()) if (before[f] !== now[f]) changed.push(`the file ${f}${!(f in now) ? ' (not read now)' : !(f in before) ? ' (not read then)' : ''}`);

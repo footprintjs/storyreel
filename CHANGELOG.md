@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **Breaking: `footprint-storyreel/regions` · `then` is now `compose`.** An export named `then` made the module's
+  namespace a thenable, so `await import('footprint-storyreel/regions')` never settled. Use `compose(outer, inner)`;
+  there is no alias. A test now imports every published entry point and fails if one does not settle or exports `then`.
+- **An approval locks the library that draws the film.** makeFilm's inputs (and so `making-of.json` and an approval)
+  hold StoryReel's version and footprintjs's (`inputs.storyreel`, `inputs.footprintjs`): an `npm update` between the
+  draft and the final render is named — "storyreel version (0.12.0 approved, 0.13.0 now) differs from what was
+  approved". **An approval made before this release names both versions as new, once: approve the film again.** The
+  segment cache keys do not hold the version: the engine's fingerprint already holds every file of StoryReel's code, so
+  a release that changes no drawing code keeps its segments.
+- **A recipe with no story refuses, naming what to give**: the film's first shot is its story world, so
+  `"story": {"kit": "whiteboard", "items": []}` is an empty board, said — never a TypeError, never a blank board
+  assumed. A whiteboard with no `items` refuses the same way.
+- **`codeFingerprint` follows the kits' imports**: every file the given folders import (relative static imports,
+  transitively, never into `node_modules`) and each package by its installed version, so an approval no longer misses
+  a change in a helper a kit imports. The making-of record lists what it covered (`code: {fingerprint, files,
+  packages}`; `codeCover(fingerprint)`). A fingerprint made with this release differs from one made before, once:
+  **an approval that locks the kits' code reports "code differs" — approve the film again.**
+
 ### Beats in the breakdown
 
 - **`storyreel breakdown <video> --beats`** reads the video's sound with the beat map (`beats.mjs · beatMap`) and says

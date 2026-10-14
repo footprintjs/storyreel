@@ -4,12 +4,12 @@
 // makeFilm runs each segment as its own subflow.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync, writeFileSync, readdirSync, cpSync} from 'node:fs';
+import {readFileSync, writeFileSync, readdirSync, cpSync, mkdirSync} from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {compileFilm, evenTimings, paceTimings, renderFilm, makeFilm, wholeVideo, cartoonKit} from '../src/index.mjs';
-import {planSegments, segmentKey, segmentedVideo, folderStore, codeFingerprint, sampleOffsets, sourceCode} from '../src/segments.mjs';
+import {planSegments, segmentKey, segmentedVideo, folderStore, codeFingerprint, codeCover, sampleOffsets, sourceCode} from '../src/segments.mjs';
 import {tempDir} from './tmp.mjs';
 
 const dir = fileURLToPath(new URL('../examples/worlds/', import.meta.url)), read = f => JSON.parse(readFileSync(dir + f, 'utf8'));
@@ -84,6 +84,27 @@ test('codeFingerprint hashes the drawing code, and refuses what is not there', (
   assert.equal(codeFingerprint([kits]), codeFingerprint([kits]));
   assert.throws(() => codeFingerprint([]), /give the folders or files/);
   assert.throws(() => codeFingerprint(['/no/such/folder']), /does not exist/);
+});
+
+test('codeFingerprint follows the kits\' imports: a helper two levels deep is their code; an unrelated file is not; a cycle ends', t => {
+  // film/kits/index.mjs → ../../lib/helper.mjs → ./deep.mjs; a cycle a.mjs ⇄ b.mjs; a package, and a file in node_modules.
+  const top = tempDir('code', t), write = (f, text) => { mkdirSync(path.dirname(path.join(top, f)), {recursive: true}); writeFileSync(path.join(top, f), text); };
+  write('node_modules/fakepkg/package.json', '{"name": "fakepkg", "version": "1.2.3"}'); write('node_modules/fakepkg/index.mjs', 'export const x = 1;');
+  write('film/kits/index.mjs', "import {help} from '../../lib/helper.mjs';\nimport {a} from './a.mjs';\nimport {x} from 'fakepkg';\nimport '../../node_modules/fakepkg/index.mjs';\nexport const kit = {help, a, x};");
+  write('film/kits/a.mjs', "import {b} from './b.mjs';\nexport const a = () => b;"); write('film/kits/b.mjs', "import {a} from './a.mjs';\nexport const b = () => a;");
+  write('lib/helper.mjs', "export {deep as help} from './deep.mjs';"); write('lib/deep.mjs', 'export const deep = 1;'); write('lib/unrelated.mjs', 'export const other = 1;');
+  const kits = [path.join(top, 'film/kits')], before = codeFingerprint(kits);
+  assert.deepEqual(codeCover(before).files.map(f => path.relative(top, f)).sort(), ['film/kits/a.mjs', 'film/kits/b.mjs', 'film/kits/index.mjs', 'lib/deep.mjs', 'lib/helper.mjs'],
+    'the kits, what they import two levels deep, a cycle read once — never node_modules, never the unrelated file');
+  assert.deepEqual(codeCover(before).packages, ['fakepkg@1.2.3'], 'a package by its installed version');
+  write('lib/unrelated.mjs', 'export const other = 2;');
+  assert.equal(codeFingerprint(kits), before, 'a file nothing imports changes nothing');
+  write('lib/deep.mjs', 'export const deep = 2;');
+  const after = codeFingerprint(kits);
+  assert.notEqual(after, before, 'a helper two imports away changes the fingerprint: an approval sees it');
+  write('node_modules/fakepkg/package.json', '{"name": "fakepkg", "version": "1.2.4"}');
+  assert.notEqual(codeFingerprint(kits), after, 'and so does the package\'s version');
+  assert.equal(codeCover('not made here'), null);
 });
 
 test('segmentedVideo refuses what it cannot cache, naming the fix', async () => {

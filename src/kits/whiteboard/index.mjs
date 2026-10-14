@@ -36,6 +36,7 @@ export function compileWhiteboard(spec, clock, motion = {cameraSpeed: 1}) {
     if (!erasers[name]) throw new Error(`Unknown eraser ${name}`);
     return erasers[name];
   };
+  if (!Array.isArray(spec.items)) throw new Error(`whiteboard: items is the list of what the board draws ([] for an empty board), not ${JSON.stringify(spec.items)}`);
   const items = [], dings = [], places = [];
   spec.items.forEach((item, n) => {
     for (const key of Object.keys(item)) if (!ITEM_KEYS.has(key)) throw new Error(`whiteboard item ${n} has unsupported key ${key}`);

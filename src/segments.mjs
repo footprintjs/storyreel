@@ -36,19 +36,53 @@ export {wholeVideo} from './render.mjs';
 /** The extensions a code fingerprint reads: code, data, images and fonts. */
 export const CODE_EXTENSIONS = Object.freeze(['.mjs', '.js', '.cjs', '.ts', '.mts', '.cts', '.tsx', '.jsx', '.json', '.ttf', '.otf', '.woff', '.woff2', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg']);
 
-/** Every file under the given folders (or the files themselves), hashed in path order: a fingerprint of drawing code. */
+/**
+ * A fingerprint of drawing code: every file under the given folders (or the files themselves), and every file they
+ * import — relative static imports, resolved and read, transitively (a helper two folders up that a kit imports is the
+ * kit's code too), never into node_modules — and each package they import by its installed version (`pkg@1.2.3`), so an
+ * approval misses no change the kit draws with. A cycle of imports is read once. The files it covered and the packages
+ * are kept beside it: codeCover(fingerprint) gives them back (the making-of record lists them).
+ */
 export function codeFingerprint(paths, {extensions = CODE_EXTENSIONS} = {}) {
   if (!Array.isArray(paths) || !paths.length) throw new Error('codeFingerprint: give the folders or files that hold the drawing code (e.g. the film\'s kits folder)');
-  const files = [];
+  const given = [];
   const walk = p => {
     if (!existsSync(p)) throw new Error(`codeFingerprint: ${p} does not exist`);
     if (statSync(p).isDirectory()) { for (const name of readdirSync(p).sort()) if (!name.startsWith('.') && name !== 'node_modules') walk(path.join(p, name)); }
-    else if (extensions.includes(path.extname(p).toLowerCase())) files.push(p);
+    else if (extensions.includes(path.extname(p).toLowerCase())) given.push(p);
   };
   for (const p of paths) walk(path.resolve(p));
-  const h = createHash('sha256');
-  for (const f of files) h.update(path.basename(f)).update('\0').update(readFileSync(f)).update('\0');
-  return h.digest('hex').slice(0, 24);
+  const read = moduleReader('codeFingerprint'), files = new Set(), packages = new Set();
+  const follow = f => { if (files.has(f)) return; files.add(f); const m = read(f); m.packages.forEach(x => packages.add(x)); m.files.forEach(follow); };
+  given.forEach(follow);
+  const order = [...files].sort(), h = createHash('sha256');
+  for (const f of order) h.update(path.basename(f)).update('\0').update(read(f).bytes).update('\0');
+  for (const x of [...packages].sort()) h.update(x).update('\0');
+  const fingerprint = h.digest('hex').slice(0, 24);
+  COVERS.set(fingerprint, Object.freeze({files: Object.freeze(order), packages: Object.freeze([...packages].sort())}));
+  return fingerprint;
+}
+const COVERS = new Map();
+/** What a fingerprint made in this process covered: {files (absolute paths, sorted), packages ('name@version')}, or null. */
+export const codeCover = fingerprint => COVERS.get(fingerprint) ?? null;
+
+/**
+ * A reader of modules, each read once: a file's bytes, the files its relative static imports resolve to (never into
+ * node_modules) and the packages it imports, by installed version. `who` names the caller in a refusal.
+ */
+function moduleReader(who) {
+  const known = new Map();
+  return file => {
+    if (known.has(file)) return known.get(file);
+    if (!existsSync(file)) throw new Error(`${who}: ${file} does not exist (named, or imported)`);
+    const bytes = readFileSync(file), files = [], packages = [];
+    if (/\.(mjs|js|cjs)$/.test(file)) for (const m of bytes.toString('utf8').matchAll(IMPORTS)) {
+      const r = resolveImport(m[1] ?? m[2], file, who);
+      if (r?.file && !r.file.split(path.sep).includes('node_modules')) files.push(r.file); else if (r?.pkg) packages.push(r.pkg);
+    }
+    const entry = {bytes, hash: createHash('sha256').update(bytes).digest('hex'), files, packages};
+    known.set(file, entry); return entry;
+  };
 }
 
 /**
@@ -61,18 +95,7 @@ export function codeFingerprint(paths, {extensions = CODE_EXTENSIONS} = {}) {
 export function sourceCode(sources, {shared = []} = {}) {
   if (typeof sources !== 'function') throw new Error("sourceCode: sources(entry) names the files that draw a recipe entry (e.g. its shot's module)");
   if (!Array.isArray(shared)) throw new Error('sourceCode: shared is a list of files every segment depends on');
-  const known = new Map();   // file → {hash, files, packages}: a file's own bytes and what it imports, read once
-  const read = file => {
-    if (known.has(file)) return known.get(file);
-    if (!existsSync(file)) throw new Error(`sourceCode: ${file} does not exist (named by sources or imported)`);
-    const bytes = readFileSync(file), files = [], packages = [];
-    if (/\.(mjs|js|cjs)$/.test(file)) for (const m of bytes.toString('utf8').matchAll(IMPORTS)) {
-      const r = resolveImport(m[1] ?? m[2], file);
-      if (r?.file) files.push(r.file); else if (r?.pkg) packages.push(r.pkg);
-    }
-    const entry = {hash: createHash('sha256').update(bytes).digest('hex'), files, packages};
-    known.set(file, entry); return entry;
-  };
+  const read = moduleReader('sourceCode');   // a file's own bytes and what it imports, read once
   const name = f => `${path.basename(path.dirname(f))}/${path.basename(f)}`;
   return entries => {
     const files = new Map(), packages = new Set();
@@ -87,18 +110,19 @@ export function sourceCode(sources, {shared = []} = {}) {
 }
 // import … from '…', export … from '…', import '…', import('…'): what a module reads its code from.
 const IMPORTS = /(?:^|[^\w$.])(?:import|export)\s*(?:[\w$*{}\s,]+from\s*)?['"]([^'"\n]+)['"]|(?:^|[^\w$.])import\s*\(\s*['"]([^'"\n]+)['"]\s*\)/g;
-function resolveImport(spec, from) {
+function resolveImport(spec, from, who = 'sourceCode') {
   if (spec.startsWith('node:')) return null;
   if (spec.startsWith('.') || spec.startsWith('/')) {
     const base = path.resolve(path.dirname(from), spec);
     const file = [base, `${base}.mjs`, `${base}.js`, path.join(base, 'index.mjs'), path.join(base, 'index.js')].find(f => existsSync(f) && statSync(f).isFile());
-    if (!file) throw new Error(`sourceCode: ${from} imports ${spec}, which does not exist`);
+    if (!file) throw new Error(`${who}: ${from} imports ${spec}, which does not exist`);
     return {file};
   }
   const pkg = spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0];
   for (let dir = path.dirname(from); ; dir = path.dirname(dir)) {
-    const manifest = path.join(dir, 'node_modules', pkg, 'package.json');
+    const manifest = path.join(dir, 'node_modules', pkg, 'package.json'), own = path.join(dir, 'package.json');
     if (existsSync(manifest)) return {pkg: `${pkg}@${JSON.parse(readFileSync(manifest, 'utf8')).version ?? '?'}`};
+    if (existsSync(own)) { const m = JSON.parse(readFileSync(own, 'utf8')); if (m.name === pkg) return {pkg: `${pkg}@${m.version ?? '?'}`}; }   // a package importing itself by name
     if (path.dirname(dir) === dir) return {pkg: `${pkg}@?`};   // a built-in module, or not installed beside the code
   }
 }

@@ -16,8 +16,11 @@ export const view = (z = 1, tx = 0, ty = 0, r = 0) => (r ? {z, tx, ty, r} : {z, 
 /** A point turned by r radians about the origin (r = 0: the point itself, untouched). */
 const turned = (r, x, y) => (r ? [x * Math.cos(r) - y * Math.sin(r), x * Math.sin(r) + y * Math.cos(r)] : [x, y]);
 
-/** `outer` after `inner` (inner is applied first). */
-export const then = (outer, inner) => {
+/**
+ * `outer` composed after `inner` (inner is applied first). Named compose, never `then`: an export named `then` makes
+ * the module's namespace a thenable, so `await import('footprint-storyreel/regions')` would never settle.
+ */
+export const compose = (outer, inner) => {
   const ro = outer.r ?? 0, ri = inner.r ?? 0;
   if (!ro && !ri) return {z: outer.z * inner.z, tx: outer.z * inner.tx + outer.tx, ty: outer.z * inner.ty + outer.ty};
   const [ix, iy] = turned(ro, inner.tx, inner.ty);

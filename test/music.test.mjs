@@ -9,6 +9,7 @@ import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {evenTimings, makeClock, makeFilm} from '../src/index.mjs';
+import {lockedVersions} from '../src/versions.mjs';
 import {fitToMusic, fitVoice, readMusic, readSongPlacement, requireOverlap, MUSIC} from '../src/music.mjs';
 import {compileFilm} from '../src/film.mjs';
 import {renderFilm} from '../src/render.mjs';
@@ -318,7 +319,8 @@ test('without music nothing changes: the same stages, record, inputs and FFmpeg 
   assert.deepEqual(record.pipeline.filter(e => e.type === 'stage' && e.depth === 0).map(e => e.stageId.split('~')[0]), ['check-inputs', 'pace-narration', 'compile-film', 'check-claims/check-claims', 'check-claims/verdict', 'check-claims/passed', 'plan-picture', 'render-picture', 'render-film', 'check-finished', 'place-narration']);
   assert.equal('music' in record, false);
   assert.deepEqual(Object.keys(record.loudness.roles), ['voice', 'effects']);
-  assert.deepEqual(record.inputs, {storyboard: '390932da10154987', timings: '868ab614fc412af1', recipe: '9b351fe10b5a8e66', strings: null, data: null, theme: 'b5d0139a73be8b54', files: {'rule.ts': '8fc6d8dd3606be0f'}, pacing: '74234e98afe7498f'});
+  // The hashed inputs as on main, and the versions an approval locks (versions.mjs · lockedVersions).
+  assert.deepEqual(record.inputs, {storyboard: '390932da10154987', timings: '868ab614fc412af1', recipe: '9b351fe10b5a8e66', strings: null, data: null, theme: 'b5d0139a73be8b54', files: {'rule.ts': '8fc6d8dd3606be0f'}, pacing: '74234e98afe7498f', ...lockedVersions()});
   assert.deepEqual(readdirSync(out).sort(), ['chapters.txt', 'film.mp4', 'making-of.json'], 'beside the video, only the outputs');
   const calls = readFileSync(log, 'utf8').trim().split('\n').map(l => l.split('\x1f').filter(Boolean).map(a => a.split(work).join('<work>').split(out).join('<dir>')).join(' '));
   assert.deepEqual(calls, [

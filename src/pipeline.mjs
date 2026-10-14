@@ -24,11 +24,17 @@ import {hashOf} from './hash.mjs';
 import {checkVideo, ffmpegProbe} from './finished.mjs';
 import {verdictChart} from './verdict.mjs';
 import {claimsCount, unsourcedClaims, claimText, CLAIMS_VERDICT} from './claims.mjs';
-import {installedVersion} from './versions.mjs';
+import {installedVersion, lockedVersions} from './versions.mjs';
+import {codeCover} from './segments.mjs';
 import {beatMap, likelyTempi} from './beats.mjs';
 import {readMusic, musicHash, fitToMusic, fitVoice} from './music.mjs';
 
 const version = installedVersion;
+/** The code fingerprint with what it covered, for the record: {fingerprint, files?, packages?}. */
+function codeRecord(fingerprint, root) {
+  const cover = codeCover(fingerprint);
+  return cover ? {fingerprint, files: cover.files.map(f => path.relative(root, f).split(path.sep).join('/')), packages: [...cover.packages]} : {fingerprint, files: 'not listed: the fingerprint was made in another process'};
+}
 const TOOLS = () => [
   {name: 'footprintjs', version: version('footprintjs'), license: 'MIT', detail: 'the making-of pipeline and its record'},
   {name: '@napi-rs/canvas', version: version('@napi-rs/canvas'), license: 'MIT', detail: 'drawing'},
@@ -210,7 +216,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       scope.beats = film.beats.length; scope.sounds = film.sounds.length; scope.total = +film.total.toFixed(3);
       // What the film is made from (film.inputs, and the pacing, the voice, the kits' code): an approval locks all of it.
       // Sounds placed by their peaks change what is heard, so an approval locks that too — only when it is asked for.
-      inputs = {...film.inputs, pacing: hashOf(pacing), ...(narrationDir ? {voice: voiceHash(narrationDir)} : {}), ...(code ? {code} : {}), ...(song ? {music: musicHash(song)} : {}), ...(render.soundAt === 'peak' ? {soundAt: 'peak'} : {})};
+      // …and the versions of StoryReel and footprintjs that draw and decide it (versions.mjs · lockedVersions).
+      inputs = {...film.inputs, pacing: hashOf(pacing), ...(narrationDir ? {voice: voiceHash(narrationDir)} : {}), ...(code ? {code} : {}), ...lockedVersions(), ...(song ? {music: musicHash(song)} : {}), ...(render.soundAt === 'peak' ? {soundAt: 'peak'} : {})};
       if (approval) {
         try { requireApproval(approval, inputs); } catch (e) { if (scope.narration) rmSync(scope.narration, {recursive: true, force: true}); throw e; }
         scope.approvedBy = approval.by;
@@ -301,6 +308,9 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     span: {from: job.start, to: +job.to.toFixed(3), total: +film.total.toFixed(3), whole: job.start === 0 && job.to >= film.total - 1e-6, ...(job.withIntro ? {intro: job.intro.seconds} : {})},
     // What the film was made from, hashed: approveFilm takes these from this record (approval.mjs).
     inputs,
+    // The kits' code the fingerprint covers (segments.mjs · codeFingerprint follows the imports): every file, from the
+    // film's root, and every package by its version — or only the fingerprint, when it was made in another process.
+    ...(code ? {code: codeRecord(code, root)} : {}),
     ...(approval ? {approval: {by: approval.by, approved: approval.approved, ...(approval.note ? {note: approval.note} : {}), ...(approval.render ? {render: approval.render} : {}), unlocked: unlocked(inputs)}} : {}),
     ...(voice ? {voice} : {}),
     ...(strings ? {strings: {lang, used: film.strings}} : {}),
