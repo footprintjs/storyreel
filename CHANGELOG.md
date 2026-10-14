@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **Skills that build a film, not only review one.** The plugin ships three skills: `storyreel` (start here: the path
+  from storyboard to a released film, and which skill or page to read for each job), `storyreel-cartoon` (the main
+  path as one working film: a kit, a figure that walks, a camera dolly, the review as a gate, a small draft, approval,
+  release; with reference pages for kits, motion, camera, music, motion from a video, checks, breakdown, voice, release
+  and the records) and `storyreel-review` (now covering the slideshow, drawn-parts and numbers verdicts, the
+  example-lingers and frozen-voice findings, and the review's `every`). They teach the house method: read the record
+  before guessing, look at a picture last.
+- **The skills are held to the code** (`test/skills.test.mjs`): every `npx storyreel` command and flag they name is one
+  the CLI's `--help` lists, every `footprint-storyreel/<subpath>` is in the exports, every imported name is a real
+  export, every link between pages resolves inside the plugin, every path into the installed package ships in it, and
+  every code block marked `run` runs (in a temp folder, with the package installed there; compile, review or compute
+  only, never a render). About 3 s.
+
 - **Full-width separators are read.** Chinese and Japanese text's full-width comma and point (，．) are a "," and a
   "." as the Arabic ٬ ٫ are, and the full-width minus (－) is a sign: `ja` "１，０００円" is 1000, "３．５kg" 3.5, "－５℃" −5,
   typed or drawn. The ideographic comma 、 stays a list separator, never a group mark.

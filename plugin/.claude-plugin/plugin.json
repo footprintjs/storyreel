@@ -1,6 +1,6 @@
 {
   "name": "storyreel",
-  "description": "Review and fix a StoryReel film by reading it first: when each beat lands, what is wrong (as text), a quick part render, one still last.",
+  "description": "Make and review films drawn in code with StoryReel (footprint-storyreel): start from a storyboard and a recipe, draw a cartoon world with a walking figure, move the camera by name, check the film by reading it, render a draft, approve and release; then review and fix by reading first (timeline, review as text, a quick part render, one still last).",
   "author": {"name": "footprintjs", "url": "https://github.com/footprintjs"},
   "homepage": "https://github.com/footprintjs/storyreel",
   "license": "MIT"

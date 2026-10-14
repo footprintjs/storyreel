@@ -44,6 +44,18 @@ npm i footprint-storyreel
 - Drawing is native (`@napi-rs/canvas`, prebuilt for macOS, Linux and Windows). The handwriting font
   (Caveat, SIL OFL) is bundled.
 
+## Skills for AI agents
+
+The package ships three skills that teach an agent (Claude Code, or any agent that reads `SKILL.md` files) to make
+films with it: **`storyreel`** (start here: the path from storyboard to a released film, and which page to read for
+each job), **`storyreel-cartoon`** (build one: a kit, a walking figure, camera moves, the checks, a draft, approval and
+release, with reference pages for motion, camera, music, motion from a video, checks, breakdown, voice, release and the
+records) and **`storyreel-review`** (fix one by reading it first). Install them as a Claude Code plugin —
+`claude plugin marketplace add footprintjs/storyreel`, then `claude plugin install storyreel@storyreel` — or copy the
+folders in `plugin/skills/` into a project's `.claude/skills/`. The skills cannot drift from the code:
+`test/skills.test.mjs` checks every command and flag, subpath, import, link and package path they name, and runs every
+example marked `run`.
+
 ## Your first film
 
 The package ships three examples; `examples/hello` is the smallest complete film (a whiteboard
@@ -1402,9 +1414,8 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   strip --scene <id>` (`strip --at <scene>+<seconds>`: a fast move frame by frame — 12 consecutive frames around
   the moment, side by side — to catch a pop, a jump or two things crossing) (the film named in the project's `storyreel.config.mjs`: `export default {film: flags =>
   ({storyboard, recipe, kits, root, narrationDir?, pacing?, layout?})}`; every flag also reaches `film()`). The
-  package ships the skill that teaches the order — timeline, review, fix, part, one still last — as a Claude Code
-  plugin: `claude plugin marketplace add footprintjs/storyreel`, then `claude plugin install storyreel@storyreel`
-  (or copy `plugin/skills/storyreel-review/SKILL.md` into a project's `.claude/skills/`). `footprint-storyreel/tools` is the one core both use.
+  package ships the skill that teaches the order — timeline, review, fix, part, one still last — `storyreel-review`,
+  beside the skills that build a film ([Skills for AI agents](#skills-for-ai-agents)). `footprint-storyreel/tools` is the one core both use.
   `npx storyreel beats <song>` needs no project: it prints a song's beat map for settling its tempo (see Music: cut on
   the beat).
 - **And as an MCP server,** for any assistant that speaks MCP: `storyreel mcp [--flag value …]` serves the same
