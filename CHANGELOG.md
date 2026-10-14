@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- **A review no longer holds every frame it reads.** `review` read each moment on a new canvas: a native picture
+  (5.8 MB at 1600×900, 8.3 MB at 1080p, and a blurred transition's scratch beside it) that only a garbage collection
+  and a turn of the event loop give back — and a review reads hundreds of moments in one go, so every one was held
+  until it ended. It now reads every moment on one canvas per size, reset to new before each frame (`ctx.reset()`), so a
+  frame is read exactly as before (a test pins `reset()` against a new canvas: every setting, no clip, path or saved
+  state, the same bytes for the same scene). A test film's review held 6–7 GB; it now takes 1–2 GB, and a long film's
+  review no longer grows with its length. The same pattern in the moves tests (a canvas and a ghost painter per step)
+  is gone. A kit draws on one context every frame of a review: it keeps nothing on the context and never compares
+  contexts across frames (README · Kits, the skills' kits.md).
+- **The suite says its memory.** `npm run test:temp` ends with the suite's peak (its whole process tree, FFmpeg
+  included, read from `ps`) and its heaviest test files, on the run's page in GitHub Actions too. With no test file
+  over 2 GB, the heavy files no longer run in a pass of their own.
+
 ## 0.13.0 — camera moves by name, motion from a video, music on the beat, reference breakdowns, three review verdicts, skills that build a film, and outputs that stay where you put them
 
 - **The suite fits a CI runner.** `npm run test:temp` runs the three heaviest test files (claims, review, slideshow)
