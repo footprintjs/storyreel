@@ -370,7 +370,9 @@ test('a decimal drawn as tokens is one number: "16" "." "67" is 16.67, "$1" "," 
   const code = ['const frame = 16.67;', 'let total = $1,299.99', 'f(4,5) + [1,2,3]', 'x - 5'];
   const f = await panelFilm(c => panel(c, code, {numbers: 'none'}), [{value: 16.67, source: 'https://example.org/frames'}, {value: 1299.99, source: 'https://example.org/price'}]);
   const lines = drawnLines(wordsAt(f, 1)), numbers = lines.flatMap(numbersIn).sort();
-  assert.ok(lines.includes('16.67 ;') && lines.includes('$1,299.99'), JSON.stringify(lines));
+  // Which tokens share a line rides on the font's word space (Menlo's is 0.7 of the height; a Linux monospace's, under
+  // 0.5, puts "= $1,299.99" on one line): the numbers do not.
+  assert.ok(lines.some(l => /(^|\s)16\.67(\s|$)/.test(l)) && lines.some(l => /(^|\s)\$1,299\.99$/.test(l)), JSON.stringify(lines));
   assert.deepEqual(numbers, ['1', '1,299.99', '16.67', '2', '3', '4', '5', '5'], 'f(4,5) is 4 and 5 (a "," joins only a thousands group), [1,2,3] is three numbers, x - 5 is a subtraction');
   assert.deepEqual(drawnLines([{text: '1', box: [0, 0, 14, 20]}, {text: ',', box: [17, 14, 21, 24]}, {text: '299', box: [26, 0, 66, 20]}]), ['1,299'], 'a thousands group');
   assert.deepEqual(drawnLines([{text: '4', box: [0, 0, 14, 20]}, {text: ',', box: [17, 14, 21, 24]}, {text: '5', box: [26, 0, 40, 20]}]), ['4 , 5'], 'not a group: two numbers');
