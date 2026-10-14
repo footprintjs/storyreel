@@ -728,6 +728,9 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
   (60Hz, 4K), and a number after a CJK character is a number (価格は100円). A number with one separator before exactly
   three digits ("1,000", "1.000") is a thousand in one language and one in another, and the screen does not say which:
   it is **ambiguous**, so only a fact that writes it the same way (`"value": "1.000"`) sources it — never `1` or `1000`.
+  A comma joins digits only before a three-digit group: "steps 1,2 and 3" and code's `f(4,5)` show two numbers each,
+  never 1.2 or 4.5 — and after a dotted thousands group it is a decimal comma, "1.299,99" being 1299.99 (the one reading
+  in which it is a number at all). Typed and drawn numbers are read by this one rule.
   `film.claims` lists them all: `{facts, examples, numbers: [{number, line, offset, at, to, scene, path, example,
   source}]}` — one per place in a line (the same number twice in a line is two claims), from when the line is whole on
   screen to when it starts to leave, decided in the scene where the line is first shown.
@@ -736,15 +739,21 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
   about 4 s for its whole review. Words on one line are read with a space between them, and as one only where their
   ink touches (a gap under 8 % of their height), a sign or a decimal point is written onto its digits ("16" then ".67
   ms" is 16.67; code tokens "-" then "5" are −5), or a lone point stands between digits within half their height (a
-  code panel's tokens "16" "." "67" are 16.67, "$1" "," "299" "." "99" are 1,299.99; a "," joins only a thousands
-  group, so `f(4,5)` is 4 and 5) — so "12" and "30" drawn 4 px apart are two numbers, never 1230, and so are two digit
+  code panel's tokens "16" "." "67" are 16.67, "$1" "," "299" "." "99" are 1,299.99, and `f(4,5)` drawn token by token
+  is 4 and 5, as typed) — so "12" and "30" drawn 4 px apart are two numbers, never 1230, and so are two digit
   groups of different sizes: "$1,299" with a raised "99" is 1,299 and 99, since the picture does not say whether a
   raised group is cents, a power (10²) or a note. A number drawn a digit at a time reads as its digits (they stand
   5–22 % of their height apart, as two numbers drawn close do): draw a number as one string, as every built-in kit
-  does. A drawn number counts once it **holds** — the same number in the same place for two samples running — so a
-  typewriter's partials ("1", "16", "16.6" on the way to 16.67) and a counter's passing values are no claims; at the
-  review's 0.25 s, a number up for 0.5 s or more always holds (a line up long enough to read is up for 1 s). A drawn
-  number counts as example data only while the label is up the whole time it holds. A drawn number is a
+  does. A drawn number counts once it **holds** — the same number, in the same place of the same line (the line with
+  its numbers masked: "Sold 40 cups" and "Sold 40 kg" are two claims, each checked against its own facts), up for 0.5 s
+  (`HOLD`) — so a typewriter's partials ("1", "12", "129" on the way to 1299, 0.33 s each at 3 characters a second) and
+  a counter's passing values are no claims, and a line typed on past its number ("We sold 1299" while "cups" is typed)
+  is one claim, the line it becomes. The hold is timed, whatever the review's step: the claims check reads the frames
+  every 0.25 s or finer (the review's own reads when they are that fine; measured on the four examples at the default
+  0.25 s, no frame read again and under 20 ms; at `every: 1` it reads 4 times the frames, 0.9–2.3 s against 0.3–0.7 s
+  for their whole review, and finds the numbers the coarse reads missed — worlds' three), and reads a number's edges
+  again every 0.05 s where the reads cannot tell: a number up for 0.5 s or more always counts, one up for less than
+  0.4 s never does. A drawn number counts as example data only while the label is up the whole time it holds. A drawn number is a
   declared one when a declared line holds it and the drawn words are that line, or a word-bounded start or end of it;
   any other is a claim of its own (`path: 'drawn'`). `makeFilm`'s `check-claims` reads the declared lines only (it
   draws no frame).
@@ -762,8 +771,16 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
   ```
 
   The mark rides on the context while the function runs (a shared symbol, so a kit with its own copy of the library
-  marks words the engine reads); a frame drawn without the review is unchanged by it. The built-in code stage draws no
-  line numbers.
+  marks words the engine reads); a frame drawn without the review is unchanged by it. Mark the context the words are
+  DRAWN on: text drawn onto an offscreen canvas and then laid on the frame is marked through that canvas's own context,
+  never the frame's:
+
+  ```js
+  const sheet = createCanvas(400, 900), s = sheet.getContext('2d');
+  decorative(s, () => s.fillText(String(i + 1), 40, y));   // marked where it is drawn; ctx.drawImage(sheet, 0, 0) carries the mark
+  ```
+
+  The built-in code stage draws no line numbers.
 - **The verdict**: `failed` when a number outside an example scene has no source — each listed with its scene, its
   recipe entry and the fix (`"120" (scene rate, story.items[1]) has no source: add {"value": 120, "source": "…"} to
   the facts, or mark scene rate "example": true`); `not run` when the storyboard names no facts and a number shows
@@ -1930,7 +1947,7 @@ the default because it rarely does; there is no swap repair.
 | `footprint-storyreel/review` → `reviewPart(film, {part?, layout?, checks?, …})` · `REVIEW_CHECKS` · `findingsText` · `verdictsText` · `wordsAt` | a part reviewed by reading it: findings with times, and three verdicts (passed, failed, not run) with their `decide()` evidence |
 | `footprint-storyreel/slideshow` → `slideshowOf(film, {from?, to?, every?, rule?})` · `shotMotion` · `shotInsides` · `moved` · `SLIDESHOW` · `SLIDESHOW_VERDICT` | no slideshow: how much each shot moves in its middle, and whether most of the running time is dead (held still more than 3 s) |
 | `footprint-storyreel/geometry` → `geometryOf(film, {from?, to?, rule?})` · `auditParts` · `readParts` · `crosses` · `breakText` · `GEOMETRY` · `GEOMETRY_VERDICT` | a kit's drawn parts audited: mounted ends stay on, pairs kept apart never cross, a planted end stays where it was planted |
-| `footprint-storyreel/claims` → `numbersIn` · `numberValue` · `readFacts` · `sourceKind` · `exampleScenes` · `labelSpans` · `findClaims` · `drawnLines` · `DRAWN` · `drawnClaims` · `lingeringExamples` · `claimsCount` · `unsourcedClaims` · `claimText` · `CLAIMS_VERDICT` | every number on screen with its source: a fact the storyboard names, or an example scene (`film.claims`; the review adds what the picture draws) |
+| `footprint-storyreel/claims` → `numbersIn` · `numberValue` · `readFacts` · `sourceKind` · `exampleScenes` · `labelSpans` · `findClaims` · `drawnLines` · `DRAWN` · `HOLD` · `drawnClaims` · `lingeringExamples` · `claimsCount` · `unsourcedClaims` · `claimText` · `CLAIMS_VERDICT` | every number on screen with its source: a fact the storyboard names, or an example scene (`film.claims`; the review adds what the picture draws) |
 | `footprint-storyreel/decorative` → `decorative` · `isDecorative` · `DECORATIVE` | text a kit draws but the film does not say (line numbers, badges): read by every review check but the claims check |
 | `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `bezier(x1, y1, x2, y2)` · `overshoots(name)` · `inOut` | the one ease table (`linear in out inOut back walk jump spring bounce outCubic outQuint outExpo outBack inOutCubic standard emphasized`), and four-number curves as CSS writes them |
 | `footprint-storyreel/moves` → `moveAt(move, t, {start, seconds?, feel?, reduced?})` · `stagger(items, gap)` · `movesBy({feel, use, kind})` · `readMove` · `applyMove` · `MOVES` | motion asked for by name: 30 moves as data, by feel and use, with the practitioners' timing rules |

@@ -9,8 +9,9 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {compileFilm, evenTimings, makeFilm} from '../src/index.mjs';
-import {numbersIn, numberValue, readFacts, sourceKind, exampleScenes, findClaims, drawnClaims, drawnLines, DRAWN, labelSpans, lingeringExamples, claimsCount, unsourcedClaims, claimText, CLAIMS_VERDICT} from '../src/claims.mjs';
+import {numbersIn, numberValue, readFacts, sourceKind, exampleScenes, findClaims, drawnClaims, drawnLines, DRAWN, HOLD, labelSpans, lingeringExamples, claimsCount, unsourcedClaims, claimText, CLAIMS_VERDICT} from '../src/claims.mjs';
 import {decorative, isDecorative} from '../src/decorative.mjs';
+import {createCanvas} from '@napi-rs/canvas';
 import {approveFilm, checkApproval} from '../src/approval.mjs';
 import {wordsAt, reviewPart} from '../src/review.mjs';
 import {compileLayout} from '../src/layout.mjs';
@@ -46,7 +47,17 @@ test('the numbers a text shows: footprint-narration\'s digit runs, with their si
   assert.deepEqual(numbersIn('a B-52, COVID-19, an MP-3, a mid-3000 dream'), [], 'anything else after a hyphen after a cased letter stays a name: 3000 is no plausible year (1000–2199)');
   assert.deepEqual(numbersIn('no numbers here'), []);
   assert.equal(numberValue('1,000,000'), 1000000); assert.equal(numberValue('1.000.000,5'), 1000000.5); assert.equal(numberValue('16.67'), 16.67);
-  assert.equal(numberValue('4,5'), 4.5, 'a decimal comma'); assert.equal(numberValue('0.125'), .125); assert.equal(numberValue('−5'), -5);
+  assert.equal(numberValue('0.125'), .125); assert.equal(numberValue('−5'), -5);
+  // One comma rule, typed and drawn alike (commaParts): a comma joins digits only before a three-digit group, and after
+  // a dotted thousands group it is a decimal comma — the one reading in which "1.299,99" is a number at all.
+  assert.deepEqual(numbersIn('steps 1,2 and 3'), ['1', '2', '3'], 'not 1.2');
+  assert.deepEqual(numbersIn('f(4,5) and 12,3456'), ['4', '5', '12', '3456']);
+  assert.deepEqual(numbersIn('1,299.99 and 1,000,000').map(numberValue), [1299.99, 1000000]);
+  assert.deepEqual(numbersIn('1.299,99 € and 1.000,5').map(numberValue), [1299.99, 1000.5]);
+  assert.equal(numberValue('4,5'), '4,5', 'two numbers, never one value');
+  assert.throws(() => readFacts([{value: '4,5', source: 'x'}]), /facts\[0\]: value is the number as the screen shows it/, 'a fact is one number');
+  assert.deepEqual(findClaims([{text: 'steps 1,2 and 3', at: 0, to: 1, scene: 0, path: 'x'}], {facts: readFacts([{value: 1.2, source: 'https://example.org/x'}]), scenes: ['a']}).map(c => [c.number, c.source]),
+    [['1', null], ['2', null], ['3', null]], 'a fact of 1.2 sources none of them');
   for (const ambiguous of ['1,000', '1.000', '16.670', '−1.000']) assert.equal(numberValue(ambiguous), ambiguous, `${ambiguous}: a thousand, or one? as written`);
   assert.equal(numberValue('3:15'), '3:15'); assert.equal(numberValue('1.2.3'), '1.2.3');
 });
@@ -375,7 +386,13 @@ test('a decimal drawn as tokens is one number: "16" "." "67" is 16.67, "$1" "," 
   assert.ok(lines.some(l => /(^|\s)16\.67(\s|$)/.test(l)) && lines.some(l => /(^|\s)\$1,299\.99$/.test(l)), JSON.stringify(lines));
   assert.deepEqual(numbers, ['1', '1,299.99', '16.67', '2', '3', '4', '5', '5'], 'f(4,5) is 4 and 5 (a "," joins only a thousands group), [1,2,3] is three numbers, x - 5 is a subtraction');
   assert.deepEqual(drawnLines([{text: '1', box: [0, 0, 14, 20]}, {text: ',', box: [17, 14, 21, 24]}, {text: '299', box: [26, 0, 66, 20]}]), ['1,299'], 'a thousands group');
-  assert.deepEqual(drawnLines([{text: '4', box: [0, 0, 14, 20]}, {text: ',', box: [17, 14, 21, 24]}, {text: '5', box: [26, 0, 40, 20]}]), ['4 , 5'], 'not a group: two numbers');
+  assert.deepEqual(drawnLines([{text: '4', box: [0, 0, 14, 20]}, {text: ',', box: [17, 14, 21, 24]}, {text: '5', box: [26, 0, 40, 20]}]), ['4,5'], 'joined as typed text has it');
+  assert.deepEqual(numbersIn('4,5'), ['4', '5'], 'and cut by the one comma rule: not a group, two numbers');
+  // Drawn as typed: "1" "," "2" is 1 and 2; "1" "." "299" "," "99" is 1299.99.
+  const tokens = (...texts) => { let x = 0; return texts.map(text => { const w = /^[.,]$/.test(text) ? 4 : 14 * text.length, b = /^[.,]$/.test(text) ? [x, 14, x + w, 24] : [x, 0, x + w, 20]; x += w + 3; return {text, box: b}; }); };
+  assert.deepEqual(drawnLines(tokens('1', ',', '2')).flatMap(numbersIn), ['1', '2']);
+  assert.deepEqual(drawnLines(tokens('1', '.', '299', ',', '99')).flatMap(numbersIn).map(numberValue), [1299.99]);
+  assert.deepEqual(drawnLines(tokens('1', ',', '299', '.', '99')).flatMap(numbersIn).map(numberValue), [1299.99]);
   assert.deepEqual(drawnLines([{text: '16', box: [0, 0, 28, 20]}, {text: '.', box: [32.5, 17, 36.5, 20]}, {text: '67', box: [42, 0, 70, 20]}]), ['16.67']);
   assert.deepEqual(drawnLines([{text: '16', box: [0, 0, 28, 20]}, {text: '.', box: [40, 17, 44, 20]}, {text: '67', box: [56, 0, 84, 20]}]), ['16', '.', '67'], `a point more than ${DRAWN.point} of the height off its digits is not theirs`);
   const v = (await reviewPart(f, {every: 1})).verdicts.find(x => x.check === 'claims');
@@ -402,6 +419,9 @@ test('decorative words are drawn and read, never claimed; a drawn number counts 
   const marked = await panelFilm(c => panel(c, code, {numbers: 'decorative'})), plain = await panelFilm(c => panel(c, code));
   const words = wordsAt(marked, 1);
   assert.deepEqual(words.filter(w => w.decorative).map(w => w.text), ['1', '2', '3', '4', '5'], 'the line numbers are read, marked decorative');
+  // Marked on the context it is drawn on: an offscreen sheet's own, carried onto the frame with the sheet.
+  const sheeted = await panelFilm(c => { const sheet = createCanvas(400, 300), s = sheet.getContext('2d'); s.font = '40px Menlo'; s.fillStyle = '#222'; decorative(s, () => s.fillText('7', 40, 100)); s.fillText('8', 140, 100); c.fillStyle = '#f3eee3'; c.fillRect(0, 0, 1600, 900); c.drawImage(sheet, 100, 100); });
+  assert.deepEqual(wordsAt(sheeted, 1).map(w => [w.text, Boolean(w.decorative)]), [['7', true], ['8', false]]);
   assert.ok(words.filter(w => !w.decorative).every(w => !('decorative' in w)), 'the other words carry no mark');
   const drawn = async f => (await reviewPart(f, {every: 1})).verdicts.find(x => x.check === 'claims').measured.unsourcedNumbers.map(c => c.number).sort();
   assert.deepEqual(await drawn(plain), ['0', '1', '16.67', '2', '3', '4', '5'], 'drawn plain, the line numbers are claims');
@@ -412,19 +432,57 @@ test('decorative words are drawn and read, never claimed; a drawn number counts 
   assert.throws(() => decorative({}, null), /decorative\(ctx, draw\): draw is a function/);
 });
 
-test('a drawn number counts once it holds for two samples: a typewriter\'s partials are no claims', async () => {
-  // Typed at 6 characters a second and read every 0.25 s, "frame = 1", "frame = 16" and "frame = 16.6" each pass by
-  // for one sample; "frame = 16.67" then holds.
-  const typing = await panelFilm((c, t) => panel(c, ['frame = 16.67;'], {numbers: 'none', typed: Math.floor(t * 6 + 1e-9)}));
-  const seen = [1.5, 1.75, 2].map(t => drawnLines(wordsAt(typing, t)).join(' | '));
-  assert.deepEqual(seen, ['frame | = | 1', 'frame | = | 16', 'frame | = | 16.6'], 'the partials, as drawn');
-  const v = (await reviewPart(typing, {every: .25})).verdicts.find(x => x.check === 'claims');
-  assert.deepEqual(v.measured.unsourcedNumbers.map(c => c.number), ['16.67'], 'only the number that holds');
-  // The bound: at the review's rate, a number up for two samples' time (0.5 s at 0.25 s) always holds; one seen in a
-  // single sample is passing. Synthetic samples: a gauge drawn for one sample, then one drawn for two.
-  const at = (t, text) => ({t, words: [{text, box: [0, 0, 120, 30]}]}), none = t => ({t, words: []});
-  const claimsOf = samples => drawnClaims(samples, {claims: film.claims, sceneOf: () => 0, scenes: ['rate']}).map(c => [c.number, c.at, c.to]);
-  assert.deepEqual(claimsOf([none(0), at(.25, 'load 42 %'), none(.5)]), [], 'one sample: passing');
-  assert.deepEqual(claimsOf([none(0), at(.25, 'load 42 %'), at(.5, 'load 42 %'), none(.75)]), [['42', .25, .5]], 'two samples running: a claim, from the first');
-  assert.deepEqual(claimsOf([at(0, 'frame 16 of 60'), at(.25, 'frame 17 of 60'), at(.5, 'frame 18 of 60')]), [['60', 0, .5]], 'a counter: its passing values are no claims, the number that stays is');
+/** A scripted picture: lines(t) → the lines drawn at t, one row each. Its reads every `step` from 0 to `to`, and its claims. */
+const scripted = lines => t => lines(t).map((text, k) => ({text, box: [0, 100 * k, 20 * text.length, 100 * k + 30]}));
+function heldClaims(lines, {step = .25, to = 4, facts = null} = {}) {
+  const at = scripted(lines), samples = [];
+  for (let k = 0; k * step <= to + 1e-9; k++) samples.push({t: +(k * step).toFixed(3), words: at(+(k * step).toFixed(3))});
+  return drawnClaims(samples, {claims: {...film.claims, facts: facts ?? film.claims.facts}, sceneOf: () => 0, scenes: ['rate'], wordsAt: at}).map(c => [c.number, c.line, c.source !== null]);
+}
+const between = (t, a, b) => t >= a - 1e-9 && t < b - 1e-9;
+
+test('a drawn number is checked in its own line: "Sold 40 cups" and later "Sold 40 kg" are two claims', () => {
+  const facts = [{value: 40, text: '40 cups', source: 'https://example.org/cups'}];
+  const apart = t => [...(between(t, .5, 1.5) ? ['Sold 40 cups'] : []), ...(between(t, 2, 3) ? ['Sold 40 kg'] : [])];
+  assert.deepEqual(heldClaims(apart, {facts}), [['40', 'Sold 40 cups', true], ['40', 'Sold 40 kg', false]], 'the kg is checked, and has no source');
+  const swapped = t => (between(t, .5, 1.5) ? ['Sold 40 cups'] : between(t, 1.5, 2.5) ? ['Sold 40 kg'] : []);
+  assert.deepEqual(heldClaims(swapped, {facts}), [['40', 'Sold 40 cups', true], ['40', 'Sold 40 kg', false]], 'swapped in place, too');
+  const counter = t => (between(t, 0, 3) ? [`frame ${Math.floor(t * 10)} of 60`] : []);
+  assert.deepEqual(heldClaims(counter).map(c => c[0]), ['60'], 'a counter\'s passing values are no claims; the number that stays is');
+});
+
+test('a drawn number holds in time, at any review step: up 0.5 s or more it counts, up under 0.4 s it never does', async () => {
+  // Read every 1 s, a value up 1 s is in one read only: the hold is timed from its edges read again.
+  const gauge = t => (between(t, 1, 2) ? ['load 58 %'] : between(t, 2, 3) ? ['load 59 %'] : []);
+  assert.deepEqual(heldClaims(gauge, {step: 1}).map(c => c[0]), ['58', '59']);
+  // The bound, for reads HOLD.step (0.25 s) apart or closer — what the review gives the claims check, whatever its own step.
+  for (const step of [.05, .1, HOLD.step]) for (const phase of [0, .07, .13, .19, .24]) {
+    const up = seconds => heldClaims(t => (between(t, 1 + phase, 1 + phase + seconds) ? ['load 42 %'] : []), {step}).length;
+    assert.equal(up(.5), 1, `up 0.5 s from ${1 + phase} s, read every ${step} s: counted`);
+    assert.equal(up(.35), 0, `up 0.35 s from ${1 + phase} s, read every ${step} s: passing`);
+  }
+  // End to end: reviewPart reads for claims every 0.25 s whatever its own step.
+  const f = await panelFilm((c, t) => { c.fillStyle = '#f3eee3'; c.fillRect(0, 0, 1600, 900); c.fillStyle = '#222'; c.font = '60px sans-serif'; const v = between(t, 1, 2) ? 58 : between(t, 2, 3) ? 59 : null; if (v) c.fillText(`load ${v} %`, 200, 300); });
+  const v = (await reviewPart(f, {every: 1})).verdicts.find(x => x.check === 'claims');
+  assert.deepEqual(v.measured.unsourcedNumbers.map(c => c.number), ['58', '59']);
+});
+
+test('a typewriter\'s partials are no claims, and a line typed on past its number is one claim: 3 and 20 characters a second', async () => {
+  // Typed at 6 characters a second and read every 0.25 s, "frame = 1", "frame = 16" and "frame = 16.6" each pass by.
+  const six = await panelFilm((c, t) => panel(c, ['frame = 16.67;'], {numbers: 'none', typed: Math.floor(t * 6 + 1e-9)}));
+  assert.deepEqual([1.5, 1.75, 2].map(t => drawnLines(wordsAt(six, t)).join(' | ')), ['frame | = | 1', 'frame | = | 16', 'frame | = | 16.6'], 'the partials, as drawn');
+  const claimed = async f => (await reviewPart(f, {every: .25})).verdicts.find(x => x.check === 'claims').measured.unsourcedNumbers.map(c => c.number);
+  assert.deepEqual(await claimed(six), ['16.67']);
+  const line = 'We sold 1299 cups';
+  for (const cps of [3, 20]) {
+    // One string, typed on: "We sold 1" … "We sold 1299" (0.67 s at 3 a second: the space after it reads as nothing) … "We sold 1299 cups".
+    const whole = await panelFilm((c, t) => { c.fillStyle = '#f3eee3'; c.fillRect(0, 0, 1600, 900); c.fillStyle = '#222'; c.font = '60px sans-serif'; c.fillText(line.slice(0, Math.floor(t * cps + 1e-9)), 200, 300); });
+    const v = (await reviewPart(whole, {every: .25})).verdicts.find(x => x.check === 'claims');
+    assert.deepEqual(v.measured.unsourcedNumbers.map(c => [c.number, c.path]), [['1299', 'drawn']], `${cps} a second: one claim, never the partial 1, 12, 129, never 1299 twice`);
+    // The browser series' own pattern: each token on its own.
+    const tokens = await panelFilm((c, t) => panel(c, [line], {numbers: 'decorative', typed: Math.floor(t * cps + 1e-9)}));
+    assert.deepEqual(await claimed(tokens), ['1299'], `${cps} a second, token by token`);
+  }
+  const typedOn = t => [line.slice(0, Math.min(line.length, Math.floor(t * 3 + 1e-9)))].filter(Boolean);
+  assert.deepEqual(heldClaims(typedOn, {to: 8}).map(c => [c[0], c[1]]), [['1299', 'We sold 1299 cups']], 'the claim is the line it becomes');
 });

@@ -37,7 +37,7 @@ import {clockTenths} from './clock.mjs';
 import {verdictChart, verdictsText, readVerdict} from './verdict.mjs';
 import {slideshowOf, SLIDESHOW, SLIDESHOW_VERDICT} from './slideshow.mjs';
 import {geometryOf, breakText, GEOMETRY_VERDICT} from './geometry.mjs';
-import {claimsCount, unsourcedClaims, claimText, drawnClaims, lingeringExamples, lingerText, CLAIMS_VERDICT} from './claims.mjs';
+import {claimsCount, unsourcedClaims, claimText, drawnClaims, lingeringExamples, lingerText, HOLD, CLAIMS_VERDICT} from './claims.mjs';
 import {isDecorative} from './decorative.mjs';
 
 /**
@@ -413,10 +413,11 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
     // A mark with no letter or digit ("-", ".") has a short ink box, however big its type: it is kept apart (`marks`), for
     // the claims check to join to the digits it touches (claims.mjs · drawnLines), and is no word for the other checks.
     const mark = w => !/[\p{L}\p{N}]/u.test(w.text);
-    review.samples = times.map(t => {
+    const sampleAt = t => {
       const zoomed = (film.focusAt?.(t)?.z ?? 1) > 1.001 || (film.cameraAt?.(t)?.z ?? 1) > 1.001, drawn = wordsAt(film, t, {layout: framed}).filter(w => w.alpha >= minAlpha && shown(w, zoomed));
       return {t, words: drawn.filter(legible), marks: drawn.filter(w => !legible(w) && mark(w))};
-    });
+    };
+    review.samples = times.map(sampleAt);
     // frameHashes keys a moment by its millisecond, and the film's end can sit a hair under its own (21.2999…97 is
     // 21.300): the hashes are keyed by each sample's own time, so a check reads hashes[t].
     // The same drawing gives each sample's grey levels (finished.mjs · greyOf), for the slideshow check.
@@ -426,9 +427,13 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
     review.frozen = frozenRuns(review);
     // The numbers the picture draws that no declared line holds (claims.mjs · drawnClaims), read once from the samples'
     // words and marks, and where an example line lingers into a real scene beside numbers: for the claims checks.
+    // The claims check times a number's hold in seconds (claims.mjs · HOLD), so it reads every HOLD.step or finer
+    // whatever `every` is — the review's own reads when they are that fine — and reads a moment again where it must.
     if (film.claims) {
-      const ids = film.timings.scenes.map(sc => sc.id);
-      review.drawn = drawnClaims(review.samples.map(x => ({t: x.t, words: [...x.words, ...(x.marks ?? [])]})), {claims: film.claims, sceneOf: t => film.clock.locate(t).index, scenes: ids});
+      const ids = film.timings.scenes.map(sc => sc.id), both = x => [...x.words, ...(x.marks ?? [])], steps = [];
+      if (every > HOLD.step + 1e-9) for (let t = window.from; t <= window.to + 1e-9; t += HOLD.step) steps.push(onClock(film, t));
+      const reads = steps.length ? steps.map(sampleAt) : review.samples;
+      review.drawn = drawnClaims(reads.map(x => ({t: x.t, words: both(x)})), {claims: film.claims, sceneOf: t => film.clock.locate(t).index, scenes: ids, wordsAt: t => both(sampleAt(onClock(film, t)))});
       review.lingers = lingeringExamples({labels: film.claims.labels, numbers: [...film.claims.numbers, ...review.drawn]},
         {scenes: film.timings.scenes.map((sc, i) => ({from: film.clock.offsets[i], to: film.clock.offsets[i] + sc.duration})), examples: film.claims.examples, ids})
         .filter(g => g.from < window.to - 1e-6 && g.to > window.from + 1e-6);
