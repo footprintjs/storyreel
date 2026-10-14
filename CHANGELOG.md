@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Full-width separators are read.** Chinese and Japanese text's full-width comma and point (，．) are a "," and a
+  "." as the Arabic ٬ ٫ are, and the full-width minus (－) is a sign: `ja` "１，０００円" is 1000, "３．５kg" 3.5, "－５℃" −5,
+  typed or drawn. The ideographic comma 、 stays a list separator, never a group mark.
+- **Code joins digits by "_"**: under `code()`, `1_000_000` (JavaScript, Python) is 1000000; outside code "_" joins nothing.
+
 - **Numbers are read in the language the film is shown in.** `compileFilm` takes `lang` (a BCP 47 tag) and keeps it as
   `film.lang` (and `film.inputs.lang`, for an approval to lock); `makeFilm`'s `lang`, which named the string table only,
   is now passed through: one value. Both claims checks read numbers by it, with the language's own group and decimal

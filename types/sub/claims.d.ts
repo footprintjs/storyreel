@@ -6,8 +6,8 @@ export function numbersIn(text: string, options?: {lang?: string | null}): strin
 export function numberValue(run: string, options?: {lang?: string | null}): number | string;
 /** A language's way of writing numbers, from Intl.NumberFormat: group and decimal symbols (the Arabic ٬ and ٫ as "," and "."), the grouping (secondary 2 in Indian grouping) and its own digits' numbering system; null without a language. A tag that is not BCP 47 refuses. Digits of every script are read, in every film. */
 export function numberLocale(lang: string | null | undefined): Readonly<{lang: string; group: string | null; decimal: string; primary: number; secondary: number; digits: string}> | null;
-/** How code reads numbers, whatever the film's language: "." the decimal mark, "," always a separator, never grouping. */
-export const CODE_READING: Readonly<{lang: 'code'; code: true; group: null; decimal: '.'; primary: number; secondary: number; cut: ','}>;
+/** How code reads numbers, whatever the film's language: "." the decimal mark, "," always a separator, never grouping, and "_" between digits joins them (1_000_000). */
+export const CODE_READING: Readonly<{lang: 'code'; code: true; group: null; decimal: '.'; primary: number; secondary: number; cut: ','; join: '_'}>;
 /** What a fact's source is: an http(s) URL, a file inside `root` that is there ('#' a pointer into it), or anything else — unverified ("/r/science thread" too). Only a path that is there, outside the root, refuses. */
 export function sourceKind(source: string, options?: {root?: string | null; where?: string}): 'url' | 'file' | 'unverified';
 /** A facts list, checked: [{value, text?, source}], each with its source's kind; anything else refuses, naming the fix. */
