@@ -14,9 +14,13 @@
   poster, chapters and captions, `makeFilm`'s making-of, a release's video, captions, thumbnail, `post.json`,
   `post.txt` and `CREDITS.txt`, a breakdown's `breakdown.json`, `breakdown.md`, `record.json`, `overview.png` and
   shot sheets, the tools' stills and strips, pacing's paced audio, its `.unpaced.wav` and generated silence,
-  `fitVoice`'s fitted audio, and the segment store's files. The folders StoryReel names inside yours (a release's targets, a breakdown's `shots/`, the
-  tools' `stills/`) refuse a link (`files.mjs` · `outputFolder`). A test lists every raw write left in `src/` (each
-  into StoryReel's own folder) and fails on a new one.
+  `fitVoice`'s fitted audio, and the segment store's files. Every output's name is checked before anything is drawn
+  (a render, a film, a release, a breakdown), so a folder at one refuses up front. The folders StoryReel names inside
+  yours (a release's targets, a breakdown's `shots/`, the tools' `stills/`) are made 0755 and refuse a link, another
+  user's folder, or one others can change without a sticky bit (`files.mjs` · `outputFolder`, through `scratch.mjs` ·
+  `ownedFolder`, the sweep's one check of "ours"); the `out` folder itself is yours to choose, and a shared one can at
+  worst make a write fail. A test refuses any writing fs import outside `files.mjs` and the listed own-folder writers,
+  and any write line not listed with where it writes.
 
 ### Beats in the breakdown
 

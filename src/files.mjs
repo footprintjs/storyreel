@@ -20,6 +20,7 @@
 import path from 'node:path';
 import {randomBytes} from 'node:crypto';
 import {existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync, chmodSync, copyFileSync, linkSync, lstatSync, constants} from 'node:fs';
+import {ownedFolder} from './scratch.mjs';
 
 /** A name beside `final` nobody can have planted: random, and created exclusively by whoever writes it. */
 const besideName = final => path.join(path.dirname(final), `.storyreel-${randomBytes(8).toString('hex')}.part`);
@@ -65,21 +66,48 @@ export function writeOutput(final, what, fs = {}) {
   return final;
 }
 
+/** Writable by group or others, with no sticky bit: anyone who may write there may swap what is in it for a link. */
+const openToOthers = st => (st.mode & 0o022) !== 0 && (st.mode & 0o1000) === 0;
+
+/** Why StoryReel may not write into the folder lstat describes as `st`, or null when it may (see outputFolder). */
+function notOurs(st) {
+  if (st.isSymbolicLink()) return 'is a link';
+  if (!st.isDirectory()) return 'is a file';
+  if (!ownedFolder(st)) return 'belongs to another user';
+  if (openToOthers(st) && process.platform !== 'win32') return `can be changed by other users (mode ${(st.mode & 0o7777).toString(8).padStart(4, '0')}, no sticky bit)`;
+  return null;
+}
+
 /**
- * A folder StoryReel names inside the caller's `parent` (a release's <target>, a breakdown's shots/): made when it is
- * not there, kept when it is a real folder, refused when it is a link or a file — what is written in it would land
- * wherever the link points. `parent` is the caller's own (made if missing, never judged). Returns the folder's path.
+ * The folders StoryReel names inside the caller's `parent` (a release's <target> and work/<target>, a breakdown's
+ * shots/, the tools' stills/), each made when it is not there (0755 less the umask: never writable by others) and,
+ * made now or found, written into only when it is a real folder this user owns (scratch.mjs · ownedFolder) that no
+ * other user can change (not writable by group or others, unless sticky: there an entry is only its owner's to
+ * replace). Anything else is refused, naming the fix: what is written in it could land wherever another user points
+ * it. `parent` is the caller's own choice (made if missing, never judged: a shared one, like /tmp, can at worst make a
+ * write fail, never land elsewhere). `names` is a name or a list of them, each a folder inside the one before. Returns
+ * the last folder's path. `fs.lstat` is fs.lstatSync (a test hands in its own to play another user).
  */
-export function outputFolder(parent, ...names) {
+export function outputFolder(parent, names, fs = {}) {
+  const lstat = fs.lstat ?? lstatSync;
   let at = path.resolve(parent);
   mkdirSync(at, {recursive: true});
-  for (const name of names) {
+  for (const name of [].concat(names)) {
     at = path.join(at, name);
-    try { mkdirSync(at); } catch (e) { if (e?.code !== 'EEXIST') throw e; }
-    const st = lstatSync(at);
-    if (!st.isDirectory()) throw new Error(`${at} is ${st.isSymbolicLink() ? 'a link' : 'a file'}: StoryReel writes into a folder of its own there — remove it, or give another out`);
+    try { mkdirSync(at, {mode: 0o755}); } catch (e) { if (e?.code !== 'EEXIST') throw e; }
+    const why = notOurs(lstat(at));
+    if (why) throw new Error(`${at} ${why}: StoryReel writes only into a folder of its own there, that no one else can change — remove it, or give another out`);
   }
   return at;
+}
+
+/**
+ * Refuse, before anything is made, an output whose name holds a folder (writeOutput would refuse it only when it is
+ * written, after the outputs before it): the paths a render, a film, a release or a breakdown will write, checked at
+ * its start. Returns nothing; throws writeOutput's refusal.
+ */
+export function refuseFolders(finals, lstat = lstatSync) {
+  for (const final of finals) refuseFolderAt(final, lstat);
 }
 
 /**

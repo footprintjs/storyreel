@@ -10,8 +10,8 @@ import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {tempDir} from './tmp.mjs';
-import {writeOutput, outputFolder} from '../src/files.mjs';
-import {evenTimings, applyPacing} from '../src/index.mjs';
+import {writeOutput, outputFolder, refuseFolders} from '../src/files.mjs';
+import {evenTimings, applyPacing, compileFilm, renderFilm, makeFilm} from '../src/index.mjs';
 import {makeRelease} from '../src/release.mjs';
 import {breakdown} from '../src/breakdown.mjs';
 import {loadProject, still} from '../src/tools.mjs';
@@ -99,16 +99,39 @@ test('writeOutput: a move across disks (EXDEV) is copied beside the output under
   assert.throws(() => writeOutput(final, {move: path.join(work, 'gone.mp4')}), /ENOENT/, 'a move of nothing is not quietly a copy');
 });
 
-test('outputFolder: makes the folders StoryReel names inside the caller\'s, keeps a real one, refuses a link or a file there', t => {
+test('outputFolder: makes the folders StoryReel names inside the caller\'s (never writable by others), keeps a real one of ours, refuses a link or a file there', t => {
   const out = tempDir('out', t), elsewhere = tempDir('elsewhere', t);
-  assert.equal(outputFolder(path.join(out, 'new'), 'work', 'youtube'), path.join(out, 'new', 'work', 'youtube'));
+  const was = process.umask(0o002);   // a umask that leaves folders group-writable: what StoryReel makes is 0755 all the same
+  t.after(() => process.umask(was));
+  assert.equal(outputFolder(path.join(out, 'new'), ['work', 'youtube']), path.join(out, 'new', 'work', 'youtube'));
+  if (posix) assert.deepEqual(['work', path.join('work', 'youtube')].map(f => statSync(path.join(out, 'new', f)).mode & 0o7777), [0o755, 0o755]);
   writeFileSync(path.join(out, 'new', 'work', 'youtube', 'kept'), 'k');
-  outputFolder(path.join(out, 'new'), 'work', 'youtube');
-  assert.deepEqual(readdirSync(path.join(out, 'new', 'work', 'youtube')), ['kept'], 'a real folder is kept as it is');
+  outputFolder(path.join(out, 'new'), ['work', 'youtube']);
+  assert.deepEqual(readdirSync(path.join(out, 'new', 'work', 'youtube')), ['kept'], 'a real folder of ours is kept as it is');
   symlinkSync(elsewhere, path.join(out, 'stills'), 'dir'); writeFileSync(path.join(out, 'shots'), 'a file');
-  assert.throws(() => outputFolder(out, 'stills'), /stills is a link: StoryReel writes into a folder of its own there — remove it, or give another out/);
-  assert.throws(() => outputFolder(out, 'shots'), /shots is a file: StoryReel writes into a folder of its own there/);
+  assert.throws(() => outputFolder(out, 'stills'), /stills is a link: StoryReel writes only into a folder of its own there, that no one else can change — remove it, or give another out/);
+  assert.throws(() => outputFolder(out, 'shots'), /shots is a file: StoryReel writes only into a folder of its own there/);
   assert.deepEqual(readdirSync(elsewhere), [], 'nothing written where the link points');
+});
+
+test('outputFolder: an existing folder another user owns, or one of ours that others can change (0777), is refused; a sticky 1777 one of ours is not', {skip: posix ? false : 'no POSIX owners or modes'}, t => {
+  const out = tempDir('shared', t);
+  // Another user made <out>/work (as in a shared /tmp): lstat says whose — played here by a stubbed lstat.
+  mkdirSync(path.join(out, 'work'));
+  const theirs = at => { const st = lstatSync(at); return at === path.join(out, 'work') ? {isDirectory: () => true, isSymbolicLink: () => false, uid: process.getuid() + 1, mode: st.mode} : st; };
+  assert.throws(() => outputFolder(out, ['work', 'youtube'], {lstat: theirs}), /work belongs to another user: StoryReel writes only into a folder of its own there, that no one else can change — remove it, or give another out/);
+  assert.ok(!existsSync(path.join(out, 'work', 'youtube')), 'nothing made inside it');
+  chmodSync(path.join(out, 'work'), 0o777);
+  assert.throws(() => outputFolder(out, ['work', 'youtube']), /work can be changed by other users \(mode 0777, no sticky bit\): StoryReel writes only into a folder of its own there/);
+  chmodSync(path.join(out, 'work'), 0o1777);
+  assert.equal(outputFolder(out, ['work', 'youtube']), path.join(out, 'work', 'youtube'), 'sticky: others may add an entry, never replace one of ours');
+});
+
+test('refuseFolders: a folder at any of the names refuses before anything is written; the others are fine missing or as files', t => {
+  const out = tempDir('names', t);
+  mkdirSync(path.join(out, 'chapters.txt')); writeFileSync(path.join(out, 'film.mp4'), 'old');
+  refuseFolders([path.join(out, 'film.mp4'), path.join(out, 'poster.jpg')]);
+  assert.throws(() => refuseFolders([path.join(out, 'film.mp4'), path.join(out, 'chapters.txt')]), /chapters\.txt is a folder: StoryReel writes a file there, and never removes a folder to make room/);
 });
 
 // A release: makeFilm's outputs in <out>/work/<target>/ (the video FFmpeg writes, poster.jpg, chapters.txt, the
@@ -135,8 +158,29 @@ test('a release replaces a link planted at every output\'s name — the film\'s 
 test('a release refuses a link planted where it makes a target\'s folder, before anything is drawn', async t => {
   const out = tempDir('release', t), elsewhere = tempDir('elsewhere', t);
   symlinkSync(elsewhere, path.join(out, 'youtube'), 'dir');
-  await assert.rejects(makeRelease({...film, out, targets: ['youtube'], post: {title: 'Links', description: 'A test.', audience: 'general'}}), /youtube is a link: StoryReel writes into a folder of its own there — remove it, or give another out/);
+  await assert.rejects(makeRelease({...film, out, targets: ['youtube'], post: {title: 'Links', description: 'A test.', audience: 'general'}}), /youtube is a link: StoryReel writes only into a folder of its own there, that no one else can change — remove it, or give another out/);
   assert.deepEqual(readdirSync(elsewhere), []);
+});
+
+test('a folder at any output\'s name refuses before anything is drawn or written: a render, a film, a release, a breakdown', async t => {
+  const visible = dir => readdirSync(dir).sort();
+  // A render: the folder at chapters.txt is found while the job is prepared, before film.mp4 or poster.jpg exist.
+  const dir = tempDir('early', t), compiled = await compileFilm({...film, render: undefined});
+  mkdirSync(path.join(dir, 'chapters.txt'));
+  await assert.rejects(renderFilm({film: compiled, storyboard, timings: film.timings, out: path.join(dir, 'film.mp4'), width: 160, height: 90, fps: 5}), /chapters\.txt is a folder: StoryReel writes a file there, and never removes a folder to make room — move or rename the folder, or give another out/);
+  assert.deepEqual(visible(dir), ['chapters.txt'], 'no video, no poster, no working folder');
+  // A film: its record is written last, so it is checked first.
+  const made = tempDir('early-film', t); mkdirSync(path.join(made, 'making-of.json'));
+  await assert.rejects(makeFilm({...film, out: path.join(made, 'film.mp4'), render: {width: 160, height: 90, fps: 5}}), /making-of\.json is a folder/);
+  assert.deepEqual(visible(made), ['making-of.json']);
+  // A release: every target's names, before the first target renders.
+  const out = tempDir('early-release', t); mkdirSync(path.join(out, 'youtube', 'post.json'), {recursive: true});
+  await assert.rejects(makeRelease({...film, out, targets: ['youtube'], post: {title: 'Links', description: 'A test.', audience: 'general'}}), /youtube\/post\.json is a folder/);
+  assert.deepEqual(readdirSync(path.join(out, 'work', 'youtube')), [], 'nothing rendered');
+  // A breakdown: its files' names, before a frame is read (the video need not even be read).
+  const broken = tempDir('early-breakdown', t), video = path.join(broken, 'v.mp4'); writeFileSync(video, 'not read'); mkdirSync(path.join(broken, 'out', 'breakdown.md'), {recursive: true});
+  await assert.rejects(breakdown(video, {out: path.join(broken, 'out')}), /breakdown\.md is a folder/);
+  assert.deepEqual(visible(path.join(broken, 'out')), ['breakdown.md']);
 });
 
 test('a breakdown replaces a link planted at each of its files, and refuses a link at its shots folder', {skip: has('ffmpeg') && has('ffprobe') ? false : 'needs ffmpeg and ffprobe'}, async t => {
@@ -150,7 +194,7 @@ test('a breakdown replaces a link planted at each of its files, and refuses a li
   assert.deepEqual(files.sheets, [path.join(out, 'shots', 'shot-01.png')]);
   const linked = path.join(dir, 'linked'), elsewhere = tempDir('elsewhere', t);
   mkdirSync(linked); symlinkSync(elsewhere, path.join(linked, 'shots'), 'dir');
-  await assert.rejects(breakdown(video, {out: linked}), /shots is a link: StoryReel writes into a folder of its own there/);
+  await assert.rejects(breakdown(video, {out: linked}), /shots is a link: StoryReel writes only into a folder of its own there/);
   assert.deepEqual(readdirSync(elsewhere), []);
 });
 
@@ -161,7 +205,7 @@ test('a tool\'s still replaces a link planted at its name, and refuses a link at
   replaced(planted);
   const linked = tempDir('tools-linked', t), elsewhere = tempDir('elsewhere', t);
   symlinkSync(elsewhere, path.join(linked, 'stills'), 'dir');
-  await assert.rejects(still(await loadProject({cwd: project, out: linked}), {at: 'one+2.5'}), /stills is a link: StoryReel writes into a folder of its own there/);
+  await assert.rejects(still(await loadProject({cwd: project, out: linked}), {at: 'one+2.5'}), /stills is a link: StoryReel writes only into a folder of its own there/);
   assert.deepEqual(readdirSync(elsewhere), []);
 });
 
@@ -211,17 +255,30 @@ test('the segment store replaces a link planted at a segment\'s file or its mani
   assert.deepEqual(parts(dir), []);
 });
 
-// The guard: every write in src/ that could land in a folder the caller names goes through writeOutput. A raw write
-// (writeFileSync, copyFileSync, linkSync, …, or FFmpeg's -y) is allowed only where it writes into StoryReel's own
-// folder; each such line is listed here with where it writes. A new raw write fails this test until it moves to
-// writeOutput or is listed with its reason; a line listed and gone fails it too.
-const RAW = /\b(writeFileSync|writeFile|appendFileSync|appendFile|copyFileSync|copyFile|linkSync|symlinkSync|createWriteStream|cpSync)\s*\(|'-y'/;
+// The guard, in two parts. First by import: only files.mjs — the one owner of writing outputs — and the files listed in
+// IMPORTS may import an fs function that writes or changes a file (any that can follow a link at its path: write, open,
+// append, truncate, copy, rename, link, chmod, chown, utimes, a write stream, fs.promises), each by name; a whole-module
+// import of fs, a dynamic import or a require of it is refused anywhere. Then by line: every call of such a function, and
+// every FFmpeg -y, is one listed in OWN with where it writes — StoryReel's own folder (the render's work folder, a
+// makeScratch or tempScratch folder) or writeOutput's own steps. A new raw write fails until it goes through
+// writeOutput or is listed with its reason; a listed import or line that is gone fails too.
+const WRITERS = ['writeFileSync', 'writeFile', 'openSync', 'open', 'writeSync', 'write', 'writevSync', 'writev', 'appendFileSync', 'appendFile',
+  'truncateSync', 'truncate', 'ftruncateSync', 'ftruncate', 'copyFileSync', 'copyFile', 'cpSync', 'cp', 'renameSync', 'rename', 'linkSync', 'link',
+  'symlinkSync', 'symlink', 'chmodSync', 'chmod', 'chownSync', 'chown', 'utimesSync', 'utimes', 'createWriteStream', 'promises'];
+const IMPORTS = {
+  'files.mjs': ['writeFileSync', 'renameSync', 'chmodSync', 'copyFileSync', 'linkSync'],   // the owner: writeOutput, copyVoice, placeVoice
+  'pipeline.mjs': ['writeFileSync'], 'render.mjs': ['writeFileSync'], 'segments.mjs': ['writeFileSync'], 'stills.mjs': ['writeFileSync'],
+};
 const OWN = [
   ['files.mjs', 'ops.copyFileSync(from, temp, constants.COPYFILE_EXCL)', 'writeOutput: a new random name beside the output, created exclusively'],
   ['files.mjs', 'ops.writeFileSync(temp, what, {flag: \'wx\'})', 'writeOutput: the same'],
   ['files.mjs', 'ops.linkSync(what.copy, temp)', 'writeOutput: the same'],
+  ['files.mjs', 'try { make(temp); ops.renameSync(temp, final); }', 'writeOutput: that name renamed onto the output (a rename replaces a link, never follows it)'],
+  ['files.mjs', 'try { ops.renameSync(what.move, final); }', 'writeOutput: a move, renamed the same way'],
   ['files.mjs', "writeFileSync(path.join(to, 'timings.json'), bytes, {flag: 'wx'})", 'copyVoice: into the voice copy makeScratch made (0700), exclusively'],
   ['files.mjs', "writeFileSync(target, readFileSync(path.join(base, f)), {flag: 'wx'})", 'copyVoice: the same'],
+  ['files.mjs', 'ops.chmodSync(copy, plainFolderMode())', 'placeVoice: the voice copy, before it is renamed'],
+  ['files.mjs', 'ops.renameSync(copy, final)', 'placeVoice: the copy renamed onto narration/'],
   ['pipeline.mjs', "writeFileSync(path.join(copy, 'timings.json')", 'the voice copy makeScratch made'],
   ['pipeline.mjs', "if (scope.narration) writeFileSync(path.join(scope.narration, 'timings.json')", 'fit-to-music: the same copy (place-narration, the last stage, makes it narration/)'],
   ['render.mjs', "spawnSync(ffmpeg, ['-y', '-hide_banner'", 'runReporting: the mux, into the work folder (finishRender renames it onto out)'],
@@ -236,14 +293,60 @@ const OWN = [
   ['segments.mjs', "spawnSync(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'concat'", 'ffmpegJoin: the same'],
   ['stills.mjs', 'writeFileSync(script, filter)', 'the stills pass\'s tempScratch folder'],
 ];
-
-test('no write in src/ goes around writeOutput: every raw write is one listed as writing into StoryReel\'s own folder', () => {
+const FS = String.raw`['"](?:node:)?fs(?:/promises)?['"]`;
+/** What a source file takes from fs: each name imported, and any whole-module import, dynamic import or require of it. */
+function fsImports(code) {
+  const named = [...code.matchAll(new RegExp(String.raw`import\s*\{([^}]*)\}\s*from\s*` + FS, 'g'))].flatMap(m => m[1].split(',').map(n => n.trim().split(/\s+as\s+/)[0]).filter(Boolean));
+  const whole = [...code.matchAll(new RegExp(String.raw`import\s+(?:\*\s+as\s+\w+|\w+)(?:\s*,\s*\{[^}]*\})?\s*from\s*` + FS, 'g')),
+    ...code.matchAll(new RegExp(String.raw`(?:import|require)\s*\(\s*` + FS, 'g'))].map(m => m[0].replace(/\s+/g, ' '));
+  return {named, whole};
+}
+const srcFiles = () => {
   const src = fileURLToPath(new URL('../src/', import.meta.url));
-  const files = (dir, at = '') => readdirSync(path.join(dir, at), {withFileTypes: true}).flatMap(e => e.isDirectory() ? files(dir, path.join(at, e.name)) : e.name.endsWith('.mjs') ? [path.join(at, e.name)] : []);
-  const raw = files(src).flatMap(file => readFileSync(path.join(src, file), 'utf8').split('\n').map((line, i) => ({file, line: i + 1, text: line.trim()})))
-    .filter(({text}) => RAW.test(text) && !text.startsWith('//') && !text.startsWith('*'));
-  const unlisted = raw.filter(({file, text}) => !OWN.some(([f, has]) => f === file && text.includes(has)));
-  assert.deepEqual(unlisted.map(({file, line, text}) => `${file}:${line} ${text.slice(0, 120)}`), [], 'a raw write not listed: write the output through files.mjs · writeOutput, or list it with where it writes');
-  const stale = OWN.filter(([f, has]) => !raw.some(({file, text}) => file === f && text.includes(has)));
-  assert.deepEqual(stale.map(([f, has]) => `${f}: ${has}`), [], 'a listed write that is gone: remove it from the list');
+  const walk = (at = '') => readdirSync(path.join(src, at), {withFileTypes: true}).flatMap(e => e.isDirectory() ? walk(path.join(at, e.name)) : e.name.endsWith('.mjs') ? [path.join(at, e.name)] : []);
+  return walk().map(file => ({file, code: readFileSync(path.join(src, file), 'utf8')}));
+};
+
+/** Every way src/ could write a file around writeOutput (empty when there is none): by import, then by line. */
+function rawWrites(files = srcFiles()) {
+  const problems = [];
+  for (const {file, code} of files) {
+    const {named, whole} = fsImports(code), allowed = IMPORTS[file] ?? [];
+    for (const w of whole) problems.push(`${file}: ${w} — import fs functions by name`);
+    for (const name of named.filter(n => WRITERS.includes(n) && !allowed.includes(n))) problems.push(`${file}: imports ${name}, which writes a file — write the output through files.mjs · writeOutput`);
+    for (const name of allowed.filter(n => !named.includes(n))) problems.push(`${file}: listed as importing ${name}, and it does not — remove it from IMPORTS`);
+    const calls = new RegExp(String.raw`\b(${named.filter(n => WRITERS.includes(n)).join('|') || '(?!)'})\s*\(|'-y'`);
+    code.split('\n').forEach((line, i) => {
+      const text = line.trim();
+      if (text.startsWith('//') || text.startsWith('*') || !calls.test(text)) return;
+      if (!OWN.some(([f, has]) => f === file && text.includes(has))) problems.push(`${file}:${i + 1} ${text.slice(0, 120)} — write the output through files.mjs · writeOutput, or list it in OWN with where it writes`);
+    });
+  }
+  for (const [f, has] of OWN) if (!files.some(({file, code}) => file === f && code.includes(has))) problems.push(`${f}: "${has}" is listed in OWN and gone — remove it`);
+  return problems;
+}
+
+test('no write in src/ goes around writeOutput: by import (only files.mjs and the listed own-folder writers take a writing fs function) and by line', () => {
+  assert.deepEqual(rawWrites(), []);
+});
+
+test('the guard catches a write it was not told about: an openSync + writeSync, a fs.promises handle, a whole-module or dynamic import of fs', () => {
+  const files = srcFiles(), with_ = (file, edit) => files.map(f => f.file === file ? {file, code: edit(f.code)} : f);
+  const opened = with_('render.mjs', c => c.replace("import {writeFileSync, mkdirSync, rmSync} from 'node:fs';", "import {writeFileSync, mkdirSync, rmSync, openSync, writeSync} from 'node:fs';")
+    .replace("writeOutput(path.join(dir, 'chapters.txt'), ", "writeSync(openSync(path.join(dir, 'chapters.txt'), 'w'), "));
+  const found = rawWrites(opened);
+  assert.equal(found.length, 3, found.join('\n'));
+  assert.match(found[0], /^render\.mjs: imports openSync, which writes a file — write the output through files\.mjs · writeOutput$/);
+  assert.match(found[1], /^render\.mjs: imports writeSync, which writes a file/);
+  assert.match(found[2], /^render\.mjs:\d+ writeSync\(openSync\(path\.join\(dir, 'chapters\.txt'\), 'w'\), .* — write the output through files\.mjs · writeOutput, or list it in OWN/);
+  const handle = with_('tools.mjs', c => `import {open} from 'node:fs/promises';\n${c}`);
+  assert.match(rawWrites(handle).join('\n'), /tools\.mjs: imports open, which writes a file/);
+  const promises = with_('tools.mjs', c => `import {promises as fsp} from 'fs';\n${c}`);
+  assert.match(rawWrites(promises).join('\n'), /tools\.mjs: imports promises, which writes a file/);
+  const whole = with_('tools.mjs', c => `import * as fs from 'node:fs';\n${c}`);
+  assert.match(rawWrites(whole).join('\n'), /tools\.mjs: import \* as fs from 'node:fs' — import fs functions by name/);
+  const dynamic = with_('tools.mjs', c => `${c}\nconst later = () => import('node:fs/promises');\n`);
+  assert.match(rawWrites(dynamic).join('\n'), /tools\.mjs: import\('node:fs\/promises' — import fs functions by name/);
+  const ffmpeg = with_('breakdown.mjs', c => `${c}\nconst y = ['-y', 'out.mp4'];\n`);
+  assert.match(rawWrites(ffmpeg).join('\n'), /breakdown\.mjs:\d+ const y = \['-y', 'out\.mp4'\];/);
 });

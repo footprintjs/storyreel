@@ -59,10 +59,17 @@ function leftBehind(dir, name, prefix, now) {
   return now - newestWrite(path.join(dir, name)) > STALE_AFTER;
 }
 
-/** Whether an entry is a scratch folder this user may sweep: a real folder (lstat: a link is not one), owned by this user (no uid on Windows). */
+/**
+ * Whether an entry, as lstat describes it (`st`), is a real folder this user owns: not a link (lstat does not follow
+ * one), and owned by this user's uid (no uids on Windows). The one check of "ours": the sweep acts only on such a
+ * folder, and files.mjs · outputFolder writes only into one.
+ */
+export const ownedFolder = st => Boolean(st) && st.isDirectory() && !st.isSymbolicLink() && (typeof process.getuid !== 'function' || st.uid === process.getuid());
+
+/** Whether the entry at `at` is a scratch folder this user may sweep (ownedFolder). */
 function ours(at, lstat) {
   let st; try { st = lstat(at); } catch { return false; }
-  return st.isDirectory() && !st.isSymbolicLink() && (typeof process.getuid !== 'function' || st.uid === process.getuid());
+  return ownedFolder(st);
 }
 
 /**

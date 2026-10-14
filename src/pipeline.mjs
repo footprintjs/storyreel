@@ -11,7 +11,7 @@
  */
 import {readCast, withCast} from './cast.mjs';
 import {readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync} from 'node:fs';
-import {copyVoice, requireVoiceApart, placeVoice, writeOutput} from './files.mjs';
+import {copyVoice, requireVoiceApart, placeVoice, writeOutput, refuseFolders} from './files.mjs';
 import path from 'node:path';
 import {flowChart, narrative} from 'footprintjs';
 import {applyPacing, validatePacing, paceTimings} from './pacing.mjs';
@@ -147,6 +147,9 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   // Before anything is written, even the out folder: the voice is paced in the out folder and then replaces its
   // narration folder, so the two must not overlap (files.mjs · requireVoiceApart).
   if (narrationDir) requireVoiceApart(narrationDir, dir);
+  // The record is written last, after the video: a folder at its name refuses now (the render's own outputs are checked
+  // when it is prepared, before a frame is drawn: render.mjs · prepareJob).
+  refuseFolders([path.join(dir, 'making-of.json')]);
   mkdirSync(dir, {recursive: true});
   // Where the voice is paced: a copy of it, in a new folder made when the voice is read (scratch.mjs · makeScratch: one
   // only this user can open, never a path already there), after sweeping the copies stopped runs left. The render reads

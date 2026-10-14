@@ -31,7 +31,8 @@
  */
 import {readChapters} from 'footprint-narration';
 import {readFileSync, statSync} from 'node:fs';
-import {writeOutput, outputFolder} from './files.mjs';
+import {writeOutput, outputFolder, refuseFolders} from './files.mjs';
+import {readCaptionFiles} from './render.mjs';
 import path from 'node:path';
 import {makeFilm} from './pipeline.mjs';
 import {FORMAT_NAMES, formatOf, formatScale} from './layout.mjs';
@@ -219,10 +220,20 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
     if (p.thumbnail !== 'poster') await checkThumbnail(adapter, p.thumbnail);
   }
   const stem = base ?? (String(film.storyboard?.title ?? 'film').toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'film');
+  // Then, still before a frame is drawn, every target's folders and the names written in them: each folder inside `out`
+  // a real one of the release's own that no one else can change (files.mjs · outputFolder), and no folder at a name a
+  // file goes to (files.mjs · refuseFolders) — so a refusal never comes after another target's outputs, or its own.
+  const folders = loaded.map(({adapter, options}) => {
+    const dir = outputFolder(out, options.name), work = outputFolder(out, [WORK, options.name]);
+    const captions = readCaptionFiles(adapter.video.captionFiles ?? film.render?.captionFiles ?? false).map(k => `captions.${k}`);
+    const thumbnail = adapter.thumbnail && p.thumbnail ? [p.thumbnail === 'poster' ? 'thumbnail.jpg' : `thumbnail${path.extname(p.thumbnail)}`] : [];
+    refuseFolders([`${stem}.mp4`, ...captions, ...thumbnail, 'post.json', 'post.txt', 'CREDITS.txt'].map(f => path.join(dir, f)));
+    refuseFolders([`${stem}.mp4`, ...captions, 'chapters.txt', 'making-of.json', ...(poster ? ['poster.jpg'] : [])].map(f => path.join(work, f)));
+    return {dir, work};
+  });
   const released = [];
-  for (const {adapter, options} of loaded) {
-    // The target's folders, named inside `out`: real folders of the release's own, never a link (files.mjs · outputFolder).
-    const dir = outputFolder(out, options.name), work = outputFolder(out, WORK, options.name);
+  for (const [i, {adapter, options}] of loaded.entries()) {
+    const {dir, work} = folders[i];
     const layout = {format: adapter.video.format, ...(adapter.video.captions || options.captions ? {captions: options.captions ?? adapter.video.captions} : {}),
       ...(options.header ? {header: options.header} : adapter.video.header && p.title ? {header: {title: p.title}} : {}), ...(options.crop ? {crop: options.crop} : {}), ...(options.scale !== undefined ? {scale: options.scale} : {})};
     // A platform that takes an uploaded thumbnail (YouTube) shows no frame of the video as one: it starts on the film's own.

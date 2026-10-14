@@ -16,7 +16,7 @@ import {spokenTracks} from './captions.mjs';
 import {effectsUnderVoice, musicUnderVoice} from './listening.mjs';
 import {readSongPlacement, requireOverlap} from './music.mjs';
 import {makeScratch, sweepScratch} from './scratch.mjs';
-import {writeOutput} from './files.mjs';
+import {writeOutput, refuseFolders} from './files.mjs';
 
 /**
  * Loudness in two passes (FFmpeg's loudnorm): measure the whole mixed film, then set it with ONE fixed
@@ -379,7 +379,10 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   if (framed && (givenWidth !== undefined || givenHeight !== undefined)) throw new Error(`renderFilm: the ${framed.format} layout is ${framed.width}×${framed.height}; leave width and height out (they size a render without a layout)`);
   const width = framed?.width ?? givenWidth ?? 1280, height = framed?.height ?? givenHeight ?? 720;
   if (framed && intro && framed.format !== 'landscape') throw new Error(`renderFilm: an intro is drawn for the landscape frame; the ${framed.format} layout takes none (leave intro out)`);
-  const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
+  const dir = path.dirname(path.resolve(out));
+  // Every output's name, before anything is made: a folder at one refuses now, not after the outputs before it.
+  refuseFolders([path.resolve(out), ...(poster !== null ? [path.join(dir, 'poster.jpg')] : []), path.join(dir, 'chapters.txt'), ...captionKinds.map(k => path.join(dir, `captions.${k}`))]);
+  mkdirSync(dir, {recursive: true});
   // The working files' folder: the caller's (kept, never swept), or a new hidden one beside the video, removed by
   // closeRender — made by scratch.mjs · makeScratch (a fresh folder only this user can open, never a path already there),
   // after sweeping the ones stopped renders left there.

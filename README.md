@@ -1299,10 +1299,14 @@ breakdown's spec and sheets, a tool's stills, a paced or fitted voice's files, a
 (`files.mjs` · `writeOutput`): made under a new name (FFmpeg's video in the work folder; anything else beside it, under a
 random name created exclusively), then renamed onto its own name. A rename replaces whatever is at the name, a link
 included, and never follows one: a link someone planted at `chapters.txt` in a shared folder is replaced by the
-chapters, and the file it pointed at is never written. A folder at an output's name is refused, never removed. The
-folders StoryReel names inside yours (a release's `<target>/` and `work/<target>/`, a breakdown's `shots/`, the tools'
-`stills/`) must be real folders: a link there is refused. A `work` folder you name holds working files by fixed names, so
-name one of your own, not a shared folder.
+chapters, and the file it pointed at is never written. A folder at an output's name is refused before anything is
+drawn, never removed. The folders StoryReel names inside yours (a release's `<target>/` and `work/<target>/`, a
+breakdown's `shots/`, the tools' `stills/`) are made 0755 and written into only when they are real folders you own that
+no one else can change (not writable by group or others, unless sticky): a link there, another user's folder, or one
+of yours left open (0777) is refused, naming the fix. The `out` folder itself is your choice and is never judged: a
+shared one such as `/tmp` can at worst make a write fail (another user's entry at an output's name cannot be replaced
+there), never send it elsewhere. A `work` folder you name holds working files by fixed names, so name one of your own,
+not a shared folder.
 
 | where | what | kept? |
 |---|---|---|
