@@ -387,3 +387,8 @@ export const joins: number = DRAWN.point + DRAWN.size + DRAWN.baseline;
 import {HOLD, drawnClaims as heldDrawn} from '../types/sub/claims.js';
 export const heldFor = (film: Film): number => heldDrawn([{t: 0, words: [{text: 'load 42 %'}]}], {claims: film.claims, sceneOf: () => 0, wordsAt: () => []}).length + HOLD.seconds + HOLD.step + HOLD.fine;
 export const lastInk = (film: Film): number => film.lines.reduce((n, l) => Math.max(n, l.gone ?? l.to), 0);
+// The film's language (compileFilm's lang): numbers read by it.
+import {numberLocale, numberValue} from '../types/sub/claims.js';
+import type {CompileFilmOptions} from '../types/index.js';
+export const readInLang = (film: Film): string => `${numberValue('2,5', {lang: film.lang})} ${numberLocale('en-IN')?.secondary ?? 0} ${film.inputs.lang ?? ''} ${film.claims.numbers[0]?.ambiguous ?? ''}`;
+export const inGerman = (o: CompileFilmOptions): CompileFilmOptions => ({...o, lang: 'de'});

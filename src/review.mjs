@@ -433,7 +433,7 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
       const ids = film.timings.scenes.map(sc => sc.id), both = x => [...x.words, ...(x.marks ?? [])], steps = [];
       if (every > HOLD.step + 1e-9) for (let t = window.from; t <= window.to + 1e-9; t += HOLD.step) steps.push(onClock(film, t));
       const reads = steps.length ? steps.map(sampleAt) : review.samples;
-      review.drawn = drawnClaims(reads.map(x => ({t: x.t, words: both(x)})), {claims: film.claims, sceneOf: t => film.clock.locate(t).index, scenes: ids, wordsAt: t => both(sampleAt(onClock(film, t)))});
+      review.drawn = drawnClaims(reads.map(x => ({t: x.t, words: both(x)})), {claims: film.claims, sceneOf: t => film.clock.locate(t).index, scenes: ids, wordsAt: t => (t > film.total + 1e-9 ? [] : both(sampleAt(onClock(film, t)))), lang: film.lang ?? null});   // nothing is up after the film's end
       review.lingers = lingeringExamples({labels: film.claims.labels, numbers: [...film.claims.numbers, ...review.drawn]},
         {scenes: film.timings.scenes.map((sc, i) => ({from: film.clock.offsets[i], to: film.clock.offsets[i] + sc.duration})), examples: film.claims.examples, ids})
         .filter(g => g.from < window.to - 1e-6 && g.to > window.from + 1e-6);

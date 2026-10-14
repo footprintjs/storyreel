@@ -13,9 +13,10 @@
  * the review, every word the picture draws (drawnClaims: a kit's own words, a card's rows, code). The numbers in them
  * are found the way the voice tools find digits (footprint-narration · unsaidDigits, over the text as written), with
  * their sign; a digit run right after a cased letter, or after a hyphen that follows one, is part of a name (H2O, MP4,
- * COVID-19, ISO-8601), not a number — but a year after a lower-case word or a time prefix is one ("mid-2024"). A number
- * with one separator before exactly three digits ("1,000", "1.000") is a thousand in one language and one in another:
- * it is ambiguous, and only a fact that writes it the same way sources it.
+ * COVID-19, ISO-8601), not a number — but a year after a lower-case word or a time prefix is one ("mid-2024"). Each is
+ * read by the language the film is shown in (`film.lang`, numberLocale: de "2,5" is 2.5, en-IN "1,00,000" is 100000);
+ * without one, a number the languages read apart ("1,000", "1.000", "2,5", "1,00,000") is ambiguous, kept as written,
+ * and only a fact that writes it the same way sources it.
  */
 import {existsSync, statSync} from 'node:fs';
 import path from 'node:path';
@@ -37,7 +38,7 @@ const SIGNS = new Set(['-', '\u2212', '\u2013']), HYPHENS = new Set(['-', '\u201
  * "pre-2020", "post-1990" are years, and need a source). A unit written onto a number stays a number ("60Hz", "5km",
  * "4K"); a number after a CJK character is a number ("価格は100円").
  */
-export const numbersIn = text => numberRuns(text).map(n => n.run);
+export const numbersIn = (text, {lang = null} = {}) => numberRuns(text, numberLocale(lang)).map(n => n.run);
 /** The words before a hyphen that make the year after it a time ("Mid-2024" opens a sentence): any case. */
 const YEAR_PREFIXES = new Set(['mid', 'pre', 'post', 'early', 'late']);
 /** A plausible year: four digits, 1000–2199. */
@@ -54,47 +55,81 @@ function namedRun(s, at, digits) {
   const word = /\p{L}+$/u.exec(s.slice(0, at - 1))[0];
   return !(isYear(digits) && (/^\p{Ll}+$/u.test(word) || YEAR_PREFIXES.has(word.toLowerCase())));
 }
-/** The same numbers with where each stands in the text (its sign's place, when it has one): [{run, at}]. */
-function numberRuns(text) {
-  const s = String(text ?? ''), out = []; let from = 0;
-  for (const whole of unsaidDigits(spokenMap(s))) {
-    const found = s.indexOf(whole, from); if (found < 0) continue;
-    from = found + whole.length;
-    for (const {digits, offset} of commaParts(whole)) {
-      const at = found + offset;
-      if (namedRun(s, at, digits)) continue;
-      const before = s[at - 1], signed = SIGNS.has(before) && !isAlnum(s[at - 2]);
-      out.push(signed ? {run: before + digits, at: at - 1} : {run: digits, at});
-    }
-  }
-  return out;
+/**
+ * A language's way of writing numbers, from Intl.NumberFormat(lang).formatToParts: its group and decimal symbols and its
+ * grouping — the group after the last (`primary`, 3) and before it (`secondary`: 3, or 2 in Indian grouping: "en-IN",
+ * "ta", "te", "hi" write 1,00,000). null without a language. A tag that is not BCP 47 refuses, naming the fix.
+ *   numberLocale('de') → {lang: 'de', group: '.', decimal: ',', primary: 3, secondary: 3}
+ *   numberLocale('fr') → {lang: 'fr', group: '\u202f' (a narrow no-break space), decimal: ',', …}
+ */
+export function numberLocale(lang) {
+  if (lang === null || lang === undefined) return null;
+  if (LOCALES.has(lang)) return LOCALES.get(lang);
+  let tag = null; try { [tag] = typeof lang === 'string' ? Intl.getCanonicalLocales(lang) : []; } catch { /* refused below */ }
+  if (!tag) throw new Error(`lang is the language the film is shown in, a BCP 47 tag ("de", "fr", "en-IN", "ta"), not ${JSON.stringify(lang)}: the numbers on screen are read by it (2,5 is 2.5 in "de")`);
+  const f = new Intl.NumberFormat(tag), parts = f.formatToParts(1234567.5), ints = parts.filter(p => p.type === 'integer').map(p => p.value.length);
+  const locale = Object.freeze({lang: tag, group: ints.length > 1 ? parts.find(p => p.type === 'group').value : null, decimal: parts.find(p => p.type === 'decimal')?.value ?? '.',
+    primary: ints.at(-1), secondary: ints.length > 2 ? ints.at(-2) : ints.at(-1)});
+  LOCALES.set(lang, locale);
+  return locale;
+}
+const LOCALES = new Map();
+/** The no-break spaces a group may be written with when the language groups with one (fr: U+202F; typed text often U+00A0). */
+const NO_BREAK = new Set(['\u00a0', '\u202f', '\u2009']);
+const literal = ch => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), PATTERNS = new Map();
+/** A language's number as a pattern: plain digits, or grouped its way, each with an optional decimal part. */
+function localePattern(locale) {
+  if (PATTERNS.has(locale.lang)) return PATTERNS.get(locale.lang);
+  const d = `(${literal(locale.decimal)}\\d+)?`, g = locale.group === null ? null : (NO_BREAK.has(locale.group) ? '[\\u00a0\\u202f\\u2009]' : literal(locale.group));
+  PATTERNS.set(locale.lang, new RegExp(`^(\\d+${d}${g ? `|\\d{1,${locale.secondary}}(${g}\\d{${locale.secondary}})*${g}\\d{${locale.primary}}${d}` : ''})$`));
+  return PATTERNS.get(locale.lang);
 }
 
 /**
- * A digit run cut at its commas, the one comma rule every reading shares (typed, and drawn: drawnLines joins a lone ","
- * to its digits and leaves the cutting here): a comma joins digits only before a three-digit group — "1,299.99" and
- * "1,000,000" are one number each, "1,2" and "4,5" are two ("steps 1,2 and 3"; code's f(4,5)) — and, after a dotted
- * thousands group, it is a decimal comma: "1.299,99" is 1299.99, the one reading in which it is a number at all.
- * [{digits, offset}], each part with where it stands in the run.
+ * The same numbers with where each stands in the text (its sign's place, when it has one): [{run, at}]. With a
+ * language (numberLocale), a number grouped with a symbol the voice tools stop at (a no-break space, an apostrophe:
+ * fr "1 234 567,5", de-CH "1'234'567.5") is one run.
  */
-function commaParts(run) {
-  if (/^\d{1,3}(\.\d{3})+,\d+$/.test(run)) return [{digits: run, offset: 0}];
-  const parts = []; let start = 0;
-  for (let i = 0; i < run.length; i++) if (run[i] === ',' && !/^\d{3}(?!\d)/.test(run.slice(i + 1))) { parts.push({digits: run.slice(start, i), offset: start}); start = i + 1; }
-  parts.push({digits: run.slice(start), offset: start});
-  return parts.filter(p => p.digits);
+function numberRuns(text, locale = null) {
+  const s = String(text ?? ''), raw = []; let from = 0;
+  for (const run of unsaidDigits(spokenMap(s))) { const at = s.indexOf(run, from); if (at < 0) continue; from = at + run.length; raw.push({run, at}); }
+  const runs = [];
+  for (const r of raw) {
+    const last = runs.at(-1), between = last ? s.slice(last.at + last.run.length, r.at) : null;
+    const grouped = last && locale?.group && between.length === 1 && (between === locale.group || (NO_BREAK.has(locale.group) && NO_BREAK.has(between)));
+    if (grouped && localePattern(locale).test(`${last.run}${between}${r.run}`)) last.run = s.slice(last.at, r.at + r.run.length);
+    else runs.push({...r});
+  }
+  const out = [];
+  for (const {run: digits, at} of runs) {
+    if (namedRun(s, at, digits)) continue;
+    const before = s[at - 1], signed = SIGNS.has(before) && !isAlnum(s[at - 2]);
+    out.push(signed ? {run: before + digits, at: at - 1} : {run: digits, at});
+  }
+  return out;
 }
 
 /** A thousands group after a first group that does not start with 0: "1,000" or "12.345" (never "0.125"). */
 const ONE_GROUP = /^[1-9]\d{0,2}[.,]\d{3}$/;
 /**
- * The value a number stands for, or the number as it is written when it is not one value: "1,000,000" → 1000000,
- * "1,000.5" and "1.000,5" → 1000.5, "1.299,99" → 1299.99, "16.67" → 16.67, "−5" → −5; "1,000" and "1.000" (a thousand,
- * or one?), a time "3:15", a version "1.2.3" and "4,5" (two numbers: commaParts) stay as written.
+ * The value a number stands for, or the number as it is written when it is not one value. By the film's language
+ * (`lang`, numberLocale) when it has one: de "2,5" → 2.5 and "1.299,99" → 1299.99, fr "1 299,99" → 1299.99, en-IN
+ * "1,00,000" → 100000, en "1,000" → 1000 — and anything that language does not write as one number stays as written
+ * (en "2,5", de "16.67"). Without a language, what every language reads alike: "1,000,000" → 1000000, "1,000.5" and
+ * "1.000,5" → 1000.5, "16.67" → 16.67, "−5" → −5; and as written, AMBIGUOUS, what the languages read apart: "1,000"
+ * and "1.000" (a thousand, or one?), "2,5" (2.5, or a list?), "1,00,000" — only a fact written the same way sources it.
+ * A time "3:15" and a version "1.2.3" stay as written.
  */
-export function numberValue(run) {
-  const s = String(run), negative = SIGNS.has(s[0]), body = negative ? s.slice(1) : s, value = valueOf(body);
+export const numberValue = (run, {lang = null} = {}) => valueIn(run, numberLocale(lang));
+/** numberValue, by a language already read (numberLocale) or none. */
+function valueIn(run, locale) {
+  const s = String(run), negative = SIGNS.has(s[0]), body = negative ? s.slice(1) : s, value = locale ? localeValue(body, locale) : valueOf(body);
   return typeof value === 'number' ? (negative ? -value : value) : s;
+}
+function localeValue(b, locale) {
+  if (!localePattern(locale).test(b)) return b;
+  const digits = locale.group === null ? b : [...b].filter(ch => !(ch === locale.group || (NO_BREAK.has(locale.group) && NO_BREAK.has(ch)))).join('');
+  return Number(digits.replace(locale.decimal, '.'));
 }
 function valueOf(b) {
   if (/^\d+$/.test(b)) return Number(b);
@@ -102,8 +137,10 @@ function valueOf(b) {
   if (/^\d+\.\d+$/.test(b)) return Number(b);
   if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(b)) return Number(b.replaceAll(',', ''));   // 1,000,000 · 1,000.5
   if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(b)) return Number(b.replaceAll('.', '').replace(',', '.'));   // 1.000.000 · 1.000,5
-  return b;
+  return b;   // "2,5", "1,00,000", "3:15", "1.2.3": as written
 }
+/** Whether a number is ambiguous as read: not one value, though written like one ("1,000" or "2,5" without a language). */
+const ambiguous = (run, locale) => typeof valueIn(run, locale) === 'string' && /^[−\-–]?\d+([.,]\d+)+$/.test(String(run));
 
 /**
  * What a fact's source is: 'url' (an http or https address), 'file' (a path inside the film's root that is there — a
@@ -128,14 +165,18 @@ export function sourceKind(source, {root = null, where = 'facts'} = {}) {
  * 16 Hz"), and `source` where it comes from: a URL, a file inside `root`, or anything else, kept as unverified (sourceKind).
  * Each fact comes back with its `kind`. Anything else refuses, naming the fix.
  */
-export function readFacts(list, where = 'facts', {root = null} = {}) {
+export function readFacts(list, where = 'facts', {root = null, lang = null} = {}) {
   if (!Array.isArray(list)) throw new Error(`${where} must be a list of facts, [{"value": 16.67, "text": "16.67 ms", "source": "https://…"}]`);
   return list.map((f, i) => {
     const name = `${where}[${i}]`;
     if (!f || typeof f !== 'object' || Array.isArray(f)) throw new Error(`${name} must be {value, text?, source}`);
     for (const key of Object.keys(f)) if (!FACT_KEYS.includes(key)) throw new Error(`${name} has ${key}; a fact takes value, text and source`);
-    const one = typeof f.value === 'string' && numbersIn(f.value).length === 1 && numbersIn(f.value)[0] === f.value;
-    if (!(Number.isFinite(f.value) || one)) throw new Error(`${name}: value is the number as the screen shows it (16.67, −5, or "1,000", "3:15" as written), not ${JSON.stringify(f.value)}${typeof f.value === 'string' ? ': put the words around it in text' : ''}`);
+    if (!Number.isFinite(f.value)) {
+      const found = typeof f.value === 'string' ? numbersIn(f.value, {lang}) : [], shows = `value is the number as the screen shows it (16.67, −5, or "1,000", "2,5", "3:15" as written), not ${JSON.stringify(f.value)}`;
+      if (typeof f.value !== 'string' || !found.length) throw new Error(`${name}: ${shows}`);
+      if (found.length > 1) throw new Error(`${name}: ${shows}, which shows ${found.length} numbers (${found.map(n => JSON.stringify(n)).join(', ')}): one fact per number`);
+      if (found[0] !== f.value) throw new Error(`${name}: ${shows}: give the number alone (${JSON.stringify(found[0])}) and the words around it in text`);
+    }
     if (f.text !== undefined && !(typeof f.text === 'string' && normSpeech(f.text))) throw new Error(`${name}: text is the words the number is shown with ("16.67 ms"), or left out`);
     if (typeof f.source !== 'string' || !f.source.trim()) throw new Error(`${name}: source says where ${JSON.stringify(f.value)} comes from: a URL, a document or a record pointer`);
     const source = f.source.trim();
@@ -215,8 +256,8 @@ function wordsIn(text, line) {
   return out;
 }
 /** Whether a fact backs a number shown at `at` in a line: the same value, and — when the fact gives its words — said right there. */
-function backs(fact, {run, at}, line) {
-  const shown = numberValue(run), value = typeof fact.value === 'number' ? fact.value : numberValue(fact.value);
+function backs(fact, {run, at}, line, locale = null) {
+  const shown = valueIn(run, locale), value = typeof fact.value === 'number' ? fact.value : valueIn(fact.value, locale);
   const same = typeof shown === 'number' && typeof value === 'number' ? Math.abs(shown - value) < 1e-9 : String(shown) === String(value);
   return same && (fact.text === undefined || wordsIn(fact.text, line).some(([a, b]) => at >= a && at + run.length <= b));
 }
@@ -226,21 +267,25 @@ function backs(fact, {run, at}, line) {
  * the film shows, from when it is first whole on screen (`at`) to when it starts to leave (`to`), the index of the scene
  * that shows it, the recipe entry (or `captions`) that shows it, and `line`, the text a fact's words are looked for in
  * when it is wider than `text` (a caption word's whole scene), `text` standing at `offset` in it; facts: a checked list
- * (readFacts) or null; examples: exampleScenes(storyboard); scenes: the scenes' ids. One claim per place in a line, per
- * scene (a line shown again is the same claim; the same number twice in a line is two): [{number, line, offset, at, to,
- * scene, path, example, source, sourceKind}] in time order — `scene` the scene's id, `example` true in an example scene,
- * `source` the backing fact's (or null) and `sourceKind` what it is (sourceKind: 'url', 'file' or 'unverified').
+ * (readFacts) or null; examples: exampleScenes(storyboard); scenes: the scenes' ids; lang: the language the film is
+ * shown in, the numbers read by it (numberValue), or null. One claim per place in a line, per scene (a line shown again
+ * is the same claim; the same number twice in a line is two): [{number, line, offset, at, to, scene, path, example,
+ * source, sourceKind, lang?, ambiguous?}] in time order — `scene` the scene's id, `example` true in an example scene,
+ * `source` the backing fact's (or null) and `sourceKind` what it is (sourceKind: 'url', 'file' or 'unverified'), `lang`
+ * the language it was read by, and `ambiguous` when it is not one number as read: 'no language' ("2,5" in a film with
+ * none), or the language it is not one number in.
  */
-export function findClaims(shown, {facts = null, examples = [], scenes = []} = {}) {
-  const out = [], seen = new Map();
+export function findClaims(shown, {facts = null, examples = [], scenes = [], lang = null} = {}) {
+  const out = [], seen = new Map(), locale = numberLocale(lang);
   for (const s of [...shown].sort((a, b) => a.at - b.at)) {
     const line = s.line ?? s.text;
-    for (const {run: number, at} of numberRuns(s.text)) {
+    for (const {run: number, at} of numberRuns(s.text, locale)) {
       const offset = (s.offset ?? 0) + at, key = `${line}\u0000${offset}\u0000${s.scene}`;
       if (seen.has(key)) { const c = seen.get(key); c.to = Math.max(c.to, +s.to.toFixed(3)); continue; }
-      const fact = (facts ?? []).find(f => backs(f, {run: number, at: offset}, line));
+      const fact = (facts ?? []).find(f => backs(f, {run: number, at: offset}, line, locale));
       const claim = {number, line, offset, at: +s.at.toFixed(3), to: +Math.max(s.at, s.to).toFixed(3), scene: scenes[s.scene] ?? null, path: s.path, example: Boolean(examples[s.scene]),
-        source: fact?.source ?? null, sourceKind: fact ? fact.kind ?? sourceKind(fact.source) : null};
+        source: fact?.source ?? null, sourceKind: fact ? fact.kind ?? sourceKind(fact.source) : null,
+        ...(locale ? {lang: locale.lang} : {}), ...(ambiguous(number, locale) ? {ambiguous: locale ? locale.lang : 'no language'} : {})};
       seen.set(key, claim); out.push(claim);
     }
   }
@@ -253,7 +298,7 @@ export function findClaims(shown, {facts = null, examples = [], scenes = []} = {
  * point written onto its digits ("-" + "5", "16" + ".67") holds to them within `mark`, closer than a word space
  * (measured: 0.4 of the height or more); and a lone point — a "." or a "," drawn as its own token between digits, as a
  * code panel draws "16" "." "67" — joins the digits on both sides within `point` of each (measured in 24-px Menlo:
- * 0.23–0.27), and the number is then read as typed text is (commaParts: "1,299" is one number, f(4,5) two). Two digit groups
+ * 0.23–0.27), and the number is then read as typed text is (numberValue, by the film's language). Two digit groups
  * of clearly different sizes never join: the smaller under `size` of the taller's height, or its bottom more than
  * `baseline` of that height off — a superscript or raised cents is its own number (10² is not 102). No gap tells the
  * pieces of one number from two numbers drawn close, so only touching ink joins on its own. Measured (ink boxes): "12"
@@ -271,7 +316,7 @@ const height = b => b[3] - b[1], tall = (a, b) => Math.max(height(a), height(b))
 const oneSize = (a, b) => Math.min(height(a), height(b)) >= DRAWN.size * tall(a, b) - 1e-6 && Math.abs(a[3] - b[3]) <= DRAWN.baseline * tall(a, b) + 1e-6;
 /**
  * Whether word k is a lone point between digits of one size, within DRAWN.point of each ("16" "." "67"; "1" "," "299"):
- * joined as typed text has it, so the one comma rule cuts it as it cuts typed text (commaParts).
+ * joined as typed text has it, so it is read as typed text is (numberValue: "4,5" is 4.5 in de, as written without a language).
  */
 function lonePoint(words, k) {
   const [a, p, b] = [words[k - 1], words[k], words[k + 1]];
@@ -336,8 +381,9 @@ function placeOf(text, runs, k) {
  * The numbers the picture draws that no declared line holds, from the words the review reads off its frames (review.mjs
  * · wordsAt, made into lines: drawnLines): samples [{t, words: [{text, box?, decorative?}]}] in time order, at most
  * HOLD.step apart for the bound below (the review reads for this check that often, whatever its own step), the film's
- * claims, sceneOf(t) (a scene's index), the scenes' ids, and wordsAt(t) (the words at any moment, to read an edge
- * again; without it, a number the reads cannot time is counted). Decorative words (a kit's line numbers,
+ * claims, sceneOf(t) (a scene's index), the scenes' ids, wordsAt(t) (the words at any moment, to read an edge again —
+ * none before the film's start or after its end; without it, a number the reads cannot time is counted), and lang (the
+ * language the film is shown in: numberValue). Decorative words (a kit's line numbers,
  * decorative.mjs) are left out: drawn, never said. A drawn number counts once it HOLDS — the same number in the same
  * place (placeOf) for HOLD.seconds — timed from the reads (a run of them, and the reads either side), and from its
  * edges read again every HOLD.fine where the reads cannot tell (past the reads' first and last moment too). A line typed on past its number ("We sold 1299" while "cups" is typed) is the same claim as the line it
@@ -347,13 +393,14 @@ function placeOf(text, runs, k) {
  * example data only if the example label is up the whole time it holds (claims.labels). Returns claims as findClaims
  * does, path 'drawn', from the first read it holds at to the last.
  */
-export function drawnClaims(samples, {claims, sceneOf, scenes = [], wordsAt = null}) {
-  const tidy = text => String(text).trim().replace(/\s+/g, ' '), declared = (claims?.numbers ?? []).filter(c => c.path !== 'captions');
+export function drawnClaims(samples, {claims, sceneOf, scenes = [], wordsAt = null, lang = null}) {
+  // Spaces made one (a no-break space is a language's group symbol: kept), and the film's language to read numbers by.
+  const tidy = text => String(text).trim().replace(/[ \t\r\n]+/g, ' '), declared = (claims?.numbers ?? []).filter(c => c.path !== 'captions'), locale = numberLocale(lang);
   const part = (drawn, line) => drawn === line || line.startsWith(`${drawn} `) || line.endsWith(` ${drawn}`);
   const known = (number, text) => declared.some(c => c.number === number && part(text, tidy(c.line)));
   /** A frame's numbers that no declared line holds: [{text, offset, place, number}]. */
   const numbersOf = words => drawnLines(words.filter(w => !w.decorative)).map(tidy).flatMap(text => {
-    const runs = numberRuns(text);
+    const runs = numberRuns(text, locale);
     return runs.map((n, k) => ({text, offset: n.at, place: placeOf(text, runs, k), number: n.run})).filter(x => !known(x.number, x.text));
   });
   const read = samples.map(({t, words}) => ({t, numbers: numbersOf(words)}));
@@ -372,23 +419,31 @@ export function drawnClaims(samples, {claims, sceneOf, scenes = [], wordsAt = nu
     for (let t = last + HOLD.fine; t < to - 1e-9 && t - from <= HOLD.seconds + 1e-9; t += HOLD.fine) if (!shownAt(t, x)) { to = t; break; }
     return to - from >= HOLD.seconds - 1e-9;
   };
-  const held = new Map();   // each number that holds, by its place: its line, its offset, when it first holds and last
+  const runs = [];   // each run a number holds for: its place, its line, its offset, from its first read to its last
   read.forEach(({numbers}, i) => {
     for (const x of numbers) {
       if (i > 0 && shows(read[i - 1].numbers, x)) continue;   // a run starts here, or not at all
       let j = i; while (read[j + 1] && shows(read[j + 1].numbers, x)) j++;
-      if (!holds(i, j, x)) continue;
-      const id = `${x.place}\u0000${x.number}`, h = held.get(id);
-      if (h) h.to = read[j].t; else held.set(id, {text: x.text, offset: x.offset, number: x.number, at: read[i].t, to: read[j].t});
+      if (holds(i, j, x)) runs.push({id: `${x.place}\u0000${x.number}`, text: x.text, offset: x.offset, number: x.number, at: read[i].t, to: read[j].t});
     }
   });
-  // A line typed on past its number is the line it becomes: the number up all the way, in lines that start with it.
+  // A line typed on past its number is the line it becomes — run by run, so a line typed again is typed on again: the
+  // run that follows a shorter one's end with the number up all the way between, in lines that start with it.
   const typedOn = (a, b) => b.number === a.number && b.offset === a.offset && b.text.length > a.text.length && b.text.startsWith(a.text) && b.at >= a.to
     && read.every(r => r.t <= a.to || r.t >= b.at || r.numbers.some(y => y.number === a.number && y.offset === a.offset && y.text.startsWith(a.text)));
-  const all = [...held.values()].sort((a, b) => a.text.length - b.text.length);   // shortest first: a chain carries its first moment on
-  for (const a of all) { const b = all.find(b => typedOn(a, b)); if (b) { b.at = Math.min(b.at, a.at); a.gone = true; } }
-  const options = {facts: claims?.facts ?? null, examples: claims?.examples ?? [], scenes};
-  return all.filter(h => !h.gone).flatMap(h => findClaims([{text: h.text, at: h.at, to: h.to, scene: sceneOf(h.at), path: 'drawn'}], options).filter(c => c.offset === h.offset))
+  const byStart = [...runs].sort((a, b) => a.at - b.at);
+  for (const a of [...runs].sort((a, b) => a.text.length - b.text.length)) {   // shortest first: a chain carries its first moment on
+    const b = byStart.find(b => !b.gone && typedOn(a, b));
+    if (b) { b.from = Math.min(b.from ?? b.at, a.from ?? a.at); a.gone = true; }
+  }
+  // Then the runs of one number in one place are one claim: from its first moment to its last.
+  const held = new Map();
+  for (const r of byStart.filter(r => !r.gone)) {
+    const h = held.get(r.id), at = r.from ?? r.at;
+    if (h) { h.at = Math.min(h.at, at); h.to = Math.max(h.to, r.to); } else held.set(r.id, {text: r.text, offset: r.offset, at, to: r.to});
+  }
+  const options = {facts: claims?.facts ?? null, examples: claims?.examples ?? [], scenes, lang};
+  return [...held.values()].flatMap(h => findClaims([{text: h.text, at: h.at, to: h.to, scene: sceneOf(h.at), path: 'drawn'}], options).filter(c => c.offset === h.offset))
     .map(c => ({...c, example: c.example && labelledOver(claims?.labels ?? [], c.at, c.to)}))
     .sort((a, b) => a.at - b.at || a.line.localeCompare(b.line) || a.offset - b.offset);
 }
@@ -407,7 +462,11 @@ export function claimsCount(claims) {
 export const unsourcedClaims = claims => (Array.isArray(claims?.facts) ? (claims.numbers ?? []).filter(c => !c.example && !c.source) : []);
 
 /** The fix for a number with no source, in words. */
-export const claimFix = c => `add {"value": ${JSON.stringify(numberValue(c.number))}, "source": "…"} to the facts, or mark scene ${c.scene} "example": true`;
+export const claimFix = c => (c.ambiguous === 'no language'
+  ? `"${c.number}" reads one way in one language and another in the next, and the film has no language: give it one (lang: "de" reads "2,5" as 2.5; "en-IN" reads "1,00,000" as 100000) and source the number, or add {"value": "${c.number}", "source": "…"} to the facts as written, or mark scene ${c.scene} "example": true`
+  : c.ambiguous
+    ? `"${c.number}" is not one number in ${c.ambiguous}: add {"value": "${c.number}", "source": "…"} to the facts as written, or mark scene ${c.scene} "example": true`
+    : `add {"value": ${JSON.stringify(numberValue(c.number, {lang: c.lang ?? null}))}, "source": "…"} to the facts, or mark scene ${c.scene} "example": true`);
 
 /** One claim with no source, in words: "\"42\" (scene rule, stages[0].footer) has no source: add …". */
 export const claimText = c => `"${c.number}" (scene ${c.scene}, ${c.path}) has no source: ${claimFix(c)}`;

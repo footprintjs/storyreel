@@ -84,7 +84,9 @@ const MAX_PARTS = 256;
  *                     folder that overlaps the voice folder is refused before anything is written (requireVoiceApart)
  * @param pacing       {sceneTail, holds, tails?, voiceSpeed?} — applied to a copy of the narration, or
  *                     to the word times of a silent cut (the same holds, so a pause-and-guess waits)
- * @param strings      the string table for the film's language ({key: text}); lang names it
+ * @param strings      the string table for the film's language ({key: text})
+ * @param lang         the language the film is shown in (a BCP 47 tag: "de", "fr", "en-IN", "ta"): it names the string
+ *                     table, and the numbers on screen are read by it (compileFilm's lang, film.lang)
  * @param out          the .mp4 to write; making-of.json is written beside it
  * @param render       extra options for renderFilm (intro, stamp, from, to, width, height, layout, motionBlur,
  *                     captionFiles, video…); a layout, motion blur or caption files are written into the record as
@@ -165,7 +167,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       scope.pacing = paced.pacing ?? null;
     },
     'compile-film': async scope => {
-      film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings, hostKeys, cast, strategies, reducedMotion, record: true});
+      film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings, lang, hostKeys, cast, strategies, reducedMotion, record: true});
       scope.beats = film.beats.length; scope.sounds = film.sounds.length; scope.total = +film.total.toFixed(3);
       // What the film is made from (film.inputs, and the pacing, the voice, the kits' code): an approval locks all of it.
       inputs = {...film.inputs, pacing: hashOf(pacing), ...(narrationDir ? {voice: voiceHash(narrationDir)} : {}), ...(code ? {code} : {})};
@@ -267,7 +269,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       ...(result.captions ? {captionFiles: Object.values(result.captions).map(f => path.basename(f))} : {})}} : {}),
     ...(film.reading.length ? {reading: {tooShort: film.reading}} : {}),
     // Every number on screen and where it comes from (claims.mjs), with the verdict and why (check-claims).
-    claims: {...(run?.state ?? run?.sharedState ?? {}).claims, saw: SAW, ...claimsCount(film.claims), unsourced: unsourcedClaims(film.claims).map(c => ({number: c.number, scene: c.scene, path: c.path, at: c.at, fix: claimText(c)}))},
+    claims: {...(run?.state ?? run?.sharedState ?? {}).claims, saw: SAW, ...(film.lang ? {lang: film.lang} : {}), ...claimsCount(film.claims), unsourced: unsourcedClaims(film.claims).map(c => ({number: c.number, scene: c.scene, path: c.path, at: c.at, fix: claimText(c)}))},
     // Each beat: what was said, when, and the recipe entry that asked for it.
     beats: film.beats.map(({ref, t, path}) => ({said: Array.isArray(ref) ? {scene: ref[0], phrase: ref[1], plus: ref[2] ?? 0} : ref, at: t, ...(path ? {entry: path} : {})})),
     ...(film.notes.length ? {notes: film.notes} : {}),

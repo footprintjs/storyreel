@@ -35,7 +35,11 @@ export interface NumberFact { value: number | string; text?: string; source: str
  * screen (`at`) to when it starts to leave (`to`), its scene and recipe entry (`captions` for the captions, `drawn` for a
  * word the review read off the picture), whether the scene is example data, and the backing fact's source (or null).
  */
-export interface Claim { number: string; line: string; offset: number; at: number; to: number; scene: string | null; path: string; example: boolean; source: string | null; sourceKind: 'url' | 'file' | 'unverified' | null }
+export interface Claim { number: string; line: string; offset: number; at: number; to: number; scene: string | null; path: string; example: boolean; source: string | null; sourceKind: 'url' | 'file' | 'unverified' | null;
+  /** The language it was read by (the film's lang), when the film has one. */
+  lang?: string;
+  /** Not one number as read: 'no language' ("2,5" in a film with none — a decimal comma, or a list?), or the language it is not one number in. Only a fact written the same way sources it. */
+  ambiguous?: string }
 /** When the example label is up: over an example scene, and on while any line it shows is still on screen. */
 export interface ExampleLabel { from: number; to: number; words: string; scene: number }
 /** Every number the film shows, with the facts the storyboard names (null: none, so the numbers outside example scenes cannot be checked), each scene's example label (or null) and when a label is up. */
@@ -358,6 +362,8 @@ export interface Film {
   changes: readonly {from: number; to: number; what: string}[];
   /** Every number the film shows and where it comes from: a fact the storyboard names, or an example scene. */
   claims: Claims;
+  /** The language the film is shown in (compileFilm's lang, canonical BCP 47), or null: its numbers are read by it. */
+  lang: string | null;
   /** The recipe's poster frame (seconds), or null. */
   posterAt: number | null;
   /** Stills worth checking: each settled picture and each change half way. */
@@ -483,6 +489,8 @@ export interface ContextKit extends Omit<Kit, 'story'> {
 export interface CompileFilmOptions<K = Kit | ContextKit> {
   storyboard: Storyboard; timings: Timings; recipe: Recipe; data?: unknown; kits?: K[];
   theme?: string | Record<string, unknown>; root?: string; strings?: Record<string, string> | null;
+  /** The language the film is shown in, a BCP 47 tag ("de", "fr", "en-IN", "ta"): the numbers on screen are read by it (film.lang). Without one, a number the languages read apart ("2,5", "1,000") is ambiguous. */
+  lang?: string | null;
   /** Top-level recipe keys the host application reads itself: allowed, and ignored by the engine. */
   hostKeys?: string[];
   /** Who is in the film ({role: {name, …}}): {{role}} in the text becomes the name; kits get it as context.cast. */
@@ -633,7 +641,9 @@ export interface FilmInputs { storyboard: string; timings: string; recipe: strin
   /** Present when the film's camera moves were cut for reduced motion: another film, as far as an approval goes. */
   reducedMotion?: true;
   /** The facts the storyboard names (storyboard.facts), hashed on their own: an approval locks them; they are in no segment's key (they draw nothing). */
-  facts?: string }
+  facts?: string;
+  /** The language the film's numbers are read by, when it has one: an approval of the film in one language is not of it in another. */
+  lang?: string }
 /** What a person approved: who, when, the render they watched, and what it was made from. */
 export interface Approval { schemaVersion: 2; approved: string; by: string; note?: string; render?: string; inputs: FilmInputs }
 /** Approve a render as it was watched, from its making-of record (the path of its making-of.json, or the object). */
