@@ -725,14 +725,36 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
   hyphen after one (COVID-19, B-52, ISO-8601, A-1000, UTF-8) — unless it is a year (1000–2199) after a lower-case word
   or a time prefix (mid-, pre-, post-, early-, late-, in any case): "mid-2024", "pre-2020", "post-1990" are numbers,
   which need a source. A unit written onto a number stays a number
-  (60Hz, 4K), and a number after a CJK character is a number (価格は100円). A number with one separator before exactly
-  three digits ("1,000", "1.000") is a thousand in one language and one in another, and the screen does not say which:
-  it is **ambiguous**, so only a fact that writes it the same way (`"value": "1.000"`) sources it — never `1` or `1000`.
-  A comma joins digits only before a three-digit group: "steps 1,2 and 3" and code's `f(4,5)` show two numbers each,
-  never 1.2 or 4.5 — and after a dotted thousands group it is a decimal comma, "1.299,99" being 1299.99 (the one reading
-  in which it is a number at all). Typed and drawn numbers are read by this one rule.
+  (60Hz, 4K), and a number after a CJK character is a number (価格は100円).
+- **Read in the film's language.** A number is read by the language the film is shown in: `lang`, one BCP 47 tag
+  (`compileFilm({…, lang: 'de'})`, `film.lang`; `makeFilm`'s `lang`, which also names its string table, is the same
+  value), its group and decimal symbols and its grouping taken from `Intl.NumberFormat(lang)`. In `de` "2,5 kg" is 2.5
+  and "1.299,99 €" 1299.99; in `fr` "2,5" is 2.5 and "1 299,99" (a narrow or plain no-break space) 1299.99; in `en-IN`,
+  `ta`, `te` and `hi` "1,00,000" is 100000 (Indian grouping); in `en` "1,000" is a thousand. What the language does not
+  write as one number ("16.67" in `de`, "2,5" in `en`) is kept as written. Without a language, a number the languages
+  read apart — "1,000" and "1.000" (a thousand, or one?), "2,5" (a decimal comma, or a list?), "1,00,000" — is
+  **ambiguous**: kept as written, so only a fact that writes it the same way (`"value": "2,5"`) sources it, never `2.5`,
+  and the fix says how to give the film its language. What every language reads alike is one value ("1,000,000",
+  "1,299.99" and "1.299,99", "16.67"). Typed and drawn numbers are read by the same rule, and the language is in what an
+  approval locks (`film.inputs.lang`). An as-written number is sourced only by a fact written the same way: `"2,5"`
+  sources "2,5", and a fact of 2.5 does not, however its digits print.
+  A language's own digits are numbers too — Arabic-Indic (`ar-EG`: "١٢٣٤", and "1٬234٫5" with its own separators is
+  1234.5), Persian (`fa`), Devanagari (`hi-IN-u-nu-deva`: "१,००,०००"), Bengali (`bn`), Telugu, Tamil, Thai — and in a
+  film with no language a digit of any script is read as a digit; a number that mixes scripts ("١2٣") is ambiguous. Two
+  writings to watch:
+  - **French with a plain space.** `fr` groups with a no-break space ("1 299,99": U+202F, which is what
+    `Intl.NumberFormat('fr')` writes, or U+00A0). Typed with a plain space, "1 299,99" is two numbers, 1 and 299.99: write
+    the no-break space (`'1\u202f299,99'`), or give the fact as written.
+  - **International grouping in an Indian film.** `en-IN` groups 1,00,000; "1,000,000" is not how it writes a million, so
+    it is kept as written: source it with a fact written the same way (`{"value": "1,000,000", …}`), or write 10,00,000.
+
+  ```js
+  const film = await compileFilm({storyboard, recipe, timings, lang: 'de'});   // facts: [{"value": 2.5, "text": "2,5 kg", "source": "…"}]
+  film.claims.numbers[0];   // {number: '2,5', lang: 'de', source: '…', …}; with no lang: {number: '2,5', ambiguous: 'no language', source: null, …}
+  ```
+
   `film.claims` lists them all: `{facts, examples, numbers: [{number, line, offset, at, to, scene, path, example,
-  source}]}` — one per place in a line (the same number twice in a line is two claims), from when the line is whole on
+  source, lang?, ambiguous?}]}` — one per place in a line (the same number twice in a line is two claims), from when the line is whole on
   screen to when it starts to leave, decided in the scene where the line is first shown.
 - **What is drawn.** The review also reads the numbers in every word its frames draw — the words it reads for every
   check, so no frame is drawn again: measured, 1.9 ms for the 1,495 words of the hello example's 128 samples, against
@@ -740,7 +762,7 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
   ink touches (a gap under 8 % of their height), a sign or a decimal point is written onto its digits ("16" then ".67
   ms" is 16.67; code tokens "-" then "5" are −5), or a lone point stands between digits within half their height (a
   code panel's tokens "16" "." "67" are 16.67, "$1" "," "299" "." "99" are 1,299.99, and `f(4,5)` drawn token by token
-  is 4 and 5, as typed) — so "12" and "30" drawn 4 px apart are two numbers, never 1230, and so are two digit
+  is read as typed) — so "12" and "30" drawn 4 px apart are two numbers, never 1230, and so are two digit
   groups of different sizes: "$1,299" with a raised "99" is 1,299 and 99, since the picture does not say whether a
   raised group is cents, a power (10²) or a note. A number drawn a digit at a time reads as its digits (they stand
   5–22 % of their height apart, as two numbers drawn close do): draw a number as one string, as every built-in kit
@@ -780,7 +802,26 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
   decorative(s, () => s.fillText(String(i + 1), 40, y));   // marked where it is drawn; ctx.drawImage(sheet, 0, 0) carries the mark
   ```
 
+  A step counter is decorative too — it counts the film's own steps, it claims nothing about the world:
+
+  ```js
+  decorative(ctx, () => ctx.fillText(`Step ${step} of 300`, 1500, 60));   // neither the step nor the 300 needs a source
+  ```
+
   The built-in code stage draws no line numbers.
+- **Code is read as code.** A code panel's numbers follow its programming language, not the film's: in a `de` film
+  `x = 16.67` is 16.67 and `f(4,5)` is 4 and 5. Draw code inside `code` (the same module): its words are read with "."
+  as the decimal mark and "," always a separator, never any grouping — and they still need a source. The built-in code
+  stage marks its own code; a kit's code panel marks its own:
+
+  ```js
+  import {code, decorative} from 'footprint-storyreel/decorative';
+
+  lines.forEach((line, i) => {
+    decorative(ctx, () => ctx.fillText(String(i + 1), x + 52, y + i * lh));   // the line number: no claim
+    code(ctx, () => ctx.fillText(line, x + 72, y + i * lh));                    // "f(4,5)": 4 and 5, in any film
+  });
+  ```
 - **The verdict**: `failed` when a number outside an example scene has no source — each listed with its scene, its
   recipe entry and the fix (`"120" (scene rate, story.items[1]) has no source: add {"value": 120, "source": "…"} to
   the facts, or mark scene rate "example": true`); `not run` when the storyboard names no facts and a number shows
@@ -2197,8 +2238,8 @@ the default because it rarely does; there is no swap repair.
 | `footprint-storyreel/review` → `reviewPart(film, {part?, layout?, checks?, …})` · `REVIEW_CHECKS` · `findingsText` · `verdictsText` · `wordsAt` | a part reviewed by reading it: findings with times, and three verdicts (passed, failed, not run) with their `decide()` evidence |
 | `footprint-storyreel/slideshow` → `slideshowOf(film, {from?, to?, every?, rule?})` · `shotMotion` · `shotInsides` · `moved` · `SLIDESHOW` · `SLIDESHOW_VERDICT` | no slideshow: how much each shot moves in its middle, and whether most of the running time is dead (held still more than 3 s) |
 | `footprint-storyreel/geometry` → `geometryOf(film, {from?, to?, rule?})` · `auditParts` · `readParts` · `crosses` · `breakText` · `GEOMETRY` · `GEOMETRY_VERDICT` | a kit's drawn parts audited: mounted ends stay on, pairs kept apart never cross, a planted end stays where it was planted |
-| `footprint-storyreel/claims` → `numbersIn` · `numberValue` · `readFacts` · `sourceKind` · `exampleScenes` · `labelSpans` · `findClaims` · `drawnLines` · `DRAWN` · `HOLD` · `drawnClaims` · `lingeringExamples` · `claimsCount` · `unsourcedClaims` · `claimText` · `CLAIMS_VERDICT` | every number on screen with its source: a fact the storyboard names, or an example scene (`film.claims`; the review adds what the picture draws) |
-| `footprint-storyreel/decorative` → `decorative` · `isDecorative` · `DECORATIVE` | text a kit draws but the film does not say (line numbers, badges): read by every review check but the claims check |
+| `footprint-storyreel/claims` → `numbersIn` · `numberValue` · `numberLocale` · `CODE_READING` · `readFacts` · `sourceKind` · `exampleScenes` · `labelSpans` · `findClaims` · `drawnLines` · `DRAWN` · `HOLD` · `drawnClaims` · `lingeringExamples` · `claimsCount` · `unsourcedClaims` · `claimText` · `CLAIMS_VERDICT` | every number on screen with its source: a fact the storyboard names, or an example scene (`film.claims`; the review adds what the picture draws) |
+| `footprint-storyreel/decorative` → `decorative` · `code` · `isDecorative` · `isCode` · `DECORATIVE` · `CODE` | text a kit draws but the film does not say (line numbers, badges): read by every review check but the claims check |
 | `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `bezier(x1, y1, x2, y2)` · `overshoots(name)` · `inOut` | the one ease table (`linear in out inOut back walk jump spring bounce outCubic outQuint outExpo outBack inOutCubic standard emphasized`), and four-number curves as CSS writes them |
 | `footprint-storyreel/moves` → `moveAt(move, t, {start, seconds?, feel?, reduced?})` · `stagger(items, gap)` · `movesBy({feel, use, kind})` · `readMove` · `applyMove` · `MOVES` | motion asked for by name: 30 moves as data, by feel and use, with the practitioners' timing rules |
 | `footprint-storyreel/principles` → `anticipate` · `squash` · `envelope` · `burst` · `arc` · `BURSTS` | anticipation, volume-keeping squash and stretch, one-shot events that add, paths that curve like a hand |
