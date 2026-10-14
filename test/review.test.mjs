@@ -104,7 +104,7 @@ test('too much to read counts words as a reader does: draws joined into lines, a
   assert.equal((await dense(kitOf('six', 6))).length, 0, '6 lines are 30 words (66 draws, and 60 by the old count of every draw\'s pieces)');
   const eight = await dense(kitOf('eight', 8));
   assert.equal(eight.length, 1, 'one finding for the run, not one per sample');
-  assert.match(eight[0].what, /^40 words on screen, more than 35 \(captions count, code does not\): "const total = items reduce \(sum\); \/ const total = items reduce \(sum\); \/ const total = item…"; cut words, or show them in turn$/, 'a "." is no word; touching draws join');
+  assert.match(eight[0].what, /^40 words on screen, more than 35 \(captions count, code does not\): "const total = items[^"]*…"; cut words, or show them in turn$/, 'a sign is no word; the quote is the lines it counted, cut short');
   assert.equal((await dense(kitOf('coded', 8, true))).length, 0, 'code is studied, not read at once: it is not counted');
   assert.equal(wordsOnScreen([{text: 'a = b', box: [0, 0, 50, 20]}, {text: '.', box: [60, 0, 62, 20]}]).count, 2);
 });
