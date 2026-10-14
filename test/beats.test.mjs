@@ -7,8 +7,8 @@ import {mkdtempSync, rmSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {beatMap, beatMapOf, peakOf, peakOfSamples, safeBeats, BEATS} from '../src/beats.mjs';
-import {fftOf, tempoPrior, onsetStrength, lowPulse} from '../src/dsp.mjs';
+import {beatMap, beatMapOf, peakOf, peakOfSamples, safeBeats, likelyTempi, beatMapText, levelTests, BEATS} from '../src/beats.mjs';
+import {fftOf, tempoPrior, onsetStrength, lowPulse, backbeatPulse} from '../src/dsp.mjs';
 import {song, rhythm, wavFile, noiseFrom} from './songs.mjs';
 
 const ffmpeg = spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-version']).status === 0;
@@ -254,5 +254,79 @@ test('safeBeats: a sure map cuts on every beat; an unsure one only where every c
   const doubt = safeBeats(map(false, [{bpm: 120, score: 1, phaseDoubt: .3, beats: grid(.5, 24)}, {...half, phaseDoubt: .95}]));
   assert.deepEqual(doubt.beats, []); assert.match(doubt.grid, /unsure of its phase/); assert.deepEqual(doubt.unsure, [60]);
   assert.deepEqual(safeBeats({beats: [1, 2, 3]}).beats, [1, 2, 3], 'a hand-made map is taken as sure');
+  // Of the beats every candidate shares, only those where the song hits: an echo's grid the candidates agree on is dropped.
+  const heard = safeBeats({...map(false, [{bpm: 120, score: 1, phaseDoubt: .3, beats: grid(.5, 24)}, half]), hits: grid(1, 6)});
+  assert.deepEqual(heard.beats, grid(1, 6)); assert.equal(heard.unheard, 6);
+  assert.deepEqual(safeBeats({...map(true, []), hits: []}).beats, grid(.5, 24), 'a sure map cuts on every beat, as before');
+});
+
+const right = (map, bpm) => Math.abs(map.bpm - bpm) <= Math.max(1, bpm * .01);
+
+test('a backbeat names the tactus: a kick (with its click) and a bass on every eighth under a snare on 2 and 4 — the double is never claimed', async () => {
+  for (const bpm of [70, 95, 120, 150]) {
+    const map = await beatMapOf(rhythm({bpm, family: 'kick and bass on the eighths, snare on 2 and 4'}).samples, 22050);
+    assert.ok(right(map, bpm) || !map.sure, `${bpm}: ${map.bpm}, ${map.verdict}`);
+    const double = map.levels.find(l => Math.abs(l.bpm - 2 * bpm) <= .02 * bpm);
+    if (double) assert.ok(double.fails.includes('backbeat slower'), `${bpm}: the double fails on the backbeat (${double.fails})`);
+  }
+  // Four on the floor with claps on 2 and 4 keeps its tempo: the claps name the beat it already has.
+  for (const family of ['four on the floor, club', 'four on the floor, humanised']) for (const bpm of [70, 95, 120, 150]) {
+    const map = await beatMapOf(rhythm({bpm, family}).samples, 22050);
+    assert.ok(right(map, bpm), `${family} at ${bpm}: ${map.bpm}, ${map.verdict}`);
+  }
+});
+
+test('a backbeat rings: a kick\'s beater click on every eighth is not a snare on every eighth (backbeatPulse)', () => {
+  const s = rhythm({bpm: 95, family: 'kick and bass on the eighths, snare on 2 and 4'}), o = onsetStrength(s.samples, 22050);
+  assert.equal(backbeatPulse(o, o.frameRate).length, 24, 'the 24 snares of twelve bars, never the 96 clicks');
+});
+
+test('levelTests: a backbeat on every other beat of a slower level refuses every faster one; without it, the faster one passes', () => {
+  const clean = {phase: 1, kicked: 1, steady: 1, backbeat: null, fill: {any: {full: 0}, 2: {full: 0, low: 0}, 3: {full: 0, low: 0}, 4: {full: 0, low: 0}}};
+  const slow = {bpm: 70, score: .9, evidence: {...clean, backbeat: {phase: 1, covered: .5, alternate: 1}}}, fast = {bpm: 140, score: 1, evidence: clean};
+  assert.deepEqual(levelTests(fast, [slow, fast]), ['backbeat slower']);
+  assert.deepEqual(levelTests(slow, [slow, fast]), [], 'the level the backbeat names may pass');
+  assert.deepEqual(levelTests(fast, [{...slow, evidence: clean}, fast]), [], 'no backbeat: nothing to refuse it on');
+  assert.deepEqual(levelTests(fast, [{...slow, evidence: {...clean, backbeat: {phase: 1, covered: 1, alternate: 0}}}, fast]), [], 'a snare on every beat names no slower level');
+});
+
+test('a dotted-eighth delay: an unsure map cuts only where the song hits, never on an echo the candidates agree on (70, 110, 140)', async () => {
+  let echoes = 0;
+  for (const bpm of [70, 110, 140]) {
+    const s = rhythm({bpm, family: 'a dotted-eighth delay on the rim and snare'}), map = await beatMapOf(s.samples, 22050);
+    const offBeat = beats => beats.filter(t => !s.beats.some(u => Math.abs(u - t) <= .05));
+    assert.deepEqual(offBeat(safeBeats(map).beats), [], `${bpm}: ${map.verdict}, no cut off a true beat`);
+    // Without the hits, the candidates' agreement alone lands on an echo.
+    if (!map.sure) echoes += offBeat(safeBeats({...map, hits: undefined}).beats).length;
+  }
+  assert.ok(echoes >= 1, 'the rule is what keeps the echo out');
+});
+
+test('likelyTempi and beatMapText: the tempi an unsure map could be, and the map as text a person settles it from', () => {
+  const unsure = {sure: false, verdict: 'tempo-close', bpm: 140.2, seconds: 30, beats: [1, 2], drop: null,
+    alternatives: [{bpm: 140.2, score: 1}, {bpm: 70.1, score: .8}, {bpm: 46.7, score: .3}], levels: [{bpm: 70.1, score: .8, fails: ['kicked']}, {bpm: 140.2, score: 1, fails: ['half-time', 'backbeat slower']}]};
+  assert.deepEqual(likelyTempi(unsure), [140, 70], `scores of ${BEATS.likely} or more`);
+  assert.deepEqual(likelyTempi({sure: true, bpm: 119.6}), [120]);
+  const text = beatMapText(unsure, {source: 'theme.mp3'});
+  assert.match(text, /^theme\.mp3 · 30 s · tempo-close \(unsure/);
+  assert.match(text, /140\.20 BPM {2}1\.00\n {4}70\.10 BPM {2}0\.80\n {4}46\.70 BPM {2}0\.30 {2}\(unlikely\)/);
+  assert.match(text, /140\.20 BPM {2}half-time, backbeat slower/);
+  assert.match(text, /one of 140, 70 BPM; the map is then sure/);
+});
+
+test('storyreel beats <song>: the verdict, the candidate tempi with their scores, why each level is unsure; --help lists it', needs, () => {
+  const s = rhythm({bpm: 95, family: 'kick and bass on the eighths, snare on 2 and 4'}), file = wavFile(path.join(tmp(), 'song.wav'), s.samples, s.rate);
+  const cli = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'src', 'cli.mjs'), run = (...args) => spawnSync(process.execPath, [cli, ...args], {encoding: 'utf8'});
+  const read = run('beats', file);
+  assert.equal(read.status, 0, read.stderr);
+  assert.match(read.stdout, /^song\.wav · [\d.]+ s · tempo-\w+ \((sure|unsure)/);
+  assert.match(read.stdout, /candidate tempi \(score against the strongest\):\n {2,}[\d.]+ BPM {2}1\.00/);
+  assert.match(read.stdout, /levels of the beat tried/);
+  const given = run('beats', file, '--bpm', '95');
+  assert.match(given.stdout, /tempo-given \(sure/);
+  assert.equal(run('beats', file, '--tempo', '95').status, 2, 'an unknown flag');
+  assert.equal(run('beats').status, 2, 'no song');
+  assert.equal(run('beats', path.join(tmp(), 'missing.wav')).status, 1, 'a song that is not there');
+  assert.match(run('--help').stdout, /beats {4}<song> — the song's tempo/);
 });
 

@@ -24,7 +24,7 @@ import {checkVideo, ffmpegProbe} from './finished.mjs';
 import {verdictChart} from './verdict.mjs';
 import {claimsCount, unsourcedClaims, claimText, CLAIMS_VERDICT} from './claims.mjs';
 import {installedVersion} from './versions.mjs';
-import {beatMap} from './beats.mjs';
+import {beatMap, likelyTempi} from './beats.mjs';
 import {readMusic, musicHash, fitToMusic, fitVoice} from './music.mjs';
 
 const version = installedVersion;
@@ -85,7 +85,7 @@ function musicRecord(song, beats, fit) {
     beats: {bpm: beats.bpm, verdict: beats.verdict, sure: beats.sure, levels: beats.levels, alternatives: beats.alternatives.map(({bpm, score}) => ({bpm, score})),
       beats: beats.beats.length, bars: beats.bars.length, drop: beats.drop, confidence: beats.confidence, seconds: beats.seconds, record: beats.record},
     fit: {snap: song.snap, ...(song.dropOn ? {dropOn: song.dropOn} : {}), cutOn: fit.cutOn, cuts: fit.cuts, record: fit.record},
-    ...(unsure ? {findings: [{kind: 'tempo-unsure', text: `tempo unsure (close): cuts only on beats every candidate shares (${fit.cutOn.beats} of ${fit.cutOn.of}${fit.cutOn.unsure ? `; none, as ${fit.cutOn.unsure.join(', ')} BPM is unsure of its phase` : ''}); give music.bpm to cut on every beat`}]} : {})};
+    ...(unsure ? {findings: [{kind: 'tempo-unsure', tempi: likelyTempi(beats), text: `tempo unsure (close): cuts only on beats every candidate shares (${fit.cutOn.beats} of ${fit.cutOn.of}${fit.cutOn.unsure ? `; none, as ${fit.cutOn.unsure.join(', ')} BPM is unsure of its phase` : ''}); give music.bpm (one of ${likelyTempi(beats).join(', ')}) to cut on every beat — storyreel beats <song> shows why`}]} : {})};
 }
 
 /** The most parts a picture is planned in (segments.mjs · planSegments makes one per row of pictures). */
@@ -148,8 +148,9 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   // Where the voice is paced: a folder of its own, which takes the place of <out dir>/narration only once the film is
   // allowed (place-narration).
   const pacedCopy = path.join(dir, `.narration-${process.pid}`);
-  // A song the film cannot use refuses after the voice was paced: like a refused approval, it leaves no paced copy behind.
-  const leaveNoCopy = async make => { try { return await make(); } catch (e) { rmSync(pacedCopy, {recursive: true, force: true}); throw e; } };
+  // A music stage that refuses after the voice was paced — a song the film cannot use, a voice its cuts cannot follow —
+  // leaves no paced copy behind, like a refused approval.
+  const leaveNoCopy = async stage => { try { return await stage(); } catch (e) { rmSync(pacedCopy, {recursive: true, force: true}); throw e; } };
   const video = checkVideoStrategy(render.video ?? wholeVideo()), done = [];
   const stages = {
     'check-inputs': scope => {
@@ -186,18 +187,19 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       scope.pacing = paced.pacing ?? null;
     },
     // The song's beat map: its own flowchart, its record kept in making-of.json (music.beats.record).
-    'map-beats': async scope => {
-      beats = await leaveNoCopy(() => beatMap(song.file, {...song.beats, ...(render.ffmpeg ? {ffmpeg: render.ffmpeg} : {})}));
+    'map-beats': scope => leaveNoCopy(async () => {
+      beats = await beatMap(song.file, {...song.beats, ...(render.ffmpeg ? {ffmpeg: render.ffmpeg} : {})});
       scope.bpm = beats.bpm; scope.verdict = beats.verdict; scope.songBeats = beats.beats.length; scope.drop = beats.drop; scope.confidence = beats.confidence;
-    },
-    // The film fitted to it: scene starts onto the beat, the drop on its key moment; a voiced cut's audio follows.
-    'fit-to-music': async scope => {
-      fit = await leaveNoCopy(() => fitToMusic({storyboard, timings: paced, beats, snap: song.snap ?? false, dropOn: song.dropOn, recipe, kits}));
+    }),
+    // The film fitted to it: scene starts onto the beat, the drop on its key moment; a voiced cut's audio follows (the
+    // run's copy: a voice that cannot be cut — not a 16-bit PCM WAV — refuses, and the copy goes with the refusal).
+    'fit-to-music': scope => leaveNoCopy(async () => {
+      fit = await fitToMusic({storyboard, timings: paced, beats, snap: song.snap ?? false, dropOn: song.dropOn, recipe, kits});
       paced = scope.narration ? fitVoice(scope.narration, paced, fit.timings) : fit.timings;
       if (scope.narration) writeFileSync(path.join(scope.narration, 'timings.json'), JSON.stringify(paced, null, 2));
       scope.start = fit.start; scope.cutOn = fit.cutOn.grid; scope.moved = fit.cuts.filter(c => c.verdict === 'moved').length;
       scope.seconds = +paced.scenes.reduce((n, s) => n + s.duration, 0).toFixed(3);
-    },
+    }),
     'compile-film': async scope => {
       film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings, hostKeys, cast, strategies, reducedMotion, record: true});
       scope.beats = film.beats.length; scope.sounds = film.sounds.length; scope.total = +film.total.toFixed(3);

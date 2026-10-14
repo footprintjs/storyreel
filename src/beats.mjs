@@ -10,18 +10,19 @@ import {existsSync} from 'node:fs';
 import path from 'node:path';
 import {flowChart, narrative, decide} from 'footprintjs';
 import {QUIET, plainNarrative} from './record.mjs';
-import {ANALYSIS, onsetStrength, tempoCandidates, lowPulse, backbeatPulse, levelEvidence, trackBeats, refineBeats, gridTempo, onsetSupport, downbeatScores, dropCandidate, peakOfSamples, firstAtOrAfter} from './dsp.mjs';
+import {ANALYSIS, onsetStrength, tempoCandidates, lowPulse, backbeatPulse, levelEvidence, hitsOf, trackBeats, refineBeats, gridTempo, onsetSupport, downbeatScores, dropCandidate, peakOfSamples, firstAtOrAfter} from './dsp.mjs';
 
 /**
  * The beat map's rules. range: the tempos preferred (BPM; others are weighed down, never refused). meter: beats in a bar
  * (a 4/4 guess). downbeat: the margin for the beat that starts a bar. drop: the dB a drop's rise must hold, both halves of
  * the window after it. window: the seconds of song either side a drop is judged over. fade, sudden: a rise that takes
  * longer than `fade` seconds to climb and makes less than `sudden` of itself at once is a fade-in, not a drop. onBeat: the
- * tolerance onBeat(t) takes by default (seconds). safe: what an unsure map lets a film cut on (safeBeats). level: the tests
- * a level of the beat passes to be certain (levelTests).
+ * tolerance onBeat(t) takes by default (seconds). likely: the score a candidate tempo needs to be named as one to settle an
+ * unsure map with (likelyTempi). safe: what an unsure map lets a film cut on (safeBeats). level: the tests a level of the
+ * beat passes to be certain (levelTests).
  */
-export const BEATS = Object.freeze({range: Object.freeze([70, 180]), meter: 4, downbeat: .1, drop: 3, window: 4, fade: 2, sudden: .5, onBeat: .05,
-  safe: Object.freeze({tolerance: .035, phaseDoubt: .9}),
+export const BEATS = Object.freeze({range: Object.freeze([70, 180]), meter: 4, downbeat: .1, drop: 3, window: 4, fade: 2, sudden: .5, onBeat: .05, likely: .5,
+  safe: Object.freeze({tolerance: .035, phaseDoubt: .9, hit: .6, local: .3}),
   level: Object.freeze({pulse: 8, phase: .8, kicked: .75, low: .5, steady: .5, fill: Object.freeze({2: .55, 3: .2, 4: .2, any: .55}), halfTime: .375, margin: .3})});
 /** The levels of the beat tried against the strongest tempo: every relative, a quarter to four times it. */
 const LEVELS = Object.freeze([1 / 4, 1 / 3, 1 / 2, 1, 2, 3, 4]);
@@ -53,13 +54,25 @@ function betweenTests(e, rules) {
 }
 
 /**
+ * A backbeat on every other beat of a level: the snare or the clap lands on its beats (phase), on about half of them
+ * (covered, between `halfTime` and 1 − `halfTime`), the next one two beats on (alternate). That level is the tactus the
+ * backbeat names: 2 and 4 of a bar of four.
+ */
+export const backbeatEveryOther = (e, rules = BEATS.level) => Boolean(e?.backbeat && e.backbeat.phase >= rules.phase && e.backbeat.covered >= rules.halfTime
+  && e.backbeat.covered <= 1 - rules.halfTime && e.backbeat.alternate >= rules.phase);
+
+/**
  * The tests one level of the beat must pass to be certain — two pieces of evidence that must agree: the kick pulse
- * (kickTests, when the song has one) and the in-betweens (betweenTests). With no kick pulse, the level's own score must
- * also stand `margin` over every other level tried. Returns the names of the tests it fails; none, and it passes.
+ * (kickTests, when the song has one) and the in-betweens (betweenTests). Two rules read the other levels tried: with no
+ * kick pulse, the level's own score must stand `margin` over every other; and a backbeat names the tactus — when it is
+ * on every other beat of a slower level (backbeatEveryOther), no faster one can be certain, however steady its own
+ * beats (a kick and a bass on every eighth fill every beat of the double). Returns the names of the tests it fails;
+ * none, and it passes.
  */
 export function levelTests(level, all, rules = BEATS.level) {
   const e = level.evidence, fails = [...kickTests(e, rules), ...betweenTests(e, rules)];
   if (e.phase === null && all.some(other => other !== level && other.score > level.score - rules.margin)) fails.push('margin');
+  if (all.some(other => other !== level && other.bpm < level.bpm && backbeatEveryOther(other.evidence, rules))) fails.push('backbeat slower');
   return fails;
 }
 
@@ -180,7 +193,9 @@ async function analyse(read, source, options) {
       const at = t => { const f = Math.round(t * fr); let m = 0; for (let k = f - 2; k <= f + 2; k++) m = Math.max(m, work.onsets.flux.all[k] ?? 0); return m; };
       const mean = v => v.reduce((a, x) => a + x, 0) / Math.max(1, v.length);
       work.phaseDoubt = work.grids.map(g => (g.length < 4 ? 1 : round(mean(g.slice(1).map((t, i) => at((t + g[i]) / 2))) / Math.max(1e-9, mean(g.map(at))), 3)));
-      s.beats = work.beats.length; s.bpm = work.bpm; s.confidence = work.confidence; s.grids = work.grids.length;
+      // Where the song actually hits (dsp.mjs · hitsOf): an unsure map's film cuts only on a shared beat that has one.
+      work.hits = hitsOf(work.onsets, fr, work.beats, work.period / fr, {share: BEATS.safe.hit, local: BEATS.safe.local}).map(t => round(t));
+      s.beats = work.beats.length; s.bpm = work.bpm; s.confidence = work.confidence; s.grids = work.grids.length; s.hits = work.hits.length;
     }, 'track-beats', 'Beats by dynamic programming (Ellis 2007), each moved onto the transient it sits on; every candidate\'s grid beside them')
     .addDeciderFunction('find-bars', s => {
       const scores = downbeatScores(work.onsets.flux.low, work.onsets.frameRate, work.beats, BEATS.meter), sorted = [...scores].sort((a, b) => b - a);
@@ -213,7 +228,7 @@ async function analyse(read, source, options) {
     .end();
   const trace = narrative();
   await chart.setLogger(QUIET).build().recorder(trace).run();
-  return {bpm: work.bpm, verdict: work.verdict, sure: work.verdict !== 'tempo-close', beats: work.beats, bars: work.bars, drop: work.drop, confidence: work.confidence,
+  return {bpm: work.bpm, verdict: work.verdict, sure: work.verdict !== 'tempo-close', beats: work.beats, hits: work.hits, bars: work.bars, drop: work.drop, confidence: work.confidence,
     levels: work.levels.map(({bpm, score, fails, kicksAlone}) => ({bpm, score, fails, ...(kicksAlone ? {kicksAlone} : {})})),
     alternatives: work.candidates.map(({bpm, score}, i) => ({bpm, score, phaseDoubt: work.phaseDoubt[i], beats: work.grids[i]})), seconds: round(work.samples.length / work.rate, 3), record: plainNarrative(trace)};
 }
@@ -246,17 +261,45 @@ function levelsOf(work) {
  * share is a true beat, whichever of them is right — for two tempi a level apart, the slower grid; for a 4:3 pair, the
  * beats they meet on. And none at all when a candidate is unsure of its own phase (`phaseDoubt` at least `doubt`: the
  * onsets half a beat from its grid are nearly as strong as those on it), for then its grid could as well sit on the and,
- * and so could the beats it shares. A hand-made map ({beats}, no verdict) is taken as sure.
- * Returns {beats, grid: 'every beat' | 'shared' | 'none: a candidate is unsure of its phase', shared, of, tempi}.
+ * and so could the beats it shares. And of the beats they share, only those where the song actually hits (`map.hits`,
+ * dsp.mjs · hitsOf: an attack in the low or mid band within `tolerance`, not an echo) — the candidates can agree on an
+ * echo's grid, a delay's repeat a sixteenth before the beat, or a beat carried on past the song's end. A hand-made map
+ * ({beats}, no verdict) is taken as sure; one without `hits` is not asked for them.
+ * Returns {beats, grid: 'every beat' | 'shared' | 'none: a candidate is unsure of its phase', shared, of, tempi, unheard?}:
+ * `unheard`, the beats every candidate shares where the song does not hit.
  */
 export function safeBeats(map, {tolerance = BEATS.safe.tolerance, doubt = BEATS.safe.phaseDoubt} = {}) {
   const all = [...(map?.beats ?? [])];
   if (map?.sure !== false) return {beats: all, grid: 'every beat', shared: all.length, of: all.length, tempi: map?.bpm === undefined ? [] : [map.bpm]};
   const listed = map.alternatives ?? [], tempi = listed.map(a => a.bpm), unsure = listed.filter(a => a.phaseDoubt >= doubt).map(a => a.bpm);
   if (unsure.length) return {beats: [], grid: 'none: a candidate is unsure of its phase', unsure, shared: 0, of: all.length, tempi};
-  const grids = listed.map(a => a.beats ?? []);
-  const beats = all.filter(t => grids.every(g => g.length && Math.abs(nearestOf(g, t) - t) <= tolerance));
-  return {beats, grid: 'shared', shared: beats.length, of: all.length, tempi};
+  const grids = listed.map(a => a.beats ?? []), within = (list, t) => list.length > 0 && Math.abs(nearestOf(list, t) - t) <= tolerance;
+  const agreed = all.filter(t => grids.every(g => within(g, t))), beats = map.hits ? agreed.filter(t => within(map.hits, t)) : agreed;
+  return {beats, grid: 'shared', shared: beats.length, of: all.length, tempi, ...(map.hits ? {unheard: agreed.length - beats.length} : {})};
+}
+
+/**
+ * The tempi an unsure map could be: its candidates scoring at least `least` (BEATS.likely), strongest first, rounded to
+ * a whole BPM — the ones a person picks from to settle it (give music.bpm, or beatMap's bpm). A sure map: its own.
+ */
+export function likelyTempi(map, least = BEATS.likely) {
+  if (map?.sure !== false) return map?.bpm === undefined ? [] : [Math.round(map.bpm)];
+  return [...new Set((map.alternatives ?? []).filter(a => a.score >= least).map(a => Math.round(a.bpm)))];
+}
+
+/**
+ * The map as text, for a person settling its tempo (`storyreel beats <song>`, cli.mjs): the verdict and whether it is
+ * sure, the candidate tempi with their scores, every level of the beat tried and the tests it failed, and how to
+ * settle an unsure map (give the tempo: the map is then sure).
+ */
+export function beatMapText(map, {source = 'the song'} = {}) {
+  const pad = (v, n) => String(v).padStart(n), likely = likelyTempi(map);
+  const lines = [`${source} · ${map.seconds} s · ${map.verdict} (${map.sure ? 'sure: a film cuts on every beat' : 'unsure: a film cuts only on the beats every candidate shares'}) · ${map.bpm} BPM, ${map.beats.length} beats`];
+  if (map.alternatives?.length) lines.push('', 'candidate tempi (score against the strongest):', ...map.alternatives.map(a => `  ${pad(a.bpm.toFixed(2), 7)} BPM  ${a.score.toFixed(2)}${a.score >= BEATS.likely ? '' : '  (unlikely)'}`));
+  if (map.levels?.length) lines.push('', 'levels of the beat tried (a level is sure only when it passes every test, and no other does):', ...map.levels.map(l => `  ${pad(l.bpm.toFixed(2), 7)} BPM  ${l.fails.length ? l.fails.join(', ') : 'passes'}${l.kicksAlone ? ' (refused by the kicks alone)' : ''}`));
+  if (!map.sure) lines.push('', `settle it: give the tempo you hear — music.bpm in makeFilm, or beatMap(file, {bpm}) — one of ${likely.join(', ')} BPM; the map is then sure, and a film cuts on every beat.`);
+  if (map.drop !== null && map.drop !== undefined) lines.push('', `drop at ${map.drop} s`);
+  return lines.join('\n');
 }
 
 /** The beat nearest t in an ascending list (the earlier one on a tie), or null for none. */
@@ -271,7 +314,7 @@ function nearestOf(beats, t) {
 /** The map: its values, frozen, with the three questions a cut asks of it. */
 function makeMap(values) {
   const beats = Object.freeze([...values.beats]);
-  return Object.freeze({...values, beats, bars: Object.freeze([...values.bars]), alternatives: Object.freeze(values.alternatives.map(a => Object.freeze({...a, beats: Object.freeze([...a.beats])}))),
+  return Object.freeze({...values, beats, hits: Object.freeze([...(values.hits ?? [])]), bars: Object.freeze([...values.bars]), alternatives: Object.freeze(values.alternatives.map(a => Object.freeze({...a, beats: Object.freeze([...a.beats])}))),
     levels: Object.freeze(values.levels.map(l => Object.freeze({...l, fails: Object.freeze([...l.fails])}))),
     nearestBeat: t => nearestOf(beats, t),
     nextBeat: t => beats[firstAtOrAfter(beats, t + 1e-6)] ?? null,

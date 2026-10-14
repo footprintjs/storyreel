@@ -255,7 +255,8 @@ test('makeFilm with music: the beat map and the fit run as stages, the drop land
   assert.equal(music.beats.verdict, 'tempo-close'); assert.equal(music.beats.sure, false);
   assert.ok(music.beats.levels.length >= 3 && music.beats.levels.every(l => Array.isArray(l.fails)));
   assert.match(music.fit.cutOn.grid, /^(shared|none: a candidate is unsure of its phase)$/);
-  assert.match(music.findings[0].text, /^tempo unsure \(close\): cuts only on beats every candidate shares \(\d+ of \d+.*\); give music\.bpm to cut on every beat$/);
+  assert.match(music.findings[0].text, /^tempo unsure \(close\): cuts only on beats every candidate shares \(\d+ of \d+.*\); give music\.bpm \(one of [\d, ]+\) to cut on every beat — storyreel beats <song> shows why$/);
+  assert.ok(music.findings[0].tempi.some(bpm => Math.abs(bpm - 123) <= 1), `the true tempo is among those named: ${music.findings[0].tempi}`);
   await assert.rejects(makeFilm({storyboard: helloBoard, recipe: helloRecipe, root: hello, timings: evenTimings(helloBoard, {tail: 4}), out: path.join(dir, 'x/film.mp4'), render: {music: {file}}, music: {file}}), /leave render\.music out/);
 });
 
@@ -281,6 +282,19 @@ test('makeFilm with music and a voice: the run\'s copy of each moved scene\'s au
   const refused = path.join(dir, 'refused');
   await assert.rejects(makeFilm({storyboard: helloBoard, recipe: helloRecipe, root: hello, narrationDir: voice, out: path.join(refused, 'film.mp4'), render: small, music: {file, snap: true, dropOn: ['no-such-scene', 'hello']}}), /fitToMusic/);
   assert.deepEqual(readdirSync(refused).filter(f => f.startsWith('.narration')), [], 'the refused run\'s paced copy is gone');
+  // A voice its cuts cannot follow (a 32-bit float WAV, not 16-bit PCM) refuses at the fit, and leaves no copy either.
+  const floats = path.join(dir, 'float-voice'); mkdirSync(floats);
+  for (const t of voiced.scenes) {
+    const n = Math.round(t.duration * 48000), h = Buffer.alloc(44);
+    h.write('RIFF', 0, 'ascii'); h.writeUInt32LE(36 + 4 * n, 4); h.write('WAVE', 8, 'ascii'); h.write('fmt ', 12, 'ascii'); h.writeUInt32LE(16, 16);
+    h.writeUInt16LE(3, 20); h.writeUInt16LE(1, 22); h.writeUInt32LE(48000, 24); h.writeUInt32LE(48000 * 4, 28); h.writeUInt16LE(4, 32); h.writeUInt16LE(32, 34);
+    h.write('data', 36, 'ascii'); h.writeUInt32LE(4 * n, 40);
+    writeFileSync(path.join(floats, t.audio), Buffer.concat([h, Buffer.alloc(4 * n)]));
+  }
+  writeFileSync(path.join(floats, 'timings.json'), JSON.stringify(voiced));
+  const unfit = path.join(dir, 'unfit');
+  await assert.rejects(makeFilm({storyboard: helloBoard, recipe: helloRecipe, root: hello, narrationDir: floats, out: path.join(unfit, 'film.mp4'), render: small, music: {file, snap: {tolerance: .3}}}), /must be a 16-bit PCM WAV/);
+  assert.deepEqual(readdirSync(unfit).filter(f => f.startsWith('.narration')), [], 'the copy goes with the refusal');
 });
 
 test('without music nothing changes: the same stages, record, inputs and FFmpeg calls as before (pinned on main)', needs, async () => {

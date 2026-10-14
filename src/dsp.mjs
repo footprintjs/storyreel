@@ -368,11 +368,13 @@ export function lowPulse({power, flux}, frameRate, {share = .3, presence = .25, 
 /**
  * The song's backbeat: where the snare or the clap lands. A snare is noise across the bands: the mid band's power and
  * the high band's both rise there, each by at least `share` of its own strongest rises (99th percentile) — a kick rises
- * low and a little mid, a hat high and a little mid, neither in both. A local peak that stands out (onsetAt), at most one
- * in any `apart` seconds, and only when the mid band's rises lead the mix (`presence` of the whole band's strongest).
+ * low and a little mid, a hat high and a little mid, neither in both — and it RINGS: `after` seconds on, the high band
+ * still holds `ring` of what it rose by, where a kick's beater click or a closed hat has died away (a click on every
+ * eighth is not a backbeat on every eighth). A local peak that stands out (onsetAt), at most one in any `apart`
+ * seconds, and only when the mid band's rises lead the mix (`presence` of the whole band's strongest).
  * Takes onsetStrength's result; returns the times in seconds, or [] when the song has no backbeat.
  */
-export function backbeatPulse({power}, frameRate, {share = .3, bright = .5, presence = .1, apart = .07} = {}) {
+export function backbeatPulse({power}, frameRate, {share = .3, bright = .5, presence = .1, apart = .07, ring = .2, after = .045} = {}) {
   const {low, mid, high} = power, n = mid.length, rise = new Float32Array(n), up = new Float32Array(n), whole = new Float32Array(n);
   for (let f = 1; f < n; f++) {
     rise[f] = Math.max(0, Math.sqrt(mid[f]) - Math.sqrt(mid[f - 1]));
@@ -381,9 +383,11 @@ export function backbeatPulse({power}, frameRate, {share = .3, bright = .5, pres
   }
   const top = quantile(rise, .99), topUp = quantile(up, .99);
   if (!(top > 0 && topUp > 0) || top < presence * quantile(whole, .99)) return [];
-  const on = onsetAt(rise, frameRate), kept = [];
+  const on = onsetAt(rise, frameRate), kept = [], amp = f => Math.sqrt(high[f] ?? 0), later = Math.round(after * frameRate);
+  // Rings: the high band, `after` seconds on, still above what it was before the hit by `ring` of the rise.
+  const rings = f => { const before = amp(f - 2), peak = Math.max(amp(f), amp(f + 1), amp(f + 2)); return peak > before && amp(f + later) - before >= ring * (peak - before); };
   for (let f = 1; f < n - 1; f++) {
-    if (!(rise[f] > rise[f - 1] && rise[f] >= rise[f + 1] && rise[f] >= share * top && Math.max(up[f - 1], up[f], up[f + 1] ?? 0) >= bright * topUp && on(f))) continue;
+    if (!(rise[f] > rise[f - 1] && rise[f] >= rise[f + 1] && rise[f] >= share * top && Math.max(up[f - 1], up[f], up[f + 1] ?? 0) >= bright * topUp && on(f) && rings(f))) continue;
     const last = kept.at(-1);
     if (last !== undefined && (f - last) / frameRate < apart) { if (rise[f] > rise[last]) kept[kept.length - 1] = f; } else kept.push(f);
   }
@@ -397,15 +401,21 @@ export function backbeatPulse({power}, frameRate, {share = .3, bright = .5, pres
  * quartile of the onsets at the beats against the upper — a level twice too fast has every other beat on a hat alone.
  * fill: for k = 2, 3 and 4, how full the k − 1 points between the beats are, in the full band (their lower quartile
  * against the beats' median, both above the song's floor: full only when every in-between point carries an onset) and
- * in the low band (their mean against the beats'): a level too slow has its in-betweens full.
+ * in the low band (their mean against the beats'): a level too slow has its in-betweens full. backbeat (with one, else
+ * null): the share of the backbeat (backbeatPulse) on the level's beats (phase), the share of its beats that carry it
+ * (covered), and how often the next beat that carries it is two beats on (alternate) — a snare on 2 and 4 is on every
+ * other beat of the true level.
  */
 export function levelEvidence({all, body, low}, frameRate, beats, pulse, {reach = .05, backbeat = []} = {}) {
   if (beats.length < 4) return {phase: null, kicked: null, steady: 0, backbeat: null, fill: {any: {full: 1}, 2: {full: 1, low: 1}, 3: {full: 1, low: 1}, 4: {full: 1, low: 1}}};
   const near = (list, t) => { const i = firstAtOrAfter(list, t); return Math.min(Math.abs((list[i] ?? Infinity) - t), Math.abs(t - (list[i - 1] ?? -Infinity))) <= reach; };
   const phase = pulse.length ? pulse.filter(t => near(beats, t)).length / pulse.length : null;
   const kicked = pulse.length ? beats.filter(t => near(pulse, t)).length / beats.length : null;
-  // The backbeat against the level: how much of it lands on the level's beats, and on what share of them.
-  const back = backbeat.length ? {phase: backbeat.filter(t => near(beats, t)).length / backbeat.length, covered: beats.filter(t => near(backbeat, t)).length / beats.length} : null;
+  // The backbeat against the level: how much of it lands on the level's beats, on what share of them, and how often the
+  // next beat it lands on is two beats on (alternate: 1 when it is on every other beat).
+  const hit = backbeat.length ? beats.map((t, i) => (near(backbeat, t) ? i : -1)).filter(i => i >= 0) : [];
+  const back = backbeat.length ? {phase: backbeat.filter(t => near(beats, t)).length / backbeat.length, covered: hit.length / beats.length,
+    alternate: hit.length < 2 ? 0 : hit.slice(1).filter((i, k) => i - hit[k] === 2).length / (hit.length - 1)} : null;
   const bodyAt = peaksAt(body, frameRate, beats), steady = quantile(bodyAt, .25) / Math.max(1e-9, quantile(bodyAt, .75));
   const allAt = peaksAt(all, frameRate, beats), lowAt = peaksAt(low, frameRate, beats), mean = v => v.reduce((a, x) => a + x, 0) / Math.max(1, v.length);
   // Measured above the song's floor — the low tenth of its local peaks, what sounds between onsets — for a click track
@@ -429,6 +439,26 @@ export function levelEvidence({all, body, low}, frameRate, beats, pulse, {reach 
     fill[k] = {full: Math.max(0, quantile(peaksAt(all, frameRate, points), .25) - floor) / Math.max(1e-9, quantile(allAt, .5) - floor), low: mean(peaksAt(low, frameRate, points)) / Math.max(1e-9, mean(lowAt))};
   }
   return {phase, kicked, steady, backbeat: back, fill};
+}
+
+/**
+ * Where the song actually hits: the attacks in the low and mid bands (the rise of their magnitude) that are the strongest
+ * within `local` of a beat (`period` seconds) either side — an echo a sixteenth before the hit it repeats is not one —
+ * and at least `share` of the median attack at the beats given (an echo ringing on after the song has decayed below
+ * the hits it repeats). Takes onsetStrength's result; returns the times in seconds.
+ */
+export function hitsOf({power}, frameRate, beats, period, {share = .6, local = .3} = {}) {
+  const n = power.low.length, mag = Float32Array.from(power.low, (v, i) => Math.sqrt(v + power.mid[i])), rise = new Float32Array(n);
+  for (let f = 1; f < n; f++) rise[f] = Math.max(0, mag[f] - mag[f - 1]);
+  const around = f => { let m = 0; for (let k = f - 3; k <= f + 3; k++) m = Math.max(m, rise[k] ?? 0); return m; };
+  const least = share * quantile(beats.map(t => around(Math.round(t * frameRate))), .5), w = Math.max(2, Math.round(local * period * frameRate)), kept = [];
+  for (let f = 1; f < n; f++) {
+    if (!(rise[f] > 0 && rise[f] >= least)) continue;
+    let top = true;
+    for (let k = Math.max(0, f - w); k <= Math.min(n - 1, f + w) && top; k++) if (k !== f && rise[k] > rise[f]) top = false;
+    if (top) kept.push(f / frameRate);
+  }
+  return kept;
 }
 
 /**

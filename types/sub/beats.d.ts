@@ -24,6 +24,8 @@ export interface BeatMap {
   readonly sure: boolean;
   /** Every beat, seconds, each on the transient it sits on. */
   readonly beats: readonly number[];
+  /** Where the song actually hits (dsp.mjs · hitsOf): attacks in the low or mid band, no echo — an unsure map cuts only on a shared beat with one. */
+  readonly hits: readonly number[];
   /** Every bar's first beat (a 4/4 guess; the downbeat from low-band onsets). */
   readonly bars: readonly number[];
   /** Where the song drops (the largest sustained rise in low and mid energy after a quieter build, arriving at once), on its beat; null when nothing rises and holds, or the rise is a fade-in. */
@@ -59,14 +61,20 @@ export interface BeatLevel { readonly bpm: number; readonly score: number; reado
  * backbeat covering at most `halfTime` of the beats), and the score margin when there is no kick pulse.
  */
 export interface LevelRules { pulse: number; phase: number; kicked: number; low: number; steady: number; fill: {2: number; 3: number; 4: number; any: number}; halfTime: number; margin: number }
-/** What safeBeats keeps: beats within `tolerance` seconds on every candidate's grid, none when a candidate's phase doubt reaches `phaseDoubt`. */
-export interface SafeRules { tolerance: number; phaseDoubt: number }
-/** The beat map's rules: the preferred tempos, the meter, the downbeat's margin, the drop's dB and window, what makes a fade-in, onBeat's tolerance, safeBeats' rules, the level tests. */
-export const BEATS: Readonly<{range: readonly [number, number]; meter: number; downbeat: number; drop: number; window: number; fade: number; sudden: number; onBeat: number; safe: Readonly<SafeRules>; level: Readonly<LevelRules>}>;
-/** The evidence one level is judged on (dsp.mjs · levelEvidence). */
-export interface LevelEvidence { phase: number | null; kicked: number | null; steady: number; backbeat?: {phase: number; covered: number} | null; fill: Record<2 | 3 | 4, {full: number; low: number}> & {any?: {full: number}} }
-/** The tests one level of the beat fails (none: it passes), from its evidence (dsp.mjs · levelEvidence) and the other levels tried. */
-export function levelTests(level: {bpm: number; score: number; evidence: LevelEvidence; masked?: LevelEvidence}, all: {score: number}[], rules?: LevelRules): string[];
+/**
+ * What safeBeats keeps: beats within `tolerance` seconds on every candidate's grid, none when a candidate's phase doubt
+ * reaches `phaseDoubt`, and only where the song hits — an attack at least `hit` of the median one on the beats, the
+ * strongest within `local` of a beat either side.
+ */
+export interface SafeRules { tolerance: number; phaseDoubt: number; hit: number; local: number }
+/** The beat map's rules: the preferred tempos, the meter, the downbeat's margin, the drop's dB and window, what makes a fade-in, onBeat's tolerance, the score of a likely tempo, safeBeats' rules, the level tests. */
+export const BEATS: Readonly<{range: readonly [number, number]; meter: number; downbeat: number; drop: number; window: number; fade: number; sudden: number; onBeat: number; likely: number; safe: Readonly<SafeRules>; level: Readonly<LevelRules>}>;
+/** The evidence one level is judged on (dsp.mjs · levelEvidence): the backbeat's share on its beats, the share of its beats that carry it, and how often the next one is two beats on. */
+export interface LevelEvidence { phase: number | null; kicked: number | null; steady: number; backbeat?: {phase: number; covered: number; alternate: number} | null; fill: Record<2 | 3 | 4, {full: number; low: number}> & {any?: {full: number}} }
+/** A backbeat on every other beat of a level (2 and 4): that level is the tactus, and no faster one may be certain. */
+export function backbeatEveryOther(evidence: LevelEvidence | null | undefined, rules?: LevelRules): boolean;
+/** The tests one level of the beat fails (none: it passes), from its evidence (dsp.mjs · levelEvidence) and the other levels tried ('margin', 'backbeat slower'). */
+export function levelTests(level: {bpm: number; score: number; evidence: LevelEvidence; masked?: LevelEvidence}, all: {bpm?: number; score: number; evidence?: LevelEvidence}[], rules?: LevelRules): string[];
 /** Whether a level was refused by the kicks alone: its only failures are kick tests, and its in-betweens with the kicks masked pass. */
 export function refusedByKicksAlone(level: {fails: readonly string[]; masked?: LevelEvidence; evidence: LevelEvidence; bpm: number; score: number}, rules?: LevelRules): boolean;
 
@@ -85,8 +93,14 @@ export interface SafeBeats {
   readonly tempi: readonly number[];
   /** The tempi unsure of their phase, when that left no beat. */
   readonly unsure?: readonly number[];
+  /** The beats every candidate shares where the song does not hit (dropped), when the map has its hits. */
+  readonly unheard?: number;
 }
-export function safeBeats(map: {beats: readonly number[]; sure?: boolean; alternatives?: readonly {bpm: number; beats?: readonly number[]; phaseDoubt?: number}[]}, options?: {tolerance?: number; doubt?: number}): SafeBeats;
+export function safeBeats(map: {beats: readonly number[]; sure?: boolean; hits?: readonly number[]; alternatives?: readonly {bpm: number; beats?: readonly number[]; phaseDoubt?: number}[]}, options?: {tolerance?: number; doubt?: number}): SafeBeats;
+/** The tempi an unsure map could be: its candidates scoring at least `least` (BEATS.likely), whole BPM, strongest first; a sure map's own. */
+export function likelyTempi(map: {sure?: boolean; bpm?: number; alternatives?: readonly {bpm: number; score: number}[]}, least?: number): number[];
+/** The map as text for a person settling its tempo (`storyreel beats <song>`): the verdict, the candidate tempi and scores, every level tried and why, how to settle it. */
+export function beatMapText(map: BeatMap | {sure: boolean; verdict: string; bpm: number; seconds: number; beats: readonly number[]; drop?: number | null; alternatives?: readonly {bpm: number; score: number}[]; levels?: readonly BeatLevel[]}, options?: {source?: string}): string;
 
 /** An error for the caller's options (an unknown key, a value out of range, a drop past the song's end, samples not mono Float32 at 22050 Hz): `code` is 'BEAT_OPTIONS'. An error reading the sound carries no such code. */
 export interface BeatOptionsError extends Error { code: 'BEAT_OPTIONS' }

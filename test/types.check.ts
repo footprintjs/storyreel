@@ -303,7 +303,9 @@ export const hitAt: number = peakOf('door.wav');
 export const musicOptions: MusicOptions = {file: 'song.mp3', gain: .2, snap: {tolerance: MUSIC.tolerance}, dropOn: ['story', 'came home', .5]};
 export const fitted = (storyboard: Storyboard, timings: import('../types/index.js').Timings, map: BeatMap): Promise<MusicCut[]> => fitToMusic({storyboard, timings, beats: map, snap: true}).then(f => f.cuts);
 // An unsure map cuts only on the beats every candidate shares; the fit says which grid it cut on; bad options carry a code.
-import {safeBeats, type SafeBeats, type BeatOptionsError} from '../types/sub/beats.js';
+import {safeBeats, likelyTempi, beatMapText, backbeatEveryOther, type SafeBeats, type BeatOptionsError} from '../types/sub/beats.js';
+export const settleWith = (map: BeatMap): string => `${beatMapText(map, {source: 'theme.mp3'})}\n${likelyTempi(map, BEATS.likely).join(', ')} · ${map.hits.length} hits · ${safeBeats(map).unheard ?? 0} unheard`;
+export const tactus = (map: BeatMap): boolean => map.levels.some(l => l.fails.includes('backbeat slower')) || backbeatEveryOther({phase: 1, kicked: 1, steady: 1, backbeat: {phase: 1, covered: .5, alternate: 1}, fill: {2: {full: 0, low: 0}, 3: {full: 0, low: 0}, 4: {full: 0, low: 0}}});
 export const cutOnly = (map: BeatMap): readonly number[] => map.sure ? map.beats : safeBeats(map).beats;
 export const gridOf = (map: BeatMap): SafeBeats['grid'] => map.verdict === 'tempo-close' ? safeBeats(map, {tolerance: BEATS.safe.tolerance}).grid : 'every beat';
 export const fitGrid = (storyboard: Storyboard, timings: import('../types/index.js').Timings, map: BeatMap): Promise<string> => fitToMusic({storyboard, timings, beats: map, snap: true}).then(f => `${f.cutOn.grid}: ${f.cutOn.beats} of ${f.cutOn.of}`);
