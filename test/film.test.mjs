@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync, existsSync} from 'node:fs';
+import {readFileSync, existsSync, writeFileSync, mkdirSync, statSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createCanvas} from '@napi-rs/canvas';
-import {compileFilm, evenTimings, makeFilm, changedFrames} from '../src/index.mjs';
+import {compileFilm, evenTimings, makeFilm, changedFrames, approveFilm} from '../src/index.mjs';
 import {PINS_HERE} from './golden.mjs';
 import {tempDir} from './tmp.mjs';
 
@@ -93,6 +93,63 @@ test('makeFilm: a footprintjs pipeline writes the film and its making-of record'
   assert.ok(Object.values(record.loudness.measured).every(Number.isFinite), 'the whole film was measured');
   assert.ok(record.loudness.target.LRA >= Math.ceil(record.loudness.measured.LRA), 'the range target asked for is recorded');
   assert.equal(record.loudness.flag, undefined);
+  // A finished run's record is as it always was: no failed mark, and its keys in their order.
+  assert.deepEqual(Object.keys(record), ['schemaVersion', 'made', 'out', 'seconds', 'chapters', 'span', 'inputs', 'pacing', 'claims', 'beats', 'sounds', 'loudness', 'tools', 'pipeline', 'compile']);
+});
+
+// A picture strategy whose plan throws: the run fails in its plan-picture stage, after the film is compiled.
+const failingVideo = (boom, before = () => {}) => ({name: 'failing', plan: () => { before(); throw boom; }, one: async () => ({}), join: async () => [], render: async () => ({})});
+const failedRecordIn = dir => JSON.parse(readFileSync(path.join(dir, 'making-of.failed.json'), 'utf8'));
+
+test('makeFilm: a run that fails writes making-of.failed.json, marked failed, never replaces a finished record, and throws the same error', async t => {
+  const dir = tempDir('film-failed', t), out = path.join(dir, 'hello.mp4'), boom = new Error('the plan broke');
+  const finished = '{"a finished render": true}';
+  writeFileSync(path.join(dir, 'making-of.json'), finished);
+  await assert.rejects(makeFilm({storyboard, recipe, root: hello, timings, out, render: {width: 320, height: 180, fps: 6, video: failingVideo(boom)}}), e => e === boom);
+  assert.equal(readFileSync(path.join(dir, 'making-of.json'), 'utf8'), finished, 'a finished record is never replaced');
+  const record = failedRecordIn(dir);
+  assert.deepEqual(record.failed, {error: 'the plan broke'});
+  assert.equal(record.schemaVersion, 1);
+  assert.ok(record.inputs.storyboard && record.inputs.recipe, 'what the film was made from, as far as the run got');
+  assert.ok(record.pipeline.some(e => /compile-film/.test(e.text ?? '')), 'the stages that ran are in the footprintjs narrative');
+  assert.ok(!record.pipeline.some(e => /render-film/.test(e.text ?? '')), 'and none after the failure');
+  assert.ok(record.compile.length > 0 && record.tools.length > 0);
+  assert.equal(record.out, undefined, 'no film was made');
+  assert.equal(existsSync(out), false);
+  // A failed render is never approved.
+  assert.throws(() => approveFilm({record: path.join(dir, 'making-of.failed.json'), by: 'S'}), /that render failed \(the plan broke\)/);
+});
+
+test('makeFilm: a failure in the first stage writes the record too', async t => {
+  const dir = tempDir('film-failed-early', t);
+  await assert.rejects(makeFilm({storyboard: {...storyboard, scenes: []}, recipe, root: hello, timings, out: path.join(dir, 'hello.mp4')}), /The storyboard has no scenes/);
+  const early = failedRecordIn(dir);
+  assert.match(early.failed.error, /^The storyboard has no scenes/);
+  assert.equal(early.inputs, undefined, 'nothing compiled, nothing claimed');
+});
+
+test('makeFilm: any thrown value is rethrown as itself, and the record keeps it as text it can always make', async t => {
+  const hostile = {
+    'a string': ['not an Error', 'not an Error'],
+    'a throwing toString': [{toString() { throw new Error('no text'); }}, null],
+    'a null-prototype object': [Object.create(null), null],
+    'a Proxy whose traps throw': [new Proxy({}, {get() { throw new Error('trap'); }, getPrototypeOf() { throw new Error('trap'); }, has() { throw new Error('trap'); }, ownKeys() { throw new Error('trap'); }}), null],
+  };
+  for (const [name, [value, text]] of Object.entries(hostile)) {
+    const dir = tempDir('film-failed-hostile', t);
+    // Caught by hand: assert.rejects hands the reason back from an async function, which reads a Proxy's `then`.
+    let caught;
+    try { await makeFilm({storyboard, recipe, root: hello, timings, out: path.join(dir, 'hello.mp4'), render: {video: failingVideo(value)}}); } catch (e) { caught = e; }
+    assert.ok(caught === value, `${name}: rethrown as itself`);
+    assert.equal(failedRecordIn(dir).failed.error, text ?? 'a thrown value that cannot be shown as text', name);
+  }
+});
+
+test('makeFilm: a failed record that cannot be written never replaces the error', async t => {
+  const dir = tempDir('film-failed-unwritable', t), boom = new Error('boom');
+  const blockRecord = () => mkdirSync(path.join(dir, 'making-of.failed.json'));
+  await assert.rejects(makeFilm({storyboard, recipe, root: hello, timings, out: path.join(dir, 'hello.mp4'), render: {video: failingVideo(boom, blockRecord)}}), e => e === boom);
+  assert.ok(statSync(path.join(dir, 'making-of.failed.json')).isDirectory(), 'the folder in its place is left as it was');
 });
 
 test('the cartoon kit: a full-frame world, deterministic, and every frame restores the canvas', async () => {

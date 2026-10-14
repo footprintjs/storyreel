@@ -660,7 +660,7 @@ export interface FilmInputs { storyboard: string; timings: string; recipe: strin
   lang?: string }
 /** What a person approved: who, when, the render they watched, and what it was made from. */
 export interface Approval { schemaVersion: 2; approved: string; by: string; note?: string; render?: string; inputs: FilmInputs }
-/** Approve a render as it was watched, from its making-of record (the path of its making-of.json, or the object). */
+/** Approve a render as it was watched, from its making-of record (the path of its making-of.json, or the object). A failed render's record refuses. */
 export function approveFilm(options: {record: string | {inputs: FilmInputs; out?: string}; by: string; note?: string | null; at?: Date}): Approval;
 /** Whether a film is still what was approved: {ok, changed} — which inputs differ, a file named by its path. */
 export function checkApproval(approval: Approval, inputs: FilmInputs): {ok: boolean; changed: string[]};

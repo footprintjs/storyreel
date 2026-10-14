@@ -235,7 +235,7 @@ test('a render whose out folder overlaps the voice folder is refused before anyt
   assert.deepEqual(readdirSync(proj), ['narration'], 'and nothing is written beside it');
 });
 
-test('a voice whose timings name audio outside its folder is refused before anything is written: the take it names is unchanged', async () => {
+test('a voice whose timings name audio outside its folder is refused before anything but the failed run\'s record is written: the take it names is unchanged', async () => {
   // A voice beside its takes, its timings.json naming them (../takes/scene-0.wav): pacing would rewrite the takes themselves.
   const proj = tmp(), voice = path.join(proj, 'voice'), takes = path.join(proj, 'takes'); mkdirSync(voice); mkdirSync(takes);
   const spoken = evenTimings({scenes: storyboard.scenes.filter(s => !s.silent)}, {tail: 4});
@@ -245,7 +245,8 @@ test('a voice whose timings name audio outside its folder is refused before anyt
   await assert.rejects(makeFilm({storyboard, recipe, root: hello, narrationDir: voice, pacing, out: path.join(proj, 'film.mp4'), render: small}),
     new RegExp(`voice: scene "story" names its audio "\\.\\./takes/scene-0\\.wav", outside the voice folder ${esc(voice)}: name each scene's audio by a path inside the voice folder`));
   assert.deepEqual(snapshot(takes), before, 'the takes are as they were');
-  assert.deepEqual(readdirSync(proj).sort(), ['takes', 'voice'], 'no copy was begun');
+  assert.deepEqual(readdirSync(proj).sort(), ['making-of.failed.json', 'takes', 'voice'], 'no voice copy was begun: beside the voice and its takes, only the failed run\'s record');
+  assert.match(JSON.parse(readFileSync(path.join(proj, 'making-of.failed.json'), 'utf8')).failed.error, /^voice: scene "story" names its audio/);
 });
 
 test('a voice paced in place before (an .unpaced.wav beside each audio file) is still refused by pacing: its copy carries those files', async () => {

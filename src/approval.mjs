@@ -38,6 +38,7 @@ export function approveFilm({record, by, note = null, at = new Date()} = {}) {
   if (typeof by !== 'string' || !by.trim()) throw new Error('approveFilm: say who approves it (by: "a name")');
   if (!(at instanceof Date) || Number.isNaN(at.getTime())) throw new Error('approveFilm: at is when it was approved, a Date (default: now)');
   const made = typeof record === 'string' ? JSON.parse(readFileSync(record, 'utf8')) : record;
+  if (made?.failed) throw new Error(`approveFilm: that render failed (${made.failed.error}); approve the record of a render that finished`);
   if (!made?.inputs?.storyboard || !made.inputs.recipe) throw new Error('approveFilm: give the making-of record of the render that was watched (record: its making-of.json, or the object); it lists what the film was made from');
   if (made.span && !made.span.whole) throw new Error(`approveFilm: that render shows ${made.span.from}–${made.span.to} s of a ${made.span.total} s film; an approval is of the whole film: approve a render of all of it`);
   return {schemaVersion: 2, approved: at.toISOString(), by: by.trim(), ...(note ? {note} : {}), ...(made.out ? {render: path.basename(made.out)} : {}), inputs: made.inputs};

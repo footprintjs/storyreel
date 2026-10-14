@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **A failed render keeps its making-of record.** `makeFilm` used to write `making-of.json` only after a run
+  finished, so the run most worth reading left nothing behind. A run that fails now writes the record it got to as
+  `making-of.failed.json` — marked `failed: {error}` with the error's text, beside what was known (the inputs once
+  compiled, the voice check, the pacing, the footprintjs narrative of the stages that ran, the compile record) — and
+  then throws the original error unchanged. A finished render's `making-of.json` in that folder is never replaced. A
+  refusal inside the run (`claims: 'refuse'`, a voice refused) is a failed run too, so its out folder now holds
+  `making-of.failed.json` where it used to be empty; nothing is drawn. `approveFilm` refuses a failed record. A
+  finished run writes exactly the bytes it wrote before.
+
 ## 0.15.0 — perspective: a room with depth
 
 - **`footprint-storyreel/perspective`: the layout artist's grid.** One horizon and one vanishing point for a scene;
