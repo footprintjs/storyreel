@@ -6,6 +6,8 @@ export function readMotionBlur(v: unknown): {subframes: number; shutter: number}
 export function sceneChapters(scenes: {id: string; title?: string}[], offsets: number[]): [number, string][];
 /** The encodes a render can make: 'standard' (quick) and 'high' (for posting). */
 export const QUALITIES: readonly ('standard' | 'draft' | 'high')[];
+/** A render's defaults: the frame size without a layout, frames a second, and a part's handles (seconds either side of its scenes). */
+export const RENDER_DEFAULTS: Readonly<{width: number; height: number; fps: number; handles: number}>;
 /** Where a part's own scenes lie on the film clock, exactly (unrounded, held to the film): no handles. */
 export function partScenes(film: import('../index.js').Film, part: {scenes: string[]; handles?: number} | {scene: string; handles?: number}): {from: number; to: number};
 /** A part with its handles → the render's from/to on the film clock (rounded to the millisecond). */

@@ -178,6 +178,16 @@ const pct = share => `${Math.round(share * 100)} %`;
  * when it fails (they are the reasons). `notRun` says why it cannot run when it is not picked, and `summary(measured)`
  * puts the numbers in its line.
  */
+/**
+ * The review's numbers, as data (the skills quote them; test/skills.test.mjs holds the pages to them): reviewPart's
+ * defaults — how often it reads the picture (every, s), how long a frozen picture is "nothing changes" (stillFor, s), how
+ * long a finding must last (lasting, s), how opaque and how tall a word must be drawn to count (minAlpha, minHeight: a
+ * share of the frame's height), how many words on screen at once are too many (maxWords), how long a real silence is
+ * (minSilence, s), how often something new must come (newEvery, s) — and two thresholds of its checks: the hook is the
+ * film's first `hook` seconds, and a spoken part of `breath` seconds or more needs real silences.
+ */
+export const REVIEW_DEFAULTS = Object.freeze({every: .25, stillFor: 5, lasting: 1, minAlpha: .5, minHeight: .011, maxWords: 35, minSilence: .8, newEvery: 5, hook: 3, breath: 30});
+
 export const REVIEW_CHECKS = Object.freeze({
   'under-captions': {label: 'Words under the captions', why: 'the layout shows captions', when: s => s.facts.captions,
     find: ({samples, layout}) => samples.flatMap(({t, words}) => !layout.captionAt(t) ? [] : words.filter(w => meet(w.quad, band(layout.boxes.captions)) > .05 * area(w.quad)).map(w => ({kind: 'under-captions', t, what: `"${w.text}"`})))},
@@ -185,14 +195,14 @@ export const REVIEW_CHECKS = Object.freeze({
     find: ({samples}) => samples.flatMap(({t, words}) => words.flatMap((a, i) => words.slice(i + 1).filter(b => !same(a, b) && meet(a.quad, b.quad) > .2 * Math.min(area(a.quad), area(b.quad))).map(b => ({kind: 'words-overlap', t, what: `"${a.text}" and "${b.text}"`}))))},
   'cut-off': {label: 'Words cut off at the edge', why: 'the part draws words', when: s => s.facts.words > 0,
     find: ({samples, width, height}) => samples.flatMap(({t, words}) => words.filter(w => w.quad.some(([x, y]) => x < -2 || y < -2 || x > width + 2 || y > height + 2)).map(w => ({kind: 'cut-off', t, what: `"${w.text}"`})))},
-  hook: {label: 'A hook in the first 3 s', why: 'the part starts the film', when: s => s.facts.from === 0 && s.facts.seconds >= 3,
+  hook: {label: `A hook in the first ${REVIEW_DEFAULTS.hook} s`, why: 'the part starts the film', when: s => s.facts.from === 0 && s.facts.seconds >= REVIEW_DEFAULTS.hook,
     find: ({samples, hashes}) => {
-      const first = samples.filter(x => x.t <= 3 + 1e-9);
-      return first.length > 1 && first.every(x => hashes[x.t] === hashes[first[0].t]) ? first.map(x => ({kind: 'hook', t: x.t, what: 'nothing moves in the first 3 s'})) : [];
+      const first = samples.filter(x => x.t <= REVIEW_DEFAULTS.hook + 1e-9);
+      return first.length > 1 && first.every(x => hashes[x.t] === hashes[first[0].t]) ? first.map(x => ({kind: 'hook', t: x.t, what: `nothing moves in the first ${REVIEW_DEFAULTS.hook} s`})) : [];
     }},
   'text-density': {label: 'Too much to read at once', why: 'the part draws words', when: s => s.facts.words > 0,
     find: ({samples, maxWords}) => samples.flatMap(({t, words}) => words.reduce((n, w) => n + w.text.split(/\s+/).filter(Boolean).length, 0) > maxWords ? [{kind: 'text-density', t, what: `more than ${maxWords} words on screen`}] : [])},
-  silences: {label: 'Real silences', why: 'the part is spoken and long enough to need a breath', when: s => s.facts.spoken && s.facts.seconds >= 30,
+  silences: {label: 'Real silences', why: 'the part is spoken and long enough to need a breath', when: s => s.facts.spoken && s.facts.seconds >= REVIEW_DEFAULTS.breath,
     find: ({film, window, samples, minSilence}) => {
       // The pauses between spoken words (scene tails included) with no effect sound in them.
       const said = film.timings.scenes.flatMap((sc, i) => (sc.words ?? []).map(w => [film.clock.offsets[i] + w.start, film.clock.offsets[i] + w.end]))
@@ -386,7 +396,9 @@ function spans(film, hits, every, lasting) {
  * check, in order, 'not run' when it did not fit the part — and verdictText as lines; the part's timeline (scenes and
  * beats), the checks that ran, and the review's own footprintjs record (each verdict's decide() evidence in it).
  */
-export async function reviewPart(film, {part = null, from = 0, to = film.total, layout = null, every = .25, stillFor = 5, lasting = 1, minAlpha = .5, minHeight = .011, maxWords = 35, minSilence = .8, newEvery = 5, loop = false, checks = REVIEW_CHECKS} = {}) {
+export async function reviewPart(film, {part = null, from = 0, to = film.total, layout = null, every = REVIEW_DEFAULTS.every, stillFor = REVIEW_DEFAULTS.stillFor, lasting = REVIEW_DEFAULTS.lasting,
+  minAlpha = REVIEW_DEFAULTS.minAlpha, minHeight = REVIEW_DEFAULTS.minHeight, maxWords = REVIEW_DEFAULTS.maxWords, minSilence = REVIEW_DEFAULTS.minSilence, newEvery = REVIEW_DEFAULTS.newEvery,
+  loop = false, checks = REVIEW_CHECKS} = {}) {
   if (!(Number.isFinite(newEvery) && newEvery > 0)) throw new Error(`review: newEvery must be seconds, more than 0, not ${JSON.stringify(newEvery)}`);
   // What is read: a part with its handles, or from/to held to the film as a render's is (no moment past its ends).
   const window = part ? partWindow(film, part) : {from: Math.max(0, from), to: Math.min(film.total, to)};

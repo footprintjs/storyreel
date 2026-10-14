@@ -287,6 +287,13 @@ const ENCODE = Object.freeze({
 export const QUALITIES = Object.freeze(Object.keys(ENCODE));
 
 /**
+ * A render's defaults, as data (the skills quote them; test/skills.test.mjs holds the pages to them): the frame size
+ * without a layout (a layout's format sets its own), frames a second, and a part's handles (seconds of the film either
+ * side of its scenes).
+ */
+export const RENDER_DEFAULTS = Object.freeze({width: 1280, height: 720, fps: 30, handles: 1.5});
+
+/**
  * The film's chapters on its own clock, [[seconds, name]]: a titled scene starts a chapter and an untitled one goes
  * on with the chapter before it; a storyboard without any titles makes every scene a chapter, named by its id.
  */
@@ -319,7 +326,7 @@ export function partScenes(film, part) {
  * of the part after, so both of its cuts are seen. part: {scenes: [id, …], handles?} or {scene: id, handles?}.
  */
 export function partWindow(film, part) {
-  const {from, to} = partScenes(film, part), handles = part.handles ?? 1.5;
+  const {from, to} = partScenes(film, part), handles = part.handles ?? RENDER_DEFAULTS.handles;
   if (!(typeof handles === 'number' && handles >= 0 && handles <= 10)) throw new Error('part.handles is the seconds shown before and after the part, 0–10 (1.5 by default)');
   // Rounded to the millisecond, then held to the film: rounding after would carry an end of 21.2999…97 to 21.3, past it.
   return {from: Math.max(0, +(from - handles).toFixed(3)), to: Math.min(film.total, +(to + handles).toFixed(3))};
@@ -362,7 +369,7 @@ export function closeRender(job) {
   if (job?.work && !job.keepWork) rmSync(job.work, {recursive: true, force: true});
 }
 
-function prepareJob({film, storyboard, timings, narrationDir = null, out, width: givenWidth, height: givenHeight, fps = 30, intro = null, stamp = null,
+function prepareJob({film, storyboard, timings, narrationDir = null, out, width: givenWidth, height: givenHeight, fps = RENDER_DEFAULTS.fps, intro = null, stamp = null,
   from = intro ? -intro.seconds : 0, to = film.total, poster = film.posterAt ?? null, posterFrame = true, peakCeilingDBFS = -20, loudness = {I: -16, TP: -1.5}, layout = null, motionBlur = null,
   captionFiles = false, quality = 'standard', ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', video: _strategy, music = null, soundAt = 'start', work = null}) {
   checkLoudnessTarget(loudness);
@@ -377,7 +384,7 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   const framed = layout ? compileLayout(film, layout) : null;
   // A layout's format sets the size; a size given beside it would be silently ignored, so it refuses.
   if (framed && (givenWidth !== undefined || givenHeight !== undefined)) throw new Error(`renderFilm: the ${framed.format} layout is ${framed.width}×${framed.height}; leave width and height out (they size a render without a layout)`);
-  const width = framed?.width ?? givenWidth ?? 1280, height = framed?.height ?? givenHeight ?? 720;
+  const width = framed?.width ?? givenWidth ?? RENDER_DEFAULTS.width, height = framed?.height ?? givenHeight ?? RENDER_DEFAULTS.height;
   if (framed && intro && framed.format !== 'landscape') throw new Error(`renderFilm: an intro is drawn for the landscape frame; the ${framed.format} layout takes none (leave intro out)`);
   // First, the out folder and a `work` named elsewhere: their REAL paths, with no folder on the way another user could
   // rearrange (files.mjs · securePath) — everything is written through these paths only. Then every output's name,

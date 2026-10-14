@@ -4,6 +4,8 @@ export interface ProjectInputs {storyboard: unknown; recipe: unknown; kits?: unk
   layout?: import('../index.js').Layout | null; out?: string; strings?: unknown; data?: unknown; theme?: unknown; cast?: unknown; lang?: string}
 export interface Project {film: Film; inputs: ProjectInputs & {voiced: boolean}; cwd: string}
 export const CONFIG: 'storyreel.config.mjs';
+/** The tools' defaults: a part's handles (seconds either side), a strip's frames and their rate, a still's width (px). */
+export const TOOL_DEFAULTS: Readonly<{handles: number; frames: number; fps: number; width: number}>;
 /** The project's film, compiled once (paced from its voice folder's timings.json when it names one). */
 export function loadProject(options?: {config?: string; cwd?: string; [flag: string]: unknown}): Promise<Project>;
 export interface PartArgs {scene?: string | string[]; scenes?: string | string[]; handles?: number | string}

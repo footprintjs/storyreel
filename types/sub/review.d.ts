@@ -37,6 +37,12 @@ export interface VerdictCheck {label: string; why?: string; notRun?: string; whe
   verdict: VerdictRules; summary?(measured: any): string}
 export type ReviewCheck = FindingCheck | VerdictCheck;
 /** The built-in checks; slideshow, geometry and claims answer with a verdict. */
+/**
+ * The review's numbers: reviewPart's defaults (every, stillFor, lasting, minAlpha, minHeight, maxWords, minSilence,
+ * newEvery) and two thresholds of its checks: the hook is the film's first `hook` seconds; a spoken part of `breath`
+ * seconds or more needs real silences.
+ */
+export const REVIEW_DEFAULTS: Readonly<{every: number; stillFor: number; lasting: number; minAlpha: number; minHeight: number; maxWords: number; minSilence: number; newEvery: number; hook: number; breath: number}>;
 export const REVIEW_CHECKS: Readonly<Record<'under-captions' | 'words-overlap' | 'cut-off' | 'hook' | 'text-density' | 'silences' | 'stale' | 'loop' | 'frozen-voice' | 'still' | 'example-lingers', FindingCheck> & Record<'slideshow' | 'geometry' | 'claims', VerdictCheck>>;
 /** What a verdict check answered: its verdict, why (the rule that matched, or what passing means), what it measured, and its numbers in words. */
 export interface ReviewVerdict {check: string; label: string; verdict: Verdict; why: string; measured: Record<string, unknown>; summary?: string}
