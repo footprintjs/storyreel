@@ -70,11 +70,12 @@ export const FOCUS = Object.freeze({
 });
 
 const SANS = '"Helvetica Neue", Helvetica, Arial, sans-serif';
-/** A word's label in the top corner: ink ground, paper letters. */
-function chip(ctx, text, alpha, theme, {x = 40, y = 26, k = 1} = {}) {
+/** A word's label in the top corner: ink ground, paper letters (also an example scene's label: film.mjs · exampleLabel). */
+export function chip(ctx, text, alpha, theme, {x = 40, y = 26, k = 1, right = null} = {}) {
   const ink = theme?.palette?.ink ?? '#23211c', bg = theme?.palette?.bg ?? '#f3eee3', font = theme?.type?.sans ?? SANS;
   ctx.save(); ctx.globalAlpha *= alpha; ctx.font = `800 24px ${font}`;
   const w = ctx.measureText(text).width + 32;
+  if (right !== null) x = right - w;   // set against a right edge instead (an example scene's label, top right)
   ctx.translate(x + w / 2, y + 20); ctx.scale(k, k); ctx.translate(-(x + w / 2), -(y + 20));
   ctx.fillStyle = ink; ctx.beginPath(); ctx.roundRect(x, y, w, 40, 20); ctx.fill();
   ctx.fillStyle = bg; ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillText(text, x + 16, y + 21);

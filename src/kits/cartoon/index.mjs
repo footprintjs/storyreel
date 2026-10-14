@@ -12,6 +12,10 @@
  *    spots: [{from, to, at: [x, y], r, zoom}],
  *    captions: [{at, until, text}],                             // big friendly words at the top
  *    camera: [{at, to: [x, y], zoom}]}                          // eased moves; the frame always stays covered
+ *
+ * Its parts (geometry.mjs): the shepherd's staff, arms and hands, each sheep's body and legs — the numbers they are
+ * drawn from, so the geometry audit checks the drawing itself: an arm stays on the robe, a hand on the staff, a leg
+ * on its sheep, the arms never cross, and a standing sheep's feet do not slide.
  */
 import {ease} from '../whiteboard/board.mjs';
 import {moodAt, idleAt} from '../../acting.mjs';
@@ -70,6 +74,8 @@ export function compileCartoon(spec, clock, motion = {cameraSpeed: 1}) {
       const {z, tx, ty} = cameraAt(t), seen = ([x0, y0, x1, y1]) => [x0 * z + tx, y0 * z + ty, x1 * z + tx, y1 * z + ty];
       return sceneryAt(t, {evening, eureka}).map(r => ({...r, box: seen(r.box)}));
     },
+    // Its parts, for the geometry audit (geometry.mjs): in the world's own coordinates, before the camera.
+    parts: t => cartoonParts(t, {sheep, eureka}),
     draw: (ctx, t, spot) => {
       const {z, tx, ty} = cameraAt(t);
       ctx.save(); ctx.translate(tx, ty); ctx.scale(z, z);
@@ -150,8 +156,7 @@ function drawWorld(ctx, t, {sheep, evening, eureka, captions, spot}) {
     const e = t - s.homeGate; if (e >= 0 && e < .35) { const u = e / .35, [bx, by] = [LAYOUT.sack[0], LAYOUT.sack[1] - 64], [px, py] = [LAYOUT.homePile[0] + (sheep.filter(x => x.homeGate < s.homeGate).length) * 30, LAYOUT.homePile[1]]; pebble(ctx, lerp(bx, px, u), lerp(by, py, u) - Math.sin(u * Math.PI) * 70, 1); }
   }
   // The shepherd, dropping a pebble each time a sheep passes the gate.
-  const dropping = sheep.some(s => t >= s.outGate - .15 && t < s.outGate + .35) || sheep.some(s => t >= s.homeGate - .15 && t < s.homeGate + .3);
-  drawShepherd(ctx, t, LAYOUT.shepherd, {dropping, eureka, m});
+  drawShepherd(ctx, t, LAYOUT.shepherd, {dropping: droppingAt(sheep, t), eureka, m});
   // The flock, back to front.
   const drawn = sheep.map(s => ({s, ...sheepAt(s, t)})).filter(x => x.pos[0] < 1680).sort((a, b) => a.pos[1] - b.pos[1]);
   for (const x of drawn) drawSheep(ctx, t + x.s.i * .7, x.pos, {walking: x.walking, facing: x.facing, m, seed: x.s.i + 2});
@@ -202,23 +207,40 @@ function eye(ctx, x, y, r, shut) {
   if (shut > .8) { ctx.fillRect(x - r - .5, y - 1, 2 * r + 1, 2.5); return; }
   ctx.beginPath(); ctx.ellipse(x, y, r, r * (1 - shut), 0, 0, 7); ctx.fill();
 }
-function drawShepherd(ctx, t, [x, y], {dropping, eureka, m}) {
-  // His eureka is acted (acting.mjs): the eyes squint just before it, the face swaps under the squint, the head
-  // jumps up and settles. Between changes he breathes and blinks on his own uneven rhythm.
+/** Whether the shepherd is dropping a pebble at t: as each sheep passes the gate, out or home. */
+const droppingAt = (sheep, t) => sheep.some(s => t >= s.outGate - .15 && t < s.outGate + .35) || sheep.some(s => t >= s.homeGate - .15 && t < s.homeGate + .3);
+/**
+ * The shepherd's pose at t. His eureka is acted (acting.mjs): the eyes squint just before it, the face swaps under the
+ * squint, the head jumps up and settles. Between changes he breathes and blinks on his own uneven rhythm.
+ */
+function shepherdPose(t, eureka) {
   const act = moodAt(eureka ? (eureka.at > 0 ? [{at: 0, mood: 'calm'}, {at: eureka.at, mood: 'surprised'}] : [{at: 0, mood: 'surprised'}]) : [{at: 0, mood: 'calm'}], t), idle = idleAt(t, {seed: 1});
-  const surprised = act.mood === 'surprised', shut = Math.max(idle.blink, act.anticipation), take = act.take;
-  const bob = Math.sin(t * 2) * 2;
+  return {act, surprised: act.mood === 'surprised', shut: Math.max(idle.blink, act.anticipation), take: act.take, bob: Math.sin(t * 2) * 2};
+}
+/**
+ * The shepherd's shape at t: every point and size of his staff, robe, arms and hands — what drawShepherd draws him from,
+ * and what shepherdParts gives the geometry audit, so the audit reads the drawing itself.
+ */
+function shepherdShape(t, [x, y], {dropping, eureka}) {
+  const pose = shepherdPose(t, eureka), {take, bob} = pose, lift = dropping ? -40 : 0;   // (the right arm is raised while dropping)
+  return {...pose,
+    staff: {a: [x - 58, y], b: [x - 58, y - 250], width: 9},
+    robe: [[x - 34, y - 150 + bob - 8 * take], [x + 34, y - 150 + bob - 8 * take], [x + 52, y], [x - 52, y]],
+    arms: [{a: [x - 26, y - 135 + bob], b: [x - 52, y - 110], width: 16}, {a: [x + 26, y - 135 + bob], b: [x + 52, y - 110 + lift * .6], width: 16}],
+    hands: [{at: [x - 55, y - 108], r: 9}, {at: [x + 55, y - 108 + lift * .6], r: 9}]};
+}
+function drawShepherd(ctx, t, [x, y], {dropping, eureka, m}) {
+  const shape = shepherdShape(t, [x, y], {dropping, eureka}), {act, surprised, shut, take, bob, staff, robe, arms, hands} = shape;
   ctx.fillStyle = 'rgba(0,0,0,.15)'; ctx.beginPath(); ctx.ellipse(x, y + 4, 60, 12, 0, 0, 7); ctx.fill();
   // Staff.
-  ctx.strokeStyle = C.woodDark; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x - 58, y); ctx.lineTo(x - 58, y - 250); ctx.arc(x - 38, y - 250, 20, Math.PI, 0); ctx.stroke();
+  ctx.strokeStyle = C.woodDark; ctx.lineWidth = staff.width; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(...staff.a); ctx.lineTo(...staff.b); ctx.arc(x - 38, y - 250, 20, Math.PI, 0); ctx.stroke();
   // Robe and belt.
-  ctx.fillStyle = mix(C.robe, '#4a5b9a', m * .5); ctx.beginPath(); ctx.moveTo(x - 34, y - 150 + bob - 8 * take); ctx.lineTo(x + 34, y - 150 + bob - 8 * take); ctx.lineTo(x + 52, y); ctx.lineTo(x - 52, y); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = mix(C.robe, '#4a5b9a', m * .5); ctx.beginPath(); ctx.moveTo(...robe[0]); for (const p of robe.slice(1)) ctx.lineTo(...p); ctx.closePath(); ctx.fill();
   ctx.fillStyle = C.robeDark; ctx.fillRect(x - 42, y - 86 + bob, 84, 12);
   // Arms: one on the staff; the other drops a pebble (raised while dropping).
-  ctx.strokeStyle = mix(C.robe, '#4a5b9a', m * .5); ctx.lineWidth = 16;
-  ctx.beginPath(); ctx.moveTo(x - 26, y - 135 + bob); ctx.lineTo(x - 52, y - 110); ctx.stroke();
-  const lift = dropping ? -40 : 0; ctx.beginPath(); ctx.moveTo(x + 26, y - 135 + bob); ctx.lineTo(x + 52, y - 110 + lift * .6); ctx.stroke();
-  ctx.fillStyle = C.skin; ctx.beginPath(); ctx.arc(x - 55, y - 108, 9, 0, 7); ctx.arc(x + 55, y - 108 + lift * .6, 9, 0, 7); ctx.fill();
+  ctx.strokeStyle = mix(C.robe, '#4a5b9a', m * .5);
+  for (const arm of arms) { ctx.lineWidth = arm.width; ctx.beginPath(); ctx.moveTo(...arm.a); ctx.lineTo(...arm.b); ctx.stroke(); }
+  ctx.fillStyle = C.skin; ctx.beginPath(); for (const hand of hands) ctx.arc(...hand.at, hand.r, 0, 7); ctx.fill();
   // Head: face, beard, eyes (blink and squint; wide when surprised), a hood. The take lifts it.
   const hy = y - 185 + bob - 16 * take;
   ctx.fillStyle = C.robeDark; ctx.beginPath(); ctx.arc(x, hy - 4, 44, Math.PI, 0); ctx.fill();
@@ -228,17 +250,31 @@ function drawShepherd(ctx, t, [x, y], {dropping, eureka, m}) {
   for (const dx of [-12, 12]) eye(ctx, x + dx, hy - 5, surprised ? lerp(4.5, 6, act.u) : 4.5, shut);
   ctx.strokeStyle = '#6b3f26'; ctx.lineWidth = 3; ctx.beginPath(); if (surprised) ctx.ellipse(x, hy + 14, 7, 9 * (1 + .3 * Math.max(0, take)), 0, 0, 7); else ctx.arc(x, hy + 8, 9, .3, Math.PI - .3); ctx.stroke();
 }
+/** Where a sheep's legs stand, in its own coordinates (facing right); its wool, as circles [dx, dy, r] (the shade sits 3 px lower). */
+const LEGS = [-24, -8, 10, 26];
+const SHADE = [[-26, 6, 26], [0, -8, 30], [26, 4, 26], [-10, 14, 24], [14, 14, 24]], WOOL = [[-26, 2, 25], [0, -12, 29], [26, 0, 25], [-10, 10, 23], [14, 10, 23], [0, 0, 26]];
+/** The wool's box in a sheep's own coordinates, before it bobs: the circles drawSheep draws it with. */
+const BODY = (circles => [Math.min(...circles.map(([dx, , r]) => dx - r)), Math.min(...circles.map(([, dy, r]) => dy - r)), Math.max(...circles.map(([dx, , r]) => dx + r)), Math.max(...circles.map(([, dy, r]) => dy + r))])([...SHADE.map(([dx, dy, r]) => [dx, dy + 3, r]), ...WOOL]);
+/**
+ * A sheep's shape at its own t, in its own coordinates (facing right): how far its body bobs, and each leg as the
+ * rectangle drawSheep fills ({x, y, w, h}: a trot while it walks, still while it stands) — what sheepParts gives the audit.
+ */
+function sheepShape(t, walking) {
+  const phase = t * 11;
+  const legs = LEGS.map((lx, k) => { const swing = walking ? Math.sin(phase + k * Math.PI / 2) * 7 : 0; return {x: lx - 4 + swing * .3, y: 14, w: 8, h: 26 - Math.abs(swing) * .3}; });
+  return {bob: walking ? Math.abs(Math.sin(phase)) * 5 : Math.sin(t * 1.8) * 1.2, legs};
+}
 function drawSheep(ctx, t, [x, y], {walking, facing, m, seed}) {
   // Each sheep blinks on its own uneven rhythm (acting.mjs · idleAt): a flock never blinks in step.
-  const phase = t * 11, bob = walking ? Math.abs(Math.sin(phase)) * 5 : Math.sin(t * 1.8) * 1.2, blink = idleAt(t, {seed}).blink;
+  const {bob, legs} = sheepShape(t, walking), blink = idleAt(t, {seed}).blink;
   ctx.save(); ctx.translate(x, y); ctx.scale(facing, 1);
   ctx.fillStyle = 'rgba(0,0,0,.14)'; ctx.beginPath(); ctx.ellipse(0, 38, 48, 9, 0, 0, 7); ctx.fill();
   ctx.fillStyle = C.face;
-  [-24, -8, 10, 26].forEach((lx, k) => { const swing = walking ? Math.sin(phase + k * Math.PI / 2) * 7 : 0; ctx.beginPath(); ctx.roundRect(lx - 4 + swing * .3, 14, 8, 26 - Math.abs(swing) * .3, 4); ctx.fill(); });
+  for (const leg of legs) { ctx.beginPath(); ctx.roundRect(leg.x, leg.y, leg.w, leg.h, 4); ctx.fill(); }
   ctx.translate(0, -bob);
   const wool = mix(C.wool, '#d9d5ee', m * .5), shade = mix(C.woolShade, '#b8b3d6', m * .5);
-  for (const [dx, dy, r] of [[-26, 6, 26], [0, -8, 30], [26, 4, 26], [-10, 14, 24], [14, 14, 24]]) { ctx.fillStyle = shade; ctx.beginPath(); ctx.arc(dx, dy + 3, r, 0, 7); ctx.fill(); }
-  for (const [dx, dy, r] of [[-26, 2, 25], [0, -12, 29], [26, 0, 25], [-10, 10, 23], [14, 10, 23], [0, 0, 26]]) { ctx.fillStyle = wool; ctx.beginPath(); ctx.arc(dx, dy, r, 0, 7); ctx.fill(); }
+  for (const [dx, dy, r] of SHADE) { ctx.fillStyle = shade; ctx.beginPath(); ctx.arc(dx, dy + 3, r, 0, 7); ctx.fill(); }
+  for (const [dx, dy, r] of WOOL) { ctx.fillStyle = wool; ctx.beginPath(); ctx.arc(dx, dy, r, 0, 7); ctx.fill(); }
   // Head, ears, eyes.
   ctx.fillStyle = C.face; ctx.beginPath(); ctx.ellipse(46, -8, 16, 20, .2, 0, 7); ctx.fill();
   ctx.beginPath(); ctx.ellipse(36, -22, 9, 5, -.6, 0, 7); ctx.fill();
@@ -255,6 +291,45 @@ function speech(ctx, [cx, cy], [tx, ty], text, a) {
   ctx.beginPath(); ctx.moveTo(cx - w * .5, cy + h * .6); ctx.lineTo(tx, ty); ctx.lineTo(cx - w * .2, cy + h * .85); ctx.fill(); ctx.stroke();
   ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(cx, cy, w - 3, h - 3, 0, 0, 7); ctx.fill();
   ctx.fillStyle = C.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, cx, cy + 2); ctx.restore();
+}
+
+/**
+ * The shepherd's parts at t (geometry.mjs): his shape (shepherdShape — what drawShepherd draws from) as named parts. The
+ * staff; each arm from its shoulder (on the robe) to its hand; the left hand on the staff, the right on its arm; the arms
+ * kept apart, and the right arm off the staff. Move an arm in the drawing, and the audit sees it.
+ */
+function shepherdParts(t, at, {dropping, eureka}) {
+  const {staff, robe, arms, hands} = shepherdShape(t, at, {dropping, eureka}), hand = h => ({a: h.at, b: h.at, width: 2 * h.r});
+  const xs = robe.map(p => p[0]), ys = robe.map(p => p[1]);
+  return {
+    segments: {
+      'shepherd staff': staff,
+      'shepherd arm left': {...arms[0], mount: 'shepherd robe'},
+      'shepherd hand left': {...hand(hands[0]), mount: 'shepherd staff'},
+      'shepherd arm right': {...arms[1], mount: 'shepherd robe'},
+      'shepherd hand right': {...hand(hands[1]), mount: 'shepherd arm right'},
+    },
+    regions: {'shepherd robe': [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]},
+    apart: [['shepherd arm left', 'shepherd arm right'], ['shepherd arm right', 'shepherd staff']],
+  };
+}
+/**
+ * A sheep's parts at its own t (geometry.mjs): its shape (sheepShape — what drawSheep draws from), on the world. Its body
+ * (the wool's box, bobbing) and four legs hung from it, each down its rectangle's middle, side by side and never
+ * crossing; a standing sheep's feet are planted (contact: the leg's foot end, b).
+ */
+function sheepParts(i, t, [x, y], {walking, facing}) {
+  const {bob, legs} = sheepShape(t, walking), name = `sheep ${i + 1}`, at = (lx, ly) => [x + facing * lx, y + ly];
+  const named = legs.map((leg, k) => [`${name} leg ${k + 1}`, {a: at(leg.x + leg.w / 2, leg.y), b: at(leg.x + leg.w / 2, leg.y + leg.h), width: leg.w, mount: `${name} body`, contact: walking ? false : 'b'}]);
+  const [x0, x1] = [x + facing * BODY[0], x + facing * BODY[2]].sort((p, q) => p - q);
+  return {segments: Object.fromEntries(named), regions: {[`${name} body`]: [x0, y + BODY[1] - bob, x1, y + BODY[3] - bob]},
+    apart: named.slice(1).map(([n], k) => [named[k][0], n])};
+}
+/** Everything the world draws with parts at t: the shepherd and every sheep in the picture. */
+function cartoonParts(t, {sheep, eureka}) {
+  const all = [shepherdParts(t, LAYOUT.shepherd, {dropping: droppingAt(sheep, t), eureka}),
+    ...sheep.map(s => ({s, ...sheepAt(s, t)})).filter(x => x.pos[0] < 1680).map(x => sheepParts(x.s.i, t + x.s.i * .7, x.pos, x))];
+  return {segments: Object.assign({}, ...all.map(p => p.segments)), regions: Object.assign({}, ...all.map(p => p.regions)), apart: all.flatMap(p => p.apart)};
 }
 
 export const cartoonKit = {name: 'cartoon', story: {compile: compileCartoon, motion: ['cameraSpeed']}};

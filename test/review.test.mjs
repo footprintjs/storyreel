@@ -33,7 +33,7 @@ test('wordsAt reads every line a frame draws, with its box through the transform
 
 test('a review picks its checks by what the part has, runs each as its own subflow, and names what it finds with times', async () => {
   const r = await reviewPart(film, {layout: {format: 'landscape', captions: true, scale: 2}});
-  assert.deepEqual([...r.ran].sort(), ['cut-off', 'hook', 'stale', 'still', 'text-density', 'under-captions', 'words-overlap'], 'a director\'s checks too: the hook (the part starts the film), how much there is to read, something new every few seconds');
+  assert.deepEqual([...r.ran].sort(), ['claims', 'cut-off', 'hook', 'slideshow', 'stale', 'still', 'text-density', 'under-captions', 'words-overlap'], 'a director\'s checks too: the hook (the part starts the film), how much there is to read, something new every few seconds — and the verdicts that fit');
   assert.equal(r.findings.filter(f => ['hook', 'text-density'].includes(f.kind)).length, 0, 'the square moves from the first frame, and there is little to read');
   const one = kind => r.findings.filter(f => f.kind === kind);
   const [overlap] = one('words-overlap'), [under] = one('under-captions'), [edge] = one('cut-off'), [still] = one('still');
@@ -51,9 +51,10 @@ test('a review picks its checks by what the part has, runs each as its own subfl
 test('a check that does not fit is not picked (no caption band, no caption check); a check of your own has the same shape', async () => {
   const titled = {label: 'The title is there', why: 'always', when: () => true, find: ({samples}) => samples.filter(s => !s.words.some(w => w.text === 'TITLE')).map(s => ({kind: 'no-title', t: s.t, what: 'no title'}))};
   const r = await reviewPart(film, {from: 1, to: 4, checks: {...REVIEW_CHECKS, titled}});
-  assert.deepEqual([...r.ran].sort(), ['cut-off', 'text-density', 'titled', 'words-overlap'], 'no captions without a layout, no hook after the start, and 3 s is too short to stand still');
+  assert.deepEqual([...r.ran].sort(), ['claims', 'cut-off', 'text-density', 'titled', 'words-overlap'], 'no captions without a layout, no hook after the start, and 3 s is too short to stand still (or to hold a shot)');
+  assert.deepEqual(r.verdicts.map(v => [v.check, v.verdict]), [['slideshow', 'not run'], ['geometry', 'not run'], ['claims', 'passed']], 'a verdict check that does not fit is not run, never passed');
   assert.equal(r.findings.filter(f => f.kind === 'no-title').length, 0);
-  await assert.rejects(reviewPart(film, {checks: {broken: {label: 'x'}}}), /review check "broken" must be \{label, why\?, when\(scope\), find\(review\)\}/);
+  await assert.rejects(reviewPart(film, {checks: {broken: {label: 'x'}}}), /review check "broken" must be \{label, why\?, when\(scope\), find\(review\)\} — or, answering with a verdict, \{label, why\?, notRun\?, when\(scope\), measure\(review\), verdict: \{rules, passed\}\}/);
   assert.equal(findingsText([{kind: 'still', from: 61.25, to: 67, scene: 'end', what: 'the picture does not change'}]), '1:01.3–1:07.0 end · nothing changes: the picture does not change');
   assert.equal(findingsText([{kind: 'loop', from: 59.96, to: 119.97, scene: 'end', what: 'x'}]), '1:00.0–2:00.0 end · the loop jumps: x', 'rounded to the tenth before the minutes: never 0:60.0');
 });
