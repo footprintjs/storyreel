@@ -20,12 +20,18 @@ export interface BeatTempo {bpm: number; score: number}
 export interface BeatMapAnswer {readonly bpm: number; readonly beats: readonly number[]; readonly drop?: number | null; readonly confidence?: number; readonly alternatives?: readonly BeatTempo[]}
 /**
  * Reads the beats of a sound: handed a WAV of the video's sound (in a folder removed after it answers), with the breakdown's
- * `beatOptions` and the FFmpeg it runs. One that throws (a silent track, no tempo) leaves the beats unread, saying why.
+ * `beatOptions` and the FFmpeg it runs. One that throws (a silent track, no tempo) leaves the beats unread, saying why;
+ * one that throws an error with `code: 'BEAT_OPTIONS'` (its options are wrong) makes the breakdown refuse.
  */
 export type BeatReader = (audioFile: string, options: BeatOptions & {ffmpeg: string}) => BeatMapAnswer | Promise<BeatMapAnswer>;
 
-/** The options a beat map takes (beats.mjs · BeatMapOptions, without ffmpeg, which the breakdown gives). */
-export interface BeatOptions {bpm?: number; drop?: number | null; range?: [number, number]}
+/**
+ * The beat map's own options (beats.mjs · beatMap takes {bpm, drop, range}): the breakdown hands them on untouched, with its
+ * FFmpeg, and never checks their names or values — the reader does. A reader that finds them wrong throws an error with
+ * `code: 'BEAT_OPTIONS'`, and the breakdown refuses with it; any other error the reader throws is a sound it could not
+ * read, recorded as not run.
+ */
+export type BeatOptions = Record<string, unknown>;
 
 export type TransitionKind = 'cut' | 'dissolve' | 'dip' | 'fade-in' | 'fade-out';
 /**
@@ -71,7 +77,7 @@ export interface BreakdownSpec {
 export interface BreakdownOptions {
   /** the folder written (default: <video name>-breakdown in the working folder) */ out?: string;
   beatMap?: BeatReader | null;
-  /** the beat map's own options, checked before the sound is read and handed on with ffmpeg (beats.mjs · beatMap's {bpm, drop, range}); another key refuses */
+  /** the beat map's own options, handed on untouched with ffmpeg; only the reader's error coded BEAT_OPTIONS refuses (BeatOptions) */
   beatOptions?: BeatOptions;
   /** the FFmpeg run for frames, stills and sound (FFMPEG_BIN, or the one on the PATH): 5.1 or later */ ffmpeg?: string;
   /** the adapter that reads the file (finished.mjs · ffmpegProbe) */ probe?: VideoProbe;

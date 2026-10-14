@@ -3,9 +3,9 @@
 // box moving across black, a camera panning over a texture, a dip through black into a lettered card, and a tone under
 // it all. Beside it: variable-rate clips, eased fades, a cut to black, a picture stored on its side, a logo across shots
 // and a name in one, a film of 110 quick shots, a raw stream with no length, and a file with sound only.
-import test from 'node:test';
+import test, {after} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, existsSync, readFileSync, writeFileSync} from 'node:fs';
+import {mkdtempSync, existsSync, readFileSync, writeFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
@@ -13,7 +13,7 @@ import {fileURLToPath} from 'node:url';
 import {createCanvas, GlobalFonts} from '@napi-rs/canvas';
 import {breakdown, breakdownText, BREAKDOWN} from '../src/breakdown.mjs';
 import {selectFrames, stillsArgs, filterFromFile} from '../src/stills.mjs';
-import {ffmpegProbe} from '../src/finished.mjs';
+import {ffmpegProbe, showinfoReader, onSlots} from '../src/finished.mjs';
 
 const has = cmd => !spawnSync(cmd, ['-version']).error;
 const skip = has('ffmpeg') && has('ffprobe') ? false : 'needs ffmpeg and ffprobe';
@@ -56,6 +56,7 @@ function makeReference(dir, {sound = true} = {}) {
 }
 
 const dir = skip ? null : mkdtempSync(path.join(tmpdir(), 'storyreel-breakdown-test-'));
+after(() => { if (dir) rmSync(dir, {recursive: true, force: true}); });   // the films made here are large: none is left behind
 const reference = skip ? null : makeReference(dir);
 let first = null;
 const brokenDown = () => (first ??= breakdown(reference, {out: path.join(dir, 'out')}));
@@ -385,17 +386,72 @@ test('a caption in a corner of two neighbouring shots is lettering, not the film
   const {spec, record} = await breakdown(file, {out: path.join(dir, 'paris')});
   assert.equal(spec.shots.length, 4);
   assert.deepEqual(spec.shots.map(x => x.text.verdict), ['text', 'text', 'no-text', 'no-text'], JSON.stringify(spec.shots.map(x => x.text)));
-  assert.ok(record.some(e => e.type === 'condition' && /corner mark \d+ at 0 s: it stays in a corner of too few shots, or of neighbouring shots only/.test(e.text)), 'the logo decision says why not');
+  assert.ok(record.some(e => e.type === 'condition' && /corner mark \d+ at 0 s: it stays in a corner of too few shots, or not from the film's first third to its last/.test(e.text)), 'the logo decision says why not');
+});
+
+test('beat options are the reader\'s own: handed on untouched; only an error the reader codes BEAT_OPTIONS refuses', {skip}, async () => {
+  const seen = [];
+  const reader = code => (file, options) => {
+    seen.push(options);
+    throw Object.assign(new Error(`beatMap: tempo is not an option; the options are bpm, drop, range, ffmpeg`), code ? {code} : {});
+  };
+  await assert.rejects(breakdown(reference, {out: path.join(dir, 'typed'), beatMap: reader('BEAT_OPTIONS'), beatOptions: {tempo: 120}}),
+    /the beat map refused its options: beatMap: tempo is not an option; the options are bpm, drop, range, ffmpeg/);
+  assert.deepEqual(seen[0], {tempo: 120, ffmpeg: process.env.FFMPEG_BIN || 'ffmpeg'}, 'handed on as given, with the breakdown\'s FFmpeg');
+  const {spec} = await breakdown(reference, {out: path.join(dir, 'untyped'), beatMap: reader(null), beatOptions: {tempo: 120}});
+  assert.equal(spec.audio.beats.ran, false, 'any other error is a sound the reader could not read');
+  assert.match(spec.audio.beats.why, /^the beat map could not read the sound: beatMap: tempo is not an option/);
+});
+
+test('showinfo\'s times are read from its integer pts and time base: exact past 1,000 s and 10,000 s, where FFmpeg 6 rounds pts_time', () => {
+  // FFmpeg before 7 prints pts_time with %.6g: six significant digits. Lines as it prints them, at 23.976 and 29.97 fps.
+  const g6 = t => String(Number(t.toPrecision(6)));
+  for (const [rate, num, den, label] of [[24000 / 1001, 1001, 24000, '23.976'], [30000 / 1001, 1001, 30000, '29.97']]) {
+    for (const from of [1000, 10000]) {
+      const first = Math.ceil(from * rate), lines = [`[Parsed_showinfo_2 @ 0x1] config in time_base: 1/${den}, frame_rate: ${den}/${num}`];
+      for (let n = 0; n < 600; n++) { const pts = (first + n) * num; lines.push(`[Parsed_showinfo_2 @ 0x1] n:${String(n).padStart(4)} pts:${String(pts).padStart(10)} pts_time:${g6(pts / den)} duration:${num}`); }
+      const read = showinfoReader(), frames = lines.map(read).filter(Boolean);
+      assert.equal(frames.length, 600);
+      frames.forEach(({n, time}) => assert.equal(time, (first + n) * num / den, `${label} fps, frame ${n} past ${from} s`));
+      // Laid on slots at the file's rate, every frame shows in a slot of its own: none dropped, none repeated.
+      const shown = [], slots = onSlots(rate, (slot, grey, source) => { if (slot >= first) shown.push(source); });
+      for (const {n, time} of frames) slots.frame(null, time, n);
+      slots.end();
+      assert.deepEqual(shown, frames.map(f => f.n), `${label} fps past ${from} s: every frame in its own slot`);
+      // The six digits alone would not do: they lose frames.
+      const rounded = [], loose = onSlots(rate, (slot, grey, source) => { if (slot >= first) rounded.push(source); });
+      lines.slice(1).forEach((line, n) => loose.frame(null, Number(/pts_time:(\S+)/.exec(line)[1]), n)); loose.end();
+      assert.ok(new Set(rounded).size < 600, `${label} fps past ${from} s: pts_time alone drops frames (${new Set(rounded).size} of 600)`);
+    }
+  }
+});
+
+test('showinfo\'s integer form is exact in any time base: 1/90000 and 1001/30000', () => {
+  const read = showinfoReader();
+  assert.equal(read('[Parsed_showinfo_0 @ 0x2] config in time_base: 1/90000, frame_rate: 30000/1001'), null);
+  assert.deepEqual(read('[Parsed_showinfo_0 @ 0x2] n:100000 pts:300300000 pts_time:3336.67 duration:3003'), {n: 100000, time: 300300000 / 90000});
+  assert.equal(read('[Parsed_showinfo_0 @ 0x2] config in time_base: 1001/30000, frame_rate: 30000/1001'), null);
+  assert.deepEqual(read('[Parsed_showinfo_0 @ 0x2] n:400000 pts: 400000 pts_time:13346.7 duration:1'), {n: 400000, time: 400000 * 1001 / 30000});
+  assert.ok(Number.isNaN(read('[Parsed_showinfo_0 @ 0x2] n:400001 pts:NOPTS pts_time:NOPTS duration:1').time), 'a frame without a timestamp has no time');
+  assert.equal(read('[h264 @ 0x3] n: 5 pts: 10 pts_time:1'), null, 'only showinfo\'s lines');
+});
+
+test('a caption that comes back after a cutaway (shots 1 and 3 of 4) is lettering, not the film\'s logo', {skip}, async () => {
+  const caption = drawn(path.join(dir, 'caption-aba.png'), {width: 320, height: 180, lines: [['Paris', 15, 285, 148], ['1889', 15, 285, 165]]});
+  const file = path.join(dir, 'paris-aba.mp4');
+  ffmpeg(['-loop', '1', '-framerate', '25', '-t', '6', '-i', caption, '-filter_complex', [
+    'color=c=0x2b2d33:s=320x180:r=25:d=1.5[a]', 'color=c=0x4a6fa5:s=320x180:r=25:d=1.5[b]', 'color=c=0x2d6a4f:s=320x180:r=25:d=1.5[c]', 'color=c=0x8a5a44:s=320x180:r=25:d=1.5[e]',
+    '[a][b][c][e]concat=n=4:v=1:a=0[bg]', `[bg][0:v]overlay=enable='lt(t\\,1.49)+between(t\\,3\\,4.49)',${V}[v]`].join(';'), '-map', '[v]', '-t', '6', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
+  const {spec, record} = await breakdown(file, {out: path.join(dir, 'paris-aba')});
+  assert.equal(spec.shots.length, 4);
+  assert.deepEqual(spec.shots.map(x => x.text.verdict), ['text', 'no-text', 'text', 'no-text'], JSON.stringify(spec.shots.map(x => x.text)));
+  assert.ok(record.some(e => e.type === 'condition' && /corner mark \d+ at 0 s: it stays in a corner of too few shots, or not from the film's first third to its last/.test(e.text)));
 });
 
 test('refusals name the fix', {skip}, async () => {
   await assert.rejects(breakdown(path.join(dir, 'nothing.mp4')), /there is no file at .*nothing\.mp4: give the path of a video/);
   await assert.rejects(breakdown(reference, {output: dir}), /"output" is not an option; the options are out, beatMap, beatOptions, ffmpeg, probe, thresholds/);
-  await assert.rejects(breakdown(reference, {beatMap: () => ({bpm: 1, beats: []}), beatOptions: 120}), /beatOptions are the beat map's own options, an object \(\{bpm: 120\}\), not 120/);
-  await assert.rejects(breakdown(reference, {beatMap: () => ({bpm: 1, beats: []}), beatOptions: {tempo: 120}}), /beatOptions has "tempo", which a beat map does not take; it takes bpm, drop, range/);
-  await assert.rejects(breakdown(reference, {beatMap: () => ({bpm: 1, beats: []}), beatOptions: {bpm: 900}}), /beatOptions\.bpm is the song's tempo, a number 30–300, not 900/);
-  const typed = Object.assign(new Error('beatMap: range must be [low, high]'), {code: 'BEAT_OPTIONS'});
-  await assert.rejects(breakdown(reference, {out: path.join(dir, 'typed'), beatMap: () => { throw typed; }}), /the beat map refused its options: beatMap: range must be \[low, high\]/);
+  await assert.rejects(breakdown(reference, {beatMap: () => ({bpm: 1, beats: []}), beatOptions: 120}), /beatOptions are the beat map's own options, an object handed on with ffmpeg \(\{bpm: 120\}\), not 120/);
   const notVideo = path.join(dir, 'notes.mp4'); writeFileSync(notVideo, 'not a video');
   await assert.rejects(breakdown(notVideo, {out: path.join(dir, 'notes')}), /ffprobe could not read the file .*notes\.mp4: [\s\S]* — give a video file FFmpeg reads \(try `ffprobe ".*notes\.mp4"` to see why it does not\)/);
   await assert.rejects(breakdown(reference, {thresholds: {cutJmp: 10}}), /"cutJmp" is not a threshold; the thresholds are width, cutJump/);

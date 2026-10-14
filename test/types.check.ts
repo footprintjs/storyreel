@@ -303,8 +303,10 @@ export const brokenDown = breakdown('ref.mp4', {out: 'ref', beatMap: beats, thre
 export const viaWrapper = breakdown('ref.mp4', {beatMap: wrapped, beatOptions: {bpm: 120}});
 export const measured = (spec: BreakdownSpec): boolean => spec.video.lengthFrom === 'frames';
 export const readWhy = (spec: BreakdownSpec): string => spec.read.why.verdict;
-// @ts-expect-error a beat map takes bpm, drop and range
+// The beat map's options are its own: any it takes are handed on.
 export const tempo = breakdown('ref.mp4', {beatMap: beats, beatOptions: {tempo: 120}});
+// @ts-expect-error beatOptions are an object
+export const bare = breakdown('ref.mp4', {beatMap: beats, beatOptions: 120});
 export const onBeat = (spec: BreakdownSpec): number => (spec.audio.beats.ran ? spec.audio.beats.onBeat + (spec.audio.beats.close?.score ?? 0) : 0) + BREAKDOWN.onBeat + spec.warnings.length;
 // @ts-expect-error a threshold is a number
 export const wordy = breakdown('ref.mp4', {thresholds: {cutJump: 'high'}});

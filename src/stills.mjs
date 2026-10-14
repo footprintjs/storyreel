@@ -156,18 +156,18 @@ function shapesOf(blocks, across) {
 /**
  * The film's candidate logos: the marks that stay put in a corner of a shot (cornerMarks), joined across shots into
  * shapes, each with what a rule reads — in how many shots it stays (`shots`), what share of the film's shots that is
- * (`share`), and whether it spans the film (`spans`: 1 when two of its shots have another between them, or its shots
- * reach into both the first and the last third of the film's time). `shots` are the shots' {start, end}.
+ * (`share`), and whether it spans the film (`spans`: 1 when its shots are in both the first and the last third of the
+ * film's time, a shot counting in the third its middle lies in — a caption that comes back after a cutaway, in shots 1
+ * and 3 of 4, does not). `shots` are the shots' {start, end}.
  */
 export function logoCandidates(marksByShot, shots, across) {
   if (!across) return [];
   const end = Math.max(0, ...shots.map(x => x.end)), all = [...new Set(marksByShot.flatMap(m => [...m]))];
   return shapesOf(all, across).map(blocks => {
     const inShots = marksByShot.flatMap((marks, i) => (blocks.some(b => marks.has(b)) ? [i] : []));
-    const apart = inShots.some((i, k) => inShots.slice(k + 1).some(j => j - i >= 2));
-    const thirds = inShots.some(i => shots[i].start < end / 3) && inShots.some(i => shots[i].end > 2 * end / 3);
+    const middle = i => (shots[i].start + shots[i].end) / 2, thirds = inShots.some(i => middle(i) < end / 3) && inShots.some(i => middle(i) > 2 * end / 3);
     return {kind: 'logo', at: shots[inShots[0]].start, blocks, shotsWith: inShots.map(i => i + 1),
-      measures: {shots: inShots.length, share: inShots.length / shots.length, spans: apart || thirds ? 1 : 0}};
+      measures: {shots: inShots.length, share: inShots.length / shots.length, spans: thirds ? 1 : 0}};
   }).filter(c => c.measures.shots > 0);
 }
 

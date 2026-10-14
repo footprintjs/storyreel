@@ -1184,7 +1184,8 @@ film's runs past what one argument may hold: `-/filter:v` from FFmpeg 7, `-filte
   shot) and `record.json`.
 - **Times you can trust.** Every decoded frame is read with its own time (FFmpeg starts every file's clock at 0, a
   transport stream's and an offset MP4's too) and laid on a constant clock (`finished.mjs · onSlots`): slot k is the frame
-  a player shows at k / rate, so a variable-rate file — a phone's, a screen recording — keeps its cuts on the frame shown
+  a player shows at k / rate (each time exact: showinfo's integer `pts` in its time base, never its `pts_time`, which
+  FFmpeg before 7 rounds to six digits — 10 ms past 1,000 s), so a variable-rate file — a phone's, a screen recording — keeps its cuts on the frame shown
   then, and so does a picture that starts after its sound. A slot no new frame reached repeats the one before, and a
   repeat takes no part in finding cuts (a one-frame flash read twice is one flash); a new frame that looks the same as
   the one before — a still screen — is a frame, and counts. The rate is decided, with its evidence in `read.why`: the
@@ -1214,16 +1215,18 @@ film's runs past what one argument may hold: `-/filter:v` from FFmpeg 7, `-filte
 - **Lettering is a heuristic, and says so:** rows of sharp strokes that form lines (at least twice as wide as tall, so
   an icon or a face is left out), covering 0.8% of a still or more. The film's logo is left out (`text.mark` says how
   much): each mark that stays put in a corner of every still of a shot is a candidate, decided — a logo when it stays in
-  at least two shots and a quarter of them, and spans the film (two of its shots have another between them, or they
-  reach into both its first and last third). A name in a corner of one shot (a lower third), or a caption over two
-  neighbouring shots, is lettering. It never reads the words (no OCR).
+  at least two shots and a quarter of them, and spans the film: it is in shots in both its first and its last third of
+  time (a shot counts in the third its middle lies in). A name in a corner of one shot (a lower third), a caption over
+  two neighbouring shots, or one that comes back after a cutaway (shots 1 and 3 of 4) is lettering. It never reads the
+  words (no OCR).
 - **Beats.** `beatMap(audioFile, {...beatOptions, ffmpeg})` → `{bpm, beats: [seconds], drop?, confidence?, alternatives?:
   [{bpm, score}]}` is handed the video's sound as a WAV (in a folder removed after), the beat map's own options
   (`beatOptions`) and this run's FFmpeg, so a beat map such as beats.mjs's fits as it is (`{beatMap}`, or
   `{beatMap: f => beatMap(f, {ffmpeg})}`): `breakdown(file, {beatMap, beatOptions: {bpm: 120}})` lays its grid at 120 BPM
-  where it finds no tempo of its own. `beatOptions` are checked before the sound is read — another key or a wrong value
-  refuses, naming what a beat map takes — and a beat map that throws an error with `code: 'BEAT_OPTIONS'` refuses too:
-  both are wiring mistakes, never a sound the beat map could not read. The spec reports the BPM (and how
+  where it finds no tempo of its own. `beatOptions` are the reader's own: the breakdown hands them on untouched and
+  never checks their names or values. A reader that finds them wrong throws an error with `code: 'BEAT_OPTIONS'` — a
+  wiring mistake, so the breakdown refuses with it; any other error it throws is a sound it could not read, recorded as
+  not run. The spec reports the BPM (and how
   sure: `confidence`, and `close` when another tempo scores 90% of the best or more), the beats, the drop and the shot on
   screen there, and which cuts land within 0.05 s of a beat. Without a beat map, without sound, or when the beat map
   cannot read the sound (it throws: a silent track, no tempo), the spec says the beats were not read, and why (when the beat

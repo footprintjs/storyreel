@@ -95,7 +95,7 @@ fallback: {branch: 'inside', label: 'parts of the picture change while the frame
 /** Whether a mark that stays in a corner is the film's logo (left out of the lettering). */
 const LOGO = t => ({key: 'verdict', noun: 'corner mark', rules: [
   {when: {shots: {gte: 2}, share: {gte: t.logoShare}, spans: {eq: 1}}, then: 'logo', label: 'it stays in a corner across the film: the film\'s logo'}],
-fallback: {branch: 'not-logo', label: 'it stays in a corner of too few shots, or of neighbouring shots only: lettering, not a logo'}});
+fallback: {branch: 'not-logo', label: 'it stays in a corner of too few shots, or not from the film\'s first third to its last: lettering, not a logo'}});
 
 /** Whether a shot shows lettering. */
 const TEXT = t => ({key: 'text', noun: 'shot', rules: [
@@ -199,22 +199,13 @@ function readThresholds(thresholds) {
 }
 
 /**
- * The options a beat map takes, as beats.mjs · beatMap's contract names them (`ffmpeg` is the breakdown's own): each
- * checked before the sound is read, so a wiring mistake refuses here and never passes for a sound the beat map could
- * not read.
+ * The beat map's own options are its own: the breakdown checks only that they are an object it can hand on with its
+ * FFmpeg ({...beatOptions, ffmpeg}), never their names or values — those rules have one owner, the reader. A reader that
+ * finds its options wrong says so by throwing an error with `code: 'BEAT_OPTIONS'`, and the breakdown refuses with it
+ * (readBeatsStage); any other error is a sound it could not read.
  */
-const BEAT_OPTIONS = Object.freeze({
-  bpm: v => (typeof v === 'number' && v >= 30 && v <= 300) || 'is the song\'s tempo, a number 30–300',
-  drop: v => v === null || (typeof v === 'number' && Number.isFinite(v) && v >= 0) || 'is the second the song drops, or null',
-  range: v => (Array.isArray(v) && v.length === 2 && v.every(x => typeof x === 'number' && x >= 30 && x <= 300) && v[0] < v[1]) || 'is the tempos preferred, [low, high] within 30–300',
-});
 function readBeatOptions(beatOptions) {
-  if (!beatOptions || typeof beatOptions !== 'object' || Array.isArray(beatOptions)) throw new Error(`breakdown: beatOptions are the beat map's own options, an object ({bpm: 120}), not ${JSON.stringify(beatOptions)}`);
-  for (const [k, v] of Object.entries(beatOptions)) {
-    if (!Object.hasOwn(BEAT_OPTIONS, k)) throw new Error(`breakdown: beatOptions has "${k}", which a beat map does not take; it takes ${Object.keys(BEAT_OPTIONS).join(', ')}`);
-    const ok = BEAT_OPTIONS[k](v);
-    if (ok !== true) throw new Error(`breakdown: beatOptions.${k} ${ok}, not ${JSON.stringify(v)}`);
-  }
+  if (!beatOptions || typeof beatOptions !== 'object' || Array.isArray(beatOptions)) throw new Error(`breakdown: beatOptions are the beat map's own options, an object handed on with ffmpeg ({bpm: 120}), not ${JSON.stringify(beatOptions)}`);
 }
 
 /** The options, checked: an unknown key or threshold refuses, naming the ones there are. */
@@ -532,7 +523,8 @@ const readBeatsStage = run => async s => {
     else {
       let answer;
       try { answer = await run.o.beatMap(sound.wav, {...run.o.beatOptions, ffmpeg: run.o.ffmpeg}); } catch (e) {
-        // A beat map that flags its error as about its options (code 'BEAT_OPTIONS') is wired wrong: that refuses.
+        // The one refusal a reader can make: its options are wrong (code 'BEAT_OPTIONS'), a wiring mistake. Anything else
+        // it throws is a sound it could not read, recorded as not run.
         if (e?.code === 'BEAT_OPTIONS') throw new Error(`breakdown: the beat map refused its options: ${e.message}`, {cause: e});
         run.beatsFailed = notRead(e);
       }

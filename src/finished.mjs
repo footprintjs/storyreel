@@ -111,14 +111,33 @@ export function onSlots(fps, each) {
 }
 
 /**
+ * A reader of showinfo's lines: the time base it is configured with ("config in time_base: N/D") and, for each frame, its
+ * number and its time — exact, from its integer pts in that base. Its `pts_time` is read only before any time base is
+ * seen: FFmpeg before 7 prints it to six significant digits, so a time past 1,000 s comes rounded to 10 ms (past
+ * 10,000 s, to 100 ms). Returns line → {n, time} for a frame's line (time NaN when the frame has no timestamp), else null.
+ */
+export function showinfoReader() {
+  let base = null;
+  return line => {
+    if (!/Parsed_showinfo/.test(line)) return null;
+    const config = /config in time_base:\s*(\d+)\/(\d+)/.exec(line);
+    if (config) { base = [Number(config[1]), Number(config[2])]; return null; }
+    const m = /\bn:\s*(\d+)\s+pts:\s*(\S+)\s+pts_time:(\S+)/.exec(line);
+    if (!m) return null;
+    const pts = Number(m[2]);
+    return {n: Number(m[1]), time: base && base[1] && Number.isFinite(pts) ? pts * base[0] / base[1] : Number(m[3])};
+  };
+}
+
+/**
  * Every decoded frame (no frame dropped or repeated: passthrough) with its own time, read through showinfo after the
- * scale (cheap on the small grey frame), laid on slots (onSlots). A frame waits for its time, which FFmpeg writes on
- * its error stream as the frame passes; a time it does not give (no timestamp) is the one before plus a slot.
+ * scale (cheap on the small grey frame; showinfoReader), laid on slots (onSlots). A frame waits for its time, which
+ * FFmpeg writes on its error stream as the frame passes; a time it does not give (no timestamp) is the one before plus a slot.
  */
 async function slotFrames(ffmpeg, file, {width, height, fps}, each) {
   const size = width * height, vf = `scale=${width}:${height}:flags=area,format=gray,showinfo`;
   const ff = spawn(ffmpeg, ['-hide_banner', '-nostats', '-v', 'info', '-i', file, '-vf', vf, '-fps_mode', 'passthrough', '-f', 'rawvideo', 'pipe:1'], {stdio: ['ignore', 'pipe', 'pipe']});
-  const times = [], waiting = [], slots = onSlots(fps, each);
+  const times = [], waiting = [], slots = onSlots(fps, each), read = showinfoReader();
   let tail = '', said = '', decoded = 0, lastTime = -1 / fps;
   const release = (all = false) => {
     while (waiting.length && (all || times.length > decoded)) {
@@ -129,8 +148,8 @@ async function slotFrames(ffmpeg, file, {width, height, fps}, each) {
   ff.stderr.on('data', b => {
     const text = tail + b; const lines = text.split('\n'); tail = lines.pop();
     for (const line of lines) {
-      const m = /Parsed_showinfo.*\bn:\s*(\d+)\s+pts:\s*(\S+)\s+pts_time:(\S+)/.exec(line);
-      if (m) times[Number(m[1])] = Number(m[3]); else if (line.trim()) said = (said + line + '\n').slice(-600);
+      const frame = read(line);
+      if (frame) times[frame.n] = frame.time; else if (line.trim() && !/Parsed_showinfo/.test(line)) said = (said + line + '\n').slice(-600);
     }
     release();
   });
