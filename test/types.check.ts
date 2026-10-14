@@ -352,3 +352,10 @@ export const myVerdict: VerdictCheck = {label: 'Short enough', when: () => true,
 export const badVerdict: VerdictCheck = {label: 'x', when: () => true, measure: () => ({measured: {}}), verdict: {rules: [{when: {}, then: 'maybe', label: 'x'}], passed: 'y'}};
 export const partsAtNow = (film: Film): number => film.partsAt(1).length + film.lines.length + film.changes.length + (film.claims.facts?.length ?? 0) + film.claims.examples.length + film.claims.labels.length + film.pictureAt(1);
 export const stillAll = (film: Film): number => slideshowOf(film).stillShare + slideshowOf(film).stillShots.length + SLIDESHOW.cover + SLIDESHOW.still + GEOMETRY.jump;
+// The review's follow-ups: drawn words joined only where they touch (DRAWN), and an example line beside real numbers.
+import {drawnLines, DRAWN, lingeringExamples, lingerText} from '../types/sub/claims.js';
+import {REVIEW_CHECKS as CHECKS} from '../types/sub/review.js';
+export const joined: string = drawnLines([{text: '12', box: [0, 0, 30, 24]}, {text: '30', box: [34, 0, 64, 24]}])[0] + (DRAWN.touch + DRAWN.mark + DRAWN.near);
+export const lingers = (film: Film): string[] => lingeringExamples(film.claims, {scenes: [{from: 0, to: film.total}], examples: film.claims.examples, ids: ['a']}).filter(g => g.numbers.length).map(g => lingerText(g));
+export const lingerCheck: string = CHECKS['example-lingers'].label;
+export const sharedNumbers: ReviewCheck = {label: 'Drawn numbers', when: () => true, find: ({drawn, lingers: stretches}) => [...drawn.map(c => ({kind: 'drawn', t: c.at, what: c.number})), ...stretches.map(g => ({kind: 'lingers', t: g.from, what: g.scene ?? ''}))]};

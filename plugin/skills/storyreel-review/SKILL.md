@@ -43,7 +43,8 @@ root, narrationDir?, pacing?, layout?, out?})}`); every flag also reaches `film(
   the film's shot time is dead.
 - A verdict "not run" has not checked anything (no kit gives its parts, the storyboard names no facts): never read
   it as passed. "No source" names the number, its scene and the fix: a fact in the facts file, or the scene marked
-  `"example": true`.
+  `"example": true`. "Example data over real numbers" means an example line stayed up into a real scene, and its
+  label with it: erase the line before that scene (a label per number is not the fix).
 - "The loop jumps" on motion that steps rather than runs (a flipbook, a blink, a part drawn on twos) may be a clean
   loop: its last moment still shows its last drawing, one short of coming round. Look at a strip of the seam
   (`strip --at <scene>+<seconds>` at the part's end) before changing it.

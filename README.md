@@ -607,7 +607,12 @@ measured, not guessed (`footprint-storyreel/slideshow`):
   all; the test's touches 0 %), while the example shot that moves least (worlds' code stage) touches 0.94 %. And the film fails, too, when more than `still` (85 %) of its
   shots' running time is still at all, however short each stretch: a deck swapped every 3 s holds no stretch past 3 s
   and is still 93 % of the time (its findings say so: `is still 93 % of its 10.5 s, in stretches of 3 s or less (a deck
-  of slides)`); the stillest example film, hello, is still 63 % of the time.
+  of slides)`); the stillest example film, hello, is still 63 % of the time. Real code films stay well under the cap
+  (measured, compiled with their own voices and read every 0.25 s at 160 px): two lessons of a video course, 29 % and
+  45 %; a starter film, 54 %; two episodes of a browser series, 26 % and 18 % (the second not voiced yet: even
+  timings); the stillest single shot of any, 80 %.
+  Their code stages animate what they reveal (no more than one change in five moves for a single step), so a word
+  swapped in one step every 2 s — 88 % still — is a slide shown fast, not a code stage.
 - **The two rules meet at a deck that changes a word.** Slides that differ by one digit or one short word fail on every
   platform, but which rule fails them rides on the font: where the changed glyph is a different width (proportional
   digits, as macOS's sans-serif has: "1" is 21 px wide at 60 px, "2" 32 px) the rest of the line shifts, the changes
@@ -696,8 +701,9 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
   `1000000` for "1,000,000"; as written when it is not one value: `"1,000"`, `"3:15"`); `text` the words it is shown
   with — they must stand around it in the line that shows it, so `60 Hz` is not `60 sheep`, and `6 Hz` is not the 6 in
   "6 apples and 16 Hz"; `source` where it comes from: an http(s) URL; a file inside the film's root that is there (a
-  document, or a record with a pointer into it after `#`: `run.json#steps[2]`) — a path that leads out of the root
-  refuses; or anything else ("Smith, 2020", "trust me"), which passes, kept as **unverified**: the verdict counts the
+  document, or a record with a pointer into it after `#`: `run.json#steps[2]`) — a path that is there outside the root
+  refuses; or anything else ("Smith, 2020", "trust me", "/r/science thread": words that lead to no file are words,
+  whatever they start with), which passes, kept as **unverified**: the verdict counts the
   numbers that rest on a source nobody can follow, and says so (`4 sourced (1 on a source nobody can follow:
   unverified)`). `facts` is a JSON
   file inside the film's root, or the list itself. The facts draw nothing, so they are in no segment's key (a source
@@ -708,12 +714,15 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
   shows — over the scene, and on after it while any line the scene shows is still on screen (a whiteboard keeps its
   writing into the next scene; the label stays with it: `film.claims.labels`). `"example": "Beispieldaten"` puts the
   label in the film's language. Its numbers need no source while they are labelled, and the label is in the key of
-  every segment that shows it.
+  every segment that shows it. Beside a real number, a lingering label seems to cover that number too, so the review
+  says so (**example data over real numbers**: `an example line lingers into scene real beside real numbers (60):
+  erase it before the scene`) — erase the example line before the next scene starts.
 - **The numbers** are found the way the voice tools find digits (footprint-narration's `unsaidDigits`), with their
   sign — a minus, the minus sign or an en dash standing on its own: "−5 °C" and "–5 °C" are −5, which a fact for `5`
   does not source — less a digit run that is part of a name: right after a cased letter (H2O, MP4, v2), or after a
-  hyphen after one (COVID-19, B-52) — unless it is four digits after the hyphen, which is a year ("mid-2024",
-  "pre-2020": numbers, which need a source). A unit written onto a number stays a number
+  hyphen after one (COVID-19, B-52, ISO-8601, A-1000, UTF-8) — unless it is a year (1000–2199) after a lower-case word
+  or a time prefix (mid-, pre-, post-, early-, late-, in any case): "mid-2024", "pre-2020", "post-1990" are numbers,
+  which need a source. A unit written onto a number stays a number
   (60Hz, 4K), and a number after a CJK character is a number (価格は100円). A number with one separator before exactly
   three digits ("1,000", "1.000") is a thousand in one language and one in another, and the screen does not say which:
   it is **ambiguous**, so only a fact that writes it the same way (`"value": "1.000"`) sources it — never `1` or `1000`.
@@ -722,9 +731,12 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
   screen to when it starts to leave, decided in the scene where the line is first shown.
 - **What is drawn.** The review also reads the numbers in every word its frames draw — the words it reads for every
   check, so no frame is drawn again: measured, 1.9 ms for the 1,495 words of the hello example's 128 samples, against
-  about 4 s for its whole review. Words that touch on one line are read as one ("16" then ".67 ms" is 16.67; code
-  tokens "-" then "5" are −5), and a drawn number counts as example data only while the label is up the whole time it
-  is drawn. A drawn number is a
+  about 4 s for its whole review. Words on one line are read with a space between them, and as one only where their
+  ink touches (a gap under 8 % of their height) or a sign or a decimal point stands at its digits ("16" then ".67 ms"
+  is 16.67; code tokens "-" then "5" are −5) — so "12" and "30" drawn 4 px apart are two numbers, never 1230. A number
+  drawn a digit at a time reads as its digits (they stand 5–22 % of their height apart, as two numbers drawn close
+  do): draw a number as one string, as every built-in kit does. A drawn number counts as example data only while the
+  label is up the whole time it is drawn. A drawn number is a
   declared one when a declared line holds it and the drawn words are that line, or a word-bounded start or end of it;
   any other is a claim of its own (`path: 'drawn'`). `makeFilm`'s `check-claims` reads the declared lines only (it
   draws no frame).
@@ -1231,7 +1243,8 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   words under the captions while a caption shows, words over other words, words cut off at the edge, the picture
   frozen for 5 s (`still`), nothing new for 5 s while it moves (`stale`: no scene, no beat and no new words —
   `newEvery`), a camera freeze over the voice (`frozen-voice`: the voice names a drawing while the picture is held, or
-  a mouth stays still while its speaker talks), and — with `loop: true`, for a part made to loop — an end that does not come round to its start (the
+  a mouth stays still while its speaker talks), an example line beside real numbers (`example-lingers`: its "Example
+  data" label stays up with it into a real scene), and — with `loop: true`, for a part made to loop — an end that does not come round to its start (the
   part's own scenes, not its handles: its last moment against its first, as the eye takes them in and word for word).
   Motion that steps rather than runs (a flipbook, a blink, a part drawn on twos) is read one drawing short of coming
   round, so such a loop reads as a jump even when it loops cleanly: look at a strip of the seam before changing it.

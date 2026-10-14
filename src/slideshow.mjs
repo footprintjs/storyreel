@@ -36,7 +36,11 @@ import {filmPainter} from './finished.mjs';
  *          shot that moves least (worlds' code stage) covers 0.94 %; a thin blinking caret changes no cell past `level`
  *   still  a film is a slideshow, too, when MORE than this share of its shots' running time is still at all, however
  *          short each stretch (0.85): a deck swapped every 3 s holds no stretch past `hold` and is still 93 % of the
- *          time. Measured: the stillest example film (hello) is still 63 % of the time
+ *          time. Measured: the stillest example film (hello) is still 63 % of the time; real code films, compiled
+ *          with their own voices (one not voiced yet, at even timings), 18–54 % (two course lessons 29 % and 45 %, a
+ *          starter film 54 %, two browser-series episodes 26 % and 18 %), their stillest shot 80 %. Their code stages animate what they reveal (one change
+ *          in five or fewer moves for a single step), so counting only longer runs as motion would move none of them by
+ *          more than 1.5 points — and would count a word swapped in one step stiller, not less still: the cap stays
  * A deck whose slides differ by one digit or short word is caught by one rule or the other, and which rides on the
  * font: a glyph of another width shifts the rest of the line (macOS's proportional digits: 1.1 % of the frame — the
  * still cap); one of the same width does not (tabular digits: under `cover` — never moving, all dead). Same verdict.
