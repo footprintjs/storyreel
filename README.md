@@ -44,6 +44,19 @@ npm i footprint-storyreel
 - Drawing is native (`@napi-rs/canvas`, prebuilt for macOS, Linux and Windows). The handwriting font
   (Caveat, SIL OFL) is bundled.
 
+## Skills for AI agents
+
+The package ships three skills that teach an agent (Claude Code, or any agent that reads `SKILL.md` files) to make
+films with it: **`storyreel`** (start here: the path from storyboard to a released film, and which page to read for
+each job), **`storyreel-cartoon`** (build one: a kit, a walking figure, camera moves, the checks, a draft, approval and
+release, with reference pages for motion, camera, music, motion from a video, checks, breakdown, voice, release and the
+records) and **`storyreel-review`** (fix one by reading it first). Install them as a Claude Code plugin —
+`claude plugin marketplace add footprintjs/storyreel`, then `claude plugin install storyreel@storyreel` — or copy the
+folders in `plugin/skills/` into a project's `.claude/skills/`. The skills cannot drift from the code:
+`test/skills.test.mjs` checks every command and flag, subpath, import, option, link and package path they name, compares
+their catalog tables with the code, and runs every example marked `run` (each asserts what it claims);
+`npm run test:skills:render` renders the main path's film, approves it and renders the final.
+
 ## Your first film
 
 The package ships three examples; `examples/hello` is the smallest complete film (a whiteboard
@@ -1402,9 +1415,8 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   strip --scene <id>` (`strip --at <scene>+<seconds>`: a fast move frame by frame — 12 consecutive frames around
   the moment, side by side — to catch a pop, a jump or two things crossing) (the film named in the project's `storyreel.config.mjs`: `export default {film: flags =>
   ({storyboard, recipe, kits, root, narrationDir?, pacing?, layout?})}`; every flag also reaches `film()`). The
-  package ships the skill that teaches the order — timeline, review, fix, part, one still last — as a Claude Code
-  plugin: `claude plugin marketplace add footprintjs/storyreel`, then `claude plugin install storyreel@storyreel`
-  (or copy `plugin/skills/storyreel-review/SKILL.md` into a project's `.claude/skills/`). `footprint-storyreel/tools` is the one core both use.
+  package ships the skill that teaches the order — timeline, review, fix, part, one still last — `storyreel-review`,
+  beside the skills that build a film ([Skills for AI agents](#skills-for-ai-agents)). `footprint-storyreel/tools` is the one core both use.
   `npx storyreel beats <song>` needs no project: it prints a song's beat map for settling its tempo (see Music: cut on
   the beat).
 - **And as an MCP server,** for any assistant that speaks MCP: `storyreel mcp [--flag value …]` serves the same
@@ -2301,7 +2313,7 @@ the default because it rarely does; there is no swap repair.
 | `directionTimings(scene, {tail?})` · `withDirections(storyboard, timings)` · `sceneText(scene)` · `spokenText(scene)` · `unsaidNumbers(storyboard)` | a silent scene's timing; a voice's timings completed with the silent scenes; a scene's text as spoken (number slots in words); digits without a slot |
 | `makeClock(storyboard, timings)` | phrases → seconds; `speaking(t)`, `turns()`, `gaze(t, who)` |
 | `footprint-storyreel/shots` → `readIntent` · `readContinuity` · `checkContinuity` · `tooMuchTooFast` · `distinctMoments` · `WATCHING` | the shot plan's checks, on their own |
-| `footprint-storyreel/review` → `reviewPart(film, {part?, layout?, checks?, …})` · `REVIEW_CHECKS` · `findingsText` · `verdictsText` · `wordsAt` | a part reviewed by reading it: findings with times, and three verdicts (passed, failed, not run) with their `decide()` evidence |
+| `footprint-storyreel/review` → `reviewPart(film, {part?, layout?, checks?, …})` · `REVIEW_DEFAULTS` · `REVIEW_CHECKS` · `findingsText` · `verdictsText` · `wordsAt` | a part reviewed by reading it: findings with times, and three verdicts (passed, failed, not run) with their `decide()` evidence |
 | `footprint-storyreel/slideshow` → `slideshowOf(film, {from?, to?, every?, rule?})` · `shotMotion` · `shotInsides` · `moved` · `SLIDESHOW` · `SLIDESHOW_VERDICT` | no slideshow: how much each shot moves in its middle, and whether most of the running time is dead (held still more than 3 s) |
 | `footprint-storyreel/geometry` → `geometryOf(film, {from?, to?, rule?})` · `auditParts` · `readParts` · `crosses` · `breakText` · `GEOMETRY` · `GEOMETRY_VERDICT` | a kit's drawn parts audited: mounted ends stay on, pairs kept apart never cross, a planted end stays where it was planted |
 | `footprint-storyreel/claims` → `numbersIn` · `numberValue` · `numberLocale` · `CODE_READING` · `readFacts` · `sourceKind` · `exampleScenes` · `labelSpans` · `findClaims` · `drawnLines` · `DRAWN` · `HOLD` · `drawnClaims` · `lingeringExamples` · `claimsCount` · `unsourcedClaims` · `claimText` · `CLAIMS_VERDICT` | every number on screen with its source: a fact the storyboard names, or an example scene (`film.claims`; the review adds what the picture draws) |

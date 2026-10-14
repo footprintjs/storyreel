@@ -239,7 +239,8 @@
   },
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "test:temp": "node scripts/temp-hygiene.mjs"
+    "test:temp": "node scripts/temp-hygiene.mjs",
+    "test:skills:render": "node scripts/temp-hygiene.mjs test/skills-render.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.9",

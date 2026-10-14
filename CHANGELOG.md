@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+- **Skills that build a film, not only review one.** The plugin ships three skills: `storyreel` (start here: the path
+  from storyboard to a released film, and which skill or page to read for each job), `storyreel-cartoon` (the main
+  path as one working film: a kit, a figure that walks, a camera dolly, the review as a gate, a small draft, approval,
+  release; with reference pages for kits, motion, camera, music, motion from a video, checks, breakdown, voice, release
+  and the records) and `storyreel-review` (now covering the slideshow, drawn-parts and numbers verdicts, the
+  example-lingers and frozen-voice findings, and the review's `every`). They teach the house method: read the record
+  before guessing, look at a picture last.
+- **The skills are held to the code** (`test/skills.test.mjs`): every `npx storyreel` command and flag they name is one
+  the CLI's `--help` lists, every `footprint-storyreel/<subpath>` is in the exports, every imported name is a real
+  export, every link between pages resolves inside the plugin, every path into the installed package ships in it, and
+  every code block marked `run` runs (in a temp folder, with the package installed there; compile, review or compute
+  only, never a render) and asserts what it claims. Every js block parses, and every option it hands a typed function
+  is one the function's type takes (`test/skills-options.mjs`: TypeScript's excess-key check, one literal at a time;
+  `render` held to renderFilm's options). The catalog tables are compared with the code: the camera moves' families,
+  defaults and lengths, the review's check ids and labels, the slideshow's thresholds, the formats' sizes, the release
+  targets, the feels, the moves by kind, the eases, the walk styles and evenTimings' defaults. About 3 s.
+- **The numbers the skills quote are the code's.** The review's defaults and two of its thresholds are data:
+  `footprint-storyreel/review` · `REVIEW_DEFAULTS` (`every` 0.25 s, `stillFor` 5 s, `maxWords` 35, `minSilence` 0.8 s,
+  `newEvery` 5 s, … and `hook` 3 s, `breath` 30 s), `footprint-storyreel/render` · `RENDER_DEFAULTS` (1280×720 at 30
+  fps without a layout, a part's 1.5 s handles) and `footprint-storyreel/tools` · `TOOL_DEFAULTS` (a strip's 12 frames,
+  a still's 1200 px); the code and the command line's help read them, so nothing changes. A number a page quotes is
+  marked with its constant (`35 words<!-- REVIEW_DEFAULTS.maxWords -->`, invisible where the page is shown), and the
+  truth test fails when the code or the page changes it. The `part` tool's help no longer says "half size" (it is
+  half size only when the project names a layout).
+- **`npm run test:skills:render`** (its own CI job, kept out of `npm test`) renders the main path's farm film as the
+  skills write it: the small draft, the approval, the final, and the approval refusing a changed kit.
+
 - **Breaking: `footprint-storyreel/regions` · `then` is now `compose`.** An export named `then` made the module's
   namespace a thenable, so `await import('footprint-storyreel/regions')` never settled. Use `compose(outer, inner)`;
   there is no alias. A test now imports every published entry point and fails if one does not settle or exports `then`.
