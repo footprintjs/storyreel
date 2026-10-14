@@ -1301,11 +1301,49 @@ two passes' scratch, for the moment they run, each removed in a `finally`: the F
 Every scratch folder — those two, a render's working folder, `makeFilm`'s voice copy — is made one way
 (`scratch.mjs` · `makeScratch`): `mkdtemp`, which creates a NEW folder with a random suffix, at once, that only you can
 open (mode 0700). It never takes a name that is already there, so a folder or a link someone else planted in a shared
-temp folder, at a name StoryReel might pick, is never written into. The voice copy gets the mode a plain folder gets
-(0777 less your umask, usually 0755) before it is renamed to `narration/`, never the out folder's: in a shared folder
+temp folder, at a name StoryReel might pick, is never written into. The voice copy gets 0755 at most (less your umask)
+before it is renamed to `narration/`, never the out folder's mode: in a shared folder
 such as `/tmp` (1777) that would let anyone rewrite the voice the other tools read. In such a shared folder, a
 `narration` another user put there cannot be removed: `makeFilm` stops (EPERM) rather than write into it, so make
 films into a folder of your own.
+
+Every output — the video, `poster.jpg`, `chapters.txt`, the caption files, `making-of.json`, a release's post, a
+breakdown's spec and sheets, a tool's stills, a paced or fitted voice's files, a kept segment — is written one way
+(`files.mjs` · `writeOutput`): made under a new name (FFmpeg's video in the work folder; anything else beside it, under a
+random name created exclusively), then renamed onto its own name. A rename replaces whatever is at the name, a link
+included, and never follows one: a link someone planted at `chapters.txt` in a shared folder is replaced by the
+chapters, and the file it pointed at is never written. A folder at an output's name is refused before anything is
+drawn, never removed. The folders StoryReel names inside yours (a release's `<target>/` and `work/<target>/`, a
+breakdown's `shots/`, the tools' `stills/`) are made 0755 and written into only when they are real folders you own that
+no one else can change (not writable by group or others, unless sticky): a link there, another user's folder, or one
+of yours left open (0777) is refused, naming the fix. Every folder StoryReel makes asks for 0755, which your umask can
+only narrow (077 gives 0700); nothing is chmod-ed afterwards.
+
+**The one rule for where StoryReel writes** (`files.mjs` · `securePath`, the rule of sshd's StrictModes and sudo's
+secure_path): first, at every entry that writes into a folder you name — `renderFilm` (and its `work`), `makeFilm`,
+`makeRelease`, `breakdown`, the tools' stills, `folderStore`, `applyPacing`, `fitVoice` — the out folder is resolved to
+its real path (links followed, so a link is judged by where it leads; for an out still to be made, the nearest folder
+above it that exists), and every folder on that path, up to the root, must be a real folder owned by you or root and
+writable by no one else, unless it is sticky (then anyone may add an entry, but only its owner may replace or remove
+one). The first folder that fails refuses, named, with the fix: render into a folder of your own and copy the film
+out. Everything is then written through that real path only, so a link swapped in the path you gave changes nothing.
+This is needed because Node cannot open a file relative to a folder it has checked: in a folder another user could
+rearrange — a team folder at 0775, a 0777 folder anywhere above, a sticky folder someone else owns — they could swap a
+folder StoryReel made for a link to yours between the check and the write. Your home folder, macOS's per-user temp
+folder (`/var/folders/…/T`) and a sticky `/tmp` owned by root all pass; in the sticky one, another user's entry at an
+output's name can at worst make the write fail. Group-write is fine on Linux when the group is provably yours alone
+(a user private group, where umask 002 makes a project folder 0775): `/etc/nsswitch.conf` names exactly `files` for
+`passwd` and `group` (or `compat`, with no `+` line), `/etc/group` lists no other member and `/etc/passwd` no one else
+with it as a primary group. With a directory (sss, ldap, systemd's userdb) or files that cannot be read, and always on
+macOS (its groups come from Directory Services; `staff` is everyone's), `chmod g-w` the folder. The path is judged as
+the disk spells it, so `/volumes/ext` on a disk that ignores case is `/Volumes/Ext`. Folders StoryReel makes are
+checked again once made, so one another user slips in on the way is refused before anything is written. On macOS, a
+drive mounted with "Ignore ownership" (`noowners`) shows every folder as yours, so it is refused: render on the
+internal disk and copy the film out. If the mount table (`/sbin/mount`) cannot be read, a path under `/Volumes/` (where
+external drives mount) is refused the same way; the internal disk never is. exFAT and FAT drives keep no owners and
+show 0777, so they are refused too. Not read: an ACL
+granting others write (macOS's `chmod +a`), and a network folder's owners, which are what the server says (SMB, NFS) —
+keep out in a folder of your own, and render locally.
 
 | where | what | kept? |
 |---|---|---|

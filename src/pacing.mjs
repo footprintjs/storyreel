@@ -13,7 +13,8 @@
  * each moment lasts, so a hold after a direction refuses, naming the scene. Its tail still applies, and
  * a voiced cut gets a generated silence of the right length when the voice folder has no audio for it.
  */
-import {readFile, writeFile, copyFile, access} from 'node:fs/promises';
+import {readFile, access} from 'node:fs/promises';
+import {writeOutput, securePath} from './files.mjs';
 import path from 'node:path';
 import {speechIndex, phraseMatches, withDirections} from './clock.mjs';
 
@@ -189,17 +190,20 @@ async function silentAudio(runDir, scene, timing, rate) {
   if (timing.audio && await exists(path.join(runDir, timing.audio))) return false;
   const name = `silent-${String(scene.id).replace(/[^\w-]/g, '_')}.wav`, file = path.join(runDir, name);
   if (await exists(file.replace(/\.wav$/, '.unpaced.wav'))) throw new Error(`Pacing already applied to ${scene.id}`);
-  await writeFile(file, silentWav(timing.duration, rate));
+  writeOutput(file, silentWav(timing.duration, rate));
   timing.audio = name;
   return true;
 }
 
 /**
- * Apply pacing to a run's narration in place (the unpaced WAV is kept beside it).
+ * Apply pacing to a run's narration in place (the unpaced WAV is kept beside it). Each file is renamed onto its name
+ * (files.mjs · writeOutput): an audio file given through a link becomes a file of the run's own, and the file the link
+ * points at is never written.
  * Mutates and returns `timings` with shifted words, new durations and a pacing record; a silent scene
  * the voice left out is filled in first (clock.mjs · withDirections) and given generated silence.
  */
 export async function applyPacing({runDir, board, timings, pacing}) {
+  runDir = securePath(runDir);   // the voice folder's REAL path, nothing on the way another user could rearrange (files.mjs · securePath)
   validatePacing(pacing, board);
   timings.scenes = withDirections(board, timings).scenes;
   const records = [], rate = await voiceRate(runDir, board, timings);
@@ -216,8 +220,10 @@ export async function applyPacing({runDir, board, timings, pacing}) {
     const bodySamples = wav.samples.length + plan.reduce((n, h) => n + Math.round(h.seconds * wav.rate), 0);
     const tailSamples = Math.max(0, Math.round((shiftedLast + tailFor(pacing, scene.id)) * wav.rate) - bodySamples);
     const paced = applyHolds({rate: wav.rate, samples: Int16Array.from(wav.samples)}, plan, tailSamples);
-    await copyFile(file, original);
-    await writeFile(file, writePcm16(paced));
+    // The unpaced audio kept beside it, then the paced one in its place: each renamed onto its name (files.mjs · writeOutput),
+    // so a link at either name is replaced, never written through.
+    writeOutput(original, {copy: file});
+    writeOutput(file, writePcm16(paced));
     const before = timing.duration;
     timing.words = shiftWords(timing.words, plan);
     timing.duration = +(paced.samples.length / wav.rate).toFixed(5);

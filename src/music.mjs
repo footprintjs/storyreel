@@ -9,7 +9,8 @@
  * because no beat is near, kept because every near beat would cut into a word) is decide() evidence in its record. The
  * song itself is a beat map (beats.mjs).
  */
-import {readFileSync, writeFileSync, existsSync} from 'node:fs';
+import {readFileSync, existsSync} from 'node:fs';
+import {writeOutput, securePath} from './files.mjs';
 import path from 'node:path';
 import {flowChart, narrative, decide} from 'footprintjs';
 import {makeClock} from './clock.mjs';
@@ -304,10 +305,12 @@ const FADE = .01;
 /**
  * A voiced cut fitted to the song: each scene whose length fitToMusic changed has its audio (in runDir, the run's copy
  * of the voice — never the voice folder itself) padded with silence or cut short to match, by whole sample frames, a
- * cut-short end faded over 10 ms; its length is then exactly its audio's. before: the timings fitToMusic was given;
+ * cut-short end faded over 10 ms, and renamed onto its name (files.mjs · writeOutput: a link there is replaced, never
+ * written through); its length is then exactly its audio's. before: the timings fitToMusic was given;
  * after: what it returned. Returns the timings to render with.
  */
 export function fitVoice(runDir, before, after) {
+  runDir = securePath(runDir);   // the voice folder's REAL path, nothing on the way another user could rearrange (files.mjs · securePath)
   return {...after, scenes: after.scenes.map((t, i) => {
     const was = before.scenes[i];
     if (t.duration === was.duration || !t.audio) return t;
@@ -318,7 +321,7 @@ export function fitVoice(runDir, before, after) {
       const fade = Math.min(keep, Math.round(FADE * wav.rate));
       for (let k = 0; k < fade; k++) for (let c = 0; c < wav.channels; c++) { const at = (keep - 1 - k) * wav.frame + 2 * c; out.writeInt16LE(Math.round(out.readInt16LE(at) * k / fade), at); }
     }
-    writeFileSync(file, writeWav(wav, out));
+    writeOutput(file, writeWav(wav, out));   // renamed onto its name: a link there is replaced, never written through (files.mjs · writeOutput)
     return {...t, duration: round(was.duration + (keep - frames) / wav.rate)};
   })};
 }

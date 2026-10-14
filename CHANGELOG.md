@@ -55,6 +55,49 @@
   The making-of record lists it all (`code: {fingerprint, files, packages, missing?, unfollowed?, unparsed?}`; `codeCover(fingerprint)`). A fingerprint made with this release differs from one made before, once:
   **an approval that locks the kits' code reports "code differs" — approve the film again.**
 
+### Outputs in a shared folder
+
+- **Outputs replace a link at their name, never write through it.** In a shared folder (macOS's `/private/tmp` has no
+  `protected_symlinks`), another user could plant a link at `chapters.txt` (or `poster.jpg`, the captions,
+  `making-of.json`, the video FFmpeg wrote with `-y`, …) and have a render overwrite any file of yours it pointed at.
+  Every output is now written by `files.mjs` · `writeOutput`: made under a new name — FFmpeg's video in the work
+  folder, anything else beside the output under a random name created exclusively — then renamed onto its name; a
+  rename replaces a link and never follows one. A video whose work folder is on another disk is copied beside the
+  output the same way first. A folder at an output's name is refused, never removed. That covers the render's video,
+  poster, chapters and captions, `makeFilm`'s making-of, a release's video, captions, thumbnail, `post.json`,
+  `post.txt` and `CREDITS.txt`, a breakdown's `breakdown.json`, `breakdown.md`, `record.json`, `overview.png` and
+  shot sheets, the tools' stills and strips, pacing's paced audio, its `.unpaced.wav` and generated silence,
+  `fitVoice`'s fitted audio, and the segment store's files. Every output's name is checked before anything is drawn
+  (a render, a film, a release, a breakdown), so a folder at one refuses up front. The folders StoryReel names inside
+  yours (a release's targets, a breakdown's `shots/`, the tools' `stills/`) are made 0755 and refuse a link, another
+  user's folder, or one others can change without a sticky bit (`files.mjs` · `outputFolder`, through `scratch.mjs` ·
+  `ownedFolder`, the sweep's one check of "ours"). Every folder StoryReel makes asks for 0755 — never wider under any
+  umask (000 included), narrower under a stricter one (077: 0700) — and nothing is chmod-ed after; `narration/` is
+  0755 at most.
+- **One rule for where StoryReel writes** (`files.mjs` · `securePath`, as sshd's StrictModes and sudo's secure_path):
+  first, at every entry that writes into a folder you name — `renderFilm` (and its `work`), `makeFilm`, `makeRelease`,
+  `breakdown`, the tools' stills, `folderStore`, `applyPacing`, `fitVoice` — the out is resolved to its real path and
+  every folder on it, up to the root, must be a real folder owned by you or root and writable by no one else unless
+  sticky. The first that fails refuses, named. Everything is written through the real path only, and the paths the
+  results report are real paths. Node has no `openat`, so no check of a path keeps a folder another user can
+  rearrange safe. Group-write passes on Linux when the group is provably yours alone (a user private group, umask
+  002): `/etc/nsswitch.conf` names exactly `files` (or `compat` with no `+` line) for `passwd` and `group`, and
+  `/etc/group` and `/etc/passwd` show no one else in it — read once; with a directory, unreadable files, or on macOS
+  (Directory Services; `staff` is everyone's), it refuses and names `chmod g-w`. The path is judged as the disk spells
+  it (`realpathSync.native`), and so are the paths results report. `makeFolder` checks the path again once the folders
+  are made, so one another user slipped in on the way (a link `mkdir -p` followed) refuses before anything is
+  written. On macOS a drive mounted with "Ignore ownership" (`noowners`, read once from `/sbin/mount`) is refused, and
+  an unreadable mount table refuses a path under `/Volumes/` (never the internal disk); exFAT and FAT show 0777 and are
+  refused by the walk. Not read: an ACL granting others
+  write, and a network folder's owners (what the server says): keep out in a folder of your own, on a local disk.
+  **Breaking** for anyone rendering below a group-writable team folder, a 0777 folder, a sticky folder another user
+  owns, or a drive that ignores ownership: render into a folder of your own and copy the film out.
+- **The guard** (`test/outputs.test.mjs`) refuses any writing fs import outside `files.mjs` and the listed own-folder
+  writers, by the local name it is given; fs or child_process taken whole or loaded late (a default or namespace
+  import, `{default as fs}`, a re-export, `import()`, `require`, `createRequire()(…)`, `process.getBuiltinModule`);
+  any program run that is not listed with where its output goes; and any FFmpeg or ffprobe flag that writes a file
+  (`-y`, `-report`, `-progress`, `-vstats_file`, `-o`, `FFREPORT`, …) on a line not listed.
+
 ### Beats in the breakdown
 
 - **`storyreel breakdown <video> --beats`** reads the video's sound with the beat map (`beats.mjs · beatMap`) and says

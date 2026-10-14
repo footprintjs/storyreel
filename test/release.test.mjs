@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {existsSync, readFileSync, readdirSync} from 'node:fs';
+import {existsSync, readFileSync, readdirSync, realpathSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {loadImage} from '@napi-rs/canvas';
@@ -176,7 +176,8 @@ test('a release: each target its own folder — the video in its shape, captions
   const credits = readFileSync(yt.credits, 'utf8');
   assert.match(credits, /^Credits — Pebbles\n\nMade with\n- footprint-storyreel [\d.]+ \(MIT AND Apache-2\.0\) — the film, drawn in code\n- footprintjs [\d.]+ \(MIT\)/, 'StoryReel\'s licence as package.json gives it: its own code MIT, the X counter Apache-2.0');
   assert.match(credits, /From the maker\n- Sheep drawn by hand\n\nThe narration is a synthetic voice\.\n$/);
-  assert.ok(existsSync(yt.makingOf) && yt.makingOf.startsWith(path.join(out, 'work', 'youtube')), 'the record and the working files are kept apart, in work/<target>/');
+  // (The paths a release reports are real ones, the ones it wrote through: files.mjs · securePath.)
+  assert.ok(existsSync(yt.makingOf) && yt.makingOf.startsWith(path.join(realpathSync(out), 'work', 'youtube')), 'the record and the working files are kept apart, in work/<target>/');
   await assert.rejects(makeRelease({...film, out, targets: [{target: 'youtube', name: 'work'}], post: kids}), /a target cannot be called "work"/);
   const post = JSON.parse(readFileSync(path.join(yt.dir, 'post.json'), 'utf8'));
   assert.equal(post.fields.madeForKids, true); assert.equal(post.fields.alteredOrSynthetic, true); assert.deepEqual(post.synthetic, ['voice']);

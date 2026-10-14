@@ -3,7 +3,7 @@
  * scene (a silent scene with no audio plays generated silence), the sound accents per scene (at most
  * 64 each), loudness in two passes. FFmpeg must be on PATH.
  */
-import {writeFileSync, mkdirSync, rmSync} from 'node:fs';
+import {writeFileSync, rmSync} from 'node:fs';
 import path from 'node:path';
 import {spawn, spawnSync} from 'node:child_process';
 import {once} from 'node:events';
@@ -16,6 +16,7 @@ import {spokenTracks} from './captions.mjs';
 import {effectsUnderVoice, musicUnderVoice} from './listening.mjs';
 import {readSongPlacement, requireOverlap} from './music.mjs';
 import {makeScratch, sweepScratch} from './scratch.mjs';
+import {writeOutput, refuseFolders, securePath, makeFolder} from './files.mjs';
 
 /**
  * Loudness in two passes (FFmpeg's loudnorm): measure the whole mixed film, then set it with ONE fixed
@@ -385,13 +386,18 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   if (framed && (givenWidth !== undefined || givenHeight !== undefined)) throw new Error(`renderFilm: the ${framed.format} layout is ${framed.width}×${framed.height}; leave width and height out (they size a render without a layout)`);
   const width = framed?.width ?? givenWidth ?? RENDER_DEFAULTS.width, height = framed?.height ?? givenHeight ?? RENDER_DEFAULTS.height;
   if (framed && intro && framed.format !== 'landscape') throw new Error(`renderFilm: an intro is drawn for the landscape frame; the ${framed.format} layout takes none (leave intro out)`);
-  const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
+  // First, the out folder and a `work` named elsewhere: their REAL paths, with no folder on the way another user could
+  // rearrange (files.mjs · securePath) — everything is written through these paths only. Then every output's name,
+  // before anything is made: a folder at one refuses now, not after the outputs before it.
+  const dir = securePath(path.dirname(path.resolve(out))), workReal = work === null ? null : securePath(work);
+  out = path.join(dir, path.basename(path.resolve(out)));
+  refuseFolders([out, ...(poster !== null ? [path.join(dir, 'poster.jpg')] : []), path.join(dir, 'chapters.txt'), ...captionKinds.map(k => path.join(dir, `captions.${k}`))]);
+  makeFolder(dir);
   // The working files' folder: the caller's (kept, never swept), or a new hidden one beside the video, removed by
   // closeRender — made by scratch.mjs · makeScratch (a fresh folder only this user can open, never a path already there),
   // after sweeping the ones stopped renders left there.
   const {swept, failed: unswept} = work === null ? sweepScratch(dir, '.storyreel-work') : {swept: [], failed: []};
-  const workDir = work === null ? makeScratch(dir, '.storyreel-work') : path.resolve(work);
-  if (work !== null) mkdirSync(workDir, {recursive: true});
+  const workDir = work === null ? makeScratch(dir, '.storyreel-work') : makeFolder(workReal);
   to = Math.min(to, film.total);
   // A render starts on the film's frame grid (a part's window is rounded to the millisecond): frame f shows film second
   // start + f / fps, so a drawing held on twos (motion.mjs · heldTime) pairs the same frames in a part as in the film.
@@ -482,8 +488,7 @@ async function writePoster(job) {
   if (job.poster === null) return null;
   const canvas = createCanvas(job.width, job.height), ctx = canvas.getContext('2d');
   makePainter({film: job.film, framed: job.framed, blur: job.blur, width: job.width, height: job.height, fps: job.fps, ctx})(job.poster, {still: true});
-  const file = path.join(job.dir, 'poster.jpg'); writeFileSync(file, await canvas.encode('jpeg', 90));
-  return file;
+  return writeOutput(path.join(job.dir, 'poster.jpg'), await canvas.encode('jpeg', 90));
 }
 
 /** The sound (mixed for the whole part, once), the mux with loudness, the chapters and the caption files. */
@@ -522,17 +527,21 @@ export async function finishRender(job, video) {
   writeFileSync(path.join(work, 'film-audio.txt'), concatList(parts));
   run(['-f', 'concat', '-safe', '0', '-i', path.join(work, 'film-audio.txt'), '-ar', '48000', '-ac', '1', path.join(work, 'film-audio.wav')]);
   const pictureSeconds = (job.frames + (withIntro ? Math.round(intro.seconds * job.fps) : 0)) / job.fps;
-  const loudnessSet = muxWithLoudness({ffmpeg, video: video.file, wav: path.join(work, 'film-audio.wav'), out: path.resolve(job.out), target: loudness, seconds: pictureSeconds});
+  // FFmpeg writes the finished video in the work folder (by its extension, the container); it is then renamed onto `out`
+  // (files.mjs · writeOutput), so a link at that name is replaced, never written through.
+  const muxed = path.join(work, `film-out${path.extname(job.out)}`);
+  const loudnessSet = muxWithLoudness({ffmpeg, video: video.file, wav: path.join(work, 'film-audio.wav'), out: muxed, target: loudness, seconds: pictureSeconds});
+  writeOutput(path.resolve(job.out), {move: muxed});
   // Chapters on the output's clock, for review and YouTube.
   const lead = withIntro ? intro.seconds : 0;
   const length = lead + to - start;   // a part's chapters are the ones it shows: none before its start or past its end
   const chapters = [...(withIntro ? [[0, String(intro.title ?? '').trim() || 'Title']] : []), ...sceneChapters(storyboard.scenes, film.clock.offsets).map(([t, name]) => [lead + t - start, name])].filter(([t]) => t >= 0 && t < length);
-  writeFileSync(path.join(dir, 'chapters.txt'), chapters.map(([t, n]) => `${clockText(t)} ${n}`).join('\n') + '\n');
+  writeOutput(path.join(dir, 'chapters.txt'), chapters.map(([t, n]) => `${clockText(t)} ${n}`).join('\n') + '\n');
   // Caption files on the output's clock too (the same shift as the chapters), for the cues the render covers.
   const captions = {};
   if (captionKinds.length) {
     const chunks = captionChunks(spokenTracks(film), FILE_CHUNKS);
-    for (const kind of captionKinds) { captions[kind] = path.join(dir, `captions.${kind}`); writeFileSync(captions[kind], captionFile(chunks, kind, {offset: lead - start, from: start, to})); }
+    for (const kind of captionKinds) captions[kind] = writeOutput(path.join(dir, `captions.${kind}`), captionFile(chunks, kind, {offset: lead - start, from: start, to}));
   }
   return {out: path.resolve(job.out), seconds: length, chapters: chapters.map(([t, n]) => `${clockText(t)} ${n}`), loudness: {...loudnessSet, roles}, listening: [tooLoud, musicLoud].filter(Boolean),
     ...(posterFile ? {poster: posterFile} : {}), ...(framed ? {format: framed.format} : {}), ...(captionKinds.length ? {captions} : {}), ...(video.report ? {video: video.report} : {})};

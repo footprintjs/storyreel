@@ -10,8 +10,8 @@
  * pass small values and file paths, as footprintjs expects.
  */
 import {readCast, withCast} from './cast.mjs';
-import {readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync} from 'node:fs';
-import {copyVoice, requireVoiceApart, placeVoice} from './files.mjs';
+import {readFileSync, writeFileSync, rmSync, existsSync, statSync} from 'node:fs';
+import {copyVoice, requireVoiceApart, placeVoice, writeOutput, refuseFolders, securePath, makeFolder} from './files.mjs';
 import path from 'node:path';
 import {flowChart, narrative} from 'footprintjs';
 import {applyPacing, validatePacing, paceTimings} from './pacing.mjs';
@@ -153,11 +153,17 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   if (approval) readApproval(approval);
   const song = music === null ? null : readMusic(music);
   if (song && render.music !== undefined) throw new Error('makeFilm takes the song as music ({file, snap?, dropOn?, …}), which also places it; leave render.music out');
-  const dir = path.dirname(path.resolve(out));
+  // First of all, the out folder's REAL path, with no folder on the way another user could rearrange (files.mjs ·
+  // securePath): the film is made through it only.
+  const dir = securePath(path.dirname(path.resolve(out)));
+  out = path.join(dir, path.basename(path.resolve(out)));
   // Before anything is written, even the out folder: the voice is paced in the out folder and then replaces its
   // narration folder, so the two must not overlap (files.mjs · requireVoiceApart).
   if (narrationDir) requireVoiceApart(narrationDir, dir);
-  mkdirSync(dir, {recursive: true});
+  // The record is written last, after the video: a folder at its name refuses now (the render's own outputs are checked
+  // when it is prepared, before a frame is drawn: render.mjs · prepareJob).
+  refuseFolders([path.join(dir, 'making-of.json')]);
+  makeFolder(dir);
   // Where the voice is paced: a copy of it, in a new folder made when the voice is read (scratch.mjs · makeScratch: one
   // only this user can open, never a path already there), after sweeping the copies stopped runs left. The render reads
   // it, and it becomes <out dir>/narration once the film is made, or is removed.
@@ -350,6 +356,6 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     compile: film.record.narrative,
   };
   const makingOf = path.join(dir, 'making-of.json');
-  writeFileSync(makingOf, JSON.stringify(record, null, 2));
+  writeOutput(makingOf, JSON.stringify(record, null, 2));
   return {...result, makingOf};
 }

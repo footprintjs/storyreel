@@ -4,7 +4,7 @@
 // the option nothing changes (pinned by hand against main: the same MP4 bytes, silent and voiced).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdirSync, readFileSync, readdirSync, writeFileSync, chmodSync} from 'node:fs';
+import {mkdirSync, readFileSync, readdirSync, writeFileSync, chmodSync, realpathSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -323,7 +323,8 @@ test('without music nothing changes: the same stages, record, inputs and FFmpeg 
   // The hashed inputs as on main, and the versions an approval locks (versions.mjs · lockedVersions).
   assert.deepEqual(record.inputs, {storyboard: '390932da10154987', timings: '868ab614fc412af1', recipe: '9b351fe10b5a8e66', strings: null, data: null, theme: 'b5d0139a73be8b54', files: {'rule.ts': '8fc6d8dd3606be0f'}, pacing: '74234e98afe7498f', ...lockedVersions(), engine: storyreelCode()});
   assert.deepEqual(readdirSync(out).sort(), ['chapters.txt', 'film.mp4', 'making-of.json'], 'beside the video, only the outputs');
-  const calls = readFileSync(log, 'utf8').trim().split('\n').map(l => l.split('\x1f').filter(Boolean).map(a => a.split(work).join('<work>').split(out).join('<dir>')).join(' '));
+  // FFmpeg is handed the real paths, the ones the render writes through (files.mjs · securePath).
+  const calls = readFileSync(log, 'utf8').trim().split('\n').map(l => l.split('\x1f').filter(Boolean).map(a => a.split(realpathSync(work)).join('<work>').split(realpathSync(out)).join('<dir>')).join(' '));
   assert.deepEqual(calls, [
     '-y -loglevel error -f rawvideo -pixel_format rgba -video_size 160x90 -framerate 4 -i pipe:0 -c:v libx264 -preset fast -crf 19 -pix_fmt yuv420p <work>/film-video.mp4',
     '-y -loglevel error -f lavfi -i anullsrc=r=48000:cl=mono -t 31.78 <work>/film-voice.wav',
@@ -333,6 +334,8 @@ test('without music nothing changes: the same stages, record, inputs and FFmpeg 
     '-y -loglevel error -ss 0 -t 2 -i <work>/film-lesson.wav <work>/film-part.wav',
     '-y -loglevel error -f concat -safe 0 -i <work>/film-audio.txt -ar 48000 -ac 1 <work>/film-audio.wav',
     '-y -hide_banner -nostats -loglevel info -i <work>/film-audio.wav -af aformat=channel_layouts=stereo,loudnorm=I=-16:TP=-1.5:print_format=json -f null -',
-    '-y -hide_banner -nostats -loglevel info -i <work>/film-video.mp4 -i <work>/film-audio.wav -map 0:v -map 1:a -af aformat=channel_layouts=stereo,aresample=48000,apad -c:v copy -c:a aac -b:a 160k -t 2.000000 -movflags +faststart <dir>/film.mp4',
+    // The one call that moved since main pinned it: the finished video is muxed in the work folder, then renamed onto
+    // `out` (files.mjs · writeOutput), so a link at that name is replaced, never written through.
+    '-y -hide_banner -nostats -loglevel info -i <work>/film-video.mp4 -i <work>/film-audio.wav -map 0:v -map 1:a -af aformat=channel_layouts=stereo,aresample=48000,apad -c:v copy -c:a aac -b:a 160k -t 2.000000 -movflags +faststart <work>/film-out.mp4',
   ]);
 });

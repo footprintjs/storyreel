@@ -22,7 +22,8 @@
  * when its frames did not move with the film's clock — a kit that animates on it (the cartoon's drifting
  * clouds) makes it draw again — and a key whose frames still changed is drawn again, saying so.
  */
-import {readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, copyFileSync, readdirSync, statSync, rmSync, realpathSync} from 'node:fs';
+import {readFileSync, writeFileSync, existsSync, readdirSync, statSync, rmSync, realpathSync} from 'node:fs';
+import {writeOutput, securePath, makeFolder} from './files.mjs';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -240,15 +241,17 @@ export function sampleOffsets(seg, count = 6, fps = 30) {
 
 /**
  * Keep segments as files in one folder: <key>.mp4 and <key>.json (the manifest). The default store. A
- * segment lands whole or not at all: its file arrives under a temporary name in the folder and is renamed
- * into place, and its manifest — written last — records the file's size, so a file cut short is never reused.
+ * segment lands whole or not at all: its file is renamed into place (files.mjs · writeOutput: from the render's
+ * work folder, or made beside it under a new name first — and a link at either name is replaced, never written
+ * through), and its manifest — written last — records the file's size, so a file cut short is never reused.
  */
 export function folderStore(dir) {
   if (typeof dir !== 'string' || !dir) throw new Error('folderStore: give the folder the segments are kept in');
-  const at = key => ({file: path.join(dir, `${key}.mp4`), json: path.join(dir, `${key}.json`)});
-  let landing = 0;
+  // The store's REAL path, nothing on the way another user could rearrange (files.mjs · securePath): checked when it is
+  // made and again at each put, and the segments written through it only.
+  const home = securePath(dir), at = key => ({file: path.join(home, `${key}.mp4`), json: path.join(home, `${key}.json`)});
   return {
-    name: 'folder', dir: path.resolve(dir),
+    name: 'folder', dir: home,
     get(key) {
       const {file, json} = at(key);
       if (!existsSync(file) || !existsSync(json)) return null;
@@ -258,13 +261,11 @@ export function folderStore(dir) {
       } catch { return null; }
     },
     put(key, file, manifest) {
-      mkdirSync(dir, {recursive: true});
-      const to = at(key), part = path.join(dir, `.${key}.${process.pid}.${++landing}.part`);
+      makeFolder(home);   // checked again, made, and checked once more (files.mjs · makeFolder)
+      const to = at(key), bytes = statSync(file).size;
       rmSync(to.json, {force: true});
-      try { renameSync(file, part); } catch { copyFileSync(file, part); rmSync(file, {force: true}); }
-      const bytes = statSync(part).size;
-      renameSync(part, to.file);
-      writeFileSync(to.json, JSON.stringify({...manifest, bytes}, null, 2));
+      writeOutput(to.file, {move: file});
+      writeOutput(to.json, JSON.stringify({...manifest, bytes}, null, 2));
       return to.file;
     },
   };

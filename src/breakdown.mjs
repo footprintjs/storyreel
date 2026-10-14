@@ -27,7 +27,8 @@
  *   spec           breakdown.json and breakdown.md
  */
 import path from 'node:path';
-import {existsSync, mkdirSync, writeFileSync} from 'node:fs';
+import {existsSync} from 'node:fs';
+import {writeOutput, outputFolder, refuseFolders, securePath, makeFolder} from './files.mjs';
 import {createCanvas} from '@napi-rs/canvas';
 import {flowChart, narrative, decide} from 'footprintjs';
 import {ffmpegProbe} from './finished.mjs';
@@ -426,7 +427,7 @@ async function finishShot(run, i, stills) {
   const shot = run.shots[i], frames = run.sheetFrames[i], {fps} = run.footage, kind = run.motion[i].motion === 'still' ? 'settled' : 'moving';
   run.reads[i] = readLettering([...stills.values()]);
   const file = `shots/shot-${String(shot.index).padStart(2, '0')}.png`;
-  writeFileSync(path.join(run.o.out, file), await contactSheet(reelOf(stills, fps), {moments: frames.map((k, j) => ({t: k / fps, label: `shot ${shot.index} · ${j + 1}/${frames.length}`, kind})), columns: Math.min(3, frames.length), width: 1200}));
+  writeOutput(path.join(run.o.out, file), await contactSheet(reelOf(stills, fps), {moments: frames.map((k, j) => ({t: k / fps, label: `shot ${shot.index} · ${j + 1}/${frames.length}`, kind})), columns: Math.min(3, frames.length), width: 1200}));
   run.sheets.shots[i] = file;
   const middle = frames[Math.floor(frames.length / 2)], still = stills.get(middle) ?? [...stills.values()][0];
   if (still) run.thumbnails.set(middle, thumbnailOf(still));
@@ -443,7 +444,7 @@ const stillsStage = run => async s => {
   run.motion = decided(s, 'motionVerdicts', ['motion']);
   run.sheetFrames = run.shots.map(sheetFrames);
   run.reads = []; run.thumbnails = new Map(); run.sheets = {overview: 'overview.png', shots: []};
-  mkdirSync(path.join(run.o.out, 'shots'), {recursive: true});
+  outputFolder(run.o.out, 'shots');
   // The stills are read by decoded frame (footage.mjs · readFootage's source): each serves every slot of a shot that shows it.
   const wanted = new Map();
   run.sheetFrames.forEach((frames, i) => frames.forEach(k => { const j = run.footage.source[k]; wanted.set(j, [...(wanted.get(j) ?? []), [i, k]]); }));
@@ -602,7 +603,7 @@ const overviewColumns = shots => Math.min(shots > 60 ? 10 : 6, shots);
 const overviewStage = run => async s => {
   const {fps} = run.footage, middles = run.sheetFrames.map(frames => frames[Math.floor(frames.length / 2)]);
   const moments = run.shots.map((shot, i) => ({t: middles[i] / fps, label: `#${shot.index} ${shot.seconds.toFixed(1)} s · ${motionShort(run.verdicts[i], shot, run.moves[i].camera)}`, kind: run.verdicts[i].motion === 'still' ? 'settled' : 'moving'}));
-  writeFileSync(path.join(run.o.out, 'overview.png'), await contactSheet(reelOf(run.thumbnails, fps), {moments, columns: overviewColumns(run.shots.length), width: 1600}));
+  writeOutput(path.join(run.o.out, 'overview.png'), await contactSheet(reelOf(run.thumbnails, fps), {moments, columns: overviewColumns(run.shots.length), width: 1600}));
   s.overview = run.shots.length;
 };
 
@@ -648,8 +649,8 @@ function specOf(run, s) {
 const specStage = run => s => {
   run.spec = specOf(run, s);
   run.text = breakdownText(run.spec);
-  writeFileSync(path.join(run.o.out, 'breakdown.json'), JSON.stringify(run.spec, null, 2));
-  writeFileSync(path.join(run.o.out, 'breakdown.md'), run.text);
+  writeOutput(path.join(run.o.out, 'breakdown.json'), JSON.stringify(run.spec, null, 2));
+  writeOutput(path.join(run.o.out, 'breakdown.md'), run.text);
   s.written = ['breakdown.json', 'breakdown.md'];
 };
 
@@ -703,7 +704,11 @@ const recordOf = trace => JSON.parse(JSON.stringify(trace.getEntries().map(({raw
  */
 export async function breakdown(videoFile, options = {}) {
   const run = {o: readOptions(videoFile, options ?? {})};
-  mkdirSync(run.o.out, {recursive: true});
+  // The out folder's REAL path, nothing on the way another user could rearrange (files.mjs · securePath), written through
+  // it only; then its files' names, before a frame is read: a folder at one refuses now, not after the sheets.
+  run.o.out = securePath(run.o.out);
+  refuseFolders(['breakdown.json', 'breakdown.md', 'record.json', 'overview.png'].map(f => path.join(run.o.out, f)));
+  makeFolder(run.o.out);
   const trace = narrative();
   try { await breakdownChart(run).recorder(trace).run(); } catch (error) {
     if (error && typeof error === 'object' && !('record' in error)) error.record = recordOf(trace);
@@ -711,6 +716,6 @@ export async function breakdown(videoFile, options = {}) {
   }
   const record = recordOf(trace), files = {json: path.join(run.o.out, 'breakdown.json'), md: path.join(run.o.out, 'breakdown.md'), record: path.join(run.o.out, 'record.json'),
     overview: path.join(run.o.out, 'overview.png'), sheets: run.sheets.shots.map(f => path.join(run.o.out, f))};
-  writeFileSync(files.record, JSON.stringify(record, null, 2));
+  writeOutput(files.record, JSON.stringify(record, null, 2));
   return {spec: run.spec, text: run.text, record, files};
 }
