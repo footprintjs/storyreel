@@ -739,7 +739,9 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
   approval locks (`film.inputs.lang`). An as-written number is sourced only by a fact written the same way: `"2,5"`
   sources "2,5", and a fact of 2.5 does not, however its digits print.
   A language's own digits are numbers too — Arabic-Indic (`ar-EG`: "١٢٣٤", and "1٬234٫5" with its own separators is
-  1234.5), Persian (`fa`), Devanagari (`hi-IN-u-nu-deva`: "१,००,०००"), Bengali (`bn`), Telugu, Tamil, Thai — and in a
+  1234.5), Persian (`fa`), Devanagari (`hi-IN-u-nu-deva`: "१,००,०००"), Bengali (`bn`), Telugu, Tamil, Thai, the
+  full-width digits and separators of Chinese and Japanese text (`ja` "１，０００円" is 1000, "３．５kg" 3.5, "－５℃" −5;
+  the ideographic comma 、 separates a list, never a group) — and in a
   film with no language a digit of any script is read as a digit; a number that mixes scripts ("١2٣") is ambiguous. Two
   writings to watch:
   - **French with a plain space.** `fr` groups with a no-break space ("1 299,99": U+202F, which is what
@@ -811,7 +813,8 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
   The built-in code stage draws no line numbers.
 - **Code is read as code.** A code panel's numbers follow its programming language, not the film's: in a `de` film
   `x = 16.67` is 16.67 and `f(4,5)` is 4 and 5. Draw code inside `code` (the same module): its words are read with "."
-  as the decimal mark and "," always a separator, never any grouping — and they still need a source. The built-in code
+  as the decimal mark, "," always a separator, never any grouping, and "_" between digits joining them as JavaScript
+  and Python write it (`1_000_000` is 1000000; outside code "_" joins nothing) — and they still need a source. The built-in code
   stage marks its own code; a kit's code panel marks its own:
 
   ```js

@@ -607,3 +607,33 @@ test('code is read as code, whatever the film\'s language: in a de film, x = 16.
   assert.equal(isCode({}), false);
   assert.throws(() => code({}, 1), /code\(ctx, draw\): draw is a function that draws the code on ctx/);
 });
+
+test('Chinese and Japanese full-width separators are read: ja "１，０００円" is 1000, "３．５kg" 3.5, "－５℃" −5 — and 、 separates a list', async () => {
+  for (const [lang, text, value, number] of [
+    ['ja', '１，０００円', 1000, '１，０００'], ['ja', '３．５kg', 3.5, '３．５'], ['ja', '－５℃', -5, '－５'],
+    ['zh', '１，０００元', 1000, '１，０００'], ['zh', '３．５公斤', 3.5, '３．５']]) {
+    const {typed, drawn} = await readBy(lang, text, [{value, source: url}]);
+    assert.deepEqual(typed, [[number, true]], `${lang} "${text}": read as ${value}, sourced`);
+    assert.deepEqual(drawn, typed, `${lang} "${text}": drawn as typed`);
+  }
+  assert.deepEqual(numbersIn('１、２、３', {lang: 'ja'}).map(n => numberValue(n, {lang: 'ja'})), [1, 2, 3], 'the ideographic comma separates a list');
+  assert.deepEqual(numbersIn('1、000', {lang: 'zh'}), ['1', '000'], 'and is never a group mark');
+  assert.deepEqual(numbersIn('１，０００円'), ['１，０００'], 'without a language, "１，０００" is ambiguous as "1,000" is');
+});
+
+test('in code only, digits joined by _ are one number: 1_000_000 is 1000000 under code(), three numbers outside it', async () => {
+  const sb = {title: 'Code', facts: [{value: 1000000, source: url}], scenes: [{id: 'a', narration: 'a long number in code, read as the code writes it'}]};
+  const panelOf = mark => ({name: 'panel', story: {compile: () => ({hang: 1, draw: c => {
+    c.fillStyle = '#1d2230'; c.fillRect(0, 0, 1600, 900); c.font = '600 24px Menlo, Consolas, monospace'; c.fillStyle = '#e6e9ef'; c.textBaseline = 'middle';
+    const tokens = () => { let x = 172; for (const tok of 'limit = 1_000_000;'.match(TOKENS)) { c.fillText(tok, x, 200); x += c.measureText(tok).width; } };
+    if (mark) code(c, tokens); else tokens();
+    c.textBaseline = 'alphabetic';
+  }})}});
+  const read = async mark => {
+    const f = await compileFilm({storyboard: sb, recipe: {story: {kit: 'panel'}}, timings: evenTimings(sb, {wordSeconds: .4}), kits: [panelOf(mark)]});
+    const v = (await reviewPart(f, {every: 1})).verdicts.find(x => x.check === 'claims');
+    return [v.measured.sourced, v.measured.unsourcedNumbers.map(c => c.number)];
+  };
+  assert.deepEqual(await read(true), [1, []], 'under code(): one number, 1000000, sourced');
+  assert.deepEqual(await read(false), [0, ['1', '000', '000']], 'unmarked, "_" joins nothing');
+});

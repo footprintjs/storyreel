@@ -27,8 +27,8 @@ const FACT_KEYS = ['value', 'text', 'source'];
 /** A cased letter (upper, lower, title case): a digit run right after one is part of a name. A CJK character is not cased. */
 const isCased = ch => /[\p{Lu}\p{Ll}\p{Lt}]/u.test(ch ?? '');
 const isAlnum = ch => /[\p{L}\p{N}]/u.test(ch ?? '');
-/** A minus standing on its own before a number is its sign: the hyphen-minus, the minus sign (U+2212), the en dash (U+2013). */
-const SIGNS = new Set(['-', '\u2212', '\u2013']), HYPHENS = new Set(['-', '\u2010', '\u2011']);
+/** A minus standing on its own before a number is its sign: the hyphen-minus, the minus sign (U+2212), the en dash (U+2013), the full-width minus (U+FF0D). */
+const SIGNS = new Set(['-', '\u2212', '\u2013', '\uff0d']), HYPHENS = new Set(['-', '\u2010', '\u2011']);
 
 /**
  * The numbers a text shows, in order ("One frame takes 16.67 ms at 60 Hz." → ["16.67", "60"]; "−5 °C" → ["−5"]):
@@ -70,7 +70,7 @@ export function numberLocale(lang) {
   const f = new Intl.NumberFormat(tag), parts = f.formatToParts(1234567.5), ints = parts.filter(p => p.type === 'integer').map(p => p.value.length);
   // Its own separators as the text is read (plainDigits): the Arabic group ٬ and decimal ٫ are a "," and a "."; its own
   // digits (Arabic-Indic, Devanagari, Bengali, Tamil, Telugu, Thai …) are read as the digits they are, in every film.
-  const plain = ch => ARABIC[ch] ?? ch;
+  const plain = ch => SEPARATORS[ch] ?? ch;
   const locale = Object.freeze({lang: tag, group: ints.length > 1 ? plain(parts.find(p => p.type === 'group').value) : null, decimal: plain(parts.find(p => p.type === 'decimal')?.value ?? '.'),
     primary: ints.at(-1), secondary: ints.length > 2 ? ints.at(-2) : ints.at(-1), digits: f.resolvedOptions().numberingSystem});
   LOCALES.set(lang, locale);
@@ -79,13 +79,18 @@ export function numberLocale(lang) {
 const LOCALES = new Map();
 /**
  * How code reads numbers, whatever the film's language: "." is the decimal mark, "," always separates (f(4,5) is 4 and
- * 5, 1,000 is 1 and 000), never any grouping. Words drawn inside decorative.mjs · code are read so.
+ * 5, 1,000 is 1 and 000), never any grouping — and "_" between digits joins them, as JavaScript and Python write a
+ * long number (1_000_000 is 1000000). Words drawn inside decorative.mjs · code are read so; outside code "_" joins nothing.
  */
-export const CODE_READING = Object.freeze({lang: 'code', code: true, group: null, decimal: '.', primary: 3, secondary: 3, cut: ','});
+export const CODE_READING = Object.freeze({lang: 'code', code: true, group: null, decimal: '.', primary: 3, secondary: 3, cut: ',', join: '_'});
 /** A language read already (numberLocale, or CODE_READING) or a tag to read. */
 const readingOf = lang => (lang && typeof lang === 'object' ? lang : numberLocale(lang));
-/** The Arabic separators, read as the "," and "." they are: ٬ groups, ٫ is the decimal mark (ar, fa, ur). */
-const ARABIC = Object.freeze({'\u066c': ',', '\u066b': '.'});
+/**
+ * The separators that are a "," and a "." in another form: the Arabic ٬ (a group) and ٫ (the decimal mark: ar, fa, ur),
+ * and the full-width ， and ． of Chinese and Japanese text ("１，０００円", "３．５kg"). The ideographic comma 、 is not
+ * among them: it separates a list (１、２、３ is three numbers), never a group.
+ */
+const SEPARATORS = Object.freeze({'\u066c': ',', '\u066b': '.', '\uff0c': ',', '\uff0e': '.'});
 const DIGIT_VALUES = new Map(), ND = /\p{Nd}/u;
 /** A digit's value, in any script (Unicode Nd: each script's ten digits in a row, from its zero), or null. */
 function digitValue(ch) {
@@ -97,13 +102,13 @@ function digitValue(ch) {
 /** The script a digit is in: its zero's code point. */
 const scriptOf = ch => ch.codePointAt(0) - digitValue(ch);
 /**
- * The text as it is read: every digit as an ASCII digit and the Arabic separators as "," and ".", and where each of its
+ * The text as it is read: every digit as an ASCII digit and the separators in other forms (SEPARATORS) as "," and ".", and where each of its
  * characters stands in the text — {plain, from}, from[i] the text's offset of plain[i] (and of its end, at plain.length).
  */
 function plainDigits(text) {
   let plain = ''; const from = [];
   for (let i = 0; i < text.length;) {
-    const ch = String.fromCodePoint(text.codePointAt(i)), v = digitValue(ch), out = v !== null ? String(v) : ARABIC[ch] ?? ch;
+    const ch = String.fromCodePoint(text.codePointAt(i)), v = digitValue(ch), out = v !== null ? String(v) : SEPARATORS[ch] ?? ch;
     for (let k = 0; k < out.length; k++) from.push(i);
     plain += out; i += ch.length;
   }
@@ -129,14 +134,15 @@ function localePattern(locale) {
  * fr "1 234 567,5", de-CH "1'234'567.5") is one run.
  */
 function numberRuns(text, locale = null) {
-  // Found in the text as read (plainDigits: a digit of any script, the Arabic separators), and given back as written.
+  // Found in the text as read (plainDigits: a digit of any script, the Arabic and full-width separators), and given back as written.
   const s = String(text ?? ''), {plain, from: origin} = plainDigits(s), raw = []; let next = 0;
   for (const run of unsaidDigits(spokenMap(plain))) { const at = plain.indexOf(run, next); if (at < 0) continue; next = at + run.length; raw.push({run, at}); }
   const runs = [];
   for (const r of raw) {
     const last = runs.at(-1), between = last ? plain.slice(last.at + last.run.length, r.at) : null;
     const grouped = last && locale?.group && between.length === 1 && (between === locale.group || (NO_BREAK.has(locale.group) && NO_BREAK.has(between)));
-    if (grouped && localePattern(locale).test(`${last.run}${between}${r.run}`)) last.run = plain.slice(last.at, r.at + r.run.length);
+    if (last && locale?.join && between === locale.join) last.run = plain.slice(last.at, r.at + r.run.length);   // code: 1_000_000
+    else if (grouped && localePattern(locale).test(`${last.run}${between}${r.run}`)) last.run = plain.slice(last.at, r.at + r.run.length);
     else if (locale?.cut) { let at = r.at; for (const piece of r.run.split(locale.cut)) { if (piece) runs.push({run: piece, at}); at += piece.length + 1; } }   // code: "," separates
     else runs.push({...r});
   }
@@ -169,6 +175,7 @@ function valueIn(run, locale) {
   return typeof value === 'number' ? (negative ? -value : value) : s;
 }
 function localeValue(b, locale) {
+  if (locale.join) b = b.replace(new RegExp(`(?<=\\d)${literal(locale.join)}(?=\\d)`, 'g'), '');   // code: 1_000_000 is 1000000
   if (!localePattern(locale).test(b)) return b;
   const digits = locale.group === null ? b : [...b].filter(ch => !(ch === locale.group || (NO_BREAK.has(locale.group) && NO_BREAK.has(ch)))).join('');
   return Number(digits.replace(locale.decimal, '.'));
@@ -355,9 +362,9 @@ export function findClaims(shown, {facts = null, examples = [], scenes = [], lan
  */
 export const DRAWN = Object.freeze({near: .5, touch: .08, mark: .2, point: .5, size: .7, baseline: .3});
 // A digit of any script (Unicode Nd), and a point: ".", "," or the Arabic ٫ and ٬.
-const LONE_POINT = /^[.,\u066b\u066c]$/, ENDS_DIGIT = /\p{Nd}$/u, STARTS_DIGIT = /^\p{Nd}/u;
+const LONE_POINT = /^[.,\u066b\u066c\uff0c\uff0e]$/, ENDS_DIGIT = /\p{Nd}$/u, STARTS_DIGIT = /^\p{Nd}/u;
 /** A minus standing alone, or a decimal point written onto its digits: "-" + "5", "16" + ".67", "16." + "67". */
-const glued = (last, next) => (SIGNS.has(last) && STARTS_DIGIT.test(next)) || (ENDS_DIGIT.test(last) && /^[.\u066b]\p{Nd}/u.test(next)) || (/\p{Nd}[.\u066b]$/u.test(last) && STARTS_DIGIT.test(next));
+const glued = (last, next) => (SIGNS.has(last) && STARTS_DIGIT.test(next)) || (ENDS_DIGIT.test(last) && /^[._\u066b\uff0e]\p{Nd}/u.test(next)) || (/\p{Nd}[._\u066b\uff0e]$/u.test(last) && STARTS_DIGIT.test(next));
 const height = b => b[3] - b[1], tall = (a, b) => Math.max(height(a), height(b)), gapOf = (a, b) => (b[0] - a[2]) / tall(a, b);
 /** Whether two boxes are type of one size on one baseline (DRAWN.size, DRAWN.baseline): a superscript or raised cents is not. */
 const oneSize = (a, b) => Math.min(height(a), height(b)) >= DRAWN.size * tall(a, b) - 1e-6 && Math.abs(a[3] - b[3]) <= DRAWN.baseline * tall(a, b) + 1e-6;
