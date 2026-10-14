@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.13.1 — a review no longer holds every frame it reads
 
 - **A review no longer holds every frame it reads.** `review` read each moment on a new canvas: a native picture
   (5.8 MB at 1600×900, 8.3 MB at 1080p, and a blurred transition's scratch beside it) that only a garbage collection
