@@ -4,8 +4,9 @@
 // makeFilm runs each segment as its own subflow.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync, writeFileSync, readdirSync, cpSync, mkdirSync} from 'node:fs';
+import {readFileSync, writeFileSync, readdirSync, cpSync, mkdirSync, symlinkSync} from 'node:fs';
 import path from 'node:path';
+import fs from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {compileFilm, evenTimings, paceTimings, renderFilm, makeFilm, wholeVideo, cartoonKit} from '../src/index.mjs';
@@ -73,8 +74,13 @@ test('code per segment: editing one shot\'s module changes only the keys of the 
   writeFileSync(path.join(top, 'shared.mjs'), 'export const ink = "#000";\n');
   const plan = planSegments(a.film, {fps: 10}), drawsAStage = seg => [...seg.paths, ...(seg.before ?? [])].some(p => p.startsWith('stages'));
   assert.deepEqual(keys().map((k, i) => k !== edited[i]), plan.map(drawsAStage), 'a file the shots import changes every segment that shows one of them');
+  // An import that leads nowhere is read as missing, never thrown on (codegraph.mjs): the keys still name what is there.
+  const beforeGone = keys();
   writeFileSync(files[0], 'import {gone} from \'./nope.mjs\';\n');
-  assert.throws(keys, /imports \.\/nope\.mjs, which does not exist/);
+  const gone = keys();
+  assert.notEqual(gone[1], beforeGone[1], 'the edited file changed its segment\'s key');
+  writeFileSync(path.join(top, 'nope.mjs'), 'export const gone = 1;\n');
+  assert.notEqual(keys()[1], gone[1], 'and the file, once it is there, is read');
   assert.throws(() => sourceCode('shots/'), /sources\(entry\) names the files that draw a recipe entry/);
 });
 
@@ -94,7 +100,7 @@ test('codeFingerprint follows the kits\' imports: a helper two levels deep is th
   write('film/kits/a.mjs', "import {b} from './b.mjs';\nexport const a = () => b;"); write('film/kits/b.mjs', "import {a} from './a.mjs';\nexport const b = () => a;");
   write('lib/helper.mjs', "export {deep as help} from './deep.mjs';"); write('lib/deep.mjs', 'export const deep = 1;'); write('lib/unrelated.mjs', 'export const other = 1;');
   const kits = [path.join(top, 'film/kits')], before = codeFingerprint(kits);
-  assert.deepEqual(codeCover(before).files.map(f => path.relative(top, f)).sort(), ['film/kits/a.mjs', 'film/kits/b.mjs', 'film/kits/index.mjs', 'lib/deep.mjs', 'lib/helper.mjs'],
+  assert.deepEqual(codeCover(before).files.map(f => path.relative(fs.realpathSync(top), f)).sort(), ['film/kits/a.mjs', 'film/kits/b.mjs', 'film/kits/index.mjs', 'lib/deep.mjs', 'lib/helper.mjs'],
     'the kits, what they import two levels deep, a cycle read once — never node_modules, never the unrelated file');
   assert.deepEqual(codeCover(before).packages, ['fakepkg@1.2.3'], 'a package by its installed version');
   write('lib/unrelated.mjs', 'export const other = 2;');
@@ -105,6 +111,43 @@ test('codeFingerprint follows the kits\' imports: a helper two levels deep is th
   write('node_modules/fakepkg/package.json', '{"name": "fakepkg", "version": "1.2.4"}');
   assert.notEqual(codeFingerprint(kits), after, 'and so does the package\'s version');
   assert.equal(codeCover('not made here'), null);
+});
+
+test('codeFingerprint reads code, not text: an import in a comment or a string is none; one that leads nowhere is listed, never thrown', t => {
+  const top = tempDir('code', t), write = (f, text) => { mkdirSync(path.dirname(path.join(top, f)), {recursive: true}); writeFileSync(path.join(top, f), text); };
+  write('kits/explain.mjs', [
+    "// import {old} from './gone.mjs'",
+    "/* export * from './gone-too.mjs' */",
+    "export const sample = `import {a} from './lib/a.mjs'`;   // sample code a code-explainer kit shows",
+    "export const quoted = \"import {b} from './lib/b.mjs'\";",
+    "export const re = /import\\s+'x'/;",
+    "import {used} from './used.mjs';",
+    "import {stale} from './stale.mjs';",
+    "export const load = name => import(`./scenes/${name}.mjs`);",
+    "export const font = new URL('./fonts/hand.ttf', import.meta.url);",
+    "export {used};"].join('\n'));
+  write('kits/used.mjs', 'export const used = 1;'); write('kits/fonts/hand.ttf', 'glyphs v1');
+  const kits = [path.join(top, 'kits/explain.mjs')], fp = codeFingerprint(kits), cover = codeCover(fp), rel = f => path.relative(fs.realpathSync(top), f);   // files by their real paths
+  assert.deepEqual(cover.files.map(rel), ['kits/explain.mjs', 'kits/fonts/hand.ttf', 'kits/used.mjs'], 'the real import and the asset it loads — none of the commented or quoted ones');
+  assert.deepEqual(cover.missing.map(m => [rel(m.from), m.spec]), [['kits/explain.mjs', './stale.mjs']], 'a stale import is listed, never a throw');
+  assert.deepEqual(cover.unfollowed.map(u => [rel(u.from), u.code]), [['kits/explain.mjs', 'import(`…`)']], 'an import chosen at run time is listed: name its folder in paths');
+  write('kits/fonts/hand.ttf', 'glyphs v2');
+  assert.notEqual(codeFingerprint(kits), fp, 'the asset is hashed: a new font changes the fingerprint');
+});
+
+test('codeFingerprint follows TypeScript kits, and a linked package\'s code: a .ts kit importing ./helper.js reads helper.ts', t => {
+  const top = tempDir('code', t), write = (f, text) => { mkdirSync(path.dirname(path.join(top, f)), {recursive: true}); writeFileSync(path.join(top, f), text); };
+  write('kits/kit.ts', "import {help} from './helper.js';\nimport type {Shape} from './shape';\nimport {local} from 'linked-kit';\nimport {x} from 'installed';\nexport const kit = (s: Shape) => help(s) + local + x;");
+  write('kits/helper.ts', 'export const help = (s: unknown) => 1;'); write('kits/shape.ts', 'export type Shape = {x: number};');
+  // A linked package (npm link, a workspace, a file: dependency): its real path is outside node_modules — its code is the film's.
+  write('linked/package.json', '{"name": "linked-kit", "version": "1.0.0", "exports": {".": "./src/index.mjs"}}'); write('linked/src/index.mjs', "export {local} from './local.mjs';"); write('linked/src/local.mjs', 'export const local = 1;');
+  mkdirSync(path.join(top, 'node_modules'), {recursive: true}); symlinkSync(path.join(top, 'linked'), path.join(top, 'node_modules/linked-kit'), 'dir');
+  write('node_modules/installed/package.json', '{"name": "installed", "version": "2.0.0", "main": "index.js"}'); write('node_modules/installed/index.js', 'exports.x = 1;');
+  const kits = [path.join(top, 'kits/kit.ts')], fp = codeFingerprint(kits), cover = codeCover(fp), rel = f => path.relative(fs.realpathSync(top), fs.realpathSync(f));
+  assert.deepEqual(cover.files.map(rel), ['kits/helper.ts', 'kits/kit.ts', 'kits/shape.ts', 'linked/src/index.mjs', 'linked/src/local.mjs'], 'the TypeScript helper (as ./helper.js), the type, and the linked package\'s own files');
+  assert.deepEqual(cover.packages, ['installed@2.0.0'], 'a package in node_modules by its version');
+  write('linked/src/local.mjs', 'export const local = 2;');
+  assert.notEqual(codeFingerprint(kits), fp, 'a change in the linked package\'s code changes the fingerprint, its version unchanged');
 });
 
 test('segmentedVideo refuses what it cannot cache, naming the fix', async () => {

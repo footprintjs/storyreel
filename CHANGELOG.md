@@ -5,19 +5,23 @@
 - **Breaking: `footprint-storyreel/regions` · `then` is now `compose`.** An export named `then` made the module's
   namespace a thenable, so `await import('footprint-storyreel/regions')` never settled. Use `compose(outer, inner)`;
   there is no alias. A test now imports every published entry point and fails if one does not settle or exports `then`.
-- **An approval locks the library that draws the film.** makeFilm's inputs (and so `making-of.json` and an approval)
-  hold StoryReel's version and footprintjs's (`inputs.storyreel`, `inputs.footprintjs`): an `npm update` between the
-  draft and the final render is named — "storyreel version (0.12.0 approved, 0.13.0 now) differs from what was
-  approved". **An approval made before this release names both versions as new, once: approve the film again.** The
-  segment cache keys do not hold the version: the engine's fingerprint already holds every file of StoryReel's code, so
-  a release that changes no drawing code keeps its segments.
+- **An approval locks what draws the film.** makeFilm's inputs (and so `making-of.json` and an approval) hold
+  StoryReel's version, its code (`inputs.engine`: the engine's fingerprint every segment key holds — every file of its
+  code and the versions of `@napi-rs/canvas`, `roughjs`, `perfect-freehand`, `shiki` and `footprint-narration`) and
+  footprintjs's version (the record's verdicts run on it). An `npm update` between the draft and the final render is
+  named — "storyreel version (0.12.0 approved, 0.13.0 now)" — and so is a change under the same version, as a `file:`
+  dependency's is: "StoryReel's code changed (same version 0.12.0)". **An approval made before this release names the
+  versions and the code as new, once: approve the film again.** The segment keys do not hold the version: they hold the
+  engine's fingerprint already, so a release that changes no drawing code keeps its segments.
 - **A recipe with no story refuses, naming what to give**: the film's first shot is its story world, so
   `"story": {"kit": "whiteboard", "items": []}` is an empty board, said — never a TypeError, never a blank board
   assumed. A whiteboard with no `items` refuses the same way.
-- **`codeFingerprint` follows the kits' imports**: every file the given folders import (relative static imports,
-  transitively, never into `node_modules`) and each package by its installed version, so an approval no longer misses
-  a change in a helper a kit imports. The making-of record lists what it covered (`code: {fingerprint, files,
-  packages}`; `codeCover(fingerprint)`). A fingerprint made with this release differs from one made before, once:
+- **`codeFingerprint` follows what the kits read**: their imports, transitively — JavaScript and TypeScript (`./x.js`
+  finds `x.ts`), a linked or workspace package's code, each `node_modules` package by its version — and the assets a
+  module loads by `new URL('…', import.meta.url)`, so an approval no longer misses a change in a helper a kit imports.
+  Imports are read by a small tokenizer: one in a comment or a string is none. An import that leads nowhere is listed
+  (`missing`), never thrown on, and one chosen at run time is listed (`unfollowed`); `sourceCode` reads the same way.
+  The making-of record lists it all (`code: {fingerprint, files, packages, missing?, unfollowed?}`; `codeCover(fingerprint)`). A fingerprint made with this release differs from one made before, once:
   **an approval that locks the kits' code reports "code differs" — approve the film again.**
 
 ### Beats in the breakdown

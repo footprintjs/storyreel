@@ -11,6 +11,7 @@ import {approveFilm, checkApproval, compileFilm, makeFilm, evenTimings, codeFing
 import {stableJson, requireApproval, voiceHash} from '../src/approval.mjs';
 import {hashOf} from '../src/hash.mjs';
 import {lockedVersions} from '../src/versions.mjs';
+import {storyreelCode} from '../src/segments.mjs';
 import {tempDir} from './tmp.mjs';
 
 const dir = fileURLToPath(new URL('../examples/hello/', import.meta.url)), read = f => JSON.parse(readFileSync(dir + f, 'utf8'));
@@ -81,7 +82,13 @@ test('makeFilm: approve the draft you watched; the final render with it records 
   const stubbed = {...approval, inputs: {...approval.inputs, storyreel: '0.0.0-stub'}};
   await assert.rejects(makeFilm({storyboard, recipe, root: dir, timings, out: path.join(top, 'v', 'film.mp4'), approval: stubbed, render}),
     new RegExp(`changed since S approved it on .*: storyreel version \\(0\\.0\\.0-stub approved, ${versions.storyreel.replaceAll('.', '\\.')} now\\) differs from what was approved`));
-  const {storyreel: _s, footprintjs: _f, ...older} = approval.inputs;
+  // StoryReel's code is locked too (the engine's fingerprint): a `file:` dependency keeps its version while its code changes.
+  assert.equal(record.inputs.engine, storyreelCode(), 'the engine fingerprint, as every segment key holds it');
+  const sameVersion = {...approval, inputs: {...approval.inputs, engine: 'stub-code'}};
+  assert.deepEqual(checkApproval(sameVersion, record.inputs).changed, [`StoryReel's code changed (same version ${versions.storyreel})`]);
+  await assert.rejects(makeFilm({storyboard, recipe, root: dir, timings, out: path.join(top, 'v2', 'film.mp4'), approval: sameVersion, render}), /StoryReel's code changed \(same version [^)]+\) differs from what was approved/);
+  assert.deepEqual(checkApproval({...approval, inputs: {...approval.inputs, engine: 'stub-code', storyreel: '0.0.0-stub'}}, record.inputs).changed, [`storyreel version (0.0.0-stub approved, ${versions.storyreel} now)`], 'a new version says it once: its code is in it');
+  const {storyreel: _s, footprintjs: _f, engine: _e, ...older} = approval.inputs;
   assert.deepEqual(checkApproval({...approval, inputs: older}, record.inputs).changed, [`footprintjs version (none approved, ${versions.footprintjs} now)`, `storyreel version (none approved, ${versions.storyreel} now)`],
     'an approval made before the versions were locked names them once');
   assert.ok(record.approval.unlocked.some(u => /render settings/.test(u)) && record.approval.unlocked.some(u => /kits' code/.test(u)), 'it says what it does not lock');

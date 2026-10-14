@@ -1443,13 +1443,19 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
 A "final" render should be the film someone actually watched. Every `makeFilm` render's `making-of.json`
 lists what the film was made from, hashed (`inputs`): the storyboard, the timings, the recipe, the strings,
 the data, the theme, every file the film read through its root, the pacing, the voice's audio, and — when you
-pass `code: codeFingerprint(['film/kits'])` — the kits' drawing code, and every file it imports: relative imports
-followed transitively (a helper in `../lib` the kit imports is its code too; never into `node_modules`), and each
-package it imports by its installed version. The record lists what the fingerprint covered (`"code": {fingerprint,
-files, packages}`, files from the film's root) — and StoryReel's own version and footprintjs's (`inputs.storyreel`,
-`inputs.footprintjs`): an `npm update` between the draft and the final render is named ("storyreel version (0.12.0
-approved, 0.13.0 now)"). The segment cache does not key on the version: its keys hold the engine's own code
-fingerprint, every file of StoryReel's code, so a release that changes no drawing code keeps its segments. `approveFilm` takes the record of the
+pass `code: codeFingerprint(['film/kits'])` — the kits' drawing code, and every file it reads: imports followed
+transitively, JavaScript and TypeScript (a helper in `../lib` the kit imports is its code too; `./x.js` finds `x.ts`), a
+package linked or in a workspace (`npm link`, a `file:` dependency) as code, each package in `node_modules` by its
+installed version, and the assets a module loads by `new URL('./font.ttf', import.meta.url)`. Imports are read as code,
+so one in a comment or a string is none. What it cannot follow it lists, never throws on: an import that leads nowhere
+(`missing`) and one chosen at run time (`unfollowed`, `import(\`./scenes/${name}.mjs\`)`). **A kit that loads files another
+way (a path it builds, a folder it reads) names that folder too: `codeFingerprint(['film/kits', 'film/art'])`.** The
+record lists what the fingerprint covered (`"code": {fingerprint, files, packages, missing?, unfollowed?}`, files from the
+film's root) — and what draws the film: StoryReel's version and its code (`inputs.engine`, the engine's fingerprint
+every segment key holds: every file of its code and the versions of what it draws with), and footprintjs's version
+(`inputs.storyreel`, `inputs.footprintjs`). An `npm update` between the draft and the final render is named
+("storyreel version (0.12.0 approved, 0.13.0 now)"), and so is a change under the same version — a `file:` dependency,
+a local edit ("StoryReel's code changed (same version 0.12.0)"). `approveFilm` takes the record of the
 render the person watched, and `makeFilm({…, approval})` refuses to render anything else, naming what changed:
 
 ```js

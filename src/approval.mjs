@@ -54,14 +54,20 @@ export function readApproval(approval) {
  * Whether a film is still what was approved: {ok, changed: [what differs]}. `inputs` is what the film is
  * made from now (makeFilm: the film's inputs, the pacing, the voice, the code); a file is named by its path.
  */
-/** The library versions an approval locks (versions.mjs · lockedVersions): a change is named as a version. */
+/**
+ * The library versions an approval locks (versions.mjs · lockedVersions): a change is named as a version. StoryReel's
+ * code is locked too (`engine`: segments.mjs · storyreelCode); changed under the same version — a `file:` dependency, a
+ * local edit — it is named so, and under a new version the version says it.
+ */
 const VERSIONS = new Set(['storyreel', 'footprintjs']);
 export function checkApproval(approval, inputs) {
   if (!inputs || typeof inputs !== 'object') throw new Error('checkApproval: give what the film is made from now (makeFilm: the film\'s inputs, the pacing, the voice, the code)');
   const was = readApproval(approval).inputs, changed = [];
   for (const key of [...new Set([...Object.keys(was), ...Object.keys(inputs)])].filter(k => k !== 'files').sort()) {
     if (stableJson(was[key] ?? null) === stableJson(inputs[key] ?? null)) continue;
+    if (key === 'engine' && (was.storyreel ?? null) !== (inputs.storyreel ?? null)) continue;   // a new version says it
     changed.push(key === 'code' && !inputs.code ? 'the kits\' code (no fingerprint given now)'
+      : key === 'engine' ? `StoryReel's code changed (same version${inputs.storyreel ? ` ${inputs.storyreel}` : ''})`
       : VERSIONS.has(key) ? `${key} version (${was[key] ? `${was[key]} approved` : 'none approved'}, ${inputs[key] ?? 'none'} now)` : key);
   }
   const before = was.files ?? {}, now = inputs.files ?? {};

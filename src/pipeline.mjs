@@ -25,7 +25,7 @@ import {checkVideo, ffmpegProbe} from './finished.mjs';
 import {verdictChart} from './verdict.mjs';
 import {claimsCount, unsourcedClaims, claimText, CLAIMS_VERDICT} from './claims.mjs';
 import {installedVersion, lockedVersions} from './versions.mjs';
-import {codeCover} from './segments.mjs';
+import {codeCover, storyreelCode} from './segments.mjs';
 import {beatMap, likelyTempi} from './beats.mjs';
 import {readMusic, musicHash, fitToMusic, fitVoice} from './music.mjs';
 
@@ -33,7 +33,10 @@ const version = installedVersion;
 /** The code fingerprint with what it covered, for the record: {fingerprint, files?, packages?}. */
 function codeRecord(fingerprint, root) {
   const cover = codeCover(fingerprint);
-  return cover ? {fingerprint, files: cover.files.map(f => path.relative(root, f).split(path.sep).join('/')), packages: [...cover.packages]} : {fingerprint, files: 'not listed: the fingerprint was made in another process'};
+  const from = f => path.relative(root, f).split(path.sep).join('/');
+  return cover ? {fingerprint, files: cover.files.map(from), packages: [...cover.packages],
+    ...(cover.missing.length ? {missing: cover.missing.map(m => `${from(m.from)}: ${m.spec}`)} : {}), ...(cover.unfollowed.length ? {unfollowed: cover.unfollowed.map(u => `${from(u.from)}: ${u.code}`)} : {})}
+    : {fingerprint, files: 'not listed: the fingerprint was made in another process'};
 }
 const TOOLS = () => [
   {name: 'footprintjs', version: version('footprintjs'), license: 'MIT', detail: 'the making-of pipeline and its record'},
@@ -216,8 +219,10 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       scope.beats = film.beats.length; scope.sounds = film.sounds.length; scope.total = +film.total.toFixed(3);
       // What the film is made from (film.inputs, and the pacing, the voice, the kits' code): an approval locks all of it.
       // Sounds placed by their peaks change what is heard, so an approval locks that too — only when it is asked for.
-      // …and the versions of StoryReel and footprintjs that draw and decide it (versions.mjs · lockedVersions).
-      inputs = {...film.inputs, pacing: hashOf(pacing), ...(narrationDir ? {voice: voiceHash(narrationDir)} : {}), ...(code ? {code} : {}), ...lockedVersions(), ...(song ? {music: musicHash(song)} : {}), ...(render.soundAt === 'peak' ? {soundAt: 'peak'} : {})};
+      // …and what draws and decides it: StoryReel's version and its code (the engine's fingerprint, as every segment key
+      // holds it: every file of its code and the versions of what it draws with — a `file:` dependency keeps its version
+      // while its code changes), and footprintjs's version (versions.mjs · lockedVersions).
+      inputs = {...film.inputs, pacing: hashOf(pacing), ...(narrationDir ? {voice: voiceHash(narrationDir)} : {}), ...(code ? {code} : {}), ...lockedVersions(), engine: storyreelCode(), ...(song ? {music: musicHash(song)} : {}), ...(render.soundAt === 'peak' ? {soundAt: 'peak'} : {})};
       if (approval) {
         try { requireApproval(approval, inputs); } catch (e) { if (scope.narration) rmSync(scope.narration, {recursive: true, force: true}); throw e; }
         scope.approvedBy = approval.by;

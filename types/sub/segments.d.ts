@@ -1,4 +1,4 @@
-export {segmentedVideo, folderStore, ffmpegJoin, planSegments, segmentKey, codeFingerprint, codeCover, wholeVideo} from '../index.js';
+export {segmentedVideo, folderStore, ffmpegJoin, planSegments, segmentKey, codeFingerprint, codeCover, storyreelCode, wholeVideo} from '../index.js';
 export type {VideoStrategy, SegmentStore, SegmentJoiner, Segment, SegmentReport, SegmentsReport, FilmRow} from '../index.js';
 /** Where a segment is spot-checked: `count` frame offsets spread over it, first and last included. */
 export function sampleOffsets(segment: {f0: number; f1: number}, count?: number): number[];
