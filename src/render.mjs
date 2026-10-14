@@ -14,7 +14,7 @@ import {compileLayout} from './layout.mjs';
 import {captionChunks, captionFile, FILE_CHUNKS, clockText} from 'footprint-narration';
 import {spokenTracks} from './captions.mjs';
 import {effectsUnderVoice} from './listening.mjs';
-import {scratchName, sweepScratch} from './scratch.mjs';
+import {makeScratch, sweepScratch} from './scratch.mjs';
 
 /**
  * Loudness in two passes (FFmpeg's loudnorm): measure the whole mixed film, then set it with ONE fixed
@@ -250,7 +250,7 @@ export function makePainter({film, framed, blur, width, height, fps, ctx}) {
  *                   encode, its colours converted and tagged as HD video's, BT.709, the way players read them)
  * @param work       a folder for the render's working files (the picture without its sound, the voice and the
  *                   effects as WAVs, the lists FFmpeg joins), kept after the render; left out, they go in a hidden
- *                   folder beside the video (.storyreel-work-<host>-<pid>-<n>), removed when the render ends, finished
+ *                   folder beside the video (.storyreel-work-<host>-<pid>-<XXXXXX>), removed when the render ends, finished
  *                   or failed — and one a stopped render left (Ctrl-C, a killed process) is swept by the next render
  *                   into that folder on the same host (scratch.mjs). Only the outputs stay beside the video: the
  *                   video, poster.jpg, chapters.txt, the caption files
@@ -369,11 +369,12 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   const width = framed?.width ?? givenWidth ?? 1280, height = framed?.height ?? givenHeight ?? 720;
   if (framed && intro && framed.format !== 'landscape') throw new Error(`renderFilm: an intro is drawn for the landscape frame; the ${framed.format} layout takes none (leave intro out)`);
   const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
-  // The working files' folder: the caller's (kept, never swept), or a hidden one beside the video, removed by closeRender
-  // — named by host, process and count (scratch.mjs), after sweeping the ones this host's stopped renders left there.
+  // The working files' folder: the caller's (kept, never swept), or a new hidden one beside the video, removed by
+  // closeRender — made by scratch.mjs · makeScratch (a fresh folder only this user can open, never a path already there),
+  // after sweeping the ones stopped renders left there.
   const {swept, failed: unswept} = work === null ? sweepScratch(dir, '.storyreel-work') : {swept: [], failed: []};
-  const workDir = work === null ? path.join(dir, scratchName('.storyreel-work')) : path.resolve(work);
-  mkdirSync(workDir, {recursive: true});
+  const workDir = work === null ? makeScratch(dir, '.storyreel-work') : path.resolve(work);
+  if (work !== null) mkdirSync(workDir, {recursive: true});
   to = Math.min(to, film.total);
   // A render starts on the film's frame grid (a part's window is rounded to the millisecond): frame f shows film second
   // start + f / fps, so a drawing held on twos (motion.mjs · heldTime) pairs the same frames in a part as in the film.

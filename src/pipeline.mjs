@@ -10,7 +10,7 @@
  * pass small values and file paths, as footprintjs expects.
  */
 import {readCast, withCast} from './cast.mjs';
-import {readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync} from 'node:fs';
+import {readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync, chmodSync} from 'node:fs';
 import {copyVoice, requireVoiceApart, placeVoice} from './files.mjs';
 import path from 'node:path';
 import {flowChart, narrative} from 'footprintjs';
@@ -18,7 +18,7 @@ import {applyPacing, validatePacing, paceTimings} from './pacing.mjs';
 import {withDirections} from './clock.mjs';
 import {compileFilm} from './film.mjs';
 import {prepareRender, finishRender, closeRender, wholeVideo, checkVideoStrategy} from './render.mjs';
-import {scratchName, sweepScratch} from './scratch.mjs';
+import {makeScratch, sweepScratch} from './scratch.mjs';
 import {readApproval, requireApproval, voiceHash, unlocked} from './approval.mjs';
 import {hashOf} from './hash.mjs';
 import {checkVideo, ffmpegProbe} from './finished.mjs';
@@ -121,9 +121,12 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   // narration folder, so the two must not overlap (files.mjs · requireVoiceApart).
   if (narrationDir) requireVoiceApart(narrationDir, dir);
   mkdirSync(dir, {recursive: true});
-  // Where the voice is paced (a copy of it, named by host, process and count: scratch.mjs, after sweeping the copies this
-  // host's stopped runs left): the render reads it, and it becomes <out dir>/narration once the film is made, or is removed.
-  const voices = sweepScratch(dir, '.narration'), copy = path.join(dir, scratchName('.narration'));
+  // Where the voice is paced: a copy of it, in a new folder made when the voice is read (scratch.mjs · makeScratch: one
+  // only this user can open, never a path already there), after sweeping the copies stopped runs left. The render reads
+  // it, and it becomes <out dir>/narration once the film is made, or is removed.
+  const voices = sweepScratch(dir, '.narration');
+  let copy = null;
+  const dropCopy = () => { if (copy) rmSync(copy, {recursive: true, force: true}); };
   let film, paced, result, job, plan, inputs, finished = null, voice = null, placed = null;
   const video = checkVideoStrategy(render.video ?? wholeVideo()), done = [];
   const stages = {
@@ -141,7 +144,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
         // at once each read their own). The copy holds exactly what the render reads — timings.json and each scene's
         // audio — as new files (files.mjs · copyVoice): pacing rewrites them, and a voice given through links, or
         // read-only, is never paced in place. Nothing else is copied.
-        rmSync(copy, {recursive: true, force: true});
+        copy = makeScratch(dir, '.narration');
         const raw = copyVoice(narrationDir, copy);
         // A voice knows only the spoken scenes: a silent scene it left out gets its directions' timing (clock.mjs · withDirections).
         paced = pacing ? await applyPacing({runDir: copy, board: storyboard, timings: raw, pacing}) : withDirections(storyboard, raw);
@@ -178,7 +181,9 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       if (!scope.narration) return;
       // Another film placing its voice in this folder at the same moment: tried once more, and said in the record (files.mjs · placeVoice).
       const final = path.join(dir, 'narration'), again = placeVoice(scope.narration, final);
-      scope.narration = final;
+      // The copy was made for this user only (0700); placed, it is the out folder's to share, with that folder's permissions.
+      chmodSync(final, statSync(dir).mode & 0o777);
+      scope.narration = final; copy = null;
       if (again) { scope.placedAgain = again; placed = again; }
     },
     // The picture: planned as one pass or as segments (render.mjs · wholeVideo, segments.mjs · segmentedVideo).
@@ -220,7 +225,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   // Every number on screen has a source (claims.mjs): a verdict decided with decide() over the counts (verdict.mjs), so the
   // record says why it passed, failed or could not run. A refusal comes before anything is drawn, and leaves the voice
   // folder as it was (the paced copy is removed).
-  const refuse = message => { rmSync(copy, {recursive: true, force: true}); throw new Error(message); };
+  const refuse = message => { dropCopy(); throw new Error(message); };
   // What this check reads: the lines the film declares (film.claims), never the picture — it draws no frame. The review
   // reads what the picture draws too (claims.mjs · drawnClaims); the refusal and the record say so.
   const SAW = 'declared lines only (the review also reads what the picture draws)';
@@ -243,7 +248,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   // Finished or failed, what the run made to work with goes: the render's working files (render.mjs · closeRender:
   // kept only in a `work` folder the caller named) and a paced copy of the voice that never became <out dir>/narration.
   let run;
-  try { run = await chart.build().recorder(trace).run(); } finally { closeRender(job); rmSync(copy, {recursive: true, force: true}); }
+  try { run = await chart.build().recorder(trace).run(); } finally { closeRender(job); dropCopy(); }
   // What this run swept before making its own scratch folders (the ones stopped runs left: scratch.mjs), and what it could
   // not remove — skipped, never a reason to stop.
   const swept = [...voices.swept, ...(job?.swept ?? [])], unswept = [...voices.failed, ...(job?.unswept ?? [])];

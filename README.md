@@ -1198,13 +1198,19 @@ ctx.beginPath(); ctx.arc(0, -40, 40, 0, Math.PI * 2); ctx.fill(); ctx.restore();
 A render writes only where you point it, and leaves only what you asked for. The system's temp folder holds only
 two passes' scratch, for the moment they run, each removed in a `finally`: the FFmpeg filter that reads a video's stills
 (`stills.mjs`), and the sound a breakdown hands its beat map (`breakdown.mjs`). Each is named
-`storyreel-scratch-<host>-<pid>-<n>` and swept like a render's folders (below), so a killed pass leaves nothing for good.
+`storyreel-scratch-<host>-<pid>-<XXXXXX>` and swept like a render's folders (below), so a killed pass leaves nothing for good.
+
+Every scratch folder — those two, a render's working folder, `makeFilm`'s voice copy — is made one way
+(`scratch.mjs` · `makeScratch`): `mkdtemp`, which creates a NEW folder with a random suffix, at once, that only you can
+open (mode 0700). It never takes a name that is already there, so a folder or a link someone else planted in a shared
+temp folder, at a name StoryReel might pick, is never written into. The placed `narration/` takes the out folder's
+permissions.
 
 | where | what | kept? |
 |---|---|---|
 | beside `out` | the video, `poster.jpg`, `chapters.txt`, the caption files; with `makeFilm`, `making-of.json` and (with a voice) `narration/`, the paced copy the render read | yes: the outputs |
-| `.storyreel-work-<host>-<pid>-<n>` beside `out` | the working files: the picture without its sound, the voice and the effects as WAVs, the lists FFmpeg joins, segment files on their way to the cache | removed when the render ends, finished or failed |
-| `.narration-<host>-<pid>-<n>` beside `out` (`makeFilm` with a voice) | the paced copy of the voice, which the render reads; it becomes `narration/` once the film is made | removed if the film is refused or fails |
+| `.storyreel-work-<host>-<pid>-<XXXXXX>` beside `out` | the working files: the picture without its sound, the voice and the effects as WAVs, the lists FFmpeg joins, segment files on their way to the cache | removed when the render ends, finished or failed |
+| `.narration-<host>-<pid>-<XXXXXX>` beside `out` (`makeFilm` with a voice) | the paced copy of the voice, which the render reads; it becomes `narration/` once the film is made | removed if the film is refused or fails |
 | `work` (a folder you name: `renderFilm({…, work})`, `makeFilm({…, render: {work}})`) | the same working files, when you want to look at them | yes: you chose the place |
 | `folderStore(dir)` | the segment cache (Re-render only what changed) | yes: you chose the place |
 | `makeRelease({out})` | each target's post in `<out>/<target>/`, the render and its making-of in `<out>/work/<target>/` | yes |
@@ -1218,14 +1224,16 @@ await renderFilm({film, storyboard, timings, out: 'renders/film.mp4', work: 'ren
 render itself (`prepareRender`) writes its working files to `job.work` and ends with `closeRender(job)`.
 
 **A render that was stopped** (Ctrl-C, a killed process) cannot clean up: no library sees a SIGKILL, and StoryReel
-installs no signal handler. Its hidden folders are named for the host, the process and a count, so the next render
+installs no signal handler. Its hidden folders are named for the host and the process, so the next render
 into that folder on the same host sweeps the ones whose process is gone (and a `makeFilm` the voice copies), and the
 making-of record lists what it swept (`swept: {count, names}`). A folder of this host's is judged only by whether its
 process runs: a live render's is never touched, however long it has been quiet. Any other such folder untouched for more
 than a day (by the newest write inside it) is swept too: an older name, another host's, this host under a name it had
 before. A folder you named with `work` is never touched; a fresh folder another host left is left for that host's own
-next render, since its process cannot be seen from here. Cleaning up never fails a render: a left folder that cannot be removed (a read-only
-folder in it, another user's) is skipped and listed (`swept.failed: [{name, why}]`). Two films made at once into one
+next render, since its process cannot be seen from here. A sweep touches only real folders that you own: a link with
+such a name, or another user's folder, is ignored (not removed, not followed, not listed). Cleaning up never fails a
+render: a left folder of yours that cannot be removed (a read-only folder in it, a locked file) is skipped and listed
+(`swept.failed: [{name, why}]`). Two films made at once into one
 folder each read their own copy of the voice; `narration/` is the one made last (placed once more if the other slipped
 in between; the record says `narration: {placedAgain}`). The tests
 make their folders through one helper (`test/tmp.mjs` · `tempDir`), each removed when its test or file ends;

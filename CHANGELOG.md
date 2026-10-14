@@ -8,7 +8,7 @@
   it in a `finally`). Only the outputs stay beside the video. To keep the working files, name a folder for them:
   `renderFilm({…, work})` (or `makeFilm({…, render: {work}})`). The system's temp folder holds only two passes' scratch
   while they run (the stills' FFmpeg filter, a breakdown's sound for its beat map), each removed in a `finally`.
-- **A stopped render's folders are swept by the next one.** Scratch folders are named `<prefix>-<host>-<pid>-<n>`
+- **A stopped render's folders are swept by the next one.** Scratch folders are named `<prefix>-<host>-<pid>-<XXXXXX>`
   (`scratch.mjs`): a render sweeps the `.storyreel-work-…` folders beside it whose process on this host is gone (Ctrl-C,
   a killed process: the library installs no signal handler), and `makeFilm` the `.narration-…` copies too; the
   making-of lists what was swept (`swept: {count, names}`). This host's folders are judged by whether their process
@@ -18,6 +18,13 @@
   passes that use the system's temp folder (stills, a breakdown's sound) name theirs `storyreel-scratch-…` and sweep it
   the same way. Cleaning up never fails a run: a folder that cannot be removed is skipped and listed in
   `swept.failed: [{name, why}]`.
+- **Scratch folders are safe in a shared temp folder** (CWE-377). Every one — a render's working folder, `makeFilm`'s
+  voice copy, the stills' and a breakdown's scratch in the system's temp folder — is made by `scratch.mjs` ·
+  `makeScratch`: `mkdtemp`, a new folder with a random suffix, created at once, that only you can open (mode 0700). A
+  folder or a link another user planted at a name StoryReel might pick is never written into, and the voice is copied
+  as new files only (`files.mjs` · `copyVoice` creates each exclusively). The placed `narration/` takes the out
+  folder's permissions. A sweep touches only real folders you own: a link with a scratch name, or another user's
+  folder, is ignored — not removed, not followed, not listed.
 - **`makeFilm` renders from its own copy of the voice** and makes it `<out dir>/narration` only once the film is made:
   two films made at once into one folder no longer take each other's voice, and a refused or failed film leaves the
   folder's narration as it was. If the other film's folder slips in between the two steps of putting it in place

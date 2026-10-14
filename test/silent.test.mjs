@@ -173,7 +173,7 @@ test('a voiced cut with a silent opening renders: paced (generated silence in th
   // No pacing: the voice's timings lack the opening, and the render joins generated silence before the voice.
   const unpaced = voiceFolder(), timings = withDirections(storyboard, JSON.parse(readFileSync(path.join(unpaced, 'timings.json'), 'utf8')));
   // A test that pins a working file's path passes `work`: the working files are kept there. Without it they are in a
-  // hidden .storyreel-work-<host>-<pid>-<n> folder beside the video, gone when the render ends (render.mjs · closeRender).
+  // hidden .storyreel-work-<host>-<pid>-<XXXXXX> folder beside the video, gone when the render ends (render.mjs · closeRender).
   const film = await compileFilm({storyboard, timings, recipe, root: hello}), dir = tmp(), work = path.join(dir, 'work');
   const rendered = await renderFilm({film, storyboard, timings, narrationDir: unpaced, out: path.join(dir, 'unpaced.mp4'), ...small, from: 0, to: 6, work});
   assert.equal(rendered.seconds, 6);

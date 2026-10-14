@@ -48,9 +48,10 @@ function within(base, p) {
 /**
  * Copy a voice for pacing: exactly what the render reads — the voice's timings.json and each scene's audio, plus the
  * .unpaced.wav pacing leaves beside an audio file when the voice has one (so pacing.mjs · applyPacing still refuses a
- * voice paced before). Each is written as a NEW regular file at the same path inside `to` (a folder made here, so it
- * must not exist yet), its bytes read through any link: pacing rewrites the copy, and that never changes the voice,
- * and a read-only voice gives a writable copy. Nothing else in the voice folder is copied, or even listed: a folder of
+ * voice paced before). Each is written as a NEW regular file at the same path inside `to` — a new, empty folder the
+ * caller made (scratch.mjs · makeScratch) — created exclusively, so nothing already there is written over or through
+ * (a file, a link: EEXIST); its bytes are read through any link: pacing rewrites the copy, and that never changes the
+ * voice, and a read-only voice gives a writable copy. Nothing else in the voice folder is copied, or even listed: a folder of
  * takes linked beside the voice is never walked.
  *
  * A scene's audio is named by a path inside the voice folder: one that leads out of it (../takes/a.wav, an absolute
@@ -73,12 +74,11 @@ export function copyVoice(voice, to) {
     const file = path.join(base, rel);
     for (const f of [file, file.replace(/\.wav$/, '.unpaced.wav')]) if (existsSync(f)) files.add(path.relative(base, f));
   }
-  mkdirSync(to);
-  writeFileSync(path.join(to, 'timings.json'), bytes);
+  writeFileSync(path.join(to, 'timings.json'), bytes, {flag: 'wx'});
   for (const f of files) {
     const target = path.join(to, f);
     mkdirSync(path.dirname(target), {recursive: true});
-    writeFileSync(target, readFileSync(path.join(base, f)));
+    writeFileSync(target, readFileSync(path.join(base, f)), {flag: 'wx'});
   }
   return timings;
 }

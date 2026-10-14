@@ -3,7 +3,7 @@
 // what (a file by its path); reformatting changes nothing; the record keeps it and says what it does not lock.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {writeFileSync, readFileSync, cpSync, readdirSync} from 'node:fs';
+import {writeFileSync, readFileSync, cpSync, readdirSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -103,6 +103,9 @@ test('a refused render into an approved render\'s folder leaves its paced narrat
   const pacing = {voiceSpeed: 1, sceneTail: 1, holds: [], tails: {story: 5}}, out = path.join(top, 'final', 'film.mp4'), render = {width: 160, height: 90, fps: 5};
   const first = await makeFilm({storyboard, recipe, root: dir, narrationDir: voice, pacing, out, render});
   const approval = approveFilm({record: first.makingOf, by: 'S', at}), kept = readFileSync(path.join(top, 'final', 'narration', 'timings.json'), 'utf8');
+  // The copy was paced in a folder only this user could open (scratch.mjs · makeScratch); placed, it shares the out folder's permissions.
+  const mode = f => statSync(f).mode & 0o777;
+  if (process.platform !== 'win32') assert.equal(mode(path.join(top, 'final', 'narration')), mode(path.join(top, 'final')));
   await assert.rejects(makeFilm({storyboard, recipe, root: dir, narrationDir: voice, pacing: {...pacing, sceneTail: 1.5}, out, render, approval}), /pacing.*differ/);
   assert.equal(readFileSync(path.join(top, 'final', 'narration', 'timings.json'), 'utf8'), kept, 'the approved render\'s narration is untouched');
   assert.deepEqual(readdirSync(path.join(top, 'final')).filter(f => f.startsWith('.narration')), [], 'and the refused one\'s copy is gone');

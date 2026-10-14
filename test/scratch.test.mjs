@@ -1,14 +1,15 @@
-// Scratch folders (scratch.mjs): a render's working files and makeFilm's paced voice are named by host, process and
-// count, and a stopped run's are swept by the next run on this host — never a live run's, another host's, or a folder
-// the caller named. And the hygiene script (scripts/temp-hygiene.mjs) cleans up after itself when it is stopped.
+// Scratch folders (scratch.mjs): a render's working files and makeFilm's paced voice are made by makeScratch (mkdtemp:
+// host, process and a random suffix; a new folder only this user can open), and a stopped run's are swept by the next
+// run on this host — never a live run's, another host's, a folder the caller named, a link or another user's folder.
+// And the hygiene script (scripts/temp-hygiene.mjs) cleans up after itself when it is stopped.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdirSync, writeFileSync, readdirSync, readFileSync, existsSync, chmodSync, utimesSync, rmSync, renameSync} from 'node:fs';
+import {mkdirSync, writeFileSync, readdirSync, readFileSync, existsSync, chmodSync, utimesSync, rmSync, renameSync, symlinkSync, lstatSync, statSync} from 'node:fs';
 import {spawn, spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {tempDir} from './tmp.mjs';
-import {scratchName, scratchHost, sweepScratch, tempScratch, STALE_AFTER} from '../src/scratch.mjs';
+import {makeScratch, scratchHost, sweepScratch, tempScratch, STALE_AFTER} from '../src/scratch.mjs';
 import {eachStill} from '../src/stills.mjs';
 import {placeVoice} from '../src/files.mjs';
 import {compileFilm, evenTimings, renderFilm, makeFilm} from '../src/index.mjs';
@@ -26,10 +27,53 @@ const timings = evenTimings(storyboard, {tail: .5});
 const film = () => compileFilm({storyboard, timings, recipe: {story: {kit: 'plain'}}, kits: [kit]});
 const small = {width: 160, height: 90, fps: 4};
 
-test('a scratch name holds the host, the process and a count: two in one process never share one', () => {
-  const a = scratchName('.storyreel-work'), b = scratchName('.storyreel-work');
-  assert.match(a, new RegExp(`^\\.storyreel-work-${escaped(scratchHost)}-${process.pid}-\\d+$`));
+const posix = process.platform !== 'win32';
+const mode = f => statSync(f).mode & 0o777;
+
+test('makeScratch: a new folder named by the host, the process and a random suffix, only this user can open; two never share one', t => {
+  const dir = tempDir('make', t), a = makeScratch(dir, '.storyreel-work'), b = makeScratch(dir, '.storyreel-work');
+  assert.match(path.basename(a), new RegExp(`^\\.storyreel-work-${escaped(scratchHost)}-${process.pid}-[A-Za-z0-9]{6}$`));
   assert.notEqual(a, b);
+  assert.ok(lstatSync(a).isDirectory() && !lstatSync(a).isSymbolicLink());
+  if (posix) assert.deepEqual([mode(a), mode(b)], [0o700, 0o700], 'mode 0700: no other user can look in, or write');
+});
+
+test('makeScratch never takes a path that is already there: a folder or a link planted at the names a run would once have picked is never written into', t => {
+  const dir = tempDir('planted', t), outside = tempDir('outside', t), prefix = `.storyreel-work-${scratchHost}-${process.pid}`;
+  // What another user could plant in a shared folder, at the names 0.13's scheme picked next (-1, -2, …): a folder of theirs, and links to one.
+  const folder = plant(dir, `${prefix}-1`), links = [2, 3, 4].map(n => { symlinkSync(outside, path.join(dir, `${prefix}-${n}`), 'dir'); return `${prefix}-${n}`; });
+  const made = [0, 1, 2, 3].map(() => makeScratch(dir, '.storyreel-work'));
+  for (const m of made) {
+    assert.ok(![folder, ...links].includes(path.basename(m)), 'a fresh name');
+    assert.ok(lstatSync(m).isDirectory() && !lstatSync(m).isSymbolicLink(), 'a real folder, not a link');
+    assert.deepEqual(readdirSync(m), [], 'and a new, empty one');
+  }
+  assert.deepEqual(readdirSync(path.join(dir, folder)), ['film-video.mp4'], 'the planted folder holds only what it held');
+  assert.deepEqual(readdirSync(outside), [], 'nothing reached through a planted link');
+  for (const l of links) assert.ok(lstatSync(path.join(dir, l)).isSymbolicLink(), 'the links are still links');
+});
+
+test('a sweep touches only real folders this user owns: a link named like a dead run\'s scratch stays, and so does its target', t => {
+  const tmp = tempDir('link-sweep', t), outside = tempDir('target', t), dead = deadPid();
+  writeFileSync(path.join(outside, 'precious.txt'), 'keep');
+  const link = `storyreel-scratch-${scratchHost}-${dead}-x`, aged = `storyreel-scratch-elsewhere.example-${dead}-y`;
+  symlinkSync(outside, path.join(tmp, link), 'dir'); symlinkSync(outside, path.join(tmp, aged), 'dir');
+  age(outside, 3 * STALE_AFTER);
+  assert.deepEqual(sweepScratch(tmp, 'storyreel-scratch'), {swept: [], failed: []}, 'ignored, not reported');
+  assert.deepEqual(readdirSync(tmp).sort(), [link, aged].sort());
+  assert.ok(lstatSync(path.join(tmp, link)).isSymbolicLink());
+  assert.equal(readFileSync(path.join(outside, 'precious.txt'), 'utf8'), 'keep', 'the link\'s target is untouched');
+});
+
+test('a sweep skips a folder another user owns (lstat says whose), however dead its process or old its files; this user\'s goes', {skip: typeof process.getuid === 'function' ? false : 'no user ids on this platform'}, t => {
+  const dir = tempDir('owner', t), dead = deadPid();
+  const theirs = plant(dir, `.storyreel-work-${scratchHost}-${dead}-aB3dE9`), mine = plant(dir, `.storyreel-work-${scratchHost}-${dead}-Zx81Qw`);
+  const old = plant(dir, '.storyreel-work-12345'); age(path.join(dir, old), 3 * STALE_AFTER);
+  // Another user's: the same folders, as lstat would describe them had another uid made them.
+  const other = new Set([theirs, old].map(n => path.join(dir, n)));
+  const lstat = at => { const st = lstatSync(at); return other.has(at) ? {isDirectory: () => st.isDirectory(), isSymbolicLink: () => st.isSymbolicLink(), uid: process.getuid() + 1} : st; };
+  assert.deepEqual(sweepScratch(dir, '.storyreel-work', {lstat}), {swept: [mine], failed: []}, 'theirs ignored (not reported); mine — a random-suffix name — swept');
+  assert.deepEqual(readdirSync(dir).sort(), [theirs, old].sort());
 });
 
 test('a sweep takes what this host\'s dead processes left, and only that: a live run\'s, another host\'s, a named folder stay', t => {
@@ -146,7 +190,8 @@ test('a pass that needs the system temp folder (stills, a breakdown\'s sound) na
   age(path.join(tmp, aged), STALE_AFTER + 60e3);
   const live = plant(tmp, `storyreel-scratch-${scratchHost}-${process.pid}-999`);
   const dir = tempScratch();
-  assert.match(path.basename(dir), new RegExp(`^storyreel-scratch-${escaped(scratchHost)}-${process.pid}-\\d+$`));
+  assert.match(path.basename(dir), new RegExp(`^storyreel-scratch-${escaped(scratchHost)}-${process.pid}-[A-Za-z0-9]{6}$`));
+  if (posix) assert.equal(mode(dir), 0o700);
   assert.deepEqual(readdirSync(tmp).sort(), [live, path.basename(dir)].sort(), 'the killed pass\'s and the day-old one went; the live one stays');
   rmSync(dir, {recursive: true, force: true});
   // The stills pass itself: a killed pass's folder swept, its own removed after.
