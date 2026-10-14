@@ -8,7 +8,8 @@ import {spawn, spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {tempDir} from './tmp.mjs';
-import {scratchName, scratchHost, sweepScratch, STALE_AFTER} from '../src/scratch.mjs';
+import {scratchName, scratchHost, sweepScratch, tempScratch, STALE_AFTER} from '../src/scratch.mjs';
+import {eachStill} from '../src/stills.mjs';
 import {placeVoice} from '../src/files.mjs';
 import {compileFilm, evenTimings, renderFilm, makeFilm} from '../src/index.mjs';
 
@@ -125,4 +126,33 @@ test('placing the voice: another film slipping its folder in between is tried on
   mkdirSync(copy);
   const denied = {rmSync, renameSync: () => { const e = new Error('permission denied'); e.code = 'EACCES'; throw e; }};
   assert.throws(() => placeVoice(copy, final, denied), /permission denied/, 'any other error stops the film, as before');
+});
+
+test('this host\'s live run is never swept by age: a voiced makeFilm that renders for days keeps its voice copy', t => {
+  const dir = tempDir('quiet', t), quiet = plant(dir, `.narration-${scratchHost}-${process.pid}-1`);
+  age(path.join(dir, quiet), 3 * STALE_AFTER);   // last written 3 days ago, by a process still running (this one)
+  assert.deepEqual(sweepScratch(dir, '.narration'), {swept: [], failed: []});
+  assert.deepEqual(readdirSync(dir), [quiet], 'kept');
+});
+
+test('a pass that needs the system temp folder (stills, a breakdown\'s sound) names its folder like the others and sweeps what killed passes left first', {skip: ffmpeg ? false : 'ffmpeg not on PATH'}, async t => {
+  const video = path.join(tempDir('stills-video', t), 'v.mp4'), bin = process.env.FFMPEG_BIN || 'ffmpeg';
+  assert.equal(spawnSync(bin, ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=duration=0.4:size=64x36:rate=10', '-pix_fmt', 'yuv420p', video]).status, 0);
+  // A private system temp folder for this test (os.tmpdir reads TMPDIR each time).
+  const tmp = tempDir('system-tmp', t), was = process.env.TMPDIR;
+  process.env.TMPDIR = tmp;
+  t.after(() => { if (was === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = was; });
+  const killed = plant(tmp, `storyreel-scratch-${scratchHost}-${deadPid()}-1`), aged = plant(tmp, 'storyreel-scratch-elsewhere.example-41-1');
+  age(path.join(tmp, aged), STALE_AFTER + 60e3);
+  const live = plant(tmp, `storyreel-scratch-${scratchHost}-${process.pid}-999`);
+  const dir = tempScratch();
+  assert.match(path.basename(dir), new RegExp(`^storyreel-scratch-${escaped(scratchHost)}-${process.pid}-\\d+$`));
+  assert.deepEqual(readdirSync(tmp).sort(), [live, path.basename(dir)].sort(), 'the killed pass\'s and the day-old one went; the live one stays');
+  rmSync(dir, {recursive: true, force: true});
+  // The stills pass itself: a killed pass's folder swept, its own removed after.
+  const again = plant(tmp, `storyreel-scratch-${scratchHost}-${deadPid()}-2`);
+  assert.equal(await eachStill(bin, video, [0, 2], {width: 16, height: 9}, () => {}), 2);
+  assert.ok(!existsSync(path.join(tmp, again)));
+  assert.deepEqual(readdirSync(tmp), [live], 'nothing of its own left either');
+  assert.ok(!readdirSync(tmp).includes(killed));
 });

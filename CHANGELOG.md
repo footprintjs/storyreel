@@ -11,10 +11,12 @@
 - **A stopped render's folders are swept by the next one.** Scratch folders are named `<prefix>-<host>-<pid>-<n>`
   (`scratch.mjs`): a render sweeps the `.storyreel-work-…` folders beside it whose process on this host is gone (Ctrl-C,
   a killed process: the library installs no signal handler), and `makeFilm` the `.narration-…` copies too; the
-  making-of lists what was swept (`swept: {count, names}`). A folder untouched for more than a day (by the newest write
-  inside it) is swept whatever its name says: 0.12's `.narration-<pid>`, a host renamed since, a reused pid. A live
-  run's folders, a fresh one from another host (left for that host's own next run) and a `work` folder you named are
-  never swept. Cleaning up never fails a run: a folder that cannot be removed is skipped and listed in
+  making-of lists what was swept (`swept: {count, names}`). This host's folders are judged by whether their process
+  runs, never by age: a live run's is never swept, however quiet. Any other folder untouched for more than a day (by the
+  newest write inside it) is swept: 0.12's `.narration-<pid>`, another host's, this host under an earlier name. A fresh
+  folder from another host (left for that host's own next run) and a `work` folder you named are never swept. The two
+  passes that use the system's temp folder (stills, a breakdown's sound) name theirs `storyreel-scratch-…` and sweep it
+  the same way. Cleaning up never fails a run: a folder that cannot be removed is skipped and listed in
   `swept.failed: [{name, why}]`.
 - **`makeFilm` renders from its own copy of the voice** and makes it `<out dir>/narration` only once the film is made:
   two films made at once into one folder no longer take each other's voice, and a refused or failed film leaves the
