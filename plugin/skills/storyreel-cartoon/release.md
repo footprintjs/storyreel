@@ -60,6 +60,35 @@ other render settings (size, format, captions, quality): the same approved film 
 whole film; a part render cannot be approved. A draft rendered without `code` and a final with it differ (`code`), so
 render both with the same `code`.
 
+## Where StoryReel may write
+
+Every entry that writes into a folder you name (`renderFilm` and its `work`, `makeFilm`, `makeRelease`, `breakdown`, the
+tools' stills, `folderStore`, `applyPacing`, `fitVoice`) first resolves that folder to its real path, then checks every
+folder from there up to `/`. Each must be a real folder (a link is judged by where it leads), owned by you or by root,
+and writable by no one else, unless it is sticky: there anyone may add an entry, but only its owner (you or root) may
+replace or remove one. The first folder that fails refuses, named, with the fix: render into a folder of your own and
+copy the film out. Your home folder, macOS's per-user temp folder (`/var/folders/…/T`) and a sticky `/tmp` owned by
+root pass; a team folder writable by its group or by everyone without the sticky bit, or a sticky folder another user
+owns, is refused.
+
+- **Group-write.** On Linux it passes only for a group that is provably yours alone (a user private group, as umask 002
+  makes): `/etc/nsswitch.conf` names exactly `files` for `passwd` and `group` (or `compat` with no `+` line), and
+  `/etc/group` and `/etc/passwd` show no one else in it. With a directory service, or files that cannot be read,
+  `chmod g-w` the folder. On macOS group-write never passes (its groups come from Directory Services; `staff` is everyone's).
+- **Drives.** On macOS a drive mounted with "Ignore ownership" (`noowners`) is refused, since every folder on it looks
+  like yours; when the mount table (`/sbin/mount`) cannot be read, a path under `/Volumes/` is refused (never the
+  internal disk). exFAT and FAT drives keep no owners and show every folder as writable by everyone, so they are refused
+  too. Render on the internal disk and copy the film out.
+- **Not checked:** a folder's ACL (macOS's `chmod +a`) and a network folder's owners (what the server says): keep `out`
+  in a folder of your own, on a local disk.
+- **Real paths.** Everything is written through the real path, and results report it in the disk's own spelling
+  (`realpathSync.native`): on macOS `/var/…` comes back as `/private/var/…`.
+- **Outputs are never written through a link.** Each output is written under a temporary name, then renamed into place,
+  so a link someone planted at its name is replaced, never written through; a folder at an output's name is refused,
+  never removed.
+- **A `work` folder you name** keeps its working files under fixed names (`film-video.mp4`, `film-voice.wav`, …) and is
+  never swept: give each render one of its own.
+
 ## One film, every platform
 
 The film is always drawn on its 1600×900 frame; a **layout** puts it into the shape each place plays, with a title
