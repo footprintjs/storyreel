@@ -36,12 +36,13 @@ test('a click track with a build and a drop: BPM within 1, every beat within 20 
   assert.ok(Math.abs(map.seconds - s.samples.length / s.rate) < .01);
   // Every verdict is decide() evidence in the record, with what it weighed.
   const lines = verdicts(map.record), writes = map.record.filter(e => e.type === 'step').map(e => e.text);
-  // The half tempo scores 0.83 of the strongest, but a slower relative is the echo of any steady pulse, not a doubt.
-  assert.match(lines[0], /stands clear of the next \(its slower echoes aside\), and no faster level comes within 0\.3": strongest=123.*clarity=.*faster=null.*chose tempo-measured/);
-  assert.ok(writes.some(t => /Write alternatives = /.test(t)) && writes.some(t => /Write next = /.test(t)), 'the record says what it weighed');
+  // The half tempo scores 0.83 of the strongest; the clicks between its beats carry a kick every other one, so the
+  // level is not settled past doubt: the right tempo, said to be close (a level claimed wrongly is what must not happen).
+  assert.match(lines[0], /fell back to default "Another period is nearly as strong, or another level of the beat is.*tempo-close/);
+  assert.ok(writes.some(t => /Write strongest = 123/.test(t)) && writes.some(t => /Write echo = 61\.5/.test(t)) && writes.some(t => /Write echoBetween = 0\.\d+$/.test(t)), 'the record says what it weighed');
   assert.match(lines[1], /Low-band onsets mark one beat in 4.*chose bars-measured/);
   assert.match(lines[2], /largest rise in low and mid energy.*arriving at once.*held=.*ramp=.*chose drop-measured/);
-  assert.deepEqual(map.record.filter(e => e.type === 'stage').map(e => e.stageId), ['decode', 'onsets', 'choose-tempo', 'tempo-measured', 'track-beats', 'find-bars', 'bars-measured', 'measure-rise', 'find-drop', 'drop-measured']);
+  assert.deepEqual(map.record.filter(e => e.type === 'stage').map(e => e.stageId), ['decode', 'onsets', 'choose-tempo', 'tempo-close', 'track-beats', 'find-bars', 'bars-measured', 'measure-rise', 'find-drop', 'drop-measured']);
   assert.doesNotThrow(() => structuredClone(map.record));
 });
 
@@ -52,15 +53,33 @@ test('another tempo, and a song with no drop: the beats follow it, and no drop i
   assert.ok(worst(map.beats, s.beats) <= .02 && worst(s.beats, map.beats) <= .02);
   assert.ok(worst(map.bars, s.bars) <= .02);
   assert.equal(map.drop, null);
-  assert.match(verdicts(map.record)[0], /stands clear of the next \(its slower echoes aside\).*strongest=92.*chose tempo-measured/);
+  assert.match(verdicts(map.record)[0], /stands clear of the next, no faster level comes within 0\.3, and a slower echo that does has its beats in between filled": strongest=92.*chose tempo-measured/);
   assert.match(verdicts(map.record)[2], /Nothing rises and holds after a quieter build: the song has no drop.*drop-none/);
 });
 
-for (const bpm of [92, 123, 140]) test(`a click track at ${bpm} BPM is measured at ${bpm}, its slower echo no doubt`, async () => {
-  const s = song({bpm, count: 64, rate: 22050}), map = await beatMapOf(s.samples, 22050);
+for (const bpm of [92, 123, 140]) test(`a click track at ${bpm} BPM is measured at ${bpm}; with a kick every fourth click, it is right, measured or said to be close`, async () => {
+  const plain = song({bpm, count: 64, one: 9, rate: 22050}), map = await beatMapOf(plain.samples, 22050);
   assert.ok(Math.abs(map.bpm - bpm) <= 1, `bpm ${map.bpm}`);
   assert.match(verdicts(map.record)[0], /chose tempo-measured/);
-  assert.ok(worst(map.beats, s.beats) <= .02 && worst(s.beats, map.beats) <= .02);
+  assert.ok(worst(map.beats, plain.beats) <= .02 && worst(plain.beats, map.beats) <= .02);
+  const accented = song({bpm, count: 64, rate: 22050}), heard = await beatMapOf(accented.samples, 22050);
+  assert.ok(Math.abs(heard.bpm - bpm) <= 1, `bpm ${heard.bpm}`);
+  assert.match(verdicts(heard.record)[0], /tempo-measured|tempo-close/);
+});
+
+const certain = verdict => /tempo-measured|tempo-faster/.test(verdict);
+test('drums at 70–140 BPM, with eighth or sixteenth hats, four on the floor with off-beat hats, or loud hats: never a wrong tempo claimed as certain', async t => {
+  const styles = {eighths: {}, sixteenths: {hats: 'sixteenths'}, 'four on the floor': {kick: 'four', hats: 'offbeats'}, 'loud hats': {hatLevel: .35}};
+  const counts = {'right, certain': 0, 'right, close': 0, 'wrong, close': 0}, wrongAndCertain = [];
+  for (const bpm of [70, 85, 95, 120, 128, 140]) for (const [style, o] of Object.entries(styles)) {
+    const g = groove({bpm, ...o}), map = await beatMapOf(g.samples, 22050), verdict = verdicts(map.record)[0], right = Math.abs(map.bpm - bpm) <= Math.max(1, bpm * .01);
+    if (!right && certain(verdict)) wrongAndCertain.push(`${bpm} ${style}: ${map.bpm}`);
+    counts[`${right ? 'right' : 'wrong'}, ${certain(verdict) ? 'certain' : 'close'}`]++;
+    if (right && certain(verdict)) assert.ok(worst(map.beats, g.beats) <= .02 && worst(g.beats, map.beats) <= .02, `${bpm} ${style}: the beats are the quarter notes`);
+  }
+  t.diagnostic(`24 drum patterns: ${Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(', ')}`);
+  assert.deepEqual(wrongAndCertain, [], 'a wrong level is never claimed as certain');
+  assert.equal(counts['right, certain'] + counts['right, close'], 24, 'every pattern lands at its tempo');
 });
 
 for (const bpm of [150, 175, 210]) test(`${bpm} BPM, where the half (or a third) is strongest: the onsets in between settle the faster level, or an honest "close" names it`, async () => {
@@ -96,6 +115,25 @@ for (const bpm of [120, 92]) test(`a pad held from the first sample under a clic
   assert.ok(map.beats[0] > .2, `first beat ${map.beats[0]}: the pad's start is not an onset`);
   assert.equal(map.beats.length, s.beats.length);
   assert.ok(worst(map.beats, s.beats) <= .02 && worst(s.beats, map.beats) <= .02);
+});
+
+for (const lead of [.04, .05]) for (const pad of [0, .1]) test(`a first click ${lead * 1000} ms in (an encoder's delay)${pad ? ', over a pad' : ''}: found, with no beat at 0, at 92, 120 and 140 BPM`, async () => {
+  for (const bpm of [92, 120, 140]) {
+    const s = song({bpm, count: 24, lead, pad, one: 9, rate: 22050}), map = await beatMapOf(s.samples, 22050);
+    assert.ok(Math.abs(map.bpm - bpm) <= 1, `${bpm}: bpm ${map.bpm}`);
+    assert.ok(Math.abs(map.beats[0] - lead) <= .02, `${bpm}: first beat ${map.beats[0]}`);
+    assert.equal(map.beats.length, s.beats.length, `${bpm}: every click a beat, no more`);
+    assert.ok(worst(map.beats, s.beats) <= .02 && worst(s.beats, map.beats) <= .02);
+  }
+});
+
+for (const intro of [12, 20]) test(`a ${intro} s quiet intro: the beats start with the music, not before it`, async () => {
+  for (const pad of [0, .1]) {
+    const s = song({bpm: 120, count: 20, lead: intro, pad, rate: 22050}), map = await beatMapOf(s.samples, 22050);
+    assert.equal(map.beats.length, 20, `${pad ? 'over a pad' : 'over a noise floor'}: ${map.beats.length} beats, the first at ${map.beats[0]}`);
+    assert.ok(worst(map.beats, s.beats) <= .02 && worst(s.beats, map.beats) <= .02);
+    assert.ok(Math.abs(map.bpm - 120) <= 1);
+  }
 });
 
 test('a song whose first click is in its first 16 ms: the first beat is found there, never before the song starts', async () => {

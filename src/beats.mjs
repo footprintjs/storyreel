@@ -15,16 +15,17 @@ import {ANALYSIS, onsetStrength, tempoCandidates, metricalRelatives, betweenSupp
 /**
  * The beat map's rules. range: the tempos preferred (BPM; others are weighed down, never refused). clear: how far the
  * strongest tempo must stand above the next (1 − the next one's share of it; its slower echoes, ½ and ⅓, aside) to
- * count as measured, not close. octave: the wider margin it must keep over a faster level of the same beat (2×, 3×:
- * dsp.mjs · metricalRelatives), which may be the beat heard at half speed. between: how full the beats in between
- * must be (their onsets against the beats', dsp.mjs · betweenSupport) for that faster level to be the beat. meter:
- * beats in a bar (a 4/4 guess). downbeat: the
- * margin for the beat that starts a bar. drop: the dB a drop's rise must hold, both halves of the window after it.
+ * count as measured, not close. octave: within this of the strongest, the same beat at another level (2×, 3×, or a
+ * slower echo ½, ⅓: dsp.mjs · metricalRelatives) is a question of level, which the onsets in between settle. between:
+ * how full the beats in between must be (their onsets against the beats', dsp.mjs · betweenSupport) for the faster of
+ * two levels to be the beat — high, because hats on the eighths read 0.6 and a wrong level claimed as certain is the
+ * one failure that matters; under it the answer is tempo-close. Calibrated on synthetic songs only: `bpm` settles a
+ * real mix. meter: beats in a bar (a 4/4 guess). downbeat: the margin for the beat that starts a bar. drop: the dB a drop's rise must hold, both halves of the window after it.
  * window: the seconds of song either side a drop is judged over. fade, sudden: a rise that takes longer than `fade`
  * seconds to climb and makes less than `sudden` of itself at once is a fade-in, not a drop. onBeat: the tolerance
  * onBeat(t) takes by default (seconds).
  */
-export const BEATS = Object.freeze({range: Object.freeze([70, 180]), clear: .1, octave: .3, between: .6, meter: 4, downbeat: .1, drop: 3, window: 4, fade: 2, sudden: .5, onBeat: .05});
+export const BEATS = Object.freeze({range: Object.freeze([70, 180]), clear: .1, octave: .3, between: .85, meter: 4, downbeat: .1, drop: 3, window: 4, fade: 2, sudden: .5, onBeat: .05});
 const OPTION_KEYS = ['bpm', 'drop', 'range', 'ffmpeg'];
 const ffmpegOf = given => given ?? process.env.FFMPEG_BIN ?? 'ffmpeg';
 
@@ -62,10 +63,10 @@ async function analyse(read, source, options) {
   const o = readOptions(options), work = {};
   const tempoRules = [
     {when: s => s.bpmGiven !== null, then: 'tempo-given', label: 'The tempo was given (options.bpm)'},
-    {when: s => s.faster !== null && s.fasterMargin < BEATS.octave && s.between >= BEATS.between,
+    {when: s => s.faster !== null && s.between >= BEATS.between,
       then: 'tempo-faster', label: `A faster level (twice or three times) comes within ${BEATS.octave}, and onsets fill the beats in between: the beat is the faster level`},
-    {when: s => s.strongest !== null && (s.next === null || s.clarity >= BEATS.clear) && (s.faster === null || s.fasterMargin >= BEATS.octave),
-      then: 'tempo-measured', label: `The strongest period stands clear of the next (its slower echoes aside), and no faster level comes within ${BEATS.octave}`},
+    {when: s => s.strongest !== null && (s.next === null || s.clarity >= BEATS.clear) && s.faster === null && (s.echo === null || s.echoBetween >= BEATS.between),
+      then: 'tempo-measured', label: `The strongest period stands clear of the next, no faster level comes within ${BEATS.octave}, and a slower echo that does has its beats in between filled`},
   ];
   const barRules = [{when: s => s.barClarity >= BEATS.downbeat, then: 'bars-measured', label: `Low-band onsets mark one beat in ${BEATS.meter}: the bars start there`}];
   const dropRules = [
@@ -96,13 +97,16 @@ async function analyse(read, source, options) {
       // A slower relative (½, ⅓) is the echo of any steady pulse, not a doubt: the margin is against the best of the rest.
       const echoes = new Set(strongest ? metricalRelatives(strongest.bpm, others, {faster: false}) : []), next = others.find(c => !echoes.has(c)) ?? null;
       s.next = next?.bpm ?? null; s.clarity = next ? round(1 - next.score, 3) : 1;
-      // A faster relative (2×, 3×) close behind may be the beat itself, heard at half (a third) speed: onsets at the
-      // beats in between settle it (dsp.mjs · betweenSupport).
-      work.faster = strongest ? metricalRelatives(strongest.bpm, others)[0] ?? null : null;
-      s.faster = work.faster?.bpm ?? null; s.fasterMargin = work.faster ? round(1 - work.faster.score, 3) : null;
-      s.between = work.faster && s.fasterMargin < BEATS.octave ? round(betweenSupport(work.onsets.flux.all, work.onsets.frameRate,
-        trackBeats(work.onsets.flux.all, strongest.period).map(f => f / work.onsets.frameRate), Math.round(work.faster.bpm / strongest.bpm)), 3) : null;
-      return decide(s, tempoRules, {branch: 'tempo-close', label: 'Another period is nearly as strong, or a faster level is and the beats in between are empty: the strongest is taken, and the alternatives say what else it could be'});
+      // The same beat at another level, within `octave` of the strongest, is a question of level: a faster relative
+      // (2×, 3×) may be the beat itself heard at half (a third) speed, and a slower echo (½, ⅓) may be the beat with
+      // the strongest its hats. The onsets at the beats in between settle it (dsp.mjs · betweenSupport): full, the
+      // faster level is the beat; anything less is tempo-close.
+      const near = c => c && 1 - c.score < BEATS.octave ? c : null;
+      work.faster = strongest ? near(metricalRelatives(strongest.bpm, others)[0]) : null;
+      const echo = strongest ? near(metricalRelatives(strongest.bpm, others, {faster: false})[0]) : null;
+      s.faster = work.faster?.bpm ?? null; s.between = work.faster ? levelSupport(work, strongest, work.faster) : null;
+      s.echo = echo?.bpm ?? null; s.echoBetween = echo ? levelSupport(work, echo, strongest) : null;
+      return decide(s, tempoRules, {branch: 'tempo-close', label: 'Another period is nearly as strong, or another level of the beat is and the onsets in between do not settle which: the strongest is taken, and the alternatives say what else it could be'});
     }, 'choose-tempo', 'The tempo: the onsets\' autocorrelation, weighed by the preferred range')
     .addFunctionBranch('tempo-given', 'tempo-given', s => useTempo(s, o.bpm), 'the given tempo')
     .addFunctionBranch('tempo-faster', 'tempo-faster', s => useTempo(s, work.faster.bpm), 'the faster level, its beats filled')
@@ -110,7 +114,7 @@ async function analyse(read, source, options) {
     .addFunctionBranch('tempo-close', 'tempo-close', s => useTempo(s, work.candidates[0].bpm), 'the strongest tempo, the others close')
     .end()
     .addFunction('track-beats', s => {
-      const frames = trackBeats(work.onsets.flux.all, work.period), fr = work.onsets.frameRate;
+      const fr = work.onsets.frameRate, frames = trackBeats(work.onsets.flux.all, work.period, {frameRate: fr});
       work.beats = refineBeats(work.samples, work.rate, frames.map(f => f / fr)).map(t => round(t));
       // The BPM the grid keeps (a line through the beats: exact where the tempo is steady), unless one was given.
       work.bpm = o.bpm ?? round(gridTempo(work.beats, work.period / fr) ?? 60 * fr / work.period, 2);
@@ -150,6 +154,12 @@ async function analyse(read, source, options) {
   await chart.setLogger(QUIET).build().recorder(trace).run();
   return {bpm: work.bpm, beats: work.beats, bars: work.bars, drop: work.drop, confidence: work.confidence,
     alternatives: work.candidates.map(({bpm, score}) => ({bpm, score})), seconds: round(work.samples.length / work.rate, 3), record: plainNarrative(trace)};
+}
+
+/** How full the beats in between are when `slow` is tracked and `fast` (twice or three times it) is the other level. */
+function levelSupport(work, slow, fast) {
+  const fr = work.onsets.frameRate, beats = trackBeats(work.onsets.flux.all, slow.period, {frameRate: fr}).map(f => f / fr);
+  return round(betweenSupport(work.onsets.flux.all, fr, beats, Math.round(fast.bpm / slow.bpm)), 3);
 }
 
 /** The beat nearest t in an ascending list (the earlier one on a tie), or null for none. */

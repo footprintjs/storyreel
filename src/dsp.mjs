@@ -44,8 +44,9 @@ export function onsetStrength(samples, rate, {size = ANALYSIS.size, hop = ANALYS
   const re = new Float64Array(size), im = new Float64Array(size), opens = startsWithTransient(samples, rate, size);
   // A frame whose window, or the one before it, hangs off the song's start compares sound with the silence before it,
   // and one hanging off its end, sound with the silence after: neither change is the music's own. Those frames count
-  // only at a start that opens on a transient (frame 0 rises from silence: `before` starts at zero).
-  const heard = f => (f * hop + size / 2 > samples.length ? false : (f - 1) * hop - size / 2 < 0 ? opens : true);
+  // only where the song opens on a transient within a hop of the frame's centre (frame 0 rises from silence: `before`
+  // starts at zero); a hit further in is heard by the first whole frames, as any other.
+  const heard = f => (f * hop + size / 2 > samples.length ? false : (f - 1) * hop - size / 2 < 0 ? opens !== null && Math.abs(opens - f * hop) <= hop : true);
   let before = new Float64Array(bins), now = new Float64Array(bins);
   for (let f = 0; f < frames; f++) {
     const from = f * hop - size / 2;
@@ -63,24 +64,31 @@ export function onsetStrength(samples, rate, {size = ANALYSIS.size, hop = ANALYS
     [before, now] = [now, before];
   }
   for (const b of [0, 1, 2]) for (let f = 0; f < frames; f++) flux[b][f] /= Math.max(1, counts[b]);
+  // A frame left out at the start holds the song's usual flux there (the median of its first second), not a silence the
+  // song never had: a zero would sink the frames around it, and a hit just after them with it.
+  const opening = Math.ceil(size / 2 / hop) + 1, usual = Math.min(frames, opening + Math.round(rate / hop));
+  for (const b of [0, 1, 2]) {
+    const sorted = Array.from(flux[b].subarray(Math.min(opening, frames), usual)).sort((x, y) => x - y), median = sorted[sorted.length >> 1] ?? 0;
+    for (let f = 0; f < Math.min(opening, frames); f++) if (!heard(f) && f * hop + size / 2 <= samples.length) flux[b][f] = median;
+  }
   const all = new Float32Array(frames);
   for (let f = 0; f < frames; f++) all[f] = flux[0][f] + flux[1][f] + flux[2][f];
   return {frameRate: rate / hop, frames, flux: {low: flux[0], mid: flux[1], high: flux[2], all}, power: {low: power[0], mid: power[1], high: power[2]}};
 }
 
 /**
- * Whether a song opens on a transient within its first `span` samples (the frames that hang off its start reach that
- * far): a moment whose next `attack` seconds carry `least` times the attack energy (energyIndex · attacks) of the
- * `before` seconds ahead of it (refineBeats' test) — or, in the first `before` seconds, where less than that comes
- * ahead, `least` times the attack energy of the stretch `later` seconds on: a hit decays, a held sound does not. A pad
- * or a noise floor sounding from sample 0 is neither.
+ * Where a song opens on a transient within its first `span` samples (the frames that hang off its start reach that
+ * far): the first moment whose next `attack` seconds carry `least` times the attack energy (energyIndex · attacks) of
+ * the `before` seconds ahead of it (refineBeats' test) — or, in the first `before` seconds, where less than that comes
+ * ahead, `least` times the attack energy of the stretch `later` seconds on: a hit decays, a held sound does not.
+ * Returns that sample, or null: a pad or a noise floor sounding from sample 0 is neither.
  */
 export function startsWithTransient(samples, rate, span, {attack = .005, before = .01, later = [.015, .035], least = 2, step = .0005} = {}) {
   const energy = energyIndex(samples, {attacks: true}), a = Math.round(attack * rate), b = Math.round(before * rate), floor = 1e-12;
   const [l0, l1] = later.map(s => Math.round(s * rate)), hop = Math.max(1, Math.round(step * rate));
-  for (let i = 0; i < b; i += hop) if (energy(i, i + a) + floor >= least * (energy(i + l0, i + l1) + floor)) return true;
-  for (let i = b; i <= span; i += hop) if (energy(i, i + a) + floor >= least * (energy(i - b, i) + floor)) return true;
-  return false;
+  for (let i = 0; i < b; i += hop) if (energy(i, i + a) + floor >= least * (energy(i + l0, i + l1) + floor)) return i;
+  for (let i = b; i <= span; i += hop) if (energy(i, i + a) + floor >= least * (energy(i - b, i) + floor)) return i;
+  return null;
 }
 
 /** How strongly a tempo is preferred: 1 inside the range, falling off by a third of an octave's spread outside it. */
@@ -146,16 +154,17 @@ function lastBeat(cumulative) {
 }
 
 /**
- * Leading and trailing beats on weak onsets dropped: under half the median of the beats' scores. The chain runs on
- * through a song's silent intro and its fading end at the period it costs nothing to keep; those beats sit on no onset.
- * The median, not a mean: one huge onset (a song that opens on a hit over a pad) must not raise the floor over the rest.
+ * Leading and trailing beats that sit on no onset dropped (onsetAt, the test onsetSupport counts by). The chain runs on
+ * through a song's quiet intro and its fading end at the period it costs nothing to keep; those beats sit on nothing.
+ * Each beat is judged against its own surroundings, so an intro of most of the beats cannot move the bar for the rest.
+ * When no beat passes, there is nothing to trim against: the chain is kept.
  */
-function trimmed(beats, score) {
-  const at = beats.map(b => score[b]), sorted = [...at].sort((a, b) => a - b), floor = .5 * (sorted[sorted.length >> 1] ?? 0);
+function trimmed(beats, envelope, frameRate) {
+  const on = onsetAt(envelope, frameRate);
   let a = 0, b = beats.length - 1;
-  while (a <= b && at[a] <= floor) a++;
-  while (b >= a && at[b] <= floor) b--;
-  return beats.slice(a, b + 1);
+  while (a <= b && !on(beats[a])) a++;
+  while (b >= a && !on(beats[b])) b--;
+  return a > b ? beats : beats.slice(a, b + 1);
 }
 
 /**
@@ -164,7 +173,7 @@ function trimmed(beats, score) {
  * period, `tightness` times the squared log of their ratio. The best chain is read back from the last beat, and weak
  * beats at either end are dropped. Returns the beats' frames, in order.
  */
-export function trackBeats(envelope, period, {tightness = 100} = {}) {
+export function trackBeats(envelope, period, {tightness = 100, frameRate = ANALYSIS.rate / ANALYSIS.hop} = {}) {
   if (!(period > 1)) throw new Error(`trackBeats: the period is a number of frames above 1, not ${period}`);
   const score = localScore(normalised(detrended(envelope, Math.round(period))), period), n = score.length, top = score.reduce((m, v) => Math.max(m, v), -Infinity);
   const cumulative = new Float64Array(n), back = new Int32Array(n).fill(-1);
@@ -182,7 +191,7 @@ export function trackBeats(envelope, period, {tightness = 100} = {}) {
   }
   const beats = [];
   for (let t = lastBeat(cumulative); t >= 0; t = back[t]) beats.push(t);
-  return trimmed(beats.reverse(), score);
+  return trimmed(beats.reverse(), envelope, frameRate);
 }
 
 /**
@@ -235,15 +244,28 @@ export function gridTempo(times, period) {
 const nearMax = (series, f, reach) => { let m = 0; for (let k = Math.max(0, f - reach); k <= Math.min(series.length - 1, f + reach); k++) m = Math.max(m, series[k]); return m; };
 
 /**
- * The share of beats that sit on an onset: the envelope's peak within `reach` seconds of the beat stands `least` times
- * above the envelope's median over the `around` seconds either side of it (an onset stands out from what surrounds it;
- * a beat the chain carried through a held chord or a wash of noise does not).
+ * Whether a frame sits on an onset: the envelope's peak within `reach` seconds of it stands `least` times above what
+ * surrounds it — the `level` quantile of the envelope over the `around` seconds either side, the frame's own `reach`
+ * left out. An onset stands out from its surroundings; a beat the chain carried through a held chord, a wash of noise
+ * or a quiet intro does not: on a beat grid laid over a noise floor or a pad, the peaks stand at most about 1.6 times
+ * the upper quartile, a click or a drum hit 2.6 times and more (a median would let the noise by). Returns frame => boolean.
  */
-export function onsetSupport(envelope, frameRate, times, {reach = .05, around = .5, least = 1.5} = {}) {
-  if (!times.length) return 0;
+export function onsetAt(envelope, frameRate, {reach = .05, around = .5, least = 2, level = .75} = {}) {
   const span = Math.ceil(reach * frameRate), wide = Math.ceil(around * frameRate);
-  const median = f => { const w = Array.from(envelope.subarray(Math.max(0, f - wide), Math.min(envelope.length, f + wide + 1))).sort((a, b) => a - b); return w[w.length >> 1] ?? 0; };
-  return times.filter(t => { const f = Math.round(t * frameRate); return nearMax(envelope, f, span) > least * median(f) + 1e-12; }).length / times.length;
+  const background = f => {
+    const w = [];
+    for (let k = Math.max(0, f - wide); k <= Math.min(envelope.length - 1, f + wide); k++) if (Math.abs(k - f) > span) w.push(envelope[k]);
+    w.sort((a, b) => a - b);
+    return w[Math.floor(level * (w.length - 1))] ?? 0;
+  };
+  return f => nearMax(envelope, f, span) > least * background(f) + 1e-12;
+}
+
+/** The share of beats (seconds) that sit on an onset (onsetAt). */
+export function onsetSupport(envelope, frameRate, times, options = {}) {
+  if (!times.length) return 0;
+  const on = onsetAt(envelope, frameRate, options);
+  return times.filter(t => on(Math.round(t * frameRate))).length / times.length;
 }
 
 /**

@@ -1015,26 +1015,30 @@ peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and it
 - **How it measures** (plain functions, `src/dsp.mjs`): the song read through FFmpeg as mono samples; onset strength as
   spectral flux on a radix-2 FFT, log-compressed and split into low (< 200 Hz), mid and high bands (a hit in the song's
   first milliseconds is a beat; a pad or a noise floor already sounding at its first sample is not, and neither is
-  its end); the tempo by autocorrelation of the
+  its end; a first beat after an encoder's delay, 40–50 ms in, is found where it is); the tempo by autocorrelation of the
   onsets, weighed by a prior that prefers 70–180 BPM (`range`), with the ranked alternatives; the beats by dynamic
   programming (Ellis 2007), each moved onto the transient it sits on (an attack heard over a held note: the energy of
-  the samples' first difference); the bars from low-band onsets; the drop where low
+  the samples' first difference), the beats the chain carried through a quiet intro or a fading end left out (each
+  must stand out from what surrounds it); the bars from low-band onsets; the drop where low
   and mid energy rise most and hold, and arrive at once.
 - **The map is a flowchart, and its record explains it.** decode → onsets → choose-tempo → track-beats → find-bars →
   measure-rise → find-drop, each verdict `decide()` evidence in `map.record`:
-  `It examined "The strongest period stands clear of the next (its slower echoes aside), and no faster level comes
-  within 0.3": strongest=123.01, next=null, faster=null, and chose tempo-measured.` (61.5 and 41, its half and third,
-  are echoes: the record lists them under `alternatives`.)
-- **The level of the beat.** A steady pulse also repeats every two and every three beats, so the half and the third of
-  any tempo always score well: they are echoes, not doubt. A *faster* relative (twice, three times) close behind the
-  strongest (within 0.3, `BEATS.octave`) may be the beat itself heard at half speed — a click track at 175 BPM scores
-  87.5 highest — and the onsets settle it: when the beats in between carry at least 0.6 of the beats' onset strength
-  (`BEATS.between`; hats on the eighths carry about 0.45, a click on every beat about 0.7–1), the verdict is
-  `tempo-faster` and the beat is the faster level. Otherwise, or when an unrelated tempo comes within 0.1, it is
-  `tempo-close`: the strongest is taken and `alternatives` lists the others — read them, and give `bpm` when the map
-  took the wrong one (two pulses at once, 120 and 160, are honestly close). No beat in four standing out is
-  `bars-guessed`; no rise that holds is `drop-none`; a rise that climbs for more than 2 s with no hit at its start is
-  `drop-fade` — a fade-in, not a drop (`drop: null` both ways).
+  `It examined "The strongest period stands clear of the next, no faster level comes within 0.3, and a slower echo
+  that does has its beats in between filled": strongest=92.1, next=null, faster=null, echo=null, and chose
+  tempo-measured.`
+- **The level of the beat, and when it is not sure.** A steady pulse also repeats every two and every three beats, and
+  hats on the eighths repeat twice a beat, so the same beat often scores well at another level — half, double, a
+  third, triple. When such a level comes within 0.3 of the strongest (`BEATS.octave`), the onsets at the beats in
+  between decide (`BEATS.between`): only when they are nearly as strong as the beats (0.85 of them) is the faster
+  level the beat (`tempo-faster`, or `tempo-measured` when the strongest is already the faster one). Anything less is
+  `tempo-close`: the strongest is taken, and `alternatives` lists the others. A wrong level claimed as certain is the
+  one failure that matters, so the bar is high: hats on the eighths read about 0.6, and a click track with a kick on
+  every fourth click reads about 0.7 — it comes out right, but said to be close. Over 24 drum patterns (70–140 BPM;
+  eighth or sixteenth hats, four on the floor with off-beat hats, loud hats) the map is never wrong and certain: 19 are
+  right and certain, 5 right and close. **These thresholds are calibrated on synthetic songs only** (`test/songs.mjs`);
+  for a real mix, read the verdict and the alternatives, and give `bpm` to settle it. Two pulses at once (120 and
+  160) are close too. No beat in four standing out is `bars-guessed`; no rise that holds is `drop-none`; a rise that
+  climbs for more than 2 s with no hit at its start is `drop-fade` — a fade-in, not a drop (`drop: null` both ways).
 - **Override what it got wrong**: `beatMap(file, {bpm: 128, drop: 42.5})` — the record then says the tempo and the drop
   were given (a drop past the song's end refuses). `beatMapOf(samples, 22050)` maps samples already in hand.
 

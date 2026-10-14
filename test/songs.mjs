@@ -43,19 +43,22 @@ export function wavFile(file, samples, rate) {
 }
 
 /**
- * A groove: a kick on beats one and three, a snare on two and four, closed hats on every eighth note — the pattern
- * whose kick alone repeats at half the tempo. The truth is the quarter-note beats.
+ * A drum pattern, the truth its quarter-note beats. kick 'backbeat': a kick on beats one and three and a snare on two
+ * and four — the pattern whose kick alone repeats at half the tempo; 'four': a kick on every beat (four on the floor),
+ * no snare. hats: 'eighths', 'sixteenths', or 'offbeats' (only on the "and" between beats), at `hatLevel` (0.12; a loud
+ * hat is 0.35, as loud as the snare).
  */
-export function groove({bpm, count = 48, lead = .25, tail = 1, rate = 22050}) {
+export function groove({bpm, count = 48, lead = .25, tail = 1, rate = 22050, kick = 'backbeat', hats = 'eighths', hatLevel = .12}) {
   const beat = 60 / bpm, x = new Float32Array(Math.round((lead + count * beat + tail) * rate)), noise = noiseFrom(11);
   const add = (t0, seconds, f) => { const a = Math.round(t0 * rate); for (let i = 0; i < seconds * rate && a + i < x.length; i++) x[a + i] += f(i / rate); };
-  const beats = [];
+  const thump = a => .7 * Math.exp(-a * 18) * Math.sin(2 * Math.PI * (55 + 60 * Math.exp(-a * 40)) * a), snare = a => Math.exp(-a * 25) * (.35 * noise() + .25 * Math.sin(2 * Math.PI * 190 * a));
+  const at = {eighths: [0, .5], sixteenths: [0, .25, .5, .75], offbeats: [.5]}[hats], beats = [];
   for (let k = 0; k < count; k++) {
     const t = lead + k * beat;
     beats.push(t);
-    if (k % 2 === 0) add(t, .25, a => .7 * Math.exp(-a * 18) * Math.sin(2 * Math.PI * (55 + 60 * Math.exp(-a * 40)) * a));
-    else add(t, .18, a => Math.exp(-a * 25) * (.35 * noise() + .25 * Math.sin(2 * Math.PI * 190 * a)));
-    for (const half of [0, .5]) { let hp = 0, last = 0; add(t + half * beat, .04, a => { const n = noise(); hp = .9 * (hp + n - last); last = n; return .12 * Math.exp(-a * 120) * hp; }); }
+    if (kick === 'four' || k % 2 === 0) add(t, .25, thump);
+    if (kick === 'backbeat' && k % 2 === 1) add(t, .18, snare);
+    for (const part of at) { let hp = 0, last = 0; add(t + part * beat, .04, a => { const n = noise(); hp = .9 * (hp + n - last); last = n; return hatLevel * Math.exp(-a * 120) * hp; }); }
   }
   for (let i = 0; i < x.length; i++) x[i] += .004 * noise();
   return {samples: x, rate, beats};
