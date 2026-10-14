@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, existsSync, readFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
-import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createCanvas} from '@napi-rs/canvas';
 import {compileFilm, evenTimings, renderFilm, makeFilm} from '../src/index.mjs';
@@ -13,6 +12,7 @@ import {spokenTracks} from '../src/captions.mjs';
 const captionChunks = (film, options) => chunksOf(spokenTracks(film), options);
 import {compileLayout, cropWindow, formatOf, FORMAT_NAMES} from '../src/layout.mjs';
 import {makePainter, readMotionBlur, readCaptionFiles, partWindow, partTimeline, timelineText, prepareRender} from '../src/render.mjs';
+import {tempDir} from './tmp.mjs';
 
 // A silent opening, then two spoken scenes; a world that is red with a white square sliding fast.
 const storyboard = {title: 'Formats', scenes: [
@@ -112,7 +112,7 @@ test('a part with its handles: the scenes asked for and a moment of the film eit
   assert.throws(() => prepareRender({film, part: {scene: 'talk'}, from: 0}), /a part or from\/to, not both/);
   // A render starts on the film's frame grid, so drawings held on twos pair the same frames in a part as in the film.
   for (const from of [4.55, 7.116, 7.101, 2]) {
-    const job = prepareRender({film, storyboard, timings: film.timings, out: path.join(mkdtempSync(path.join(tmpdir(), 'grid-')), 'x.mp4'), from, to: from + 1});
+    const job = prepareRender({film, storyboard, timings: film.timings, out: path.join(tempDir('grid'), 'x.mp4'), from, to: from + 1});
     assert.ok(Math.abs(job.start * 30 - Math.round(job.start * 30)) < 1e-9 && job.start <= from && from - job.start < 1 / 30, `from ${from} starts at ${job.start}`);
   }
 });
@@ -126,7 +126,7 @@ test('a part\'s timeline: the scenes and beats in it as text, on the part\'s own
 });
 
 test('a quick look at one part: its scenes with handles, at half size, in the draft encode', {skip: spawnSync('ffmpeg', ['-version']).error ? 'needs ffmpeg' : false}, async () => {
-  const out = path.join(mkdtempSync(path.join(tmpdir(), 'storyreel-part-')), 'part.mp4'), part = {scene: 'talk', handles: 1};
+  const out = path.join(tempDir('part'), 'part.mp4'), part = {scene: 'talk', handles: 1};
   const r = await renderFilm({film, storyboard, timings: evenTimings(storyboard), out, part, quality: 'draft', layout: {format: 'landscape', scale: .5}});
   const w = partWindow(film, part);
   assert.ok(Math.abs(r.seconds - (w.to - w.from)) < .1, `the part and its handles: ${r.seconds} s`);
@@ -184,7 +184,7 @@ test('motion blur: fast moves smear, still moments stay sharp; the option refuse
 
 const ffmpeg = spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-version']).status === 0;
 test('renderFilm in the vertical format writes a 1080×1920 video, and its caption files on the video\'s clock', {skip: ffmpeg ? false : 'ffmpeg not on PATH'}, async () => {
-  const out = path.join(mkdtempSync(path.join(tmpdir(), 'formats-')), 'vertical.mp4');
+  const out = path.join(tempDir('formats'), 'vertical.mp4');
   const result = await renderFilm({film, storyboard, timings: film.timings, out, fps: 4, from: 2, to: 4, poster: null,
     layout: {format: 'vertical', header: {title: 'Formats'}, captions: true}, motionBlur: 2, captionFiles: true});
   assert.ok(existsSync(result.out)); assert.equal(result.format, 'vertical');
@@ -200,7 +200,7 @@ test('renderFilm in the vertical format writes a 1080×1920 video, and its capti
 });
 
 test('makeFilm records the version it made: the format, the motion blur, the caption files', {skip: ffmpeg ? false : 'ffmpeg not on PATH'}, async () => {
-  const out = path.join(mkdtempSync(path.join(tmpdir(), 'formats-')), 'square.mp4');
+  const out = path.join(tempDir('formats'), 'square.mp4');
   const made = await makeFilm({storyboard, recipe, kits: [slide], timings: evenTimings(storyboard), out,
     render: {fps: 4, from: 2, to: 3, poster: null, layout: {format: 'square', header: {title: 'Formats'}, captions: true}, motionBlur: 3, captionFiles: ['srt']}});
   const record = JSON.parse(readFileSync(made.makingOf, 'utf8'));

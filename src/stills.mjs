@@ -4,9 +4,9 @@
  * heuristic, never OCR — leaving out a logo that stays in a corner across the film's shots.
  */
 import {spawn, spawnSync} from 'node:child_process';
-import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {rmSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
+import {tempScratch} from './scratch.mjs';
 
 /**
  * One select expression for many frames, `eq(n,k)` for each: summed as a balanced tree, so its depth grows as log₂ of
@@ -51,7 +51,7 @@ export function stillsArgs({ffmpeg, file, frames, width, height, script}) {
 export async function eachStill(ffmpeg, file, frames, {width, height}, each) {
   const want = [...new Set(frames)].sort((a, b) => a - b), size = width * height * 3;
   if (!want.length) return 0;
-  const dir = mkdtempSync(path.join(tmpdir(), 'storyreel-stills-')), script = path.join(dir, 'filter.txt');
+  const dir = tempScratch(), script = path.join(dir, 'filter.txt');   // swept by the next pass if this one is killed (scratch.mjs)
   try { return await readStills(ffmpeg, stillsArgs({ffmpeg, file, frames: want, width, height, script}), {script, want, size, width, height}, each); } finally { rmSync(dir, {recursive: true, force: true}); }
 }
 

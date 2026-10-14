@@ -565,6 +565,12 @@ export function renderFilm(options: {
   layout?: Layout | null;
   /** Each frame the average of `subframes` (2–16) moments over `shutter` (0.1–1, default 0.5) of its time; a number is the subframes. */
   motionBlur?: number | {subframes: number; shutter?: number} | null;
+  /**
+   * A folder for the render's working files (the picture without its sound, the voice and effects as WAVs, FFmpeg's
+   * lists), kept after it. Left out, they go in a hidden folder beside the video, removed when the render ends,
+   * finished or failed: only the outputs stay (the video, poster.jpg, chapters.txt, caption files).
+   */
+  work?: string | null;
   /** Caption files beside the video (captions.vtt, captions.srt) on its clock: true for both, or the kinds. */
   captionFiles?: boolean | ('vtt' | 'srt')[];
   /** 'standard' (the default: quick) or 'high' (for posting: a slower, finer encode, its colours converted and tagged as HD video's, BT.709). */

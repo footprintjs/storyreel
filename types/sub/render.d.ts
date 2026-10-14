@@ -14,6 +14,8 @@ export function partWindow(film: import('../index.js').Film, part: {scenes: stri
 export interface TimelineRow {t: number; kind: 'scene' | 'beat'; scene: string | null; phrase?: string | null; entry?: string | null}
 export function partTimeline(film: import('../index.js').Film, window?: {from?: number; to?: number}): TimelineRow[];
 export function timelineText(rows: TimelineRow[]): string;
+/** The end of a render, finished or failed: its working files are removed, unless they are in a `work` folder the caller named (renderFilm and makeFilm call it themselves). */
+export function closeRender(job: {work?: string; keepWork?: boolean} | null | undefined): void;
 /** The captionFiles option, checked: the kinds to write. */
 export function readCaptionFiles(v: unknown): ('vtt' | 'srt')[];
 

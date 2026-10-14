@@ -2,11 +2,10 @@
 // past a spoken word — the song started so its drop lands on a key moment, sound effects placed by their peaks, and
 // makeFilm running it all as stages of its own. Every cut's verdict is decide() evidence in the fit's record. Without
 // the option nothing changes (pinned by hand against main: the same MP4 bytes, silent and voiced).
-import test, {after} from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, chmodSync, rmSync} from 'node:fs';
+import {mkdirSync, readFileSync, readdirSync, writeFileSync, chmodSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
-import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {evenTimings, makeClock, makeFilm} from '../src/index.mjs';
@@ -17,12 +16,12 @@ import {createMotionSound, resolveSoundEvents, soundPeak} from '../src/sound.mjs
 import {peakOfSamples} from '../src/beats.mjs';
 import {musicUnderVoice} from '../src/listening.mjs';
 import {song, wavFile} from './songs.mjs';
+import {tempDir} from './tmp.mjs';
 
 const ffmpegBin = process.env.FFMPEG_BIN || 'ffmpeg';
 const ffmpeg = spawnSync(ffmpegBin, ['-version']).status === 0;
 const needs = {skip: ffmpeg ? false : 'ffmpeg not on PATH'};
-const made = [], tmp = () => { const dir = mkdtempSync(path.join(tmpdir(), 'storyreel-music-')); made.push(dir); return dir; };
-after(() => { for (const dir of made) rmSync(dir, {recursive: true, force: true}); });
+const tmp = () => tempDir('music');
 const hello = fileURLToPath(new URL('../examples/hello/', import.meta.url));
 const helloBoard = JSON.parse(readFileSync(hello + 'storyboard.json', 'utf8')), helloRecipe = JSON.parse(readFileSync(hello + 'recipe.json', 'utf8'));
 const small = {width: 160, height: 90, fps: 4};
@@ -298,25 +297,27 @@ test('makeFilm with music and a voice: the run\'s copy of each moved scene\'s au
 });
 
 test('without music nothing changes: the same stages, record, inputs and FFmpeg calls as before (pinned on main)', needs, async () => {
-  const dir = tmp(), log = path.join(dir, 'calls.log'), shim = path.join(dir, 'ffmpeg'), out = path.join(dir, 'out');
+  // A test that pins a working file's path passes `work`: the working files are kept there (render.mjs · closeRender).
+  const dir = tmp(), log = path.join(dir, 'calls.log'), shim = path.join(dir, 'ffmpeg'), out = path.join(dir, 'out'), work = path.join(dir, 'work');
   // An FFmpeg that writes down every call it is given, then runs the real one.
   writeFileSync(shim, `#!/bin/sh\nfor a in "$@"; do printf '%s\\037' "$a" >> '${log}'; done\nprintf '\\n' >> '${log}'\nexec "${ffmpegBin}" "$@"\n`); chmodSync(shim, 0o755);
-  const result = await makeFilm({storyboard: helloBoard, recipe: helloRecipe, root: hello, timings: evenTimings(helloBoard, {tail: 4}), out: path.join(out, 'film.mp4'), render: {...small, from: 0, to: 2, ffmpeg: shim}});
+  const result = await makeFilm({storyboard: helloBoard, recipe: helloRecipe, root: hello, timings: evenTimings(helloBoard, {tail: 4}), out: path.join(out, 'film.mp4'), render: {...small, from: 0, to: 2, ffmpeg: shim, work}});
   const record = JSON.parse(readFileSync(result.makingOf, 'utf8'));
-  assert.deepEqual(record.pipeline.filter(e => e.type === 'stage' && e.depth === 0).map(e => e.stageId.split('~')[0]), ['check-inputs', 'pace-narration', 'compile-film', 'check-claims/check-claims', 'check-claims/verdict', 'check-claims/passed', 'place-narration', 'plan-picture', 'render-picture', 'render-film', 'check-finished']);
+  assert.deepEqual(record.pipeline.filter(e => e.type === 'stage' && e.depth === 0).map(e => e.stageId.split('~')[0]), ['check-inputs', 'pace-narration', 'compile-film', 'check-claims/check-claims', 'check-claims/verdict', 'check-claims/passed', 'plan-picture', 'render-picture', 'render-film', 'check-finished', 'place-narration']);
   assert.equal('music' in record, false);
   assert.deepEqual(Object.keys(record.loudness.roles), ['voice', 'effects']);
   assert.deepEqual(record.inputs, {storyboard: '390932da10154987', timings: '868ab614fc412af1', recipe: '9b351fe10b5a8e66', strings: null, data: null, theme: 'b5d0139a73be8b54', files: {'rule.ts': '8fc6d8dd3606be0f'}, pacing: '74234e98afe7498f'});
-  const calls = readFileSync(log, 'utf8').trim().split('\n').map(l => l.split('\x1f').filter(Boolean).map(a => a.split(out).join('<dir>')).join(' '));
+  assert.deepEqual(readdirSync(out).sort(), ['chapters.txt', 'film.mp4', 'making-of.json'], 'beside the video, only the outputs');
+  const calls = readFileSync(log, 'utf8').trim().split('\n').map(l => l.split('\x1f').filter(Boolean).map(a => a.split(work).join('<work>').split(out).join('<dir>')).join(' '));
   assert.deepEqual(calls, [
-    '-y -loglevel error -f rawvideo -pixel_format rgba -video_size 160x90 -framerate 4 -i pipe:0 -c:v libx264 -preset fast -crf 19 -pix_fmt yuv420p <dir>/film-video.mp4',
-    '-y -loglevel error -f lavfi -i anullsrc=r=48000:cl=mono -t 31.78 <dir>/film-voice.wav',
-    '-y -loglevel error -f concat -safe 0 -i <dir>/film-sfx.txt -ar 48000 -ac 1 <dir>/film-sfx.wav',
-    '-hide_banner -nostats -i <dir>/film-sfx.wav -filter_complex ebur128=framelog=quiet -f null -',
-    '-y -loglevel error -i <dir>/film-voice.wav -i <dir>/film-sfx.wav -filter_complex [0:a]aresample=48000[a];[1:a]aresample=48000[b];[a][b]amix=inputs=2:normalize=0:duration=first -ac 1 <dir>/film-lesson.wav',
-    '-y -loglevel error -ss 0 -t 2 -i <dir>/film-lesson.wav <dir>/film-part.wav',
-    '-y -loglevel error -f concat -safe 0 -i <dir>/film-audio.txt -ar 48000 -ac 1 <dir>/film-audio.wav',
-    '-y -hide_banner -nostats -loglevel info -i <dir>/film-audio.wav -af aformat=channel_layouts=stereo,loudnorm=I=-16:TP=-1.5:print_format=json -f null -',
-    '-y -hide_banner -nostats -loglevel info -i <dir>/film-video.mp4 -i <dir>/film-audio.wav -map 0:v -map 1:a -af aformat=channel_layouts=stereo,aresample=48000,apad -c:v copy -c:a aac -b:a 160k -t 2.000000 -movflags +faststart <dir>/film.mp4',
+    '-y -loglevel error -f rawvideo -pixel_format rgba -video_size 160x90 -framerate 4 -i pipe:0 -c:v libx264 -preset fast -crf 19 -pix_fmt yuv420p <work>/film-video.mp4',
+    '-y -loglevel error -f lavfi -i anullsrc=r=48000:cl=mono -t 31.78 <work>/film-voice.wav',
+    '-y -loglevel error -f concat -safe 0 -i <work>/film-sfx.txt -ar 48000 -ac 1 <work>/film-sfx.wav',
+    '-hide_banner -nostats -i <work>/film-sfx.wav -filter_complex ebur128=framelog=quiet -f null -',
+    '-y -loglevel error -i <work>/film-voice.wav -i <work>/film-sfx.wav -filter_complex [0:a]aresample=48000[a];[1:a]aresample=48000[b];[a][b]amix=inputs=2:normalize=0:duration=first -ac 1 <work>/film-lesson.wav',
+    '-y -loglevel error -ss 0 -t 2 -i <work>/film-lesson.wav <work>/film-part.wav',
+    '-y -loglevel error -f concat -safe 0 -i <work>/film-audio.txt -ar 48000 -ac 1 <work>/film-audio.wav',
+    '-y -hide_banner -nostats -loglevel info -i <work>/film-audio.wav -af aformat=channel_layouts=stereo,loudnorm=I=-16:TP=-1.5:print_format=json -f null -',
+    '-y -hide_banner -nostats -loglevel info -i <work>/film-video.mp4 -i <work>/film-audio.wav -map 0:v -map 1:a -af aformat=channel_layouts=stereo,aresample=48000,apad -c:v copy -c:a aac -b:a 160k -t 2.000000 -movflags +faststart <dir>/film.mp4',
   ]);
 });

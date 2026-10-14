@@ -27,9 +27,8 @@
  *   spec           breakdown.json and breakdown.md
  */
 import path from 'node:path';
-import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
-import {existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, rmSync, writeFileSync} from 'node:fs';
 import {createCanvas} from '@napi-rs/canvas';
 import {flowChart, narrative, decide} from 'footprintjs';
 import {ffmpegProbe} from './finished.mjs';
@@ -37,6 +36,7 @@ import {contactSheet} from './sheet.mjs';
 import {GRID, readFootage, cutsAndFades, gradualCandidates, shotMotion, energyCurve} from './footage.mjs';
 import {eachStill, readLettering, cornerMarks, logoCandidates, lettering} from './stills.mjs';
 import {breakdownText} from './breakdown-text.mjs';
+import {tempScratch} from './scratch.mjs';
 
 export {breakdownText};
 
@@ -520,7 +520,7 @@ function notRead(error) {
  * were not read, and why. A beat map that answers in the wrong shape refuses (readBeats).
  */
 const readBeatsStage = run => async s => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'storyreel-breakdown-'));
+  const dir = tempScratch();   // the sound, extracted: swept by the next pass if this one is killed (scratch.mjs)
   try {
     const sound = soundOf(run, dir);
     if (sound.why) run.beatsFailed = sound.why;

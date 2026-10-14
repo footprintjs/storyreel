@@ -3,10 +3,9 @@
 // box moving across black, a camera panning over a texture, a dip through black into a lettered card, and a tone under
 // it all. Beside it: variable-rate clips, eased fades, a cut to black, a picture stored on its side, a logo across shots
 // and a name in one, a film of 110 quick shots, a raw stream with no length, and a file with sound only.
-import test, {after} from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, existsSync, readFileSync, writeFileSync, rmSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {existsSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -14,6 +13,7 @@ import {createCanvas, GlobalFonts} from '@napi-rs/canvas';
 import {breakdown, breakdownText, BREAKDOWN} from '../src/breakdown.mjs';
 import {selectFrames, stillsArgs, filterFromFile, eachStill} from '../src/stills.mjs';
 import {ffmpegProbe, showinfoReader, onSlots} from '../src/finished.mjs';
+import {tempDir} from './tmp.mjs';
 
 const has = cmd => !spawnSync(cmd, ['-version']).error;
 const skip = has('ffmpeg') && has('ffprobe') ? false : 'needs ffmpeg and ffprobe';
@@ -55,8 +55,7 @@ function makeReference(dir, {sound = true} = {}) {
   return file;
 }
 
-const dir = skip ? null : mkdtempSync(path.join(tmpdir(), 'storyreel-breakdown-test-'));
-after(() => { if (dir) rmSync(dir, {recursive: true, force: true}); });   // the films made here are large: none is left behind
+const dir = skip ? null : tempDir('breakdown-test');   // the films made here are large: removed after the file (test/tmp.mjs)
 const reference = skip ? null : makeReference(dir);
 let first = null;
 const brokenDown = () => (first ??= breakdown(reference, {out: path.join(dir, 'out')}));

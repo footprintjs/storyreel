@@ -3,7 +3,7 @@
  * scene (a silent scene with no audio plays generated silence), the sound accents per scene (at most
  * 64 each), loudness in two passes. FFmpeg must be on PATH.
  */
-import {writeFileSync, mkdirSync} from 'node:fs';
+import {writeFileSync, mkdirSync, rmSync} from 'node:fs';
 import path from 'node:path';
 import {spawn, spawnSync} from 'node:child_process';
 import {once} from 'node:events';
@@ -15,6 +15,7 @@ import {captionChunks, captionFile, FILE_CHUNKS, clockText} from 'footprint-narr
 import {spokenTracks} from './captions.mjs';
 import {effectsUnderVoice, musicUnderVoice} from './listening.mjs';
 import {readSongPlacement, requireOverlap} from './music.mjs';
+import {makeScratch, sweepScratch} from './scratch.mjs';
 
 /**
  * Loudness in two passes (FFmpeg's loudnorm): measure the whole mixed film, then set it with ONE fixed
@@ -253,13 +254,21 @@ export function makePainter({film, framed, blur, width, height, fps, ctx}) {
  *                   own level, 0.2), fading out over the film's last `fadeOut` seconds (1.5); measured apart as a role
  * @param soundAt    'start' (the default: each sound begins on its moment) or 'peak' (each sound's loudest transient
  *                   lands on its moment: sound.mjs · soundPeak)
+ * @param work       a folder for the render's working files (the picture without its sound, the voice and the
+ *                   effects as WAVs, the lists FFmpeg joins), kept after the render; left out, they go in a hidden
+ *                   folder beside the video (.storyreel-work-<host>-<pid>-<XXXXXX>), removed when the render ends, finished
+ *                   or failed — and one a stopped render left (Ctrl-C, a killed process) is swept by the next render
+ *                   into that folder on the same host (scratch.mjs). Only the outputs stay beside the video: the
+ *                   video, poster.jpg, chapters.txt, the caption files
  * @returns {out, seconds, chapters, poster?, format?, captions?: {vtt?, srt?}, loudness: {type, target, measured, reason?},
  *          video?: the strategy's report (segmentedVideo: each segment, rendered or reused)}
  */
 export async function renderFilm(options) {
   const job = prepareRender(options);
-  const video = await checkVideoStrategy(options.video ?? wholeVideo()).render(job);
-  return finishRender(job, video);
+  try {
+    const video = await checkVideoStrategy(options.video ?? wholeVideo()).render(job);
+    return await finishRender(job, video);
+  } finally { closeRender(job); }   // the working files go, finished or failed (kept only in a `work` folder the caller named)
 }
 
 /**
@@ -340,13 +349,23 @@ export function partTimeline(film, {from = 0, to = film.total} = {}) {
 }
 export const timelineText = rows => rows.map(r => r.kind === 'scene' ? `${r.t.toFixed(2)}  ── ${r.scene}` : `${r.t.toFixed(2)}  "${r.phrase}"${r.entry ? ` → ${r.entry}` : ''}`).join('\n');
 
-/** The render's job from its options; a part ({scenes, handles}) becomes its from/to first (partWindow). */
+/** The render's job from its options; a part ({scenes, handles}) becomes its from/to first (partWindow). Close it with closeRender. */
 export const prepareRender = options => prepareJob(withPart(options));
+
+/**
+ * The end of a render, finished or failed: its working files are removed — unless they are in a `work` folder the
+ * caller named, which is theirs to keep. renderFilm and makeFilm call it in a finally; a strategy of your own that
+ * prepares a job (prepareRender) calls it too.
+ */
+export function closeRender(job) {
+  if (job?.work && !job.keepWork) rmSync(job.work, {recursive: true, force: true});
+}
 
 function prepareJob({film, storyboard, timings, narrationDir = null, out, width: givenWidth, height: givenHeight, fps = 30, intro = null, stamp = null,
   from = intro ? -intro.seconds : 0, to = film.total, poster = film.posterAt ?? null, posterFrame = true, peakCeilingDBFS = -20, loudness = {I: -16, TP: -1.5}, layout = null, motionBlur = null,
-  captionFiles = false, quality = 'standard', ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', video: _strategy, music = null, soundAt = 'start'}) {
+  captionFiles = false, quality = 'standard', ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', video: _strategy, music = null, soundAt = 'start', work = null}) {
   checkLoudnessTarget(loudness);
+  if (work !== null && !(typeof work === 'string' && work.trim())) throw new Error(`work is a folder for the render's working files, kept after the render (left out: a hidden folder beside the video, removed when the render ends), not ${JSON.stringify(work)}`);
   if (!SOUND_AT.includes(soundAt)) throw new Error(`soundAt is 'start' (each sound begins on its moment, the default) or 'peak' (its loudest transient lands on it), not ${JSON.stringify(soundAt)}`);
   const song = music === null || music === undefined ? null : readSongPlacement(music);
   // A song placed where it never plays during the film refuses before a frame is drawn (it would be mixed as silence).
@@ -360,11 +379,17 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   const width = framed?.width ?? givenWidth ?? 1280, height = framed?.height ?? givenHeight ?? 720;
   if (framed && intro && framed.format !== 'landscape') throw new Error(`renderFilm: an intro is drawn for the landscape frame; the ${framed.format} layout takes none (leave intro out)`);
   const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
+  // The working files' folder: the caller's (kept, never swept), or a new hidden one beside the video, removed by
+  // closeRender — made by scratch.mjs · makeScratch (a fresh folder only this user can open, never a path already there),
+  // after sweeping the ones stopped renders left there.
+  const {swept, failed: unswept} = work === null ? sweepScratch(dir, '.storyreel-work') : {swept: [], failed: []};
+  const workDir = work === null ? makeScratch(dir, '.storyreel-work') : path.resolve(work);
+  if (work !== null) mkdirSync(workDir, {recursive: true});
   to = Math.min(to, film.total);
   // A render starts on the film's frame grid (a part's window is rounded to the millisecond): frame f shows film second
   // start + f / fps, so a drawing held on twos (motion.mjs · heldTime) pairs the same frames in a part as in the film.
   const withIntro = intro && from < 0, start = Math.floor(Math.max(0, from) * fps + 1e-6) / fps;
-  const job = {film, storyboard, timings, narrationDir, out, dir, width, height, fps, intro, withIntro, stamp, start, to, poster, posterFrame, peakCeilingDBFS, loudness, layout, framed, blur, captionKinds, ffmpeg, song, soundAt,
+  const job = {film, storyboard, timings, narrationDir, out, dir, work: workDir, keepWork: work !== null, swept, unswept, width, height, fps, intro, withIntro, stamp, start, to, poster, posterFrame, peakCeilingDBFS, loudness, layout, framed, blur, captionKinds, ffmpeg, song, soundAt,
     /** How many frames the film part has (the intro's are extra). */
     frames: Math.ceil((to - start) * fps),
     /** What changes a frame's pixels besides the film itself: a segment's cache key includes it (segments.mjs). */
@@ -430,7 +455,7 @@ export function wholeVideo() {
     name: 'whole',
     plan: job => [{index: 0, f0: 0, f1: job.frames, whole: true}],
     async one(job) {
-      const file = path.join(job.dir, 'film-video.mp4');
+      const file = path.join(job.work, 'film-video.mp4');   // the picture without its sound: a working file
       await job.encodeFrames({file, withIntro: Boolean(job.withIntro), posterFirst: true});
       return {index: 0, status: 'rendered', frames: job.frames, file};
     },
@@ -456,40 +481,41 @@ async function writePoster(job) {
 
 /** The sound (mixed for the whole part, once), the mux with loudness, the chapters and the caption files. */
 export async function finishRender(job, video) {
-  const {film, storyboard, timings, narrationDir, dir, intro, withIntro, start, to, peakCeilingDBFS, loudness, framed, captionKinds, ffmpeg, song, soundAt} = job;
+  const {film, storyboard, timings, narrationDir, dir, work, intro, withIntro, start, to, peakCeilingDBFS, loudness, framed, captionKinds, ffmpeg, song, soundAt} = job;
   const posterFile = await writePoster(job);
   // Audio: narration end to end (or silence), the accents on the same clock, the intro's sound first.
   const run = args => { const r = spawnSync(ffmpeg, ['-y', '-loglevel', 'error', ...args], {stdio: 'inherit'}); if (r.status) throw new Error(`ffmpeg failed: ${args.join(' ').slice(0, 200)}`); };
-  const voice = path.join(dir, 'film-voice.wav');
-  if (narrationDir) joinVoice(run, {dir, storyboard, timings, narrationDir, voice});
+  const voice = path.join(work, 'film-voice.wav');   // the working files in the work folder; the outputs beside the video
+  if (narrationDir) joinVoice(run, {dir: work, storyboard, timings, narrationDir, voice});
   else run(['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', String(film.total), voice]);
   // Each scene's sounds on its own clock (sound.mjs · soundsByScene, the rule compileFilm counted them by).
   const byScene = soundsByScene(film.sounds, film.clock.offsets, timings.scenes.map(s => s.duration));
   const sfxParts = timings.scenes.map((s, i) => {
-    const file = path.join(dir, `film-sfx-${i}.wav`);
+    const file = path.join(work, `film-sfx-${i}.wav`);
     writeFileSync(file, createMotionSound({duration: s.duration, events: byScene[i], peakCeilingDBFS, soundAt}).wav);
     return file;
   });
-  writeFileSync(path.join(dir, 'film-sfx.txt'), concatList(sfxParts));
-  run(['-f', 'concat', '-safe', '0', '-i', path.join(dir, 'film-sfx.txt'), '-ar', '48000', '-ac', '1', path.join(dir, 'film-sfx.wav')]);
+  writeFileSync(path.join(work, 'film-sfx.txt'), concatList(sfxParts));
+  run(['-f', 'concat', '-safe', '0', '-i', path.join(work, 'film-sfx.txt'), '-ar', '48000', '-ac', '1', path.join(work, 'film-sfx.wav')]);
   // Each role measured apart (listening.mjs): the effects stay well under the voice, so the words stay clear.
   const integrated = wav => integratedLoudness(ffmpeg, wav);
-  const roles = {voice: narrationDir ? integrated(voice) : null, effects: film.sounds.length ? integrated(path.join(dir, 'film-sfx.wav')) : null};
-  const tooLoud = effectsUnderVoice(roles), lesson = path.join(dir, 'film-lesson.wav');
-  run(['-i', voice, '-i', path.join(dir, 'film-sfx.wav'), '-filter_complex', '[0:a]aresample=48000[a];[1:a]aresample=48000[b];[a][b]amix=inputs=2:normalize=0:duration=first', '-ac', '1', song ? path.join(dir, 'film-dry.wav') : lesson]);
-  // The song, when there is one, under the voice and the effects: placed on the film clock, measured as its own role.
-  const musicLoud = song ? mixSong(run, {song, total: film.total, dir, lesson, roles, integrated}) : null;
+  const roles = {voice: narrationDir ? integrated(voice) : null, effects: film.sounds.length ? integrated(path.join(work, 'film-sfx.wav')) : null};
+  const tooLoud = effectsUnderVoice(roles), lesson = path.join(work, 'film-lesson.wav');
+  run(['-i', voice, '-i', path.join(work, 'film-sfx.wav'), '-filter_complex', '[0:a]aresample=48000[a];[1:a]aresample=48000[b];[a][b]amix=inputs=2:normalize=0:duration=first', '-ac', '1', song ? path.join(work, 'film-dry.wav') : lesson]);
+  // The song, when there is one, under the voice and the effects: placed on the film clock, measured as its own role
+  // (its working files with the others, in the work folder).
+  const musicLoud = song ? mixSong(run, {song, total: film.total, dir: work, lesson, roles, integrated}) : null;
   const parts = [];
   if (withIntro) {
-    const introWav = path.join(dir, 'film-intro.wav');
+    const introWav = path.join(work, 'film-intro.wav');
     if (intro.wav) writeFileSync(introWav, intro.wav); else run(['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', String(intro.seconds), introWav]);
-    run(['-i', introWav, '-ar', '48000', '-ac', '1', path.join(dir, 'film-intro48.wav')]); parts.push(path.join(dir, 'film-intro48.wav'));
+    run(['-i', introWav, '-ar', '48000', '-ac', '1', path.join(work, 'film-intro48.wav')]); parts.push(path.join(work, 'film-intro48.wav'));
   }
-  run(['-ss', String(start), '-t', String(to - start), '-i', path.join(dir, 'film-lesson.wav'), path.join(dir, 'film-part.wav')]); parts.push(path.join(dir, 'film-part.wav'));
-  writeFileSync(path.join(dir, 'film-audio.txt'), concatList(parts));
-  run(['-f', 'concat', '-safe', '0', '-i', path.join(dir, 'film-audio.txt'), '-ar', '48000', '-ac', '1', path.join(dir, 'film-audio.wav')]);
+  run(['-ss', String(start), '-t', String(to - start), '-i', path.join(work, 'film-lesson.wav'), path.join(work, 'film-part.wav')]); parts.push(path.join(work, 'film-part.wav'));
+  writeFileSync(path.join(work, 'film-audio.txt'), concatList(parts));
+  run(['-f', 'concat', '-safe', '0', '-i', path.join(work, 'film-audio.txt'), '-ar', '48000', '-ac', '1', path.join(work, 'film-audio.wav')]);
   const pictureSeconds = (job.frames + (withIntro ? Math.round(intro.seconds * job.fps) : 0)) / job.fps;
-  const loudnessSet = muxWithLoudness({ffmpeg, video: video.file, wav: path.join(dir, 'film-audio.wav'), out: path.resolve(job.out), target: loudness, seconds: pictureSeconds});
+  const loudnessSet = muxWithLoudness({ffmpeg, video: video.file, wav: path.join(work, 'film-audio.wav'), out: path.resolve(job.out), target: loudness, seconds: pictureSeconds});
   // Chapters on the output's clock, for review and YouTube.
   const lead = withIntro ? intro.seconds : 0;
   const length = lead + to - start;   // a part's chapters are the ones it shows: none before its start or past its end
