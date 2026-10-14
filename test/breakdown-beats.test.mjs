@@ -83,7 +83,15 @@ test('no music: a steady tone has no beats to read, and the breakdown says so; n
   const dir = tempDir('breakdown-beats', t);
   const toned = await breakdown(film(dir, 'tone', {cuts: [2], seconds: 4, sound: 'tone'}), {out: path.join(dir, 'tone'), beatMap});
   assert.equal(toned.spec.audio.beats.ran, false);
-  assert.match(toned.spec.audio.beats.why, /^the beat map could not read the sound: beatMap: tone\.mkv has no steady beat: its onsets are faint \([\d.]+, under 0\.6: a held tone or pad\)/);
+  // The sound was read and has no steady beat: told apart from a sound the beat map could not read; the fix worded for the
+  // API here, for the command line there (breakdown.mjs · HINTS).
+  assert.match(toned.spec.audio.beats.why, /^the sound has no steady beat \(its onsets are faint \([\d.]+, under 0\.6: a held tone or pad\)\); give it as breakdown\(file, \{beatMap, beatOptions: \{bpm: …\}\}\) to lay a grid anyway$/);
+  assert.match(toned.text, /Not run: the sound has no steady beat \(/);
+  const cli = run([path.join(dir, 'tone.mkv'), '--beats', '--out', path.join(dir, 'tone-cli')]);
+  assert.equal(cli.status, 0, cli.stderr);
+  assert.match(cli.stdout, /Not run: the sound has no steady beat \(its onsets are faint \([\d.]+, under 0\.6: a held tone or pad\)\); add --bpm n to lay a grid anyway\./);
+  const unread = await breakdown(path.join(dir, 'tone.mkv'), {out: path.join(dir, 'unread'), beatMap: () => { throw new Error('beatMap: FFmpeg could not read tone.mkv: Invalid data'); }});
+  assert.equal(unread.spec.audio.beats.why, 'the beat map could not read the sound (beatMap: FFmpeg could not read tone.mkv: Invalid data)');
   assert.equal(toned.spec.shots.length, 2, 'the rest of the breakdown stands');
   const silent = await breakdown(film(dir, 'silent', {cuts: [2], seconds: 4, sound: null}), {out: path.join(dir, 'silent'), beatMap});
   assert.deepEqual(silent.spec.audio, {sound: false, beats: {ran: false, why: 'the video has no sound'}});

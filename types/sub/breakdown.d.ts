@@ -93,6 +93,8 @@ export interface BreakdownOptions {
   /** the FFmpeg run for frames, stills and sound (FFMPEG_BIN, or the one on the PATH): 5.1 or later */ ffmpeg?: string;
   /** the adapter that reads the file (finished.mjs · ffmpegProbe) */ probe?: VideoProbe;
   thresholds?: Partial<BreakdownThresholds>;
+  /** how a fix is worded in the spec: 'api' (the default: an option of breakdown()) or 'cli' (a flag of storyreel breakdown, e.g. "add --bpm n") */
+  hints?: 'api' | 'cli';
 }
 
 /**

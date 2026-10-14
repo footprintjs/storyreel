@@ -51,7 +51,7 @@ async function breakdownCommand(args) {
   if (bpm !== undefined && !beats) usageError('--bpm is the beat map\'s: add --beats');
   const {breakdown} = await import('./breakdown.mjs'), reader = beats ? (await import('./beats.mjs')).beatMap : null;
   try {
-    const {text, files} = await breakdown(video, {...(out ? {out} : {}), ...(ffmpeg ? {ffmpeg} : {}), ...(reader ? {beatMap: reader, beatOptions: bpm !== undefined ? {bpm: Number(bpm)} : {}} : {})});
+    const {text, files} = await breakdown(video, {hints: 'cli', ...(out ? {out} : {}), ...(ffmpeg ? {ffmpeg} : {}), ...(reader ? {beatMap: reader, beatOptions: bpm !== undefined ? {bpm: Number(bpm)} : {}} : {})});
     console.log(`${text}\n${files.json}\n${files.md}\n${files.overview} · ${files.sheets.length} shot sheet${files.sheets.length === 1 ? '' : 's'} in ${files.sheets.length ? files.sheets[0].replace(/[^/\\]*$/, '') : '-'}\n${files.record}`);
   } catch (e) {
     console.error(`storyreel breakdown: ${String(e?.message ?? e).replace(/^breakdown: /, '')}${recordSoFar(e?.record)}`);

@@ -19,7 +19,8 @@
   "off the beat by 4.00 s". A reader that gives no `hits` gets no such check.
 - **No steady beat, no map.** `beatMap` refuses (no code) a sound whose onsets keep no steady period — speech, noise,
   or music with a free tempo — or are faint (a held tone or pad), unless a tempo is given; the breakdown records it as
-  not run.
+  not run, "the sound has no steady beat (…)", told apart from "the beat map could not read the sound (…)", the fix
+  worded for the API or the command line (`hints`).
 - **A given tempo sets the tempo, not the phase.** When the half-beats sound as strongly as the beats the map is not
   sure of its phase (`phase: 'unsure'`), keeps no beat to cut on, and says to try twice the tempo given.
 - **Breaking: a breakdown's beat reader is handed the video itself**, not a WAV of its sound. A reader that expected a

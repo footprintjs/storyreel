@@ -214,7 +214,9 @@ async function analyse(read, source, options) {
       s.periodicity = work.candidates.length ? round(periodicity(work.onsets.flux.all, work.candidates[0].period, {reach: Math.round(BEATS.steady.swell * work.onsets.frameRate)}), 3) : 0;
       s.onsets = round(onsetPeak(work.onsets.flux.all), 3);
       if (o.bpm === null && (s.periodicity < BEATS.steady.periodicity || s.onsets < BEATS.steady.onsets)) {
-        throw new Error(`beatMap: ${source} has no steady beat: ${s.onsets < BEATS.steady.onsets ? `its onsets are faint (${s.onsets}, under ${BEATS.steady.onsets}: a held tone or pad)` : `its onsets keep no steady period (periodicity ${s.periodicity}, under ${BEATS.steady.periodicity}: speech, noise, or music with a free tempo)`}; give options.bpm to lay a grid anyway`);
+        // The sound was read: it has no steady beat (`reason`, so a caller can tell it from a sound that could not be read).
+        const why = s.onsets < BEATS.steady.onsets ? `its onsets are faint (${s.onsets}, under ${BEATS.steady.onsets}: a held tone or pad)` : `its onsets keep no steady period (periodicity ${s.periodicity}, under ${BEATS.steady.periodicity}: speech, noise, or music with a free tempo)`;
+        throw Object.assign(new Error(`beatMap: ${source} has no steady beat: ${why}; give options.bpm to lay a grid anyway`), {reason: 'no-steady-beat', why});
       }
       s.alternatives = work.candidates.map(({bpm, score}) => ({bpm, score}));
       s.bpmGiven = o.bpm; s.strongest = work.candidates[0]?.bpm ?? null;

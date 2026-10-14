@@ -167,7 +167,7 @@ test('a beat map, when given, is handed the video itself, its own options and th
 
 test('a beat map that cannot read the sound is no failure: the beats were not read, and the spec says why', {skip}, async () => {
   const {spec, text} = await breakdown(reference, {out: path.join(dir, 'no-tempo'), beatMap: () => { throw new Error('the sound has no repeating onsets to measure a tempo from; give options.bpm to lay a grid anyway'); }});
-  assert.deepEqual(spec.audio.beats, {ran: false, why: 'the beat map could not read the sound: the sound has no repeating onsets to measure a tempo from; give options.bpm to lay a grid anyway (give it as breakdown(file, {beatMap, beatOptions: {bpm: …}}))'});
+  assert.deepEqual(spec.audio.beats, {ran: false, why: 'the beat map could not read the sound (the sound has no repeating onsets to measure a tempo from); give it as breakdown(file, {beatMap, beatOptions: {bpm: …}}) to lay a grid anyway'});
   assert.equal(spec.shots.length, 6, 'the rest of the breakdown stands');
   assert.match(text, /Not run: the beat map could not read the sound/);
 });
@@ -371,7 +371,7 @@ test('beat options are the reader\'s own: handed on untouched; only an error the
   assert.deepEqual(seen[0], {tempo: 120, ffmpeg: process.env.FFMPEG_BIN || 'ffmpeg'}, 'handed on as given, with the breakdown\'s FFmpeg');
   const {spec} = await breakdown(reference, {out: path.join(dir, 'untyped'), beatMap: reader(null), beatOptions: {tempo: 120}});
   assert.equal(spec.audio.beats.ran, false, 'any other error is a sound the reader could not read');
-  assert.match(spec.audio.beats.why, /^the beat map could not read the sound: beatMap: tempo is not an option/);
+  assert.match(spec.audio.beats.why, /^the beat map could not read the sound \(beatMap: tempo is not an option/);
 });
 
 test('showinfo\'s times are read from its integer pts and time base: exact past 1,000 s and 10,000 s, where FFmpeg 6 rounds pts_time', () => {

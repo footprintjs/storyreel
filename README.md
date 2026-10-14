@@ -1826,7 +1826,9 @@ film's runs past what one argument may hold: `-/filter:v` from FFmpeg 7, `-filte
   verdict); of an unsure one only the beats every candidate tempo shares and the song hits (`judged`), so no cut is
   called on the beat against a grid the map is unsure of. A cut near none of those is off the beat for a sure map, and
   not judged (`onBeat: null`, counted in `unjudged`) for an unsure one; `likely` names the tempi to give (`--bpm`) to
-  judge every cut. A cut where no music plays (no heard hit within a beat period: a silent gap, before the music or
+  judge every cut. Beats not read say which: "the sound has no steady beat (…)" — it was read, and the beat map found
+  no steady beat (its error carries `reason: 'no-steady-beat'`) — or "the beat map could not read the sound (…)"; the fix
+  is worded for whoever asked (`hints`: the API's `beatOptions: {bpm: …}`, or the command line's "add --bpm n"). A cut where no music plays (no heard hit within a beat period: a silent gap, before the music or
   after it) is "no music here" (`music: false`, counted in `noMusic`), never off the beat — asked of the reader's `hits`:
   a reader that gives none gets no such check, and every cut is judged against its beats. An unsure map's drop is a
   maybe (`drop.maybe`: "Maybe a drop at 0:05.6"), and a close call is named only when the next tempo scores 0.9 of the
@@ -2277,7 +2279,7 @@ the default because it rarely does; there is no swap repair.
 | `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?, claims?})` | compile + render as a footprintjs pipeline, with `making-of.json` (a segmented render: one subflow per segment; the claims verdict, `check-claims`) |
 | `approveFilm({record, by, note?})` · `checkApproval(approval, inputs)` | the approval lock: approve a watched render from its making-of.json, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
 | `checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})` · `FINISHED_CHECK_NAMES` | checks on the finished file: lengths, blank runs, flash frames, hand-overs and joins, the voice, captions (`footprint-storyreel/finished` adds `ffmpegProbe`, `FINISHED_CHECKS`, `FINISHED`) |
-| `footprint-storyreel/breakdown` → `breakdown(videoFile, {out?, beatMap?, beatOptions?, thresholds?, ffmpeg?, probe?})` · `breakdownText(spec)` · `BREAKDOWN` | a reference film as a spec to match: cuts, fades and dissolves, shots, pacing, motion, lettering (a heuristic), cuts on the beat (`beatMap(video, {ffmpeg})`: the reader reads the video's sound itself; `storyreel breakdown --beats`), judged by `safeBeats`; every verdict with its evidence |
+| `footprint-storyreel/breakdown` → `breakdown(videoFile, {out?, beatMap?, beatOptions?, thresholds?, ffmpeg?, probe?, hints?})` · `breakdownText(spec)` · `BREAKDOWN` | a reference film as a spec to match: cuts, fades and dissolves, shots, pacing, motion, lettering (a heuristic), cuts on the beat (`beatMap(video, {ffmpeg})`: the reader reads the video's sound itself; `storyreel breakdown --beats`), judged by `safeBeats`; every verdict with its evidence |
 | `segmentedVideo({store, recipe, code?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir)` · `ffmpegJoin()` · `planSegments(film, {fps})` · `segmentKey(…)` · `codeFingerprint(paths)` | re-render only what changed: the picture in cached segments, joined (`renderFilm({…, video})`) |
 | `footprint-storyreel/release` → `makeRelease({targets, post, out, …})` · `loadTarget` · `checkAdapter` · `planProblems` · `TARGET_NAMES` | the post for each platform: the video in its shape, captions, thumbnail, the text to paste, checked against the platform's limits and audience |
 | `readCast(cast)` · `castText(text, cast)` · `withCast(value, cast)` | the cast: `{{role}}` in any text becomes the role's name; kits read the rest from `context.cast` |

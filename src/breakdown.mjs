@@ -186,7 +186,7 @@ const decided = (s, into, keys) => decidedOf(s.$getValue(into) ?? [], keys);
 
 // ── Options ────────────────────────────────────────────────────────────────────────────────────────────────
 
-const OPTION_KEYS = ['out', 'beatMap', 'beatOptions', 'ffmpeg', 'probe', 'thresholds'];
+const OPTION_KEYS = ['out', 'beatMap', 'beatOptions', 'ffmpeg', 'probe', 'thresholds', 'hints'];
 /** Thresholds that count pixels, frames or candidates: whole numbers (a width at least 16 pixels). */
 const WHOLE = {width: 16, stillWidth: 16, gradualFrames: 1, maxCandidates: 1, logoShots: 1};
 
@@ -223,8 +223,10 @@ function readOptions(videoFile, options) {
   if (typeof ffmpeg !== 'string' || !ffmpeg) throw new Error('breakdown: ffmpeg is the FFmpeg to run (a path or a name on the PATH)');
   if (options.probe !== undefined && !(typeof options.probe?.probe === 'function' && typeof options.probe?.frames === 'function')) throw new Error('breakdown: probe reads the file, {probe(file), frames(file, size, each)} (finished.mjs · ffmpegProbe)');
   if (options.out !== undefined && !(typeof options.out === 'string' && options.out)) throw new Error('breakdown: out is the folder to write, a path');
+  const {hints = 'api'} = options;
+  if (!Object.hasOwn(HINTS, hints)) throw new Error(`breakdown: hints is how a fix is worded, 'api' (the default: an option of breakdown()) or 'cli' (a flag of storyreel breakdown), not ${JSON.stringify(hints)}`);
   const out = path.resolve(options.out ?? `${path.basename(videoFile, path.extname(videoFile))}-breakdown`);
-  return {file: path.resolve(videoFile), out, beatMap, beatOptions, ffmpeg, probe: options.probe ?? ffmpegProbe({ffmpeg}), t: readThresholds(thresholds)};
+  return {file: path.resolve(videoFile), out, beatMap, beatOptions, ffmpeg, hints, probe: options.probe ?? ffmpegProbe({ffmpeg}), t: readThresholds(thresholds)};
 }
 
 // ── The file and its frames ────────────────────────────────────────────────────────────────────────────────
@@ -508,12 +510,21 @@ function readBeats(answer) {
 }
 
 /**
- * Why a beat map could not read the sound, in its own words; when they ask for one of its options, how to give it here
- * (breakdown hands the beat map `beatOptions`).
+ * How a fix is worded, by who asked for the breakdown (`hints`): the API call's option, or the command line's flag (only
+ * --bpm is one). The one place that decides.
  */
-function notRead(error) {
-  const said = String(error?.message ?? error), option = /options\.(\w+)/.exec(said)?.[1];
-  return `the beat map could not read the sound: ${said}${option ? ` (give it as breakdown(file, {beatMap, beatOptions: {${option}: …}}))` : ''}`;
+const HINTS = Object.freeze({api: option => `give it as breakdown(file, {beatMap, beatOptions: {${option}: …}})`, cli: option => (option === 'bpm' ? 'add --bpm n' : null)});
+
+/**
+ * Why the beats were not read, told apart: the sound was read and has no steady beat (the beat map says so, `reason:
+ * 'no-steady-beat'`), or the beat map could not read it — in its own words, less the fix it words for its own API; when
+ * it names one of its options, how to give it here (HINTS).
+ */
+function notRead(error, hints) {
+  const said = String(error?.message ?? error), option = /options\.(\w+)/.exec(said)?.[1], fix = option ? HINTS[hints](option) : null;
+  const tail = fix ? `; ${fix}${option === 'bpm' ? ' to lay a grid anyway' : ''}` : '';
+  if (error?.reason === 'no-steady-beat') return `the sound has no steady beat (${error.why ?? said})${tail}`;
+  return `the beat map could not read the sound (${said.replace(/; give options\.\w+[^;]*$/, '')})${tail}`;
 }
 
 /**
@@ -529,7 +540,7 @@ const readBeatsStage = run => async s => {
     // The one refusal a reader can make: its options are wrong (code 'BEAT_OPTIONS'), a wiring mistake. Anything else
     // it throws is a sound it could not read, recorded as not run.
     if (e?.code === 'BEAT_OPTIONS') throw new Error(`breakdown: the beat map refused its options: ${e.message}`, {cause: e});
-    run.beatsFailed = notRead(e);
+    run.beatsFailed = notRead(e, run.o.hints);
   }
   if (!run.beatsFailed) run.beats = readBeats(answer);
   if (run.beats) { s.bpm = run.beats.bpm; s.beatCount = run.beats.beats.length; s.drop = run.beats.drop; if (run.beats.verdict !== undefined) s.tempoVerdict = run.beats.verdict; } else s.beatsFailed = run.beatsFailed;
