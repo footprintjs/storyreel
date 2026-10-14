@@ -637,13 +637,21 @@ export interface Segment { index: number; f0: number; f1: number; from: number; 
 export function planSegments(film: Film, options?: {fps?: number; frames?: number; minSeconds?: number; blur?: boolean}): Segment[];
 /** A segment's cache key (on its own clock, so a segment further on keeps it when an earlier scene grows by whole frames). */
 export function segmentKey(film: Film, segment: Segment, options: {recipe: Recipe; storyboard?: Storyboard | null; pixels: Record<string, unknown>; code?: string | SegmentCode | null; fps?: number; margin?: number; extra?: {poster?: unknown; recalls?: unknown}}): string;
-/** A fingerprint of drawing code: every file under the folders given, hashed in path order. */
+/** A fingerprint of drawing code: every file under the folders given and every file they read (relative and TypeScript imports, transitively; a linked package's code; `new URL('…', import.meta.url)` assets; never into node_modules), and each package in node_modules by its installed version. What it cannot follow is listed (codeCover), never thrown on. */
 export function codeFingerprint(paths: string[], options?: {extensions?: string[]}): string;
+/** What a fingerprint made in this process covered: every file (real paths, sorted), every package ('name@version'), the relative imports that lead nowhere and the imports chosen at run time; or null. */
+export function codeCover(fingerprint: string): Readonly<{files: readonly string[]; packages: readonly string[]; missing: readonly {from: string; spec: string}[]; unfollowed: readonly {from: string; code: string}[]; unparsed: readonly {file: string; from: number}[]}> | null;
+/** The engine's fingerprint: StoryReel's own files and the versions of what draws a frame (versions.mjs · DRAWING), nothing else; `versionOf` stubs a version. */
+export function engineFingerprint(options?: {versionOf?: (name: string) => string}): string;
+/** StoryReel's own code fingerprint (every file of its code, its fonts, the versions of what it draws with): in every segment key, and locked by an approval. */
+export function storyreelCode(): string;
 
 /** What a film was made from, hashed (keys sorted first: reformatting changes nothing): film.inputs, and makeFilm adds the pacing, the voice and the kits' code. */
 export interface FilmInputs { storyboard: string; timings: string; recipe: string; strings: string | null; data: string | null; theme: string;
   /** Every file the film read through its root, by its path from the root. */
   files: Readonly<Record<string, string>>; pacing?: string; voice?: string; code?: string;
+  /** makeFilm adds what draws and decides the film: StoryReel's version and its code (`engine`: storyreelCode), and footprintjs's version (an approval locks them). */
+  storyreel?: string; footprintjs?: string; engine?: string;
   /** Present when the film's camera moves were cut for reduced motion: another film, as far as an approval goes. */
   reducedMotion?: true;
   /** The facts the storyboard names (storyboard.facts), hashed on their own: an approval locks them; they are in no segment's key (they draw nothing). */

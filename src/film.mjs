@@ -36,7 +36,7 @@ import {readAttention, chip} from './attention.mjs';
 import {readFacts, exampleScenes, findClaims, labelSpans, numberLocale} from './claims.mjs';
 import {planCamera} from './camerawork.mjs';
 import {readNotes, placePushes, pushAt} from './notes.mjs';
-import {view, then, about, through, back} from './regions.mjs';
+import {view, compose, about, through, back} from './regions.mjs';
 import {tooShortToRead, readingMode, readingPace} from './reading.mjs';
 import {readIntent, readContinuity, checkContinuity, tooMuchTooFast, distinctMoments, watchingMode, watchingText, WATCHING, readReads, checkReads} from './shots.mjs';
 import {checkSound, soundsByScene, MAX_SOUNDS_PER_SCENE} from './sound.mjs';
@@ -206,6 +206,11 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   storyboard ??= board; data ??= capture ?? null;
   if (typeof reducedMotion !== 'boolean') throw new Error(`compileFilm: reducedMotion must be true (the camera's moves cut to their end framing; handheld off) or false (the default), not ${JSON.stringify(reducedMotion)}`);
   checkRecipeKeys(recipe, hostKeys);
+  // The film's first shot is its story world (the shots are the story, then each stage): a recipe names it. An empty
+  // board is said ("items": []), never assumed — a recipe that lost its story would otherwise open on a blank board.
+  const storyGiven = recipe.story ?? recipe.whiteboard;
+  if (storyGiven === undefined) throw new Error('compileFilm: the recipe has no story, and the film\'s first shot is its story world: give "story": {"kit": "whiteboard", "items": []} for an empty board, or {"kit": "<your kit>", …}');
+  if (!storyGiven || typeof storyGiven !== 'object' || Array.isArray(storyGiven)) throw new Error(`compileFilm: the recipe's ${recipe.story !== undefined ? 'story' : 'whiteboard'} is the story world, {"kit": "whiteboard", "items": […]} or {"kit": "<your kit>", …}, not ${JSON.stringify(storyGiven)}`);
   // The language the film is shown in (a BCP 47 tag, or none): the numbers on screen are read by it (claims.mjs).
   let filmLang; try { filmLang = numberLocale(lang)?.lang ?? null; } catch (e) { throw new Error(`compileFilm: ${e.message}`); }
   // The cast's names go into the text first ({{role}} → name; cast.mjs), so every reader sees the film as it is said.
@@ -704,8 +709,8 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   /** A world's view on the frame: its sheet hung on the paper, then the push-in's and the spotlight's cameras. */
   function worldView(w, spot, camera = null) {
     let v = view(w.S, w.BX, w.BY);
-    if (camera) v = then(about(camera), v);
-    if (spot) v = then(about(spotCamera(w, spot)), v);
+    if (camera) v = compose(about(camera), v);
+    if (spot) v = compose(about(spotCamera(w, spot)), v);
     return v;
   }
   /** The world on screen at t (the part of the recipe that draws it, and its view), or null on paper. */
@@ -883,7 +888,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   function underView(t) {
     const cam = pushAt(pushes, t), f = attention?.focus, v = f?.moves ? f.viewAt(t) : null;
     const pushed = cam ? about(cam) : null, focused = v ? about({sx: v.cx, sy: v.cy, z: v.z, tx: v.sx, ty: v.sy}) : null;
-    return pushed && focused ? then(focused, pushed) : pushed ?? focused;
+    return pushed && focused ? compose(focused, pushed) : pushed ?? focused;
   }
 
   // The notes as applied, in the order written: the making-of record says what each one changed.

@@ -422,3 +422,8 @@ import {code, isCode, CODE} from '../types/sub/decorative.js';
 import {CODE_READING} from '../types/sub/claims.js';
 export const coded = (ctx: {fillText(t: string, x: number, y: number): void}): boolean => code(ctx, c => { c.fillText('x = 16.67;', 0, 0); return isCode(c); }) && typeof CODE === 'symbol' && CODE_READING.cut === ',';
 export const codeWord = (w: Word): boolean => w.code === true;
+// regions composes views (compose, never then); codeCover lists what a code fingerprint covered.
+import {compose, view as regionView} from '../types/sub/regions.js';
+import {codeCover} from '../types/sub/segments.js';
+export const composed = compose(regionView(2), regionView(1, 5, 5)).z;
+export const covered = (fp: string): number => (codeCover(fp)?.files.length ?? 0) + (codeCover(fp)?.packages.length ?? 0);

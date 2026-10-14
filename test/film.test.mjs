@@ -124,3 +124,13 @@ test('pixel pins: the example films draw exactly the frames recorded in test/gol
     assert.deepEqual(changed, [], `${film} changed at ${changed.join(', ')} s (re-record with node test/golden.mjs --write only for an intended change)`);
   }
 });
+
+test('a recipe with no story refuses, naming what to give: the film\'s first shot is its story world, an empty board is said', async () => {
+  const sb = {title: 'No story', scenes: [{id: 'a', narration: 'only a stage after this'}]}, timings = evenTimings(sb);
+  const refused = /compileFilm: the recipe has no story, and the film's first shot is its story world: give "story": \{"kit": "whiteboard", "items": \[\]\} for an empty board, or \{"kit": "<your kit>", …\}/;
+  for (const recipe of [{}, {stages: []}, {story: null}]) await assert.rejects(compileFilm({storyboard: sb, recipe, timings}), refused, JSON.stringify(recipe));
+  await assert.rejects(compileFilm({storyboard: sb, recipe: {story: 'whiteboard'}, timings}), /compileFilm: the recipe's story is the story world, \{"kit": "whiteboard", "items": \[…\]\} or \{"kit": "<your kit>", …\}, not "whiteboard"/);
+  await assert.rejects(compileFilm({storyboard: sb, recipe: {story: {kit: 'whiteboard'}}, timings}), /whiteboard: items is the list of what the board draws \(\[\] for an empty board\), not undefined/);
+  const empty = await compileFilm({storyboard: sb, recipe: {story: {kit: 'whiteboard', items: []}}, timings});
+  assert.ok(empty.total > 0, 'an empty board, said, compiles');
+});

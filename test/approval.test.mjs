@@ -7,9 +7,11 @@ import {writeFileSync, readFileSync, cpSync, readdirSync, statSync, mkdirSync, c
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {approveFilm, checkApproval, compileFilm, makeFilm, evenTimings} from '../src/index.mjs';
+import {approveFilm, checkApproval, compileFilm, makeFilm, evenTimings, codeFingerprint} from '../src/index.mjs';
 import {stableJson, requireApproval, voiceHash} from '../src/approval.mjs';
 import {hashOf} from '../src/hash.mjs';
+import {lockedVersions} from '../src/versions.mjs';
+import {storyreelCode} from '../src/segments.mjs';
 import {tempDir} from './tmp.mjs';
 
 const dir = fileURLToPath(new URL('../examples/hello/', import.meta.url)), read = f => JSON.parse(readFileSync(dir + f, 'utf8'));
@@ -73,12 +75,35 @@ test('makeFilm: approve the draft you watched; the final render with it records 
   const record = JSON.parse(readFileSync(final.makingOf, 'utf8'));
   assert.equal(record.approval.by, 'S'); assert.equal(record.approval.render, 'film.mp4');
   assert.deepEqual(record.inputs, approval.inputs, 'the final render is made from what was approved');
+  // The library that draws it is locked too: StoryReel's version and footprintjs's, recorded in making-of.json.
+  const versions = lockedVersions();
+  assert.deepEqual([record.inputs.storyreel, record.inputs.footprintjs], [versions.storyreel, versions.footprintjs]);
+  assert.match(versions.storyreel, /^\d+\.\d+\.\d+/); assert.match(versions.footprintjs, /^\d+\.\d+\.\d+/);
+  const stubbed = {...approval, inputs: {...approval.inputs, storyreel: '0.0.0-stub'}};
+  await assert.rejects(makeFilm({storyboard, recipe, root: dir, timings, out: path.join(top, 'v', 'film.mp4'), approval: stubbed, render}),
+    new RegExp(`changed since S approved it on .*: storyreel version \\(0\\.0\\.0-stub approved, ${versions.storyreel.replaceAll('.', '\\.')} now\\) differs from what was approved`));
+  // StoryReel's code is locked too (the engine's fingerprint): a `file:` dependency keeps its version while its code changes.
+  assert.equal(record.inputs.engine, storyreelCode(), 'the engine fingerprint, as every segment key holds it');
+  const sameVersion = {...approval, inputs: {...approval.inputs, engine: 'stub-code'}};
+  assert.deepEqual(checkApproval(sameVersion, record.inputs).changed, [`StoryReel's code (same version ${versions.storyreel})`]);
+  await assert.rejects(makeFilm({storyboard, recipe, root: dir, timings, out: path.join(top, 'v2', 'film.mp4'), approval: sameVersion, render}), /StoryReel's code \(same version [^)]+\) differs from what was approved/);
+  assert.deepEqual(checkApproval({...approval, inputs: {...approval.inputs, engine: 'stub-code', storyreel: '0.0.0-stub'}}, record.inputs).changed, [`storyreel version (0.0.0-stub approved, ${versions.storyreel} now)`], 'a new version says it once: its code is in it');
+  const {storyreel: _s, footprintjs: _f, engine: _e, ...older} = approval.inputs;
+  assert.deepEqual(checkApproval({...approval, inputs: older}, record.inputs).changed, [`footprintjs version (none approved, ${versions.footprintjs} now)`, `storyreel version (none approved, ${versions.storyreel} now)`],
+    'an approval made before the versions were locked names them once');
   assert.ok(record.approval.unlocked.some(u => /render settings/.test(u)) && record.approval.unlocked.some(u => /kits' code/.test(u)), 'it says what it does not lock');
   const edited = structuredClone(recipe); edited.story = {...edited.story, intent: 'Something else.'};
   await assert.rejects(makeFilm({storyboard, recipe: edited, root: dir, timings, out: path.join(top, 'x', 'film.mp4'), approval, render}), /recipe differs from what was approved/);
   await assert.rejects(makeFilm({storyboard, recipe, root: dir, timings: evenTimings(storyboard, {tail: 4, wordSeconds: .6}), out: path.join(top, 'y', 'film.mp4'), approval, render}), /timings differs/);
   const locked = await makeFilm({storyboard, recipe, root: dir, timings, out: path.join(top, 'code', 'film.mp4'), code: 'kits-v1', render});
   const lockedApproval = approveFilm({record: locked.makingOf, by: 'S', at});
+  assert.deepEqual(JSON.parse(readFileSync(locked.makingOf, 'utf8')).code, {fingerprint: 'kits-v1', files: 'not listed: the fingerprint was made in another process'});
+  // A fingerprint made here: the record lists every file it covers, from the film's root, and every package.
+  const kitDir = tempDir('kitcode'); writeFileSync(path.join(kitDir, 'kit.mjs'), "import {h} from './help.mjs';\nexport const kit = h;"); writeFileSync(path.join(kitDir, 'help.mjs'), 'export const h = 1;');
+  const covered = await makeFilm({storyboard, recipe, root: dir, timings, out: path.join(top, 'covered', 'film.mp4'), code: codeFingerprint([path.join(kitDir, 'kit.mjs')]), render});
+  const code = JSON.parse(readFileSync(covered.makingOf, 'utf8')).code;
+  assert.deepEqual(code.files.map(f => path.basename(f)), ['help.mjs', 'kit.mjs'], 'the kit and the helper it imports');
+  assert.deepEqual([code.packages, code.fingerprint === JSON.parse(readFileSync(covered.makingOf, 'utf8')).inputs.code], [[], true]);
   await assert.rejects(makeFilm({storyboard, recipe, root: dir, timings, out: path.join(top, 'code2', 'film.mp4'), code: 'kits-v2', approval: lockedApproval, render}), /code differs/);
   await assert.rejects(makeFilm({storyboard, recipe, root: dir, timings, out: path.join(top, 'z', 'film.mp4'), approval: {by: 'S'}, render}), /not an approval/);
 });
