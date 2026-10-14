@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.13.0 — camera moves by name, motion from a video, music on the beat, reference breakdowns, three review verdicts, skills that build a film, and outputs that stay where you put them
 
 - **The suite fits a CI runner.** `npm run test:temp` runs the three heaviest test files (claims, review, slideshow)
   one at a time, after the rest, and the rest as many at once as the machine has cores less one and 4 GB each
