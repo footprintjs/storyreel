@@ -15,7 +15,7 @@ export interface Review {film: Film; window: {from: number; to: number}; part: {
   /** Each sample's frame as grey levels, 160 × 90 (the same drawing as its hash): what the slideshow check reads. */
   greys: Map<number, Uint8Array>; frozen: {from: number; to: number}[]; picked: string[]}
 /**
- * A check: a strategy run as its own subflow, picked when `when(scope)` is true (scope.facts: {seconds, stillFor, newEvery, loop, captions, samples, words, spoken, parts, claims}).
+ * A check: a strategy run as its own subflow, picked when `when(scope)` is true (scope.facts: {seconds, stillFor, newEvery, loop, captions, samples, words, spoken, parts, claims, freezes?: the camera freezes that reach the part, when there are any}).
  * `find` answers at once with its hits, copied as {kind, t, what}; a `when` or a `find` that throws, or a `find` that returns anything else
  * (a promise, no list, a hit without a name, a time or words), fails the review, naming the check. Hits with the same kind and `what` merge
  * into one span, so `what` names one stretch.
@@ -31,7 +31,7 @@ export interface VerdictCheck {label: string; why?: string; notRun?: string; whe
   verdict: VerdictRules; summary?(measured: any): string}
 export type ReviewCheck = FindingCheck | VerdictCheck;
 /** The built-in checks; slideshow, geometry and claims answer with a verdict. */
-export const REVIEW_CHECKS: Readonly<Record<'under-captions' | 'words-overlap' | 'cut-off' | 'hook' | 'text-density' | 'silences' | 'stale' | 'loop' | 'still', FindingCheck> & Record<'slideshow' | 'geometry' | 'claims', VerdictCheck>>;
+export const REVIEW_CHECKS: Readonly<Record<'under-captions' | 'words-overlap' | 'cut-off' | 'hook' | 'text-density' | 'silences' | 'stale' | 'loop' | 'frozen-voice' | 'still', FindingCheck> & Record<'slideshow' | 'geometry' | 'claims', VerdictCheck>>;
 /** What a verdict check answered: its verdict, why (the rule that matched, or what passing means), what it measured, and its numbers in words. */
 export interface ReviewVerdict {check: string; label: string; verdict: Verdict; why: string; measured: Record<string, unknown>; summary?: string}
 export function verdictsText(verdicts: ReviewVerdict[]): string;

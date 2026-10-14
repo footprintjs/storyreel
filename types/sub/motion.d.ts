@@ -5,6 +5,8 @@ export const FEELS: Readonly<Record<FeelName, Readonly<Feel>>>;
 export const FEEL_NAMES: readonly FeelName[];
 /** A feel as given (a name or {k, d}), checked. */
 export function readFeel(feel?: FeelName | Feel): Feel;
+/** How long a feel's spring takes to come within `within` (0.005) of its end and stay (seconds): until then, a move on that feel is still moving. */
+export function settleTime(feel?: FeelName | Feel, options?: {within?: number}): number;
 /** A damped spring 0 → 1, t seconds after it starts (0 before); under-damped feels overshoot. */
 export function spring(t: number, feel?: FeelName | Feel): number;
 /** The scale of something arriving at `at`: 0 → 1 with the feel's overshoot (playful by default). */
@@ -34,3 +36,10 @@ export interface FollowOptions {from?: number; feel?: FeelName | Feel; drag?: nu
 export function follow<P extends Hanging>(body: (u: number) => P, t: number, options?: FollowOptions): P;
 /** How far the part trails the body at t (follow − body): 0 at rest and at a steady pace; back as it sets off, past as it stops. */
 export function lag<P extends Hanging>(body: (u: number) => P, t: number, options?: FollowOptions): P;
+
+/** A turn drawn as a cartoon turnaround: which drawing (0 front … views − 1 side) and how wide to draw it (1 − depth at a swap … 1). */
+export interface Turnaround { view: number; squash: number }
+/** turnaround's options: views (how many drawings, 2 or more; 3), depth (how much narrower at a swap, 0 – <1; .22), window (how much of the turn the squash spans; .2). */
+export interface TurnaroundOptions { views?: number; depth?: number; window?: number }
+/** The drawing for a turn (a walk's `turn`, 0 facing us … 1 along the way) and a squash across each swap, so the change reads as the body turning. */
+export function turnaround(turn: number, options?: TurnaroundOptions): Turnaround;

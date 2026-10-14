@@ -11,6 +11,9 @@
  * Focus (FOCUS): `camera` eases the camera to frame the named thing (sizes as a director's push: medium, close,
  * insert; `on: "wide"` is the whole frame); `spotlight` darkens the rest; `dim` lays a veil of the paper over the
  * rest; `none`. A list composes them in order — ["camera", "dim"] moves the camera and veils the rest of its view.
+ * A film has one camera: a moving focus and the director's push notes refuse each other, and the recipe's camera
+ * moves (camerawork.mjs) take turns with a moving focus — never both at once; the camera's view is the outer lens,
+ * so it frames whatever the focus has framed.
  * Every move is a spring (motion.mjs · FEELS), so a camera that is still easing toward one thing
  * turns smoothly toward the next. Emphasis (EMPHASIS): `pop` lands the words big on their beat, then settles them
  * into a label in the top corner until the next words; `corner` is the label only; `label` sits the words on the
@@ -24,7 +27,7 @@
  * burned-in captions keeps it above them ([0, 0, 1600, 700]); it is centred there and sized to it.
  */
 import {FRAMINGS} from './notes.mjs';
-import {track, pop, readFeel} from './motion.mjs';
+import {track, pop, readFeel, settleTime} from './motion.mjs';
 import {inOut as ease} from './ease.mjs';
 
 const W = 1600, H = 900;
@@ -164,7 +167,9 @@ function readFocus(spec, {clock, named, strategies, pushes, theme}) {
     return {cx: Math.min(W - (W - sx) / z, Math.max(sx / z, track(t, tracks.cx, feel))), cy: Math.min(H - (H - sy) / z, Math.max(sy / z, track(t, tracks.cy, feel))), z, sx, sy,
       box: tracks.box.map(b => track(t, b, feel)), w: clamp01(track(t, tracks.w, feel))};
   };
-  return {strategy: strategy.name, viewAt, show: (ctx, t, paint) => strategy.show(ctx, viewAt(t), paint, theme),
+  // While it moves the camera: from each key until its spring settles (the camera's moves take turns with it: camerawork.mjs).
+  const moving = strategy.moves ? keys.map((k, key) => ({from: k.t, to: k.t + settleTime(feel), key, on: k.on})) : [];
+  return {strategy: strategy.name, moves: Boolean(strategy.moves), moving, viewAt, show: (ctx, t, paint) => strategy.show(ctx, viewAt(t), paint, theme),
     record: {strategy: strategy.name, ...(spec.safe ? {safe} : {}), keys: keys.map(k => ({t: +k.t.toFixed(3), on: k.on, ...(k.size ? {size: k.size} : {})}))}};
 }
 

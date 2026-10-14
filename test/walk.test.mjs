@@ -83,15 +83,47 @@ test('the steps come from the distance and the figure\'s size; `seconds` fits th
 });
 
 test('walk refusals name the fix', () => {
-  assert.throws(() => readWalk('skip'), /no walk called "skip" \(the walks are stroll, brisk, bouncy, tiptoe, or \{cadence, stride, bob, bounce, lift, lean, arms, anticipate, dip, settle, rock\} of your own\)/);
+  assert.throws(() => readWalk('skip'), /no walk called "skip" \(the walks are stroll, brisk, bouncy, tiptoe, or \{cadence, stride, bob, bounce, lift, lean, arms, anticipate, dip, settle, rock, roll\} of your own\)/);
   assert.throws(() => readWalk({...WALKS.stroll, cadence: 0}), /cadence and stride above 0/);
   assert.throws(() => readWalk({...WALKS.stroll, bob: -1}), /check bob/);
   assert.throws(() => readWalk({...WALKS.stroll, bounce: 2}), /bounce and arms 0–1/);
   assert.throws(() => readWalk({...WALKS.stroll, arms: 2}), /bounce and arms 0–1/);
+  assert.throws(() => readWalk({...WALKS.stroll, roll: 1.5}), /roll 0–1 radians/);
   assert.throws(() => readWalk('constructor'), /no walk called "constructor"/);
   assert.throws(() => walk({from: 0, to: 900, start: 0, size: 500, seconds: .05}), /5 steps in 0.05 s is 100.00 steps a second, and this style walks 1.8 — give between 1.39 and 5.56 seconds/);
   assert.throws(() => walk({from: 0, to: 100, start: 0}), /size is the figure's standing height in px/);
   assert.throws(() => walk({from: 0, to: NaN, start: 0, size: 400}), /from and to are places on the floor/);
   assert.throws(() => walk({from: 0, to: 100, start: 0, size: 400, seconds: 0}), /seconds is how long the stepping takes/);
   assert.throws(() => walk({from: 0, to: 100, start: 0, size: 400}).at(NaN), /at\(t\) takes seconds/);
+});
+
+test('the feet roll heel to toe: a heel strike as a foot lands, flat while the body passes, the heel up before it lifts', () => {
+  const w = walk({from: 100, to: 1300, start: 1, size: 475, style: 'stroll'}), R = WALKS.stroll.roll, T = w.stepSeconds, t0 = 1 + WALKS.stroll.anticipate;
+  // A middle step (the third): its mover pushes off its toe, lands on its heel; the planted foot is flat mid-step, heel up at the end.
+  const mid = k => t0 + (k - 1 + .5) * T, near = (k, u) => w.at(t0 + (k - 1 + u) * T), mover = k => (k % 2 === 1 ? 0 : 1);
+  assert.ok(Math.abs(near(3, .01).feet[mover(3)].angle + R) < .02, 'the mover starts on its toe (heel up)');
+  assert.ok(Math.abs(near(3, .999).feet[mover(3)].angle - .8 * R) < .02, 'and lands on its heel (toes up)');
+  assert.ok(Math.abs(w.at(mid(3)).feet[1 - mover(3)].angle) < .02, 'the planted foot is flat while the body passes over it');
+  assert.ok(near(3, .98).feet[1 - mover(3)].angle < -.8 * R, 'its heel is up just before it lifts');
+  // Standing, setting off, settling: flat.
+  for (const t of [0, 1.1, w.arrive + .2, w.end + 1]) assert.deepEqual(w.at(t).feet.map(f => f.angle), [0, 0], `flat at ${t}`);
+});
+
+test('a foot never snaps: its roll changes smoothly from standing to standing, in every style, either way', () => {
+  for (const style of WALK_NAMES) for (const [from, to] of [[100, 1000], [1800, -250], [300, 360]]) {
+    const w = walk({from, to, start: 2, size: 475, style});
+    let prev = null;
+    for (const [t, p] of samples(w, 1 / 240)) {
+      if (prev) p.feet.forEach((f, j) => assert.ok(Math.abs(f.angle - prev.feet[j].angle) < .06, `${style} ${from}→${to}: foot ${j} snapped at ${t.toFixed(3)} (${prev.feet[j].angle} → ${f.angle})`));
+      prev = p;
+    }
+  }
+});
+
+test('tiptoe never rolls; a style of your own without roll rolls like a stroll', () => {
+  const tip = walk({from: 0, to: 600, start: 0, size: 475, style: 'tiptoe'});
+  for (const [, p] of samples(tip, .01)) assert.deepEqual(p.feet.map(f => f.angle), [0, 0]);
+  const {roll, ...mine} = WALKS.brisk;
+  assert.equal(readWalk(mine).roll, WALKS.stroll.roll);
+  assert.equal(readWalk({...mine, roll: .1}).roll, .1);
 });

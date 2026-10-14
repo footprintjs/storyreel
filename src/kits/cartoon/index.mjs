@@ -64,6 +64,8 @@ export function compileCartoon(spec, clock, motion = {cameraSpeed: 1}) {
   ];
   return {
     hang: 1, sounds,
+    // When its own camera moves (each key eases over MOVE): a push and a recipe's camera move take turns with it.
+    cameraMoves: camera.slice(1).map(k => ({from: k.t, to: k.t + MOVE})),
     // The captions, for the reading-time check: whole once popped in (.35 s), leaving at until.
     texts: () => (spec.captions ?? []).map((c, i) => ({text: captions[i].text, from: captions[i].at + .35, to: captions[i].until, path: `captions[${i}]`})),
     spotAt: t => { let best = null; for (const f of spots) { const w = Math.min(ease((t - f.at) / IN), 1 - ease((t - f.until) / OUT)); if (w > 0 && (!best || w > best.w)) best = {...f, w}; } return best; },

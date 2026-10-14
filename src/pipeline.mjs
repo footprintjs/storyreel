@@ -100,12 +100,14 @@ const MAX_PARTS = 256;
  * @param check        checks on the finished file (finished.mjs · checkVideo): null (the default: none), 'report'
  *                     (the record's `finished` lists what they found) or 'refuse' (a problem refuses the film);
  *                     `expect: {seconds, tolerance?}` is the length the brief asks for
+ * @param reducedMotion true: the recipe's camera moves are cut to their end framing, handheld off (as compileFilm);
+ *                     the record's `camera` says how they were played and why, and the film's inputs say so
  * @param claims       every number on screen has a source (claims.mjs: a fact the storyboard names, or an example
  *                     scene), a verdict the record keeps with its decide() evidence: 'report' (the default: the record's
  *                     `claims` lists the numbers with no source) or 'refuse' (one refuses the film before it is drawn,
  *                     and so does a film whose numbers cannot be checked: the storyboard names no facts)
  */
-export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report', code = null, check = null, expect = {}, cast = null, strategies = null, claims = 'report'}) {
+export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report', code = null, check = null, expect = {}, cast = null, strategies = null, reducedMotion = false, claims = 'report'}) {
   // The cast's names into the text before anything reads it: the pacing, the voice check, the chapters (cast.mjs).
   if (cast) { const c = readCast(cast); storyboard = withCast(storyboard, c, 'storyboard'); recipe = withCast(recipe, c, 'recipe'); if (strings) strings = withCast(strings, c, 'strings'); }
   if (check !== null && check !== 'report' && check !== 'refuse') throw new Error(`check is 'report' (the record lists what the checks on the finished file found), 'refuse' (a problem refuses the film) or left out, not ${JSON.stringify(check)}`);
@@ -158,7 +160,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       scope.pacing = paced.pacing ?? null;
     },
     'compile-film': async scope => {
-      film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings, hostKeys, cast, strategies, record: true});
+      film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings, hostKeys, cast, strategies, reducedMotion, record: true});
       scope.beats = film.beats.length; scope.sounds = film.sounds.length; scope.total = +film.total.toFixed(3);
       // What the film is made from (film.inputs, and the pacing, the voice, the kits' code): an approval locks all of it.
       inputs = {...film.inputs, pacing: hashOf(pacing), ...(narrationDir ? {voice: voiceHash(narrationDir)} : {}), ...(code ? {code} : {})};
@@ -248,6 +250,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     // Each beat: what was said, when, and the recipe entry that asked for it.
     beats: film.beats.map(({ref, t, path}) => ({said: Array.isArray(ref) ? {scene: ref[0], phrase: ref[1], plus: ref[2] ?? 0} : ref, at: t, ...(path ? {entry: path} : {})})),
     ...(film.notes.length ? {notes: film.notes} : {}),
+    // The camera's moves as played (camerawork.mjs): moves, or cuts for reduced motion, and why; each move placed.
+    ...(film.camera ? {camera: {motion: film.camera.motion, decision: film.camera.decision, moves: film.camera.moves}} : {}),
     sounds: film.sounds.length,
     // What the sound asks of the ear (listening.mjs): the film's changes of picture and the effects against the voice.
     ...(film.listening.length || result.listening.length ? {listening: [...film.listening, ...result.listening]} : {}),

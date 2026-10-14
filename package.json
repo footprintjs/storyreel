@@ -1,6 +1,6 @@
 {
   "name": "footprint-storyreel",
-  "version": "0.11.1",
+  "version": "0.12.0",
   "description": "Teaching films from a storyboard and a recipe: every drawing tied to a spoken phrase, one seekable timeline, pixel-pinned frames, director notes, a local preview studio, and a making-of record for every film.",
   "keywords": [
     "video",
@@ -122,9 +122,21 @@
       "types": "./types/sub/walk.d.ts",
       "default": "./src/walk.mjs"
     },
+    "./moves": {
+      "types": "./types/sub/moves.d.ts",
+      "default": "./src/moves.mjs"
+    },
+    "./principles": {
+      "types": "./types/sub/principles.d.ts",
+      "default": "./src/principles.mjs"
+    },
     "./attention": {
       "types": "./types/sub/attention.d.ts",
       "default": "./src/attention.mjs"
+    },
+    "./camera": {
+      "types": "./types/sub/camera.d.ts",
+      "default": "./src/camera.mjs"
     },
     "./tools": {
       "types": "./types/sub/tools.d.ts",

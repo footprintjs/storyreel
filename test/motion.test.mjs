@@ -2,7 +2,7 @@
 // every frame (heldTime), and parts that hang off a moving body lagging, swinging past and settling (follow, lag).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {heldTime, TIMINGS, TIMING_NAMES, follow, lag, readFeel} from '../src/motion.mjs';
+import {heldTime, TIMINGS, TIMING_NAMES, follow, lag, readFeel, turnaround} from '../src/motion.mjs';
 import {blurMoments} from '../src/render.mjs';
 
 const frame = (t, fps = 30) => Math.round(t * fps);
@@ -85,4 +85,18 @@ test('follow refusals name the fix', () => {
   assert.throws(() => follow(walk, NaN), /t and from are seconds/);
   assert.throws(() => follow(walk, 1, {feel: 'bouncy'}), /no feel called "bouncy"/);
   assert.throws(() => follow(walk, 1, {drag: -1}), /drag is how hard the air holds the part back, per second, 0 or more/);
+});
+
+test('turnaround: the drawing for a turn, and a squash across each swap that is 1 away from it and never jumps', () => {
+  assert.deepEqual([0, .2, .34, .5, .7, 1].map(u => turnaround(u).view), [0, 0, 1, 1, 2, 2]);
+  assert.deepEqual([0, .49, .5, 1].map(u => turnaround(u, {views: 2}).view), [0, 0, 1, 1]);
+  assert.equal(turnaround(0).squash, 1); assert.equal(turnaround(1).squash, 1); assert.equal(turnaround(.5).squash, 1);
+  assert.ok(Math.abs(turnaround(1 / 3).squash - .78) < 1e-9 && Math.abs(turnaround(.5, {views: 2, depth: .3}).squash - .7) < 1e-9, 'narrowest at the swap');
+  let prev = turnaround(0).squash;
+  for (let u = 0; u <= 1; u += .001) { const s = turnaround(u).squash; assert.ok(Math.abs(s - prev) < .02, `the squash jumped at ${u}`); prev = s; }
+  assert.equal(turnaround(-1).view, 0); assert.equal(turnaround(2).view, 2);
+  assert.throws(() => turnaround(NaN), /turn is 0 \(facing us\)/);
+  assert.throws(() => turnaround(.5, {views: 1}), /views is how many drawings, 2 or more/);
+  assert.throws(() => turnaround(.5, {depth: 1}), /depth is how much narrower/);
+  assert.throws(() => turnaround(.5, {window: 0}), /window is how much of the turn/);
 });
