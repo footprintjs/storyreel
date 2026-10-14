@@ -25,6 +25,22 @@
 - **A move is not blamed for where a hold left the camera.** A move that starts with the picture already past ×4 defers
   to the hold that took it there, which refuses naming the dutch that rolled it.
 
+### Motion from a video
+- **`footprint-storyreel/pose`**: the motion-source port, `{name, poseAt(t)}`: one pose shape for everything that moves
+  a figure, every foot with its roll (`angle`), plus optional joint angles (torso, neck, shoulders, elbows, hips,
+  knees). `walkSource` is the planned walk as one adapter; `motionSource` and `checkPose` check a source and a pose,
+  naming every wrong key.
+- **`footprint-storyreel/mocap`**: `fromPose(keypoints, {x, size})` turns COCO-17 or MediaPipe-33 keypoints into a
+  motion source, as a footprintjs flowchart with a record. Gaps are bridged, held or refused with their frames, and a refusal says whether the points were never found or
+  reported under `minConfidence`. Smoothing is One Euro, forward and back. Feet are planted and locked so they never
+  slide, and the legs are re-solved with the knees bent forward. A loop joins only where the feet meet, and otherwise
+  refuses with the cut that does.
+- **`footprint-storyreel/kits/cartoon/figure`**: `drawFigure`, a cartoon figure any motion source moves.
+- **`tools/pose-from-video.py`** (optional; MediaPipe Pose, heavy by default): downloads a pinned model on first use and
+  checks it by SHA-256, resamples a phone's variable rate to a steady fps, tells a damaged file by time against its
+  real duration (a trimmed file is whole; one spanning under half its duration is refused), and filters MediaPipe's
+  INFO and WARNING log lines while passing errors on at once.
+
 ### Three review verdicts: no slideshow, parts that hold, numbers with a source
 - **Verdicts** (`src/verdict.mjs`): a check may answer `passed`, `failed` or `not run`, decided with footprintjs's
   `decide()` over what it measured, so the review's record keeps the rule, the values and the thresholds. A check that

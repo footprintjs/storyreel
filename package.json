@@ -106,6 +106,10 @@
       "types": "./types/sub/cartoon.d.ts",
       "default": "./src/kits/cartoon/index.mjs"
     },
+    "./kits/cartoon/figure": {
+      "types": "./types/sub/figure.d.ts",
+      "default": "./src/kits/cartoon/figure.mjs"
+    },
     "./regions": {
       "types": "./types/sub/regions.d.ts",
       "default": "./src/regions.mjs"
@@ -121,6 +125,14 @@
     "./walk": {
       "types": "./types/sub/walk.d.ts",
       "default": "./src/walk.mjs"
+    },
+    "./pose": {
+      "types": "./types/sub/pose.d.ts",
+      "default": "./src/pose.mjs"
+    },
+    "./mocap": {
+      "types": "./types/sub/mocap.d.ts",
+      "default": "./src/mocap.mjs"
     },
     "./moves": {
       "types": "./types/sub/moves.d.ts",
@@ -195,6 +207,7 @@
     "types",
     "themes",
     "fonts",
+    "tools/*.py",
     "examples/*.mjs",
     "examples/*/*.mjs",
     "examples/*/*.json",
