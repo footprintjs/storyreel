@@ -26,7 +26,7 @@ const shown = v => (typeof v === 'number' ? String(v) : JSON.stringify(v));
 /** A room's grid, checked: horizon above the front edge, focal above 0. */
 export function perspective({horizon, vanish = 800, front = 900, focal = 900} = {}) {
   if (![horizon, vanish, front, focal].every(fin)) throw new Error(`perspective: horizon, vanish, front and focal are numbers (px), not horizon ${shown(horizon)}, vanish ${shown(vanish)}, front ${shown(front)}, focal ${shown(focal)}`);
-  if (!(horizon < front)) throw new Error(`perspective: the horizon (${horizon}) is above the floor's front edge (${front}): a smaller y`);
+  if (!(horizon < front)) throw new Error(`perspective: the horizon (${horizon}) must be above the floor's front edge (${front}): give it a smaller y, e.g. {horizon: 430, front: 900}`);
   if (!(focal > 0)) throw new Error(`perspective: focal is above 0 (how deep the room feels), not ${focal}`);
   /** How small a thing looks at a depth: 1 on the front line, toward 0 far back. */
   const scaleAt = depth => {

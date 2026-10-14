@@ -44,7 +44,7 @@ test('toward and parallax', () => {
 });
 
 test('bad input refuses, saying what it takes', () => {
-  assert.throws(() => perspective({horizon: 950}), /horizon \(950\) is above the floor's front edge/);
+  assert.throws(() => perspective({horizon: 950}), /horizon \(950\) must be above the floor's front edge/);
   assert.throws(() => perspective({horizon: 'x'}), /are numbers/);
   assert.throws(() => perspective({horizon: 400, focal: 0}), /focal is above 0/);
   assert.throws(() => room.at(0, -2000), /depth is a number of px back/);
