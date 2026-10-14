@@ -27,9 +27,12 @@ under V as null here instead (0, the default, writes every point).
 Logs. MediaPipe writes INFO and WARNING lines to stderr on every run; they are filtered out as they come, and every
 other line it writes (an error, a fatal one too) is passed on at once. --logs shows them all.
 
-A damaged file. A decoder stops at a damaged stretch, so the clip it gives can end early with no error. The frames read
-are held against the count the file states: frames missing are reported, and their number is written into the JSON
-("unread"), so fromPose's record says so; more than half missing is refused.
+A damaged file. A decoder stops at a damaged stretch, so the clip it gives can end early with no error. The time the
+frames read span is held against the video's real duration, from FFprobe (FFmpeg's, on PATH): frames that span it are
+whole, however many the file's header states (a trimmed file states the frames its edit list hides). Frames that end
+early, or start late, are reported, and written into the JSON ("unread": {frames, why: "damaged", read, duration}) so
+fromPose's record says so; frames spanning less than half of it are refused. Without FFprobe there is no duration to
+hold them against: frames fewer than the header states are reported (why: "unknown"), never refused.
 
 It writes {"scheme": "mediapipe-33", "fps", "coordinates": "normalised", "width", "height", "frames"}: per frame the
 33 points as [x, y, confidence] (x and y shares of the width and the height), or null where nobody was found.
@@ -117,7 +120,8 @@ def model_file(name, folder, trust):
 NOISE = rb'^(I\d{4} |W\d{4} |INFO: )'
 # The relay: a process of its own, so a line written just before a native abort still reaches the screen (a thread
 # would die with the process before it read it). It reads stderr's lines as they come and passes on all but NOISE.
-RELAY = ('import re, sys\n'
+RELAY = ('import re, signal, sys\n'
+         'signal.signal(signal.SIGINT, signal.SIG_IGN)\n'   # Ctrl-C stops the tool, not the relay: it drains to the end
          'for line in sys.stdin.buffer:\n'
          f'    if not re.match({NOISE!r}, line):\n'
          '        sys.stderr.buffer.write(line)\n'
@@ -126,14 +130,19 @@ RELAY = ('import re, sys\n'
 
 @contextlib.contextmanager
 def quiet_logs(show):
-    """MediaPipe's native stderr, filtered as it comes: every line that is not INFO or WARNING is passed on at once."""
-    if show:
+    """
+    MediaPipe's native stderr, filtered as it comes: every line that is not INFO or WARNING is passed on at once. With
+    stderr closed (run with 2>&-) there is nothing to filter, and nothing is relayed.
+    """
+    if show or sys.stderr is None or not open_fd(2):
         yield
         return
     sys.stderr.flush()
     saved = os.dup(2)
     read_end, write_end = os.pipe()
-    relay = subprocess.Popen([sys.executable, '-I', '-c', RELAY], stdin=read_end, stderr=saved)
+    # (A session of its own: a terminal's Ctrl-C goes to the tool's process group, never the relay's, even while the
+    # relay is still starting; it ends when the pipe closes, however the tool ends.)
+    relay = subprocess.Popen([sys.executable, '-I', '-c', RELAY], stdin=read_end, stderr=saved, start_new_session=True)
     os.close(read_end)
     os.dup2(write_end, 2)
     os.close(write_end)
@@ -146,19 +155,54 @@ def quiet_logs(show):
         os.close(saved)
 
 
-def unread_frames(read, stated):
+def open_fd(fd):
+    """Whether a file descriptor is open."""
+    try:
+        os.fstat(fd)
+        return True
+    except OSError:
+        return False
+
+
+def real_time(path):
+    """The video stream's real duration (seconds), after any edit list, from FFprobe; None when FFprobe is not found or cannot tell."""
+    try:
+        out = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'format=duration:stream=duration',
+                              '-of', 'json', path], capture_output=True, text=True, timeout=60)
+        info = json.loads(out.stdout or '{}')
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    for found in ((info.get('streams') or [{}])[0].get('duration'), (info.get('format') or {}).get('duration')):
+        try:
+            if found is not None and float(found) > 0:
+                return float(found)
+        except ValueError:
+            pass
+    return None
+
+
+def unread_frames(times, stated, fps, duration):
     """
-    The frames read against the count the file states: (verdict, missing). 'whole' when at most two are missing (a
-    count the file only estimates can be a frame or two off), 'short' when more are (a damaged stretch ends a
-    decoder's reading early: warn, and write the count), 'refuse' when more than half are, 'unknown' when the file
-    states no count.
+    Whether the frames read cover the video. times: each decoded frame's time (ms, from the stream's start); stated: the
+    count its header states; fps: its rate; duration: its real duration (seconds, from FFprobe) or None. Returns
+    (verdict, unread):
+      'whole'   the frames span the real duration, within two frames — however many the header states (a trimmed
+                file states the frames its edit list hides, and a variable rate's count is only an estimate)
+      'short'   they start late or end early by more: damaged; unread = {frames, why: 'damaged', read: [from, to], duration}
+      'refuse'  they span less than half of it
+      'unsure'  no duration to hold them against, and the header states more frames than were read: unread = {frames,
+                why: 'unknown'} — a trimmed file states more than it shows, a damaged one ends early; never refused
     """
-    if not stated or stated <= 0:
-        return 'unknown', 0
-    missing = max(0, int(round(stated)) - read)
-    if missing <= 2:
-        return 'whole', missing
-    return ('refuse' if missing > stated / 2 else 'short'), missing
+    step = 1 / fps
+    if duration:
+        first, last = times[0] / 1000, times[-1] / 1000 + step
+        gap = max(0.0, first) + max(0.0, duration - last)
+        if gap <= 2 * step + 1e-6:
+            return 'whole', None
+        unread = {'frames': int(round(gap * fps)), 'why': 'damaged', 'read': [round(first, 3), round(last, 3)], 'duration': round(duration, 3)}
+        return ('refuse' if last - first < duration / 2 else 'short'), unread
+    missing = int(round(stated)) - len(times) if stated and stated > 0 else 0
+    return ('whole', None) if missing <= 2 else ('unsure', {'frames': missing, 'why': 'unknown'})
 
 
 def points_of(result, floor):
@@ -224,7 +268,8 @@ def main():
     video = cv2.VideoCapture(args.video)
     if not video.isOpened():
         sys.exit(f'pose-from-video: cannot open {args.video}: give a video file (mp4, mov, ...)')
-    fps = args.fps or video.get(cv2.CAP_PROP_FPS)
+    native = video.get(cv2.CAP_PROP_FPS)
+    fps = args.fps or native
     if not fps or fps <= 0:
         sys.exit('pose-from-video: the video does not say its frame rate: give --fps')
     stated = video.get(cv2.CAP_PROP_FRAME_COUNT)
@@ -243,25 +288,32 @@ def main():
             image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
             seen.append((ms, points_of(landmarker.detect_for_video(image, stamp), args.min_visibility)))
     video.release()
-    verdict, missing = unread_frames(len(seen), stated)
-    if verdict == 'refuse':
-        sys.exit(f'pose-from-video: {args.video} gave {len(seen)} of the {int(round(stated))} frames it states ({missing} could not be read): '
-                 f'the file is likely damaged; export or copy the video again')
-    if verdict == 'short':
-        print(f'pose-from-video: {missing} of the {int(round(stated))} frames {args.video} states could not be read (it may be damaged, '
-              f'and the clip ends early); the JSON says so ("unread")', file=sys.stderr)
     if len(seen) < 2:
         sys.exit(f'pose-from-video: {args.video} gave {len(seen)} frame: give a longer video')
     if seen[-1][0] <= seen[0][0]:   # a file whose frames carry no times: they are taken as steady at fps
         print('pose-from-video: the video\'s frames carry no times; they are taken as steady at the stated rate', file=sys.stderr)
         seen = [(i * 1000 / fps, points) for i, (_, points) in enumerate(seen)]
+    verdict, unread = unread_frames([ms for ms, _ in seen], stated, native if native and native > 0 else fps, real_time(args.video))
+    if verdict == 'refuse':
+        sys.exit(f'pose-from-video: {args.video} lasts {unread["duration"]} s, and the frames read span only {unread["read"][0]}–{unread["read"][1]} s '
+                 f'({unread["frames"]} frames could not be read): the file is likely damaged; export or copy the video again')
+    if verdict == 'short':
+        print(f'pose-from-video: {args.video} lasts {unread["duration"]} s, and the frames read span {unread["read"][0]}–{unread["read"][1]} s: '
+              f'{unread["frames"]} frames could not be read, so it is likely damaged; the JSON says so ("unread")', file=sys.stderr)
+    if verdict == 'unsure':
+        print(f'pose-from-video: {args.video} states {int(round(stated))} frames and {len(seen)} were read: a trimmed file states more than it '
+              f'shows; a damaged one ends early (FFprobe, not found, would tell which); the JSON says so ("unread")', file=sys.stderr)
     frames = resampled(seen, fps)
     doc = {'scheme': 'mediapipe-33', 'fps': fps, 'coordinates': 'normalised', 'width': size[0], 'height': size[1], 'frames': frames,
-           **({'unread': missing} if verdict == 'short' else {})}
+           **({'unread': unread} if unread else {})}
     Path(args.out).write_text(json.dumps(doc, separators=(',', ':'), allow_nan=False) + '\n')
     found = sum(f is not None for _, f in seen)
     print(f'pose-from-video: {len(seen)} frames read, a person in {found}; {len(frames)} written at a steady {fps:g} fps to {args.out}', file=sys.stderr)
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:   # Ctrl-C: one line, not a traceback
+        print('pose-from-video: stopped; nothing written', file=sys.stderr)
+        sys.exit(130)

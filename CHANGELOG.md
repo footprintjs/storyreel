@@ -14,8 +14,9 @@
   refuses with the cut that does.
 - **`footprint-storyreel/kits/cartoon/figure`**: `drawFigure`, a cartoon figure any motion source moves.
 - **`tools/pose-from-video.py`** (optional; MediaPipe Pose, heavy by default): downloads a pinned model on first use and
-  checks it by SHA-256, resamples a phone's variable rate to a steady fps, says how many frames a damaged file could
-  not give (and refuses past half), and filters MediaPipe's INFO and WARNING log lines while passing errors on at once.
+  checks it by SHA-256, resamples a phone's variable rate to a steady fps, tells a damaged file by time against its
+  real duration (a trimmed file is whole; one spanning under half its duration is refused), and filters MediaPipe's
+  INFO and WARNING log lines while passing errors on at once.
 
 ## 0.12.0 — walks with feet that roll heel to toe; a turn that reads as a turn
 

@@ -161,11 +161,16 @@ test('a gap of points the detector reported, only unsure of them, says so and na
   await assert.rejects(fromPose(mixed, PLACE), /left_knee is missing, or reported only under minConfidence 0\.5 \(at 0\.3–0\.3\), in frames 30–45 \(16 frames, 0\.533 s\)\. At most 0\.2 s \(maxGap\) is filled in: trim the clip past it \(from, to: seconds of the video\), film it again with the whole body in view, lower minConfidence \(0\.5\) to use the points the detector reported, or raise maxGap/);
 });
 
-test('frames the video could not give (tools/pose-from-video.py writes "unread") are said in the record', async () => {
-  const short = await fromPose({...WALK_JSON, unread: 24}, PLACE);
-  assert.deepEqual(short.record.unread, {frames: 24, note: 'the video states 24 more frames than could be read: it may be damaged, and the clip ends early'});
+test('frames the tool could not read are said in the record, and why: damaged (by time) or not known which', async () => {
+  const damaged = await fromPose({...WALK_JSON, unread: {frames: 58, why: 'damaged', read: [0, 2.067], duration: 4}}, PLACE);
+  assert.deepEqual(damaged.record.unread, {frames: 58, why: 'damaged', read: [0, 2.067], duration: 4,
+    note: 'the video lasts 4 s and its frames could be read only from 0 to 2.067 s (58 frames lost): it is likely damaged'});
+  const unknown = await fromPose({...WALK_JSON, unread: {frames: 66, why: 'unknown'}}, PLACE);
+  assert.equal(unknown.record.unread.note, 'the video states 66 more frames than could be read: a trimmed file states more than it shows; a damaged one ends early (the tool could not tell which)');
   assert.equal((await fromPose(WALK_JSON, PLACE)).record.unread, undefined, 'none unread: nothing said');
-  for (const bad of [-1, 2.5, '24']) await assert.rejects(fromPose({...WALK_JSON, unread: bad}, PLACE), /keypoints: unread is how many frames the video states that could not be read \(a whole number, 0 or more\)/);
+  for (const bad of [24, {frames: -1, why: 'damaged'}, {frames: 3, why: 'trimmed'}, {frames: 3, why: 'damaged', read: [0]}, {frames: 3, why: 'unknown', duration: 0}]) {
+    await assert.rejects(fromPose({...WALK_JSON, unread: bad}, PLACE), /keypoints: unread is \{frames, why: "damaged" \| "unknown", read\?: \[from, to\], duration\?\} \(what tools\/pose-from-video\.py could not read\)/);
+  }
 });
 
 test('retimed: start and speed put the video\'s frames on the film\'s clock; played once, it holds its last frame', async () => {

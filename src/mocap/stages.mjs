@@ -29,8 +29,13 @@ export function readStage(s, keypoints, o, work, record) {
   report(s, record, {scheme: k.scheme, fps: k.fps, coordinates: k.normalised ? 'normalised' : 'pixels',
     kept: {frames: [k.first, k.last], count: k.count, seconds: round((k.count - 1) / k.fps), ...(k.lo < k.first || k.hi > k.last ? {context: [k.lo, k.hi]} : {})},
     nobody: k.empty, dropouts: k.dropouts,
-    ...(k.unread ? {unread: {frames: k.unread, note: `the video states ${k.unread} more frames than could be read: it may be damaged, and the clip ends early`}} : {})});
+    ...(k.unread && k.unread.frames ? {unread: {...k.unread, note: unreadNote(k.unread)}} : {})});
 }
+
+/** What the tool could not read, said: damaged (by time, against the real duration), or not known which. */
+const unreadNote = u => (u.why === 'damaged'
+  ? `the video lasts ${u.duration} s and its frames could be read only from ${u.read[0]} to ${u.read[1]} s (${u.frames} frames lost): it is likely damaged`
+  : `the video states ${u.frames} more frames than could be read: a trimmed file states more than it shows; a damaged one ends early (the tool could not tell which)`);
 
 /** A gap wholly in the context around a cut is filled for the smoothing's sake, never decided: it is not shown. */
 const contextOnly = (gap, k) => gap.to < k.first - k.lo || gap.from > k.last - k.lo;

@@ -1448,10 +1448,14 @@ python tools/pose-from-video.py wave.mp4 wave.pose.json     # --model lite|full|
   give such a clip a lower `minConfidence`. `--min-visibility V` writes the points under V as `null` instead.
 - **Logs**: MediaPipe writes INFO and WARNING lines to stderr on every run; the tool filters them out as they come and
   passes on every other line at once (an error, a fatal one just before a crash too). `--logs` shows them all.
-- **A damaged file**: a decoder stops at a damaged stretch, so a clip can end early with no error. The frames read are
-  held against the count the file states (two frames of slack, for a count it only estimates): frames missing are
-  reported, their number is written into the JSON (`"unread"`) and `fromPose`'s record says so (`record.unread`); more
-  than half missing is refused.
+- **A damaged file**: a decoder stops at a damaged stretch, so a clip can end early with no error. The time the frames
+  read span is held against the video's real duration from FFprobe (FFmpeg's, on PATH), never against the count its
+  header states: a trimmed file (`ffmpeg -ss 2.2 -c copy`) states the frames its edit list hides, and a variable rate's
+  count is an estimate. Frames that end early or start late by more than two frames are reported and written into the
+  JSON (`"unread": {frames, why: "damaged", read: [from, to], duration}`), and `fromPose`'s record says so
+  (`record.unread`); frames spanning less than half the duration are refused. Without FFprobe there is no duration:
+  fewer frames than the header states are reported as `why: "unknown"` (a trimmed file states more than it shows; a
+  damaged one ends early), never refused.
 
 Any COCO-17 detector's output fits the same JSON:
 

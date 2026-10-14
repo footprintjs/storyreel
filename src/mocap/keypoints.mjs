@@ -7,7 +7,10 @@
  *    "coordinates": "pixels" | "normalised",      normalised: x and y are shares of the width and the height
  *    "width": 1280, "height": 720,                the video's size in px (needed for normalised coordinates)
  *    "frames": [ frame | null, … ],              null: nobody was found in that frame
- *    "unread": 74}                                optional: frames the video states that could not be read (damaged)
+ *    "unread": {frames, why, read?, duration?}}   optional: frames the tool could not read — why "damaged" (they end
+ *                                                 early or start late against the video's real duration: read is the
+ *                                                 span read, seconds) or "unknown" (fewer than the header states, and no
+ *                                                 duration to tell a trimmed file from a damaged one)
  *
  *   a frame   the scheme's points in its order ([[x, y, confidence], …]: 17 or 33 of them), or by name
  *             ({"nose": [x, y, confidence], …}: a name left out was not seen)
@@ -35,6 +38,14 @@ const DOC = '{scheme, fps, coordinates, width?, height?, frames} (the JSON tools
 const shown = v => (typeof v === 'number' ? String(v) : JSON.stringify(v) ?? String(v));
 const positive = v => Number.isFinite(v) && v > 0;
 
+/** What the tool says it could not read, checked: {frames, why: 'damaged' | 'unknown', read?: [from, to], duration?}. */
+function readUnread(u) {
+  const span = u?.read === undefined || (Array.isArray(u.read) && u.read.length === 2 && u.read.every(Number.isFinite));
+  const ok = u && typeof u === 'object' && Number.isInteger(u.frames) && u.frames >= 0 && ['damaged', 'unknown'].includes(u.why) && span
+    && (u.duration === undefined || positive(u.duration));
+  if (!ok) throw new Error(`keypoints: unread is {frames, why: "damaged" | "unknown", read?: [from, to], duration?} (what tools/pose-from-video.py could not read), not ${shown(u)}`);
+}
+
 /** The document's header, checked: {scheme, names, fps, normalised, width, height}. */
 function readHeader(doc) {
   if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error(`keypoints: the document is ${DOC}, not ${shown(doc)}`);
@@ -43,9 +54,9 @@ function readHeader(doc) {
   if (!COORDINATES.includes(doc.coordinates)) throw new Error(`keypoints: coordinates is 'pixels' or 'normalised' (x and y as shares of the width and the height), not ${shown(doc.coordinates)}`);
   const normalised = doc.coordinates !== 'pixels';
   if (normalised && !(positive(doc.width) && positive(doc.height))) throw new Error(`keypoints: normalised coordinates need the video's width and height in px (x is a share of one, y of the other), so the figure keeps its proportions; give width and height, not ${shown(doc.width)} × ${shown(doc.height)}`);
-  if (doc.unread !== undefined && !(Number.isInteger(doc.unread) && doc.unread >= 0)) throw new Error(`keypoints: unread is how many frames the video states that could not be read (a whole number, 0 or more), not ${shown(doc.unread)}`);
+  if (doc.unread !== undefined) readUnread(doc.unread);
   if (!Array.isArray(doc.frames) || doc.frames.length < 2) throw new Error(`keypoints: frames is a list of at least 2 frames (a frame's points, or null), not ${Array.isArray(doc.frames) ? `${doc.frames.length} frame` : shown(doc.frames)}`);
-  return {scheme: doc.scheme, names: SCHEMES[doc.scheme], fps: doc.fps, unread: doc.unread ?? 0, normalised, width: normalised ? doc.width : doc.width ?? null, height: normalised ? doc.height : doc.height ?? null};
+  return {scheme: doc.scheme, names: SCHEMES[doc.scheme], fps: doc.fps, unread: doc.unread ?? null, normalised, width: normalised ? doc.width : doc.width ?? null, height: normalised ? doc.height : doc.height ?? null};
 }
 
 /** A point as given → {x, y, c} in px, or null when not seen; anything else refuses, naming the frame and the joint. */

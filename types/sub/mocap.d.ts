@@ -6,6 +6,7 @@ export type SchemeName = 'coco-17' | 'mediapipe-33';
 export type Point = [x: number, y: number, confidence: number] | null;
 /** One frame: the scheme's points in its order, or by name (a name left out was not seen), or null (nobody found). */
 export type KeypointFrame = Point[] | {[name: string]: Point} | null;
+export interface Unread {frames: number; why: 'damaged' | 'unknown'; read?: [number, number]; duration?: number}
 /** The keypoints JSON (tools/pose-from-video.py writes it). */
 export interface Keypoints {
   scheme: SchemeName;
@@ -17,8 +18,12 @@ export interface Keypoints {
   width?: number;
   height?: number;
   frames: KeypointFrame[];
-  /** Frames the video states that could not be read (a damaged file ends early): tools/pose-from-video.py writes it. */
-  unread?: number;
+  /**
+   * What tools/pose-from-video.py could not read: why 'damaged' (the frames end early or start late against the video's
+   * real duration; read is the span read, seconds) or 'unknown' (fewer than the header states, and no duration to tell
+   * a trimmed file — whose header states the frames its edit list hides — from a damaged one).
+   */
+  unread?: Unread;
 }
 /** The One Euro filter's settings: minCutoff and dCutoff in Hz, beta per torso length a second. */
 export interface SmoothSettings {minCutoff: number; beta: number; dCutoff: number}
@@ -84,8 +89,8 @@ export interface MocapRecord {
   kept: {frames: [number, number]; count: number; seconds: number};
   /** Kept frames with nobody found. */
   nobody: number;
-  /** When the keypoints say frames of the video could not be read: how many, and what that means. */
-  unread?: {frames: number; note: string};
+  /** When the keypoints say frames of the video could not be read: how many, why (if known), and what that means. */
+  unread?: Unread & {note: string};
   dropouts: Dropout[];
   gaps: Gap[];
   /** One torso length (hips to shoulders) in the video, px. */
