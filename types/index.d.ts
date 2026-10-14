@@ -14,14 +14,48 @@ export type Direction = [text: string, seconds: number];
 /** A scene is spoken (`narration`) or silent (`silent`: directions), never both. */
 export type StoryboardScene = {id: string; title?: string; /** Who says the scene: a name the voice step maps to a voice; kits read it through clock.speaking(t). */ speaker?: string;
   /** Number slots: [shown, spoken] — the captions show `shown` ("16.67 ms"), the voice says `spoken` ("sixteen point six seven milliseconds"; words only). Each shown text appears in the narration, in order. */
-  say?: [string, string][]; [key: string]: unknown}
+  say?: [string, string][];
+  /** The scene shows example data (claims.mjs): its numbers need no source, and it says so on screen — true draws "Example data", a string draws those words (the film's language); false or left out, it is not. */
+  example?: boolean | string; [key: string]: unknown}
   & ({narration: string; silent?: never} | {silent: Direction[]; narration?: never});
 
 export interface Storyboard {
   title?: string;
+  /** Where the numbers on screen come from (claims.mjs): a JSON file inside the film's root, or the list itself. */
+  facts?: string | NumberFact[];
   scenes: StoryboardScene[];
   [key: string]: unknown;
 }
+/** A fact a number on screen comes from: `value` as the screen shows it (16.67, 1000, or "3:15"), `text` the words it is shown with (the line must contain them), `source` a URL, a document or a record pointer. */
+export interface NumberFact { value: number | string; text?: string; source: string;
+  /** What the source is, as read (claims.mjs · sourceKind): a URL, a file inside the root, or neither — kept, and reported as unverified. */
+  readonly kind?: 'url' | 'file' | 'unverified' }
+/**
+ * A number the film shows (claims.mjs), with its sign: the line it is in and where (`offset`), from when it is whole on
+ * screen (`at`) to when it starts to leave (`to`), its scene and recipe entry (`captions` for the captions, `drawn` for a
+ * word the review read off the picture), whether the scene is example data, and the backing fact's source (or null).
+ */
+export interface Claim { number: string; line: string; offset: number; at: number; to: number; scene: string | null; path: string; example: boolean; source: string | null; sourceKind: 'url' | 'file' | 'unverified' | null }
+/** When the example label is up: over an example scene, and on while any line it shows is still on screen. */
+export interface ExampleLabel { from: number; to: number; words: string; scene: number }
+/** Every number the film shows, with the facts the storyboard names (null: none, so the numbers outside example scenes cannot be checked), each scene's example label (or null) and when a label is up. */
+export interface Claims { facts: readonly NumberFact[] | null; examples: readonly (string | null)[]; labels: readonly ExampleLabel[]; numbers: readonly Claim[] }
+/**
+ * A kit's drawn parts at one moment (geometry.mjs), in its own coordinates: segments by name — `a` the root, `b` the tip,
+ * `width`, `mount` (the part `a` lands on: a segment or a region), `ends` ('mounted': `b` lands on it too), `contact`
+ * (the end it rests on: it may not move while planted) — regions (boxes) by name, and pairs kept `apart` (never crossing).
+ */
+export interface Parts {
+  segments: Record<string, {a: [number, number]; b: [number, number]; width?: number; mount?: string; ends?: 'free' | 'mounted';
+    /** The end that rests on the ground while it is planted ('a', 'b', or true: flat), or false in the air; a planted end never moves from where it was first planted. */
+    contact?: boolean | 'a' | 'b'}>;
+  regions?: Record<string, [number, number, number, number]>;
+  apart?: [string, string][];
+}
+/** What a check answers (verdict.mjs): 'not run' is never a pass. */
+export type Verdict = 'passed' | 'failed' | 'not run';
+/** A verdict's rules: each a decide() filter over the measured values (or a function of the scope), the verdict it gives and what it means; `passed` says what passing means. */
+export interface VerdictRules { rules: readonly {when: Record<string, Record<string, unknown>> | ((scope: any) => boolean); then: Verdict; label: string}[]; passed: string }
 
 export interface SceneTiming {
   id: string;
@@ -276,7 +310,7 @@ export interface Film {
   timings: Timings;
   sounds: SoundEvent[];
   /** Draw the film at t into a context whose transform maps 1600×900 onto the frame. Pure. */
-  frame(ctx: CanvasRenderingContext2D | unknown, t: number): void;
+  frame(ctx: CanvasRenderingContext2D | unknown, t: number, options?: {window?: {x0: number; y0: number; w: number; h: number} | null}): void;
   /** Every phrase the recipe named, when it is said, and the recipe entry that asked for it. */
   beats: {ref: Beat; t: number; path: string | null}[];
   strings: string[];
@@ -314,6 +348,16 @@ export interface Film {
   stringHashes: Readonly<Record<string, string>> | null;
   /** The mouths drawn at t (each kit on screen that draws one says so: mouthsAt), with the recipe entry that drew it. */
   mouthsAt(t: number): {who: string | null; open: number; path: string}[];
+  /** The parts drawn at t (each kit on screen that gives them: parts), with the recipe entry that drew them: what the geometry audit reads. Read on the picture's clock. */
+  partsAt(t: number): (Parts & {path: string})[];
+  /** The picture's clock at t: the voice's, except in a camera's freeze (held) or speed ramp (slow, then catching up). */
+  pictureAt(t: number): number;
+  /** Every line the film shows to be read (titles, footers, list lines, a world's words, guess cards, the push-in caption, an example scene's label): when it is whole on screen, when it starts to leave, the recipe entry. */
+  lines: readonly {text: string; from: number; to: number; path: string}[];
+  /** Every change of picture: each stage's arrival (the push-in, an entrance, a hand-over, a cut) and the teaser, from–to. */
+  changes: readonly {from: number; to: number; what: string}[];
+  /** Every number the film shows and where it comes from: a fact the storyboard names, or an example scene. */
+  claims: Claims;
   /** The recipe's poster frame (seconds), or null. */
   posterAt: number | null;
   /** Stills worth checking: each settled picture and each change half way. */
@@ -349,6 +393,8 @@ export interface StoryWorld {
   regionsAt?(t: number): Region[];
   /** The mouths it draws at t (who: the speaker each belongs to, null for the narrator; open: 0..1), for the lip-sync check. */
   mouthsAt?(t: number): {who: string | null; open: number}[];
+  /** Its drawn parts at t, in its own coordinates (before any camera), for the geometry audit: the numbers it draws them from. */
+  parts?(t: number): Parts;
   /**
    * A held layer, drawn on the frame (1600×900) over the picture and outside its camera: a transition or a director's push
    * never moves it (a presenter in the corner, a title band). Through a change of picture the leaving shot's layer crosses
@@ -418,6 +464,8 @@ export interface Kit {
     regions?(handle: any, t: number, cardBox: [number, number, number, number] | null): Region[];
     /** The mouths the stage draws at t, for the lip-sync check. */
     mouthsAt?(handle: any, t: number): {who: string | null; open: number}[];
+    /** The parts the stage draws at t, for the geometry audit. */
+    parts?(handle: any, t: number): Parts;
   }>;
 }
 
@@ -576,7 +624,9 @@ export interface FilmInputs { storyboard: string; timings: string; recipe: strin
   /** Every file the film read through its root, by its path from the root. */
   files: Readonly<Record<string, string>>; pacing?: string; voice?: string; code?: string;
   /** Present when the film's camera moves were cut for reduced motion: another film, as far as an approval goes. */
-  reducedMotion?: true }
+  reducedMotion?: true;
+  /** The facts the storyboard names (storyboard.facts), hashed on their own: an approval locks them; they are in no segment's key (they draw nothing). */
+  facts?: string }
 /** What a person approved: who, when, the render they watched, and what it was made from. */
 export interface Approval { schemaVersion: 2; approved: string; by: string; note?: string; render?: string; inputs: FilmInputs }
 /** Approve a render as it was watched, from its making-of record (the path of its making-of.json, or the object). */
@@ -624,6 +674,8 @@ export interface MakeFilmOptions<K = Kit | ContextKit> {
   expect?: {seconds?: number; tolerance?: number};
   /** true: the recipe's camera moves are cut to their end framing, handheld off (as compileFilm). */
   reducedMotion?: boolean;
+  /** Every number on screen has a source (a verdict, with its decide() evidence in the record): 'report' (the default: the record's `claims` lists the numbers with no source) or 'refuse' (one refuses the film before it is drawn, and so does a film whose numbers cannot be checked). */
+  claims?: 'report' | 'refuse';
 }
 export function makeFilm(options: MakeFilmOptions<Kit>): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;
 export function makeFilm(options: MakeFilmOptions<Kit | ContextKit>): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;
@@ -655,6 +707,7 @@ export const whiteboardKit: Kit;
 export const cartoonKit: Kit;
 /** Hashes at `count` evenly spaced moments (default 24), or at the given `times` (seconds, rounded to the millisecond). */
 /** Evenly spaced moments (`count`, default 24) or the moments you name (`times`, seconds inside the film, each a distinct millisecond), not both. */
-export function frameHashes(film: Film, options?: {count?: number; width?: number; times?: undefined} | {count?: undefined; width?: number; times: number[]}): Record<string, string>;
+/** Pixel pins: `each(t, ctx)`, when given, sees every frame once it is drawn (the review reads its grey levels from the same drawing). */
+export function frameHashes(film: Film, options?: ({count?: number; width?: number; times?: undefined} | {count?: undefined; width?: number; times: number[]}) & {each?: ((t: number, ctx: any) => void) | null}): Record<string, string>;
 export function changedFrames(pinned: Record<string, string>, now: Record<string, string>): string[];
 export function contactSheet(film: Film, options?: {moments?: {t: number; label: string; kind?: string}[]; columns?: number; width?: number}): Promise<Uint8Array>;

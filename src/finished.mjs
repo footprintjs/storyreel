@@ -177,7 +177,7 @@ function besideOrPath(ffmpeg) {
 }
 
 /** Grey levels of a picture drawn on a canvas (the same weights a video's grey uses), full range. */
-function greyOf(rgba) {
+export function greyOf(rgba) {
   const out = new Uint8Array(rgba.length / 4);
   for (let i = 0; i < out.length; i++) out[i] = Math.round(.299 * rgba[4 * i] + .587 * rgba[4 * i + 1] + .114 * rgba[4 * i + 2]);
   return out;
@@ -188,8 +188,8 @@ const spread = (a, scale = 1) => { let m = 0; for (const v of a) m += v; m /= a.
 /** A video's grey is limited range (16–235): differences read 219 / 255 of a canvas's. */
 const VIDEO = 255 / 219;
 
-/** The film drawn small, as the checks compare it: draw(t) → grey levels (the frame, 16:9). */
-function filmPainter(film, width) {
+/** The film drawn small, as the checks compare it: draw(t) → grey levels (the frame, 16:9; also slideshow.mjs's frames). */
+export function filmPainter(film, width) {
   const height = Math.round(width * 9 / 16), canvas = createCanvas(width, height), ctx = canvas.getContext('2d');
   return t => { ctx.resetTransform(); ctx.globalAlpha = 1; ctx.clearRect(0, 0, width, height); ctx.scale(width / 1600, height / 900); film.frame(ctx, Math.max(0, Math.min(film.total, t))); return greyOf(ctx.getImageData(0, 0, width, height).data); };
 }
