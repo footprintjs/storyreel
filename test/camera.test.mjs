@@ -327,3 +327,141 @@ test('a freeze over the voice is a review finding: a drawing the voice names und
   const plain = await compileFilm({storyboard, timings, kits: [shows], recipe: {story: {kit: 'shows', show: ['a', 'quietly']}}});
   assert.deepEqual((await reviewPart(plain, {from: 1, to: 6, checks: {'frozen-voice': REVIEW_CHECKS['frozen-voice']}})).ran, [], 'not picked without a freeze');
 });
+
+test('frozen-voice names only what the freeze holds: the emphasis and the focus run on the voice\'s clock, so their beats under a freeze are no finding', async () => {
+  const film = await make({camera: [{move: 'freeze', at: ['a', 'sits'], until: ['a', 'corner']}],
+    emphasis: {strategy: 'pop', words: [{at: ['a', 'quietly'], text: 'QUIET'}]}, focus: {strategy: 'spotlight', keys: [{at: ['a', 'here'], on: 'red'}]}});
+  const r = await reviewPart(film, {from: 1, to: 6, checks: {'frozen-voice': REVIEW_CHECKS['frozen-voice']}});
+  assert.deepEqual(r.ran, ['frozen-voice'], 'picked: the part has a freeze');
+  assert.deepEqual(r.findings, [], `the words and the spotlight are not frozen: ${JSON.stringify(r.findings)}`);
+});
+
+test('a move that starts while another runs aims from where that one is going — and under reduced motion from where a follow will cut to, so both versions end on the same framing', async () => {
+  const beside = await make({camera: [{move: 'pan', at: ['a', 'red square'], until: ['a', 'quietly'], amount: 240}, {move: 'dolly-in', at: ['a', 'sits'], seconds: 2, amount: 1.3}]});
+  const after = await make({camera: [{move: 'pan', at: ['a', 'red square'], until: ['a', 'quietly'], amount: 240}, {move: 'dolly-in', at: ['a', 'corner'], seconds: 2, amount: 1.3}]});
+  const s = at(beside, 'a', 'sits');
+  assert.ok(Math.abs(beside.cameraAt(s + 2.5).z - 1.3 * 800 / 560) < 1e-9, `×1.3 of the zoom the pan ends on, not of its middle: ${beside.cameraAt(s + 2.5).z}`);
+  assert.equal(beside.camera.moves[1].ends.z, after.camera.moves[1].ends.z, 'the same as a dolly after the pan');
+  const steps = Array.from({length: 30}, (_, i) => beside.cameraAt(s - .1 + i / 60).z);
+  assert.ok(Math.max(...steps.slice(1).map((z, i) => Math.abs(z - steps[i]))) < .03, 'it starts from what is on screen: no jump');
+  const camera = [{move: 'track', at: ['a', 'red square'], until: ['a', 'corner'], on: 'red'}, {move: 'dolly-in', at: ['a', 'sits'], seconds: 1, amount: 1.3}];
+  const [moving, calm] = await Promise.all([make({camera}, {}, 'mover'), make({camera}, {reducedMotion: true}, 'mover')]);
+  const end = at(moving, 'a', 'corner') + 1, cover = 450 / 275;   // where the track ends, (588, 275), needs ×1.636 to cover
+  assert.ok(Math.abs(moving.cameraAt(end).z - 1.3 * cover) < 1e-6, `moving: ${moving.cameraAt(end).z}`);
+  assert.ok(Math.abs(calm.cameraAt(end).z - moving.cameraAt(end).z) < 1e-9, `reduced motion ends on the same framing: ${calm.cameraAt(end).z}`);
+  for (const k of ['x', 'y', 'z', 'r']) assert.ok(Math.abs(calm.cameraAt(end)[k] - moving.cameraAt(end)[k]) < 1e-9, `the same ${k} once both have arrived`);
+  assert.equal(calm.camera.moves[1].ends.z, moving.camera.moves[1].ends.z, 'the dolly resolves to the same zoom');
+});
+
+test('a dolly on a thing keeps the thing on its framing under a later dutch, which scales up to cover as anywhere; a dutch that would take a held dolly past ×4 refuses, naming the dutch', async () => {
+  // The failing input: a dolly in on red ×1.3, then a dutch of 8°. The look point stays where the dolly put it; the zoom rises to cover.
+  const red = await make({camera: [{move: 'dolly-in', at: ['a', 'red square'], until: ['a', 'quietly'], on: 'red'}, {move: 'dutch', at: ['a', 'corner'], amount: 8}]});
+  const before = red.cameraAt(at(red, 'a', 'corner') - .1), after = red.cameraAt(at(red, 'a', 'corner') + 2);
+  assert.ok(Math.abs(after.x - before.x) < 1e-9 && Math.abs(after.y - before.y) < 1e-9, `the look point stays on red's framing: ${JSON.stringify([before, after])}`);
+  assert.ok(Math.abs(before.z - 1.3) < 1e-9 && Math.abs(after.z - 1.609) < 1e-3 && after.z === coverZoom(after), `×1.3 → ×${after.z.toFixed(3)}, scaled up to cover`);
+  // A thing the dolly could centre stays in the middle of the frame through the dutch.
+  const NEAR = [600, 330, 700, 430], nearKit = {name: 'near', story: {compile: () => ({hang: 1, regionsAt: () => [{box: NEAR, path: 'near', label: 'near', name: 'near'}],
+    draw: c => { fill(c, GROUND, [0, 0, 1600, 900]); fill(c, RED, NEAR); }})}};
+  const near = await compileFilm({storyboard, timings, kits: [nearKit], recipe: {story: {kit: 'near'}, camera: [{move: 'dolly-in', at: ['a', 'red square'], until: ['a', 'quietly'], on: 'near'}, {move: 'dutch', at: ['a', 'corner'], amount: 8}]}});
+  for (const t of [at(near, 'a', 'quietly') + .5, at(near, 'a', 'corner') + .4, at(near, 'a', 'corner') + 2]) {
+    const b = boxOf(near, t, 'near'), centre = [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
+    assert.ok(Math.hypot(centre[0] - 800, centre[1] - 450) < .5, `at ${t.toFixed(2)} s "near" is on its framing: ${centre}`);
+  }
+  // A dutch that needs more than ×4 to cover a held dolly refuses, naming the dutch: while it rolls (its own span) …
+  const CORNER = [100, 50, 200, 150], cornerKit = {name: 'corner', story: {compile: () => ({hang: 1, regionsAt: () => [{box: CORNER, path: 'corner', label: 'corner', name: 'corner'}],
+    draw: c => { fill(c, GROUND, [0, 0, 1600, 900]); fill(c, RED, CORNER); }})}};
+  await assert.rejects(compileFilm({storyboard, timings, kits: [cornerKit], recipe: {story: {kit: 'corner'}, camera: [{move: 'dolly-in', at: ['a', 'red square'], until: ['a', 'quietly'], on: 'corner', amount: 3}, {move: 'dutch', at: ['a', 'corner'], amount: 15}]}}),
+    /camera\[1\] \(dutch\) would need the picture at ×4\.\d\d at .* to keep the frame covered/);
+  // … or later in the hold, when the focus goes wide and the thing slides under the held, rolled camera.
+  const FAR = [1440, 400, 1560, 500], farKit = {name: 'far', story: {compile: () => ({hang: 1, regionsAt: () => [{box: FAR, path: 'far', label: 'far', name: 'far'}],
+    draw: c => { fill(c, GROUND, [0, 0, 1600, 900]); fill(c, RED, FAR); }})}};
+  await assert.rejects(compileFilm({storyboard, timings, kits: [farKit], recipe: {story: {kit: 'far'},
+    focus: {strategy: 'camera', keys: [{at: ['a', 'First'], on: 'far'}, {at: ['b', 'Then'], on: 'wide'}]},
+    camera: [{move: 'pan', at: ['a', 'red square'], seconds: .8, amount: 133}, {move: 'dolly-in', at: ['a', 'sits'], seconds: 1, on: 'far', amount: 3},
+      {move: 'dutch', at: ['a', 'quietly'], seconds: 1, amount: 30}]}}),
+    /camera\[2\] \(dutch\) rolls the frame while camera\[1\] \(dolly-in\) holds on "far": at .* the picture would need ×4\.\d\d to keep the frame covered \(a camera goes to ×4\): roll less, or dolly in less before it/);
+});
+
+test('a refusal names the move that moves: a pan after a held dolly is checked on its own span, and the hold ends where the pan starts', async () => {
+  await assert.rejects(make({camera: [{move: 'dolly-in', at: ['a', 'red square'], until: ['a', 'quietly'], on: 'red', amount: 1.2}, {move: 'pan', at: ['a', 'corner'], amount: 1000}]}),
+    /^Error: camera\[1\] \(pan\) would need the picture at more than any zoom at .* to keep the frame covered/);
+});
+
+test('a dolly-out that cannot widen refuses as the no-op it is: a dutch holds the zoom up, or the camera is already at the whole frame', async () => {
+  // A dolly in, then a 15° dutch with a dolly-out beside it: the dutch's cover need would zoom the picture IN (×1.3 → ×1.43).
+  await assert.rejects(make({camera: [{move: 'dolly-in', at: ['a', 'red square'], until: ['a', 'quietly']}, {move: 'dutch', at: ['a', 'quietly'], seconds: 2, amount: 15}, {move: 'dolly-out', at: ['a', 'in'], seconds: 1.5}]}),
+    /camera\[2\] \(dolly-out\) cannot widen here: the dutch \(camera\[1\]\) needs ×1\.43 to keep the frame covered; the camera is headed for ×1\.43 as it starts, and would end at ×1\.43; level the dutch first \(amount 0\), or leave the dolly-out out/);
+  await assert.rejects(make({camera: [{move: 'dolly-out', at: ['a', 'red square']}]}), /camera\[0\] \(dolly-out\) cannot widen here: the camera is already at the whole frame/);
+  const widens = await make({camera: [{move: 'dolly-in', at: ['a', 'red square'], until: ['a', 'quietly'], amount: 2}, {move: 'dutch', at: ['a', 'quietly'], seconds: 1, amount: 8}, {move: 'dolly-out', at: ['a', 'corner'], amount: 1.3}]});
+  const c = at(widens, 'a', 'corner');
+  assert.ok(widens.cameraAt(c + 2.5).z < widens.cameraAt(c - .1).z, 'a dolly-out the dutch leaves room for still widens');
+});
+
+test('a held dolly is checked until moves have taken over both where it looks across and up and down: a pan on x leaves y re-aiming', async () => {
+  const TOP = [700, 30, 900, 110], topKit = {name: 'top', story: {compile: () => ({hang: 1, regionsAt: () => [{box: TOP, path: 'top', label: 'top', name: 'top'}],
+    draw: c => { fill(c, GROUND, [0, 0, 1600, 900]); fill(c, RED, TOP); }})}};
+  const film = camera => compileFilm({storyboard, timings, kits: [topKit], recipe: {story: {kit: 'top'}, camera,
+    focus: {strategy: 'camera', keys: [{at: ['a', 'First'], on: 'top'}, {at: ['b', 'blue'], on: 'wide'}]}}});
+  const dolly = {move: 'dolly-in', at: ['a', 'sits'], seconds: 1, on: 'top', amount: 3}, dutch = {move: 'dutch', at: ['a', 'corner'], seconds: 1, amount: 30};
+  await assert.rejects(film([dolly, {move: 'pan', at: ['a', 'quietly'], seconds: .5, amount: 10}, dutch]),
+    /camera\[2\] \(dutch\) rolls the frame while camera\[0\] \(dolly-in\) holds on "top": at [\d.]+ s the picture would need ×5\.26 to keep the frame covered/);
+  // Without the pan the same hold refuses the same way (it used to name its first moment past ×4, ×4.13; now its furthest).
+  await assert.rejects(film([dolly, dutch]), /camera\[1\] \(dutch\) rolls the frame while camera\[0\] \(dolly-in\) holds on "top": at [\d.]+ s the picture would need ×5\.26/);
+});
+
+test('a dolly-out is judged from where the camera is headed, so the moving film and reduced motion refuse it alike', async () => {
+  const camera = [{move: 'dutch', at: ['a', 'First'], seconds: 1, amount: 20}, {move: 'dutch', at: ['a', 'sits'], seconds: 1.5, amount: 5}, {move: 'dolly-out', at: ['a', 'here'], seconds: 1}];
+  const said = async options => { try { await make({camera}, options); return 'accepted'; } catch (e) { return e.message; } };
+  const [moving, calm] = [await said({}), await said({reducedMotion: true})];
+  assert.match(moving, /camera\[2\] \(dolly-out\) cannot widen here: the dutch \(camera\[1\]\) needs ×1\.15 to keep the frame covered; the camera is headed for ×1\.15 as it starts, and would end at ×1\.15/);
+  assert.equal(calm, moving);
+});
+
+test('moving and reduced motion accept and refuse the same recipes, with the same words (generated recipes)', async () => {
+  let seed = 7;
+  const rand = () => { seed = (seed + 0x6D2B79F5) | 0; let x = Math.imul(seed ^ (seed >>> 15), 1 | seed); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+  const pick = list => list[Math.floor(rand() * list.length)], between = (a, b) => +(a + (b - a) * rand()).toFixed(2);
+  const beats = [['a', 'First'], ['a', 'red square'], ['a', 'sits'], ['a', 'here'], ['a', 'quietly'], ['a', 'in its'], ['a', 'corner'], ['a', 'of the page'], ['b', 'Then'], ['b', 'blue'], ['b', 'and then'], ['b', 'back'], ['b', 'whole page']];
+  const moves = {
+    pan: () => ({amount: between(-400, 400)}), tilt: () => ({amount: between(-250, 250)}), dutch: () => ({amount: between(-25, 25)}),
+    'dolly-in': () => ({amount: between(1.05, 2.5), ...(rand() < .5 ? {on: pick(['red', 'blue'])} : {})}), 'dolly-out': () => ({amount: between(1.05, 2)}),
+    crane: () => ({amount: between(-150, 150), scale: between(.8, 1.3)}), track: () => ({on: pick(['red', 'blue'])}), truck: () => ({on: pick(['red', 'blue'])}),
+    'speed-ramp': () => ({amount: between(0, 2.5)}), freeze: () => ({}), handheld: () => ({amount: between(2, 12), seed: Math.floor(rand() * 9)}),
+  };
+  // Red walks right (60 px a second), blue stays: a follow on red samples it on the picture's clock, which a speed ramp changes.
+  const pair = {name: 'pair', story: {compile: () => ({hang: 1, regionsAt: t => [{box: moving(t), path: 'red', label: 'red', name: 'red'}, {box: BLUE_BOX, path: 'blue', label: 'blue', name: 'blue'}],
+    draw: (c, t) => { fill(c, GROUND, [0, 0, 1600, 900]); fill(c, RED, moving(t)); fill(c, BLUE, BLUE_BOX); }})}};
+  const said = async (camera, options) => {
+    try { const f = await compileFilm({storyboard, timings, recipe: {story: {kit: 'pair'}, camera}, kits: [pair], ...options}); return `accepted ${JSON.stringify(f.camera.moves.map(m => m.ends ?? null).at(-1))}`; } catch (e) { return e.message; }
+  };
+  let refused = 0;
+  for (let k = 0; k < 40; k++) {
+    const at = [...new Set(Array.from({length: 2 + Math.floor(rand() * 3)}, () => beats.indexOf(pick(beats))))].sort((a, b) => a - b);
+    const camera = at.map(i => { const move = pick(Object.keys(moves)); return {move, at: beats[i], seconds: between(.5, 1.5), ...moves[move]()}; });
+    const [moving, calm] = [await said(camera, {}), await said(camera, {reducedMotion: true})];
+    if (!moving.startsWith('accepted')) refused++;
+    assert.equal(calm.startsWith('accepted'), moving.startsWith('accepted'), `recipe ${k}: ${JSON.stringify(camera)}\nmoving: ${moving}\nreduced: ${calm}`);
+    if (!moving.startsWith('accepted')) assert.equal(calm, moving, `recipe ${k}: the same words`);
+  }
+  assert.ok(refused > 3 && refused < 37, `a mix of accepted and refused recipes (${refused} of 40 refused)`);
+});
+
+test('each version is checked with its own moves and its own clock: a speed ramp the cut film turns off does not hide what that film\'s track needs', async () => {
+  const runner = {name: 'runner', story: {compile: () => { const red = t => [130 + 200 * t, 400, 330 + 200 * t, 500]; return {hang: 1,
+    regionsAt: t => [{box: red(t), path: 'red', label: 'red', name: 'red'}], draw: (c, t) => { fill(c, GROUND, [0, 0, 1600, 900]); fill(c, RED, red(t)); }}; }}};
+  const camera = [{move: 'track', at: 4, until: 6, on: 'red'}, {move: 'speed-ramp', at: 5.5, seconds: 2, amount: 2.5}];
+  const said = async options => { try { await compileFilm({storyboard, timings, recipe: {story: {kit: 'runner'}, camera}, kits: [runner], ...options}); return 'accepted'; } catch (e) { return e.message; } };
+  const [moving, calm] = [await said({}), await said({reducedMotion: true})];
+  assert.match(calm, /camera\[0\] \(track\) would need the picture at ×4\.71 at 6\.00 s to keep the frame covered/, 'the cut film plays its track on the voice\'s clock');
+  assert.equal(moving, calm, 'and the moving film refuses it with the same words');
+});
+
+test('a move that starts where a hold has already taken the camera past ×4 is not blamed: the hold, and the dutch that rolled it, are', async () => {
+  const TOP = [700, 30, 900, 110], topKit = {name: 'top', story: {compile: () => ({hang: 1, regionsAt: () => [{box: TOP, path: 'top', label: 'top', name: 'top'}],
+    draw: c => { fill(c, GROUND, [0, 0, 1600, 900]); fill(c, RED, TOP); }})}};
+  await assert.rejects(compileFilm({storyboard, timings, kits: [topKit], recipe: {story: {kit: 'top'},
+    focus: {strategy: 'camera', keys: [{at: ['a', 'First'], on: 'top'}, {at: ['b', 'blue'], on: 'wide'}]},
+    camera: [{move: 'dolly-in', at: ['a', 'sits'], seconds: 1, on: 'top', amount: 3}, {move: 'truck', at: ['a', 'quietly'], seconds: 1, on: 'top'},
+      {move: 'dutch', at: ['a', 'corner'], seconds: 1, amount: 30}, {move: 'tilt', at: ['b', 'back'], seconds: .5, amount: 20}]}}),
+    /^Error: camera\[2\] \(dutch\) rolls the frame while camera\[0\] \(dolly-in\) holds on "top": at [\d.]+ s the picture would need ×5\.26 to keep the frame covered/);
+});

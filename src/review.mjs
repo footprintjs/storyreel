@@ -234,8 +234,12 @@ export const REVIEW_CHECKS = Object.freeze({
 
 /** The camera's freezes that reach the window: {path, at, until}. */
 const freezesIn = (film, window) => (film.camera?.moves ?? []).filter(m => m.move === 'freeze' && m.played !== 'off' && m.until > window.from && m.at < window.to);
-/** A beat whose recipe entry draws something (not a camera word, a note, a read, the poster or a recall). */
-const drawsSomething = path => Boolean(path) && !/^(camera|notes|poster|recalls)\b/.test(path) && !/\.reads\[/.test(path);
+/**
+ * A beat whose recipe entry draws something in the picture a freeze holds: not a camera word, a note, a read, the
+ * poster or a recall — and not the emphasis, the focus or a guess card, which are drawn on the voice's clock (film.mjs ·
+ * frame), so a freeze never holds them.
+ */
+const drawsSomething = path => Boolean(path) && !/^(camera|notes|poster|recalls|emphasis|focus|guesses)\b/.test(path) && !/\.reads\[/.test(path);
 /** Who speaks while a freeze holds a mouth of theirs on screen (sampled 10 times a second), or null. */
 function frozenWords(film, f) {
   for (let t = f.at; t < f.until; t += .1) {
