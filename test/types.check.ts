@@ -271,9 +271,11 @@ import {geometryOf, auditParts, readParts, crosses, GEOMETRY} from '../types/sub
 import {numbersIn, readFacts, exampleScenes, claimsCount, unsourcedClaims, claimText, type Claim} from '../types/sub/claims.js';
 import {reviewPart as review, verdictsText, type VerdictCheck, type ReviewVerdict} from '../types/sub/review.js';
 import type {Parts, NumberFact, Verdict} from '../types/index.js';
-export const stillShare = (film: Film): number => slideshowOf(film, {every: .25, rule: {...SLIDESHOW, most: .7}}).stillShare;
+export const deadShare = (film: Film): number => slideshowOf(film, {every: .25, rule: {...SLIDESHOW, hold: 4, most: .7}}).deadShare;
 export const slideRules: readonly unknown[] = SLIDESHOW_VERDICT.rules;
-export const limb: Parts = {segments: {arm: {a: [0, 0], b: [10, 0], width: 8, mount: 'body', ends: 'free', contact: false}}, regions: {body: [-5, -5, 5, 5]}, apart: [['arm', 'arm']]};
+export const limb: Parts = {segments: {arm: {a: [0, 0], b: [10, 0], width: 8, mount: 'body', ends: 'free', contact: false}, foot: {a: [0, 9], b: [3, 9], contact: 'a'}}, regions: {body: [-5, -5, 5, 5]}, apart: [['arm', 'arm']]};
+// @ts-expect-error contact names an end: 'a', 'b', or true
+export const heeled: Parts = {segments: {foot: {a: [0, 9], b: [3, 9], contact: 'heel'}}};
 // @ts-expect-error ends is 'free' or 'mounted'
 export const loose: Parts = {segments: {arm: {a: [0, 0], b: [10, 0], ends: 'both'}}};
 export const audited: number = auditParts([{t: 0, parts: [{...limb, path: 'story'}]}], GEOMETRY).breaks.length + geometryOf({} as Film).checked.mounts + (crosses([[0, 0], [1, 1]], [[0, 1], [1, 0]]) ? 1 : 0) + Object.keys(readParts(limb, 'story').segments).length;
@@ -289,4 +291,4 @@ export const myVerdict: VerdictCheck = {label: 'Short enough', when: () => true,
   verdict: {rules: [{when: {seconds: {gt: 600}}, then: 'failed', label: 'longer than ten minutes'}], passed: 'ten minutes or less'}};
 // @ts-expect-error a verdict rule's then is passed, failed or not run
 export const badVerdict: VerdictCheck = {label: 'x', when: () => true, measure: () => ({measured: {}}), verdict: {rules: [{when: {}, then: 'maybe', label: 'x'}], passed: 'y'}};
-export const partsAtNow = (film: Film): number => film.partsAt(1).length + film.lines.length + film.changes.length + (film.claims.facts ?? 0);
+export const partsAtNow = (film: Film): number => film.partsAt(1).length + film.lines.length + film.changes.length + (film.claims.facts?.length ?? 0) + film.claims.examples.length;

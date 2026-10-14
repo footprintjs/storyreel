@@ -6,8 +6,9 @@
  * middle: its time with every change of picture cut out (film.changes — its own arrival, the next shot's, a hand-over
  * on its page, a cut), so a transition never counts as the shot moving. The middle is read as frames drawn small (160
  * px wide: each pixel the average of a 10×10 cell of the 1600×900 frame) every `every` seconds, and each step between
- * two frames MOVES when enough of the picture changed in it. A shot is still when most of its middle is still; the
- * film is a slideshow when most of its shots' running time is.
+ * two frames MOVES when enough of the picture changed in it. A still stretch is DEAD time when it holds for more than
+ * `hold` seconds (a slide on screen), or when it is the whole of a shot that never moves; a shorter pause between
+ * moves is a beat, not a slide. The film is a slideshow when most of its shots' running time is dead.
  *
  * Not the review's `stale` check, which asks whether anything NEW comes (a scene, a beat, a word not on screen a
  * moment before) while the picture moves; this asks whether the picture MOVES between the new things. A code stage
@@ -27,9 +28,11 @@ import {filmPainter} from './finished.mjs';
  *          frame — a 40-px thing moving 12 px in a quarter second sweeps 1,000 px²). A blink is a change too, but a
  *          rare one: it moves a step or two in a still shot, never most of it. On the example films the verdicts are
  *          the same from 0.0001 to 0.001: a still step is almost always exactly still
- *   most   a shot is still, and a film a slideshow, when MORE than this share of the running time is still (a half)
+ *   hold   a still stretch is dead when it lasts MORE than this (3 s: a pause that long reads as a slide held up; a
+ *          beat between two moves is shorter) — or when it is all of a shot that never moves, however short the shot
+ *   most   a film is a slideshow when MORE than this share of its shots' running time is dead (a half)
  */
-export const SLIDESHOW = Object.freeze({width: 160, level: 4, area: .0002, most: .5});
+export const SLIDESHOW = Object.freeze({width: 160, level: 4, area: .0002, hold: 3, most: .5});
 
 /** [a, b) less the change [c0, c1]: a cut (c0 = c1) splits it there, so no step crosses it. */
 const cut = ([a, b], [c0, c1]) => (c1 < a || c0 >= b ? [[a, b]] : [[a, Math.min(b, c0)], [Math.max(a, c1), b]].filter(([x, y]) => y - x > 1e-6));
@@ -55,11 +58,12 @@ export function moved(before, after, rule = SLIDESHOW) {
 }
 
 /**
- * How much each shot moves inside itself: [{path, where, scene, pieces, seconds, still, stillAt}] — its middle (pieces,
- * as shotInsides), the `seconds` of it measured (steps of `every` seconds), `still` the seconds that did not move, and
- * `stillAt`, when each still step starts. The frames are read every `every` seconds from each piece's start, drawn
- * small (filmPainter); or, given `times` (moments `every` apart) and `frameAt(t)` (the grey frame drawn at each), at
- * those moments inside each piece — the review reads the picture once for all its checks.
+ * How much each shot moves inside itself: [{path, where, scene, pieces, seconds, still, stillAt, dead, deadAt}] — its
+ * middle (pieces, as shotInsides), the `seconds` of it measured (steps of `every` seconds), `still` the seconds that did
+ * not move and `stillAt` when each still step starts, `dead` the seconds of still stretches longer than `hold` (or all
+ * the still time of a shot that never moves) and `deadAt` when each dead step starts. The frames are read every `every`
+ * seconds from each piece's start, drawn small (filmPainter); or, given `times` (moments `every` apart) and `frameAt(t)`
+ * (the grey frame drawn at each), at those moments inside each piece — the review reads the picture once for all its checks.
  */
 export function shotMotion(film, {from = 0, to = film.total, every = .25, rule = SLIDESHOW, times = null, frameAt = null} = {}) {
   if (!(Number.isFinite(every) && every > 0)) throw new Error(`slideshow: every is seconds between the frames read, more than 0, not ${JSON.stringify(every)}`);
@@ -67,38 +71,44 @@ export function shotMotion(film, {from = 0, to = film.total, every = .25, rule =
   const paint = frameAt ?? filmPainter(film, rule.width);
   const moments = (a, b) => (times ? times.filter(t => t >= a - 1e-9 && t < b - 1e-9) : Array.from({length: Math.ceil((b - a) / every - 1e-9)}, (_, k) => a + k * every));
   return shotInsides(film, {from, to}).map(shot => {
-    let steps = 0; const stillAt = [];
+    let steps = 0; const stillAt = [], runs = [];   // runs: the still stretches, each the start of its still steps
     for (const [a, b] of shot.pieces) {
-      let before = null, last = null;
+      let before = null, last = null, run = null;
       for (const t of moments(a, b)) {
         const now = paint(t);
-        if (before && t - last <= every * 1.5) { steps++; if (!moved(before, now, rule)) stillAt.push(+last.toFixed(3)); }
+        if (before && t - last <= every * 1.5) {
+          steps++;
+          if (moved(before, now, rule)) run = null;
+          else { stillAt.push(+last.toFixed(3)); if (!run) runs.push(run = []); run.push(+last.toFixed(3)); }
+        } else run = null;   // a gap (a change of picture cut out) ends a stretch
         before = now; last = t;
       }
     }
-    return {path: shot.path, where: shot.where, scene: shot.scene, pieces: shot.pieces, seconds: +(steps * every).toFixed(3), still: +(stillAt.length * every).toFixed(3), stillAt};
+    // Dead: a stretch held longer than `hold`, or every still step of a shot that never moves.
+    const deadAt = stillAt.length === steps ? stillAt : runs.filter(r => r.length * every > rule.hold + 1e-9).flat();
+    return {path: shot.path, where: shot.where, scene: shot.scene, pieces: shot.pieces, seconds: +(steps * every).toFixed(3), still: +(stillAt.length * every).toFixed(3), stillAt,
+      dead: +(deadAt.length * every).toFixed(3), deadAt};
   });
 }
 
 /**
- * The film (or [from, to) of it) as a slideshow or not, options as shotMotion's: {shots, seconds, still, stillShare,
- * stillShots} — the shots measured (a shot with no step is left out), the seconds of middle measured and of it still,
- * the share still, and the shots that are still (more than `most` of their middle), each {path, where, scene, pieces,
- * seconds, still, stillShare, stillAt}.
+ * The film (or [from, to) of it) as a slideshow or not, options as shotMotion's: {shots, seconds, still, dead,
+ * deadShare, deadShots} — the shots measured (a shot with no step is left out), the seconds of middle measured, of it
+ * still and of it dead, the share dead, and the shots that hold still (any dead time), each as shotMotion gives it
+ * with its own `deadShare`.
  */
 export function slideshowOf(film, options = {}) {
-  const rule = options.rule ?? SLIDESHOW, shots = shotMotion(film, options).filter(s => s.seconds > 0);
-  const seconds = shots.reduce((n, s) => n + s.seconds, 0), still = shots.reduce((n, s) => n + s.still, 0);
-  const share = (a, b) => (b > 0 ? +(a / b).toFixed(3) : 0);
-  return {shots: shots.length, seconds: +seconds.toFixed(3), still: +still.toFixed(3), stillShare: share(still, seconds),
-    stillShots: shots.map(s => ({...s, stillShare: share(s.still, s.seconds)})).filter(s => s.stillShare > rule.most)};
+  const shots = shotMotion(film, options).filter(s => s.seconds > 0), sum = key => +shots.reduce((n, s) => n + s[key], 0).toFixed(3);
+  const share = (a, b) => (b > 0 ? +(a / b).toFixed(3) : 0), seconds = sum('seconds'), dead = sum('dead');
+  return {shots: shots.length, seconds, still: sum('still'), dead, deadShare: share(dead, seconds),
+    deadShots: shots.filter(s => s.dead > 0).map(s => ({...s, deadShare: share(s.dead, s.seconds)}))};
 }
 
-/** The verdict (verdict.mjs): not run with no middle to measure; failed when most of the shots' running time is still. */
+/** The verdict (verdict.mjs): not run with no middle to measure; failed when most of the shots' running time is dead. */
 export const SLIDESHOW_VERDICT = Object.freeze({
   rules: Object.freeze([
     Object.freeze({when: Object.freeze({shots: Object.freeze({eq: 0})}), then: 'not run', label: 'no shot has a middle to measure (every moment is a change of picture)'}),
-    Object.freeze({when: Object.freeze({stillShare: Object.freeze({gt: SLIDESHOW.most})}), then: 'failed', label: 'most of the running time inside the shots is still: a slideshow'}),
+    Object.freeze({when: Object.freeze({deadShare: Object.freeze({gt: SLIDESHOW.most})}), then: 'failed', label: 'most of the running time inside the shots is dead (held still for more than 3 s at a time): a slideshow'}),
   ]),
-  passed: 'the shots move inside themselves for most of their running time',
+  passed: 'the shots move inside themselves: most of their running time is never held still for more than 3 s',
 });

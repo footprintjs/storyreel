@@ -122,16 +122,18 @@ function fileLedger(root) {
 }
 
 /**
- * The facts a storyboard names (claims.mjs · readFacts): `facts` is a JSON file inside the film's root (read through
- * `within`, so it is hashed into the film's inputs) or the list itself; null when it names none.
+ * The facts a storyboard names (claims.mjs · readFacts): `facts` is a JSON file inside the film's root (files.mjs ·
+ * insideRoot) or the list itself; null when it names none. The facts draw nothing, so they are not among the files that
+ * reach every frame (film.inputs.files, in every segment's key): they are hashed on their own (film.inputs.facts), for
+ * an approval to lock — a source corrected redraws nothing.
  */
-function storyFacts(given, within, root) {
+function storyFacts(given, root) {
   if (given === undefined) return null;
-  if (typeof given !== 'string') return readFacts(given, 'storyboard.facts');
-  const file = within(given);
+  if (typeof given !== 'string') return Object.freeze(readFacts(given, 'storyboard.facts'));
+  const file = insideRoot(root, given);
   if (!existsSync(file)) throw new Error(`storyboard.facts names ${given}, which is not a file in the film's root (${root}): write the facts there ([{"value", "text"?, "source"}]), or give the list itself`);
   let list; try { list = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new Error(`storyboard.facts: ${given} is not JSON (${e.message}); it is a list of facts, [{"value", "text"?, "source"}]`); }
-  return readFacts(list, `storyboard.facts (${given})`);
+  return Object.freeze(readFacts(list, `storyboard.facts (${given})`));
 }
 
 /** Whether a story kit takes the context (`context: true`) or today's (spec, clock, motion). */
@@ -206,9 +208,9 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   // Files the recipe names load only from inside root (files.mjs · insideRoot: real paths, so no link leads out),
   // and every one the film reads is hashed into its inputs (fileLedger).
   const files = fileLedger(root), within = file => files.note(insideRoot(root, file));
-  // Claims (claims.mjs): the facts the storyboard names — read through the root like a code file, so they are hashed
-  // into the film's inputs — and the scenes it marks as example data, checked before anything is built.
-  const factList = storyFacts(storyboard.facts, within, root), examples = exampleScenes(storyboard);
+  // Claims (claims.mjs): the facts the storyboard names — from inside the root, hashed for an approval but in no
+  // segment's key (they draw nothing) — and the scenes it marks as example data, checked before anything is built.
+  const factList = storyFacts(storyboard.facts, root), examples = exampleScenes(storyboard);
   const allKits = [whiteboardKit, ...kits];
   const storyKits = Object.fromEntries(allKits.filter(k => k.story).map(k => [k.name, k.story]));
   const stageKits = Object.fromEntries(allKits.flatMap(k => Object.entries(k.stages ?? {})));
@@ -936,7 +938,8 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   // key holds the ones that reach every frame (segments.mjs). Files: every one read through the root while the
   // film was built.
   const inputs = Object.freeze({storyboard: hashOf(storyboard), timings: hashOf(timings), recipe: hashOf(given), strings: strings ? hashOf(strings) : null,
-    data: data === null ? null : hashOf(data), theme: hashOf(paper), files: Object.freeze(files.list()), ...(castGiven ? {cast: hashOf(castGiven)} : {})});
+    data: data === null ? null : hashOf(data), theme: hashOf(paper), files: Object.freeze(files.list()), ...(castGiven ? {cast: hashOf(castGiven)} : {}),
+    ...(factList ? {facts: hashOf(factList)} : {})});
   // Each string's own hash (segments.mjs): a segment's key holds only the strings its entries name, so changing one
   // word redraws the segments that show it, not the whole film. Not part of `inputs` (the table's hash is).
   const stringHashes = strings ? Object.freeze(Object.fromEntries(Object.keys(strings).map(k => [k, hashOf(strings[k])]))) : null;
@@ -946,12 +949,14 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (sc.narration === undefined) return [];   // a silent scene's directions are never shown
     const words = clock.shownWords(i), line = words.map(w => w.text).join(' ');
     let offset = 0;   // where each word stands in the line
-    return words.map(w => { const o = offset; offset += w.text.length + 1; return {text: w.text, line, offset: o, at: clock.offsets[i] + w.start, scene: i, path: 'captions'}; });
+    return words.map(w => { const o = offset; offset += w.text.length + 1; return {text: w.text, line, offset: o, at: clock.offsets[i] + w.start, to: clock.offsets[i] + w.end, scene: i, path: 'captions'}; });
   };
-  const shown = [...lines.filter(l => Number.isFinite(l.from) && l.from < clock.total).map(l => ({text: l.text, at: Math.max(0, l.from), scene: sceneOf(Math.max(0, l.from)), path: l.path})),
-    ...(attention?.record?.emphasis?.words ?? []).map((w, i) => ({text: w.text, at: w.t, scene: sceneOf(w.t), path: `emphasis.words[${i}]`})),
+  // An emphasis word is up from its beat until the next word's, or its own `until` (read again on the plain clock: no beat is logged twice).
+  const emphasized = attention?.record?.emphasis?.words ?? [], untilOf = i => { const u = recipe.emphasis?.words?.[i]?.until; return u === undefined ? Infinity : base.at(u); };
+  const shown = [...lines.filter(l => Number.isFinite(l.from) && l.from < clock.total).map(l => ({text: l.text, at: Math.max(0, l.from), to: Math.min(clock.total, l.to), scene: sceneOf(Math.max(0, l.from)), path: l.path})),
+    ...emphasized.map((w, i) => ({text: w.text, at: w.t, to: Math.min(untilOf(i), emphasized[i + 1]?.t ?? Infinity, clock.total), scene: sceneOf(w.t), path: `emphasis.words[${i}]`})),
     ...storyboard.scenes.flatMap(captionsOf)];
-  const claims = Object.freeze({facts: factList ? factList.length : null,
+  const claims = Object.freeze({facts: factList, examples: Object.freeze([...examples]),
     numbers: Object.freeze(findClaims(shown, {facts: factList, examples, scenes: storyboard.scenes.map(sc => sc.id)}).map(Object.freeze))});
   // What is drawn over every shot for a while: the guess cards, from their question to the card gone.
   const overlays = Object.freeze(guesses.map((g, n) => Object.freeze({path: `guesses[${n}]`, from: g.start, to: g.until + .5})));

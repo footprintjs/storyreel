@@ -12,8 +12,11 @@
  *   a, b     a segment's two ends: `a` is its root, `b` its tip; width its thickness (0 by default)
  *   mount    the part `a` must land on: a segment (touching it, widths counted) or a region (inside it)
  *   ends     'free' (the default: only `a` is held) or 'mounted' (`b` lands on the mount too: a strap, a hand rail)
- *   contact  true while the segment rests on the ground (a planted foot): from one moment to the next while it stays
- *            true, neither end may move. Read it from the pose — walk.mjs's feet are planted while `lift` is 0
+ *   contact  the end that rests on the ground while it is planted: 'a', 'b', or true (both: flat on the floor); false
+ *            or left out while it is in the air. A planted end never moves from where it was first planted, until the
+ *            part lifts. Read it from the pose — walk.mjs's feet are planted while `lift` is 0, and a rolling foot rests
+ *            on its heel while its toes are up (angle > 0), flat at 0, and on its toe while its heel is up (angle < 0):
+ *            name that end, and the foot passes while it rolls about it
  *   apart    pairs of segments whose centre lines must never cross (a joint they share is no crossing)
  *
  * The audit samples the kit's parts every GEOMETRY.every seconds over a stretch of the film (film.partsAt) and says
@@ -24,7 +27,9 @@
  * The thresholds, in the kit's own pixels (the 1600×900 frame at a full-frame world's rest).
  *   every  seconds between moments read: a frame at 30 fps, so a step's lift (a quarter second or more) is never missed
  *   reach  how far past touching a mounted end may sit before it has come off (2 px: under a stroke's own wobble)
- *   slide  how far a planted part may move from one moment to the next (1 px: rounding, never a step)
+ *   slide  how far a planted end may be from where it was first planted (1 px: rounding, never a step — a drift of
+ *          a fraction of a pixel a moment adds up, and fails)
+ * Moments further apart than 1.5 × every (the parts were not on screen in between) start the planted ends again.
  */
 export const GEOMETRY = Object.freeze({every: 1 / 30, reach: 2, slide: 1});
 const ENDS = ['free', 'mounted'];
@@ -49,7 +54,7 @@ export function readParts(parts, where) {
     if (s.width !== undefined && !(Number.isFinite(s.width) && s.width >= 0)) throw new Error(`${it}: width is its thickness in px, 0 or more`);
     if (s.ends !== undefined && !ENDS.includes(s.ends)) throw new Error(`${it}: ends is 'free' (only a is held) or 'mounted' (b lands on the mount too), not ${JSON.stringify(s.ends)}`);
     if (s.ends === 'mounted' && s.mount === undefined) throw new Error(`${it}: ends 'mounted' needs a mount (the part both ends land on)`);
-    if (s.contact !== undefined && typeof s.contact !== 'boolean') throw new Error(`${it}: contact is true while it rests on the ground (planted), false while it does not`);
+    if (s.contact !== undefined && typeof s.contact !== 'boolean' && s.contact !== 'a' && s.contact !== 'b') throw new Error(`${it}: contact names the end that rests on the ground ('a', 'b', or true for both), or is false while it is in the air, not ${JSON.stringify(s.contact)}`);
     if (s.mount !== undefined) {
       if (s.mount === name) throw new Error(`${it} is mounted on itself`);
       if (!Object.hasOwn(segments, s.mount) && !Object.hasOwn(regions, s.mount)) throw new Error(`${it} is mounted on "${s.mount}", which is not among its parts (segments: ${Object.keys(segments).join(', ') || 'none'}; regions: ${Object.keys(regions).join(', ') || 'none'})`);
@@ -92,13 +97,18 @@ function offMount(end, segment, mount, {segments, regions}) {
 }
 
 /**
- * Audit parts over a stretch: samples [{t, parts: [{path, …parts}]}] in time order (film.partsAt at each t). Returns
- * {checked: {mounts, pairs, planted}, breaks: [{rule: 'mount' | 'cross' | 'slide', path, part, other?, t, px?}]} —
- * every moment something breaks: an end `px` off its mount, a pair crossing, a planted part moved `px`.
+ * Audit parts over a stretch: samples [{t, parts: [{path, …parts}]}] in time order (film.partsAt at each t, `rule.every`
+ * apart). Returns {checked: {mounts, pairs, planted}, breaks: [{rule: 'mount' | 'cross' | 'slide', path, part, other?,
+ * end?, t, px?}]} — every moment something breaks: an end `px` off its mount, a pair crossing, a planted end `px` from
+ * where it was first planted.
  */
 export function auditParts(samples, rule = GEOMETRY) {
-  const checked = {mounts: 0, pairs: 0, planted: 0}, breaks = [], planted = new Map();
+  const checked = {mounts: 0, pairs: 0, planted: 0}, breaks = [];
+  let planted = new Map(), last = null;
   for (const {t, parts} of samples) {
+    // Not the next moment (the parts were off screen in between): what was planted before is not known to be still there.
+    if (last !== null && t - last > rule.every * 1.5 + 1e-9) planted = new Map();
+    last = t;
     const now = new Map();
     for (const given of parts) {
       const where = `${given.path} at ${t.toFixed(2)} s`, p = readParts(given, where);
@@ -109,13 +119,15 @@ export function auditParts(samples, rule = GEOMETRY) {
           if (off > rule.reach) breaks.push({rule: 'mount', path: given.path, part: name, other: s.mount, t, px: +off.toFixed(1)});
         }
         if (s.contact) {
-          const key = `${given.path}\u0000${name}`, before = planted.get(key);
-          now.set(key, s);
-          if (before) {
+          // Each planted end is held to where it was first planted (anchors), for as long as the part stays planted.
+          const key = `${given.path}\u0000${name}`, anchors = {...planted.get(key)};
+          for (const end of s.contact === true ? ['a', 'b'] : [s.contact]) {
+            if (!anchors[end]) { anchors[end] = s[end]; continue; }
             checked.planted++;
-            const moved = Math.max(length(sub(s.a, before.a)), length(sub(s.b, before.b)));
-            if (moved > rule.slide) breaks.push({rule: 'slide', path: given.path, part: name, t, px: +moved.toFixed(1)});
+            const moved = length(sub(s[end], anchors[end]));
+            if (moved > rule.slide) breaks.push({rule: 'slide', path: given.path, part: name, end, t, px: +moved.toFixed(1)});
           }
+          now.set(key, anchors);
         }
       }
       for (const [m, n] of p.apart) {
@@ -123,7 +135,7 @@ export function auditParts(samples, rule = GEOMETRY) {
         if (crosses([p.segments[m].a, p.segments[m].b], [p.segments[n].a, p.segments[n].b])) breaks.push({rule: 'cross', path: given.path, part: m, other: n, t});
       }
     }
-    planted.clear(); for (const [k, s] of now) planted.set(k, s);   // a part planted now is compared with the next moment; one lifted is forgotten
+    planted = now;   // a part planted now keeps its anchors; one lifted is forgotten, and plants again where it lands
   }
   return {checked, breaks};
 }

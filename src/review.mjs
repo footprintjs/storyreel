@@ -35,9 +35,9 @@ import {greyOf} from './finished.mjs';
 import {partScenes, partWindow, partTimeline, timelineText} from './render.mjs';
 import {clockTenths} from './clock.mjs';
 import {verdictChart, verdictsText, readVerdict} from './verdict.mjs';
-import {slideshowOf, SLIDESHOW_VERDICT} from './slideshow.mjs';
+import {slideshowOf, SLIDESHOW, SLIDESHOW_VERDICT} from './slideshow.mjs';
 import {geometryOf, breakText, GEOMETRY_VERDICT} from './geometry.mjs';
-import {claimsCount, unsourcedClaims, claimText, CLAIMS_VERDICT} from './claims.mjs';
+import {claimsCount, unsourcedClaims, claimText, drawnClaims, CLAIMS_VERDICT} from './claims.mjs';
 
 /**
  * The words a frame draws at t: [{text, box: [x0, y0, x1, y1], alpha}], in the layout's output pixels (or on the
@@ -241,18 +241,18 @@ export const REVIEW_CHECKS = Object.freeze({
     })},
   // The shots do not move inside themselves (slideshow.mjs). Stale's opposite, not its double: stale asks whether
   // anything NEW comes (a scene, a beat, a word) while the picture moves; this asks whether the picture MOVES between the
-  // new things — a code stage that reveals a line every few seconds is never stale and can still be a slide. Not the
-  // still check's either: that names a stretch frozen for 5 s; this names a whole shot that is mostly still.
+  // new things — a code stage that reveals a line every few seconds is never stale and can still be a slide. Its
+  // findings are the dead stretches; a frozen one is the still check's to name when it runs (as stale leaves it), so it
+  // is said once — but it still counts as dead.
   slideshow: {label: 'No slideshow', why: 'the part is long enough to hold a shot', notRun: 'the part is too short to hold a shot (stillFor)',
     when: s => s.facts.seconds >= s.facts.stillFor,
-    measure: ({film, window, every, samples, greys}) => {
+    measure: ({film, window, every, samples, greys, frozen, picked}) => {
       const m = slideshowOf(film, {from: window.from, to: window.to, every, times: samples.map(x => x.t), frameAt: t => greys.get(t)});
-      // A still shot is one finding: its middle, every moment of it (a span per piece).
-      const middle = s => s.pieces.flatMap(([a, b]) => Array.from({length: Math.max(0, Math.ceil((b - a) / every - 1e-9))}, (_, k) => +(a + k * every).toFixed(3)));
-      const hits = m.stillShots.flatMap(s => middle(s).map(t => ({kind: 'slideshow', t, what: `${s.where} hardly moves inside itself: ${pct(s.stillShare)} of its ${s.seconds.toFixed(1)} s is still`})));
-      return {measured: {shots: m.shots, seconds: m.seconds, still: m.still, stillShare: m.stillShare, stillShots: m.stillShots.map(({where, scene, seconds, stillShare}) => ({where, scene, seconds, stillShare}))}, hits};
+      const left = picked.includes('still') ? frozen : [], named = t => left.some(r => t >= r.from - 1e-9 && t < r.to - 1e-9);
+      const hits = m.deadShots.flatMap(s => s.deadAt.filter(t => !named(t)).map(t => ({kind: 'slideshow', t, what: `${s.where} holds still: ${pct(s.deadShare)} of its ${s.seconds.toFixed(1)} s is dead (still for more than ${SLIDESHOW.hold} s at a time)`})));
+      return {measured: {shots: m.shots, seconds: m.seconds, dead: m.dead, deadShare: m.deadShare, deadShots: m.deadShots.map(({where, scene, seconds, dead, deadShare}) => ({where, scene, seconds, dead, deadShare}))}, hits};
     },
-    summary: m => `${pct(m.stillShare)} of ${m.seconds.toFixed(1)} s still${m.stillShots.length ? `; still shots: ${m.stillShots.map(s => `${s.where} ${pct(s.stillShare)}`).join(', ')}` : ''}`,
+    summary: m => `${pct(m.deadShare)} of ${m.seconds.toFixed(1)} s dead${m.deadShots.length ? `; held still: ${m.deadShots.map(s => `${s.where} ${pct(s.deadShare)}`).join(', ')}` : ''}`,
     verdict: SLIDESHOW_VERDICT},
   // The drawn parts hold together (geometry.mjs): for a kit that gives its parts, a mounted end stays on, a pair kept
   // apart never crosses, a planted part does not slide.
@@ -265,19 +265,24 @@ export const REVIEW_CHECKS = Object.freeze({
     },
     summary: m => `${m.parts} parts at ${m.moments} moments${m.broken ? `; ${m.worst.slice(0, 3).map(w => `${w.text}${w.px !== undefined ? ` (${w.px} px at ${clockTenths(w.t)})` : ` (at ${clockTenths(w.t)})`}`).join('; ')}${m.broken > 3 ? `; and ${m.broken - 3} more` : ''}` : ''}`,
     verdict: GEOMETRY_VERDICT},
-  // Every number on screen has a source (claims.mjs): a fact the storyboard names, or an example scene.
+  // Every number on screen has a source (claims.mjs): a fact the storyboard names, or an example scene. The numbers are
+  // the film's declared ones on screen during the part (their [at, to] meets it) and every number the samples' words
+  // draw that none of them holds (claims.mjs · drawnClaims: the words read once, for every check — no second drawing).
   claims: {label: 'Every number has a source', why: 'the film lists the numbers it shows', notRun: 'the film does not list the numbers it shows (compileFilm lists them as film.claims)',
     when: s => s.facts.claims,
-    measure: ({film, window}) => {
-      const claims = {...film.claims, numbers: film.claims.numbers.filter(c => c.at >= window.from - 1e-6 && c.at <= window.to + 1e-6)}, open = unsourcedClaims(claims);
-      return {measured: {...claimsCount(claims), unsourcedNumbers: open.map(c => ({number: c.number, scene: c.scene, path: c.path, at: c.at}))}, hits: open.map(c => ({kind: 'claims', t: c.at, what: claimText(c)}))};
+    measure: ({film, window, samples}) => {
+      const declared = film.claims.numbers.filter(c => c.at <= window.to + 1e-6 && c.to >= window.from - 1e-6);
+      const drawn = drawnClaims(samples, {claims: film.claims, sceneOf: t => film.clock.locate(t).index, scenes: film.timings.scenes.map(sc => sc.id)});
+      const claims = {...film.claims, numbers: [...declared, ...drawn]}, open = unsourcedClaims(claims);
+      return {measured: {...claimsCount(claims), drawn: drawn.length, unsourcedNumbers: open.map(c => ({number: c.number, scene: c.scene, path: c.path, at: c.at}))},
+        hits: open.map(c => ({kind: 'claims', t: Math.max(c.at, window.from), what: claimText(c)}))};
     },
     summary: m => (m.numbers ? `${m.numbers} number${m.numbers === 1 ? '' : 's'} on screen: ${m.sourced} sourced, ${m.examples} in example scenes${m.factsGiven ? `, ${m.unsourced} with no source` : `, ${m.open - m.sourced} unchecked`}` : ''),
     verdict: CLAIMS_VERDICT},
 });
 
 const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes', hook: 'no hook', 'text-density': 'too much to read', silences: 'no breath', stale: 'nothing new', loop: 'the loop jumps',
-  slideshow: 'a slide', geometry: 'the drawing breaks', claims: 'no source'};
+  slideshow: 'held still', geometry: 'the drawing breaks', claims: 'no source'};
 /** What a verdict check's scope keeps for itself: never a measured value's name. */
 const MACHINERY = new Set(['hits', 'failed', 'measured', 'verdict', 'why', 'summary']);
 /** The findings as lines: "1:21.5–1:23.0 chapters · under the captions: \"requests in\"". */

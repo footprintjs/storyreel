@@ -18,7 +18,7 @@ test('the tools read the project\'s film: its timeline and its review as text, a
   assert.match(await timeline(p, {scene: 'two', handles: 0}), /^two: [\d.]+–[\d.]+ s of [\d.]+ s \(times from its start\)\n0\.00  ── two$/m);
   const read = await review(p);
   assert.match(read, /review \(under-captions, words-overlap, cut-off, hook, text-density, stale, still, slideshow, claims\):\n[\s\S]*0:02\.0–0:03\.8 one · words over words: "Alpha" and "Beta"/);
-  assert.match(read, /\nverdicts:\nNo slideshow · passed: the shots move inside themselves for most of their running time \(0 % of [\d.]+ s still\)\nDrawn parts hold together · not run: no kit on screen gives its parts \(parts\(t\)\)\nEvery number has a source · passed: the film shows no number/, 'the verdicts follow the findings, each with why');
+  assert.match(read, /\nverdicts:\nNo slideshow · passed: the shots move inside themselves: most of their running time is never held still for more than 3 s \(0 % of [\d.]+ s dead\)\nDrawn parts hold together · not run: no kit on screen gives its parts \(parts\(t\)\)\nEvery number has a source · passed: the film shows no number/, 'the verdicts follow the findings, each with why');
   const s = await still(p, {at: 'one+2.5,two+0'});
   assert.ok(existsSync(s.file) && s.file.endsWith('.png'), s.text);
   await assert.rejects(still(p, {at: 'three+1'}), /"three\+1" is not a moment \(scene\+seconds, or seconds; the scenes are one, two\)/);

@@ -532,18 +532,27 @@ says `not run` and why; it never passes.
 import {reviewPart} from 'footprint-storyreel/review';
 const r = await reviewPart(film);     // the hello example
 console.log(r.verdictText);
-// No slideshow · failed: most of the running time inside the shots is still: a slideshow (63 % of 27.8 s still; still shots: stage rule 85 %)
+// No slideshow · passed: the shots move inside themselves: most of their running time is never held still for more than 3 s (32 % of 27.8 s dead; held still: stage rule 75 %)
 // Drawn parts hold together · not run: no kit on screen gives its parts (parts(t))
-// Every number has a source · passed: the film shows no number
+// Every number has a source · not run: the storyboard names no facts, so the numbers outside example scenes cannot be checked (4 numbers on screen: 0 sourced, 0 in example scenes, 4 unchecked)
 r.record.filter(e => e.type === 'condition').map(e => e.text);
-// [Condition]: It evaluated Rule 2 "most of the running time inside the shots is still: a slideshow": stillShare 0.631 gt 0.5 ✓, and chose slideshow/failed.
+// [Condition]: It evaluated Rule 2 "the storyboard names no facts, so the numbers outside example scenes cannot be checked": factsGiven false eq false ✓, open 4 gt 0 ✓, and chose claims/not run.
 ```
 
 `r.verdicts` is the same as data, `[{check, label, verdict, why, measured, summary}]`, every verdict check in order.
-A failed verdict's reasons are findings too (`r.findings`, `r.text`): the still shots, the parts that break, the
-numbers with no source. `npx storyreel review` prints the verdicts under the findings. A verdict check of your own
+A failed verdict's reasons are findings too (`r.findings`, `r.text`): the stretches held still, the parts that break,
+the numbers with no source. `npx storyreel review` prints the verdicts under the findings. A verdict check of your own
 is `{label, why, notRun, when(scope), measure(review) → {measured, hits}, verdict: {rules, passed}}` in `checks`:
-each measured value goes on the scope by its name, for the rules' filters (`{stillShare: {gt: .5}}`).
+each measured value goes on the scope by its name, for the rules' filters (`{deadShare: {gt: .5}}`).
+
+The example films, as the review answers them (pinned in `test/slideshow.test.mjs`):
+
+| film | no slideshow | drawn parts | numbers |
+|---|---|---|---|
+| `hello` | passed: 32 % dead (`stage rule` 75 %) | not run (no parts) | not run: 4 numbers drawn (the card's "sheep 1", a 0 in the code), no facts |
+| `recap` | passed: 15 % dead (`the story` 22 %, `stage code` 37 %) | not run (no parts) | not run: 12 numbers, no facts |
+| `shepherd` | passed: 0 % dead | passed (21 parts) | passed: no number |
+| `worlds` | passed: 0 % dead | passed (17 parts) | not run: 3 numbers drawn, no facts |
 
 ### No slideshow
 
@@ -559,22 +568,26 @@ measured, not guessed (`footprint-storyreel/slideshow`):
   **moves** when at least `area` of the cells (0.0002: about 300 px² of the frame) changed by more than `level` (4
   grey levels: a 1-px line of ink drawn across a cell moves it 19; the tail of a fade moves less). A frame is a pure function of time, so a picture that does not move
   draws exactly the same pixels; on the example films the verdicts are the same for any `area` from 0.0001 to 0.001.
-- **Most of the running time.** A shot is still when more than half (`most`) of its middle is still; the film
-  **fails** when more than half of its shots' running time is. The still shots are its findings
-  (`stage rule hardly moves inside itself: 85 % of its 12.0 s is still`) — listed with a passing verdict too, as data.
+- **Dead time.** A still stretch is **dead** when it holds for more than `hold` (3 s: a slide held up, where a pause
+  between two moves is a beat) — or when it is all of a shot that never moves, however short (slides of 2.5 s,
+  crossfaded, are all dead). The film **fails** when more than half (`most`) of its shots' running time is dead. The
+  dead stretches are its findings (`stage two holds still: 100 % of its 6.5 s is dead (still for more than 3 s at a
+  time)`); one frozen for 5 s or more is the **still** check's to name when it runs, so it is said once — and the
+  shots that hold still are listed with a passing verdict too, as data. Measured: still cards with cuts, 100 %; slides
+  of 2.5 s, 100 %; a card turning to a new page every 5 s, 63 %; every 1.5 s, 0 %. A kit cannot exempt itself.
 
 It is not the **stale** check, and does not repeat it: stale asks whether anything *new* comes (a scene, a beat, a
 word not on screen a moment before) while the picture moves; this asks whether the picture *moves* between the new
 things. A code stage that reveals a line every few seconds is never stale, and can still be a slide; a world that
 drifts for ten seconds with nothing new is stale, and moves. Nor is it **still**, which names one stretch frozen
-for 5 s; this names a whole shot that is mostly still. Of the example films, `shepherd` and `worlds` pass and
-`hello` and `recap` (a whiteboard and code stages, still between their reveals) read as slideshows — a camera
-drift, a breathing figure or a slow push over the still stretches would move them.
+for 5 s; this weighs every stretch held more than 3 s against the shots' running time. All four example films pass:
+`hello` and `recap` (a whiteboard and code stages, still between their reveals) hold still for a third and a sixth of
+their time.
 
 ```js
 import {slideshowOf, SLIDESHOW} from 'footprint-storyreel/slideshow';
-const s = slideshowOf(film);             // {shots, seconds, still, stillShare, stillShots: [{where, stillShare, …}]}
-slideshowOf(film, {rule: {...SLIDESHOW, most: .7}});   // the thresholds are data
+const s = slideshowOf(film);             // {shots, seconds, still, dead, deadShare, deadShots: [{where, deadShare, deadAt, …}]}
+slideshowOf(film, {rule: {...SLIDESHOW, hold: 4}});    // the thresholds are data
 ```
 
 ### Drawn parts hold together
@@ -591,7 +604,7 @@ parts(t) {   // on a world (a stage kit: parts(handle, t))
       'arm left':  {a: [x - 26, y - 135], b: [x - 52, y - 110], width: 16, mount: 'robe'},   // a: the root, on its mount
       'hand left': {a: [x - 55, y - 108], b: [x - 55, y - 108], width: 18, mount: 'staff'},  // a hand on the staff
       'staff':     {a: [x - 58, y], b: [x - 58, y - 250], width: 9},
-      'foot 1':    {a: [fx, floor], b: [fx + 30, floor], mount: 'leg 1', contact: foot.lift === 0}, // planted (walk.mjs)
+      'foot 1':    {a: heel, b: toe, mount: 'leg 1', contact: planted ? 'a' : false},  // resting on its heel (walk.mjs)
       …},
     regions: {robe: [x - 52, y - 150, x + 52, y]},       // boxes a part can be mounted on
     apart: [['arm left', 'arm right']],                  // pairs that must never cross
@@ -602,22 +615,28 @@ parts(t) {   // on a world (a stage kit: parts(handle, t))
 - **Mounted.** A segment's root `a` lands on its `mount` — a segment (touching it, both widths counted) or a region
   (inside it) — within `reach` (2 px); `ends: 'mounted'` holds its tip `b` there too (a strap, a hand rail).
 - **Apart.** A declared pair's centre lines never cross; a joint they share (two legs from one hip) is no crossing.
-- **Planted.** A segment with `contact: true` rests on the ground: from one moment to the next while it stays
-  planted, neither end moves more than `slide` (1 px). Read it from the pose — walk.mjs's feet are planted while
-  their `lift` is 0, and a figure walked by it passes; one whose feet skate under the body fails.
+- **Planted.** `contact` names the end a segment rests on — `'a'`, `'b'`, or `true` (flat: both) — and `false` in
+  the air. A planted end may never be more than `slide` (1 px) from where it was first planted, until the part lifts:
+  a drift of a fraction of a pixel a moment adds up, and fails. Read it from the pose — walk.mjs's feet are planted
+  while their `lift` is 0 — and, for a foot that rolls, name the end it rolls about: the heel while its toes are up
+  (`angle > 0`, as it lands), both when it is flat, the toe while its heel is up (`angle < 0`, as it pushes off). A
+  figure walked by it passes; one whose feet skate under the body fails, and so does a foot turned about its heel
+  while it should rest on its toe.
 - **Sampled.** Every `every` seconds (a frame at 30 fps), over the part reviewed (`film.partsAt(t)` lists what the
-  kits on screen give). It **fails** when anything breaks, naming the part and when (`story: "foot 1" slides while
-  it is planted`); it is **not run** when no kit on screen gives its parts, or when the parts declare nothing to check.
+  kits on screen give); moments further apart than that (the parts were off screen in between) start the planted ends
+  again. It **fails** when anything breaks, naming the part and when (`story: "foot 1" slides while it is planted`);
+  it is **not run** when no kit on screen gives its parts, or when the parts declare nothing to check.
 
 The cartoon kit gives its parts — the shepherd's staff, arms and hands, each sheep's body and legs, a standing
-sheep's feet planted — from the same numbers it draws with, so the audit checks the drawing itself.
+sheep's feet planted — from its shape: the same numbers it draws from (`shepherdShape`, `sheepShape`), so the audit
+checks the drawing itself, and fails when the drawing does (pinned: the staff and arms are strokes the frame draws).
 
 ### Every number has a source
 
 A number on screen reads as a fact. Every number the film shows — its lines (titles, footers, list lines, a world's
-words, guess cards, the push-in caption), its emphasis words and its captions as shown (a number slot in its digits)
-— must match a **fact** the storyboard names, or sit in a scene marked as **example data**
-(`footprint-storyreel/claims`):
+words, guess cards, the push-in caption), its emphasis words, its captions as shown (a number slot in its digits) and,
+in the review, every word the picture draws (a kit's own words, a card's rows, code) — must match a **fact** the
+storyboard names, or sit in a scene marked as **example data** (`footprint-storyreel/claims`):
 
 ```json
 {"title": "Frames", "facts": "facts.json", "scenes": [
@@ -628,31 +647,44 @@ words, guess cards, the push-in caption), its emphasis words and its captions as
 ```json
 [{"value": 60, "text": "60 Hz", "source": "https://example.org/display-rates"},
  {"value": 16.67, "source": "docs/frames.md"},
+ {"value": -5, "text": "−5 °C", "source": "met-office/2026-01-12.csv"},
  {"value": "3:15", "text": "at 3:15", "source": "run.json#steps[2].at"}]
 ```
 
-- **A fact** is `{value, text?, source}`: `value` the number as the screen shows it (`16.67`, `1000` for "1,000", or
-  `"3:15"`); `text` the words it is shown with — they must stand around it in the line that shows it, so `60 Hz` is
-  not `60 sheep`, and `6 Hz` is not the 6 in "6 apples and 16 Hz"; `source` where it comes from: a URL, a document, or a pointer into a record. `facts` is a JSON file inside
-  the film's root (read through the root, so it is hashed into the film's inputs and an approval locks it) or the
-  list itself. A fact that is not one refuses, naming the fix.
+- **A fact** is `{value, text?, source}`: `value` the number as the screen shows it, its sign too (`16.67`, `-5`,
+  `1000000` for "1,000,000"; as written when it is not one value: `"1,000"`, `"3:15"`); `text` the words it is shown
+  with — they must stand around it in the line that shows it, so `60 Hz` is not `60 sheep`, and `6 Hz` is not the 6 in
+  "6 apples and 16 Hz"; `source` where it comes from: a URL, a document, or a pointer into a record. `facts` is a JSON
+  file inside the film's root, or the list itself. The facts draw nothing, so they are in no segment's key (a source
+  corrected redraws nothing): they are hashed on their own, `film.inputs.facts`, and an approval locks them. A fact
+  that is not one refuses, naming the fix.
 - **An example scene** (`"example": true`) says so on screen: an "Example data" label in the top right corner, for
   exactly the scene's time (the emphasis corner label's look) — in a format that crops the frame (portrait, vertical),
   in the corner of what the crop shows. `"example": "Beispieldaten"` puts the label in the film's language. Its
   numbers need no source, and the label is in the key of every segment that shows it.
-- **The numbers** are found the way the voice tools find digits (footprint-narration's `unsaidDigits`), less a digit
-  right after a letter, which is part of a name (H2O, MP4, v2); a unit written onto a number stays a number (60Hz,
-  4K). A sign is not part of a number: a fact for "−5 °C" is `{"value": 5, "text": "−5 °C", …}`. `film.claims`
-  lists them all: `{facts, numbers: [{number, line, at, scene, path, example, source}]}`, one per number, entry and
-  scene (a number said again in the same scene's captions is the same claim).
+- **The numbers** are found the way the voice tools find digits (footprint-narration's `unsaidDigits`), with their
+  sign — "−5 °C" is −5, which a fact for `5` does not source — less a digit run that is part of a name: right after a
+  cased letter (H2O, MP4, v2), or after a hyphen after one (COVID-19). A unit written onto a number stays a number
+  (60Hz, 4K), and a number after a CJK character is a number (価格は100円). A number with one separator before exactly
+  three digits ("1,000", "1.000") is a thousand in one language and one in another, and the screen does not say which:
+  it is **ambiguous**, so only a fact that writes it the same way (`"value": "1.000"`) sources it — never `1` or `1000`.
+  `film.claims` lists them all: `{facts, examples, numbers: [{number, line, offset, at, to, scene, path, example,
+  source}]}` — one per place in a line (the same number twice in a line is two claims), from when the line is whole on
+  screen to when it starts to leave, decided in the scene where the line is first shown.
+- **What is drawn.** The review also reads the numbers in every word its frames draw — the words it reads for every
+  check, so no frame is drawn again: measured, 1.9 ms for the 1,495 words of the hello example's 128 samples, against
+  about 4 s for its whole review. A drawn number is a
+  declared one when a declared line holds it and the drawn words are that line, or a word-bounded start or end of it;
+  any other is a claim of its own (`path: 'drawn'`). `makeFilm`'s `check-claims` reads the declared lines only (it
+  draws no frame).
 - **The verdict**: `failed` when a number outside an example scene has no source — each listed with its scene, its
   recipe entry and the fix (`"120" (scene rate, story.items[1]) has no source: add {"value": 120, "source": "…"} to
   the facts, or mark scene rate "example": true`); `not run` when the storyboard names no facts and a number shows
   outside an example scene; `passed` otherwise (a film that shows no number passes).
 
-It is a verdict in the review, and a stage of `makeFilm`'s pipeline, `check-claims`, right after the compile: the
-making-of record keeps it (`"claims": {verdict, why, numbers, sourced, examples, unsourced: [{number, scene, path,
-at, fix}]}`) and the pipeline's record its `decide()` evidence. `makeFilm({…, claims: 'refuse'})` refuses a number
+It is a verdict in the review (the numbers whose span meets the part reviewed), and a stage of `makeFilm`'s
+pipeline, `check-claims`, right after the compile: the making-of record keeps it (`"claims": {verdict, why, numbers,
+sourced, examples, unsourced: [{number, scene, path, at, fix}]}`) and the pipeline's record its `decide()` evidence. `makeFilm({…, claims: 'refuse'})` refuses a number
 with no source before anything is drawn — and a film whose numbers cannot be checked — leaving the voice folder and
 the last render's narration as they were:
 
@@ -661,8 +693,8 @@ await makeFilm({storyboard, recipe, timings, out: 'out/film.mp4', claims: 'refus
 // The film shows 1 number with no source (claims: 'refuse'): "120" (scene rate, story.items[1]) has no source: …
 ```
 
-Not read yet: the card's rows and code (code is studied, not claimed), and a number a kit draws without listing it in
-its `texts()`.
+The pipeline's check reads only what the film declares; a number only the picture shows (a card's row, a kit's own
+words, code) is caught by the review.
 
 ## One film, every platform
 
@@ -1289,9 +1321,9 @@ sounds: [{time: clock.at(['story', 'the door opens']), type: 'door', gain: .45},
 | `makeClock(storyboard, timings)` | phrases → seconds; `speaking(t)`, `turns()`, `gaze(t, who)` |
 | `footprint-storyreel/shots` → `readIntent` · `readContinuity` · `checkContinuity` · `tooMuchTooFast` · `distinctMoments` · `WATCHING` | the shot plan's checks, on their own |
 | `footprint-storyreel/review` → `reviewPart(film, {part?, layout?, checks?, …})` · `REVIEW_CHECKS` · `findingsText` · `verdictsText` · `wordsAt` | a part reviewed by reading it: findings with times, and three verdicts (passed, failed, not run) with their `decide()` evidence |
-| `footprint-storyreel/slideshow` → `slideshowOf(film, {from?, to?, every?, rule?})` · `shotMotion` · `shotInsides` · `moved` · `SLIDESHOW` · `SLIDESHOW_VERDICT` | no slideshow: how much each shot moves in its middle, and whether most of the running time is still |
-| `footprint-storyreel/geometry` → `geometryOf(film, {from?, to?, rule?})` · `auditParts` · `readParts` · `crosses` · `breakText` · `GEOMETRY` · `GEOMETRY_VERDICT` | a kit's drawn parts audited: mounted ends stay on, pairs kept apart never cross, planted parts do not slide |
-| `footprint-storyreel/claims` → `numbersIn` · `numberValue` · `readFacts` · `exampleScenes` · `findClaims` · `claimsCount` · `unsourcedClaims` · `claimText` · `CLAIMS_VERDICT` | every number on screen with its source: a fact the storyboard names, or an example scene (`film.claims`) |
+| `footprint-storyreel/slideshow` → `slideshowOf(film, {from?, to?, every?, rule?})` · `shotMotion` · `shotInsides` · `moved` · `SLIDESHOW` · `SLIDESHOW_VERDICT` | no slideshow: how much each shot moves in its middle, and whether most of the running time is dead (held still more than 3 s) |
+| `footprint-storyreel/geometry` → `geometryOf(film, {from?, to?, rule?})` · `auditParts` · `readParts` · `crosses` · `breakText` · `GEOMETRY` · `GEOMETRY_VERDICT` | a kit's drawn parts audited: mounted ends stay on, pairs kept apart never cross, a planted end stays where it was planted |
+| `footprint-storyreel/claims` → `numbersIn` · `numberValue` · `readFacts` · `exampleScenes` · `findClaims` · `drawnClaims` · `claimsCount` · `unsourcedClaims` · `claimText` · `CLAIMS_VERDICT` | every number on screen with its source: a fact the storyboard names, or an example scene (`film.claims`; the review adds what the picture draws) |
 | `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `inOut` | the one ease table (`linear in out inOut back walk jump spring`) |
 | `footprint-storyreel/acting` → `moodAt(keys, t)` · `idleAt(t, {seed})` · `follows(f, delay?)` · `ACTING` | a mood change acted (anticipation, a take, a cross-fade), an idle layer that never moves in step |
 | `contactSheet(film, {moments?, columns?, width?})` | a PNG of stills |

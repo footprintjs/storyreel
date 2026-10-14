@@ -26,17 +26,23 @@ export interface Storyboard {
 }
 /** A fact a number on screen comes from: `value` as the screen shows it (16.67, 1000, or "3:15"), `text` the words it is shown with (the line must contain them), `source` a URL, a document or a record pointer. */
 export interface NumberFact { value: number | string; text?: string; source: string }
-/** A number the film shows (claims.mjs): the line it is in, when it is first whole on screen, its scene and recipe entry (`captions` for the captions), whether the scene is example data, and the backing fact's source (or null). */
-export interface Claim { number: string; line: string; at: number; scene: string | null; path: string; example: boolean; source: string | null }
-/** Every number the film shows: `facts` is how many facts the storyboard names (null: none, so the numbers outside example scenes cannot be checked). */
-export interface Claims { facts: number | null; numbers: readonly Claim[] }
+/**
+ * A number the film shows (claims.mjs), with its sign: the line it is in and where (`offset`), from when it is whole on
+ * screen (`at`) to when it starts to leave (`to`), its scene and recipe entry (`captions` for the captions, `drawn` for a
+ * word the review read off the picture), whether the scene is example data, and the backing fact's source (or null).
+ */
+export interface Claim { number: string; line: string; offset: number; at: number; to: number; scene: string | null; path: string; example: boolean; source: string | null }
+/** Every number the film shows, with the facts the storyboard names (null: none, so the numbers outside example scenes cannot be checked) and each scene's example label (or null). */
+export interface Claims { facts: readonly NumberFact[] | null; examples: readonly (string | null)[]; numbers: readonly Claim[] }
 /**
  * A kit's drawn parts at one moment (geometry.mjs), in its own coordinates: segments by name — `a` the root, `b` the tip,
  * `width`, `mount` (the part `a` lands on: a segment or a region), `ends` ('mounted': `b` lands on it too), `contact`
- * (true while it rests on the ground: it may not slide) — regions (boxes) by name, and pairs kept `apart` (never crossing).
+ * (the end it rests on: it may not move while planted) — regions (boxes) by name, and pairs kept `apart` (never crossing).
  */
 export interface Parts {
-  segments: Record<string, {a: [number, number]; b: [number, number]; width?: number; mount?: string; ends?: 'free' | 'mounted'; contact?: boolean}>;
+  segments: Record<string, {a: [number, number]; b: [number, number]; width?: number; mount?: string; ends?: 'free' | 'mounted';
+    /** The end that rests on the ground while it is planted ('a', 'b', or true: flat), or false in the air; a planted end never moves from where it was first planted. */
+    contact?: boolean | 'a' | 'b'}>;
   regions?: Record<string, [number, number, number, number]>;
   apart?: [string, string][];
 }
@@ -522,7 +528,9 @@ export function codeFingerprint(paths: string[], options?: {extensions?: string[
 /** What a film was made from, hashed (keys sorted first: reformatting changes nothing): film.inputs, and makeFilm adds the pacing, the voice and the kits' code. */
 export interface FilmInputs { storyboard: string; timings: string; recipe: string; strings: string | null; data: string | null; theme: string;
   /** Every file the film read through its root, by its path from the root. */
-  files: Readonly<Record<string, string>>; pacing?: string; voice?: string; code?: string }
+  files: Readonly<Record<string, string>>; pacing?: string; voice?: string; code?: string;
+  /** The facts the storyboard names (storyboard.facts), hashed on their own: an approval locks them; they are in no segment's key (they draw nothing). */
+  facts?: string }
 /** What a person approved: who, when, the render they watched, and what it was made from. */
 export interface Approval { schemaVersion: 2; approved: string; by: string; note?: string; render?: string; inputs: FilmInputs }
 /** Approve a render as it was watched, from its making-of record (the path of its making-of.json, or the object). */

@@ -1,12 +1,12 @@
 import type {Film, Parts, VerdictRules} from '../index.js';
-/** The thresholds, in the kit's own pixels: seconds between moments read, how far past touching a mounted end may sit, how far a planted part may move between moments. */
+/** The thresholds, in the kit's own pixels: seconds between moments read (moments further apart start the planted ends again), how far past touching a mounted end may sit, how far a planted end may be from where it was first planted. */
 export const GEOMETRY: Readonly<{every: number; reach: number; slide: number}>;
 /** A kit's parts at one moment, checked; `where` names the kit's entry and the moment in a refusal. */
 export function readParts(parts: unknown, where: string): Required<Parts>;
 /** Whether two segments' centre lines cross through each other (a shared end, a joint, is no crossing). */
 export function crosses(one: [[number, number], [number, number]], other: [[number, number], [number, number]]): boolean;
-/** Something that breaks: an end off its mount (px), a pair crossing, a planted part sliding (px). */
-export interface GeometryBreak {rule: 'mount' | 'cross' | 'slide'; path: string; part: string; other?: string; t: number; px?: number}
+/** Something that breaks: an end off its mount (px), a pair crossing, a planted end (`end`) away from where it was first planted (px). */
+export interface GeometryBreak {rule: 'mount' | 'cross' | 'slide'; path: string; part: string; other?: string; end?: 'a' | 'b'; t: number; px?: number}
 /** Audit parts over a stretch: how many mounts, pairs and planted parts were checked, and every break, at every moment. */
 export function auditParts(samples: {t: number; parts: (Parts & {path: string})[]}[], rule?: typeof GEOMETRY): {checked: {mounts: number; pairs: number; planted: number}; breaks: GeometryBreak[]};
 /** A break in words, the same at every moment of one stretch. */

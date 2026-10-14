@@ -21,7 +21,8 @@ root, narrationDir?, pacing?, layout?, out?})}`); every flag also reaches `film(
    words); each with its times on the film clock and its scene. `--loop true` for a part made to loop: the end of its
    own scenes (the handles are not the part) must come round to their start. Under the findings, three **verdicts**
    (passed, failed, or not run, each with why): no slideshow (the shots move inside themselves), drawn parts hold
-   together (for a kit that gives its parts), every number on screen has a source (a fact, or an example scene).
+   together (for a kit that gives its parts), every number on screen has a source (a fact, or an example scene — the
+   review reads every number the picture draws, too).
 3. **Fix** the one problem that matters most, in the code or data the finding points to (the recipe entry in the
    timeline names it). One fix per round, so the next review shows what that fix did.
 4. **Look again, quickly:** `npx storyreel part --scene <id>` — the scenes with 1.5 s of the film either side (so
@@ -37,9 +38,9 @@ root, narrationDir?, pacing?, layout?, out?})}`); every flag also reaches `film(
 - A time comes from the timeline, never from a guess; a still is taken at a moment the timeline named.
 - The review's findings are facts about the drawing (where each word landed, when); fix them before polishing.
 - "Nothing changes" (the picture is frozen) and "nothing new" (it moves, but nothing new comes) are advice, not
-  errors: a held title, or one picture the voice explains, can be right — say why if you keep it. "A slide" (a shot
-  that hardly moves inside itself) is the same kind of advice for one shot; the slideshow verdict fails only when
-  most of the film's shot time is still.
+  errors: a held title, or one picture the voice explains, can be right — say why if you keep it. "Held still" (a
+  shot still for more than 3 s at a time) is the same kind of advice; the slideshow verdict fails only when most of
+  the film's shot time is dead.
 - A verdict "not run" has not checked anything (no kit gives its parts, the storyboard names no facts): never read
   it as passed. "No source" names the number, its scene and the fix: a fact in the facts file, or the scene marked
   `"example": true`.
