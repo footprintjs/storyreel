@@ -130,7 +130,7 @@ test('codeFingerprint reads code, not text: an import in a comment or a string i
   const kits = [path.join(top, 'kits/explain.mjs')], fp = codeFingerprint(kits), cover = codeCover(fp), rel = f => path.relative(fs.realpathSync(top), f);   // files by their real paths
   assert.deepEqual(cover.files.map(rel), ['kits/explain.mjs', 'kits/fonts/hand.ttf', 'kits/used.mjs'], 'the real import and the asset it loads — none of the commented or quoted ones');
   assert.deepEqual(cover.missing.map(m => [rel(m.from), m.spec]), [['kits/explain.mjs', './stale.mjs']], 'a stale import is listed, never a throw');
-  assert.deepEqual(cover.unfollowed.map(u => [rel(u.from), u.code]), [['kits/explain.mjs', 'import(`…`)']], 'an import chosen at run time is listed: name its folder in paths');
+  assert.deepEqual(cover.unfollowed.map(u => [rel(u.from), u.code]), [['kits/explain.mjs', 'import(`./scenes/${name}.mjs`)']], 'an import chosen at run time is listed, as written: name its folder in paths');
   write('kits/fonts/hand.ttf', 'glyphs v2');
   assert.notEqual(codeFingerprint(kits), fp, 'the asset is hashed: a new font changes the fingerprint');
 });
@@ -278,4 +278,40 @@ test('a segment begins on the first frame that shows its row, and a teaser\'s se
   const before = await key(recipe), withNote = structuredClone(recipe);
   withNote.notes = [...(recipe.notes ?? []), {note: 'push in on the board', push: {at: [800, 450], zoom: 1.2, from: [sceneOne, recap.clock.words(sceneOne)[0].text], to: [sceneOne, recap.clock.words(sceneOne).at(-1).text]}}];
   assert.notEqual(await key(withNote), before, 'a push the rewind replays is in its key');
+});
+
+test('the engine fingerprint is StoryReel\'s own files and what draws a frame: a footprintjs patch keeps every cached segment', async () => {
+  const {engineFingerprint, storyreelCode, segmentMaterial} = await import('../src/segments.mjs'), {installedVersion, DRAWING} = await import('../src/versions.mjs');
+  const stub = (name, version) => n => (n === name ? version : installedVersion(n));
+  assert.equal(engineFingerprint(), storyreelCode());
+  assert.equal(engineFingerprint({versionOf: stub('footprintjs', '99.0.0')}), storyreelCode(), 'a package that draws nothing is not in it');
+  assert.ok(!DRAWING.includes('footprintjs'));
+  for (const name of DRAWING) assert.notEqual(engineFingerprint({versionOf: stub(name, '0.0.0-stub')}), storyreelCode(), `${name} draws: a new version is a new key`);
+  const a = await worlds(), seg = planSegments(a.film, {fps: 10})[0];
+  assert.equal(segmentMaterial(a.film, seg, {recipe: a.recipe, storyboard: a.storyboard, pixels, fps: 10}).storyreel, storyreelCode(), 'every segment key holds the engine fingerprint, nothing more of StoryReel');
+});
+
+test('a module the reader cannot finish is reported, never silent; computed URLs are listed; a linked package\'s exports are read as Node reads them', t => {
+  const top = tempDir('code', t), write = (f, text) => { mkdirSync(path.dirname(path.join(top, f)), {recursive: true}); writeFileSync(path.join(top, f), text); };
+  const real = fs.realpathSync(top), rel = f => path.relative(real, f), next = "\nimport a from './a.mjs';\n";
+  write('a.mjs', 'export default 1;');
+  // A regular expression holding a backtick, where it is easy to misread as a division.
+  for (const [name, code] of [['cond.mjs', 'if (ok) /`/.test(s);'], ['block.mjs', '}\n/`x/.test(s);'], ['template.mjs', 'const t = `${ /`/.source }`;']]) {
+    write(name, code + next);
+    const cover = codeCover(codeFingerprint([path.join(top, name)]));
+    assert.deepEqual([cover.files.map(rel), cover.unparsed], [['a.mjs', name], []], `${name}: read whole, its import followed`);
+  }
+  // What stays ambiguous is loud: a division-looking slash before a backtick ends the file inside a template.
+  write('lost.mjs', 'x = a\n/`/.test(s);' + next);
+  const lost = codeCover(codeFingerprint([path.join(top, 'lost.mjs')]));
+  assert.deepEqual(lost.unparsed.map(u => [rel(u.file), u.from]), [['lost.mjs', 2]], 'read only to line 2: reported, with the line');
+  // new URL with a computed path is listed, as import(expression) is.
+  write('fonts.mjs', "export const f = new URL(name, import.meta.url);\nexport const g = new URL(`./fonts/${w}.ttf`, import.meta.url);");
+  assert.deepEqual(codeCover(codeFingerprint([path.join(top, 'fonts.mjs')])).unfollowed.map(u => u.code), ['new URL(name, import.meta.url)', 'new URL(`./fonts/${w}.ttf`, import.meta.url)']);
+  // A linked package: conditions walked in order (node before default), and a "./*" pattern for a subpath.
+  write('pkg/package.json', JSON.stringify({name: 'cond-kit', version: '1.0.0', exports: {'.': {node: './node.mjs', default: './browser.mjs'}, './shots/*': './src/shots/*.mjs'}}));
+  write('pkg/node.mjs', 'export const where = "node";'); write('pkg/browser.mjs', 'export const where = "browser";'); write('pkg/src/shots/walk.mjs', 'export const walk = 1;');
+  mkdirSync(path.join(top, 'app/node_modules'), {recursive: true}); symlinkSync(path.join(top, 'pkg'), path.join(top, 'app/node_modules/cond-kit'), 'dir');
+  write('app/kit.mjs', "import {where} from 'cond-kit';\nimport {walk} from 'cond-kit/shots/walk';");
+  assert.deepEqual(codeCover(codeFingerprint([path.join(top, 'app/kit.mjs')])).files.map(rel), ['app/kit.mjs', 'pkg/node.mjs', 'pkg/src/shots/walk.mjs'], 'node.mjs, never browser.mjs; the pattern filled in');
 });

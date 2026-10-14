@@ -48,20 +48,13 @@ export const CODE_EXTENSIONS = Object.freeze(['.mjs', '.js', '.cjs', '.ts', '.mt
  * gives it all back (the making-of record lists it).
  */
 export function codeFingerprint(paths, {extensions = CODE_EXTENSIONS} = {}) {
-  if (!Array.isArray(paths) || !paths.length) throw new Error('codeFingerprint: give the folders or files that hold the drawing code (e.g. the film\'s kits folder)');
-  const given = [];
-  const walk = p => {
-    if (!existsSync(p)) throw new Error(`codeFingerprint: ${p} does not exist`);
-    if (statSync(p).isDirectory()) { for (const name of readdirSync(p).sort()) if (!name.startsWith('.') && name !== 'node_modules') walk(path.join(p, name)); }
-    else if (extensions.includes(path.extname(p).toLowerCase())) given.push(p);
-  };
-  for (const p of paths) walk(path.resolve(p));
-  const read = moduleReader('codeFingerprint'), files = new Set(), packages = new Set(), missing = [], unfollowed = [];
+  const given = filesUnder(paths, extensions), read = moduleReader('codeFingerprint'), files = new Set(), packages = new Set(), missing = [], unfollowed = [], unparsed = [];
   const follow = given => {
     const f = realpathSync(given);   // one name per file, through any link: a linked package's files sort with the rest
     if (files.has(f)) return;
     files.add(f); const m = read(f);
     m.packages.forEach(x => packages.add(x)); m.missing.forEach(spec => missing.push({from: f, spec})); m.unfollowed.forEach(code => unfollowed.push({from: f, code}));
+    if (m.unparsed !== null) unparsed.push({file: f, from: m.unparsed});   // read only to that line: what follows may hold imports
     m.files.forEach(follow);
   };
   given.forEach(follow);
@@ -69,13 +62,27 @@ export function codeFingerprint(paths, {extensions = CODE_EXTENSIONS} = {}) {
   for (const f of order) h.update(path.basename(f)).update('\0').update(read(f).bytes).update('\0');
   for (const x of [...packages].sort()) h.update(x).update('\0');
   const fingerprint = h.digest('hex').slice(0, 24), by = (a, b) => a.from.localeCompare(b.from);
-  COVERS.set(fingerprint, Object.freeze({files: Object.freeze(order), packages: Object.freeze([...packages].sort()), missing: Object.freeze(missing.sort(by)), unfollowed: Object.freeze(unfollowed.sort(by))}));
+  COVERS.set(fingerprint, Object.freeze({files: Object.freeze(order), packages: Object.freeze([...packages].sort()), missing: Object.freeze(missing.sort(by)), unfollowed: Object.freeze(unfollowed.sort(by)),
+    unparsed: Object.freeze(unparsed.sort((a, b) => a.file.localeCompare(b.file)))}));
   return fingerprint;
 }
 const COVERS = new Map();
+/** Every file under the given folders (or the files themselves) with one of the extensions, in path order. */
+function filesUnder(paths, extensions) {
+  if (!Array.isArray(paths) || !paths.length) throw new Error('codeFingerprint: give the folders or files that hold the drawing code (e.g. the film\'s kits folder)');
+  const files = [];
+  const walk = p => {
+    if (!existsSync(p)) throw new Error(`codeFingerprint: ${p} does not exist`);
+    if (statSync(p).isDirectory()) { for (const name of readdirSync(p).sort()) if (!name.startsWith('.') && name !== 'node_modules') walk(path.join(p, name)); }
+    else if (extensions.includes(path.extname(p).toLowerCase())) files.push(p);
+  };
+  for (const p of paths) walk(path.resolve(p));
+  return files;
+}
 /**
  * What a fingerprint made in this process covered: {files (absolute paths, sorted), packages ('name@version'), missing
- * ([{from, spec}]: relative imports that lead nowhere), unfollowed ([{from, code}]: imports chosen at run time)}, or null.
+ * ([{from, spec}]: relative imports that lead nowhere), unfollowed ([{from, code}]: imports and assets chosen at run time),
+ * unparsed ([{file, from}]: a module read only up to the line where it was lost — it ends inside a string or template)}, or null.
  */
 export const codeCover = fingerprint => COVERS.get(fingerprint) ?? null;
 
@@ -104,7 +111,18 @@ export function sourceCode(sources, {shared = []} = {}) {
 }
 /** StoryReel's own drawing code, its fonts, and the installed versions of what it draws with: part of every key. */
 let ownCode = null;
-export const storyreelCode = () => ownCode ??= `${codeFingerprint(['./', '../fonts/'].map(p => fileURLToPath(new URL(p, import.meta.url))).filter(existsSync))}+${DRAWING.map(n => `${n}@${installedVersion(n)}`).join(',')}`;
+/**
+ * The engine's fingerprint: StoryReel's own files (its code and its fonts, each hashed as it is — no import followed)
+ * and the installed versions of what draws a frame (versions.mjs · DRAWING) — nothing else. A package that draws nothing
+ * (footprintjs, which runs the pipeline) is not in it, so its patch release keeps every cached segment; an approval locks
+ * footprintjs's version as its own input. `versionOf` names a version (a test stubs it); storyreelCode() is it, once.
+ */
+export function engineFingerprint({versionOf = installedVersion} = {}) {
+  const files = filesUnder(['./', '../fonts/'].map(p => fileURLToPath(new URL(p, import.meta.url))).filter(existsSync), CODE_EXTENSIONS), h = createHash('sha256');
+  for (const f of files) h.update(path.basename(f)).update('\0').update(readFileSync(f)).update('\0');
+  return `${h.digest('hex').slice(0, 24)}+${DRAWING.map(n => `${n}@${versionOf(n)}`).join(',')}`;
+}
+export const storyreelCode = () => ownCode ??= engineFingerprint();
 
 /**
  * The film's segments: one per row of pictures (film.rows), on whole frames — segment i covers frames

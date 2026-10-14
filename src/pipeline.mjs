@@ -35,7 +35,8 @@ function codeRecord(fingerprint, root) {
   const cover = codeCover(fingerprint);
   const from = f => path.relative(root, f).split(path.sep).join('/');
   return cover ? {fingerprint, files: cover.files.map(from), packages: [...cover.packages],
-    ...(cover.missing.length ? {missing: cover.missing.map(m => `${from(m.from)}: ${m.spec}`)} : {}), ...(cover.unfollowed.length ? {unfollowed: cover.unfollowed.map(u => `${from(u.from)}: ${u.code}`)} : {})}
+    ...(cover.missing.length ? {missing: cover.missing.map(m => `${from(m.from)}: ${m.spec}`)} : {}), ...(cover.unfollowed.length ? {unfollowed: cover.unfollowed.map(u => `${from(u.from)}: ${u.code}`)} : {}),
+    ...(cover.unparsed.length ? {unparsed: cover.unparsed.map(u => ({file: from(u.file), from: u.from}))} : {})}
     : {fingerprint, files: 'not listed: the fingerprint was made in another process'};
 }
 const TOOLS = () => [

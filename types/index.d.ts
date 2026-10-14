@@ -640,7 +640,9 @@ export function segmentKey(film: Film, segment: Segment, options: {recipe: Recip
 /** A fingerprint of drawing code: every file under the folders given and every file they read (relative and TypeScript imports, transitively; a linked package's code; `new URL('…', import.meta.url)` assets; never into node_modules), and each package in node_modules by its installed version. What it cannot follow is listed (codeCover), never thrown on. */
 export function codeFingerprint(paths: string[], options?: {extensions?: string[]}): string;
 /** What a fingerprint made in this process covered: every file (real paths, sorted), every package ('name@version'), the relative imports that lead nowhere and the imports chosen at run time; or null. */
-export function codeCover(fingerprint: string): Readonly<{files: readonly string[]; packages: readonly string[]; missing: readonly {from: string; spec: string}[]; unfollowed: readonly {from: string; code: string}[]}> | null;
+export function codeCover(fingerprint: string): Readonly<{files: readonly string[]; packages: readonly string[]; missing: readonly {from: string; spec: string}[]; unfollowed: readonly {from: string; code: string}[]; unparsed: readonly {file: string; from: number}[]}> | null;
+/** The engine's fingerprint: StoryReel's own files and the versions of what draws a frame (versions.mjs · DRAWING), nothing else; `versionOf` stubs a version. */
+export function engineFingerprint(options?: {versionOf?: (name: string) => string}): string;
 /** StoryReel's own code fingerprint (every file of its code, its fonts, the versions of what it draws with): in every segment key, and locked by an approval. */
 export function storyreelCode(): string;
 

@@ -67,7 +67,7 @@ export function checkApproval(approval, inputs) {
     if (stableJson(was[key] ?? null) === stableJson(inputs[key] ?? null)) continue;
     if (key === 'engine' && (was.storyreel ?? null) !== (inputs.storyreel ?? null)) continue;   // a new version says it
     changed.push(key === 'code' && !inputs.code ? 'the kits\' code (no fingerprint given now)'
-      : key === 'engine' ? `StoryReel's code changed (same version${inputs.storyreel ? ` ${inputs.storyreel}` : ''})`
+      : key === 'engine' ? `StoryReel's code (same version${inputs.storyreel ? ` ${inputs.storyreel}` : ''})`
       : VERSIONS.has(key) ? `${key} version (${was[key] ? `${was[key]} approved` : 'none approved'}, ${inputs[key] ?? 'none'} now)` : key);
   }
   const before = was.files ?? {}, now = inputs.files ?? {};
