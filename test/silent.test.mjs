@@ -172,6 +172,8 @@ test('a voiced cut with a silent opening renders: paced (generated silence in th
   assert.equal(result.loudness.type, 'linear', 'the voice is measured and set; the silent opening stays quiet');
   // No pacing: the voice's timings lack the opening, and the render joins generated silence before the voice.
   const unpaced = voiceFolder(), timings = withDirections(storyboard, JSON.parse(readFileSync(path.join(unpaced, 'timings.json'), 'utf8')));
+  // A test that pins a working file's path passes `work`: the working files are kept there. Without it they are in a
+  // hidden .storyreel-work-<host>-<pid>-<n> folder beside the video, gone when the render ends (render.mjs · closeRender).
   const film = await compileFilm({storyboard, timings, recipe, root: hello}), dir = tmp(), work = path.join(dir, 'work');
   const rendered = await renderFilm({film, storyboard, timings, narrationDir: unpaced, out: path.join(dir, 'unpaced.mp4'), ...small, from: 0, to: 6, work});
   assert.equal(rendered.seconds, 6);
@@ -210,6 +212,14 @@ test('a voice renders whatever else its folder holds — a dangling link, read-o
   assert.deepEqual(readdirSync(path.join(outFolder, 'narration')).sort(), ['scene-0.unpaced.wav', 'scene-0.wav', 'scene-1.unpaced.wav', 'scene-1.wav', 'silent-open.unpaced.wav', 'silent-open.wav', 'timings.json'],
     'timings.json and the scene audio, and what pacing writes beside them: no takes, no links');
   assert.deepEqual(snapshot(voice), before, 'the voice is as it was');
+});
+
+test('two films made at once with a voice, into one folder: each paces and renders from its own copy, and none is left after', {skip: ffmpeg ? false : 'ffmpeg not on PATH'}, async () => {
+  const voice = voiceFolder(), dir = tmp();
+  const made = await Promise.all(['a', 'b'].map(name => makeFilm({storyboard, recipe, root: hello, narrationDir: voice, pacing, out: path.join(dir, `${name}.mp4`), render: small})));
+  assert.deepEqual(made.map(m => path.basename(m.out)), ['a.mp4', 'b.mp4'], 'both made');
+  assert.deepEqual(readdirSync(dir).filter(f => f.startsWith('.')), [], 'no paced copy and no working files left');
+  assert.ok(readdirSync(path.join(dir, 'narration')).includes('timings.json'), 'the folder\'s narration is the paced voice');
 });
 
 test('a render whose out folder overlaps the voice folder is refused before anything is written: the voice is unchanged', async () => {

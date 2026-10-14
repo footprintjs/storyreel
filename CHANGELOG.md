@@ -6,11 +6,19 @@
   WAVs, FFmpeg's lists, segment files on their way to the cache) go in a hidden `.storyreel-work-…` folder beside the
   video, removed when the render ends, finished or failed (`render.mjs` · `closeRender`; `renderFilm` and `makeFilm` call
   it in a `finally`). Only the outputs stay beside the video. To keep the working files, name a folder for them:
-  `renderFilm({…, work})` (or `makeFilm({…, render: {work}})`). A paced copy of the voice that never became
-  `<out dir>/narration` is removed too. StoryReel writes nothing to the system's temp folder.
+  `renderFilm({…, work})` (or `makeFilm({…, render: {work}})`). StoryReel writes nothing to the system's temp folder.
+- **A stopped render's folders are swept by the next one.** Scratch folders are named `<prefix>-<host>-<pid>-<n>`
+  (`scratch.mjs`): a render sweeps the `.storyreel-work-…` folders beside it whose process on this host is gone (Ctrl-C,
+  a killed process: the library installs no signal handler), and `makeFilm` the `.narration-…` copies too; the
+  making-of lists what was swept (`swept: {count, names}`). A live run's folders, another host's (left for that host's
+  own next run) and a `work` folder you named are never swept.
+- **`makeFilm` renders from its own copy of the voice** and makes it `<out dir>/narration` only once the film is made:
+  two films made at once into one folder no longer take each other's voice, and a refused or failed film leaves the
+  folder's narration as it was.
 - **The tests clean up after themselves.** Every test folder comes from one helper (`test/tmp.mjs` · `tempDir`), named
   `storyreel-…` and removed when its test or its file ends. `npm run test:temp` runs the suite with a temp folder of its
-  own and fails if anything is left; CI runs it. A full run used to leave 87 folders behind; it now leaves none.
+  own and fails if anything is left; CI runs it. Stopped (Ctrl-C, SIGTERM), it stops the suite, removes its own folder
+  and exits with the signal's code. A full run used to leave 87 folders behind; it now leaves none.
 
 - **The review's `frozen-voice` names only what a freeze holds.** An emphasis word, a focus key or a guess card is drawn
   on the voice's clock, so its beat under a freeze is no longer reported as "appears when the freeze ends".

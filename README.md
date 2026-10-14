@@ -982,7 +982,8 @@ A render writes only where you point it, and leaves only what you asked for. Not
 | where | what | kept? |
 |---|---|---|
 | beside `out` | the video, `poster.jpg`, `chapters.txt`, the caption files; with `makeFilm`, `making-of.json` and (with a voice) `narration/`, the paced copy the render read | yes: the outputs |
-| `.storyreel-work-…` beside `out` | the working files: the picture without its sound, the voice and the effects as WAVs, the lists FFmpeg joins, segment files on their way to the cache | removed when the render ends, finished or failed |
+| `.storyreel-work-<host>-<pid>-<n>` beside `out` | the working files: the picture without its sound, the voice and the effects as WAVs, the lists FFmpeg joins, segment files on their way to the cache | removed when the render ends, finished or failed |
+| `.narration-<host>-<pid>-<n>` beside `out` (`makeFilm` with a voice) | the paced copy of the voice, which the render reads; it becomes `narration/` once the film is made | removed if the film is refused or fails |
 | `work` (a folder you name: `renderFilm({…, work})`, `makeFilm({…, render: {work}})`) | the same working files, when you want to look at them | yes: you chose the place |
 | `folderStore(dir)` | the segment cache (Re-render only what changed) | yes: you chose the place |
 | `makeRelease({out})` | each target's post in `<out>/<target>/`, the render and its making-of in `<out>/work/<target>/` | yes |
@@ -993,9 +994,18 @@ await renderFilm({film, storyboard, timings, out: 'renders/film.mp4', work: 'ren
 ```
 
 `renderFilm` and `makeFilm` remove the working files in a `finally`. A picture strategy of your own that prepares a
-render itself (`prepareRender`) writes its working files to `job.work` and ends with `closeRender(job)`. The tests
+render itself (`prepareRender`) writes its working files to `job.work` and ends with `closeRender(job)`.
+
+**A render that was stopped** (Ctrl-C, a killed process) cannot clean up: no library sees a SIGKILL, and StoryReel
+installs no signal handler. Its hidden folders are named for the host, the process and a count, so the next render
+into that folder on the same host sweeps the ones whose process is gone (and a `makeFilm` the voice copies), and the
+making-of record lists what it swept (`swept: {count, names}`). A live render's folders are never touched, nor a folder
+you named with `work`; a folder another host left is left for that host's own next render, since its process cannot be
+seen from here. Two films made at once into one folder each read their own copy of the voice; `narration/` is the one
+made last. The tests
 make their folders through one helper (`test/tmp.mjs` · `tempDir`), each removed when its test or file ends;
-`npm run test:temp` runs the whole suite with a temp folder of its own and fails if anything is left.
+`npm run test:temp` runs the whole suite with a temp folder of its own and fails if anything is left (stopped,
+it stops the suite and removes that folder too).
 
 ## Re-render only what changed
 

@@ -17,6 +17,7 @@ import {applyPacing, validatePacing, paceTimings} from './pacing.mjs';
 import {withDirections} from './clock.mjs';
 import {compileFilm} from './film.mjs';
 import {prepareRender, finishRender, closeRender, wholeVideo, checkVideoStrategy} from './render.mjs';
+import {scratchName, sweepScratch} from './scratch.mjs';
 import {readApproval, requireApproval, voiceHash, unlocked} from './approval.mjs';
 import {hashOf} from './hash.mjs';
 import {checkVideo, ffmpegProbe} from './finished.mjs';
@@ -112,8 +113,9 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   // narration folder, so the two must not overlap (files.mjs · requireVoiceApart).
   if (narrationDir) requireVoiceApart(narrationDir, dir);
   mkdirSync(dir, {recursive: true});
-  // Where the voice is paced (a copy of it): it becomes <out dir>/narration once the film is allowed, or is removed.
-  const copy = path.join(dir, `.narration-${process.pid}`);
+  // Where the voice is paced (a copy of it, named by host, process and count: scratch.mjs, after sweeping the copies this
+  // host's stopped runs left): the render reads it, and it becomes <out dir>/narration once the film is made, or is removed.
+  const sweptVoices = sweepScratch(dir, '.narration'), copy = path.join(dir, scratchName('.narration'));
   let film, paced, result, job, plan, inputs, finished = null, voice = null;
   const video = checkVideoStrategy(render.video ?? wholeVideo()), done = [];
   const stages = {
@@ -126,10 +128,11 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     },
     'pace-narration': async scope => {
       if (narrationDir) {
-        // Paced in a folder of its own: it takes the place of <out dir>/narration only once the film is allowed
-        // (an approval refused leaves the approved render's narration as it was). The copy holds exactly what the
-        // render reads — timings.json and each scene's audio — as new files (files.mjs · copyVoice): pacing rewrites
-        // them, and a voice given through links, or read-only, is never paced in place. Nothing else is copied.
+        // Paced in a folder of its own: it takes the place of <out dir>/narration only once the film is made (an approval
+        // refused, or a render that fails, leaves the folder's narration as it was; two films made at once each read
+        // their own). The copy holds exactly what the render reads — timings.json and each scene's audio — as new files
+        // (files.mjs · copyVoice): pacing rewrites them, and a voice given through links, or read-only, is never paced in
+        // place. Nothing else is copied.
         rmSync(copy, {recursive: true, force: true});
         const raw = copyVoice(narrationDir, copy);
         // A voice knows only the spoken scenes: a silent scene it left out gets its directions' timing (clock.mjs · withDirections).
@@ -159,7 +162,6 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
         try { requireApproval(approval, inputs); } catch (e) { if (scope.narration) rmSync(scope.narration, {recursive: true, force: true}); throw e; }
         scope.approvedBy = approval.by;
       }
-      if (scope.narration) { const final = path.join(dir, 'narration'); rmSync(final, {recursive: true, force: true}); renameSync(scope.narration, final); scope.narration = final; }
     },
     // The picture: planned as one pass or as segments (render.mjs · wholeVideo, segments.mjs · segmentedVideo).
     'plan-picture': scope => {
@@ -208,7 +210,13 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   // Finished or failed, what the run made to work with goes: the render's working files (render.mjs · closeRender:
   // kept only in a `work` folder the caller named) and a paced copy of the voice that never became <out dir>/narration.
   let run;
-  try { run = await chart.build().recorder(trace).run(); } finally { closeRender(job); rmSync(copy, {recursive: true, force: true}); }
+  try {
+    run = await chart.build().recorder(trace).run();
+    // The film is made: its paced voice takes the place of <out dir>/narration (until now the render read its own copy).
+    if (narrationDir) { const final = path.join(dir, 'narration'); rmSync(final, {recursive: true, force: true}); renameSync(copy, final); }
+  } finally { closeRender(job); rmSync(copy, {recursive: true, force: true}); }
+  // What this run swept before making its own scratch folders: the ones this host's stopped runs left (scratch.mjs).
+  const swept = [...sweptVoices, ...(job?.swept ?? [])];
   const record = {
     schemaVersion: 1, made: new Date().toISOString(), out: result.out, seconds: result.seconds, chapters: result.chapters,
     // What part of the film this render shows (an approval is of a render of the whole film).
@@ -227,6 +235,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     // Each beat: what was said, when, and the recipe entry that asked for it.
     beats: film.beats.map(({ref, t, path}) => ({said: Array.isArray(ref) ? {scene: ref[0], phrase: ref[1], plus: ref[2] ?? 0} : ref, at: t, ...(path ? {entry: path} : {})})),
     ...(film.notes.length ? {notes: film.notes} : {}),
+    ...(swept.length ? {swept: {count: swept.length, names: swept}} : {}),
     // The camera's moves as played (camerawork.mjs): moves, or cuts for reduced motion, and why; each move placed.
     ...(film.camera ? {camera: {motion: film.camera.motion, decision: film.camera.decision, moves: film.camera.moves}} : {}),
     sounds: film.sounds.length,
