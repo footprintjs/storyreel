@@ -86,7 +86,8 @@ function musicRecord(song, beats, fit) {
     beats: {bpm: beats.bpm, verdict: beats.verdict, sure: beats.sure, levels: beats.levels, alternatives: beats.alternatives.map(({bpm, score}) => ({bpm, score})),
       beats: beats.beats.length, bars: beats.bars.length, drop: beats.drop, confidence: beats.confidence, seconds: beats.seconds, record: beats.record},
     fit: {snap: song.snap, ...(song.dropOn ? {dropOn: song.dropOn} : {}), cutOn: fit.cutOn, cuts: fit.cuts, record: fit.record},
-    ...(unsure ? {findings: [{kind: 'tempo-unsure', tempi: likelyTempi(beats), text: `tempo unsure (close): cuts only on beats every candidate shares (${fit.cutOn.beats} of ${fit.cutOn.of}${fit.cutOn.unsure ? `; none, as ${fit.cutOn.unsure.join(', ')} BPM is unsure of its phase` : ''}); give music.bpm (one of ${likelyTempi(beats).join(', ')}) to cut on every beat — storyreel beats <song> shows why`}]} : {})};
+    ...(unsure && beats.phase === 'unsure' ? {findings: [{kind: 'phase-unsure', text: `the tempo given (${beats.bpm} BPM), its phase unsure: the half-beats sound as strongly as the beats, so no cut moves onto the beat`}]} : {}),
+    ...(unsure && beats.phase !== 'unsure' ? {findings: [{kind: 'tempo-unsure', tempi: likelyTempi(beats), text: `tempo unsure (close): cuts only on beats every candidate shares (${fit.cutOn.beats} of ${fit.cutOn.of}${fit.cutOn.unsure ? `; none, as ${fit.cutOn.unsure.join(', ')} BPM is unsure of its phase` : ''}); give music.bpm (one of ${likelyTempi(beats).join(', ')}) to cut on every beat — storyreel beats <song> shows why`}]} : {})};
 }
 
 /** The most parts a picture is planned in (segments.mjs · planSegments makes one per row of pictures). */

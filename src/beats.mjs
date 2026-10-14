@@ -10,19 +10,22 @@ import {existsSync} from 'node:fs';
 import path from 'node:path';
 import {flowChart, narrative, decide} from 'footprintjs';
 import {QUIET, plainNarrative} from './record.mjs';
-import {ANALYSIS, onsetStrength, tempoCandidates, lowPulse, backbeatPulse, levelEvidence, hitsOf, trackBeats, refineBeats, gridTempo, onsetSupport, downbeatScores, dropCandidate, peakOfSamples, firstAtOrAfter} from './dsp.mjs';
+import {spawned, startError, ffprobeBeside} from './spawned.mjs';
+import {ANALYSIS, onsetStrength, tempoCandidates, periodicity, onsetPeak, lowPulse, backbeatPulse, levelEvidence, hitsOf, trackBeats, refineBeats, gridTempo, onsetSupport, downbeatScores, dropCandidate, peakOfSamples, firstAtOrAfter} from './dsp.mjs';
 
 /**
  * The beat map's rules. range: the tempos preferred (BPM; others are weighed down, never refused). meter: beats in a bar
  * (a 4/4 guess). downbeat: the margin for the beat that starts a bar. drop: the dB a drop's rise must hold, both halves of
  * the window after it. window: the seconds of song either side a drop is judged over. fade, sudden: a rise that takes
  * longer than `fade` seconds to climb and makes less than `sudden` of itself at once is a fade-in, not a drop. onBeat: the
- * tolerance onBeat(t) takes by default (seconds). likely: the score a candidate tempo needs to be named as one to settle an
+ * tolerance onBeat(t) takes by default (seconds). steady: the floors under which a sound has no steady beat to measure
+ * (its onsets' periodicity at the strongest tempo; their strength, onsetPeak) — speech, noise, a held tone or pad. likely: the score a candidate tempo needs to be named as one to settle an
  * unsure map with (likelyTempi). safe: what an unsure map lets a film cut on (safeBeats). level: the tests a level of the
  * beat passes to be certain (levelTests).
  */
 export const BEATS = Object.freeze({range: Object.freeze([70, 180]), meter: 4, downbeat: .1, drop: 3, window: 4, fade: 2, sudden: .5, onBeat: .05, likely: .5,
-  safe: Object.freeze({tolerance: .035, phaseDoubt: .9, hit: .6, local: .3, near: 4}),
+  steady: Object.freeze({periodicity: .15, onsets: .6}),
+  safe: Object.freeze({tolerance: .035, phaseDoubt: .9, hit: .6, local: .3, near: 4, quiet: .1}),
   level: Object.freeze({pulse: 8, phase: .8, kicked: .75, low: .5, steady: .5, fill: Object.freeze({2: .55, 3: .2, 4: .2, any: .55}), halfTime: .375, margin: .3})});
 /** The levels of the beat tried against the strongest tempo: every relative, a quarter to four times it. */
 const LEVELS = Object.freeze([1 / 4, 1 / 3, 1 / 2, 1, 2, 3, 4]);
@@ -95,15 +98,53 @@ export function refusedByKicksAlone(level, rules = BEATS.level) {
 const OPTION_KEYS = ['bpm', 'drop', 'range', 'ffmpeg'];
 const ffmpegOf = given => given ?? process.env.FFMPEG_BIN ?? 'ffmpeg';
 
-/** A song (any file FFmpeg reads) as mono samples at `rate`; a missing file or an FFmpeg that cannot read it refuses, naming the fix. */
-function decodeAudio(file, {rate, ffmpeg, who}) {
+/** The file given, checked: a path to something there (any file FFmpeg reads). */
+function requireSoundFile(file, who) {
   if (typeof file !== 'string' || !file.trim()) throw new Error(`${who}: give the sound as a file path (any audio FFmpeg reads), not ${JSON.stringify(file)}`);
   if (!existsSync(file)) throw new Error(`${who}: there is no file at ${file}`);
-  const r = spawnSync(ffmpeg, ['-v', 'error', '-nostdin', '-i', file, '-ac', '1', '-ar', String(rate), '-f', 'f32le', '-'], {maxBuffer: 2 ** 31 - 1});
-  if (r.error) throw new Error(`${who}: FFmpeg (${ffmpeg}) could not run: ${r.error.message}; install FFmpeg, or name it with the ffmpeg option or FFMPEG_BIN`);
+}
+const decodeArgs = (file, rate) => ['-v', 'error', '-nostdin', '-i', file, '-vn', '-ac', '1', '-ar', String(rate), '-f', 'f32le', '-'];
+const cannotRun = (who, ffmpeg, error) => new Error(`${who}: FFmpeg (${ffmpeg}) could not run: ${startError(ffmpeg, error)}; install FFmpeg, or name it with the ffmpeg option or FFMPEG_BIN`);
+
+/** A short sound (a sound effect) as mono samples at `rate`, read at once (peakOf); the samples are a view, not a copy. */
+function decodeAudio(file, {rate, ffmpeg, who}) {
+  requireSoundFile(file, who);
+  const r = spawnSync(ffmpeg, decodeArgs(file, rate), {maxBuffer: 2 ** 31 - 1});
+  if (r.error) throw cannotRun(who, ffmpeg, r.error);
   if (r.status !== 0) throw new Error(`${who}: FFmpeg could not read ${path.basename(file)}: ${String(r.stderr).trim().slice(-300)}`);
-  const bytes = r.stdout;
-  return new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length - (bytes.length % 4)));
+  const bytes = r.stdout, n = Math.floor(bytes.length / 4);
+  return bytes.byteOffset % 4 === 0 ? new Float32Array(bytes.buffer, bytes.byteOffset, n) : new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + 4 * n));
+}
+
+/** The length of a file's sound, from ffprobe beside the FFmpeg (null when it cannot say). */
+function soundSeconds(file, ffmpeg) {
+  const r = spawnSync(ffprobeBeside(ffmpeg), ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], {encoding: 'utf8'});
+  const seconds = Number(String(r.stdout).trim());
+  return r.status === 0 && Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+}
+
+/**
+ * A song — or a video's sound: any file FFmpeg reads — as mono samples at `rate`, streamed from FFmpeg straight into
+ * one Float32Array made for its length (ffprobe's), so an hour of sound is held once (318 MB at 22050 Hz), never as a
+ * pipe's buffer and then its copy. A length it cannot know, or one longer than said, grows the array (the rare copy).
+ */
+async function streamAudio(file, {rate, ffmpeg, who}) {
+  requireSoundFile(file, who);
+  const said = soundSeconds(file, ffmpeg);
+  let samples = new Float32Array(Math.ceil(((said ?? 60) + 1) * rate)), bytes = new Uint8Array(samples.buffer), filled = 0, err = '';
+  const {child, finished} = spawned(ffmpeg, decodeArgs(file, rate), {stdio: ['ignore', 'pipe', 'pipe']});
+  child.stderr.on('data', b => { err = (err + b).slice(-2000); });
+  for await (const chunk of child.stdout) {
+    if (filled + chunk.length > bytes.length) {
+      const grown = new Float32Array(Math.ceil((filled + chunk.length) / 4 * 1.5)); new Uint8Array(grown.buffer).set(bytes.subarray(0, filled));
+      samples = grown; bytes = new Uint8Array(grown.buffer);
+    }
+    bytes.set(chunk, filled); filled += chunk.length;
+  }
+  let code;
+  try { code = await finished; } catch (e) { throw cannotRun(who, ffmpeg, e); }
+  if (code !== 0) throw new Error(`${who}: FFmpeg could not read ${path.basename(file)}: ${err.trim().slice(-300)}`);
+  return samples.subarray(0, Math.floor(filled / 4));
 }
 
 /**
@@ -153,10 +194,10 @@ async function analyse(read, source, options) {
   const useTempo = (s, bpm, verdict) => { work.period = 60 * work.onsets.frameRate / bpm; work.verdict = verdict; s.tempo = round(bpm, 2); };
   /** The bars: every `meter`-th beat from the phase (beats before it are a pickup). */
   const useBars = (s, phase) => { work.bars = work.beats.filter((_, i) => i >= phase && (i - phase) % BEATS.meter === 0); s.barStart = phase; s.bars = work.bars.length; };
-  const chart = flowChart('decode', s => {
-    work.samples = read(); work.rate = ANALYSIS.rate;
+  const chart = flowChart('decode', async s => {
+    work.samples = await read(); work.rate = ANALYSIS.rate;
     if (!work.samples.length) throw new Error(`beatMap: ${source} has no sound to measure`);
-    s.source = source; s.seconds = round(work.samples.length / work.rate, 3); s.rate = work.rate;
+    work.seconds = round(work.samples.length / work.rate, 3); s.source = source; s.seconds = work.seconds; s.rate = work.rate;
     if (o.drop !== null && o.drop > s.seconds) throw optionsError(`beatMap: drop ${o.drop} s is past the end of ${source} (${s.seconds} s): give the second the song drops, inside it`);
   }, 'decode', 'The song read as mono samples')
     .addFunction('onsets', s => {
@@ -167,6 +208,13 @@ async function analyse(read, source, options) {
     .addDeciderFunction('choose-tempo', s => {
       work.candidates = tempoCandidates(work.onsets.flux.all, work.onsets.frameRate, {range: o.range, count: 8});
       if (!work.candidates.length && o.bpm === null) throw new Error(`beatMap: ${source} has no repeating onsets to measure a tempo from; give options.bpm to lay a grid anyway`);
+      // A steady beat, or none: onsets that come again a period on (periodicity), and onsets at all (onsetPeak). Speech has
+      // onsets with no period; a held tone or pad has none to speak of. Neither has a beat to measure, unless one is given.
+      s.periodicity = work.candidates.length ? round(periodicity(work.onsets.flux.all, work.candidates[0].period), 3) : 0;
+      s.onsets = round(onsetPeak(work.onsets.flux.all), 3);
+      if (o.bpm === null && (s.periodicity < BEATS.steady.periodicity || s.onsets < BEATS.steady.onsets)) {
+        throw new Error(`beatMap: ${source} has no steady beat: ${s.onsets < BEATS.steady.onsets ? `its onsets are faint (${s.onsets}, under ${BEATS.steady.onsets}: a held tone or pad)` : `its onsets keep no period (periodicity ${s.periodicity}, under ${BEATS.steady.periodicity}: speech, noise)`}; give options.bpm to lay a grid anyway`);
+      }
       s.alternatives = work.candidates.map(({bpm, score}) => ({bpm, score}));
       s.bpmGiven = o.bpm; s.strongest = work.candidates[0]?.bpm ?? null;
       // Every level of the beat, a quarter to four times the strongest, tried against both pieces of evidence.
@@ -189,15 +237,12 @@ async function analyse(read, source, options) {
       const tracked = refineBeats(work.samples, work.rate, frames.map(f => f / fr)).map(t => round(t));
       // Where the song actually hits (dsp.mjs · hitsOf): an unsure map's film cuts only on a shared beat that has one; and
       // no map, sure or not, keeps a beat after the song's last hit — its ring-out (an 808's tail, an echo) is not a beat.
-      work.hits = hitsOf(work.onsets, fr, tracked, work.period / fr, {share: BEATS.safe.hit, local: BEATS.safe.local, near: BEATS.safe.near}).map(t => round(t));
+      work.hits = hitsOf(work.onsets, fr, tracked, work.period / fr, {share: BEATS.safe.hit, local: BEATS.safe.local, near: BEATS.safe.near, quiet: BEATS.safe.quiet}).map(t => round(t));
       const lastHit = work.hits.at(-1) ?? Infinity;
       work.beats = tracked.filter(t => t <= lastHit + BEATS.safe.tolerance); work.ringOut = tracked.length - work.beats.length;
       // The BPM the grid keeps (a line through the beats: exact where the tempo is steady), unless one was given.
       work.bpm = o.bpm ?? round(gridTempo(work.beats, work.period / fr) ?? 60 * fr / work.period, 2);
       work.confidence = round(onsetSupport(work.onsets.flux.all, fr, work.beats), 2);
-      // No beat on an onset: a steady sound (a tone, a pad, a hum) whose autocorrelation found a tempo in its noise. It
-      // has no beats to measure; given a tempo, the grid is laid all the same.
-      if (o.bpm === null && work.confidence === 0) throw new Error(`beatMap: ${source} has no beats to measure: none of the ${work.beats.length} its onsets suggest sits on an onset (a steady sound, no hits); give options.bpm to lay a grid anyway`);
       // Every listed candidate's own grid, tracked and refined the same way: when the map is unsure, a film cuts only
       // where they all agree (safeBeats).
       work.grids = work.candidates.map(c => (Math.abs(60 * fr / c.period - 60 * fr / work.period) < 1e-6 ? work.beats
@@ -206,9 +251,14 @@ async function analyse(read, source, options) {
       // well sit on the and).
       const at = t => { const f = Math.round(t * fr); let m = 0; for (let k = f - 2; k <= f + 2; k++) m = Math.max(m, work.onsets.flux.all[k] ?? 0); return m; };
       const mean = v => v.reduce((a, x) => a + x, 0) / Math.max(1, v.length);
-      work.phaseDoubt = work.grids.map(g => (g.length < 4 ? 1 : round(mean(g.slice(1).map((t, i) => at((t + g[i]) / 2))) / Math.max(1e-9, mean(g.map(at))), 3)));
+      const doubtOf = g => (g.length < 4 ? 1 : round(mean(g.slice(1).map((t, i) => at((t + g[i]) / 2))) / Math.max(1e-9, mean(g.map(at))), 3));
+      work.phaseDoubt = work.grids.map(doubtOf);
+      // A given tempo sets the tempo, not the phase: the phase is the onsets' (the tracker's), and when the half-beats are
+      // heard as strongly as the beats the map is not sure of it — safeBeats then keeps no beat.
+      if (o.bpm !== null) { work.givenDoubt = doubtOf(work.beats); work.phaseUnsure = work.givenDoubt >= BEATS.safe.phaseDoubt; s.phaseDoubt = work.givenDoubt; }
       s.beats = work.beats.length; s.bpm = work.bpm; s.confidence = work.confidence; s.grids = work.grids.length; s.hits = work.hits.length;
       if (work.ringOut) s.ringOut = work.ringOut;
+      work.samples = null;   // the rest of the map reads the spectra: an hour of samples is let go here
     }, 'track-beats', 'Beats by dynamic programming (Ellis 2007), each moved onto the transient it sits on; every candidate\'s grid beside them')
     .addDeciderFunction('find-bars', s => {
       const scores = downbeatScores(work.onsets.flux.low, work.onsets.frameRate, work.beats, BEATS.meter), sorted = [...scores].sort((a, b) => b - a);
@@ -241,9 +291,12 @@ async function analyse(read, source, options) {
     .end();
   const trace = narrative();
   await chart.setLogger(QUIET).build().recorder(trace).run();
-  return {bpm: work.bpm, verdict: work.verdict, sure: work.verdict !== 'tempo-close', beats: work.beats, hits: work.hits, bars: work.bars, drop: work.drop, confidence: work.confidence,
+  const alternatives = work.phaseUnsure ? [{bpm: work.bpm, score: 1, phaseDoubt: work.givenDoubt, beats: work.beats}]
+    : work.candidates.map(({bpm, score}, i) => ({bpm, score, phaseDoubt: work.phaseDoubt[i], beats: work.grids[i]}));
+  return {bpm: work.bpm, verdict: work.verdict, sure: work.verdict !== 'tempo-close' && !work.phaseUnsure, ...(work.phaseUnsure ? {phase: 'unsure'} : {}),
+    beats: work.beats, hits: work.hits, bars: work.bars, drop: work.drop, confidence: work.confidence,
     levels: work.levels.map(({bpm, score, fails, kicksAlone}) => ({bpm, score, fails, ...(kicksAlone ? {kicksAlone} : {})})),
-    alternatives: work.candidates.map(({bpm, score}, i) => ({bpm, score, phaseDoubt: work.phaseDoubt[i], beats: work.grids[i]})), seconds: round(work.samples.length / work.rate, 3), record: plainNarrative(trace)};
+    alternatives, seconds: work.seconds, record: plainNarrative(trace)};
 }
 
 /**
@@ -268,27 +321,45 @@ function levelsOf(work) {
 }
 
 /**
- * The beats a film may cut on: the one rule for every caller (pipeline.mjs · map-beats, music.mjs · fitToMusic). A sure
- * map (measured, faster, slower or given) — every beat. An unsure one (tempo-close) — only the beats EVERY listed
- * candidate's grid shares (each within `tolerance` seconds): the right tempo is among the candidates, so a beat they all
- * share is a true beat, whichever of them is right — for two tempi a level apart, the slower grid; for a 4:3 pair, the
- * beats they meet on. And none at all when a candidate is unsure of its own phase (`phaseDoubt` at least `doubt`: the
- * onsets half a beat from its grid are nearly as strong as those on it), for then its grid could as well sit on the and,
- * and so could the beats it shares. And of the beats they share, only those where the song actually hits (`map.hits`,
- * dsp.mjs · hitsOf: an attack in the low or mid band within `tolerance`, not an echo) — the candidates can agree on an
- * echo's grid, a delay's repeat a sixteenth before the beat, or a beat carried on past the song's end. A hand-made map
- * ({beats}, no verdict) is taken as sure; one without `hits` is not asked for them.
- * Returns {beats, grid: 'every beat' | 'shared' | 'none: a candidate is unsure of its phase', shared, of, tempi, unheard?}:
- * `unheard`, the beats every candidate shares where the song does not hit.
+ * Whether music is playing at t: a heard hit of the map's (`map.hits`, dsp.mjs · hitsOf) within one beat period of it.
+ * The tracker carries its grid on through a silent gap, before the music starts and after it stops; a beat there, or a
+ * cut there, is on nothing. A map without hits is not asked (true).
+ */
+export function musicAt(map, t) {
+  if (!map?.hits) return true;
+  const hit = nearestOf(map.hits, t);
+  return hit !== null && Math.abs(hit - t) <= periodOf(map) + 1e-9;
+}
+/** A map's beat period: 60 / its BPM, or (a hand-made map with none) the median gap between its beats. */
+function periodOf(map) {
+  if (map.bpm > 0) return 60 / map.bpm;
+  const gaps = (map.beats ?? []).slice(1).map((b, i) => b - map.beats[i]).sort((a, b) => a - b);
+  return gaps[gaps.length >> 1] ?? Infinity;
+}
+
+/**
+ * The beats a film may cut on: the one rule for every caller (pipeline.mjs · map-beats, music.mjs · fitToMusic,
+ * breakdown.mjs · beatsReport). Only where music is playing (musicAt: a heard hit within a beat period), sure map or
+ * not. A sure map (measured, faster, slower or given) — every such beat. An unsure one (tempo-close, or a given tempo
+ * unsure of its phase) — only the beats EVERY listed candidate's grid shares (each within `tolerance` seconds): the right
+ * tempo is among the candidates, so a beat they all share is a true beat, whichever of them is right — for two tempi a
+ * level apart, the slower grid; for a 4:3 pair, the beats they meet on. And none at all when a candidate is unsure of its
+ * own phase (`phaseDoubt` at least `doubt`: the onsets half a beat from its grid are nearly as strong as those on it),
+ * for then its grid could as well sit on the and, and so could the beats it shares. And of the beats they share, only
+ * those where the song actually hits (`map.hits`: an attack in the low or mid band within `tolerance`, not an echo) —
+ * the candidates can agree on an echo's grid, a delay's repeat a sixteenth before the beat. A hand-made map ({beats}, no
+ * verdict) is taken as sure; one without `hits` is not asked for them.
+ * Returns {beats, grid: 'every beat' | 'shared' | 'none: a candidate is unsure of its phase', shared, of, tempi, silent?,
+ * unheard?}: `silent`, the beats where no music plays; `unheard`, the shared beats where the song does not hit.
  */
 export function safeBeats(map, {tolerance = BEATS.safe.tolerance, doubt = BEATS.safe.phaseDoubt} = {}) {
-  const all = [...(map?.beats ?? [])];
-  if (map?.sure !== false) return {beats: all, grid: 'every beat', shared: all.length, of: all.length, tempi: map?.bpm === undefined ? [] : [map.bpm]};
+  const every = [...(map?.beats ?? [])], all = every.filter(t => musicAt(map, t)), silent = every.length - all.length, quiet = silent ? {silent} : {};
+  if (map?.sure !== false) return {beats: all, grid: 'every beat', shared: all.length, of: every.length, tempi: map?.bpm === undefined ? [] : [map.bpm], ...quiet};
   const listed = map.alternatives ?? [], tempi = listed.map(a => a.bpm), unsure = listed.filter(a => a.phaseDoubt >= doubt).map(a => a.bpm);
-  if (unsure.length) return {beats: [], grid: 'none: a candidate is unsure of its phase', unsure, shared: 0, of: all.length, tempi};
+  if (unsure.length) return {beats: [], grid: 'none: a candidate is unsure of its phase', unsure, shared: 0, of: every.length, tempi, ...quiet};
   const grids = listed.map(a => a.beats ?? []), within = (list, t) => list.length > 0 && Math.abs(nearestOf(list, t) - t) <= tolerance;
   const agreed = all.filter(t => grids.every(g => within(g, t))), beats = map.hits ? agreed.filter(t => within(map.hits, t)) : agreed;
-  return {beats, grid: 'shared', shared: beats.length, of: all.length, tempi, ...(map.hits ? {unheard: agreed.length - beats.length} : {})};
+  return {beats, grid: 'shared', shared: beats.length, of: every.length, tempi, ...quiet, ...(map.hits ? {unheard: agreed.length - beats.length} : {})};
 }
 
 /**
@@ -307,11 +378,14 @@ export function likelyTempi(map, least = BEATS.likely) {
  */
 export function beatMapText(map, {source = 'the song'} = {}) {
   const pad = (v, n) => String(v).padStart(n), likely = likelyTempi(map);
-  const lines = [`${source} · ${map.seconds} s · ${map.verdict} (${map.sure ? 'sure: a film cuts on every beat' : 'unsure: a film cuts only on the beats every candidate shares'}) · ${map.bpm} BPM, ${map.beats.length} beats`];
+  const how = map.sure ? 'sure: a film cuts on every beat where music plays' : map.phase === 'unsure' ? 'its phase unsure: the half-beats sound as strongly as the beats, so a film cuts on none'
+    : 'unsure: a film cuts only on the beats every candidate shares';
+  const lines = [`${source} · ${map.seconds} s · ${map.verdict} (${how}) · ${map.bpm} BPM, ${map.beats.length} beats`];
   if (map.alternatives?.length) lines.push('', 'candidate tempi (score against the strongest):', ...map.alternatives.map(a => `  ${pad(a.bpm.toFixed(2), 7)} BPM  ${a.score.toFixed(2)}${a.score >= BEATS.likely ? '' : '  (unlikely)'}`));
   if (map.levels?.length) lines.push('', 'levels of the beat tried (a level is sure only when it passes every test, and no other does):', ...map.levels.map(l => `  ${pad(l.bpm.toFixed(2), 7)} BPM  ${l.fails.length ? l.fails.join(', ') : 'passes'}${l.kicksAlone ? ' (refused by the kicks alone)' : ''}`));
-  if (!map.sure) lines.push('', `settle it: give the tempo you hear — music.bpm in makeFilm, or beatMap(file, {bpm}) — one of ${likely.join(', ')} BPM; the map is then sure, and a film cuts on every beat.`);
-  if (map.drop !== null && map.drop !== undefined) lines.push('', `drop at ${map.drop} s`);
+  if (!map.sure && map.verdict !== 'tempo-given') lines.push('', `settle it: give the tempo you hear — music.bpm in makeFilm, or beatMap(file, {bpm}) — one of ${likely.join(', ')} BPM; the map is then sure, and a film cuts on every beat.`);
+  // An unsure map does not state its drop as fact: the rise is measured, but placed on a grid it is unsure of.
+  if (map.drop !== null && map.drop !== undefined) lines.push('', map.sure ? `drop at ${map.drop} s` : `maybe a drop at ${map.drop} s (the map is unsure)`);
   return lines.join('\n');
 }
 
@@ -344,7 +418,7 @@ function makeMap(values) {
 export async function beatMap(audioFile, options = {}) {
   const o = readOptions(options);
   if (typeof audioFile === 'string' && audioFile.trim() && !existsSync(audioFile)) throw new Error(`beatMap: there is no file at ${audioFile}`);
-  return makeMap(await analyse(() => decodeAudio(audioFile, {rate: ANALYSIS.rate, ffmpeg: o.ffmpeg, who: 'beatMap'}), path.basename(String(audioFile)), options));
+  return makeMap(await analyse(() => streamAudio(audioFile, {rate: ANALYSIS.rate, ffmpeg: o.ffmpeg, who: 'beatMap'}), path.basename(String(audioFile)), options));
 }
 
 /** The same map from mono samples already in hand (a Float32Array, -1..1), resampled to the analysis rate by the caller: `rate` must be 22050. */

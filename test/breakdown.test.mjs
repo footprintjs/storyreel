@@ -146,16 +146,15 @@ test('the files: breakdown.json, breakdown.md, a sheet per shot, the overview, a
   assert.ok(decisions.some(t => /default "no beat map was given/.test(t)), 'why the beats were not read');
 });
 
-test('a beat map, when given, is handed the sound, its own options and this run\'s FFmpeg; it says which cuts land on a beat, the drop, and a close tempo call', {skip}, async () => {
+test('a beat map, when given, is handed the video itself, its own options and this run\'s FFmpeg; it says which cuts land on a beat, the drop, and a close tempo call', {skip}, async () => {
   let heard = null;
   const beatMap = async (file, options) => {
     heard = {file, options, there: existsSync(file), bytes: readFileSync(file).length};
     return Object.freeze({bpm: 75, beats: Object.freeze([4.8, 1.6, 4.0, 8.0]), drop: 7.5, confidence: .8, alternatives: Object.freeze([{bpm: 75, score: 1}, {bpm: 150, score: .95}])});
   };
   const {spec, text} = await breakdown(reference, {out: path.join(dir, 'beats'), beatMap, beatOptions: {bpm: 75}});
-  assert.ok(heard.there && heard.bytes > 1000 && heard.file.endsWith('.wav'), 'the beat map hears the sound as a WAV');
+  assert.equal(heard.file, reference, 'the beat map reads the sound from the video itself: no copy of it is written first');
   assert.deepEqual(heard.options, {bpm: 75, ffmpeg: process.env.FFMPEG_BIN || 'ffmpeg'});
-  assert.equal(existsSync(heard.file), false, 'and the WAV is removed after');
   const b = spec.audio.beats;
   assert.equal(b.ran, true); assert.equal(b.bpm, 75); assert.deepEqual(b.beats, [1.6, 4, 4.8, 8]);
   assert.equal(b.within, .05); assert.equal(b.confidence, .8); assert.deepEqual(b.close, {bpm: 150, score: .95});

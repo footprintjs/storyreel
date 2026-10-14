@@ -11,7 +11,7 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {breakdown} from '../src/breakdown.mjs';
 import {beatMap, safeBeats} from '../src/beats.mjs';
-import {rhythm, wavFile} from './songs.mjs';
+import {rhythm, wavFile, silenced} from './songs.mjs';
 import {tempDir} from './tmp.mjs';
 
 const has = cmd => !spawnSync(cmd, ['-version']).error;
@@ -32,10 +32,10 @@ function film(dir, name, {cuts, seconds, sound}) {
   return file;
 }
 
-/** A song from RHYTHMS as a WAV, and its true beats and length. */
-function music(dir, family) {
-  const s = rhythm({bpm: 120, family, bars: 5, lead: .2});
-  return {wav: wavFile(path.join(dir, `${family.replace(/\W+/g, '-')}.wav`), s.samples, s.rate), beats: s.beats, seconds: Math.floor(s.samples.length / s.rate * FPS) / FPS};
+/** A song from RHYTHMS as a WAV, and its true beats and length; `silent` stretches ([from, to]) leave only a noise floor. */
+function music(dir, family, {bars = 5, lead = .2, silent = []} = {}) {
+  const s = silenced(rhythm({bpm: 120, family, bars, lead}), silent);
+  return {wav: wavFile(path.join(dir, `${family.replace(/\W+/g, '-')}-${bars}-${silent.flat().join('-')}.wav`), s.samples, s.rate), beats: s.beats, seconds: Math.floor(s.samples.length / s.rate * FPS) / FPS};
 }
 
 test('a sure map judges every cut: on the beat, or off it by how much — through storyreel breakdown --beats', {skip}, t => {
@@ -83,8 +83,62 @@ test('no music: a steady tone has no beats to read, and the breakdown says so; n
   const dir = tempDir('breakdown-beats', t);
   const toned = await breakdown(film(dir, 'tone', {cuts: [2], seconds: 4, sound: 'tone'}), {out: path.join(dir, 'tone'), beatMap});
   assert.equal(toned.spec.audio.beats.ran, false);
-  assert.match(toned.spec.audio.beats.why, /^the beat map could not read the sound: beatMap: sound\.wav has no beats to measure: none of the \d+ its onsets suggest sits on an onset/);
+  assert.match(toned.spec.audio.beats.why, /^the beat map could not read the sound: beatMap: tone\.mkv has no steady beat: its onsets are faint \([\d.]+, under 0\.6: a held tone or pad\)/);
   assert.equal(toned.spec.shots.length, 2, 'the rest of the breakdown stands');
   const silent = await breakdown(film(dir, 'silent', {cuts: [2], seconds: 4, sound: null}), {out: path.join(dir, 'silent'), beatMap});
   assert.deepEqual(silent.spec.audio, {sound: false, beats: {ran: false, why: 'the video has no sound'}});
+});
+
+test('a beat counts only where music plays: a cut in a silent gap, before the music starts or after it stops is "no music here"', {skip}, async t => {
+  const dir = tempDir('breakdown-beats', t), family = 'four on the floor, eighth hats', at = list => list.map(frame);
+  const read = async (name, song, cuts) => (await breakdown(film(dir, name, {cuts, seconds: song.seconds, sound: song.wav}), {out: path.join(dir, name), beatMap})).spec.audio.beats;
+  const byTime = b => Object.fromEntries(b.cuts.map(c => [frame(c.at), c.music === false ? 'no music' : c.onBeat]));
+  // Kicks from 0 to 8 s and from 11 to 20 s; cuts at 9 and 10 s, in the gap, and at 4 and 14 s, on beats.
+  const gap = await read('gap', music(dir, family, {bars: 10, lead: 0, silent: [[8.2, 11]]}), at([4, 9, 10, 14]));
+  assert.deepEqual(byTime(gap), {4: true, 9: 'no music', 10: 'no music', 14: true}, JSON.stringify(gap.cuts));
+  assert.equal(gap.noMusic, 2); assert.equal(gap.onBeat, 2);
+  // Music from 6 to 14 s, cuts every 2 s: none before or after is called off the beat (it was "off by 4.00 s").
+  const middle = await read('middle', music(dir, family, {bars: 10, lead: 0, silent: [[0, 5.9], [14.2, null]]}), at([2, 4, 6, 8, 10, 12, 14, 16, 18]));
+  const m = byTime(middle);
+  for (const x of [2, 4, 16, 18]) assert.equal(m[x], 'no music', `${x} s: ${JSON.stringify(middle.cuts)}`);
+  for (const x of [6, 8, 10, 12, 14]) assert.notEqual(m[x], 'no music', `${x} s is in the music`);
+  assert.equal(middle.noMusic, 4); assert.ok(middle.cuts.every(c => c.music === false || c.off === null || Math.abs(c.off) < 1), 'no cut is off the beat by seconds');
+  // Music from 4 s.
+  const late = await read('late', music(dir, family, {bars: 8, lead: 0, silent: [[0, 3.9]]}), at([1, 2, 6, 8]));
+  assert.deepEqual(Object.values(byTime(late)).map(v => v === 'no music'), [true, true, false, false]);
+  const {text} = await breakdown(path.join(dir, 'gap.mkv'), {out: path.join(dir, 'gap-text'), beatMap});
+  assert.match(text, /2 of 4 cuts land on a beat \(within 0\.05 s\); 2 where no music plays\./); assert.match(text, /0:09\.0 hard cut: no music here/);
+});
+
+test('a given tempo sets the tempo, not the phase: kicks on every half-beat of the tempo given leave the phase unsure, and no cut is called on or off the beat', {skip}, async t => {
+  const dir = tempDir('breakdown-beats', t), song = music(dir, 'four on the floor, off-beat hats', {bars: 6, lead: .2});
+  // 120 BPM kicks, the tempo given as 60: every half-beat of 60 is a kick, so either phase is as well heard as the other.
+  const map = await beatMap(song.wav, {bpm: 60});
+  assert.equal(map.verdict, 'tempo-given'); assert.equal(map.phase, 'unsure'); assert.equal(map.sure, false);
+  assert.deepEqual(safeBeats(map).beats, [], 'a film cuts on none of its beats');
+  const video = film(dir, 'given', {cuts: [frame(song.beats[3]), frame(song.beats[6])], seconds: song.seconds, sound: song.wav});
+  const b = (await breakdown(video, {out: path.join(dir, 'given-out'), beatMap, beatOptions: {bpm: 60}})).spec.audio.beats;
+  assert.equal(b.sure, false); assert.deepEqual(b.cuts.map(c => c.onBeat), [null, null], 'not judged, never "0 of 2 on the beat"');
+  // Given as 120, the same kicks are sure of their phase.
+  assert.equal((await beatMap(song.wav, {bpm: 120})).sure, true);
+});
+
+test('an FFmpeg that is not there is a refusal, never a crash: the breakdown and the beat map reject, naming it', {skip}, async t => {
+  const dir = tempDir('breakdown-beats', t), song = music(dir, 'four on the floor, eighth hats'), video = film(dir, 'missing', {cuts: [2], seconds: 4, sound: song.wav});
+  const gone = '/nonexistent/ffmpeg';
+  await assert.rejects(breakdown(video, {out: path.join(dir, 'missing-out'), ffmpeg: gone}), /there is no ffmpeg at \/nonexistent\/ffmpeg/);
+  await assert.rejects(beatMap(song.wav, {ffmpeg: gone}), e => /beatMap: FFmpeg \(\/nonexistent\/ffmpeg\) could not run: there is no ffmpeg at/.test(e.message) && e.code === undefined);
+});
+
+test('an unsure map says "maybe" of its drop, and names a close call only at 0.9 of the best or more', {skip}, async t => {
+  const dir = tempDir('breakdown-beats', t), song = music(dir, 'four on the floor, eighth hats'), video = film(dir, 'maybe', {cuts: [frame(song.beats[4])], seconds: song.seconds, sound: song.wav});
+  const unsure = (score) => () => ({bpm: 120, beats: song.beats, drop: 5.6, verdict: 'tempo-close', sure: false, hits: song.beats,
+    alternatives: [{bpm: 120, score: 1, beats: song.beats, phaseDoubt: .2}, {bpm: 60, score, beats: song.beats.filter((_, i) => i % 2 === 0), phaseDoubt: .3}]});
+  const low = await breakdown(video, {out: path.join(dir, 'low'), beatMap: unsure(.8)});
+  assert.equal(low.spec.audio.beats.drop.maybe, true); assert.match(low.text, /Maybe a drop at 0:05\.6 \(the map is unsure\)/);
+  assert.equal(low.spec.audio.beats.close, undefined, 'a runner-up at 0.8 is no close call'); assert.doesNotMatch(low.text, /a close call/);
+  const high = await breakdown(video, {out: path.join(dir, 'high'), beatMap: unsure(.95)});
+  assert.deepEqual(high.spec.audio.beats.close, {bpm: 60, score: .95}); assert.match(high.text, /a close call: 60 BPM scores 0\.95 of it/);
+  const sure = await breakdown(video, {out: path.join(dir, 'sure-drop'), beatMap: () => ({...unsure(.95)(), verdict: 'tempo-measured', sure: true})});
+  assert.equal(sure.spec.audio.beats.drop.maybe, undefined); assert.match(sure.text, /The drop at 0:05\.6: shot/);
 });

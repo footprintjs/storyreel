@@ -93,8 +93,9 @@ export function onsetStrength(samples, rate, {size = ANALYSIS.size, hop = ANALYS
  * Returns that sample, or null: a pad or a noise floor sounding from sample 0 is neither.
  */
 export function startsWithTransient(samples, rate, span, {attack = .005, before = .01, later = [.015, .035], least = 2, step = .0005} = {}) {
-  const energy = energyIndex(samples, {attacks: true}), a = Math.round(attack * rate), b = Math.round(before * rate), floor = 1e-12;
+  const a = Math.round(attack * rate), b = Math.round(before * rate), floor = 1e-12;
   const [l0, l1] = later.map(s => Math.round(s * rate)), hop = Math.max(1, Math.round(step * rate));
+  const energy = energyIndex(samples, {attacks: true, from: 0, to: span + Math.max(a, l1) + 1});
   for (let i = 0; i < b; i += hop) if (energy(i, i + a) + floor >= least * (energy(i + l0, i + l1) + floor)) return i;
   for (let i = b; i <= span; i += hop) if (energy(i, i + a) + floor >= least * (energy(i - b, i) + floor)) return i;
   return null;
@@ -108,10 +109,11 @@ export function tempoPrior(bpm, [lo, hi] = [70, 180], spread = 1 / 3) {
 
 /**
  * The tempo's candidates, ranked: each local peak of the onset envelope's autocorrelation (lags of 30 … 300 BPM,
- * refined between frames by a parabola), weighted by the prior (tempoPrior). Returns [{bpm, period (frames), score}]
- * best first, scores relative to the best (1), at most `count`, none under 5% of it.
+ * refined between frames by a parabola), weighted by the prior (tempoPrior); a peak within `merge` (1%) of a stronger one
+ * is that tempo, not another. Returns [{bpm, period (frames), score}] best first, scores relative to the best (1), at
+ * most `count`, none under 5% of it.
  */
-export function tempoCandidates(envelope, frameRate, {range = [70, 180], count = 5} = {}) {
+export function tempoCandidates(envelope, frameRate, {range = [70, 180], count = 5, merge = .01} = {}) {
   const n = envelope.length, mean = envelope.reduce((a, v) => a + v, 0) / Math.max(1, n), x = Float64Array.from(envelope, v => v - mean);
   const lag0 = Math.max(2, Math.floor(frameRate * 60 / 300)), lag1 = Math.min(n - 2, Math.ceil(frameRate * 60 / 30));
   const ac = new Float64Array(lag1 + 2);
@@ -124,9 +126,26 @@ export function tempoCandidates(envelope, frameRate, {range = [70, 180], count =
     found.push({bpm, period, score: (b - .25 * (a - c) * p) * tempoPrior(bpm, range)});
   }
   found.sort((p, q) => q.score - p.score);
-  const best = found[0]?.score ?? 0;
-  return found.filter(c => c.score >= .05 * best).slice(0, count).map(c => ({bpm: +c.bpm.toFixed(2), period: c.period, score: +(c.score / best).toFixed(3)}));
+  // One tempo is one candidate: a peak within `merge` of a stronger one (192.5 beside 192.0) is the same tempo, not another.
+  const kept = [];
+  for (const c of found) if (!kept.some(k => Math.abs(k.bpm - c.bpm) <= merge * k.bpm)) kept.push(c);
+  const best = kept[0]?.score ?? 0;
+  return kept.filter(c => c.score >= .05 * best).slice(0, count).map(c => ({bpm: +c.bpm.toFixed(2), period: c.period, score: +(c.score / best).toFixed(3)}));
 }
+
+/**
+ * How steady a beat the onsets keep: the envelope's autocorrelation at `period` frames (the best of a frame either side)
+ * against its own energy — 1 when every onset comes again a period on, near 0 for onsets with no period (speech, noise).
+ */
+export function periodicity(envelope, period) {
+  const n = envelope.length, mean = envelope.reduce((a, v) => a + v, 0) / Math.max(1, n);
+  const ac = lag => { let s = 0; for (let t = 0; t + lag < n; t++) s += (envelope[t] - mean) * (envelope[t + lag] - mean); return s / Math.max(1, n - lag); };
+  const energy = ac(0);
+  return energy > 0 ? Math.max(...[-1, 0, 1].map(d => ac(Math.max(1, Math.round(period) + d)))) / energy : 0;
+}
+
+/** The strength of a song's onsets: the 99th percentile of the envelope (log-compressed flux) — near 0 for a steady sound. */
+export const onsetPeak = envelope => quantile(envelope, .99);
 
 /**
  * The envelope less its moving average over `reach` frames either side (a high-pass, as Ellis 2007 filters it): a
@@ -207,10 +226,12 @@ export function trackBeats(envelope, period, {tightness = 100, frameRate = ANALY
  * Prefix sums of the squared samples: the energy of any stretch in one subtraction. With `attacks`, of the samples'
  * first difference — a high-pass that hears an attack over a held low note (a 220 Hz pad is 24 dB down, a 3 kHz click 2).
  */
-function energyIndex(samples, {attacks = false} = {}) {
-  const sums = new Float64Array(samples.length + 1);
-  for (let i = 0; i < samples.length; i++) { const v = attacks ? (i ? samples[i] - samples[i - 1] : 0) : samples[i]; sums[i + 1] = sums[i] + v * v; }
-  return (a, b) => { a = Math.max(0, Math.min(samples.length, a)); b = Math.max(a, Math.min(samples.length, b)); return (sums[b] - sums[a]) / Math.max(1, b - a); };
+function energyIndex(samples, {attacks = false, from = 0, to = samples.length} = {}) {
+  // Over [from, to) only: a beat's test reads a few hundred samples around it, so an hour of song is never summed whole.
+  from = Math.max(0, from); to = Math.min(samples.length, Math.max(from, to));
+  const sums = new Float64Array(to - from + 1);
+  for (let i = from; i < to; i++) { const v = attacks ? (i ? samples[i] - samples[i - 1] : 0) : samples[i]; sums[i - from + 1] = sums[i - from] + v * v; }
+  return (a, b) => { a = Math.max(from, Math.min(to, a)); b = Math.max(a, Math.min(to, b)); return (sums[b - from] - sums[a - from]) / Math.max(1, b - a); };
 }
 
 /**
@@ -221,8 +242,9 @@ function energyIndex(samples, {attacks = false} = {}) {
  * only where `attack` seconds of the song come ahead of it to rise over.
  */
 export function refineBeats(samples, rate, times, {reach = .035, attack = .005, before = .01, least = 2, step = .0005} = {}) {
-  const energy = energyIndex(samples, {attacks: true}), a = Math.round(attack * rate), b = Math.round(before * rate), floor = 1e-12;
+  const a = Math.round(attack * rate), b = Math.round(before * rate), floor = 1e-12;
   return times.map(t => {
+    const energy = energyIndex(samples, {attacks: true, from: Math.round((t - reach) * rate) - b - 1, to: Math.round((t + reach) * rate) + a + 2});
     let best = 0, at = t;
     for (let s = t - reach; s <= t + reach + 1e-9; s += step) {
       // A moment needs some song ahead of it to rise over (`attack` seconds at least): at the very start nothing has.
@@ -447,16 +469,17 @@ export function levelEvidence({all, body, low}, frameRate, beats, pulse, {reach 
  * and at least `share` of the median attack at the beats — the song's, or the beats NEAR it (those within `near`
  * seconds) where those are quieter: an echo ringing on after the song falls under the hits it repeats, while a hit in a
  * fade-out stands against the faded ones around it. (Only ever lowered nearby: a median over a few beats of a kick and a
- * snare is the one or the other by the count's parity, and must not raise the floor over the kicks.) Takes
+ * snare is the one or the other by the count's parity, and must not raise the floor over the kicks.) Never lowered below
+ * `quiet` of the song's median: in a silent gap the beats near it carry nothing, and the noise there is no hit. Takes
  * onsetStrength's result; returns the times in seconds.
  */
-export function hitsOf({power}, frameRate, beats, period, {share = .6, local = .3, near = 4} = {}) {
+export function hitsOf({power}, frameRate, beats, period, {share = .6, local = .3, near = 4, quiet = .1} = {}) {
   const n = power.low.length, mag = Float32Array.from(power.low, (v, i) => Math.sqrt(v + power.mid[i])), rise = new Float32Array(n);
   for (let f = 1; f < n; f++) rise[f] = Math.max(0, mag[f] - mag[f - 1]);
   const around = f => { let m = 0; for (let k = f - 3; k <= f + 3; k++) m = Math.max(m, rise[k] ?? 0); return m; };
   const at = beats.map(t => around(Math.round(t * frameRate)));
   // The floor at t: `share` of the median attack of all the beats, or of those within `near` seconds when that is lower.
-  const all = quantile(at, .5), floorAt = t => { const a = firstAtOrAfter(beats, t - near), b = firstAtOrAfter(beats, t + near + 1e-9); return share * (b > a ? Math.min(all, quantile(at.slice(a, b), .5)) : all); };
+  const all = quantile(at, .5), floorAt = t => { const a = firstAtOrAfter(beats, t - near), b = firstAtOrAfter(beats, t + near + 1e-9); return share * (b > a ? Math.max(quiet * all, Math.min(all, quantile(at.slice(a, b), .5))) : all); };
   const w = Math.max(2, Math.round(local * period * frameRate)), kept = [];
   for (let f = 1; f < n; f++) {
     if (!(rise[f] > 0)) continue;

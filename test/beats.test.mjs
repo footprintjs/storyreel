@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
-import {beatMap, beatMapOf, peakOf, peakOfSamples, safeBeats, likelyTempi, beatMapText, levelTests, BEATS} from '../src/beats.mjs';
+import {beatMap, beatMapOf, peakOf, peakOfSamples, safeBeats, musicAt, likelyTempi, beatMapText, levelTests, BEATS} from '../src/beats.mjs';
 import {fftOf, tempoPrior, onsetStrength, lowPulse, backbeatPulse} from '../src/dsp.mjs';
 import {song, rhythm, wavFile, noiseFrom} from './songs.mjs';
 import {tempDir} from './tmp.mjs';
@@ -253,9 +253,13 @@ test('safeBeats: a sure map cuts on every beat; an unsure one only where every c
   assert.deepEqual(doubt.beats, []); assert.match(doubt.grid, /unsure of its phase/); assert.deepEqual(doubt.unsure, [60]);
   assert.deepEqual(safeBeats({beats: [1, 2, 3]}).beats, [1, 2, 3], 'a hand-made map is taken as sure');
   // Of the beats every candidate shares, only those where the song hits: an echo's grid the candidates agree on is dropped.
-  const heard = safeBeats({...map(false, [{bpm: 120, score: 1, phaseDoubt: .3, beats: grid(.5, 24)}, half]), hits: grid(1, 6)});
+  const heard = safeBeats({...map(false, [{bpm: 120, score: 1, phaseDoubt: .3, beats: grid(.5, 24)}, half]), hits: [...grid(1, 6), ...grid(1, 6, 6.5)]});
   assert.deepEqual(heard.beats, grid(1, 6)); assert.equal(heard.unheard, 6);
-  assert.deepEqual(safeBeats({...map(true, []), hits: []}).beats, grid(.5, 24), 'a sure map cuts on every beat, as before');
+  // Only where music plays (musicAt: a hit within a beat period), sure map or not: no beat in silence.
+  assert.deepEqual(safeBeats({...map(true, []), hits: grid(1, 12)}).beats, grid(.5, 24), 'a sure map with music all through cuts on every beat, as before');
+  const stops = safeBeats({...map(true, []), hits: grid(1, 6)});
+  assert.deepEqual(stops.beats, grid(.5, 12)); assert.equal(stops.silent, 12, 'the beats after the music stops (5 s, the last hit, and half a beat on) are silent');
+  assert.equal(musicAt({bpm: 120, beats: grid(.5, 24), hits: [2, 6]}, 4), false); assert.equal(musicAt({bpm: 120, beats: grid(.5, 24), hits: [2, 6]}, 5.6), true);
 });
 
 const right = (map, bpm) => Math.abs(map.bpm - bpm) <= Math.max(1, bpm * .01);
@@ -319,9 +323,12 @@ test('a fade-out is not a ring-out: its faded beats are kept to within a beat of
   }
 });
 
-test('a steady sound has no beats to measure: a tone refuses (no code: the sound, not the call), and a given tempo lays its grid anyway', async () => {
+test('no steady beat, no map: a tone refuses (no code: the sound, not the call), and a given tempo lays its grid anyway', async () => {
   const tone = Float32Array.from({length: 22050 * 4}, (_, i) => .3 * Math.sin(2 * Math.PI * 440 * i / 22050));
-  await assert.rejects(beatMapOf(tone, 22050), e => /has no beats to measure: none of the \d+ its onsets suggest sits on an onset/.test(e.message) && e.code === undefined);
+  await assert.rejects(beatMapOf(tone, 22050), e => /has no steady beat: its onsets are faint/.test(e.message) && e.code === undefined);
+  // Noise has onsets, but none that come again a period on (speech is the same: measured with macOS voices, README).
+  const noise = noiseFrom(5), hiss = Float32Array.from({length: 22050 * 8}, () => .2 * noise());
+  await assert.rejects(beatMapOf(hiss, 22050), e => /has no steady beat: its onsets keep no period \(periodicity [\d.]+, under 0\.15/.test(e.message) && e.code === undefined);
   assert.equal((await beatMapOf(tone, 22050, {bpm: 90})).verdict, 'tempo-given');
 });
 
@@ -335,6 +342,8 @@ test('likelyTempi and beatMapText: the tempi an unsure map could be, and the map
   assert.match(text, /140\.20 BPM {2}1\.00\n {4}70\.10 BPM {2}0\.80\n {4}46\.70 BPM {2}0\.30 {2}\(unlikely\)/);
   assert.match(text, /140\.20 BPM {2}half-time, backbeat slower/);
   assert.match(text, /one of 140, 70 BPM; the map is then sure/);
+  assert.match(beatMapText({...unsure, drop: 5.6}), /maybe a drop at 5\.6 s \(the map is unsure\)/);
+  assert.match(beatMapText({...unsure, sure: true, verdict: 'tempo-measured', drop: 5.6}), /\ndrop at 5\.6 s$/);
 });
 
 test('storyreel beats <song>: the verdict, the candidate tempi with their scores, why each level is unsure; --help lists it', needs, () => {
@@ -346,7 +355,7 @@ test('storyreel beats <song>: the verdict, the candidate tempi with their scores
   assert.match(read.stdout, /candidate tempi \(score against the strongest\):\n {2,}[\d.]+ BPM {2}1\.00/);
   assert.match(read.stdout, /levels of the beat tried/);
   const given = run('beats', file, '--bpm', '95');
-  assert.match(given.stdout, /tempo-given \(sure/);
+  assert.match(given.stdout, /tempo-given \(/, 'a given tempo (its phase from the onsets)');
   assert.equal(run('beats', file, '--tempo', '95').status, 2, 'an unknown flag');
   const bare = run('beats', file, '--bpm');
   assert.equal(bare.status, 2, 'a --bpm with no number'); assert.match(bare.stderr, /--bpm needs a number/);

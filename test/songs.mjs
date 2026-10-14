@@ -156,6 +156,13 @@ export function rhythm({bpm, family, bars = 12, lead = .25, tail = 1, rate = 220
   return {samples: x, rate, beats, bpm: (beats.length - 1) * 60 / (beats.at(-1) - beats[0])};
 }
 
+/** A song with stretches of silence (seconds [from, to], to the end when `to` is null): only a faint noise floor there. */
+export function silenced({samples, rate, ...rest}, ranges) {
+  const x = Float32Array.from(samples), noise = noiseFrom(41);
+  for (const [from, to] of ranges) for (let i = Math.max(0, Math.round(from * rate)); i < Math.min(x.length, to === null ? x.length : Math.round(to * rate)); i++) x[i] = .004 * noise();
+  return {samples: x, rate, ...rest};
+}
+
 /** The tempi every rhythm is played at. */
 export const CORPUS_TEMPI = Object.freeze([70, 85, 95, 110, 128, 150, 172]);
 /** A level that fades in over 6 s from a quiet start at 6 s; one that dips for a quiet bridge; one that fades out. */

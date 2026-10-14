@@ -20,8 +20,10 @@ export interface BeatMap {
   readonly bpm: number;
   /** How the tempo was chosen; `tempo-close` when no single level of the beat passes both tests. */
   readonly verdict: TempoVerdict;
-  /** False exactly when the verdict is `tempo-close`: cut only on safeBeats(map), the beats every candidate shares. */
+  /** False when the verdict is `tempo-close`, or the tempo was given and its phase is unsure: cut only on safeBeats(map). */
   readonly sure: boolean;
+  /** 'unsure' when the tempo was given and the half-beats sound as strongly as the beats: safeBeats keeps no beat. */
+  readonly phase?: 'unsure';
   /** Every beat, seconds, each on the transient it sits on — none after the song's last hit (its ring-out holds no beat). */
   readonly beats: readonly number[];
   /** Where the song actually hits (dsp.mjs · hitsOf): attacks in the low or mid band, no echo — an unsure map cuts only on a shared beat with one. */
@@ -66,9 +68,11 @@ export interface LevelRules { pulse: number; phase: number; kicked: number; low:
  * reaches `phaseDoubt`, and only where the song hits — an attack at least `hit` of the median one on the beats, the
  * strongest within `local` of a beat either side; the median is the song's, or that of the beats within `near` seconds where lower.
  */
-export interface SafeRules { tolerance: number; phaseDoubt: number; hit: number; local: number; near: number }
+export interface SafeRules { tolerance: number; phaseDoubt: number; hit: number; local: number; near: number; quiet: number }
 /** The beat map's rules: the preferred tempos, the meter, the downbeat's margin, the drop's dB and window, what makes a fade-in, onBeat's tolerance, the score of a likely tempo, safeBeats' rules, the level tests. */
-export const BEATS: Readonly<{range: readonly [number, number]; meter: number; downbeat: number; drop: number; window: number; fade: number; sudden: number; onBeat: number; likely: number; safe: Readonly<SafeRules>; level: Readonly<LevelRules>}>;
+/** The floors under which a sound has no steady beat: its onsets' periodicity at the strongest tempo, and their strength. */
+export interface SteadyRules { periodicity: number; onsets: number }
+export const BEATS: Readonly<{range: readonly [number, number]; meter: number; downbeat: number; drop: number; window: number; fade: number; sudden: number; onBeat: number; likely: number; steady: Readonly<SteadyRules>; safe: Readonly<SafeRules>; level: Readonly<LevelRules>}>;
 /** The evidence one level is judged on (dsp.mjs · levelEvidence): the backbeat's share on its beats, the share of its beats that carry it, and how often the next one is two beats on. */
 export interface LevelEvidence { phase: number | null; kicked: number | null; steady: number; backbeat?: {phase: number; covered: number; alternate: number} | null; fill: Record<2 | 3 | 4, {full: number; low: number}> & {any?: {full: number}} }
 /** A backbeat on every other beat of a level (2 and 4): that level is the tactus, and no other — faster or slower — may be certain. */
@@ -95,7 +99,11 @@ export interface SafeBeats {
   readonly unsure?: readonly number[];
   /** The beats every candidate shares where the song does not hit (dropped), when the map has its hits. */
   readonly unheard?: number;
+  /** The beats where no music plays (musicAt), left out. */
+  readonly silent?: number;
 }
+/** Whether music plays at t: a heard hit of the map's within one beat period (a map without hits: true). */
+export function musicAt(map: {bpm?: number; beats?: readonly number[]; hits?: readonly number[]}, t: number): boolean;
 export function safeBeats(map: {beats: readonly number[]; sure?: boolean; hits?: readonly number[]; alternatives?: readonly {bpm: number; beats?: readonly number[]; phaseDoubt?: number}[]}, options?: {tolerance?: number; doubt?: number}): SafeBeats;
 /** The tempi an unsure map could be: its candidates scoring at least `least` (BEATS.likely), whole BPM, strongest first; a sure map's own. */
 export function likelyTempi(map: {sure?: boolean; bpm?: number; alternatives?: readonly {bpm: number; score: number}[]}, least?: number): number[];
