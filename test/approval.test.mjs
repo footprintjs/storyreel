@@ -3,14 +3,14 @@
 // what (a file by its path); reformatting changes nothing; the record keeps it and says what it does not lock.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, writeFileSync, readFileSync, cpSync, readdirSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {writeFileSync, readFileSync, cpSync, readdirSync, statSync, mkdirSync, chmodSync} from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {approveFilm, checkApproval, compileFilm, makeFilm, evenTimings} from '../src/index.mjs';
 import {stableJson, requireApproval, voiceHash} from '../src/approval.mjs';
 import {hashOf} from '../src/hash.mjs';
+import {tempDir} from './tmp.mjs';
 
 const dir = fileURLToPath(new URL('../examples/hello/', import.meta.url)), read = f => JSON.parse(readFileSync(dir + f, 'utf8'));
 const storyboard = read('storyboard.json'), recipe = read('recipe.json');
@@ -37,7 +37,7 @@ test('the same data in another order is the same film; a changed word, file or t
   const edited = structuredClone(storyboard); edited.scenes[0].narration += ' Again.';
   assert.deepEqual(checkApproval(a, await inputsOf({board: edited})).changed, ['storyboard', 'timings']);
   assert.deepEqual(checkApproval(a, await inputsOf({timings: evenTimings(storyboard, {tail: 4, wordSeconds: .6})})).changed, ['timings'], 'a silent cut\'s timings set every beat');
-  const copy = mkdtempSync(path.join(tmpdir(), 'storyreel-approve-')); cpSync(dir, copy, {recursive: true});
+  const copy = tempDir('approve'); cpSync(dir, copy, {recursive: true});
   writeFileSync(path.join(copy, 'rule.ts'), readFileSync(path.join(copy, 'rule.ts'), 'utf8').replace(/pebble/, 'stone'));
   assert.deepEqual(checkApproval(a, await inputsOf({root: copy})).changed, ['the file rule.ts'], 'a code file the recipe shows');
   assert.deepEqual(checkApproval({...a, inputs: {...a.inputs, code: 'abc'}}, a.inputs).changed, ['the kits\' code (no fingerprint given now)']);
@@ -56,7 +56,7 @@ test('the date an approval names is the approver\'s own day, not the UTC one', (
 });
 
 test('a voice is its timings and its audio, file by file: moving sound from one file to another is a change', () => {
-  const voice = mkdtempSync(path.join(tmpdir(), 'storyreel-voice-')), timings = {scenes: [{id: 'a', audio: 'a.wav'}, {id: 'b', audio: 'b.wav'}]};
+  const voice = tempDir('voice'), timings = {scenes: [{id: 'a', audio: 'a.wav'}, {id: 'b', audio: 'b.wav'}]};
   writeFileSync(path.join(voice, 'timings.json'), JSON.stringify(timings));
   writeFileSync(path.join(voice, 'a.wav'), 'take one'); writeFileSync(path.join(voice, 'b.wav'), 'two');
   const before = voiceHash(voice);
@@ -66,7 +66,7 @@ test('a voice is its timings and its audio, file by file: moving sound from one 
 });
 
 test('makeFilm: approve the draft you watched; the final render with it records the approval, and a change refuses before drawing', {skip: spawnSync('ffmpeg', ['-version']).error ? 'needs ffmpeg' : false}, async () => {
-  const top = mkdtempSync(path.join(tmpdir(), 'storyreel-approval-')), timings = evenTimings(storyboard, {tail: 4}), render = {width: 320, height: 180, fps: 10};
+  const top = tempDir('approval'), timings = evenTimings(storyboard, {tail: 4}), render = {width: 320, height: 180, fps: 10};
   const draft = await makeFilm({storyboard, recipe, root: dir, timings, out: path.join(top, 'draft', 'film.mp4'), render});
   const approval = approveFilm({record: draft.makingOf, by: 'S', at});
   const final = await makeFilm({storyboard, recipe, root: dir, timings, out: path.join(top, 'final', 'film.mp4'), approval, render: {...render, stamp: null}});
@@ -84,7 +84,7 @@ test('makeFilm: approve the draft you watched; the final render with it records 
 });
 
 test('an approval is of the whole film: a render of a part refuses to be approved; a refused render leaves the approved narration alone', {skip: spawnSync('ffmpeg', ['-version']).error ? 'needs ffmpeg' : false}, async () => {
-  const top = mkdtempSync(path.join(tmpdir(), 'storyreel-approval-')), timings = evenTimings(storyboard, {tail: 4}), render = {width: 160, height: 90, fps: 5};
+  const top = tempDir('approval'), timings = evenTimings(storyboard, {tail: 4}), render = {width: 160, height: 90, fps: 5};
   const part = await makeFilm({storyboard, recipe, root: dir, timings, out: path.join(top, 'part', 'film.mp4'), render: {...render, from: 0, to: 2}});
   const record = JSON.parse(readFileSync(part.makingOf, 'utf8'));
   assert.deepEqual([record.span.from, record.span.to, record.span.whole], [0, 2, false]);
@@ -94,15 +94,22 @@ test('an approval is of the whole film: a render of a part refuses to be approve
   assert.throws(() => checkApproval({schemaVersion: 2, by: 'S', approved: at.toISOString(), inputs: {}}, null), /give what the film is made from now/);
 });
 
-test('a refused render into an approved render\'s folder leaves its paced narration as it was', {skip: spawnSync('ffmpeg', ['-version']).error ? 'needs ffmpeg' : false}, async () => {
+test('a refused render into an approved render\'s folder leaves its paced narration as it was', {skip: spawnSync('ffmpeg', ['-version']).error ? 'needs ffmpeg' : false}, async t => {
   // A voice: each scene's words timed evenly, its audio a silence of the scene's length.
-  const top = mkdtempSync(path.join(tmpdir(), 'storyreel-voiced-')), voice = path.join(top, 'voice'), even = evenTimings(storyboard, {tail: 1});
+  const top = tempDir('voiced'), voice = path.join(top, 'voice'), even = evenTimings(storyboard, {tail: 1});
   spawnSync('mkdir', ['-p', voice]);
   const scenes = even.scenes.map(sc => { const audio = `${sc.id}.wav`; spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'anullsrc=r=24000:cl=mono', '-t', String(sc.duration), '-c:a', 'pcm_s16le', path.join(voice, audio)]); return {...sc, audio}; });
   writeFileSync(path.join(voice, 'timings.json'), JSON.stringify({...even, scenes}));
   const pacing = {voiceSpeed: 1, sceneTail: 1, holds: [], tails: {story: 5}}, out = path.join(top, 'final', 'film.mp4'), render = {width: 160, height: 90, fps: 5};
+  // The out folder is shared, like /tmp (1777: anyone may add an entry, only its owner may remove it), and the umask a usual 022.
+  const posix = process.platform !== 'win32', was = process.umask(0o022);
+  t.after(() => process.umask(was));
+  if (posix) { mkdirSync(path.join(top, 'final')); chmodSync(path.join(top, 'final'), 0o1777); }
   const first = await makeFilm({storyboard, recipe, root: dir, narrationDir: voice, pacing, out, render});
   const approval = approveFilm({record: first.makingOf, by: 'S', at}), kept = readFileSync(path.join(top, 'final', 'narration', 'timings.json'), 'utf8');
+  // The copy was paced in a folder only this user could open (scratch.mjs · makeScratch); placed, it has a plain folder's
+  // mode (0777 less the umask: 0755), never the shared out folder's — everyone could rewrite the voice the other tools read.
+  if (posix) assert.equal(statSync(path.join(top, 'final', 'narration')).mode & 0o7777, 0o755);
   await assert.rejects(makeFilm({storyboard, recipe, root: dir, narrationDir: voice, pacing: {...pacing, sceneTail: 1.5}, out, render, approval}), /pacing.*differ/);
   assert.equal(readFileSync(path.join(top, 'final', 'narration', 'timings.json'), 'utf8'), kept, 'the approved render\'s narration is untouched');
   assert.deepEqual(readdirSync(path.join(top, 'final')).filter(f => f.startsWith('.narration')), [], 'and the refused one\'s copy is gone');

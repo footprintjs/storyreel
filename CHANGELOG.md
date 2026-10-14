@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+- **A render cleans up after itself.** Its working files (the picture without its sound, the voice and the effects as
+  WAVs, FFmpeg's lists, segment files on their way to the cache) go in a hidden `.storyreel-work-…` folder beside the
+  video, removed when the render ends, finished or failed (`render.mjs` · `closeRender`; `renderFilm` and `makeFilm` call
+  it in a `finally`). Only the outputs stay beside the video. To keep the working files, name a folder for them:
+  `renderFilm({…, work})` (or `makeFilm({…, render: {work}})`). The system's temp folder holds only two passes' scratch
+  while they run (the stills' FFmpeg filter, a breakdown's sound for its beat map), each removed in a `finally`.
+- **A stopped render's folders are swept by the next one.** Scratch folders are named `<prefix>-<host>-<pid>-<XXXXXX>`
+  (`scratch.mjs`): a render sweeps the `.storyreel-work-…` folders beside it whose process on this host is gone (Ctrl-C,
+  a killed process: the library installs no signal handler), and `makeFilm` the `.narration-…` copies too; the
+  making-of lists what was swept (`swept: {count, names}`). This host's folders are judged by whether their process
+  runs, never by age: a live run's is never swept, however quiet. Any other folder untouched for more than a day (by the
+  newest write inside it) is swept: 0.12's `.narration-<pid>`, another host's, this host under an earlier name. A fresh
+  folder from another host (left for that host's own next run) and a `work` folder you named are never swept. The two
+  passes that use the system's temp folder (stills, a breakdown's sound) name theirs `storyreel-scratch-…` and sweep it
+  the same way. Cleaning up never fails a run: a folder that cannot be removed is skipped and listed in
+  `swept.failed: [{name, why}]`.
+- **Scratch folders are safe in a shared temp folder** (CWE-377). Every one — a render's working folder, `makeFilm`'s
+  voice copy, the stills' and a breakdown's scratch in the system's temp folder — is made by `scratch.mjs` ·
+  `makeScratch`: `mkdtemp`, a new folder with a random suffix, created at once, that only you can open (mode 0700). A
+  folder or a link another user planted at a name StoryReel might pick is never written into, and the voice is copied
+  as new files only (`files.mjs` · `copyVoice` creates each exclusively). The copy gets a plain folder's mode (0777
+  less the umask) before it becomes `narration/` (`files.mjs` · `placeVoice`), never the out folder's mode. A sweep touches only real folders you own: a link with a scratch name, or another user's
+  folder, is ignored — not removed, not followed, not listed.
+- **`makeFilm` renders from its own copy of the voice** and makes it `<out dir>/narration` only once the film is made:
+  two films made at once into one folder no longer take each other's voice, and a refused or failed film leaves the
+  folder's narration as it was. If the other film's folder slips in between the two steps of putting it in place
+  (ENOTEMPTY, EEXIST), it is tried once more and the record says so (`narration: {placedAgain}`).
+- **The tests clean up after themselves.** Every test folder comes from one helper (`test/tmp.mjs` · `tempDir`), named
+  `storyreel-…` and removed when its test or its file ends. `npm run test:temp` runs the suite with a temp folder of its
+  own and fails if anything is left; CI runs it. Stopped (Ctrl-C, SIGTERM), it stops the suite, removes its own folder
+  and exits with the signal's code. A full run used to leave 87 folders behind; it now leaves none.
 - **An example line beside real numbers is a finding.** An example scene's line that stays up into a real scene keeps
   its "Example data" label, which then seems to cover the real numbers beside it: the review's new
   `example-lingers` check says so while both are on screen (`an example line lingers into scene real beside real

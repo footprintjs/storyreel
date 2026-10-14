@@ -2,13 +2,13 @@
 // effects well under the voice — listed by the film, refused when the recipe says so, measured at render.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync, mkdtempSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {compileFilm, evenTimings, paceTimings, renderFilm, cartoonKit} from '../src/index.mjs';
 import {changeSounds, effectsUnderVoice, listeningMode, LISTENING} from '../src/listening.mjs';
+import {tempDir} from './tmp.mjs';
 
 const change = (at, sound, where = `stage s${at}`) => ({at, where, sound});
 
@@ -43,7 +43,7 @@ test('a film lists what its changes of picture ask of the ear; a recipe that ref
 });
 
 test('a render measures the effects apart: the record says how loud each role was', {skip: spawnSync('ffmpeg', ['-version']).error ? 'needs ffmpeg' : false}, async () => {
-  const film = await worlds(read('recipe.json')), top = mkdtempSync(path.join(tmpdir(), 'storyreel-listen-'));
+  const film = await worlds(read('recipe.json')), top = tempDir('listen');
   const made = await renderFilm({film, storyboard, timings, out: path.join(top, 'film.mp4'), width: 160, height: 90, fps: 5});
   assert.equal(made.loudness.roles.voice, null, 'a silent cut has no voice to measure');
   assert.ok(Number.isFinite(made.loudness.roles.effects) && made.loudness.roles.effects < -10, `the effects measured (${made.loudness.roles.effects} LUFS)`);

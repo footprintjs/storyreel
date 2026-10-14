@@ -1,14 +1,14 @@
 import test, {after} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, mkdirSync, writeFileSync, symlinkSync, readFileSync, realpathSync, rmSync, lstatSync, readdirSync, existsSync, chmodSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {mkdirSync, writeFileSync, symlinkSync, readFileSync, realpathSync, rmSync, lstatSync, readdirSync, existsSync, chmodSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {insideRoot, copyVoice, requireVoiceApart} from '../src/files.mjs';
 import {compileFilm, evenTimings} from '../src/index.mjs';
+import {tempDir} from './tmp.mjs';
 
 // A film folder beside a private one whose name begins the same way: /…/film and /…/film-private.
-const top = mkdtempSync(path.join(tmpdir(), 'storyreel-root-')), root = path.join(top, 'film'), secret = path.join(top, 'film-private');
+const top = tempDir('root'), root = path.join(top, 'film'), secret = path.join(top, 'film-private');
 mkdirSync(path.join(root, 'code'), {recursive: true}); mkdirSync(path.join(root, '..notes')); mkdirSync(secret);
 const block = '// --- on-screen code\nconst x = 1;\n// --- end on-screen code ---\n';
 writeFileSync(path.join(root, 'code', 'rule.ts'), block); writeFileSync(path.join(root, '..notes', 'a.ts'), block); writeFileSync(path.join(secret, 'x.ts'), block);
@@ -56,7 +56,7 @@ test('compileFilm loads a code excerpt only from inside root', async () => {
   assert.ok(film.total > 0);
 });
 
-const made = name => mkdtempSync(path.join(tmpdir(), `storyreel-${name}-`));
+const made = name => tempDir(name);
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** Everything in a folder, at every depth, never following a link: each path and what it is. */
 const contents = (dir, at = '') => readdirSync(path.join(dir, at)).sort().flatMap(name => {
@@ -76,7 +76,7 @@ test('copyVoice: the copy holds exactly what the render reads — timings.json a
   for (const f of ['audio', 'takes']) symlinkSync(at(f), path.join(voice, f), 'dir');
   symlinkSync(at('deleted.wav'), path.join(voice, 'gone.wav')); writeFileSync(path.join(voice, 'a.unpaced.wav'), 'A0'); writeFileSync(path.join(voice, 'notes.txt'), 'n');
   const link = path.join(made('link'), 'voice'); symlinkSync(voice, link, 'dir');   // and the voice folder itself given through a link
-  const to = path.join(made('to'), 'copy');
+  const to = made('to');   // a new, empty folder the caller made (scratch.mjs · makeScratch)
   assert.deepEqual(copyVoice(link, to), timings, 'it returns the voice\'s timings, as read');
   assert.deepEqual(contents(to), [['a.unpaced.wav', 'file'], ['a.wav', 'file'], ['audio', 'folder'], [path.join('audio', 'b.wav'), 'file'], ['timings.json', 'file']],
     'no link, no takes, no notes; an audio file missing or behind a dangling link is left out; the .unpaced.wav beside an audio file comes with it');
@@ -85,16 +85,21 @@ test('copyVoice: the copy holds exactly what the render reads — timings.json a
   // Pacing rewrites the copy: it can (a read-only take gives a writable copy), and nothing the copy came from changes.
   for (const f of named) writeFileSync(path.join(to, f), 'paced');
   assert.deepEqual(bytes(real), ['A', 'B', JSON.stringify(timings)]);
-  assert.throws(() => copyVoice(voice, to), /EEXIST/, 'a copy goes into a new folder only, never into one already there');
+  assert.throws(() => copyVoice(voice, to), /EEXIST/, 'a copy writes new files only, never over one already there');
+  // Nor through a link planted where a file of the copy goes: the link's target is never written.
+  const planted = made('planted'), target = path.join(made('target'), 'victim'); writeFileSync(target, 'mine');
+  symlinkSync(target, path.join(planted, 'timings.json'));
+  assert.throws(() => copyVoice(voice, planted), /EEXIST/);
+  assert.equal(readFileSync(target, 'utf8'), 'mine', 'the link\'s target is untouched');
 });
 
 test('copyVoice: a scene\'s audio named outside the voice folder is refused before anything is written, naming the scene, the path and the fix', () => {
   const top = made('voice'), voice = path.join(top, 'voice'), takes = path.join(top, 'takes'); mkdirSync(voice); mkdirSync(takes); writeFileSync(path.join(takes, 'a.wav'), 'A');
   const refuses = (audio, why) => {
     writeFileSync(path.join(voice, 'timings.json'), JSON.stringify({scenes: [{id: 'open'}, {id: 'story', audio}]}));
-    const to = path.join(made('to'), 'copy');
+    const to = made('to');
     assert.throws(() => copyVoice(voice, to), why);
-    assert.ok(!existsSync(to), `${audio}: nothing is written`);
+    assert.deepEqual(readdirSync(to), [], `${audio}: nothing is written`);
   };
   refuses('../takes/a.wav', new RegExp(`voice: scene "story" names its audio "\\.\\./takes/a\\.wav", outside the voice folder ${esc(voice)}: name each scene's audio by a path inside the voice folder, relative to it \\(audio/story\\.wav\\)$`));
   refuses(path.join(takes, 'a.wav'), /names its audio ".*takes\/a\.wav", outside the voice folder/);   // an absolute path
@@ -108,7 +113,7 @@ test('copyVoice: a scene\'s audio named outside the voice folder is refused befo
   refuses('audio/a.wav\nfile \'/etc/hosts', /names its audio "audio\/a\.wav\\nfile '\/etc\/hosts", outside the voice folder/);   // a line break would splice another file into ffmpeg's list
   assert.equal(readFileSync(path.join(voice, 'a.wav'), 'utf8'), 'V');
   assert.equal(readFileSync(path.join(takes, 'a.wav'), 'utf8'), 'A');
-  assert.throws(() => copyVoice(takes, path.join(made('to'), 'copy')), new RegExp(`voice: ${esc(takes)} has no timings.json: give narrationDir the voice folder`));
+  assert.throws(() => copyVoice(takes, made('to')), new RegExp(`voice: ${esc(takes)} has no timings.json: give narrationDir the voice folder`));
 });
 
 test('requireVoiceApart: an out folder in the voice, or a voice that is, holds or lies inside <out>/narration, is refused — by real path, through links and the disk\'s own spelling', () => {

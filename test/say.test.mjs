@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {captionChunks, captionFile} from 'footprint-narration';
 import {checkScene, spokenText, unsaidNumbers, makeClock, evenTimings, sceneText} from '../src/clock.mjs';
 import {compileFilm, spokenTracks} from '../src/index.mjs';
+import {tempDir} from './tmp.mjs';
 
 /** The words a caption shows for one scene, through the clock (footprint-narration's shownWords over the scene's slots). */
 const shownWords = (scene, words) => makeClock({scenes: [scene]}, {scenes: [{...evenTimings({scenes: [scene]}).scenes[0], words}]}).shownWords(0);
@@ -53,8 +54,8 @@ test('a film\'s captions and caption file show the digits the voice said in word
 
 test('makeFilm reads the voice folder\'s word check: words not heard are listed, or refused', async () => {
   const {readVoiceCheck} = await import('../src/pipeline.mjs');
-  const {mkdtempSync, writeFileSync, utimesSync} = await import('node:fs'), path = (await import('node:path')).default, {tmpdir} = await import('node:os');
-  const voice = mkdtempSync(path.join(tmpdir(), 'storyreel-check-'));
+  const {writeFileSync, utimesSync} = await import('node:fs'), path = (await import('node:path')).default;
+  const voice = tempDir('check');
   writeFileSync(path.join(voice, 'timings.json'), '{"scenes": []}');
   assert.equal(readVoiceCheck(voice), null, 'no check, nothing to say');
   writeFileSync(path.join(voice, 'word-check.json'), JSON.stringify({notHeardCount: 2, scenes: [{scene: 'next', lowWords: [['sixteen', 0.02]], notHeard: ['sixteen', 'point']}, {scene: 'cold', silent: true}]}));

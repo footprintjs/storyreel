@@ -3,8 +3,7 @@
 // frame at a join, a missing voice, drifting captions — and then once on a real render read by FFmpeg.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, writeFileSync, readFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {writeFileSync, readFileSync, readdirSync} from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -101,7 +100,7 @@ test('the voice is there when the render has one: silence where the film says wo
 });
 
 test('captions: in order, inside the picture, and each starting with its first word', async () => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'storyreel-cap-')), file = (name, text) => { const p = path.join(dir, name); writeFileSync(p, text); return p; };
+  const dir = tempDir('cap'), file = (name, text) => { const p = path.join(dir, name); writeFileSync(p, text); return p; };
   const frames = Array.from({length: Math.ceil(film.total * fps)}, (_, f) => drawn(film, f / fps)), chunks = captionChunks(film);
   const right = file('right.srt', captionFile(chunks, 'srt'));
   assert.equal((await check(frames, {film, captions: right, checks: ['captions']})).findings.length, 0, 'made from the film: no drift');
@@ -119,7 +118,7 @@ test('on a real render, read by FFmpeg: every frame is there, the checks pass, a
   const dir = fileURLToPath(new URL('../examples/worlds/', import.meta.url)), read = f => JSON.parse(readFileSync(dir + f, 'utf8'));
   const board = read('storyboard.json'), timings = paceTimings(board, evenTimings(board, {tail: .8}), read('pacing.json')), recipe = read('recipe.json');
   const worlds = await compileFilm({storyboard: board, timings, recipe, kits: [cartoonKit], root: dir, strings: read('strings/en.json')});
-  const top = mkdtempSync(path.join(tmpdir(), 'storyreel-finished-'));
+  const top = tempDir('finished');
   const made = await renderFilm({film: worlds, storyboard: board, timings, out: path.join(top, 'film.mp4'), width: 320, height: 180, fps, captionFiles: ['srt']});
   const report = await checkVideo({file: made.out, film: worlds, captions: made.captions.srt});
   assert.equal(report.frames, Math.ceil(worlds.total * fps), 'the mux keeps every frame (FFmpeg\'s -shortest used to drop the last few)');
@@ -132,17 +131,19 @@ test('on a real render, read by FFmpeg: every frame is there, the checks pass, a
 
 test('makeFilm checks the finished file when asked: the record lists what was found; refuse turns a problem into a refusal', {skip: has('ffmpeg') && has('ffprobe') ? false : 'needs ffmpeg and ffprobe'}, async () => {
   const dir = fileURLToPath(new URL('../examples/hello/', import.meta.url)), read = f => JSON.parse(readFileSync(dir + f, 'utf8'));
-  const board = read('storyboard.json'), recipe = read('recipe.json'), timings = evenTimings(board, {tail: 4}), top = mkdtempSync(path.join(tmpdir(), 'storyreel-finished-'));
+  const board = read('storyboard.json'), recipe = read('recipe.json'), timings = evenTimings(board, {tail: 4}), top = tempDir('finished');
   const made = await makeFilm({storyboard: board, recipe, root: dir, timings, out: path.join(top, 'a', 'film.mp4'), render: {width: 320, height: 180, fps}, check: 'report'});
   const record = JSON.parse(readFileSync(made.makingOf, 'utf8'));
   assert.equal(record.finished.ok, true); assert.deepEqual(record.finished.checked, ['duration', 'blank', 'flash', 'handovers']);
   assert.ok(record.pipeline.some(e => /check-finished/.test(e.text ?? e.stageName ?? JSON.stringify(e))), 'a stage of its own in the run');
   await assert.rejects(makeFilm({storyboard: board, recipe, root: dir, timings, out: path.join(top, 'b', 'film.mp4'), render: {width: 320, height: 180, fps}, check: 'refuse', expect: {seconds: 10}}), /The finished file has 1 problem \(check: 'refuse'\): duration: it is [\d.]+ s; the brief asks for 10 s/);
+  assert.deepEqual(readdirSync(path.join(top, 'b')).filter(n => n.startsWith('.')), [], 'refused after the render: its working files are gone all the same (pipeline.mjs · makeFilm, render.mjs · closeRender)');
   await assert.rejects(makeFilm({storyboard: board, recipe, root: dir, timings, out: path.join(top, 'c', 'film.mp4'), check: 'always'}), /check is 'report'/);
 });
 
 // Lips in sync: a robot that speaks two scenes, drawn by a kit that says where its mouth is.
 import {mouthAt} from '../src/acting.mjs';
+import {tempDir} from './tmp.mjs';
 const talking = {scenes: [{id: 'a', speaker: 'robot', narration: 'Hello there, I am the robot, and I will tell you how the frame is drawn every time the screen asks for one.'},
   {id: 'b', speaker: 'robot', narration: 'First the work, then the paint, then the picture, and then it waits for the next turn of the loop again.'}]};
 const mouthKit = (shut = false) => ({name: 'mouths', story: {compile: (spec, clock) => ({hang: 1, draw: c => { c.fillStyle = '#334'; c.fillRect(0, 0, 1600, 900); },
@@ -240,7 +241,7 @@ test('a part of the film (from, to) is checked as the part: its length, its cuts
 test('captions around a silent scene: its directions are never captioned, so they never count as words', async () => {
   const board = {scenes: [{id: 'a', narration: 'The sheep go out in the morning.'}, {id: 'gate', silent: [['The gate opens slowly', 1.5]]}, {id: 'b', narration: 'The shepherd counts the pebbles.'}]};
   const f = await compileFilm({storyboard: board, timings: evenTimings(board), recipe: {story: {kit: 'whiteboard', items: []}}});
-  const dir = mkdtempSync(path.join(tmpdir(), 'storyreel-cap-')), cues = path.join(dir, 'c.srt');
+  const dir = tempDir('cap'), cues = path.join(dir, 'c.srt');
   writeFileSync(cues, captionFile(captionChunks(f), 'srt'));
   const frames = encoded(f);
   assert.deepEqual((await checkVideo({file: 'x.mp4', film: f, captions: cues, checks: ['captions'], probe: probeOf(frames, fps)})).findings, []);
@@ -270,7 +271,7 @@ test('lip sync is skipped, saying why, when no kit on screen draws a mouth; the 
 });
 
 test('the probe finds ffprobe beside the FFmpeg it is given, or on the PATH', {skip: has('ffmpeg') && has('ffprobe') ? false : 'needs ffmpeg and ffprobe'}, async () => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'storyreel-ffmpeg-')), real = spawnSync('which', ['ffmpeg'], {encoding: 'utf8'}).stdout.trim();
+  const dir = tempDir('ffmpeg'), real = spawnSync('which', ['ffmpeg'], {encoding: 'utf8'}).stdout.trim();
   spawnSync('ln', ['-s', real, path.join(dir, 'ffmpeg')]);   // a folder holding only ffmpeg, as ffmpeg-static ships it
   const {ffmpegProbe} = await import('../src/finished.mjs');
   const clip = path.join(dir, 'clip.mp4');
@@ -280,7 +281,7 @@ test('the probe finds ffprobe beside the FFmpeg it is given, or on the PATH', {s
 
 test('makeFilm checks a part as the part, and a check that cannot read the file is reported, not thrown, unless it must refuse', {skip: has('ffmpeg') && has('ffprobe') ? false : 'needs ffmpeg and ffprobe'}, async () => {
   const dir = fileURLToPath(new URL('../examples/hello/', import.meta.url)), read = f => JSON.parse(readFileSync(dir + f, 'utf8'));
-  const board = read('storyboard.json'), recipe = read('recipe.json'), timings = evenTimings(board, {tail: 4}), top = mkdtempSync(path.join(tmpdir(), 'storyreel-part-'));
+  const board = read('storyboard.json'), recipe = read('recipe.json'), timings = evenTimings(board, {tail: 4}), top = tempDir('part');
   const part = await makeFilm({storyboard: board, recipe, root: dir, timings, out: path.join(top, 'part', 'film.mp4'), render: {width: 160, height: 90, fps, from: 5, to: 15}, check: 'refuse'});
   assert.equal(JSON.parse(readFileSync(part.makingOf, 'utf8')).finished.ok, true, 'a part is checked as the part');
   const was = process.env.FFPROBE_BIN; process.env.FFPROBE_BIN = '/no/such/ffprobe';

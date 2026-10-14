@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, mkdirSync, writeFileSync, realpathSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {mkdirSync, writeFileSync, realpathSync} from 'node:fs';
 import path from 'node:path';
 import {createCanvas} from '@napi-rs/canvas';
 import {compileFilm, evenTimings, loadTheme} from '../src/index.mjs';
 import {EASES, easeNamed, inOut, overshoots} from '../src/ease.mjs';
 import {ease as boardEase} from '../src/kits/whiteboard/board.mjs';
+import {tempDir} from './tmp.mjs';
 
 // The ease table (src/ease.mjs): one place every curve is named.
 const grid = Array.from({length: 241}, (_, i) => -.1 + i * 1.2 / 240);
@@ -59,7 +59,7 @@ const fill = color => c => { c.fillStyle = color; c.fillRect(0, 0, 1600, 900); }
 test('kit context: a story kit with context: true receives the context, with the theme; it cannot draw the film', async () => {
   const got = [];
   const kit = {name: 'ctx', story: {context: true, compile: (...args) => { got.push(args); return {hang: 1, draw: fill('#ff0000')}; }}};
-  const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'storyreel-kit-')));
+  const root = realpathSync(tempDir('kit'));
   const film = await compileFilm({storyboard, timings, recipe: {story: {kit: 'ctx', size: 3}}, kits: [kit], root});
   assert.equal(got.length, 1); const [[spec, context, more]] = got;
   assert.deepEqual(spec, {kit: 'ctx', size: 3}); assert.equal(more, undefined, 'one argument after the spec');
@@ -90,7 +90,7 @@ test('kit context: an older kit keeps compile(spec, clock, motion), and a contex
 });
 
 test('kit context: readFile loads only from inside the root; insideRoot answers the real path', async () => {
-  const base = realpathSync(mkdtempSync(path.join(tmpdir(), 'storyreel-kit-'))), root = path.join(base, 'film');
+  const base = realpathSync(tempDir('kit')), root = path.join(base, 'film');
   mkdirSync(path.join(root, 'pics'), {recursive: true}); mkdirSync(path.join(base, 'film-private'));
   writeFileSync(path.join(root, 'pics', 'cup.txt'), 'a cup'); writeFileSync(path.join(base, 'film-private', 'secret.txt'), 'secret');
   let context;

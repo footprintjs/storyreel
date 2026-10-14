@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync, existsSync, mkdtempSync} from 'node:fs';
+import {readFileSync, existsSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
-import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createCanvas} from '@napi-rs/canvas';
 import {compileFilm, evenTimings, makeFilm, changedFrames} from '../src/index.mjs';
 import {PINS_HERE} from './golden.mjs';
+import {tempDir} from './tmp.mjs';
 
 const hello = fileURLToPath(new URL('../examples/hello/', import.meta.url));
 const storyboard = JSON.parse(readFileSync(hello + 'storyboard.json', 'utf8'));
@@ -75,7 +75,7 @@ test('kits are plug-ins: a story kit draws the opening world; unknown kits and s
 
 const ffmpeg = spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-version']).status === 0;
 test('makeFilm: a footprintjs pipeline writes the film and its making-of record', {skip: ffmpeg ? false : 'ffmpeg not on PATH'}, async () => {
-  const out = path.join(mkdtempSync(path.join(tmpdir(), 'storyreel-')), 'hello.mp4');
+  const out = path.join(tempDir('film'), 'hello.mp4');
   const result = await makeFilm({storyboard, recipe, root: hello, timings, out, render: {width: 320, height: 180, fps: 6}});
   assert.ok(existsSync(result.out));
   const record = JSON.parse(readFileSync(result.makingOf, 'utf8'));
