@@ -25,6 +25,60 @@
 - **A move is not blamed for where a hold left the camera.** A move that starts with the picture already past ×4 defers
   to the hold that took it there, which refuses naming the dutch that rolled it.
 
+### Motion from a video
+- **`footprint-storyreel/pose`**: the motion-source port, `{name, poseAt(t)}`: one pose shape for everything that moves
+  a figure, every foot with its roll (`angle`), plus optional joint angles (torso, neck, shoulders, elbows, hips,
+  knees). `walkSource` is the planned walk as one adapter; `motionSource` and `checkPose` check a source and a pose,
+  naming every wrong key.
+- **`footprint-storyreel/mocap`**: `fromPose(keypoints, {x, size})` turns COCO-17 or MediaPipe-33 keypoints into a
+  motion source, as a footprintjs flowchart with a record. Gaps are bridged, held or refused with their frames, and a refusal says whether the points were never found or
+  reported under `minConfidence`. Smoothing is One Euro, forward and back. Feet are planted and locked so they never
+  slide, and the legs are re-solved with the knees bent forward. A loop joins only where the feet meet, and otherwise
+  refuses with the cut that does.
+- **`footprint-storyreel/kits/cartoon/figure`**: `drawFigure`, a cartoon figure any motion source moves.
+- **`tools/pose-from-video.py`** (optional; MediaPipe Pose, heavy by default): downloads a pinned model on first use and
+  checks it by SHA-256, resamples a phone's variable rate to a steady fps, tells a damaged file by time against its
+  real duration (a trimmed file is whole; one spanning under half its duration is refused), and filters MediaPipe's
+  INFO and WARNING log lines while passing errors on at once.
+
+### Three review verdicts: no slideshow, parts that hold, numbers with a source
+- **Verdicts** (`src/verdict.mjs`): a check may answer `passed`, `failed` or `not run`, decided with footprintjs's
+  `decide()` over what it measured, so the review's record keeps the rule, the values and the thresholds. A check that
+  cannot run says `not run` and why, never passed. `reviewPart` returns `verdicts` and `verdictText`; `npx storyreel
+  review` prints them under the findings. A verdict check of your own: `{label, when, measure, verdict, notRun?,
+  summary?}` in `checks`.
+- **No slideshow** (`footprint-storyreel/slideshow`): each shot is measured in its middle (`film.changes`, every change
+  of picture, cut out) as grey frames 160 px wide — the review's own frames, drawn once (`frameHashes`'s new `each`).
+  A still stretch held more than 3 s, or all of a shot that never moves (or whose changes, together, touch under
+  0.25 % of the frame: a blinking caret), is dead; the film fails when more than half of its shots' running time is
+  dead, or more than 85 % is still at all (a deck swapped every 3 s: 93 %). Thresholds are data (`SLIDESHOW`). The
+  example films all pass (hello 32 % dead and 63 % still, recap 15 % and 58 %, shepherd and worlds 0 % dead); still
+  cards and crossfaded 2.5 s slides are 100 % dead, a page every 5 s 63 %.
+  Not the stale check: stale asks whether anything new comes, this whether the picture moves between the new things.
+- **Drawn parts hold together** (`footprint-storyreel/geometry`): a kit may give `parts(t)` — segments `{a, b, width?,
+  mount?, ends?, contact?}`, regions, pairs kept `apart` — and the audit checks that a mounted end stays on its mount,
+  a pair never crosses, and a planted end (`contact: 'a' | 'b' | true`, the end a rolling foot rests on) never leaves
+  where it was first planted — starting again across a gap or a jump of the picture's clock (a camera freeze letting
+  go; a speed ramp is not a jump). The cartoon kit gives its parts from the shape it draws from (`shepherdShape`,
+  `sheepShape`; pixels unchanged). `film.partsAt(t)` lists them, on the picture's clock (`film.pictureAt(t)`).
+- **Every number has a source** (`footprint-storyreel/claims`): every number on screen — `film.lines`, the emphasis
+  words, the captions as shown, and in the review every word the picture draws — matches a fact the storyboard names
+  (`"facts": "facts.json"`, `[{value, text?, source}]`) or sits in a scene marked `"example": true`, which draws an
+  "Example data" label — inside a crop's window in portrait and vertical, and on while any line the scene shows is
+  still up (`film.claims.labels`). Numbers keep their sign (a minus, the minus sign, an en dash), a digit after a cased
+  letter is part of a name (H2O, COVID-19, B-52; four digits after a hyphen are a year), CJK numbers are seen, and
+  "1,000" / "1.000" are ambiguous (only a fact written the same way sources them); the review joins words drawn in
+  pieces ("16" + ".67 ms"). A source is an http(s) URL, a file inside the root, or anything else kept as unverified and
+  counted. `film.claims` lists them. A stage of `makeFilm`'s pipeline too, `check-claims` (it sees declared lines only,
+  and says so), with `claims: 'report' | 'refuse'` (default report); the making-of record keeps the verdict, and a
+  refusal leaves the voice and the last render's narration as they were (the paced voice now moves into place in
+  `place-narration`). The facts are hashed on their own (`film.inputs.facts`, for an approval) and are in no
+  segment's key.
+- `film.lines` (every line meant to be read), `film.changes` (every change of picture), and `frame(ctx, t, {window})`
+  (a layout's crop window, so a label the viewer must see stays inside it).
+- The walk README now says to turn a shoe about the end on the floor (its heel while the toes are up, its toe while
+  the heel is up), not about its heel all the way.
+
 ## 0.12.0 — walks with feet that roll heel to toe; a turn that reads as a turn
 
 - **The feet roll heel to toe** (`walk(…).at(t).feet[j].angle`, radians, + toes up): a heel strike as a foot lands,

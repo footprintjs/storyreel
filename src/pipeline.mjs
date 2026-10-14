@@ -3,7 +3,8 @@
  * with its making-of record (making-of.json): the stages and how long they took, every phrase
  * that triggered a drawing and when (and the recipe entry that asked for it), the compile stage by
  * stage (compileFilm's record: its footprintjs narrative), the director's notes as applied, the
- * pacing, the loudness as measured and set, the tools and versions used.
+ * pacing, every number on screen and its source (the claims verdict, check-claims), the loudness as
+ * measured and set, the tools and versions used.
  *
  * Heavy things (the compiled film, canvases) never enter the flowchart's tracked scope; stages
  * pass small values and file paths, as footprintjs expects.
@@ -20,6 +21,8 @@ import {prepareRender, finishRender, wholeVideo, checkVideoStrategy} from './ren
 import {readApproval, requireApproval, voiceHash, unlocked} from './approval.mjs';
 import {hashOf} from './hash.mjs';
 import {checkVideo, ffmpegProbe} from './finished.mjs';
+import {verdictChart} from './verdict.mjs';
+import {claimsCount, unsourcedClaims, claimText, CLAIMS_VERDICT} from './claims.mjs';
 import {installedVersion} from './versions.mjs';
 import {beatMap} from './beats.mjs';
 import {readMusic, musicHash, fitToMusic, fitVoice} from './music.mjs';
@@ -121,12 +124,17 @@ const MAX_PARTS = 256;
  *                     changes.
  * @param reducedMotion true: the recipe's camera moves are cut to their end framing, handheld off (as compileFilm);
  *                     the record's `camera` says how they were played and why, and the film's inputs say so
+ * @param claims       every number on screen has a source (claims.mjs: a fact the storyboard names, or an example
+ *                     scene), a verdict the record keeps with its decide() evidence: 'report' (the default: the record's
+ *                     `claims` lists the numbers with no source) or 'refuse' (one refuses the film before it is drawn,
+ *                     and so does a film whose numbers cannot be checked: the storyboard names no facts)
  */
-export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report', code = null, check = null, expect = {}, cast = null, strategies = null, music = null, reducedMotion = false}) {
+export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report', code = null, check = null, expect = {}, cast = null, strategies = null, music = null, reducedMotion = false, claims = 'report'}) {
   // The cast's names into the text before anything reads it: the pacing, the voice check, the chapters (cast.mjs).
   if (cast) { const c = readCast(cast); storyboard = withCast(storyboard, c, 'storyboard'); recipe = withCast(recipe, c, 'recipe'); if (strings) strings = withCast(strings, c, 'strings'); }
   if (check !== null && check !== 'report' && check !== 'refuse') throw new Error(`check is 'report' (the record lists what the checks on the finished file found), 'refuse' (a problem refuses the film) or left out, not ${JSON.stringify(check)}`);
   if (voiceCheck !== 'report' && voiceCheck !== 'refuse') throw new Error(`voiceCheck is 'report' (the record lists words the voice check did not hear) or 'refuse' (the film refuses them), not ${JSON.stringify(voiceCheck)}`);
+  if (claims !== 'report' && claims !== 'refuse') throw new Error(`claims is 'report' (the record lists the numbers on screen with no source) or 'refuse' (one refuses the film), not ${JSON.stringify(claims)}`);
   if (code !== null && !(typeof code === 'string' && code.trim())) throw new Error("code is a fingerprint of the kits' drawing code (codeFingerprint([kitsFolder])), or left out");
   if (approval) readApproval(approval);
   const song = music === null ? null : readMusic(music);
@@ -137,6 +145,11 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   if (narrationDir) requireVoiceApart(narrationDir, dir);
   mkdirSync(dir, {recursive: true});
   let film, paced, result, job, plan, inputs, finished = null, voice = null, beats = null, fit = null;
+  // Where the voice is paced: a folder of its own, which takes the place of <out dir>/narration only once the film is
+  // allowed (place-narration).
+  const pacedCopy = path.join(dir, `.narration-${process.pid}`);
+  // A song the film cannot use refuses after the voice was paced: like a refused approval, it leaves no paced copy behind.
+  const leaveNoCopy = async make => { try { return await make(); } catch (e) { rmSync(pacedCopy, {recursive: true, force: true}); throw e; } };
   const video = checkVideoStrategy(render.video ?? wholeVideo()), done = [];
   const stages = {
     'check-inputs': scope => {
@@ -152,7 +165,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
         // (an approval refused leaves the approved render's narration as it was). The copy holds exactly what the
         // render reads — timings.json and each scene's audio — as new files (files.mjs · copyVoice): pacing rewrites
         // them, and a voice given through links, or read-only, is never paced in place. Nothing else is copied.
-        const copy = path.join(dir, `.narration-${process.pid}`); rmSync(copy, {recursive: true, force: true});
+        const copy = pacedCopy; rmSync(copy, {recursive: true, force: true});
         const raw = copyVoice(narrationDir, copy);
         // A voice knows only the spoken scenes: a silent scene it left out gets its directions' timing (clock.mjs · withDirections).
         paced = pacing ? await applyPacing({runDir: copy, board: storyboard, timings: raw, pacing}) : withDirections(storyboard, raw);
@@ -174,12 +187,12 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     },
     // The song's beat map: its own flowchart, its record kept in making-of.json (music.beats.record).
     'map-beats': async scope => {
-      beats = await beatMap(song.file, {...song.beats, ...(render.ffmpeg ? {ffmpeg: render.ffmpeg} : {})});
+      beats = await leaveNoCopy(() => beatMap(song.file, {...song.beats, ...(render.ffmpeg ? {ffmpeg: render.ffmpeg} : {})}));
       scope.bpm = beats.bpm; scope.verdict = beats.verdict; scope.songBeats = beats.beats.length; scope.drop = beats.drop; scope.confidence = beats.confidence;
     },
     // The film fitted to it: scene starts onto the beat, the drop on its key moment; a voiced cut's audio follows.
     'fit-to-music': async scope => {
-      fit = await fitToMusic({storyboard, timings: paced, beats, snap: song.snap ?? false, dropOn: song.dropOn, recipe, kits});
+      fit = await leaveNoCopy(() => fitToMusic({storyboard, timings: paced, beats, snap: song.snap ?? false, dropOn: song.dropOn, recipe, kits}));
       paced = scope.narration ? fitVoice(scope.narration, paced, fit.timings) : fit.timings;
       if (scope.narration) writeFileSync(path.join(scope.narration, 'timings.json'), JSON.stringify(paced, null, 2));
       scope.start = fit.start; scope.cutOn = fit.cutOn.grid; scope.moved = fit.cuts.filter(c => c.verdict === 'moved').length;
@@ -195,6 +208,9 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
         try { requireApproval(approval, inputs); } catch (e) { if (scope.narration) rmSync(scope.narration, {recursive: true, force: true}); throw e; }
         scope.approvedBy = approval.by;
       }
+    },
+    // The film is allowed (approved, and its claims checked): the paced voice becomes <out dir>/narration.
+    'place-narration': scope => {
       if (scope.narration) { const final = path.join(dir, 'narration'); rmSync(final, {recursive: true, force: true}); renameSync(scope.narration, final); scope.narration = final; }
     },
     // The picture: planned as one pass or as segments (render.mjs · wholeVideo, segments.mjs · segmentedVideo).
@@ -233,12 +249,27 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     const r = await video.one(job, plan[i]); done[i] = r;
     s.status = r.status; s.frames = r.frames; if (r.why) s.why = r.why;
   }, 'part').build();
+  // Every number on screen has a source (claims.mjs): a verdict decided with decide() over the counts (verdict.mjs), so the
+  // record says why it passed, failed or could not run. A refusal comes before anything is drawn, and leaves the voice
+  // folder as it was (the paced copy is removed).
+  const refuse = message => { rmSync(pacedCopy, {recursive: true, force: true}); throw new Error(message); };
+  // What this check reads: the lines the film declares (film.claims), never the picture — it draws no frame. The review
+  // reads what the picture draws too (claims.mjs · drawnClaims); the refusal and the record say so.
+  const SAW = 'declared lines only (the review also reads what the picture draws)';
+  const claimsCheck = verdictChart({name: 'check-claims', id: 'check-claims', description: 'Every number on screen, sourced by a fact or shown in an example scene', verdict: CLAIMS_VERDICT,
+    measure: s => { Object.assign(s, claimsCount(film.claims)); s.measured = true; },
+    on: claims !== 'refuse' ? {} : {
+      failed: () => { const open = unsourcedClaims(film.claims); refuse(`The film shows ${open.length} number${open.length > 1 ? 's' : ''} with no source (claims: 'refuse'; the check saw ${SAW}): ${open.slice(0, 3).map(claimText).join('; ')}${open.length > 3 ? `; and ${open.length - 3} more` : ''}`); },
+      'not run': s => refuse(`claims: 'refuse' needs the facts the numbers on screen come from (the check saw ${SAW}) — ${s.why}: give the storyboard "facts": "facts.json" ([{"value", "text"?, "source"}]), or mark the scenes that show example data "example": true`),
+    }});
   const trace = narrative();
   let chart = flowChart('check-inputs', stages['check-inputs'], 'check-inputs')
     .addFunction('pace-narration', stages['pace-narration'], 'pace-narration');
   // Only a film with a song has the music's stages: without one, the pipeline and its record are as they were.
   if (song) chart = chart.addFunction('map-beats', stages['map-beats'], 'map-beats').addFunction('fit-to-music', stages['fit-to-music'], 'fit-to-music');
   chart = chart.addFunction('compile-film', stages['compile-film'], 'compile-film')
+    .addSubFlowChartNext('check-claims', claimsCheck, 'check-claims', {outputMapper: o => ({claims: {verdict: o.verdict, why: o.why}})})
+    .addFunction('place-narration', stages['place-narration'], 'place-narration')
     .addFunction('plan-picture', stages['plan-picture'], 'plan-picture')
     .addParallelForEach('render-picture', 'render-picture', {items: scope => scope.parts ?? [], branch: part, maxBranches: MAX_PARTS, into: 'partsDone', failFast: true})
     .addFunction('render-film', stages['render-film'], 'render-film')
@@ -259,6 +290,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     ...(result.format || render.motionBlur || result.captions || render.soundAt === 'peak' ? {version: {format: result.format ?? 'frame', ...(render.motionBlur ? {motionBlur: render.motionBlur} : {}), ...(render.soundAt === 'peak' ? {soundAt: 'peak'} : {}),
       ...(result.captions ? {captionFiles: Object.values(result.captions).map(f => path.basename(f))} : {})}} : {}),
     ...(film.reading.length ? {reading: {tooShort: film.reading}} : {}),
+    // Every number on screen and where it comes from (claims.mjs), with the verdict and why (check-claims).
+    claims: {...(run?.state ?? run?.sharedState ?? {}).claims, saw: SAW, ...claimsCount(film.claims), unsourced: unsourcedClaims(film.claims).map(c => ({number: c.number, scene: c.scene, path: c.path, at: c.at, fix: claimText(c)}))},
     // Each beat: what was said, when, and the recipe entry that asked for it.
     beats: film.beats.map(({ref, t, path}) => ({said: Array.isArray(ref) ? {scene: ref[0], phrase: ref[1], plus: ref[2] ?? 0} : ref, at: t, ...(path ? {entry: path} : {})})),
     ...(film.notes.length ? {notes: film.notes} : {}),

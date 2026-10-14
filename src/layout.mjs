@@ -77,11 +77,11 @@ export function compileLayout(film, spec) {
       ctx.save(); ctx.scale(k, k); ctx.fillStyle = bg; ctx.fillRect(0, 0, f.width, f.height);
       const [bx, by, bw, bh] = f.film;
       ctx.beginPath(); ctx.rect(bx, by, bw, bh); ctx.clip();
-      if (crop) {
-        const {x0, y0, w} = cropWindow(crop, t, f.crop), s = bw / w;
-        ctx.translate(bx - x0 * s, by - y0 * s); ctx.scale(s, s);
-      } else { ctx.translate(bx, by); ctx.scale(bw / 1600, bh / 900); }
-      film.frame(ctx, t);
+      // A crop shows a window of the frame: the film is told which, so a label the viewer must see sits inside it.
+      const window = crop ? cropWindow(crop, t, f.crop) : null;
+      if (window) { const s = bw / window.w; ctx.translate(bx - window.x0 * s, by - window.y0 * s); ctx.scale(s, s); }
+      else { ctx.translate(bx, by); ctx.scale(bw / 1600, bh / 900); }
+      film.frame(ctx, t, window ? {window} : undefined);
       ctx.restore();
     },
     /** The bands at t; a still (the poster, a thumbnail) takes the title band without a caption. */

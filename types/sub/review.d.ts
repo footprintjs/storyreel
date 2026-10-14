@@ -1,4 +1,4 @@
-import type {Film, Layout} from '../index.js';
+import type {Film, Layout, Verdict, VerdictRules} from '../index.js';
 /** A line of text a frame draws: its box (axis-aligned) and quad (its four corners, rotation kept) in output pixels, and its alpha. */
 export interface Word {text: string; box: [number, number, number, number]; quad: [number, number][]; alpha: number}
 /** The words a frame draws at t, followed from each world's sheet onto the frame (through the layout when given). */
@@ -11,15 +11,31 @@ export function wordsAt(film: Film, t: number, options?: {layout?: ReturnType<ty
  * `minAlpha`, how opaque a word must be drawn to count.
  */
 export interface Review {film: Film; window: {from: number; to: number}; part: {from: number; to: number}; maxWords: number; minSilence: number; minAlpha: number; layout: ReturnType<typeof import('../index.js').compileLayout> | null; width: number; height: number; every: number; stillFor: number; newEvery: number;
-  samples: {t: number; words: Word[]}[]; hashes: Record<number, string>; frozen: {from: number; to: number}[]; picked: string[]}
+  /** words: what the checks read; marks: a sign or a point too short to read on its own ("-", "."), for the claims check to join to the digits it touches. */
+  samples: {t: number; words: Word[]; marks?: Word[]}[]; hashes: Record<number, string>;
+  /** Each sample's frame as grey levels, 160 × 90 (the same drawing as its hash): what the slideshow check reads. */
+  greys: Map<number, Uint8Array>; frozen: {from: number; to: number}[]; picked: string[]}
 /**
- * A check: a strategy run as its own subflow, picked when `when(scope)` is true (scope.facts: {seconds, stillFor, newEvery, loop, captions, samples, words, spoken, freezes?: the camera freezes that reach the part, when there are any}).
+ * A check: a strategy run as its own subflow, picked when `when(scope)` is true (scope.facts: {seconds, stillFor, newEvery, loop, captions, samples, words, spoken, parts, claims, freezes?: the camera freezes that reach the part, when there are any}).
  * `find` answers at once with its hits, copied as {kind, t, what}; a `when` or a `find` that throws, or a `find` that returns anything else
  * (a promise, no list, a hit without a name, a time or words), fails the review, naming the check. Hits with the same kind and `what` merge
  * into one span, so `what` names one stretch.
  */
-export interface ReviewCheck {label: string; why?: string; when(scope: any): boolean; find(review: Review): {kind: string; t: number; what: string}[]}
-export const REVIEW_CHECKS: Readonly<Record<'under-captions' | 'words-overlap' | 'cut-off' | 'hook' | 'text-density' | 'silences' | 'stale' | 'loop' | 'frozen-voice' | 'still', ReviewCheck>>;
+export interface FindingCheck {label: string; why?: string; when(scope: any): boolean; find(review: Review): {kind: string; t: number; what: string}[]}
+/**
+ * A check that answers with a verdict (passed, failed, or not run): `measure` answers at once with what it measured (each value goes on the
+ * scope by its name, for the rules' decide() filters) and its hits; the verdict is decided over them, and the hits are findings only when it
+ * fails. `notRun` says why when it is not picked (it is then 'not run', never passed); `summary` puts the numbers in its line.
+ */
+export interface VerdictCheck {label: string; why?: string; notRun?: string; when(scope: any): boolean;
+  measure(review: Review): {measured: Record<string, unknown>; hits?: {kind: string; t: number; what: string}[]};
+  verdict: VerdictRules; summary?(measured: any): string}
+export type ReviewCheck = FindingCheck | VerdictCheck;
+/** The built-in checks; slideshow, geometry and claims answer with a verdict. */
+export const REVIEW_CHECKS: Readonly<Record<'under-captions' | 'words-overlap' | 'cut-off' | 'hook' | 'text-density' | 'silences' | 'stale' | 'loop' | 'frozen-voice' | 'still', FindingCheck> & Record<'slideshow' | 'geometry' | 'claims', VerdictCheck>>;
+/** What a verdict check answered: its verdict, why (the rule that matched, or what passing means), what it measured, and its numbers in words. */
+export interface ReviewVerdict {check: string; label: string; verdict: Verdict; why: string; measured: Record<string, unknown>; summary?: string}
+export function verdictsText(verdicts: ReviewVerdict[]): string;
 /** A finding: a span on the film clock, the scene it starts in. */
 export interface Finding {kind: string; from: number; to: number; scene: string | null; what: string}
 export function findingsText(findings: Finding[]): string;
@@ -32,4 +48,4 @@ export function reviewPart(film: Film, options?: {part?: {scenes: string[]; hand
   every?: number; lasting?: number; minAlpha?: number; minHeight?: number; maxWords?: number; minSilence?: number;
   /** something new (a scene, a beat, a new word) at least every this many seconds (5) while the picture moves: the stale check */ newEvery?: number;
   /** the part is made to loop: the end of its own scenes (not its handles) must come round to their start; motion that steps (a flipbook, drawing on twos) reads one drawing short there */ loop?: boolean; checks?: Record<string, ReviewCheck>}): Promise<{window: {from: number; to: number}; facts: Record<string, unknown> | null;
-  findings: Finding[]; text: string; timeline: string; ran: string[]; record: unknown[]}>;
+  findings: Finding[]; text: string; verdicts: ReviewVerdict[]; verdictText: string; timeline: string; ran: string[]; record: unknown[]}>;

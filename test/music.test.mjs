@@ -4,7 +4,7 @@
 // the option nothing changes (pinned by hand against main: the same MP4 bytes, silent and voiced).
 import test, {after} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, mkdirSync, readFileSync, writeFileSync, chmodSync, rmSync} from 'node:fs';
+import {mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, chmodSync, rmSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -277,6 +277,10 @@ test('makeFilm with music and a voice: the run\'s copy of each moved scene\'s au
   const songBeats = s.beats.map(b => b), start = paced.scenes[0].duration;
   assert.ok(Math.abs(start - nearest(songBeats, start)) <= .002, `the second scene starts on a beat (${start})`);
   assert.equal(readFileSync(path.join(voice, 's0.wav')).length - 44, Math.round(voiced.scenes[0].duration * 48000) * 2, 'the voice folder itself is never touched');
+  // A song the film cannot use refuses after the voice was paced, and leaves no paced copy behind (as a refused approval).
+  const refused = path.join(dir, 'refused');
+  await assert.rejects(makeFilm({storyboard: helloBoard, recipe: helloRecipe, root: hello, narrationDir: voice, out: path.join(refused, 'film.mp4'), render: small, music: {file, snap: true, dropOn: ['no-such-scene', 'hello']}}), /fitToMusic/);
+  assert.deepEqual(readdirSync(refused).filter(f => f.startsWith('.narration')), [], 'the refused run\'s paced copy is gone');
 });
 
 test('without music nothing changes: the same stages, record, inputs and FFmpeg calls as before (pinned on main)', needs, async () => {
@@ -285,7 +289,7 @@ test('without music nothing changes: the same stages, record, inputs and FFmpeg 
   writeFileSync(shim, `#!/bin/sh\nfor a in "$@"; do printf '%s\\037' "$a" >> '${log}'; done\nprintf '\\n' >> '${log}'\nexec "${ffmpegBin}" "$@"\n`); chmodSync(shim, 0o755);
   const result = await makeFilm({storyboard: helloBoard, recipe: helloRecipe, root: hello, timings: evenTimings(helloBoard, {tail: 4}), out: path.join(out, 'film.mp4'), render: {...small, from: 0, to: 2, ffmpeg: shim}});
   const record = JSON.parse(readFileSync(result.makingOf, 'utf8'));
-  assert.deepEqual(record.pipeline.filter(e => e.type === 'stage' && e.depth === 0).map(e => e.stageId.split('~')[0]), ['check-inputs', 'pace-narration', 'compile-film', 'plan-picture', 'render-picture', 'render-film', 'check-finished']);
+  assert.deepEqual(record.pipeline.filter(e => e.type === 'stage' && e.depth === 0).map(e => e.stageId.split('~')[0]), ['check-inputs', 'pace-narration', 'compile-film', 'check-claims/check-claims', 'check-claims/verdict', 'check-claims/passed', 'place-narration', 'plan-picture', 'render-picture', 'render-film', 'check-finished']);
   assert.equal('music' in record, false);
   assert.deepEqual(Object.keys(record.loudness.roles), ['voice', 'effects']);
   assert.deepEqual(record.inputs, {storyboard: '390932da10154987', timings: '868ab614fc412af1', recipe: '9b351fe10b5a8e66', strings: null, data: null, theme: 'b5d0139a73be8b54', files: {'rule.ts': '8fc6d8dd3606be0f'}, pacing: '74234e98afe7498f'});

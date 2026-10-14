@@ -6,3 +6,5 @@ export interface FocusStrategy {name?: string; moves?: boolean; show(ctx: any, v
 export interface EmphasisStrategy {name?: string; draw(ctx: any, t: number, word: {t: number; text: string; next: number; until: number}, theme: unknown, view: FocusView | null): void}
 export const FOCUS: Readonly<Record<'camera' | 'spotlight' | 'dim' | 'none', FocusStrategy>>;
 export const EMPHASIS: Readonly<Record<'pop' | 'label' | 'corner' | 'none', EmphasisStrategy>>;
+/** A small label: ink ground, paper letters, at (x, y) — or set against a right edge (`right`) — scaled by k; returns its width. */
+export function chip(ctx: any, text: string, alpha: number, theme: unknown, options?: {x?: number; y?: number; k?: number; right?: number | null}): number;
