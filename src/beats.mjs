@@ -61,18 +61,24 @@ function betweenTests(e, rules) {
 export const backbeatEveryOther = (e, rules = BEATS.level) => Boolean(e?.backbeat && e.backbeat.phase >= rules.phase && e.backbeat.covered >= rules.halfTime
   && e.backbeat.covered <= 1 - rules.halfTime && e.backbeat.alternate >= rules.phase);
 
+/** A level whose beats are the backbeat: it lands on them (phase), and on nearly every one (covered, 1 − `halfTime`). */
+const onTheBackbeat = (e, rules) => Boolean(e?.backbeat && e.backbeat.phase >= rules.phase && e.backbeat.covered >= 1 - rules.halfTime);
+
 /**
  * The tests one level of the beat must pass to be certain — two pieces of evidence that must agree: the kick pulse
  * (kickTests, when the song has one) and the in-betweens (betweenTests). Two rules read the other levels tried: with no
  * kick pulse, the level's own score must stand `margin` over every other; and a backbeat names the tactus — when it is
- * on every other beat of a slower level (backbeatEveryOther), no faster one can be certain, however steady its own
- * beats (a kick and a bass on every eighth fill every beat of the double). Returns the names of the tests it fails;
- * none, and it passes.
+ * on every other beat of one level (backbeatEveryOther), no other can be certain: not a faster one, however steady its
+ * own beats (a kick and a bass on every eighth fill every beat of the double: 'backbeat slower'), nor a slower one
+ * whose beats are the backbeat alone (onTheBackbeat: an 808 on the quarters under a snare on 2 and 4, heard at half the
+ * tempo on the snares: 'backbeat faster'). Returns the names of the tests it fails; none, and it passes.
  */
 export function levelTests(level, all, rules = BEATS.level) {
   const e = level.evidence, fails = [...kickTests(e, rules), ...betweenTests(e, rules)];
   if (e.phase === null && all.some(other => other !== level && other.score > level.score - rules.margin)) fails.push('margin');
-  if (all.some(other => other !== level && other.bpm < level.bpm && backbeatEveryOther(other.evidence, rules))) fails.push('backbeat slower');
+  const named = all.filter(other => other !== level && backbeatEveryOther(other.evidence, rules));
+  if (named.some(other => other.bpm < level.bpm)) fails.push('backbeat slower');
+  if (named.some(other => other.bpm > level.bpm) && onTheBackbeat(e, rules)) fails.push('backbeat faster');
   return fails;
 }
 
@@ -180,7 +186,12 @@ async function analyse(read, source, options) {
     .end()
     .addFunction('track-beats', s => {
       const fr = work.onsets.frameRate, frames = trackBeats(work.onsets.flux.all, work.period, {frameRate: fr});
-      work.beats = refineBeats(work.samples, work.rate, frames.map(f => f / fr)).map(t => round(t));
+      const tracked = refineBeats(work.samples, work.rate, frames.map(f => f / fr)).map(t => round(t));
+      // Where the song actually hits (dsp.mjs · hitsOf): an unsure map's film cuts only on a shared beat that has one; and
+      // no map, sure or not, keeps a beat after the song's last hit — its ring-out (an 808's tail, an echo) is not a beat.
+      work.hits = hitsOf(work.onsets, fr, tracked, work.period / fr, {share: BEATS.safe.hit, local: BEATS.safe.local}).map(t => round(t));
+      const lastHit = work.hits.at(-1) ?? Infinity;
+      work.beats = tracked.filter(t => t <= lastHit + BEATS.safe.tolerance); work.ringOut = tracked.length - work.beats.length;
       // The BPM the grid keeps (a line through the beats: exact where the tempo is steady), unless one was given.
       work.bpm = o.bpm ?? round(gridTempo(work.beats, work.period / fr) ?? 60 * fr / work.period, 2);
       work.confidence = round(onsetSupport(work.onsets.flux.all, fr, work.beats), 2);
@@ -193,9 +204,8 @@ async function analyse(read, source, options) {
       const at = t => { const f = Math.round(t * fr); let m = 0; for (let k = f - 2; k <= f + 2; k++) m = Math.max(m, work.onsets.flux.all[k] ?? 0); return m; };
       const mean = v => v.reduce((a, x) => a + x, 0) / Math.max(1, v.length);
       work.phaseDoubt = work.grids.map(g => (g.length < 4 ? 1 : round(mean(g.slice(1).map((t, i) => at((t + g[i]) / 2))) / Math.max(1e-9, mean(g.map(at))), 3)));
-      // Where the song actually hits (dsp.mjs · hitsOf): an unsure map's film cuts only on a shared beat that has one.
-      work.hits = hitsOf(work.onsets, fr, work.beats, work.period / fr, {share: BEATS.safe.hit, local: BEATS.safe.local}).map(t => round(t));
       s.beats = work.beats.length; s.bpm = work.bpm; s.confidence = work.confidence; s.grids = work.grids.length; s.hits = work.hits.length;
+      if (work.ringOut) s.ringOut = work.ringOut;
     }, 'track-beats', 'Beats by dynamic programming (Ellis 2007), each moved onto the transient it sits on; every candidate\'s grid beside them')
     .addDeciderFunction('find-bars', s => {
       const scores = downbeatScores(work.onsets.flux.low, work.onsets.frameRate, work.beats, BEATS.meter), sorted = [...scores].sort((a, b) => b - a);

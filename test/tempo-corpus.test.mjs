@@ -1,4 +1,4 @@
-// The tempo corpus (test/songs.mjs · tempoCorpus): 248 songs made sample by sample, each with its true tempo and beats,
+// The tempo corpus (test/songs.mjs · tempoCorpus): 262 songs made sample by sample, each with its true tempo and beats,
 // and 21 ill-posed ones. The beat map may be unsure — tempo-close, the strongest taken, the alternatives listed — but it
 // may never claim a wrong tempo as certain, and when it is unsure and wrong, the right tempo is among its alternatives.
 // A film cuts only on the beats safeBeats allows — every beat of a sure map, the shared and heard ones of an unsure
@@ -52,9 +52,9 @@ for (const group of GROUPS) test(`${group}: never a wrong tempo claimed as certa
   assert.deepEqual(offBeat, [], 'every beat a film may cut on is a true beat, sure or unsure');
 });
 
-test('the whole corpus: 248 songs, none wrong and certain, no cut off a true beat', t => {
+test('the whole corpus: 262 songs, none wrong and certain, no cut off a true beat', t => {
   t.diagnostic(`corpus: ${summary(total)}`);
-  assert.equal(total.songs, 248);
+  assert.equal(total.songs, 262);
   assert.equal(total['wrong and certain'], 0);
   assert.equal(total['off-beat cuts'], 0);
 });

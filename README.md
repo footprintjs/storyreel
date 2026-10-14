@@ -1444,10 +1444,12 @@ peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and it
     fifth sixteenth is wrong too). With no kick pulse, the level's own score must also stand 0.3 over every other.
   - *a backbeat names the tactus*: a snare or a clap (`dsp.mjs · backbeatPulse`: noise rising in the mid and high bands
     at once that RINGS — 45 ms on, the high band still holds a fifth of its rise, where a kick's beater click or a closed
-    hat has died) on every other beat of a level — 2 and 4 of a bar — makes that level the beat, and no faster level can
-    be certain (`backbeatEveryOther`; the fail is `backbeat slower`): a kick and a bass on every eighth fill every beat
-    of the double, but the snare is on only every fourth. A level that keeps the backbeat on at most 3 in 8 of its beats
-    fails `half-time` on its own: it is twice too fast.
+    hat has died) on every other beat of a level — 2 and 4 of a bar — makes that level the beat, and no other level can
+    be certain (`backbeatEveryOther`): not a faster one (`backbeat slower`) — a kick and a bass on every eighth fill
+    every beat of the double, but the snare is on only every fourth — nor a slower one whose beats are the backbeat
+    (`backbeat faster`): an 808 on the quarters under a snare on 2 and 4 at 150 was heard, sure, at 75, its grid on the
+    snares. A level
+    that keeps the backbeat on at most 3 in 8 of its beats fails `half-time` on its own: it is twice too fast.
 
   When exactly one level passes, the verdict is certain: `tempo-measured` (the strongest), `tempo-faster` or
   `tempo-slower` — unless another level was refused by the kicks alone (`refusedByKicksAlone`: it failed only kick
@@ -1456,15 +1458,16 @@ peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and it
   taken and `alternatives` lists eight, each with its own grid. A wrong tempo claimed as certain is the one failure that
   matters, so many songs come out close: a backbeat (the kick on one and three is not a kick on every beat), a click
   track with a kick every fourth click, a dembow, a breakbeat; give `bpm` to settle them.
-- **Checked against a corpus** of 248 songs made sample by sample (`test/songs.mjs · tempoCorpus`,
+- **Checked against a corpus** of 262 songs made sample by sample (`test/songs.mjs · tempoCorpus`,
   `test/tempo-corpus.test.mjs`): 56 drum patterns; nine rhythm families — dembow, son clave, half-time shuffle, trap,
-  four on the floor, breakbeat, sixteenths with the kick on one, bossa nova, funk — at seven tempi; 66 songs; and 63 of
+  four on the floor, breakbeat, sixteenths with the kick on one, bossa nova, funk — at seven tempi; 66 songs; and 77 of
   bass, hands, meters and echoes — a backbeat over eighth-note bass, eighth-note kicks with the snare on 2 and 4, four
   on the floor humanised (±12 ms), a backbeat drifting ±3% in tempo, 6/8, a kick on the and of two, bass on quarters
   with chords, a kick (with its beater's click) and a bass on every eighth under a snare on 2 and 4, a dotted-eighth
-  delay on the rim and the snare. **None is wrong and certain**; 59 are right and certain, 103 right but close, 86
-  wrong but close, each of those with the right tempo among its alternatives — and **no beat a film may cut on lies
-  off a true beat, sure or unsure** (phase is checked for both). **The thresholds are calibrated on these synthetic
+  delay on the rim and the snare, an 808 sub on the quarters under a snare on 2 and 4, a backbeat with a dub echo (0.5)
+  on the snare. **None is wrong and certain**; 61 are right and certain, 109 right but close, 92 wrong but close, each
+  of those with the right tempo among its alternatives — and **no beat a film may cut on lies off a true beat, sure or
+  unsure** (phase is checked for both). **The thresholds are calibrated on these synthetic
   songs only**, with room to spare (loosening every one of them but `kicked` together still claims nothing wrong);
   for a real mix, read the verdict and `map.levels` (`storyreel beats <song>`), and give `bpm` to settle it.
 - **An unsure map cuts only where every candidate agrees and the song hits** (`safeBeats(map)`, the one rule the
@@ -1475,13 +1478,17 @@ peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and it
   0.6 of the median attack on the beats — a delay's repeat a sixteenth before the beat it precedes, or an echo ringing
   on past the song's end, is not a hit; `unheard` counts the shared beats dropped). None at all when any candidate is
   unsure of its phase (its grid could sit on the "and": the onsets half a beat off it as strong as on it, `phaseDoubt`
-  ≥ 0.9). Across the corpus's 189 unsure maps that leaves **0 cuts off a true beat** and 7.0% of the true beats
-  cut-able (598 of 8,596).
+  ≥ 0.9). Across the corpus's 201 unsure maps that leaves **0 cuts off a true beat** and 7.1% of the true beats
+  cut-able (652 of 9,172).
+- **A song's ring-out holds no beat.** No map, sure or unsure, keeps a beat after the song's last hit: the tracker
+  carries its grid on through what rings after the music stops — an 808's long tail, a dub echo, a delay's repeats —
+  and a beat there sits on nothing, or on an echo off the grid (an 808 on the quarters at 85 kept one, sure, 0.07 s off
+  it). The record says how many it dropped (`ringOut`).
 - **Unsure snaps little; a tempo settles it.** Measured over the corpus the way an editor cuts — a cut every 3–8 s,
-  snapped when a beat it may cut on lies within ±0.15 s — a sure map snaps about 45% of cuts (130 of 292) and an
-  unsure one about **4%** (32 of 802). The intersection is not loosened (no subset of the candidates kept every cut on the beat); instead an unsure
+  snapped when a beat it may cut on lies within ±0.15 s — a sure map snaps about 45% of cuts (138 of 306) and an
+  unsure one about **4%** (34 of 856). The intersection is not loosened (no subset of the candidates kept every cut on the beat); instead an unsure
   map is quick to settle: `likelyTempi(map)` names its candidates scoring 0.5 or more — the true tempo is among them
-  for 186 of the 189 unsure maps — and **a given tempo makes the map sure** (`tempo-given`), so a film cuts on every
+  for 196 of the 201 unsure maps — and **a given tempo makes the map sure** (`tempo-given`), so a film cuts on every
   beat. Hear the song, pick one, give it as `music.bpm`.
 - **`storyreel beats <song>`** prints the map for a person to settle it in seconds — no project needed (`beatMapText`):
 
@@ -1509,15 +1516,16 @@ peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and it
 - **Known limits — ill-posed rhythms.** Three rhythms no measure can settle, because each is a pulse at more than one
   tempo or phase as much as at the true one; they are in the corpus as their own group (`ill-posed`, 21 songs), pinned
   only to give a verdict the record keeps, never scored:
-  - *a snare alone on 2 and 4*: a snare every other beat is a steady pulse at half the tempo, so the map is sure of
-    half the tempo (`tempo-measured`, 35 BPM for a song at 70) — its beats are the snares, so a film cuts on 2 and 4;
+  - *a snare alone on 2 and 4*: a snare every other beat is a steady pulse at half the tempo; the map is unsure, at
+    half the tempo (35 BPM for a song at 70, the only likely one), and its shared beats are the snares — a film cuts on
+    2 and 4 only (144 cut-able over the seven tempi, every one a true beat);
   - *a kick-only tresillo* (3 + 3 + 2): three uneven kicks a bar fit several grids, none evenly; always `tempo-close`,
     the strongest seldom the true tempo — and the beats it lets a film cut on (92 over the seven tempi) all fall on
     true beats;
-  - *claps alone on the off-beats*: claps on the "and"s are as well a pulse on the beat; up to 110 BPM the map is sure
-    of the right tempo with its beats ON the claps, and from 128 BPM unsure with its shared beats on them too — every
-    one half a beat off the true beat (192 over the seven tempi), which no measure can tell. A given tempo does not
-    move the beats off the claps: if you hear them as off-beats, leave `snap` out for that song.
+  - *claps alone on the off-beats*: claps on the "and"s are as well a pulse on the beat; the map is unsure (the claps
+    on every beat of its tempo are a backbeat of the double), and the beats it shares are ON the claps — every one half
+    a beat off the true beat (40 over the seven tempi), which no measure can tell. A given tempo does not move the
+    beats off the claps: if you hear them as off-beats, leave `snap` out for that song.
 - **Known limits — a heavy delay on the drums.** Repeats at 80% of a dotted-eighth delay on the kick and the snare
   fill every sixteenth with kick-like hits; at 70 BPM the map can then be sure of four times the tempo. The corpus's
   delay (70% on the rim and the snare) stays right or unsure at every tempo; give `bpm` for a dub mix.

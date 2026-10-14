@@ -1,20 +1,18 @@
 // The beat map (beats.mjs) on songs made here, sample by sample, so every beat, bar and drop is known exactly: a click
 // track at a known tempo with a kick on the one, a quiet build, then a drop. No downloaded audio. The map is a flowchart:
 // its tempo, bars and drop are each decide() evidence in its record.
-import test, {after} from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, rmSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
-import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {beatMap, beatMapOf, peakOf, peakOfSamples, safeBeats, likelyTempi, beatMapText, levelTests, BEATS} from '../src/beats.mjs';
 import {fftOf, tempoPrior, onsetStrength, lowPulse, backbeatPulse} from '../src/dsp.mjs';
 import {song, rhythm, wavFile, noiseFrom} from './songs.mjs';
+import {tempDir} from './tmp.mjs';
 
 const ffmpeg = spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-version']).status === 0;
 const needs = {skip: ffmpeg ? false : 'ffmpeg not on PATH'};
-const made = [], tmp = () => { const dir = mkdtempSync(path.join(tmpdir(), 'storyreel-beats-')); made.push(dir); return dir; };
-after(() => { for (const dir of made) rmSync(dir, {recursive: true, force: true}); });
+const tmp = () => tempDir('beats');
 
 /** The farthest a list of times lies from the nearest of another. */
 const worst = (times, from) => Math.max(...times.map(t => Math.min(...from.map(u => Math.abs(u - t)))));
@@ -290,16 +288,26 @@ test('levelTests: a backbeat on every other beat of a slower level refuses every
   assert.deepEqual(levelTests(fast, [{...slow, evidence: {...clean, backbeat: {phase: 1, covered: 1, alternate: 0}}}, fast]), [], 'a snare on every beat names no slower level');
 });
 
-test('a dotted-eighth delay: an unsure map cuts only where the song hits, never on an echo the candidates agree on (70, 110, 140)', async () => {
-  let echoes = 0;
+test('a dotted-eighth delay: no cut on an echo the candidates agree on, nor on its ring-out past the song\'s end (70, 110, 140)', async () => {
+  let rungOut = 0;
   for (const bpm of [70, 110, 140]) {
     const s = rhythm({bpm, family: 'a dotted-eighth delay on the rim and snare'}), map = await beatMapOf(s.samples, 22050);
-    const offBeat = beats => beats.filter(t => !s.beats.some(u => Math.abs(u - t) <= .05));
-    assert.deepEqual(offBeat(safeBeats(map).beats), [], `${bpm}: ${map.verdict}, no cut off a true beat`);
-    // Without the hits, the candidates' agreement alone lands on an echo.
-    if (!map.sure) echoes += offBeat(safeBeats({...map, hits: undefined}).beats).length;
+    assert.deepEqual(safeBeats(map).beats.filter(t => !s.beats.some(u => Math.abs(u - t) <= .05)), [], `${bpm}: ${map.verdict}, no cut off a true beat`);
+    // A sure map cuts on every beat, so it keeps none in the echo's ring-out; an unsure one may keep one there, never cut on.
+    if (map.sure) assert.deepEqual(map.beats.filter(t => t > s.beats.at(-1) + .05), [], `${bpm}: no beat after the last true beat`);
+    // The echo rings on past the song's end, and the tracker carried beats into it: the record says they were dropped.
+    if (map.record.some(e => /ringOut = [1-9]/.test(e.text ?? ''))) rungOut++;
   }
-  assert.ok(echoes >= 1, 'the rule is what keeps the echo out');
+  assert.ok(rungOut >= 1, 'the ring-out rule is what keeps the echo out');
+});
+
+test('a song\'s ring-out holds no beat, sure map or not: an 808 sub sounding on past the last hit, a dub echo on the snare (70, 85)', async () => {
+  for (const family of ['808 sub on the quarters, snare on 2 and 4', 'backbeat, a dub echo on the snare']) for (const bpm of [70, 85]) {
+    const s = rhythm({bpm, family}), map = await beatMapOf(s.samples, 22050), last = s.beats.at(-1);
+    assert.deepEqual(map.beats.filter(t => t > last + .05), [], `${family} at ${bpm} (${map.verdict}): no beat after the last true beat, ${last.toFixed(3)} s`);
+    assert.deepEqual(safeBeats(map).beats.filter(t => !s.beats.some(u => Math.abs(u - t) <= .05)), [], `${family} at ${bpm}: no cut off a true beat`);
+    if (family.startsWith('808') && bpm === 85) assert.ok(map.sure, 'the 808 at 85 is a sure map: the rule holds for sure maps too');
+  }
 });
 
 test('likelyTempi and beatMapText: the tempi an unsure map could be, and the map as text a person settles it from', () => {
@@ -325,6 +333,9 @@ test('storyreel beats <song>: the verdict, the candidate tempi with their scores
   const given = run('beats', file, '--bpm', '95');
   assert.match(given.stdout, /tempo-given \(sure/);
   assert.equal(run('beats', file, '--tempo', '95').status, 2, 'an unknown flag');
+  const bare = run('beats', file, '--bpm');
+  assert.equal(bare.status, 2, 'a --bpm with no number'); assert.match(bare.stderr, /--bpm needs a number/);
+  assert.match(run('beats', file, '--bpm', 'fast').stderr, /--bpm needs a number, the tempo you hear \(e\.g\. --bpm 95\), not "fast"/);
   assert.equal(run('beats').status, 2, 'no song');
   assert.equal(run('beats', path.join(tmp(), 'missing.wav')).status, 1, 'a song that is not there');
   assert.match(run('--help').stdout, /beats {4}<song> — the song's tempo/);

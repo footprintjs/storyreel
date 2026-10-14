@@ -22,7 +22,7 @@ export interface BeatMap {
   readonly verdict: TempoVerdict;
   /** False exactly when the verdict is `tempo-close`: cut only on safeBeats(map), the beats every candidate shares. */
   readonly sure: boolean;
-  /** Every beat, seconds, each on the transient it sits on. */
+  /** Every beat, seconds, each on the transient it sits on — none after the song's last hit (its ring-out holds no beat). */
   readonly beats: readonly number[];
   /** Where the song actually hits (dsp.mjs · hitsOf): attacks in the low or mid band, no echo — an unsure map cuts only on a shared beat with one. */
   readonly hits: readonly number[];
@@ -71,9 +71,9 @@ export interface SafeRules { tolerance: number; phaseDoubt: number; hit: number;
 export const BEATS: Readonly<{range: readonly [number, number]; meter: number; downbeat: number; drop: number; window: number; fade: number; sudden: number; onBeat: number; likely: number; safe: Readonly<SafeRules>; level: Readonly<LevelRules>}>;
 /** The evidence one level is judged on (dsp.mjs · levelEvidence): the backbeat's share on its beats, the share of its beats that carry it, and how often the next one is two beats on. */
 export interface LevelEvidence { phase: number | null; kicked: number | null; steady: number; backbeat?: {phase: number; covered: number; alternate: number} | null; fill: Record<2 | 3 | 4, {full: number; low: number}> & {any?: {full: number}} }
-/** A backbeat on every other beat of a level (2 and 4): that level is the tactus, and no faster one may be certain. */
+/** A backbeat on every other beat of a level (2 and 4): that level is the tactus, and no other — faster or slower — may be certain. */
 export function backbeatEveryOther(evidence: LevelEvidence | null | undefined, rules?: LevelRules): boolean;
-/** The tests one level of the beat fails (none: it passes), from its evidence (dsp.mjs · levelEvidence) and the other levels tried ('margin', 'backbeat slower'). */
+/** The tests one level of the beat fails (none: it passes), from its evidence (dsp.mjs · levelEvidence) and the other levels tried ('margin', 'backbeat slower', 'backbeat faster'). */
 export function levelTests(level: {bpm: number; score: number; evidence: LevelEvidence; masked?: LevelEvidence}, all: {bpm?: number; score: number; evidence?: LevelEvidence}[], rules?: LevelRules): string[];
 /** Whether a level was refused by the kicks alone: its only failures are kick tests, and its in-betweens with the kicks masked pass. */
 export function refusedByKicksAlone(level: {fails: readonly string[]; masked?: LevelEvidence; evidence: LevelEvidence; bpm: number; score: number}, rules?: LevelRules): boolean;

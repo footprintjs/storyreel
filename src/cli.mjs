@@ -53,6 +53,9 @@ if (command === 'beats') {
   if (song === null) { console.error(`storyreel beats: name the song (storyreel beats music/theme.mp3)\n\n${BEATS_HELP}`); process.exit(2); }
   const unknown = Object.keys(flags).filter(f => f !== 'bpm' && f !== 'ffmpeg');
   if (unknown.length) { console.error(`storyreel beats: --${unknown[0]} is not a flag of beats (the flags are --bpm and --ffmpeg)`); process.exit(2); }
+  // A flag given with no value reads as 'true': --bpm needs its number, --ffmpeg its path.
+  if (flags.bpm !== undefined && !/^\d+(\.\d+)?$/.test(flags.bpm)) { console.error(`storyreel beats: --bpm needs a number, the tempo you hear (e.g. --bpm 95)${flags.bpm === 'true' ? '' : `, not ${JSON.stringify(flags.bpm)}`}`); process.exit(2); }
+  if (flags.ffmpeg === 'true') { console.error('storyreel beats: --ffmpeg needs the path of an FFmpeg (e.g. --ffmpeg /usr/local/bin/ffmpeg)'); process.exit(2); }
   const {beatMap, beatMapText} = await import('./beats.mjs');
   try {
     const map = await beatMap(song, {...(flags.bpm !== undefined ? {bpm: Number(flags.bpm)} : {}), ...(flags.ffmpeg ? {ffmpeg: flags.ffmpeg} : {})});

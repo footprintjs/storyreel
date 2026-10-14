@@ -102,6 +102,10 @@ export const RHYTHMS = Object.freeze({
   // A dotted-eighth delay on the rim and the snare: each repeat lands a sixteenth before the beat after, and rings on
   // past the song's end — the candidates can agree on an echo.
   'a dotted-eighth delay on the rim and snare': {grid: 4, steps: 16, kick: [0, 8], snare: [4, 12], rim: range(16, 4), echo: {delay: .75, gain: .7, on: ['rim', 'snare']}, level: {rim: 2}},
+  // The eighth review: a song's ring-out — an 808 sub that sounds on past the last hit, a dub echo on the snare — holds
+  // no beat.
+  '808 sub on the quarters, snare on 2 and 4': {grid: 4, steps: 16, sub: range(16, 4), snare: [4, 12]},
+  'backbeat, a dub echo on the snare': {grid: 4, steps: 16, kick: [0, 8], snare: [4, 12], hat: range(16, 2), echo: {delay: .75, gain: .5, on: ['snare']}},
   // Ill-posed: each is a pulse at more than one tempo, or on more than one phase, as much as at the true one — a snare
   // every other beat is as well a slower beat; three uneven kicks a bar fit several grids; claps alone between the beats
   // are as well on them. Kept to pin what the map says, never to be scored right or wrong.
@@ -162,7 +166,8 @@ const fadeIn = t => (t < 6 ? .05 : t < 12 ? .05 + .95 * (t - 6) / 6 : 1), bridge
  * - 'bass, hands, meters and echoes': a backbeat over an eighth-note bass, eighth-note kicks with the snare on 2 and 4,
  *   four on the floor played by hand (±12 ms), a tempo drifting ±3%, 6/8 (its dotted-quarter beat), a kick on the and
  *   of two, a bass on the quarters under held chords, a kick (with its beater's click) and a bass on every eighth under
- *   a snare on 2 and 4, a dotted-eighth delay on the rim and the snare — at seven tempi (63);
+ *   a snare on 2 and 4, a dotted-eighth delay on the rim and the snare, an 808 sub on the quarters under a snare on 2 and
+ *   4, a backbeat with a dub echo (0.5) on the snare — at seven tempi (77);
  * - 'ill-posed': a snare alone on 2 and 4, a kick-only tresillo, claps alone on the off-beats — at seven tempi (21),
  *   pinned only to give a recorded verdict: no measure can tell their tempo or phase (ILL_POSED);
  * - 'songs': click tracks (plain, and with a kick every fourth click), builds and drops, pads, first clicks 0–50 ms
