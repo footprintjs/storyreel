@@ -5,11 +5,22 @@
 A "final" render should be the film someone actually watched. Every `makeFilm` render's `making-of.json` lists what
 the film was made from, hashed (`inputs`): the storyboard, the timings, the recipe, the strings, the data, the theme,
 the cast, the facts, the language, every file it read, the pacing, the voice's audio, a song, `reducedMotion` (when
-the recipe has camera moves), `render.soundAt: 'peak'` (the one render setting that changes the film), and the kit's
-code when you pass `code`. `codeFingerprint(paths)` hashes the
-files and folders it is given and follows no imports: name every file that draws (or the kits' folder), or an edit to
-a helper the kit imports changes the film without the approval noticing. `approveFilm` takes the record of the
-render the person watched; `makeFilm({…, approval})` then refuses to render anything else, naming what changed.
+the recipe has camera moves), `render.soundAt: 'peak'` (the one render setting that changes the film), what draws it
+(`storyreel`: StoryReel's version; `engine`: StoryReel's own code and the versions of the libraries it draws with;
+`footprintjs`: the version the making-of record and its verdicts run on), and the kit's code when you pass `code`.
+`approveFilm` takes the record of the render the person watched; `makeFilm({…, approval})` then refuses to render
+anything else, naming what changed: "storyreel version (A approved, B now)", "StoryReel's code (same version X)" (a
+`file:` dependency or a local edit), "footprintjs version (…)", "code" (the kit's), "recipe", "the file …". After an
+`npm update`, re-approve: a footprintjs patch keeps every cached segment (segments hold the engine's fingerprint, not
+footprintjs's version) but needs a new approval.
+
+**The kit's code.** `codeFingerprint(paths)` hashes the files and folders it is given and everything they read: relative
+static imports, transitively, and literal `import('…')` and `require('…')`; JavaScript and TypeScript (`.ts`, `.mts`,
+`.cts`, `.tsx`, `.jsx`; `./x.js` finds `x.ts`); assets loaded by a literal `new URL('…', import.meta.url)`; a linked or
+workspace package's code, followed as the film's own; each installed package as `name@version`. What it cannot follow it
+lists in the record (`code.missing`, `code.unfollowed`, `code.unparsed`, [record.md](record.md)). A kit that loads
+files another way (`readFile` with a path, an asset path built at run time) names that folder in `codeFingerprint([…])`,
+or an edit there changes the film without the approval noticing.
 
 ```js file=approve.mjs
 import {readFileSync, writeFileSync} from 'node:fs';
@@ -27,7 +38,8 @@ await makeFilm({storyboard, recipe, kits: [farmKit], timings: evenTimings(storyb
 
 The hashes are of the data, not its spelling, so reformatting a file changes nothing. An approval does not lock the
 other render settings (size, format, captions, quality): the same approved film is made for every platform. An approval is of the
-whole film; a part render cannot be approved. A draft rendered without `code` and a final with it differ (`code`).
+whole film; a part render cannot be approved. A draft rendered without `code` and a final with it differ (`code`), so
+render both with the same `code`.
 
 ## One film, every platform
 

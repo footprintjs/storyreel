@@ -9,8 +9,10 @@ the world look like at second `t`".
 - **The story** (`recipe.story`, `{"kit": "<name>", …}`): one continuous world for the scenes before the first stage.
 - **A world shot** (a stage `{"type": "world", "scene": "<id>", "enter": …, "world": {"kit": "<name>", …}}`): a kit
   drawn full screen for its scene, entering by a transition (`fade` when left out; `cut`, `wipe`, `iris`, `push`,
-  `whip`, `zoom`, `page`, `through`, `match` …, or a move: `{"move": "soft-rise"}`). Every recipe still has a
-  `story`: when the first scene is already a stage, give it an empty board, `{"kit": "whiteboard", "items": []}`.
+  `whip`, `zoom`, `page`, `through`, `match` …, or a move: `{"move": "soft-rise"}`). Every recipe has a `story`, the
+  film's first shot: a recipe with none, `"story": null`, `"story": "whiteboard"` or a whiteboard with no `items` is
+  refused, and the message names the fix, `"story": {"kit": "whiteboard", "items": []}` for an empty board (when the
+  first scene is already a stage).
 - **A stage kit** adds a stage type of its own (`{name, stages: {loop: {keys, compile, draw}}}`); see the package
   README, section "Kits".
 
@@ -42,6 +44,9 @@ const recipe = {
 const film = await compileFilm({storyboard, recipe, kits: [sunrise, cartoonKit], timings: evenTimings(storyboard)});
 assert.deepEqual(film.shots.map(s => `${s.where}: ${s.from}–${s.to} s`), ['the story: 0–6.8 s', 'stage field: 6.8–12.84 s']);
 assert.deepEqual(film.regionsAt(9).map(r => r.name).filter(Boolean), ['sun', 'shepherd', 'sack', 'pen', 'gate']);   // what a camera can frame
+// No story is refused, naming the empty board to give.
+await assert.rejects(compileFilm({storyboard, recipe: {stages: recipe.stages}, kits: [cartoonKit], timings: evenTimings(storyboard)}),
+  {message: /the recipe has no story.*"story": \{"kit": "whiteboard", "items": \[\]\} for an empty board/});
 ```
 
 ## What a story kit's compile returns
@@ -65,7 +70,10 @@ assert.deepEqual(film.regionsAt(9).map(r => r.name).filter(Boolean), ['sun', 'sh
 
 Declare `motion: ['cameraSpeed']` beside `compile` when the kit's own camera moves follow a director's speed note,
 and `context: true` to be compiled as `compile(spec, {clock, motion, theme, root, readFile, insideRoot, …})`;
-`readFile` loads files only from inside the film's root folder.
+`readFile` loads files only from inside the film's root folder. An approval locks a kit's code through
+`codeFingerprint`, which follows its imports and its `new URL('…', import.meta.url)` assets; a kit that loads files
+another way (`readFile`, a path built at run time) should have that folder named in `codeFingerprint([…])` too
+([release.md](release.md#approve-the-film-that-was-watched)).
 
 Words a kit draws that claim nothing (line numbers, a step counter) go inside `footprint-storyreel/decorative` ·
 `decorative`, and code inside `code`, so the numbers check reads them rightly ([checks.md](checks.md#every-number-has-a-source)).

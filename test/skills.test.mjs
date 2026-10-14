@@ -88,17 +88,8 @@ function commandsOn(text) {
 // ── What the package exports ────────────────────────────────────────────────────────────────────────────────────────
 const exported = sub => (sub === '' ? '.' : `./${sub}`);
 const fileOf = sub => { const e = pkg.exports[exported(sub)]; return path.join(repo, typeof e === 'string' ? e : e.default); };
-/**
- * The names each subpath exports. Read through one module that re-exports each as a namespace (export * as), never
- * by awaiting import(subpath) itself: a module that exports a function called `then` (regions does) is a thenable,
- * and awaiting its namespace never settles.
- */
-async function namespacesOf(subs) {
-  const dir = tempDir('skills-exports'), list = [...subs], file = path.join(dir, 'names.mjs');
-  writeFileSync(file, list.map((s, i) => `export * as s${i} from ${JSON.stringify(pathToFileURL(fileOf(s)).href)};`).join('\n'));
-  const names = await import(pathToFileURL(file).href);
-  return new Map(list.map((s, i) => [s, names[`s${i}`]]));
-}
+/** Each subpath's module, imported as the package's own name would load it (test/exports.test.mjs holds that every one settles). */
+const namespacesOf = async subs => new Map(await Promise.all([...subs].map(async s => [s, await import(pathToFileURL(fileOf(s)).href)])));
 const exportsOf = async subs => new Map([...(await namespacesOf(subs))].map(([s, ns]) => [s, new Set(Object.keys(ns))]));
 const SUBPATHS = Object.keys(pkg.exports).filter(k => k !== './package.json' && k !== './studio').map(k => k.replace(/^\.\/?/, ''));
 

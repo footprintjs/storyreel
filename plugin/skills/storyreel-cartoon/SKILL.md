@@ -139,7 +139,7 @@ import {farmKit} from './farm.mjs';
 const read = file => JSON.parse(readFileSync(file, 'utf8'));
 const storyboard = read('storyboard.json'), recipe = read('recipe.json');
 const result = await makeFilm({storyboard, recipe, kits: [farmKit], timings: evenTimings(storyboard),
-  code: codeFingerprint(['farm.mjs']),   // every file that draws (it follows no imports: name each, or a folder)
+  code: codeFingerprint(['farm.mjs']),   // the kit's code and everything it imports, for the approval to lock
   out: 'out/draft/film.mp4', check: 'report', render: {width: 640, height: 360, quality: 'draft'}});
 console.log(result.out, result.makingOf);      // out/draft/: film.mp4, making-of.json, chapters.txt
 ```
