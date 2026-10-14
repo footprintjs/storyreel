@@ -63,7 +63,7 @@ The full map stays here so a studio can grow into it. The last column says when 
 | swap layer | a keyframe that replaces what was there | – | a new arrival makes the last one leave | 1b |
 | line, label | frame label | SMIL syncbase, Lottie `markers` | a spoken phrase or direction, or a shared name for one | 0, 1b |
 | key, tween | keyframe, motion tween | `@keyframes` stop | a value at a line; the engine fills in the motion between | 1a |
-| ease (`jump`) | Penner easing (hold keyframe) | `cubic-bezier()` (`steps()`) | how a change speeds up and settles (`jump`: no in-between) | 1a; four-number curves later |
+| ease (`jump`) | Penner easing (hold keyframe) | `cubic-bezier()` (`steps()`) | how a change speeds up and settles (`jump`: no in-between) | 1a; four-number curves landed with the motion vocabulary (`ease.mjs · bezier`) |
 | verb, way | Motion Preset | `@keyframes` name, Manim `FadeIn` | a named key shape, and how it looks | 1a; recipe-written ways later |
 | guide (`along`) | motion guide | `<animateMotion>` | a line an item travels | 3 |
 | mask layer | mask layer | `clip-path`, Lottie `tt` | the named layers show only through its shape | 3 (engine shapes only) |
@@ -226,7 +226,7 @@ The same thing as plain channel keys:
   - They live in one table in the core.
   - `inOut` is exactly today's `kits/whiteboard/board.mjs · ease`.
   - `jump` is Flash's hold keyframe. It is not called `hold`, because `hold` keeps its `pacing.json` meaning: a pause after a line.
-  - `spring` is in the table now (a closed-form damped spring, `ease.mjs · spring`; the paper kit's own `kits/paper/paper.mjs · spring` is a different, older curve); `bounce` and four-number curves are on the later list.
+  - `spring` is in the table now (a closed-form damped spring, `ease.mjs · spring`; the paper kit's own `kits/paper/paper.mjs · spring` is a different, older curve); `bounce`, the named curves `outCubic outQuint outExpo outBack inOutCubic standard emphasized` and four-number curves (`ease.mjs · bezier`, or `"cubic-bezier(…)"` by name) are in the table too, since the motion vocabulary (`moves.mjs`).
 - **Stays**: before its first key, an item shows the first key's values. After its last key, it keeps the last key's values.
 - Two keys on the same channel may not overlap in time. An instant key takes no time, so it may share a moment with the tween after it. Keys at the same moment apply in the order written.
 - **The one deliberate break from Flash:** a Flash tween stretched to fill the gap until the next keyframe. Here a tween lasts `seconds` and then stays, because the speaker decides how long the gap is.
@@ -281,7 +281,19 @@ On the later list: the verbs `say` and `replay` (clips cover replay), and the wa
 `stagger` (spacing a group's verb out, one after another) is on the later list. When it lands, the rules are already decided:
 - a staggered group is one focal unit, and its members never hand over to each other;
 - the whole group leaves when the next unit arrives on its swap layer;
-- a stagger gap shorter than the entrance is refused.
+- a stagger gap shorter than the entrance is refused — between the **members of a repeat group** only (below).
+
+**Stagger at two scopes (decided for the library, 2026-10-13).** Both rules hold, each at its own scope:
+- **Inside one item, a cascade may overlap.** A move that splits its item (`moves.mjs` · a move's `split` and `gap`: the
+  words of one line, the letters of one word) staggers the pieces of ONE item, and spacing them closer than each
+  piece's entrance is the point (0.09 s between words, each word 0.45 s): the reader reads a line, not its words one
+  by one. A split item of n pieces counts as **arrived at (n − 1) × gap + seconds** after it starts, and that is when
+  its reading time (law 6) starts. The kit-level helper `moves.mjs · stagger` spaces such a cascade, and refuses
+  nothing for overlapping.
+- **Between items the narration counts, no overlap.** The recipe-level `stagger` spaces the members of a repeat group —
+  separate things the voice names one by one (`chips/1`, `chips/2`) — and refuses a gap shorter than the entrance:
+  each member must have arrived before the next one starts. The refusal applies to members of a repeat group, never
+  to the pieces of one item's cascade.
 
 ### 4.9 Guides and masks
 

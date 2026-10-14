@@ -12,7 +12,8 @@
  *   no pushIn — every stage is a SHOT: a world (any story kit, full frame) or paper, entering
  *               with a fade, a wipe, an iris, a page turn or a cut; paper stages in a row hand over on one page
  * Over any of it: guesses (pause and guess). On-screen words may be keys into a string table.
- * Director notes (notes.mjs) lay camera words over the film: a camera speed, cuts, pushes.
+ * Director notes (notes.mjs) lay camera words over the film: a camera speed, cuts, pushes. Camera moves by
+ * name (camera.mjs, placed by camerawork.mjs) move the camera over the picture: pan, dolly, orbit, rack focus…
  * See README.md for the data.
  */
 import {readCast, withCast} from './cast.mjs';
@@ -32,6 +33,7 @@ import {icons} from './kits/whiteboard/board.mjs';
 import {drawCard, drawStage, drawSummary, drawConnector, cardEdge, PANEL, drawRecap, recapSlotBox, drawRecallFramed, drawGuess, GUESS_PLACES, GUESS_FLIP, cardPlacement, cardRowBoxes, stageBoxes} from './kits/paper/paper.mjs';
 import {tokenize, excerpt} from './kits/paper/code.mjs';
 import {readAttention} from './attention.mjs';
+import {planCamera} from './camerawork.mjs';
 import {readNotes, placePushes, pushAt} from './notes.mjs';
 import {view, then, about, through, back} from './regions.mjs';
 import {tooShortToRead, readingMode, readingPace} from './reading.mjs';
@@ -42,7 +44,7 @@ import {step, drainSteps, recordSteps} from './record.mjs';
 import {readEntrance, transitionCatalog, ghostPainter, layerCrossfader, CUT} from './transitions.mjs';
 
 /** The recipe's own top-level keys: anything else refuses, unless the host application names it in `hostKeys`. */
-const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle', 'focus', 'emphasis'];
+const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle', 'focus', 'emphasis', 'camera'];
 /** What every shot may say about itself (shots.mjs): what it is for, and what is true when it starts and ends. */
 const PLAN_KEYS = ['intent', 'continuity', 'reads'];
 const STAGE_KEYS = new Set(['type', 'scene', 'chip', 'chipDark', 'title', 'file', 'label', 'code', 'lh', 'reveal', 'focus', 'glows', 'footer', 'list', 'loop', 'cards', 'closing', 'hero', 'frames', 'keys', 'teaser', 'enter', 'chrome', 'marks', 'columns', 'card', ...PLAN_KEYS]);
@@ -127,6 +129,13 @@ function usesContext(storyKit, name) {
   return asked;
 }
 
+/** A world's optional `cameraMoves` (when its kit's own camera moves: [{from, to}] in seconds), checked. */
+function checkCameraMoves(instance, name, where) {
+  const moves = instance?.cameraMoves;
+  if (moves === undefined) return;
+  if (!Array.isArray(moves) || !moves.every(m => m && Number.isFinite(m.from) && Number.isFinite(m.to) && m.to > m.from)) throw new Error(`${where}: the kit "${name}" returned cameraMoves that are not [{from, to}]; cameraMoves is optional, and when given it lists when the kit's own camera moves, in seconds on the film's clock (to after from)`);
+}
+
 /**
  * A world's optional `ready` (a Promise: e.g. its images decoding), settled at once into
  * {error} | null so a refusal that comes early is never an unhandled rejection while the film is built.
@@ -157,9 +166,12 @@ async function readyWorlds(readies) {
  * @param hostKeys   top-level recipe keys the host application reads itself (allowed, ignored); any other unknown key refuses
  * @param record     true → the compile runs as a footprintjs flowchart and the film carries `record`
  *                   {narrative, snapshot} (record.mjs · recordSteps); false (default) → no record, nothing else changes
+ * @param reducedMotion true → the recipe's camera moves are played as cuts to their end framing, handheld off
+ *                   (camerawork.mjs); false (default) → as written. A film without camera moves is the same either way
  * @returns {total, clock, timings, sounds, frame(ctx, t), beats: [{ref, t, path}] (every phrase resolved, and the
  *          recipe entry that named it), strings: [keys used], notes: [the director's notes as applied],
- *          regionsAt(t) → [{box, path, label}] (what is drawn where), pointAt(t, x, y) → {frame, world?}, record?}
+ *          regionsAt(t) → [{box, path, label}] (what is drawn where), pointAt(t, x, y) → {frame, world?}, camera (the
+ *          camera moves as played, or null), cameraAt(t) → the camera's {x, y, z, r} (null at rest or without moves), record?}
  */
 export async function compileFilm(options) {
   const {record = false, ...rest} = options;
@@ -172,8 +184,9 @@ export async function compileFilm(options) {
  * summary)`, where `summary()` (called only when recording) says what the segment read and wrote.
  * The segments run the same code in the same order whether or not the compile is recorded.
  */
-async function* compileSteps({storyboard, board, timings, recipe, data, capture, kits = [], theme, root = process.cwd(), strings = null, hostKeys = [], cast = null, strategies = null}) {
+async function* compileSteps({storyboard, board, timings, recipe, data, capture, kits = [], theme, root = process.cwd(), strings = null, hostKeys = [], cast = null, strategies = null, reducedMotion = false}) {
   storyboard ??= board; data ??= capture ?? null;
+  if (typeof reducedMotion !== 'boolean') throw new Error(`compileFilm: reducedMotion must be true (the camera's moves cut to their end framing; handheld off) or false (the default), not ${JSON.stringify(reducedMotion)}`);
   checkRecipeKeys(recipe, hostKeys);
   // The cast's names go into the text first ({{role}} → name; cast.mjs), so every reader sees the film as it is said.
   const castGiven = cast; cast = readCast(cast);
@@ -208,6 +221,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (notes.speed !== 1 && !kit.motion?.includes('cameraSpeed')) throw new Error(`note "${notes.speedNote.note}": ${where} is drawn by the kit "${spec.kit}", which does not take a camera speed (a story kit that does lists motion: ['cameraSpeed'] and divides its camera moves' seconds by motion.cameraSpeed)`);
     worldKits.add(spec.kit);
     const instance = usesContext(kit, spec.kit) ? kit.compile(spec, context) : kit.compile(spec, clock, motion);
+    checkCameraMoves(instance, spec.kit, where);
     readies.push(readyOf(instance, spec.kit, where));
     return instance;
   };
@@ -467,7 +481,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
    * world's spotlight (and, for the story of a pushIn film, pushes into the prop: `camera`).
    */
   function drawWorld(ctx, w, t, spot, until = Infinity, camera = null) {
-    { const c = sheet.getContext('2d'); c.resetTransform(); c.clearRect(0, 0, 1600, 900); w.instance.draw(c, Math.min(t, until), spot); }
+    { const c = sheet.getContext('2d'); c.resetTransform(); c.clearRect(0, 0, 1600, 900); paintWorld(c, w, t, Math.min(t, until), spot); }
     ctx.drawImage(blank, 0, 0); // the page under the camera: a push never uncovers the frame edge
     ctx.save();
     if (spot) aim(ctx, spotCamera(w, spot));
@@ -476,6 +490,35 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (w.S < 1) { ctx.save(); ctx.shadowColor = 'rgba(60,50,35,.22)'; ctx.shadowBlur = 26; ctx.shadowOffsetY = 8; ctx.drawImage(sheet, w.BX, w.BY, 1600 * w.S, 900 * w.S); ctx.restore(); }
     else ctx.drawImage(sheet, 0, 0);
     ctx.restore();
+  }
+  const layerSheet = createCanvas(1600, 900), softSheets = new Map();
+  /**
+   * A world on its sheet at t (drawn as at `shown`): by its kit's draw, or — while a depth move has moved its layers
+   * (camerawork.mjs · depthAt) — layer by layer, back to front, each drawn whole (drawLayer), then slid, scaled
+   * about the sheet's centre and blurred by its depth (softened).
+   */
+  function paintWorld(c, w, t, shown, spot) {
+    const layers = camerawork?.depthAt(w, t);
+    if (!layers) { w.instance.draw(c, shown, spot); return; }
+    const lc = layerSheet.getContext('2d');
+    for (const l of layers) {
+      lc.resetTransform(); lc.clearRect(0, 0, 1600, 900); w.instance.drawLayer(lc, shown, l.name, spot);
+      const picture = l.blur >= .5 ? softened(l.blur) : layerSheet;   // under half a pixel a blur shows nothing: not drawn
+      c.save(); c.translate(800 + l.dx, 450); c.scale(l.scale, l.scale); c.translate(-800, -450); c.drawImage(picture, 0, 0, 1600, 900); c.restore();
+    }
+  }
+  /**
+   * The layer just drawn on layerSheet, blurred by `blur` px: drawn at 1/k of its size (k about blur/1.5, 1–8) with
+   * blur/k, then scaled back up as it is laid down — the same softness, a fraction of the work of a full-size blur
+   * (a rack focus costs a few times a plain frame, not thirty: README · Camera moves by name).
+   */
+  function softened(blur) {
+    const k = Math.max(1, Math.min(8, Math.round(blur / 1.5))), w = Math.ceil(1600 / k), h = Math.ceil(900 / k);
+    if (!softSheets.has(k)) softSheets.set(k, createCanvas(w, h));
+    const soft = softSheets.get(k), sc = soft.getContext('2d');
+    sc.resetTransform(); sc.clearRect(0, 0, w, h);
+    sc.save(); sc.filter = `blur(${(blur / k).toFixed(2)}px)`; sc.drawImage(layerSheet, 0, 0, w, h); sc.restore();
+    return soft;
   }
   const spotOf = (w, t) => w.instance.spotAt ? w.instance.spotAt(t) : null;
   /** A spotlight's camera on a world: {sx, sy, z, tx, ty} (translate to (tx, ty), scale z, about (sx, sy)). */
@@ -551,18 +594,24 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     crossfade(ctx, Math.max(0, Math.min(1, shot.enter.ease(u))), overlayOf(shots[j - 1], t), now);
   }
 
+  /** The picture's clock at t: the voice's, but in a camera's freeze or speed ramp (camerawork.mjs · clockAt). */
+  const pictureClock = t => (camerawork ? camerawork.clockAt(t) : t);
   /** The whole film at t, drawn into ctx whose transform maps 1600×900 onto the frame. */
   function frame(ctx, t) {
     if (teaser && t >= teaser.at) { drawTeaser(ctx, t); return; }
-    // A director's push moves the camera over the picture; the guess cards stay where they are.
+    // A director's push moves the camera over the picture; the guess cards stay where they are. The picture is
+    // drawn on its own clock (a freeze holds it); the push, the focus and the camera keep the voice's.
+    const tp = pictureClock(t);
     const picture = c => {
       const cam = pushAt(pushes, t);
       if (cam) { c.save(); aim(c, cam); }
-      if (push) drawPushed(c, t); else drawShots(c, t);
+      if (push) drawPushed(c, tp); else drawShots(c, tp);
       if (cam) c.restore();
     };
     // The focus strategy shows the picture (a camera frames the named thing, a spotlight darkens the rest…).
-    if (attention?.focus) attention.focus.show(ctx, t, picture); else picture(ctx);
+    const focused = c => { if (attention?.focus) attention.focus.show(c, t, picture); else picture(c); };
+    // The camera's moves are the outermost lens: they frame whatever the push and the focus have framed.
+    if (camerawork) camerawork.show(ctx, t, focused); else focused(ctx);
     if (!push) drawOverlays(ctx, t);
     for (const g of guesses) if (t >= g.start && t <= g.until + .5) drawGuess(ctx, makePen(ctx, paper, {baseScale: 1}), paper, g, t);
     attention?.emphasis?.draw(ctx, t);
@@ -579,7 +628,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (shot) {
       const e = shot.enter;
       return e.type === 'cut' ? {from: st.start, to: st.start, what: `the cut into ${st.scene}`}
-        : {from: st.start - e.lead, to: Math.max(st.start - e.lead + e.seconds, st.type === 'recap' ? st.start + 1 : 0), what: `the ${e.type} into ${st.scene}`};
+        : {from: st.start - e.lead, to: Math.max(st.start - e.lead + e.seconds, st.type === 'recap' ? st.start + 1 : 0), what: `the ${e.move ? `${e.move} move` : e.type} into ${st.scene}`};
     }
     return st.cut ? {from: st.start, to: st.start, what: `the cut into ${st.scene}`}
       : {from: st.start - .65, to: st.start + (st.type === 'recap' ? 1 : .4), what: `the hand-over to ${st.scene}`};
@@ -588,6 +637,20 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     const out = stages.map(arrivalOf);
     if (teaser) out.push({from: teaser.at, to: clock.total, what: 'the teaser'});
     return out;
+  }
+  /**
+   * A world's own camera moving between a and b while that world is on screen (StoryWorld · cameraMoves: e.g. the
+   * cartoon kit's camera keys): {path, kit, from, to}, or null. A push and a camera move take turns with it.
+   */
+  function kitCameraIn(a, b) {
+    const worlds = [storyWorld, ...stages.filter(st => st.world).map(st => st.world)];
+    if (!worlds.some(w => w.instance.cameraMoves?.length)) return null;
+    const starts = worlds.flatMap(w => (w.instance.cameraMoves ?? []).map(x => x.from)).filter(t => t > a && t < b);
+    for (const t of [...Array.from({length: Math.ceil((b - a) / .05)}, (_, i) => a + i * .05), ...starts]) {
+      const on = worldOnScreen(t), x = on && (on.w.instance.cameraMoves ?? []).find(m => t >= m.from && t < m.to);
+      if (x) return {path: on.path, kit: on.w.kit, from: x.from, to: x.to};
+    }
+    return null;
   }
   /** The world whose spotlight shows at t (its name), or null. */
   function spotlightAt(t) {
@@ -642,8 +705,10 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   /** What is drawn where at t: [{box: [x0, y0, x1, y1], path, label}] on the frame, in drawing order. */
   function regionsAt(t) {
     if (teaser && t >= teaser.at) return [{box: [0, 0, 1600, 900], path: `${stagePath(recapStage)}.teaser`, label: 'the teaser'}];
-    const out = regionsUnder(t);
-    const cam = pushAt(pushes, t), seen = cam ? out.map(r => ({...r, box: through(about(cam), r.box)})) : out;
+    const out = regionsUnder(pictureClock(t));
+    // Through the push and the focus (underView), then the camera's moves (a rolled box: the box that holds it).
+    const under = underView(t), framed = under ? out.map(r => ({...r, box: through(under, r.box)})) : out;
+    const lens = camerawork?.viewOn(t), seen = lens ? framed.map(r => ({...r, box: through(lens, r.box)})) : framed;
     guesses.forEach((g, n) => { if (t >= g.start && t <= g.until + .5) seen.push({box: guessBox(g, t), path: `guesses[${n}]`, label: g.question}); });
     return seen;
   }
@@ -689,9 +754,9 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
    * a world's instance.mouthsAt(t), a kit stage's mouthsAt(handle, t) → [{who, open: 0..1}] (who: the speaker
    * it belongs to, null for the narrator). [{who, open, path}].
    */
-  function mouthsAt(t) {
-    if (teaser && t >= teaser.at) return [];
-    const out = [], world = worldOnScreen(t), add = (list, path) => { for (const m of list ?? []) out.push({who: m.who ?? null, open: Math.max(0, Math.min(1, Number(m.open) || 0)), path}); };
+  function mouthsAt(at) {
+    if (teaser && at >= teaser.at) return [];
+    const t = pictureClock(at), out = [], world = worldOnScreen(t), add = (list, path) => { for (const m of list ?? []) out.push({who: m.who ?? null, open: Math.max(0, Math.min(1, Number(m.open) || 0)), path}); };
     if (world) add(world.w.instance.mouthsAt?.(Math.min(t, world.until)), world.path);
     else {
       const shown = push ? stateAt(t).shown.map(([st]) => st) : shots[shotAt(t)].stages;
@@ -701,10 +766,11 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   }
   /**
    * A point on the frame at t in the recipe's own coordinates: `frame` (as a push note's `at` means it:
-   * before any push) and, over a world, `world` {path, at} (the sheet's, as its items are placed).
+   * before any push, focus or camera move) and, over a world, `world` {path, at} (the sheet's, as its items are placed).
    */
   function pointAt(t, x, y) {
-    const cam = teaser && t >= teaser.at ? null : pushAt(pushes, t), [fx, fy] = cam ? back(about(cam), [x, y]) : [x, y], world = !(teaser && t >= teaser.at) && worldOnScreen(t);
+    const teasing = teaser && t >= teaser.at, lens = teasing ? null : camerawork?.viewOn(t), [lx, ly] = lens ? back(lens, [x, y]) : [x, y];
+    const under = teasing ? null : underView(t), [fx, fy] = under ? back(under, [lx, ly]) : [lx, ly], world = !teasing && worldOnScreen(pictureClock(t));
     const round = n => Math.round(n);
     return {frame: [round(fx), round(fy)], ...(world ? {world: {path: world.path, at: back(world.view, [fx, fy]).map(round)}} : {})};
   }
@@ -741,9 +807,24 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (!(w >= 4 && h >= 4)) throw new Error(`${where}: the ${type} goes through "${name}" in ${picture}, which is not on the frame at ${t.toFixed(2)} s (its box is [${box.map(n => Math.round(n)).join(', ')}])`);
     return Object.freeze([...box]);
   }
-  const pushes = placePushes(notes.pushes, {clock, speed: notes.speed, changes: pictureChanges(), spotlight: spotlightAt, total: clock.total, named});
+  const pushes = placePushes(notes.pushes, {clock, speed: notes.speed, changes: pictureChanges(), spotlight: spotlightAt, kitCamera: kitCameraIn, total: clock.total, named});
   // Where the viewer looks (attention.mjs): the recipe's focus and emphasis, each shown by a strategy.
   const attention = readAttention(recipe, {clock, named, strategies, pushes, theme: paper});
+  // The camera's moves by name (camera.mjs), placed on the clock by camerawork.mjs: one picture each, one camera
+  // (they take turns with a moving focus and the pushes), played as moves or (reducedMotion) as cuts.
+  const camerawork = recipe.camera === undefined ? null : await planCamera(recipe.camera, {clock, total: clock.total, changes: pictureChanges(),
+    named, under: underView, worldAt: t => { const on = worldOnScreen(t); return on ? {world: on.w, path: on.path} : null; },
+    focus: attention?.focus ?? null, pushes, spotlight: spotlightAt, kitCamera: kitCameraIn, reducedMotion, ground: c => c.drawImage(blank, 0, 0)});
+  /**
+   * What lies between the picture and the camera at t, as a view (regions.mjs): the director's push, then a moving
+   * focus (attention.mjs), as frame() composes them; null when neither moves the picture. The camera, regionsAt and
+   * pointAt all read through it, so a box and a click agree with what is drawn.
+   */
+  function underView(t) {
+    const cam = pushAt(pushes, t), f = attention?.focus, v = f?.moves ? f.viewAt(t) : null;
+    const pushed = cam ? about(cam) : null, focused = v ? about({sx: v.cx, sy: v.cy, z: v.z, tx: v.sx, ty: v.sy}) : null;
+    return pushed && focused ? then(focused, pushed) : pushed ?? focused;
+  }
 
   // The notes as applied, in the order written: the making-of record says what each one changed.
   const applied = new Map();
@@ -751,13 +832,13 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   for (const st of stages) if (st.cutNote) applied.set(st.cutNote, {note: st.cutNote.note, cut: st.scene, at: +st.start.toFixed(3), was: st.cutWas});
   for (const p of pushes) applied.set(p.given, {note: p.note, push: {at: p.at, zoom: p.zoom, ...(p.on ? {on: p.on, size: p.size} : {})}, from: +p.a.toFixed(3), to: +p.b.toFixed(3), seconds: +p.seconds.toFixed(3)});
   const notesApplied = (recipe.notes ?? []).map(n => applied.get(n));
-  yield step('guesses-and-notes', () => notesSummary(guesses, notesApplied));
+  yield step('guesses-and-notes', () => notesSummary(guesses, notesApplied, camerawork?.record ?? null));
 
   // Watching time (shots.mjs): each shot's moments — the phrases the recipe names while it is on screen —
   // never too many, too close together. Phrases that are not something to see are left out, by identity:
   // a push's camera words, a teaser's rewind (it names the past), the poster and the recalls.
   const notMoments = new Set([...notes.pushes.flatMap(n => [n.push.from, n.push.to]), ...stages.flatMap(st => st.teaser ? [st.teaser.rewind.from, st.teaser.rewind.to] : []),
-    ...(recipe.poster ? [recipe.poster] : []), ...Object.values(recipe.recalls ?? {}), ...readRefs]);
+    ...(recipe.poster ? [recipe.poster] : []), ...Object.values(recipe.recalls ?? {}), ...readRefs, ...(camerawork ? recipe.camera.flatMap(m => [m.at, m.until]) : [])]);
   const momentsOf = u => beats.filter(b => !notMoments.has(b.ref) && b.t >= u.from && b.t < u.to).map(b => b.t);
   const watchingRule = watchingMode(recipe.watching);
   const watching = tooMuchTooFast(plan.map(u => ({path: u.path, where: u.where, moments: momentsOf(u)})), WATCHING);
@@ -835,6 +916,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     const out = [], changes = pictureChanges().filter(c => c.to > c.from);
     for (const c of changes) out.push({t: (c.from + c.to) / 2, kind: 'moving', label: `mid ${c.what}`});
     for (const p of pushes) out.push({t: p.a + p.seconds / 2, kind: 'moving', label: `mid push: ${p.note}`});
+    for (const m of camerawork?.record.moves ?? []) if (m.played === 'move' && m.family !== 'texture') out.push({t: (m.at + Math.min(m.until, clock.total)) / 2, kind: 'moving', label: `mid ${m.move}: ${m.path}`});
     storyboard.scenes.forEach(sc => {
       // The quietest point of the scene: half way between the end of anything arriving and the next change.
       const from = Math.max(clock.start(sc.id), ...changes.filter(c => c.to <= clock.end(sc.id)).map(c => c.to)), to = Math.min(clock.end(sc.id), ...changes.filter(c => c.from > from).map(c => c.from));
@@ -861,7 +943,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
         paths: j === 0 ? [storyPath] : shot.world ? [stagePath(stages.find(st => st.world === shot.world))] : teasing ? everything : shot.stages.map(stagePath),
         // The entry the row begins with (its first stage, or the story): what a check names when it means this row.
         stage: j === 0 ? storyPath : stagePath(shot.stages[0] ?? stages.find(st => st.world === shot.world)),
-        enter: j === 0 ? null : {type: shot.enter.type, seconds: shot.enter.seconds, lead: shot.enter.lead},
+        enter: j === 0 ? null : {type: shot.enter.type, ...(shot.enter.move ? {move: shot.enter.move} : {}), seconds: shot.enter.seconds, lead: shot.enter.lead},
         ...(teasing ? {rewinds: Object.freeze({from: Math.min(teaser.from, teaser.to), to: Math.max(teaser.from, teaser.to), at: teaser.at + 2.7, until: teaser.at + 4.8})} : {}),
       };
     });
@@ -882,13 +964,16 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   // key holds the ones that reach every frame (segments.mjs). Files: every one read through the root while the
   // film was built.
   const inputs = Object.freeze({storyboard: hashOf(storyboard), timings: hashOf(timings), recipe: hashOf(given), strings: strings ? hashOf(strings) : null,
-    data: data === null ? null : hashOf(data), theme: hashOf(paper), files: Object.freeze(files.list()), ...(castGiven ? {cast: hashOf(castGiven)} : {})});
+    data: data === null ? null : hashOf(data), theme: hashOf(paper), files: Object.freeze(files.list()), ...(castGiven ? {cast: hashOf(castGiven)} : {}),
+    // A film whose camera moves are cut for reduced motion is another film: an approval of the moving one does not cover it.
+    ...(reducedMotion && camerawork ? {reducedMotion: true} : {})});
   // Each string's own hash (segments.mjs): a segment's key holds only the strings its entries name, so changing one
   // word redraws the segments that show it, not the whole film. Not part of `inputs` (the table's hash is).
   const stringHashes = strings ? Object.freeze(Object.fromEntries(Object.keys(strings).map(k => [k, hashOf(strings[k])]))) : null;
   // What is drawn over every shot for a while: the guess cards, from their question to the card gone.
   const overlays = Object.freeze(guesses.map((g, n) => Object.freeze({path: `guesses[${n}]`, from: g.start, to: g.until + .5})));
-  return {total: clock.total, clock, timings, sounds, listening, frame, beats, strings: [...used], notes: notesApplied, attention: attention?.record ?? null, focusAt: attention?.focus?.viewAt ?? null, reading, reads, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching,
+  return {total: clock.total, clock, timings, sounds, listening, frame, beats, strings: [...used], notes: notesApplied, attention: attention?.record ?? null, focusAt: attention?.focus?.viewAt ?? null,
+    camera: camerawork?.record ?? null, cameraAt: camerawork?.viewAt ?? null, reading, reads, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching,
     rows: Object.freeze(rows().map(Object.freeze)), overlays, inputs, stringHashes, mouthsAt};
 }
 
@@ -906,11 +991,12 @@ function buildSummary(storyPath, storyKit, stages, stageKitNames, plan) {
   stages.forEach((st, i) => { writes[`stage.stages[${i}]`] = {type: st.type, kit: st.world?.kit ?? stageKitNames[st.type] ?? 'paper', scene: st.scene, path: `stages[${i}]`, ...said(`stages[${i}]`)}; });
   return {reads: ['recipe', 'lines'], writes};
 }
-/** Each guess's pause and when its card is gone, and each director's note as applied. */
-function notesSummary(guesses, notesApplied) {
+/** Each guess's pause and when its card is gone, each director's note as applied, and each camera move as played. */
+function notesSummary(guesses, notesApplied, camera = null) {
   const writes = {}, s = n => +n.toFixed(3);
   guesses.forEach((g, n) => { writes[`guess.guesses[${n}]`] = {start: s(g.start), end: s(g.end), until: s(g.until)}; });
   notesApplied.forEach((a, i) => { if (a) writes[`note.notes[${i}]`] = a; });
+  for (const m of camera?.moves ?? []) writes[`camera.${m.path}`] = {move: m.move, at: m.at, until: m.until, played: m.played};
   return {reads: ['lines', 'notes', 'stage.'], writes};
 }
 /** What the checks found: the reading rule and the lines too short to read, the busiest scene's sounds, the worlds waited for. */
