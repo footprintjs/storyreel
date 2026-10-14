@@ -203,6 +203,10 @@
       "types": "./types/sub/music.d.ts",
       "default": "./src/music.mjs"
     },
+    "./breakdown": {
+      "types": "./types/sub/breakdown.d.ts",
+      "default": "./src/breakdown.mjs"
+    },
     "./package.json": "./package.json"
   },
   "types": "./types/index.d.ts",

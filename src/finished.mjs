@@ -36,29 +36,48 @@ export const FINISHED = Object.freeze({
 });
 
 /**
- * The default probe: FFmpeg and ffprobe (beside the FFmpeg given, or on the PATH). probe(file) → {seconds, video: {seconds, fps, width, height, frames},
- * audio: {seconds} | null}; frames(file, {width, height}) → every frame as grey levels (limited range, as
- * the video stores them); sound(file, {rate}) → mono samples.
+ * The default probe: FFmpeg and ffprobe (beside the FFmpeg given, or on the PATH). probe(file) → {seconds, video: {seconds,
+ * fps, rate, width, height, rotation, frames}, audio: {seconds} | null} — fps the average frame rate, rate the nominal
+ * one (they differ in a variable-rate file), width and height as the picture is shown (FFmpeg turns a picture stored on
+ * its side as it decodes, so a rotation of ±90° swaps the stored size); frames(file, {width, height, fps?}, each) →
+ * every frame as grey levels (limited range, as the video stores them), each(index, grey) — with `fps`, on a constant
+ * clock (onSlots: slot k is the frame a player shows at k / fps, FFmpeg starting every file's clock at 0), each(slot,
+ * grey, source) with `source` the decoded frame the slot shows, so a slot no new frame reached is known by its source;
+ * sound(file, {rate}) → mono samples.
  */
 export function ffmpegProbe({ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', ffprobe = process.env.FFPROBE_BIN || besideOrPath(ffmpeg)} = {}) {
-  const run = (cmd, args) => { const r = spawnSync(cmd, args, {encoding: 'utf8', maxBuffer: 1 << 26}); if (r.error || r.status !== 0) throw new Error(`${cmd} could not read the file: ${r.error?.message ?? String(r.stderr).slice(-300)}`); return r.stdout; };
+  const run = (cmd, args, file) => {
+    const r = spawnSync(cmd, args, {encoding: 'utf8', maxBuffer: 1 << 26});
+    if (r.error?.code === 'ENOENT') throw new Error(`${cmd} could not read the file: there is no ${cmd} there — install FFmpeg (it brings ffprobe), or name another ffprobe with FFPROBE_BIN`);
+    if (r.error || r.status !== 0) throw new Error(`${cmd} could not read the file ${file}: ${(r.error?.message ?? String(r.stderr)).trim().slice(-300)} — give a video file FFmpeg reads (try \`${cmd} "${file}"\` to see why it does not)`);
+    return r.stdout;
+  };
   return {
     name: 'ffmpeg',
     probe(file) {
-      const info = JSON.parse(run(ffprobe, ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', file]));
+      const info = JSON.parse(run(ffprobe, ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', file], file));
       const v = info.streams.find(s => s.codec_type === 'video'), a = info.streams.find(s => s.codec_type === 'audio');
       if (!v) throw new Error(`checkVideo: ${file} has no picture`);
-      const [n, d] = String(v.avg_frame_rate || v.r_frame_rate).split('/').map(Number), fps = d ? n / d : n;
-      return {seconds: Number(info.format.duration), video: {seconds: Number(v.duration ?? info.format.duration), fps, width: v.width, height: v.height, frames: Number(v.nb_frames) || null},
+      const rateOf = text => { const [n, d] = String(text).split('/').map(Number); return d ? n / d : n; };
+      const fps = rateOf(v.avg_frame_rate && v.avg_frame_rate !== '0/0' ? v.avg_frame_rate : v.r_frame_rate), rate = rateOf(v.r_frame_rate);
+      const rotation = Number(v.side_data_list?.find(x => x.rotation !== undefined)?.rotation ?? v.tags?.rotate ?? 0) || 0, turned = Math.abs(rotation) % 180 === 90;
+      return {seconds: Number(info.format.duration), video: {seconds: Number(v.duration ?? info.format.duration), fps, rate: Number.isFinite(rate) && rate > 0 ? rate : fps,
+        width: turned ? v.height : v.width, height: turned ? v.width : v.height, rotation, frames: Number(v.nb_frames) || null},
         audio: a ? {seconds: Number(a.duration ?? info.format.duration)} : null};
     },
-    async frames(file, {width, height}, each) {
-      const size = width * height, ff = spawn(ffmpeg, ['-v', 'error', '-i', file, '-vf', `scale=${width}:${height}:flags=area,format=gray`, '-f', 'rawvideo', 'pipe:1'], {stdio: ['ignore', 'pipe', 'pipe']});
-      let held = Buffer.alloc(0), index = 0, err = '';
+    async frames(file, {width, height, fps = null}, each) {
+      if (fps) return slotFrames(ffmpeg, file, {width, height, fps}, each);
+      const vf = `scale=${width}:${height}:flags=area,format=gray`;
+      const size = width * height, ff = spawn(ffmpeg, ['-v', 'error', '-i', file, '-vf', vf, '-f', 'rawvideo', 'pipe:1'], {stdio: ['ignore', 'pipe', 'pipe']});
+      // Each frame is filled in place from the chunks as they come (no buffer grown chunk by chunk), and handed over whole.
+      let grey = new Uint8Array(size), filled = 0, index = 0, err = '';
       ff.stderr.on('data', b => { err += b; });
       for await (const chunk of ff.stdout) {
-        held = held.length ? Buffer.concat([held, chunk]) : chunk;
-        while (held.length >= size) { each(index++, new Uint8Array(held.subarray(0, size))); held = held.subarray(size); }
+        for (let at = 0; at < chunk.length;) {
+          const take = Math.min(size - filled, chunk.length - at);
+          grey.set(chunk.subarray(at, at + take), filled); filled += take; at += take;
+          if (filled === size) { each(index++, grey); grey = new Uint8Array(size); filled = 0; }
+        }
       }
       const code = await new Promise(r => ff.once('close', r));
       if (code !== 0) throw new Error(`${ffmpeg} could not read the frames: ${err.slice(-300)}`);
@@ -70,6 +89,85 @@ export function ffmpegProbe({ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', ffprob
       return new Float32Array(r.stdout.buffer, r.stdout.byteOffset, r.stdout.length / 4);
     },
   };
+}
+
+/**
+ * Decoded frames laid on a constant clock of `fps` slots a second from 0 (FFmpeg starts every file's clock at 0): slot k
+ * shows the last frame whose own time is at or before k / fps (a millisecond allowed for rounding) — what a player shows
+ * then. Slots before the first frame show it (a picture that starts after its sound); after the last, it is shown for one
+ * slot more. Returns {frame(grey, time, source), end()}; each(slot, grey, source) is called for every slot in order, and
+ * a slot no new frame reached hands over the same source again (a repeat).
+ */
+export function onSlots(fps, each) {
+  let slot = 0, shown = null, last = 0;
+  const until = t => { while (shown && slot / fps + 1e-3 < t) each(slot++, shown.grey, shown.source); };
+  return {
+    frame(grey, time, source) {
+      if (!shown) shown = {grey, source};   // the first frame is shown from 0 (padded while the file shows nothing yet)
+      until(time); shown = {grey, source}; last = time;
+    },
+    end() { until(last + 1 / fps); return slot; },
+  };
+}
+
+/**
+ * A reader of showinfo's lines: for each frame, its number in the whole stream and its time — exact, from its integer pts
+ * in the time base of the most recent "config in time_base: N/D" line. The number is the reader's own running count:
+ * showinfo prints in output order, and its own `n` starts again at 0 whenever FFmpeg rebuilds the filter chain (a picture
+ * that changes size mid-stream), so it is never used. Its `pts_time` is read only before any time base is seen: FFmpeg
+ * before 7 prints it to six significant digits, so a time past 1,000 s comes rounded to 10 ms (past 10,000 s, to 100 ms).
+ * Returns line → {n, time} for a frame's line (time NaN when the frame has no timestamp), else null.
+ */
+export function showinfoReader() {
+  let base = null, count = 0;
+  return line => {
+    if (!/Parsed_showinfo/.test(line)) return null;
+    const config = /config in time_base:\s*(\d+)\/(\d+)/.exec(line);
+    if (config) { base = [Number(config[1]), Number(config[2])]; return null; }
+    const m = /\bn:\s*\d+\s+pts:\s*(\S+)\s+pts_time:(\S+)/.exec(line);
+    if (!m) return null;
+    const pts = Number(m[1]);
+    return {n: count++, time: base && base[1] && Number.isFinite(pts) ? pts * base[0] / base[1] : Number(m[2])};
+  };
+}
+
+/**
+ * Every decoded frame (no frame dropped or repeated: passthrough) with its own time, read through showinfo after the
+ * scale (cheap on the small grey frame; showinfoReader), laid on slots (onSlots). A frame waits for its time, which
+ * FFmpeg writes on its error stream as the frame passes; a time it does not give (no timestamp) is the one before plus a slot.
+ */
+async function slotFrames(ffmpeg, file, {width, height, fps}, each) {
+  const size = width * height, vf = `scale=${width}:${height}:flags=area,format=gray,showinfo`;
+  // -reinit_filter 0: a picture that changes size mid-stream is scaled on (the scale takes it), not given a rebuilt chain.
+  const ff = spawn(ffmpeg, ['-hide_banner', '-nostats', '-v', 'info', '-reinit_filter', '0', '-i', file, '-vf', vf, '-fps_mode', 'passthrough', '-f', 'rawvideo', 'pipe:1'], {stdio: ['ignore', 'pipe', 'pipe']});
+  const times = [], waiting = [], slots = onSlots(fps, each), read = showinfoReader();
+  let tail = '', said = '', decoded = 0, lastTime = -1 / fps;
+  const release = (all = false) => {
+    while (waiting.length && (all || times.length > decoded)) {
+      lastTime = Number.isFinite(times[decoded]) ? times[decoded] : lastTime + 1 / fps;
+      slots.frame(waiting.shift(), lastTime, decoded); decoded++;
+    }
+  };
+  ff.stderr.on('data', b => {
+    const text = tail + b; const lines = text.split('\n'); tail = lines.pop();
+    for (const line of lines) {
+      const frame = read(line);
+      if (frame) times[frame.n] = frame.time; else if (line.trim() && !/Parsed_showinfo/.test(line)) said = (said + line + '\n').slice(-600);
+    }
+    release();
+  });
+  let grey = new Uint8Array(size), filled = 0;
+  for await (const chunk of ff.stdout) {
+    for (let at = 0; at < chunk.length;) {
+      const take = Math.min(size - filled, chunk.length - at);
+      grey.set(chunk.subarray(at, at + take), filled); filled += take; at += take;
+      if (filled === size) { waiting.push(grey); release(); grey = new Uint8Array(size); filled = 0; }
+    }
+  }
+  const code = await new Promise(r => (ff.exitCode !== null ? r(ff.exitCode) : ff.once('close', r)));
+  if (code !== 0) throw new Error(`${ffmpeg} could not read the frames: ${(said + tail).slice(-300)}`);
+  release(true);
+  return slots.end();
 }
 
 /** ffprobe beside the FFmpeg given (a folder holding both), or the one on the PATH. */
