@@ -28,8 +28,10 @@ Logs. MediaPipe writes INFO and WARNING lines to stderr on every run; they are f
 other line it writes (an error, a fatal one too) is passed on at once. --logs shows them all.
 
 A damaged file. A decoder stops at a damaged stretch, so the clip it gives can end early with no error. The time the
-frames read span is held against the video's real duration, from FFprobe (FFmpeg's, on PATH): frames that span it are
-whole, however many the file's header states (a trimmed file states the frames its edit list hides). Frames that end
+frames read span is held against the video's real duration, from FFprobe (FFmpeg's, on PATH): the video stream's own,
+or its Matroska DURATION tag; the file's duration only when the video is its one stream (beside audio it is usually
+the audio's), else none. Frames that span it are whole, however many the file's header states (a trimmed file states
+the frames its edit list hides). A file that states a duration or frames yet decodes not one is damaged at its start. Frames that end
 early, or start late, are reported, and written into the JSON ("unread": {frames, why: "damaged", read, duration}) so
 fromPose's record says so; frames spanning less than half of it are refused. Without FFprobe there is no duration to
 hold them against: frames fewer than the header states are reported (why: "unknown"), never refused.
@@ -164,21 +166,78 @@ def open_fd(fd):
         return False
 
 
-def real_time(path):
-    """The video stream's real duration (seconds), after any edit list, from FFprobe; None when FFprobe is not found or cannot tell."""
+def clock_seconds(text):
+    """A Matroska DURATION tag ('HH:MM:SS.nnnnnnnnn') in seconds; None when it is not one."""
     try:
-        out = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'format=duration:stream=duration',
+        hours, minutes, seconds = str(text).strip().split(':')
+        total = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+        return total if total > 0 else None
+    except ValueError:
+        return None
+
+
+def positive_seconds(text):
+    """A duration FFprobe gives ('4.000000') in seconds; None when it is missing, not a number, or not above 0."""
+    try:
+        found = float(text)
+        return found if found > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def video_duration(info):
+    """
+    The video stream's own duration (seconds) in FFprobe's JSON for a file (every stream, its tags, the format): the
+    stream's duration, or its Matroska DURATION tag (Matroska gives the stream no duration of its own). The format's
+    duration counts only when the video is the file's one stream: beside an audio stream it is usually the audio's.
+    Returns (duration, why): why is None when found, else 'no video duration'.
+    """
+    streams = info.get('streams') or []
+    video = next((st for st in streams if st.get('codec_type') == 'video'), None)
+    if video is not None:
+        found = positive_seconds(video.get('duration'))
+        tags = {str(k).upper(): v for k, v in (video.get('tags') or {}).items()}
+        found = found or clock_seconds(tags.get('DURATION', ''))
+        if found:
+            return found, None
+    if video is not None and len(streams) == 1:
+        found = positive_seconds((info.get('format') or {}).get('duration'))
+        if found:
+            return found, None
+    return None, 'no video duration'
+
+
+def real_time(path):
+    """
+    The video stream's real duration (seconds), after any edit list, from FFprobe: (duration, why). why is None when
+    found, 'not found' when FFprobe is not on PATH (or fails), 'no video duration' when it gives none for the video.
+    """
+    try:
+        out = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_type,duration:stream_tags:format=duration',
                               '-of', 'json', path], capture_output=True, text=True, timeout=60)
         info = json.loads(out.stdout or '{}')
     except (OSError, subprocess.SubprocessError, ValueError):
+        return None, 'not found'
+    return video_duration(info)
+
+
+def too_few_frames(path, read, duration, stated):
+    """
+    The refusal for a video that gave fewer than 2 frames, or None. One that states a duration or frames, yet gave not
+    one, is damaged at its start (a decoder cannot begin); otherwise it is too short.
+    """
+    if read >= 2:
         return None
-    for found in ((info.get('streams') or [{}])[0].get('duration'), (info.get('format') or {}).get('duration')):
-        try:
-            if found is not None and float(found) > 0:
-                return float(found)
-        except ValueError:
-            pass
-    return None
+    if read == 0 and (duration or (stated and stated > 0)):
+        states = f'{duration:g} s of video' if duration else f'{int(round(stated))} frames'
+        return (f'pose-from-video: {path} states {states}, and not one frame could be decoded: its first frames are likely damaged; '
+                f'export or copy the video again')
+    return f'pose-from-video: {path} gave {read} frame{"" if read == 1 else "s"}: give a longer video'
+
+
+# Why a duration could not be had, as the warning says it.
+UNKNOWN_BECAUSE = {'not found': 'FFprobe, not found, would tell which',
+                   'no video duration': 'FFprobe gives no duration for the video stream to tell which'}
 
 
 def unread_frames(times, stated, fps, duration):
@@ -288,12 +347,14 @@ def main():
             image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
             seen.append((ms, points_of(landmarker.detect_for_video(image, stamp), args.min_visibility)))
     video.release()
-    if len(seen) < 2:
-        sys.exit(f'pose-from-video: {args.video} gave {len(seen)} frame: give a longer video')
+    duration, probed = real_time(args.video)
+    too_few = too_few_frames(args.video, len(seen), duration, stated)
+    if too_few:
+        sys.exit(too_few)
     if seen[-1][0] <= seen[0][0]:   # a file whose frames carry no times: they are taken as steady at fps
         print('pose-from-video: the video\'s frames carry no times; they are taken as steady at the stated rate', file=sys.stderr)
         seen = [(i * 1000 / fps, points) for i, (_, points) in enumerate(seen)]
-    verdict, unread = unread_frames([ms for ms, _ in seen], stated, native if native and native > 0 else fps, real_time(args.video))
+    verdict, unread = unread_frames([ms for ms, _ in seen], stated, native if native and native > 0 else fps, duration)
     if verdict == 'refuse':
         sys.exit(f'pose-from-video: {args.video} lasts {unread["duration"]} s, and the frames read span only {unread["read"][0]}–{unread["read"][1]} s '
                  f'({unread["frames"]} frames could not be read): the file is likely damaged; export or copy the video again')
@@ -302,7 +363,7 @@ def main():
               f'{unread["frames"]} frames could not be read, so it is likely damaged; the JSON says so ("unread")', file=sys.stderr)
     if verdict == 'unsure':
         print(f'pose-from-video: {args.video} states {int(round(stated))} frames and {len(seen)} were read: a trimmed file states more than it '
-              f'shows; a damaged one ends early (FFprobe, not found, would tell which); the JSON says so ("unread")', file=sys.stderr)
+              f'shows; a damaged one ends early ({UNKNOWN_BECAUSE[probed]}); the JSON says so ("unread")', file=sys.stderr)
     frames = resampled(seen, fps)
     doc = {'scheme': 'mediapipe-33', 'fps': fps, 'coordinates': 'normalised', 'width': size[0], 'height': size[1], 'frames': frames,
            **({'unread': unread} if unread else {})}

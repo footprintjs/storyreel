@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {mkdtempSync, writeFileSync, mkdirSync, chmodSync} from 'node:fs';
+import {mkdtempSync, writeFileSync, mkdirSync, chmodSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -51,6 +51,39 @@ print(json.dumps({name: tool.unread_frames(*c) for name, c in cases.items()}))`)
     'starts late': ['short', {frames: 30, why: 'damaged', read: [1, 4], duration: 4}],
     'no FFprobe, fewer': ['unsure', {frames: 66, why: 'unknown'}], 'no FFprobe, one short': ['whole', null],
   });
+});
+
+test('the video\'s own duration: the stream\'s, or its Matroska DURATION tag; the format\'s only when the video is alone', {skip}, () => {
+  const r = python(`video = lambda **kw: dict(codec_type='video', **kw)
+audio = lambda **kw: dict(codec_type='audio', **kw)
+infos = {
+  'mp4, audio longer':      {'streams': [video(duration='4.000000'), audio(duration='8.000000')], 'format': {'duration': '8.000000'}},
+  'mkv, 8 s of audio':      {'streams': [video(tags={'DURATION': '00:00:04.000000000'}), audio(tags={'DURATION': '00:00:08.023000000'})], 'format': {'duration': '8.023000'}},
+  'mkv, audio 0.3 s past':  {'streams': [video(tags={'DURATION': '00:00:04.000000000'}), audio(tags={'DURATION': '00:00:04.323000000'})], 'format': {'duration': '4.323000'}},
+  'mkv, video only, no tag': {'streams': [video()], 'format': {'duration': '4.000000'}},
+  'mkv, audio, no tags':    {'streams': [video(), audio()], 'format': {'duration': '8.023000'}},
+  'a tag in lower case':    {'streams': [video(tags={'duration': '01:02:03.5'}), audio()], 'format': {'duration': '9999'}},
+  'nothing at all':         {},
+}
+print(json.dumps({'parsed': [tool.clock_seconds(t) for t in ['00:00:04.000000000', '01:02:03.5', 'soon', '', '00:00:00.0']],
+                  'durations': {name: tool.video_duration(info) for name, info in infos.items()},
+                  'mkv 8 s audio': tool.unread_frames([23 + i * 1000 / 30 for i in range(120)], 120, 30, tool.video_duration(infos['mkv, 8 s of audio'])[0]),
+                  'mkv 0.3 s audio': tool.unread_frames([23 + i * 1000 / 30 for i in range(120)], 120, 30, tool.video_duration(infos['mkv, audio 0.3 s past'])[0]),
+                  'because': tool.UNKNOWN_BECAUSE,
+                  'too few': [tool.too_few_frames('v.mp4', *c) for c in [(0, 4.0, 120), (0, None, 120), (0, None, 0), (1, 4.0, 120), (2, 4.0, 120)]]}))`);
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.deepEqual(out.parsed, [4, 3723.5, null, null, null]);
+  assert.deepEqual(out.durations, {
+    'mp4, audio longer': [4, null], 'mkv, 8 s of audio': [4, null], 'mkv, audio 0.3 s past': [4, null], 'mkv, video only, no tag': [4, null],
+    'mkv, audio, no tags': [null, 'no video duration'], 'a tag in lower case': [3723.5, null], 'nothing at all': [null, 'no video duration'],
+  });
+  assert.deepEqual([out['mkv 8 s audio'], out['mkv 0.3 s audio']], [['whole', null], ['whole', null]], 'the audio\'s length is never the video\'s');
+  assert.deepEqual(out.because, {'not found': 'FFprobe, not found, would tell which', 'no video duration': 'FFprobe gives no duration for the video stream to tell which'});
+  assert.deepEqual(out['too few'], [
+    'pose-from-video: v.mp4 states 4 s of video, and not one frame could be decoded: its first frames are likely damaged; export or copy the video again',
+    'pose-from-video: v.mp4 states 120 frames, and not one frame could be decoded: its first frames are likely damaged; export or copy the video again',
+    'pose-from-video: v.mp4 gave 0 frames: give a longer video', 'pose-from-video: v.mp4 gave 1 frame: give a longer video', null]);
 });
 
 test('the log relay passes errors on as they come, a fatal one before an abort too, and holds back INFO and WARNING', {skip}, () => {
@@ -105,4 +138,5 @@ except SystemExit as e:
     assert.doesNotMatch(r.stderr, /Traceback|downloading/);
   }
   chmodSync(model, 0o644);
+  rmSync(dir, {recursive: true, force: true});
 });
