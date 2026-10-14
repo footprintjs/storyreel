@@ -126,6 +126,10 @@
       "types": "./types/sub/walk.d.ts",
       "default": "./src/walk.mjs"
     },
+    "./perspective": {
+      "types": "./types/sub/perspective.d.ts",
+      "default": "./src/perspective.mjs"
+    },
     "./pose": {
       "types": "./types/sub/pose.d.ts",
       "default": "./src/pose.mjs"

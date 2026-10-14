@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.0 — perspective: a room with depth
+
+- **`footprint-storyreel/perspective`: the layout artist's grid.** One horizon and one vanishing point for a scene;
+  `at(x, depth, height)` places a thing by where it stands on the floor and returns where it lands on the frame and
+  how small it looks; `along` spaces things on a line running into the room (a rail of dresses seen at
+  three-quarters); `backToFront` gives the painter's order; `toward` gives a floor line to the vanishing point;
+  `parallax` moves far things less when the camera pans. Bad input refuses, saying what it takes. A new
+  `storyreel-cartoon` skill page, `perspective.md`, teaches agents the rules with a worked example.
+
 ## 0.14.0 — the tools cost an agent fewer tokens; every refusal names its fix
 
 - **Token cost is a measured number, guarded in CI.** `node scripts/agent-cost.mjs` prints what an agent reads and
