@@ -1,4 +1,5 @@
 /** Original quiet motion accents; deterministic synthesis, no samples or network. */
+import {peakOfSamples} from './dsp.mjs';
 const TAU=Math.PI*2;
 /**
  * Every sound by name: how long it lasts (seconds) and its default gain (0..1, the share of its own full
@@ -87,8 +88,32 @@ export function progressToSpeechTime(cues,progress,duration){
  return Math.min(duration,anchors.at(-1).time);
 }
 
-export function resolveSoundEvents(events,cues,duration){
+/** Where a sound sits on its moment: 'start' (it begins on it, the default) or 'peak' (its loudest transient lands on it). */
+export const SOUND_AT=Object.freeze(['start','peak']);
+const PEAKS=new Map();
+/**
+ * A sound's peak: the moment of its loudest transient, in seconds from its start (dsp.mjs · peakOfSamples), measured
+ * once on the sound as synthesized alone (a door's thud lands 0.32 s in, a whoosh swells to its middle).
+ */
+export function soundPeak(type){
+ if(!Object.hasOwn(SOUNDS,type))throw Error(`soundPeak: "${type}" is not a sound; the sounds are ${SOUND_NAMES.join(', ')}`);
+ if(!PEAKS.has(type)){
+  const {wav}=createMotionSound({duration:LENGTHS[type]+.1,events:[{type,time:0}]}),pcm=wav.subarray(44);
+  PEAKS.set(type,+peakOfSamples(Float32Array.from({length:pcm.length/2},(_,i)=>pcm.readInt16LE(i*2)/32768),48000).toFixed(4));
+ }
+ return PEAKS.get(type);
+}
+/** A sound's start for a moment: the moment itself, or (soundAt 'peak') its peak earlier — never before the scene starts. */
+const startFor=(type,time,soundAt)=>soundAt==='peak'?Math.max(0,time-soundPeak(type)):time;
+
+/**
+ * Each sound resolved on its scene's clock: {type, time (when it starts), end, gain?, …}. soundAt 'peak' starts each one
+ * its peak before its moment, so its hit lands there; the moment is kept as `hit`. Left out, nothing changes.
+ */
+export function resolveSoundEvents(events,cues,duration,{soundAt='start'}={}){
  if(!Array.isArray(events)||events.length>MAX_SOUNDS_PER_SCENE)throw Error(`Motion sound events must be an array with at most ${MAX_SOUNDS_PER_SCENE} entries.`);
+ if(!SOUND_AT.includes(soundAt))throw Error(`soundAt is 'start' (a sound begins on its moment) or 'peak' (its loudest transient lands on it), not ${JSON.stringify(soundAt)}`);
+ const hit=time=>soundAt==='peak'?{hit:time}:{};
  return events.map(event=>{
   if(!event||!Object.hasOwn(SOUNDS,event.type))throw Error(`Unsupported motion sound event type "${event?.type}"; the sounds are ${SOUND_NAMES.join(', ')}.`);
   checkGain(event.gain,`Motion sound "${event.type}"`);
@@ -96,10 +121,11 @@ export function resolveSoundEvents(events,cues,duration){
   // Pattern treatments supply action-derived seconds directly; older ones supply speech progress.
   if(event.at===undefined){
    if(!Number.isFinite(event.time)||event.time<0||event.time>duration)throw Error('Motion sound event time must lie within the scene.');
-   return {type:event.type,time:event.time,end:Math.min(duration,event.time+LENGTHS[event.type]),...gain,...(typeof event.source==='string'?{source:event.source.slice(0,80)}:{})};
+   const time=startFor(event.type,event.time,soundAt);
+   return {type:event.type,time,end:Math.min(duration,time+LENGTHS[event.type]),...gain,...(typeof event.source==='string'?{source:event.source.slice(0,80)}:{}),...hit(event.time)};
   }
-  const time=progressToSpeechTime(cues,event.at,duration);
-  return {at:event.at,type:event.type,time,end:Math.min(duration,time+LENGTHS[event.type]),...gain};
+  const moment=progressToSpeechTime(cues,event.at,duration),time=startFor(event.type,moment,soundAt);
+  return {at:event.at,type:event.type,time,end:Math.min(duration,time+LENGTHS[event.type]),...gain,...hit(moment)};
  });
 }
 
@@ -108,11 +134,11 @@ export function resolveSoundEvents(events,cues,duration){
  * `gain` (0..1, default its sound's own); the scene is then scaled by ONE factor so its loudest moment
  * stays under the ceiling — which is why a gain is relative to its scene.
  */
-export function createMotionSound({duration,sampleRate=48000,events=[],cues,peakCeilingDBFS=-28}={}){
+export function createMotionSound({duration,sampleRate=48000,events=[],cues,peakCeilingDBFS=-28,soundAt='start'}={}){
  if(!Number.isFinite(peakCeilingDBFS)||peakCeilingDBFS>-18||peakCeilingDBFS<-48)throw Error('Motion sound peak ceiling must be between -48 and -18 dBFS.');
  if(!Number.isFinite(duration)||duration<=0||duration>600)throw Error('Motion sound duration must be above zero and at most 600 seconds.');
  if(!Number.isInteger(sampleRate)||sampleRate<8000||sampleRate>96000)throw Error('Motion sound sample rate must be 8000–96000 Hz.');
- const resolved=resolveSoundEvents(events,cues,duration),sampleCount=Math.round(duration*sampleRate);
+ const resolved=resolveSoundEvents(events,cues,duration,{soundAt}),sampleCount=Math.round(duration*sampleRate);
  const samples=new Float64Array(sampleCount);
  for(const [eventIndex,event]of resolved.entries()){
   const start=Math.ceil(event.time*sampleRate),length=LENGTHS[event.type],voice=VOICES[event.type],level=event.gain??SOUNDS[event.type].gain;
