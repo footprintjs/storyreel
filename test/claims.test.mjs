@@ -9,7 +9,8 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {compileFilm, evenTimings, makeFilm} from '../src/index.mjs';
 import {numbersIn, numberValue, numberLocale, readFacts, sourceKind, exampleScenes, findClaims, drawnClaims, drawnLines, DRAWN, HOLD, labelSpans, lingeringExamples, claimsCount, unsourcedClaims, claimText, CLAIMS_VERDICT} from '../src/claims.mjs';
-import {decorative, isDecorative} from '../src/decorative.mjs';
+import {decorative, isDecorative, code, isCode} from '../src/decorative.mjs';
+import {compileExample} from './golden.mjs';
 import {createCanvas} from '@napi-rs/canvas';
 import {approveFilm, checkApproval} from '../src/approval.mjs';
 import {wordsAt, reviewPart} from '../src/review.mjs';
@@ -516,6 +517,10 @@ test('numbers are read by the language the film is shown in: de, fr, en-IN, ta a
   for (const lang of ['ta', 'te']) assert.deepEqual((({group, decimal, primary, secondary}) => [group, decimal, primary, secondary])(numberLocale(lang)), [',', '.', 3, 2]);
   assert.deepEqual((({group, decimal}) => [group, decimal])(numberLocale('fr')), [' ', ','], 'fr groups with a narrow no-break space (and a no-break space is read as one)');
   assert.deepEqual(numbersIn('a 1 234 list', {lang: 'fr'}), ['1', '234'], 'a plain space is no group: two numbers');
+  // The README's two writings to watch: French with a plain space; an Indian film with international grouping.
+  assert.deepEqual(numbersIn('1 299,99 €', {lang: 'fr'}).map(n => numberValue(n, {lang: 'fr'})), [1, 299.99], 'fr with a plain space: two numbers');
+  assert.deepEqual(numbersIn('1\u202f299,99 €', {lang: 'fr'}).map(n => numberValue(n, {lang: 'fr'})), [1299.99], 'with the no-break space Intl writes: one');
+  assert.deepEqual(['1,000,000', '10,00,000'].map(n => numberValue(n, {lang: 'en-IN'})), ['1,000,000', 1000000], 'en-IN: international grouping is kept as written');
   // In another language, the same writing is another number, or none.
   assert.equal(numberValue('1,000', {lang: 'en'}), 1000); assert.equal(numberValue('1,000', {lang: 'de'}), 1);
   assert.equal(numberValue('16.67', {lang: 'de'}), '16.67', 'not a German number: as written');
@@ -561,4 +566,44 @@ test('a line typed again is typed on again: "We sold 1299 cups today" at 3 a sec
   assert.ok(f.total > 24, `typed twice and more (${f.total.toFixed(1)} s)`);
   const v = (await reviewPart(f, {every: .25})).verdicts.find(x => x.check === 'claims');
   assert.deepEqual([v.verdict, v.measured.numbers, v.measured.sourced, v.measured.unsourcedNumbers.map(c => c.number)], ['passed', 1, 1, []], 'one claim, its line the one with "1299 cups": sourced, each time it is typed');
+});
+
+test('numbers in a language\'s own digits are read, never missed: ar-EG, fa, hi (Devanagari), bn, te, ta, th — and Latin digits under each', async () => {
+  for (const [lang, text, value, number] of [
+    ['ar-EG', '١٢٣٤ خروفًا', 1234, '١٢٣٤'], ['ar-EG', '1٬234٫5 كغ', 1234.5, '1٬234٫5'], ['ar-EG', '١٬٢٣٤٫٥ كغ', 1234.5, '١٬٢٣٤٫٥'], ['ar-EG', '1,234.5 kg', 1234.5, '1,234.5'],
+    ['fa', '۱۲۳۴ گوسفند', 1234, '۱۲۳۴'], ['fa', '۱٬۲۳۴٫۵', 1234.5, '۱٬۲۳۴٫۵'],
+    ['hi-IN-u-nu-deva', '१,००,००० भेड़', 100000, '१,००,०००'], ['hi-IN-u-nu-deva', '1,00,000 भेड़', 100000, '1,00,000'],
+    ['bn', '১,০০,০০০ ভেড়া', 100000, '১,০০,০০০'], ['bn', '1,00,000', 100000, '1,00,000'],
+    ['te', '౧,౦౦,౦౦౦ గొర్రెలు', 100000, '౧,౦౦,౦౦౦'], ['te', '1,00,000', 100000, '1,00,000'],
+    ['ta', '௧௨௩ ஆடுகள்', 123, '௧௨௩'], ['ta', '1,00,000', 100000, '1,00,000'],
+    ['th', '๑,๒๓๔ ตัว', 1234, '๑,๒๓๔'], ['th', '1,234', 1234, '1,234']]) {
+    const {typed, drawn} = await readBy(lang, text, [{value, source: url}]);
+    assert.deepEqual(typed, [[number, true]], `${lang} "${text}": read as ${value}, sourced`);
+    assert.deepEqual(drawn, typed, `${lang} "${text}": drawn as typed`);
+  }
+  // A fact written in the language's digits sources the same number; without a language, any script's digits are read.
+  assert.deepEqual((await readBy('ar-EG', '1234 kg', [{value: '١٢٣٤', source: url}])).typed, [['1234', true]], 'a fact in Arabic-Indic digits sources 1234');
+  assert.deepEqual((await readBy(null, '١٢٣٤ خروفًا', [{value: 1234, source: url}])).typed, [['١٢٣٤', true]], 'no language: native digits are still numbers');
+  assert.deepEqual((await readBy(null, '१,००,००० भेड़', [{value: 100000, source: url}])).typed, [['१,००,०००', false]], 'no language: Indian grouping is ambiguous in any script');
+  const mixed = await readBy('ar-EG', '١2٣ كغ', [{value: 123, source: url}]);
+  assert.deepEqual([mixed.typed, mixed.claim.ambiguous], [[['١2٣', false]], 'ar-EG'], 'a mix of scripts inside one number: ambiguous, kept as written');
+  assert.deepEqual(numbersIn('mid-२०२४', {lang: 'hi'}).map(n => numberValue(n)), [2024], 'a year in Devanagari after a time prefix is a year');
+});
+
+test('code is read as code, whatever the film\'s language: in a de film, x = 16.67 is 16.67 and f(4,5) is 4 and 5', async () => {
+  const lines = ['const frame = 16.67;', 'f(4,5) + 1,000'];
+  const drawPanel = mark => (c => { c.fillStyle = '#1d2230'; c.fillRect(0, 0, 1600, 900); c.font = '600 24px Menlo, Consolas, monospace'; c.fillStyle = '#e6e9ef'; c.textBaseline = 'middle';
+    lines.forEach((line, i) => { let x = 172; const tokens = () => { for (const tok of line.match(TOKENS)) { c.fillText(tok, x, 200 + 40 * i); x += c.measureText(tok).width; } }; if (mark) code(c, tokens); else tokens(); });
+    c.textBaseline = 'alphabetic'; });
+  const sb = {title: 'Code', facts: [{value: 16.67, source: url}], scenes: [{id: 'a', narration: 'a code panel in a German film, read as code is written'}]};
+  const film = async mark => compileFilm({storyboard: sb, recipe: {story: {kit: 'panel'}}, timings: evenTimings(sb, {wordSeconds: .4}), lang: 'de', kits: [{name: 'panel', story: {compile: () => ({hang: 1, draw: drawPanel(mark)})}}]});
+  const read = async f => { const v = (await reviewPart(f, {every: 1})).verdicts.find(x => x.check === 'claims'); return [v.measured.sourced, v.measured.unsourcedNumbers.map(c => c.number).sort()]; };
+  assert.deepEqual(await read(await film(false)), [0, ['1,000', '16.67', '4,5']], 'unmarked, the code is read in German: 16.67 is no German number, 4,5 is 4.5, 1,000 is 1');
+  assert.deepEqual(await read(await film(true)), [1, ['000', '1', '4', '5']], 'marked code: 16.67 is sourced; "," separates (4 and 5; 1 and 000); never grouping');
+  assert.ok(wordsAt(await film(true), 1).every(w => w.code === true), 'the words carry the mark');
+  // The built-in code stage marks its own code.
+  const hello = await compileExample('hello'), stage = hello.shots.find(s => s.where === 'stage rule');
+  assert.ok(wordsAt(hello, (stage.from + stage.to) / 2).some(w => w.code === true && /0/.test(w.text)), 'the code stage\'s tokens are code');
+  assert.equal(isCode({}), false);
+  assert.throws(() => code({}, 1), /code\(ctx, draw\): draw is a function that draws the code on ctx/);
 });

@@ -736,7 +736,17 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
   **ambiguous**: kept as written, so only a fact that writes it the same way (`"value": "2,5"`) sources it, never `2.5`,
   and the fix says how to give the film its language. What every language reads alike is one value ("1,000,000",
   "1,299.99" and "1.299,99", "16.67"). Typed and drawn numbers are read by the same rule, and the language is in what an
-  approval locks (`film.inputs.lang`).
+  approval locks (`film.inputs.lang`). An as-written number is sourced only by a fact written the same way: `"2,5"`
+  sources "2,5", and a fact of 2.5 does not, however its digits print.
+  A language's own digits are numbers too — Arabic-Indic (`ar-EG`: "١٢٣٤", and "1٬234٫5" with its own separators is
+  1234.5), Persian (`fa`), Devanagari (`hi-IN-u-nu-deva`: "१,००,०००"), Bengali (`bn`), Telugu, Tamil, Thai — and in a
+  film with no language a digit of any script is read as a digit; a number that mixes scripts ("١2٣") is ambiguous. Two
+  writings to watch:
+  - **French with a plain space.** `fr` groups with a no-break space ("1 299,99": U+202F, which is what
+    `Intl.NumberFormat('fr')` writes, or U+00A0). Typed with a plain space, "1 299,99" is two numbers, 1 and 299.99: write
+    the no-break space (`'1\u202f299,99'`), or give the fact as written.
+  - **International grouping in an Indian film.** `en-IN` groups 1,00,000; "1,000,000" is not how it writes a million, so
+    it is kept as written: source it with a fact written the same way (`{"value": "1,000,000", …}`), or write 10,00,000.
 
   ```js
   const film = await compileFilm({storyboard, recipe, timings, lang: 'de'});   // facts: [{"value": 2.5, "text": "2,5 kg", "source": "…"}]
@@ -799,6 +809,19 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
   ```
 
   The built-in code stage draws no line numbers.
+- **Code is read as code.** A code panel's numbers follow its programming language, not the film's: in a `de` film
+  `x = 16.67` is 16.67 and `f(4,5)` is 4 and 5. Draw code inside `code` (the same module): its words are read with "."
+  as the decimal mark and "," always a separator, never any grouping — and they still need a source. The built-in code
+  stage marks its own code; a kit's code panel marks its own:
+
+  ```js
+  import {code, decorative} from 'footprint-storyreel/decorative';
+
+  lines.forEach((line, i) => {
+    decorative(ctx, () => ctx.fillText(String(i + 1), x + 52, y + i * lh));   // the line number: no claim
+    code(ctx, () => ctx.fillText(line, x + 72, y + i * lh));                    // "f(4,5)": 4 and 5, in any film
+  });
+  ```
 - **The verdict**: `failed` when a number outside an example scene has no source — each listed with its scene, its
   recipe entry and the fix (`"120" (scene rate, story.items[1]) has no source: add {"value": 120, "source": "…"} to
   the facts, or mark scene rate "example": true`); `not run` when the storyboard names no facts and a number shows
@@ -2015,8 +2038,8 @@ the default because it rarely does; there is no swap repair.
 | `footprint-storyreel/review` → `reviewPart(film, {part?, layout?, checks?, …})` · `REVIEW_CHECKS` · `findingsText` · `verdictsText` · `wordsAt` | a part reviewed by reading it: findings with times, and three verdicts (passed, failed, not run) with their `decide()` evidence |
 | `footprint-storyreel/slideshow` → `slideshowOf(film, {from?, to?, every?, rule?})` · `shotMotion` · `shotInsides` · `moved` · `SLIDESHOW` · `SLIDESHOW_VERDICT` | no slideshow: how much each shot moves in its middle, and whether most of the running time is dead (held still more than 3 s) |
 | `footprint-storyreel/geometry` → `geometryOf(film, {from?, to?, rule?})` · `auditParts` · `readParts` · `crosses` · `breakText` · `GEOMETRY` · `GEOMETRY_VERDICT` | a kit's drawn parts audited: mounted ends stay on, pairs kept apart never cross, a planted end stays where it was planted |
-| `footprint-storyreel/claims` → `numbersIn` · `numberValue` · `numberLocale` · `readFacts` · `sourceKind` · `exampleScenes` · `labelSpans` · `findClaims` · `drawnLines` · `DRAWN` · `HOLD` · `drawnClaims` · `lingeringExamples` · `claimsCount` · `unsourcedClaims` · `claimText` · `CLAIMS_VERDICT` | every number on screen with its source: a fact the storyboard names, or an example scene (`film.claims`; the review adds what the picture draws) |
-| `footprint-storyreel/decorative` → `decorative` · `isDecorative` · `DECORATIVE` | text a kit draws but the film does not say (line numbers, badges): read by every review check but the claims check |
+| `footprint-storyreel/claims` → `numbersIn` · `numberValue` · `numberLocale` · `CODE_READING` · `readFacts` · `sourceKind` · `exampleScenes` · `labelSpans` · `findClaims` · `drawnLines` · `DRAWN` · `HOLD` · `drawnClaims` · `lingeringExamples` · `claimsCount` · `unsourcedClaims` · `claimText` · `CLAIMS_VERDICT` | every number on screen with its source: a fact the storyboard names, or an example scene (`film.claims`; the review adds what the picture draws) |
+| `footprint-storyreel/decorative` → `decorative` · `code` · `isDecorative` · `isCode` · `DECORATIVE` · `CODE` | text a kit draws but the film does not say (line numbers, badges): read by every review check but the claims check |
 | `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `bezier(x1, y1, x2, y2)` · `overshoots(name)` · `inOut` | the one ease table (`linear in out inOut back walk jump spring bounce outCubic outQuint outExpo outBack inOutCubic standard emphasized`), and four-number curves as CSS writes them |
 | `footprint-storyreel/moves` → `moveAt(move, t, {start, seconds?, feel?, reduced?})` · `stagger(items, gap)` · `movesBy({feel, use, kind})` · `readMove` · `applyMove` · `MOVES` | motion asked for by name: 30 moves as data, by feel and use, with the practitioners' timing rules |
 | `footprint-storyreel/principles` → `anticipate` · `squash` · `envelope` · `burst` · `arc` · `BURSTS` | anticipation, volume-keeping squash and stretch, one-shot events that add, paths that curve like a hand |

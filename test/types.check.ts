@@ -392,3 +392,8 @@ import {numberLocale, numberValue} from '../types/sub/claims.js';
 import type {CompileFilmOptions} from '../types/index.js';
 export const readInLang = (film: Film): string => `${numberValue('2,5', {lang: film.lang})} ${numberLocale('en-IN')?.secondary ?? 0} ${film.inputs.lang ?? ''} ${film.claims.numbers[0]?.ambiguous ?? ''}`;
 export const inGerman = (o: CompileFilmOptions): CompileFilmOptions => ({...o, lang: 'de'});
+// Code is read as code (types/sub/decorative.d.ts · code): a mark beside decorative.
+import {code, isCode, CODE} from '../types/sub/decorative.js';
+import {CODE_READING} from '../types/sub/claims.js';
+export const coded = (ctx: {fillText(t: string, x: number, y: number): void}): boolean => code(ctx, c => { c.fillText('x = 16.67;', 0, 0); return isCode(c); }) && typeof CODE === 'symbol' && CODE_READING.cut === ',';
+export const codeWord = (w: Word): boolean => w.code === true;

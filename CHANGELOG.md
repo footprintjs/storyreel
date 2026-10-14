@@ -12,6 +12,17 @@
   ambiguous number's fix says how to give the film its language. A fact `"2,5"` is accepted as written; a fact value
   with words or several numbers is refused with what to do (never "put the words around it" for a number).
   `numbersIn(text, {lang})` and `numberValue(run, {lang})` take the language as an option.
+- **A language's own digits are numbers.** Arabic-Indic, Persian, Devanagari, Bengali, Telugu, Tamil, Thai — every
+  script's digits (Unicode Nd) are read, with or without a language, and the Arabic separators ٬ and ٫ as a group and a
+  decimal mark (`ar-EG` "1٬234٫5" is 1234.5). A film in its own digits used to pass as "shows no number". A number that
+  mixes scripts is ambiguous; a fact in native digits ("١٢٣٤") sources the same number.
+- **Code is read as code** (`footprint-storyreel/decorative` · `code`): words drawn inside it read "." as the decimal
+  mark and "," as a separator, never grouping, whatever the film's language; the built-in code stage marks its code.
+  The words carry `code: true`.
+- **An as-written number is sourced only by a fact written the same way**: "16.67" in a `de` film (no German number)
+  is no longer sourced by the number 16.67 because it prints alike.
+- **Approvals made with a `lang` before this release** report their inputs changed (`film.inputs.lang` is new): approve
+  the film again.
 - **A line typed again is typed on again.** A typewriter line typed twice is one claim, its fullest line, each time:
   the typed-on merge now joins run to run before the runs of one number are pooled.
 - **The review reads nothing after the film's end** when it times a number's hold: a typewriter caught mid-number by

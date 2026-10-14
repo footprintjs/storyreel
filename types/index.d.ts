@@ -38,6 +38,8 @@ export interface NumberFact { value: number | string; text?: string; source: str
 export interface Claim { number: string; line: string; offset: number; at: number; to: number; scene: string | null; path: string; example: boolean; source: string | null; sourceKind: 'url' | 'file' | 'unverified' | null;
   /** The language it was read by (the film's lang), when the film has one. */
   lang?: string;
+  /** Drawn as code (decorative.mjs · code): read as code writes numbers, whatever the film's language. */
+  code?: true;
   /** Not one number as read: 'no language' ("2,5" in a film with none — a decimal comma, or a list?), or the language it is not one number in. Only a fact written the same way sources it. */
   ambiguous?: string }
 /** When the example label is up: over an example scene, and on while any line it shows is still on screen. */
