@@ -31,7 +31,7 @@
  */
 import {readChapters} from 'footprint-narration';
 import {readFileSync, statSync} from 'node:fs';
-import {writeOutput, outputFolder, refuseFolders, refuseShared} from './files.mjs';
+import {writeOutput, outputFolder, refuseFolders, securePath} from './files.mjs';
 import {readCaptionFiles} from './render.mjs';
 import path from 'node:path';
 import {makeFilm} from './pipeline.mjs';
@@ -208,7 +208,7 @@ const postText = (adapter, fields) => `${adapter.label}\n\n${Object.entries(fiel
 export async function makeRelease({targets, post, out, base = null, ...film}) {
   if (!Array.isArray(targets) || !targets.length) throw new TypeError(`targets lists where the film goes (${TARGET_NAMES.join(', ')}, or adapters)`);
   if (!(typeof out === 'string' && out)) throw new TypeError('out is the folder the release goes in (one folder per target inside it)');
-  refuseShared(out);   // first: an out another user could rearrange refuses (files.mjs · refuseShared)
+  out = securePath(out);   // first: the out's REAL path, nothing on the way another user could rearrange (files.mjs · securePath); written through it only
   const p = readPost(post), loaded = [];
   for (const spec of targets) loaded.push(await loadTarget(spec));
   const names = loaded.map(l => l.options.name); if (new Set(names).size !== names.length) throw new Error(`two targets are called the same (${names.join(', ')}): give one a name`);

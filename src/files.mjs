@@ -70,56 +70,56 @@ export function writeOutput(final, what, fs = {}) {
 const openToOthers = st => (st.mode & 0o022) !== 0 && (st.mode & 0o1000) === 0;
 const modeText = st => (st.mode & 0o7777).toString(8).padStart(4, '0');
 
-/** The mode of every folder StoryReel makes: 0755, whatever the umask (a umask of 000 would leave 0777, open to all). */
+/** The mode every folder StoryReel makes asks for: 0755. mkdir only narrows it by the umask (077 gives 0700), never widens it. */
 export const FOLDER_MODE = 0o755;
 
 /**
- * Make `dir` and any missing folder above it, each FOLDER_MODE: set again after mkdir, so no umask widens it (mkdir only
- * narrows). A folder already there is left as it is. Returns `dir`.
+ * Make `dir` and any missing folder above it, each asking FOLDER_MODE — so never wider than 0755 under any umask (000
+ * included), and narrower under a stricter one. Nothing is chmod-ed afterwards: a chmod follows a link, and would widen a
+ * stricter umask. A folder already there is left as it is. Returns `dir`.
  */
 export function makeFolder(dir) {
-  const target = path.resolve(dir), first = mkdirSync(target, {recursive: true, mode: FOLDER_MODE});
-  if (first === undefined) return target;
-  for (let at = target; ; at = path.dirname(at)) {
-    chmodSync(at, FOLDER_MODE);
-    if (at === path.resolve(first) || path.dirname(at) === at) break;
-  }
+  const target = path.resolve(dir);
+  mkdirSync(target, {recursive: true, mode: FOLDER_MODE});
   return target;
 }
 
-/**
- * Why another user could rearrange the folder lstat describes as `st` — rename an entry in it, or swap one for a link —
- * or null when only its owner can: a sticky folder (anyone may add an entry, only its owner may replace or remove it),
- * or one writable by no one but its owner, who is this user (scratch.mjs · ownedFolder) or root.
- */
-function rearrangeable(st) {
-  if (st.mode & 0o1000) return null;
-  if (st.mode & 0o022) return `can be changed by other users (mode ${modeText(st)}, no sticky bit)`;
-  if (!ownedFolder(st) && st.uid !== 0) return 'belongs to another user (and has no sticky bit)';
+/** Why a folder on the way to an out, as lstat describes it (`st`), is not safe to write below — or null when it is. */
+function unsafe(st) {
+  if (!st.isDirectory() || st.isSymbolicLink()) return 'is not a folder';
+  if (!ownedFolder(st) && st.uid !== 0) return 'belongs to another user';
+  if ((st.mode & 0o022) && !(st.mode & 0o1000)) return `can be changed by other users (mode ${modeText(st)}, no sticky bit)`;
   return null;
 }
 
 /**
- * Refuse an out folder another user could rearrange: one writable by group or others without the sticky bit, or
- * another user's without it — and the same of the folder holding it, since a folder that can be swapped is no safer
- * than its contents. Node has no openat, so no check of a path can make such a folder safe: between the check and the
- * write, another user could swap a folder StoryReel made there (its work folder, a target's folder) for a link to
- * yours. A private folder (0755, 0700) and a sticky shared one (/tmp, 1777: at worst a write fails) pass. An out that
- * does not exist yet is judged by the nearest folder above it that does (everything below, StoryReel makes 0755).
- * Checked first, at every entry that writes into a folder the caller names: renderFilm (and its `work`), makeFilm,
- * makeRelease, breakdown, the tools' stills, folderStore and pacing. `fs.lstat` is fs.lstatSync (a test plays another
- * user). Nothing to check on Windows (no POSIX modes).
+ * The one rule for where StoryReel writes (sshd's StrictModes, sudo's secure_path): a folder is safe to write below
+ * only when no other user can rearrange any folder on its real path. Returns the REAL path of `dir` — every caller
+ * writes only through it — after checking EVERY folder from it (or, for a `dir` still to be made, from the nearest
+ * folder above it that exists) up to the root. Each must be a real folder (the path is resolved first, so a link is
+ * judged by where it leads), owned by this user or root (scratch.mjs · ownedFolder), and writable by no one else —
+ * unless it is sticky, where anyone may add an entry but only its owner (this user or root, as above) may replace or
+ * remove one. The first that fails refuses, naming it and the fix. Node has no openat, so a check of a path is only as
+ * good as every folder above it: in a folder another user could rearrange, they could swap one StoryReel made (its work
+ * folder, a target's folder) for a link to a file of yours between the check and the write. A folder's ACL is not read
+ * (macOS's chmod +a): keep out in a folder of your own. Checked first, at every entry that writes into a folder the
+ * caller names: renderFilm (and its `work`), makeFilm, makeRelease, breakdown, the tools' stills, folderStore, pacing.
+ * `fs` replaces any of {lstat, realpath, exists} (a test plays another user, or another system's folders). On Windows
+ * (no POSIX modes) it returns the path resolved, unchecked.
  */
-export function refuseShared(dir, fs = {}) {
-  if (process.platform === 'win32') return;
-  const lstat = fs.lstat ?? lstatSync;
-  let at = path.resolve(dir);
-  while (!existsSync(at) && path.dirname(at) !== at) at = path.dirname(at);
-  const real = realpathSync(at);
-  for (const folder of new Set([real, path.dirname(real)])) {
-    const why = rearrangeable(lstat(folder));
-    if (why) throw new Error(`${folder} ${why}: another user could swap what StoryReel writes there for a link to a file of yours — render into a folder of your own and copy the film out, or give the shared folder the sticky bit (chmod +t ${folder})`);
+export function securePath(dir, fs = {}) {
+  const wanted = path.resolve(dir);
+  if (process.platform === 'win32') return wanted;
+  const {lstat = lstatSync, realpath = realpathSync, exists = existsSync} = fs;
+  let found = wanted;
+  while (!exists(found) && path.dirname(found) !== found) found = path.dirname(found);
+  const real = realpath(found);
+  for (let at = real; ; at = path.dirname(at)) {
+    const why = unsafe(lstat(at));
+    if (why) throw new Error(`${at} ${why}: StoryReel writes only below folders no other user can change (each yours or root's, writable by no one else unless sticky) — render into a folder of your own and copy the film out`);
+    if (path.dirname(at) === at) break;
   }
+  return path.join(real, path.relative(found, wanted));
 }
 
 /** Why StoryReel may not write into the folder lstat describes as `st`, or null when it may (see outputFolder). */
@@ -133,21 +133,20 @@ function notOurs(st) {
 
 /**
  * The folders StoryReel names inside the caller's `parent` (a release's <target> and work/<target>, a breakdown's
- * shots/, the tools' stills/), each made when it is not there (0755 less the umask: never writable by others) and,
+ * shots/, the tools' stills/), inside the parent's real path (securePath: every folder above it checked, and the
+ * folders made there through that path only), each made when it is not there (0755 less the umask) and,
  * made now or found, written into only when it is a real folder this user owns (scratch.mjs · ownedFolder) that no
  * other user can change (not writable by group or others, unless sticky: there an entry is only its owner's to
  * replace). Anything else is refused, naming the fix: what is written in it could land wherever another user points
- * it. `parent` is the caller's own choice (made if missing, never judged: a shared one, like /tmp, can at worst make a
- * write fail, never land elsewhere). `names` is a name or a list of them, each a folder inside the one before. Returns
- * the last folder's path. `fs.lstat` is fs.lstatSync (a test hands in its own to play another user).
+ * it. `names` is a name or a list of them, each a folder inside the one before. Returns the last folder's real path.
+ * `fs.lstat` is fs.lstatSync (a test hands in its own to play another user).
  */
 export function outputFolder(parent, names, fs = {}) {
   const lstat = fs.lstat ?? lstatSync;
-  refuseShared(parent, fs);
-  let at = makeFolder(parent);
+  let at = makeFolder(securePath(parent, fs));
   for (const name of [].concat(names)) {
     at = path.join(at, name);
-    try { mkdirSync(at, {mode: FOLDER_MODE}); chmodSync(at, FOLDER_MODE); } catch (e) { if (e?.code !== 'EEXIST') throw e; }
+    try { mkdirSync(at, {mode: FOLDER_MODE}); } catch (e) { if (e?.code !== 'EEXIST') throw e; }
     const why = notOurs(lstat(at));
     if (why) throw new Error(`${at} ${why}: StoryReel writes only into a folder of its own there, that no one else can change — remove it, or give another out`);
   }

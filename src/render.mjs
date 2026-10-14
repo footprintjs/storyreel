@@ -16,7 +16,7 @@ import {spokenTracks} from './captions.mjs';
 import {effectsUnderVoice, musicUnderVoice} from './listening.mjs';
 import {readSongPlacement, requireOverlap} from './music.mjs';
 import {makeScratch, sweepScratch} from './scratch.mjs';
-import {writeOutput, refuseFolders, refuseShared, makeFolder} from './files.mjs';
+import {writeOutput, refuseFolders, securePath, makeFolder} from './files.mjs';
 
 /**
  * Loudness in two passes (FFmpeg's loudnorm): measure the whole mixed film, then set it with ONE fixed
@@ -379,20 +379,18 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   if (framed && (givenWidth !== undefined || givenHeight !== undefined)) throw new Error(`renderFilm: the ${framed.format} layout is ${framed.width}×${framed.height}; leave width and height out (they size a render without a layout)`);
   const width = framed?.width ?? givenWidth ?? 1280, height = framed?.height ?? givenHeight ?? 720;
   if (framed && intro && framed.format !== 'landscape') throw new Error(`renderFilm: an intro is drawn for the landscape frame; the ${framed.format} layout takes none (leave intro out)`);
-  const dir = path.dirname(path.resolve(out));
-  // First, a folder another user could rearrange — the out folder, a `work` named elsewhere — refuses (files.mjs ·
-  // refuseShared); then every output's name, before anything is made: a folder at one refuses now, not after the outputs
-  // before it.
-  refuseShared(dir);
-  if (work !== null) refuseShared(work);
-  refuseFolders([path.resolve(out), ...(poster !== null ? [path.join(dir, 'poster.jpg')] : []), path.join(dir, 'chapters.txt'), ...captionKinds.map(k => path.join(dir, `captions.${k}`))]);
+  // First, the out folder and a `work` named elsewhere: their REAL paths, with no folder on the way another user could
+  // rearrange (files.mjs · securePath) — everything is written through these paths only. Then every output's name,
+  // before anything is made: a folder at one refuses now, not after the outputs before it.
+  const dir = securePath(path.dirname(path.resolve(out))), workReal = work === null ? null : securePath(work);
+  out = path.join(dir, path.basename(path.resolve(out)));
+  refuseFolders([out, ...(poster !== null ? [path.join(dir, 'poster.jpg')] : []), path.join(dir, 'chapters.txt'), ...captionKinds.map(k => path.join(dir, `captions.${k}`))]);
   makeFolder(dir);
   // The working files' folder: the caller's (kept, never swept), or a new hidden one beside the video, removed by
   // closeRender — made by scratch.mjs · makeScratch (a fresh folder only this user can open, never a path already there),
   // after sweeping the ones stopped renders left there.
   const {swept, failed: unswept} = work === null ? sweepScratch(dir, '.storyreel-work') : {swept: [], failed: []};
-  const workDir = work === null ? makeScratch(dir, '.storyreel-work') : path.resolve(work);
-  if (work !== null) makeFolder(workDir);
+  const workDir = work === null ? makeScratch(dir, '.storyreel-work') : makeFolder(workReal);
   to = Math.min(to, film.total);
   // A render starts on the film's frame grid (a part's window is rounded to the millisecond): frame f shows film second
   // start + f / fps, so a drawing held on twos (motion.mjs · heldTime) pairs the same frames in a part as in the film.

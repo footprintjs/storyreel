@@ -18,15 +18,18 @@
   (a render, a film, a release, a breakdown), so a folder at one refuses up front. The folders StoryReel names inside
   yours (a release's targets, a breakdown's `shots/`, the tools' `stills/`) are made 0755 and refuse a link, another
   user's folder, or one others can change without a sticky bit (`files.mjs` · `outputFolder`, through `scratch.mjs` ·
-  `ownedFolder`, the sweep's one check of "ours"). Every folder StoryReel makes is 0755, whatever the umask (000
-  included), and `narration/` is 0755 at most.
-- **An out folder another user could rearrange is refused** (`files.mjs` · `refuseShared`), first, at every entry that
-  writes into a folder you name — `renderFilm` (and its `work`), `makeFilm`, `makeRelease`, `breakdown`, the tools'
-  stills, `folderStore`, `applyPacing`, `fitVoice`: writable by group or others without the sticky bit (0777, 0775),
-  another user's without it, or inside such a folder. Node has no `openat`, so no check of a path keeps such a folder
-  safe. A private folder and a sticky shared one (`/tmp`, 1777: at worst a write fails) pass. **Breaking** for anyone
-  rendering into a group-writable team folder: render into a folder of your own and copy the film out, or `chmod +t`
-  the shared folder.
+  `ownedFolder`, the sweep's one check of "ours"). Every folder StoryReel makes asks for 0755 — never wider under any
+  umask (000 included), narrower under a stricter one (077: 0700) — and nothing is chmod-ed after; `narration/` is
+  0755 at most.
+- **One rule for where StoryReel writes** (`files.mjs` · `securePath`, as sshd's StrictModes and sudo's secure_path):
+  first, at every entry that writes into a folder you name — `renderFilm` (and its `work`), `makeFilm`, `makeRelease`,
+  `breakdown`, the tools' stills, `folderStore`, `applyPacing`, `fitVoice` — the out is resolved to its real path and
+  every folder on it, up to the root, must be a real folder owned by you or root and writable by no one else unless
+  sticky. The first that fails refuses, named. Everything is written through the real path only, and the paths the
+  results report are real paths. Node has no `openat`, so no check of a path keeps a folder another user can
+  rearrange safe. An ACL granting others write is not read: keep out in a folder of your own. **Breaking** for anyone
+  rendering below a group-writable team folder, a 0777 folder, or a sticky folder another user owns: render into a
+  folder of your own and copy the film out.
 - **The guard** (`test/outputs.test.mjs`) refuses any writing fs import outside `files.mjs` and the listed own-folder
   writers, by the local name it is given; fs or child_process taken whole or loaded late (a default or namespace
   import, `{default as fs}`, a re-export, `import()`, `require`, `createRequire()(…)`, `process.getBuiltinModule`);

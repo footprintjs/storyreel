@@ -4,7 +4,7 @@
 // the option nothing changes (pinned by hand against main: the same MP4 bytes, silent and voiced).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdirSync, readFileSync, readdirSync, writeFileSync, chmodSync} from 'node:fs';
+import {mkdirSync, readFileSync, readdirSync, writeFileSync, chmodSync, realpathSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -320,7 +320,8 @@ test('without music nothing changes: the same stages, record, inputs and FFmpeg 
   assert.deepEqual(Object.keys(record.loudness.roles), ['voice', 'effects']);
   assert.deepEqual(record.inputs, {storyboard: '390932da10154987', timings: '868ab614fc412af1', recipe: '9b351fe10b5a8e66', strings: null, data: null, theme: 'b5d0139a73be8b54', files: {'rule.ts': '8fc6d8dd3606be0f'}, pacing: '74234e98afe7498f'});
   assert.deepEqual(readdirSync(out).sort(), ['chapters.txt', 'film.mp4', 'making-of.json'], 'beside the video, only the outputs');
-  const calls = readFileSync(log, 'utf8').trim().split('\n').map(l => l.split('\x1f').filter(Boolean).map(a => a.split(work).join('<work>').split(out).join('<dir>')).join(' '));
+  // FFmpeg is handed the real paths, the ones the render writes through (files.mjs · securePath).
+  const calls = readFileSync(log, 'utf8').trim().split('\n').map(l => l.split('\x1f').filter(Boolean).map(a => a.split(realpathSync(work)).join('<work>').split(realpathSync(out)).join('<dir>')).join(' '));
   assert.deepEqual(calls, [
     '-y -loglevel error -f rawvideo -pixel_format rgba -video_size 160x90 -framerate 4 -i pipe:0 -c:v libx264 -preset fast -crf 19 -pix_fmt yuv420p <work>/film-video.mp4',
     '-y -loglevel error -f lavfi -i anullsrc=r=48000:cl=mono -t 31.78 <work>/film-voice.wav',

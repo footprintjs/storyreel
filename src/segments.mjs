@@ -23,7 +23,7 @@
  * clouds) makes it draw again — and a key whose frames still changed is drawn again, saying so.
  */
 import {readFileSync, writeFileSync, existsSync, readdirSync, statSync, rmSync} from 'node:fs';
-import {writeOutput, refuseShared, makeFolder} from './files.mjs';
+import {writeOutput, securePath, makeFolder} from './files.mjs';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -230,10 +230,11 @@ export function sampleOffsets(seg, count = 6, fps = 30) {
  */
 export function folderStore(dir) {
   if (typeof dir !== 'string' || !dir) throw new Error('folderStore: give the folder the segments are kept in');
-  refuseShared(dir);   // a store another user could rearrange refuses, when it is made and at each put (files.mjs · refuseShared)
-  const at = key => ({file: path.join(dir, `${key}.mp4`), json: path.join(dir, `${key}.json`)});
+  // The store's REAL path, nothing on the way another user could rearrange (files.mjs · securePath): checked when it is
+  // made and again at each put, and the segments written through it only.
+  const home = securePath(dir), at = key => ({file: path.join(home, `${key}.mp4`), json: path.join(home, `${key}.json`)});
   return {
-    name: 'folder', dir: path.resolve(dir),
+    name: 'folder', dir: home,
     get(key) {
       const {file, json} = at(key);
       if (!existsSync(file) || !existsSync(json)) return null;
@@ -243,7 +244,7 @@ export function folderStore(dir) {
       } catch { return null; }
     },
     put(key, file, manifest) {
-      refuseShared(dir); makeFolder(dir);
+      makeFolder(securePath(home));
       const to = at(key), bytes = statSync(file).size;
       rmSync(to.json, {force: true});
       writeOutput(to.file, {move: file});

@@ -1303,16 +1303,23 @@ chapters, and the file it pointed at is never written. A folder at an output's n
 drawn, never removed. The folders StoryReel names inside yours (a release's `<target>/` and `work/<target>/`, a
 breakdown's `shots/`, the tools' `stills/`) are made 0755 and written into only when they are real folders you own that
 no one else can change (not writable by group or others, unless sticky): a link there, another user's folder, or one
-of yours left open (0777) is refused, naming the fix. Every folder StoryReel makes is 0755, whatever your umask.
+of yours left open (0777) is refused, naming the fix. Every folder StoryReel makes asks for 0755, which your umask can
+only narrow (077 gives 0700); nothing is chmod-ed afterwards.
 
-**An out folder another user could rearrange is refused** (`files.mjs` · `refuseShared`), first, by `renderFilm`
-(and its `work`), `makeFilm`, `makeRelease`, `breakdown`, the tools' stills, `folderStore` and pacing: one writable by
-group or others without the sticky bit (0777, a team folder at 0775), another user's without it, or one inside such a
-folder. Node cannot open a file relative to a folder it has checked, so in such a folder another user could swap a
-folder StoryReel made (its work folder, a target's folder) for a link to yours between the check and the write. Render
-into a folder of your own and copy the film out, or give the shared folder the sticky bit (`chmod +t`). In a private
-folder, or a sticky shared one such as `/tmp` (1777), a write is never sent elsewhere; in the sticky one, another
-user's entry at an output's name can at worst make the write fail.
+**The one rule for where StoryReel writes** (`files.mjs` · `securePath`, the rule of sshd's StrictModes and sudo's
+secure_path): first, at every entry that writes into a folder you name — `renderFilm` (and its `work`), `makeFilm`,
+`makeRelease`, `breakdown`, the tools' stills, `folderStore`, `applyPacing`, `fitVoice` — the out folder is resolved to
+its real path (links followed, so a link is judged by where it leads; for an out still to be made, the nearest folder
+above it that exists), and every folder on that path, up to the root, must be a real folder owned by you or root and
+writable by no one else, unless it is sticky (then anyone may add an entry, but only its owner may replace or remove
+one). The first folder that fails refuses, named, with the fix: render into a folder of your own and copy the film
+out. Everything is then written through that real path only, so a link swapped in the path you gave changes nothing.
+This is needed because Node cannot open a file relative to a folder it has checked: in a folder another user could
+rearrange — a team folder at 0775, a 0777 folder anywhere above, a sticky folder someone else owns — they could swap a
+folder StoryReel made for a link to yours between the check and the write. Your home folder, macOS's per-user temp
+folder (`/var/folders/…/T`) and a sticky `/tmp` owned by root all pass; in the sticky one, another user's entry at an
+output's name can at worst make the write fail. An ACL granting others write is not read (macOS's `chmod +a`): keep
+out in a folder of your own.
 
 | where | what | kept? |
 |---|---|---|

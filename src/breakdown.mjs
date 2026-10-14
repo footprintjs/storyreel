@@ -28,7 +28,7 @@
  */
 import path from 'node:path';
 import {existsSync} from 'node:fs';
-import {writeOutput, outputFolder, refuseFolders, refuseShared, makeFolder} from './files.mjs';
+import {writeOutput, outputFolder, refuseFolders, securePath, makeFolder} from './files.mjs';
 import {createCanvas} from '@napi-rs/canvas';
 import {flowChart, narrative, decide} from 'footprintjs';
 import {ffmpegProbe} from './finished.mjs';
@@ -704,9 +704,9 @@ const recordOf = trace => JSON.parse(JSON.stringify(trace.getEntries().map(({raw
  */
 export async function breakdown(videoFile, options = {}) {
   const run = {o: readOptions(videoFile, options ?? {})};
-  // An out folder another user could rearrange refuses (files.mjs · refuseShared); then its files' names, before a frame
-  // is read: a folder at one refuses now, not after the sheets (files.mjs · refuseFolders).
-  refuseShared(run.o.out);
+  // The out folder's REAL path, nothing on the way another user could rearrange (files.mjs · securePath), written through
+  // it only; then its files' names, before a frame is read: a folder at one refuses now, not after the sheets.
+  run.o.out = securePath(run.o.out);
   refuseFolders(['breakdown.json', 'breakdown.md', 'record.json', 'overview.png'].map(f => path.join(run.o.out, f)));
   makeFolder(run.o.out);
   const trace = narrative();

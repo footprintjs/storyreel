@@ -5,12 +5,13 @@
 // segment store write, and a guard that no write in src/ goes around it.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdirSync, writeFileSync, readFileSync, readdirSync, lstatSync, symlinkSync, existsSync, chmodSync, statSync, renameSync, copyFileSync, realpathSync} from 'node:fs';
+import {mkdirSync, writeFileSync, readFileSync, readdirSync, lstatSync, symlinkSync, existsSync, chmodSync, statSync, renameSync, copyFileSync, realpathSync, rmSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {tempDir} from './tmp.mjs';
-import {writeOutput, outputFolder, refuseFolders, refuseShared, makeFolder, placeVoice, copyVoice} from '../src/files.mjs';
+import {writeOutput, outputFolder, refuseFolders, securePath, makeFolder, placeVoice, copyVoice} from '../src/files.mjs';
+import {homedir, tmpdir} from 'node:os';
 import {evenTimings, applyPacing, compileFilm, renderFilm, makeFilm} from '../src/index.mjs';
 import {makeRelease} from '../src/release.mjs';
 import {breakdown} from '../src/breakdown.mjs';
@@ -104,7 +105,7 @@ test('outputFolder: makes the folders StoryReel names inside the caller\'s (neve
   const out = tempDir('out', t), elsewhere = tempDir('elsewhere', t);
   const was = process.umask(0o002);   // a umask that leaves folders group-writable: what StoryReel makes is 0755 all the same
   t.after(() => process.umask(was));
-  assert.equal(outputFolder(path.join(out, 'new'), ['work', 'youtube']), path.join(out, 'new', 'work', 'youtube'));
+  assert.equal(outputFolder(path.join(out, 'new'), ['work', 'youtube']), path.join(realpathSync(out), 'new', 'work', 'youtube'), 'the real path');
   if (posix) assert.deepEqual(['work', path.join('work', 'youtube')].map(f => statSync(path.join(out, 'new', f)).mode & 0o7777), [0o755, 0o755]);
   writeFileSync(path.join(out, 'new', 'work', 'youtube', 'kept'), 'k');
   outputFolder(path.join(out, 'new'), ['work', 'youtube']);
@@ -119,28 +120,68 @@ test('outputFolder: an existing folder another user owns, or one of ours that ot
   const out = tempDir('shared', t);
   // Another user made <out>/work (as in a shared /tmp): lstat says whose — played here by a stubbed lstat.
   mkdirSync(path.join(out, 'work'));
-  const theirs = at => { const st = lstatSync(at); return at === path.join(out, 'work') ? {isDirectory: () => true, isSymbolicLink: () => false, uid: process.getuid() + 1, mode: st.mode} : st; };
+  const theirs = at => { const st = lstatSync(at); return at === path.join(realpathSync(out), 'work') ? {isDirectory: () => true, isSymbolicLink: () => false, uid: process.getuid() + 1, mode: st.mode} : st; };
   assert.throws(() => outputFolder(out, ['work', 'youtube'], {lstat: theirs}), /work belongs to another user: StoryReel writes only into a folder of its own there, that no one else can change — remove it, or give another out/);
   assert.ok(!existsSync(path.join(out, 'work', 'youtube')), 'nothing made inside it');
   chmodSync(path.join(out, 'work'), 0o777);
   assert.throws(() => outputFolder(out, ['work', 'youtube']), /work can be changed by other users \(mode 0777, no sticky bit\): StoryReel writes only into a folder of its own there/);
   chmodSync(path.join(out, 'work'), 0o1777);
-  assert.equal(outputFolder(out, ['work', 'youtube']), path.join(out, 'work', 'youtube'), 'sticky: others may add an entry, never replace one of ours');
+  assert.equal(outputFolder(out, ['work', 'youtube']), path.join(realpathSync(out), 'work', 'youtube'), 'sticky: others may add an entry, never replace one of ours');
 });
 
-test('refuseShared: an out folder another user could rearrange is refused — 0777, 0775, another user\'s, or one inside a 0777 folder; a private one or a sticky 1777 one is not', {skip: posix ? false : 'no POSIX owners or modes'}, t => {
-  const shared = (mode, ...below) => { const dir = tempDir('shared', t); chmodSync(dir, mode); return path.join(dir, ...below); };
-  const why = mode => new RegExp(`can be changed by other users \\(mode ${mode}, no sticky bit\\): another user could swap what StoryReel writes there for a link to a file of yours — render into a folder of your own and copy the film out, or give the shared folder the sticky bit \\(chmod \\+t `);
-  assert.throws(() => refuseShared(shared(0o777)), why('0777'));
-  assert.throws(() => refuseShared(shared(0o775)), why('0775'), 'a team folder, writable by its group');
-  const inOpen = shared(0o777, 'mine'); mkdirSync(inOpen); chmodSync(inOpen, 0o755);
-  assert.throws(() => refuseShared(inOpen), why('0777'), 'a private out inside a 0777 folder: the out itself can be swapped');
-  assert.throws(() => refuseShared(shared(0o777, 'not', 'there', 'yet')), why('0777'), 'an out still to be made, under a 0777 folder');
-  const theirs = tempDir('theirs', t), foreign = at => { const st = lstatSync(at); return at === realpathSync(theirs) ? {...st, mode: st.mode, uid: process.getuid() + 1, isDirectory: () => true, isSymbolicLink: () => false} : st; };
-  assert.throws(() => refuseShared(theirs, {lstat: foreign}), /belongs to another user \(and has no sticky bit\): another user could swap/);
-  refuseShared(shared(0o1777));                       // sticky, like /tmp: at worst a write fails
-  const inSticky = shared(0o1777, 'mine'); mkdirSync(inSticky); refuseShared(inSticky);
-  refuseShared(shared(0o755)); refuseShared(shared(0o700)); refuseShared(shared(0o755, 'missing', 'film'));
+// The one rule (files.mjs · securePath): every folder on the real path, up to the root, a real folder owned by this user
+// or root and writable by no one else unless sticky. `chain` plays a system's folders by path for a stubbed lstat.
+const REFUSED = 'StoryReel writes only below folders no other user can change \\(each yours or root\'s, writable by no one else unless sticky\\) — render into a folder of your own and copy the film out';
+const stat = (mode, uid = process.getuid?.() ?? 0) => ({mode: 0o040000 | mode, uid, isDirectory: () => true, isSymbolicLink: () => false});
+function chain(folders) {
+  const has = p => p in folders;
+  return {lstat: p => { if (!has(p)) throw Object.assign(new Error(`ENOENT ${p}`), {code: 'ENOENT'}); return folders[p]; }, realpath: p => p, exists: has};
+}
+
+test('securePath: every folder on the real path is checked up to the root — a 0777 grandparent, a sticky folder another user owns, a group-writable one, another user\'s — and the first that fails is named', {skip: posix ? false : 'no POSIX owners or modes'}, t => {
+  const me = process.getuid(), refused = (at, why) => new RegExp(`^Error: ${escape(at)} ${why}: ${REFUSED}$`);
+  const system = {'/': stat(0o755, 0), '/srv': stat(0o755, 0)};
+  // A 0777 non-sticky grandparent: the reviewer renamed `team` and planted a link; refused, naming the grandparent.
+  assert.throws(() => securePath('/srv/open/team/out', chain({...system, '/srv/open': stat(0o777, me), '/srv/open/team': stat(0o755, me), '/srv/open/team/out': stat(0o755, me)})),
+    refused('/srv/open', 'can be changed by other users \\(mode 0777, no sticky bit\\)'));
+  // A sticky folder owned by another user: its owner may rename any entry in it.
+  assert.throws(() => securePath('/srv/shared/out', chain({...system, '/srv/shared': stat(0o1777, 4242), '/srv/shared/out': stat(0o755, me)})), refused('/srv/shared', 'belongs to another user'));
+  assert.throws(() => securePath('/srv/team/out', chain({...system, '/srv/team': stat(0o775, me), '/srv/team/out': stat(0o755, me)})), refused('/srv/team', 'can be changed by other users \\(mode 0775, no sticky bit\\)'));
+  assert.throws(() => securePath('/srv/theirs/out', chain({...system, '/srv/theirs': stat(0o755, 4242)})), refused('/srv/theirs', 'belongs to another user'), 'the nearest folder that exists, for an out still to be made');
+  // Sticky and owned by this user, or by root: accepted.
+  assert.equal(securePath('/srv/ours/out', chain({...system, '/srv/ours': stat(0o1777, me), '/srv/ours/out': stat(0o755, me)})), '/srv/ours/out');
+  assert.equal(securePath('/tmp/film/out', chain({'/': stat(0o755, 0), '/tmp': stat(0o1777, 0), '/tmp/film': stat(0o700, me)})), '/tmp/film/out', 'like Linux\'s /tmp, root\'s and sticky; out still to be made');
+  // A typical Linux home: /home root's, /home/<me> mine.
+  assert.equal(securePath('/home/me/films/out', chain({'/': stat(0o755, 0), '/home': stat(0o755, 0), '/home/me': stat(0o750, me), '/home/me/films': stat(0o755, me)})), '/home/me/films/out');
+  // This system's own: the home folder (/Users/<me> on macOS, /home/<me> on Linux) and the temp folder (macOS: /var/folders/…/T).
+  assert.equal(securePath(homedir()), realpathSync(homedir()));
+  assert.equal(securePath(tmpdir()), realpathSync(tmpdir()));
+  // Real folders: a group-writable one, and a private one under it.
+  const top = tempDir('secure', t), open = path.join(top, 'open'), team = path.join(open, 'team');
+  mkdirSync(team, {recursive: true}); chmodSync(open, 0o777);
+  assert.throws(() => securePath(path.join(team, 'out')), refused(realpathSync(open), 'can be changed by other users \\(mode 0777, no sticky bit\\)'));
+  chmodSync(open, 0o1777);
+  assert.equal(securePath(path.join(team, 'out')), path.join(realpathSync(team), 'out'), 'sticky and mine');
+});
+
+test('securePath: the real path is returned and written through, so a link in the given path swapped mid-run changes nothing', {skip: posix ? false : 'no POSIX modes'}, t => {
+  // <0777>/link → a private folder elsewhere: the real path is safe, and the store writes only through it.
+  const open = tempDir('open', t), mine = tempDir('mine', t), victim = tempDir('victim', t), link = path.join(open, 'link');
+  chmodSync(open, 0o777); symlinkSync(mine, link, 'dir');
+  assert.throws(() => securePath(open), /can be changed by other users/, 'the 0777 folder itself is refused');
+  assert.equal(securePath(path.join(link, 'store')), path.join(realpathSync(mine), 'store'), 'through the link: judged, and returned, as where it leads');
+  const store = folderStore(path.join(link, 'store')), key = 's'.repeat(24), work = tempDir('work', t);
+  assert.equal(store.dir, path.join(realpathSync(mine), 'store'));
+  // Another user swaps the link for one to the victim's folder, mid-run.
+  rmSync(link); symlinkSync(victim, link, 'dir');
+  writeFileSync(path.join(work, 'seg.mp4'), 'frames');
+  store.put(key, path.join(work, 'seg.mp4'), {version: 1});
+  assert.deepEqual(readdirSync(victim), [], 'nothing reached the victim through the swapped link');
+  assert.deepEqual(readdirSync(path.join(mine, 'store')).sort(), [`${key}.json`, `${key}.mp4`], 'the segment went where the path was checked');
+  // A link whose target lies inside the 0777 folder is refused: that folder is on the real path.
+  const inside = path.join(open, 'inside'); mkdirSync(inside); chmodSync(inside, 0o755);
+  const via = path.join(mine, 'via'); symlinkSync(inside, via, 'dir');
+  assert.throws(() => securePath(path.join(via, 'out')), /can be changed by other users \(mode 0777/);
 });
 
 test('every entry that writes into a folder the caller names refuses a shared, non-sticky one before anything is written', {skip: posix ? false : 'no POSIX modes'}, async t => {
@@ -161,25 +202,25 @@ test('every entry that writes into a folder the caller names refuses a shared, n
   assert.deepEqual(readdirSync(open), ['v.mp4'], 'nothing written there');
 });
 
-test('every folder StoryReel makes is 0755, whatever the umask — even 000 — and so is the placed narration/', {skip: posix ? false : 'no POSIX modes'}, async t => {
-  const was = process.umask(0o000);
+test('every folder StoryReel makes asks for 0755 and nothing is chmod-ed after: umask 000 gives 0755, 022 gives 0755, 077 gives 0700; narration/ the same', {skip: posix ? false : 'no POSIX modes'}, async t => {
+  const was = process.umask();
   t.after(() => process.umask(was));
-  const mode = f => statSync(f).mode & 0o7777, top = tempDir('umask', t);
-  makeFolder(path.join(top, 'a', 'b', 'c'));
-  assert.deepEqual(['a', 'a/b', 'a/b/c'].map(f => mode(path.join(top, f))), [0o755, 0o755, 0o755]);
-  outputFolder(path.join(top, 'out'), ['work', 'youtube']);
-  assert.deepEqual(['out', 'out/work', 'out/work/youtube'].map(f => mode(path.join(top, f))), [0o755, 0o755, 0o755]);
-  // makeFilm's out folder, made before its first stage (which refuses this storyboard).
-  await assert.rejects(makeFilm({...film, storyboard: {title: 'x', scenes: []}, out: path.join(top, 'made', 'deep', 'film.mp4')}), /no scenes/);
-  assert.deepEqual(['made', 'made/deep'].map(f => mode(path.join(top, f))), [0o755, 0o755]);
-  // The voice copy's folders, and narration/ once placed.
-  const voice = path.join(top, 'voice'); makeFolder(path.join(voice, 'audio'));
-  writeFileSync(path.join(voice, 'timings.json'), JSON.stringify({scenes: [{id: 'a', audio: 'audio/a.wav'}]})); writeFileSync(path.join(voice, 'audio', 'a.wav'), 'A');
-  const copy = makeScratch(top, '.narration');
-  copyVoice(voice, copy);
-  assert.equal(mode(path.join(copy, 'audio')), 0o755);
-  placeVoice(copy, path.join(top, 'narration'));
-  assert.equal(mode(path.join(top, 'narration')), 0o755, '0755 at most, never 0777');
+  const mode = f => statSync(f).mode & 0o7777;
+  for (const [umask, want] of [[0o000, 0o755], [0o022, 0o755], [0o077, 0o700]]) {
+    process.umask(umask);
+    const top = tempDir('umask', t), at = (...p) => path.join(top, ...p);
+    makeFolder(at('a', 'b', 'c'));
+    outputFolder(at('out'), ['work', 'youtube']);
+    // makeFilm's out folder, made before its first stage (which refuses this storyboard).
+    await assert.rejects(makeFilm({...film, storyboard: {title: 'x', scenes: []}, out: at('made', 'deep', 'film.mp4')}), /no scenes/);
+    // The voice copy's folders, and narration/ once placed.
+    const voice = at('voice'); makeFolder(path.join(voice, 'audio'));
+    writeFileSync(path.join(voice, 'timings.json'), JSON.stringify({scenes: [{id: 'a', audio: 'audio/a.wav'}]})); writeFileSync(path.join(voice, 'audio', 'a.wav'), 'A');
+    const copy = makeScratch(top, '.narration');
+    copyVoice(voice, copy); placeVoice(copy, at('narration'));
+    const made = ['a', 'a/b', 'a/b/c', 'out', 'out/work', 'out/work/youtube', 'made', 'made/deep', 'narration', 'narration/audio'];
+    assert.deepEqual(Object.fromEntries(made.map(f => [f, mode(at(f)).toString(8)])), Object.fromEntries(made.map(f => [f, want.toString(8)])), `umask ${umask.toString(8).padStart(3, '0')}`);
+  }
 });
 
 test('refuseFolders: a folder at any of the names refuses before anything is written; the others are fine missing or as files', t => {
@@ -204,7 +245,7 @@ test('a release replaces a link planted at every output\'s name — the film\'s 
   const planted = plant(t, out, [...made, ...posted.slice(1)], {missing: [posted[0]]});
   const [yt] = await makeRelease({...film, out, targets: ['youtube'], post: {title: 'Links', description: 'A test.', audience: 'general', thumbnail: 'poster'}});
   replaced(planted);
-  assert.equal(yt.video, path.join(out, 'youtube', 'links.mp4'));
+  assert.equal(yt.video, path.join(realpathSync(out), 'youtube', 'links.mp4'), 'the real path it was written through');
   assert.equal(JSON.parse(readFileSync(path.join(out, 'youtube', 'post.json'), 'utf8')).video, 'links.mp4');
   assert.match(readFileSync(path.join(out, 'work', 'youtube', 'chapters.txt'), 'utf8'), /^0:00 The start\n$/);
   assert.deepEqual([...parts(path.join(out, 'youtube')), ...parts(path.join(out, 'work', 'youtube'))], []);
@@ -246,7 +287,7 @@ test('a breakdown replaces a link planted at each of its files, and refuses a li
   const planted = plant(t, out, ['breakdown.json', 'breakdown.md', 'record.json', 'overview.png', path.join('shots', 'shot-01.png')]);
   const {files} = await breakdown(video, {out});
   replaced(planted);
-  assert.deepEqual(files.sheets, [path.join(out, 'shots', 'shot-01.png')]);
+  assert.deepEqual(files.sheets, [path.join(realpathSync(out), 'shots', 'shot-01.png')]);
   const linked = path.join(dir, 'linked'), elsewhere = tempDir('elsewhere', t);
   mkdirSync(linked); symlinkSync(elsewhere, path.join(linked, 'shots'), 'dir');
   await assert.rejects(breakdown(video, {out: linked}), /shots is a link: StoryReel writes only into a folder of its own there/);
@@ -256,7 +297,7 @@ test('a breakdown replaces a link planted at each of its files, and refuses a li
 test('a tool\'s still replaces a link planted at its name, and refuses a link at the stills folder', async t => {
   const project = fileURLToPath(new URL('./fixtures/tools/', import.meta.url)), out = tempDir('tools', t), p = await loadProject({cwd: project, out});
   const planted = plant(t, out, [path.join('stills', 'one+2.5.png')]);
-  assert.equal((await still(p, {at: 'one+2.5'})).file, path.join(out, 'stills', 'one+2.5.png'));
+  assert.equal((await still(p, {at: 'one+2.5'})).file, path.join(realpathSync(out), 'stills', 'one+2.5.png'));
   replaced(planted);
   const linked = tempDir('tools-linked', t), elsewhere = tempDir('elsewhere', t);
   symlinkSync(elsewhere, path.join(linked, 'stills'), 'dir');
@@ -306,7 +347,7 @@ test('the segment store replaces a link planted at a segment\'s file or its mani
   store.put(key, path.join(work, 'segment.mp4'), {version: 1});
   replaced(planted);
   const got = store.get(key);
-  assert.equal(got.file, path.join(dir, `${key}.mp4`)); assert.equal(got.manifest.bytes, 6);
+  assert.equal(got.file, path.join(realpathSync(dir), `${key}.mp4`)); assert.equal(got.manifest.bytes, 6);
   assert.deepEqual(parts(dir), []);
 });
 
@@ -338,8 +379,6 @@ const OWN = [
   ['files.mjs', 'ops.linkSync(what.copy, temp)', 'writeOutput: the same'],
   ['files.mjs', 'try { make(temp); ops.renameSync(temp, final); }', 'writeOutput: that name renamed onto the output (a rename replaces a link, never follows it)'],
   ['files.mjs', 'try { ops.renameSync(what.move, final); }', 'writeOutput: a move, renamed the same way'],
-  ['files.mjs', 'chmodSync(at, FOLDER_MODE);', 'makeFolder: a folder it has just made, set to 0755'],
-  ['files.mjs', 'try { mkdirSync(at, {mode: FOLDER_MODE}); chmodSync(at, FOLDER_MODE); }', 'outputFolder: the same'],
   ['files.mjs', "writeFileSync(path.join(to, 'timings.json'), bytes, {flag: 'wx'})", 'copyVoice: into the voice copy makeScratch made (0700), exclusively'],
   ['files.mjs', "writeFileSync(target, readFileSync(path.join(base, f)), {flag: 'wx'})", 'copyVoice: the same'],
   ['files.mjs', 'ops.chmodSync(copy, plainFolderMode())', 'placeVoice: the voice copy, before it is renamed'],

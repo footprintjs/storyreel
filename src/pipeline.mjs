@@ -11,7 +11,7 @@
  */
 import {readCast, withCast} from './cast.mjs';
 import {readFileSync, writeFileSync, rmSync, existsSync, statSync} from 'node:fs';
-import {copyVoice, requireVoiceApart, placeVoice, writeOutput, refuseFolders, refuseShared, makeFolder} from './files.mjs';
+import {copyVoice, requireVoiceApart, placeVoice, writeOutput, refuseFolders, securePath, makeFolder} from './files.mjs';
 import path from 'node:path';
 import {flowChart, narrative} from 'footprintjs';
 import {applyPacing, validatePacing, paceTimings} from './pacing.mjs';
@@ -143,9 +143,10 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   if (approval) readApproval(approval);
   const song = music === null ? null : readMusic(music);
   if (song && render.music !== undefined) throw new Error('makeFilm takes the song as music ({file, snap?, dropOn?, …}), which also places it; leave render.music out');
-  const dir = path.dirname(path.resolve(out));
-  // First of all, an out folder another user could rearrange refuses (files.mjs · refuseShared).
-  refuseShared(dir);
+  // First of all, the out folder's REAL path, with no folder on the way another user could rearrange (files.mjs ·
+  // securePath): the film is made through it only.
+  const dir = securePath(path.dirname(path.resolve(out)));
+  out = path.join(dir, path.basename(path.resolve(out)));
   // Before anything is written, even the out folder: the voice is paced in the out folder and then replaces its
   // narration folder, so the two must not overlap (files.mjs · requireVoiceApart).
   if (narrationDir) requireVoiceApart(narrationDir, dir);
