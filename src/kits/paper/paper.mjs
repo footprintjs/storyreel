@@ -4,6 +4,7 @@
  * paper style; the caller owns the canvas transform.
  */
 import {INK, lightBulb, drawStrokes, drawIcon, ease} from '../whiteboard/board.mjs';
+import {code} from '../../decorative.mjs';
 
 /**
  * Where the card sits as it moves (aside for the first stage, into a kit's scene): its box on the
@@ -282,7 +283,7 @@ export function drawStage(c, P, paperStyle, a, st) {
     const f = st.shown(i); if (!(f > 0) || !line.length) return;
     const y = TOP + i * LH, width = line.reduce((n, [txt]) => n + c.measureText(txt).width, 0);
     c.save(); c.beginPath(); c.rect(X0 + 30, y - LH / 2, width * ease(Math.min(1, f)) + 4, LH); c.clip();
-    let x = X0 + 36; for (const [txt, kind] of line) { c.fillStyle = tone[kind]; c.fillText(txt, x, y); x += c.measureText(txt).width; }
+    let x = X0 + 36; code(c, () => { for (const [txt, kind] of line) { c.fillStyle = tone[kind]; c.fillText(txt, x, y); x += c.measureText(txt).width; } });   // code: its numbers read as code writes them
     c.restore();
   });
   (st.list ?? []).forEach(([what, detail, al], n) => {

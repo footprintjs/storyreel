@@ -2,12 +2,43 @@
 
 ## Unreleased
 
+- **Full-width separators are read.** Chinese and Japanese text's full-width comma and point (，．) are a "," and a
+  "." as the Arabic ٬ ٫ are, and the full-width minus (－) is a sign: `ja` "１，０００円" is 1000, "３．５kg" 3.5, "－５℃" −5,
+  typed or drawn. The ideographic comma 、 stays a list separator, never a group mark.
+- **Code joins digits by "_"**: under `code()`, `1_000_000` (JavaScript, Python) is 1000000; outside code "_" joins nothing.
+
+- **Numbers are read in the language the film is shown in.** `compileFilm` takes `lang` (a BCP 47 tag) and keeps it as
+  `film.lang` (and `film.inputs.lang`, for an approval to lock); `makeFilm`'s `lang`, which named the string table only,
+  is now passed through: one value. Both claims checks read numbers by it, with the language's own group and decimal
+  symbols and grouping (`Intl.NumberFormat`, `numberLocale`): `de` "2,5 kg" is 2.5 and "1.299,99" 1299.99, `fr`
+  "1 299,99" (narrow no-break space) 1299.99, `en-IN`/`ta`/`te` "1,00,000" 100000. A tag that is not BCP 47 refuses.
+- **Without a language, "2,5" is ambiguous**: kept as written, like "1,000" — only a fact written the same way sources
+  it — and so are "1,00,000" and "1,2". An unsourced
+  ambiguous number's fix says how to give the film its language. A fact `"2,5"` is accepted as written; a fact value
+  with words or several numbers is refused with what to do (never "put the words around it" for a number).
+  `numbersIn(text, {lang})` and `numberValue(run, {lang})` take the language as an option.
+- **A language's own digits are numbers.** Arabic-Indic, Persian, Devanagari, Bengali, Telugu, Tamil, Thai — every
+  script's digits (Unicode Nd) are read, with or without a language, and the Arabic separators ٬ and ٫ as a group and a
+  decimal mark (`ar-EG` "1٬234٫5" is 1234.5). A film in its own digits used to pass as "shows no number". A number that
+  mixes scripts is ambiguous; a fact in native digits ("١٢٣٤") sources the same number.
+- **Code is read as code** (`footprint-storyreel/decorative` · `code`): words drawn inside it read "." as the decimal
+  mark and "," as a separator, never grouping, whatever the film's language; the built-in code stage marks its code.
+  The words carry `code: true`.
+- **An as-written number is sourced only by a fact written the same way**: "16.67" in a `de` film (no German number)
+  is no longer sourced by the number 16.67 because it prints alike.
+- **Approvals made with a `lang` before this release** report their inputs changed (`film.inputs.lang` is new): approve
+  the film again.
+- **A line typed again is typed on again.** A typewriter line typed twice is one claim, its fullest line, each time:
+  the typed-on merge now joins run to run before the runs of one number are pooled.
+- **The review reads nothing after the film's end** when it times a number's hold: a typewriter caught mid-number by
+  the film's last frame is no claim.
+
 - **The example label stays until the example line's last ink.** An eraser wipes a line over its own time: the label
   now holds until the wipe ends (a kit's `texts()` may say when a line's last ink goes, `gone`; the whiteboard does),
   not only until it starts — an example number is never on screen unlabelled.
 - **A decimal drawn as code tokens is one number.** A lone "." or "," between digits joins them when it stands within
   half their height of each (`DRAWN.point`): a code panel's "16" "." "67" is 16.67 and "$1" "," "299" "." "99" is
-  1,299.99; `f(4,5)` stays 4 and 5 (the one comma rule below), and "12 30" and "x - 5" stay as they were.
+  1,299.99; `f(4,5)` is read as typed (by the film's language), and "12 30" and "x - 5" stay as they were.
 - **Digit groups of different sizes never join.** "$1,299" with a raised "99" reads as 1,299 and 99 — not 129999 —
   since the picture does not say whether a raised group is cents, a power or a note (`DRAWN.size`, `DRAWN.baseline`).
 - **`footprint-storyreel/decorative`: text the film does not say.** `decorative(ctx, draw)` marks the words drawn
@@ -20,9 +51,9 @@
   again every 0.05 s where it must — a number up 0.5 s or more always counts, one up under 0.4 s never does. At the
   default step nothing more is read; at `every: 1` the claims check reads every 0.25 s (and finds numbers the coarse
   reads missed). The four example films read the same numbers as before.
-- **One comma rule, typed and drawn.** A comma joins digits only before a three-digit group: "steps 1,2 and 3" is 1, 2
-  and 3, never 1.2, and a fact `"4,5"` refuses (two numbers). After a dotted thousands group it is a decimal comma:
-  "1.299,99" is 1299.99, typed or drawn.
+- **Typed and drawn numbers are read by one rule** (numberValue, by the film's language): a fact of 1.2 never sources
+  "steps 1,2 and 3" in a film without one; without one, "1.299,99" and "1,299.99" are both 1299.99 (the one reading in
+  which each is a number).
 - **A render cleans up after itself.** Its working files (the picture without its sound, the voice and the effects as
   WAVs, FFmpeg's lists, segment files on their way to the cache) go in a hidden `.storyreel-work-…` folder beside the
   video, removed when the render ends, finished or failed (`render.mjs` · `closeRender`; `renderFilm` and `makeFilm` call
