@@ -13,17 +13,21 @@ export interface Why {verdict: string; because: string; rules: {then: string; me
 
 /** A tempo the beats also fit, and its score against the best (1). */
 export interface BeatTempo {bpm: number; score: number}
+/** A candidate tempo as a beat map may give it: with its own grid and how unsure it is of its phase (beats.mjs · TempoAlternative), read by safeBeats. */
+export interface BeatCandidate extends BeatTempo {beats?: readonly number[]; phaseDoubt?: number}
 /**
  * What a beat map answers (beats.mjs · beatMap's map fits it as it is): beats a minute, every beat (seconds into the sound),
  * the drop (or null), and — when it says them — how sure it is and the other tempos the beats fit, best first.
  */
-export interface BeatMapAnswer {readonly bpm: number; readonly beats: readonly number[]; readonly drop?: number | null; readonly confidence?: number; readonly alternatives?: readonly BeatTempo[]}
+export interface BeatMapAnswer {readonly bpm: number; readonly beats: readonly number[]; readonly drop?: number | null; readonly confidence?: number; readonly alternatives?: readonly BeatCandidate[];
+  /** How the map chose its tempo, whether it is sure, and where the song hits: an unsure map's cuts are judged only against beats.mjs · safeBeats. */
+  readonly verdict?: string; readonly sure?: boolean; readonly hits?: readonly number[]}
 /**
- * Reads the beats of a sound: handed a WAV of the video's sound (in a folder removed after it answers), with the breakdown's
- * `beatOptions` and the FFmpeg it runs. One that throws (a silent track, no tempo) leaves the beats unread, saying why;
+ * Reads the beats of a sound: handed the video file itself (it reads the sound; beats.mjs · beatMap decodes it at 22050 Hz
+ * mono), with the breakdown's `beatOptions` and the FFmpeg it runs. One that throws (a silent track, no steady beat) leaves the beats unread, saying why;
  * one that throws an error with `code: 'BEAT_OPTIONS'` (its options are wrong) makes the breakdown refuse.
  */
-export type BeatReader = (audioFile: string, options: BeatOptions & {ffmpeg: string}) => BeatMapAnswer | Promise<BeatMapAnswer>;
+export type BeatReader = (videoFile: string, options: BeatOptions & {ffmpeg: string}) => BeatMapAnswer | Promise<BeatMapAnswer>;
 
 /**
  * The beat map's own options (beats.mjs · beatMap takes {bpm, drop, range}): the breakdown hands them on untouched, with its
@@ -50,9 +54,16 @@ export interface BreakdownShot {
   text: {verdict: 'text' | 'no-text'; area: number; mark: number; why: Why};
   /** the shot's contact sheet, relative to the out folder */ sheet: string;
 }
-export interface BeatCut {at: number; kind: TransitionKind; beat: number | null; off: number | null; onBeat: boolean}
+/**
+ * A cut against the beats it is judged by (safeBeats): on one, off them (a sure map), or not judged (null: an unsure map,
+ * no beat every candidate shares near it; or `music: false`, no music playing there — beats.mjs · musicAt).
+ */
+export interface BeatCut {at: number; kind: TransitionKind; beat: number | null; off: number | null; onBeat: boolean | null; music?: false}
 export type BreakdownBeats = {ran: false; why: string}
-  | {ran: true; bpm: number; confidence?: number; alternatives?: BeatTempo[]; close?: BeatTempo; beats: number[]; drop: {at: number; shot: number; nearestCut: BeatCut | null} | null; cuts: BeatCut[]; onBeat: number; of: number; within: number};
+  | {ran: true; bpm: number; verdict?: string; sure: boolean; confidence?: number; alternatives?: BeatTempo[]; close?: BeatTempo; likely?: number[];
+     /** the beats the cuts were judged against (beats.mjs · safeBeats): every beat, the shared ones, or none */ judged: {grid: string; beats: number; of: number};
+     /** maybe: an unsure map's drop, not stated as fact */
+     beats: number[]; drop: {at: number; maybe?: true; shot: number; nearestCut: BeatCut | null} | null; cuts: BeatCut[]; onBeat: number; unjudged?: number; noMusic?: number; of: number; within: number};
 
 /** What breakdown.json holds. */
 export interface BreakdownSpec {
@@ -82,6 +93,8 @@ export interface BreakdownOptions {
   /** the FFmpeg run for frames, stills and sound (FFMPEG_BIN, or the one on the PATH): 5.1 or later */ ffmpeg?: string;
   /** the adapter that reads the file (finished.mjs · ffmpegProbe) */ probe?: VideoProbe;
   thresholds?: Partial<BreakdownThresholds>;
+  /** how a fix is worded in the spec: 'api' (the default: an option of breakdown()) or 'cli' (a flag of storyreel breakdown, e.g. "add --bpm n") */
+  hints?: 'api' | 'cli';
 }
 
 /**

@@ -106,6 +106,8 @@ export const RHYTHMS = Object.freeze({
   // no beat.
   '808 sub on the quarters, snare on 2 and 4': {grid: 4, steps: 16, sub: range(16, 4), snare: [4, 12]},
   'backbeat, a dub echo on the snare': {grid: 4, steps: 16, kick: [0, 8], snare: [4, 12], hat: range(16, 2), echo: {delay: .75, gain: .5, on: ['snare']}},
+  // A fade-out is not a ring-out: the beats fading away are the song's own.
+  'backbeat, an 8 s fade-out': {grid: 4, steps: 16, kick: [0, 8], snare: [4, 12], hat: range(16, 2), fadeOut: 8},
   // Ill-posed: each is a pulse at more than one tempo, or on more than one phase, as much as at the true one — a snare
   // every other beat is as well a slower beat; three uneven kicks a bar fit several grids; claps alone between the beats
   // are as well on them. Kept to pin what the map says, never to be scored right or wrong.
@@ -145,10 +147,20 @@ export function rhythm({bpm, family, bars = 12, lead = .25, tail = 1, rate = 220
   // A delay (echo) on the voices `echo.on`: fed back `delay` beats later at `gain`, each repeat `gain` of the last (a
   // dotted-eighth delay is 0.75 of a beat: the first repeat of a hit on a beat lands a sixteenth before the next beat).
   if (spec.echo) { const d = Math.round(spec.echo.delay * beat * rate); for (let i = d; i < wet.length; i++) wet[i] += spec.echo.gain * wet[i - d]; for (let i = 0; i < x.length; i++) x[i] += wet[i]; }
+  // A fade-out: the last `fadeOut` seconds of the music, to the end of its last bar, faded to nothing (the beats in it are
+  // still the song's beats).
+  if (spec.fadeOut) { const end = at(total) * rate, from = end - spec.fadeOut * rate; for (let i = Math.max(0, Math.floor(from)); i < x.length; i++) x[i] *= Math.max(0, (end - i) / (end - from)); }
   for (let i = 0; i < x.length; i++) x[i] += .004 * noise();
   const beats = Array.from({length: repeats * patternBeats}, (_, k) => at(k * spec.grid));
   // The true tempo is the song's own mean (a drifting tempo's is not quite the one it wanders around).
   return {samples: x, rate, beats, bpm: (beats.length - 1) * 60 / (beats.at(-1) - beats[0])};
+}
+
+/** A song with stretches of silence (seconds [from, to], to the end when `to` is null): only a faint noise floor there. */
+export function silenced({samples, rate, ...rest}, ranges) {
+  const x = Float32Array.from(samples), noise = noiseFrom(41);
+  for (const [from, to] of ranges) for (let i = Math.max(0, Math.round(from * rate)); i < Math.min(x.length, to === null ? x.length : Math.round(to * rate)); i++) x[i] = .004 * noise();
+  return {samples: x, rate, ...rest};
 }
 
 /** The tempi every rhythm is played at. */
@@ -167,7 +179,7 @@ const fadeIn = t => (t < 6 ? .05 : t < 12 ? .05 + .95 * (t - 6) / 6 : 1), bridge
  *   four on the floor played by hand (±12 ms), a tempo drifting ±3%, 6/8 (its dotted-quarter beat), a kick on the and
  *   of two, a bass on the quarters under held chords, a kick (with its beater's click) and a bass on every eighth under
  *   a snare on 2 and 4, a dotted-eighth delay on the rim and the snare, an 808 sub on the quarters under a snare on 2 and
- *   4, a backbeat with a dub echo (0.5) on the snare — at seven tempi (77);
+ *   4, a backbeat with a dub echo (0.5) on the snare, a backbeat fading out over its last 8 s — at seven tempi (84);
  * - 'ill-posed': a snare alone on 2 and 4, a kick-only tresillo, claps alone on the off-beats — at seven tempi (21),
  *   pinned only to give a recorded verdict: no measure can tell their tempo or phase (ILL_POSED);
  * - 'songs': click tracks (plain, and with a kick every fourth click), builds and drops, pads, first clicks 0–50 ms

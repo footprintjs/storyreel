@@ -146,16 +146,15 @@ test('the files: breakdown.json, breakdown.md, a sheet per shot, the overview, a
   assert.ok(decisions.some(t => /default "no beat map was given/.test(t)), 'why the beats were not read');
 });
 
-test('a beat map, when given, is handed the sound, its own options and this run\'s FFmpeg; it says which cuts land on a beat, the drop, and a close tempo call', {skip}, async () => {
+test('a beat map, when given, is handed the video itself, its own options and this run\'s FFmpeg; it says which cuts land on a beat, the drop, and a close tempo call', {skip}, async () => {
   let heard = null;
   const beatMap = async (file, options) => {
     heard = {file, options, there: existsSync(file), bytes: readFileSync(file).length};
     return Object.freeze({bpm: 75, beats: Object.freeze([4.8, 1.6, 4.0, 8.0]), drop: 7.5, confidence: .8, alternatives: Object.freeze([{bpm: 75, score: 1}, {bpm: 150, score: .95}])});
   };
   const {spec, text} = await breakdown(reference, {out: path.join(dir, 'beats'), beatMap, beatOptions: {bpm: 75}});
-  assert.ok(heard.there && heard.bytes > 1000 && heard.file.endsWith('.wav'), 'the beat map hears the sound as a WAV');
+  assert.equal(heard.file, reference, 'the beat map reads the sound from the video itself: no copy of it is written first');
   assert.deepEqual(heard.options, {bpm: 75, ffmpeg: process.env.FFMPEG_BIN || 'ffmpeg'});
-  assert.equal(existsSync(heard.file), false, 'and the WAV is removed after');
   const b = spec.audio.beats;
   assert.equal(b.ran, true); assert.equal(b.bpm, 75); assert.deepEqual(b.beats, [1.6, 4, 4.8, 8]);
   assert.equal(b.within, .05); assert.equal(b.confidence, .8); assert.deepEqual(b.close, {bpm: 150, score: .95});
@@ -168,7 +167,7 @@ test('a beat map, when given, is handed the sound, its own options and this run\
 
 test('a beat map that cannot read the sound is no failure: the beats were not read, and the spec says why', {skip}, async () => {
   const {spec, text} = await breakdown(reference, {out: path.join(dir, 'no-tempo'), beatMap: () => { throw new Error('the sound has no repeating onsets to measure a tempo from; give options.bpm to lay a grid anyway'); }});
-  assert.deepEqual(spec.audio.beats, {ran: false, why: 'the beat map could not read the sound: the sound has no repeating onsets to measure a tempo from; give options.bpm to lay a grid anyway (give it as breakdown(file, {beatMap, beatOptions: {bpm: …}}))'});
+  assert.deepEqual(spec.audio.beats, {ran: false, why: 'the beat map could not read the sound (the sound has no repeating onsets to measure a tempo from); give it as breakdown(file, {beatMap, beatOptions: {bpm: …}}) to lay a grid anyway'});
   assert.equal(spec.shots.length, 6, 'the rest of the breakdown stands');
   assert.match(text, /Not run: the beat map could not read the sound/);
 });
@@ -372,7 +371,7 @@ test('beat options are the reader\'s own: handed on untouched; only an error the
   assert.deepEqual(seen[0], {tempo: 120, ffmpeg: process.env.FFMPEG_BIN || 'ffmpeg'}, 'handed on as given, with the breakdown\'s FFmpeg');
   const {spec} = await breakdown(reference, {out: path.join(dir, 'untyped'), beatMap: reader(null), beatOptions: {tempo: 120}});
   assert.equal(spec.audio.beats.ran, false, 'any other error is a sound the reader could not read');
-  assert.match(spec.audio.beats.why, /^the beat map could not read the sound: beatMap: tempo is not an option/);
+  assert.match(spec.audio.beats.why, /^the beat map could not read the sound \(beatMap: tempo is not an option/);
 });
 
 test('showinfo\'s times are read from its integer pts and time base: exact past 1,000 s and 10,000 s, where FFmpeg 6 rounds pts_time', () => {
@@ -511,12 +510,12 @@ test('refusals name the fix', {skip}, async () => {
   await assert.rejects(breakdown(reference, {thresholds: {cutJmp: 10}}), /"cutJmp" is not a threshold; the thresholds are width, cutJump/);
   await assert.rejects(breakdown(reference, {thresholds: {cutJump: -1}}), /thresholds\.cutJump is a number, 0 or more/);
   await assert.rejects(breakdown(reference, {thresholds: {width: 10.5}}), /thresholds\.width is a whole number, 16 or more, not 10\.5/);
-  await assert.rejects(breakdown(reference, {beatMap: 'beats.json'}), /beatMap is a function, beatMap\(audioFile, \{ffmpeg, \.\.\.beatOptions\}\) → \{bpm, beats: \[seconds\], drop\?\}/);
+  await assert.rejects(breakdown(reference, {beatMap: 'beats.json'}), /beatMap is a function, beatMap\(videoFile, \{ffmpeg, \.\.\.beatOptions\}\) → \{bpm, beats: \[seconds\], drop\?\} that reads the video's sound itself \(through FFmpeg\)/);
   const tone = path.join(dir, 'tone.m4a');
   ffmpeg(['-f', 'lavfi', '-i', 'sine=d=1', tone]);
   await assert.rejects(breakdown(tone, {out: path.join(dir, 'tone')}), /tone\.m4a has no picture to break down \(it holds no video stream\): give a video/);
   const wrong = await breakdown(reference, {out: path.join(dir, 'wrong'), beatMap: () => ({tempo: 120})}).catch(e => e);
-  assert.match(wrong.message, /a beat map answers \{bpm, beats: \[seconds, …\], drop\?: seconds \| null, confidence\?: 0\.\.1, alternatives\?: \[\{bpm, score\}\]\}; its bpm is beats a minute/);
+  assert.match(wrong.message, /a beat map answers \{bpm, beats: \[seconds, …\], drop\?: seconds \| null, confidence\?: 0\.\.1, alternatives\?: \[\{bpm, score, beats\?, phaseDoubt\?\}\], verdict\?, sure\?, hits\?: \[seconds, …\]\}; its bpm is beats a minute/);
   assert.ok(wrong.record.some(e => e.stageId === 'read-beats'), 'a refused breakdown keeps its record, naming the stage');
 });
 

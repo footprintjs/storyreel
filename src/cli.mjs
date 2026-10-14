@@ -12,7 +12,10 @@ const BEATS_HELP = `  beats    <song> — the song's tempo as the beat map hears
            their scores, and why each level of the beat is unsure; an unsure tempo is settled by giving music.bpm
              --bpm  the tempo you hear, to check it: the map is then sure
              --ffmpeg  the FFmpeg to read the song with`;
-const BREAKDOWN_USAGE = 'storyreel breakdown <video.mp4> [--out dir]   a reference film broken down into a spec to match: shots, cuts, pacing, motion (breakdown.mjs); it needs no project, and FFmpeg 5.1 or later';
+const BREAKDOWN_USAGE = `storyreel breakdown <video.mp4> [--out dir] [--beats [--bpm n]] [--ffmpeg path]   a reference film broken down into a spec to match: shots, cuts, pacing, motion (breakdown.mjs); it needs no project, and FFmpeg 5.1 or later
+             --beats  read the sound's beats too (beats.mjs · beatMap): which cuts land on the beat — an unsure tempo says so, and judges cuts only against the beats every candidate shares
+             --bpm  the tempo you hear, for the beat map (with --beats): the map is then sure
+             --ffmpeg  the FFmpeg to run (the breakdown's and the beat map's)`;
 
 /** What a failed breakdown's record says (error.record): where it stopped, and its last decisions with their evidence. */
 function recordSoFar(record) {
@@ -22,21 +25,38 @@ function recordSoFar(record) {
   return `\nThe record so far (${record.length} ${record.length === 1 ? 'entry' : 'entries'}) stops in "${last.stageName ?? last.stageId ?? '?'}"${last.type === 'error' ? '.' : `: ${last.text}`}${decisions.length ? `\nIts last decisions:${decisions.map(e => `\n  ${e.text}`).join('')}` : ''}`;
 }
 
-/** storyreel breakdown <video> [--out dir]: the spec, its plain words and its files (breakdown.mjs · breakdown). */
+/** A refusal of the command line: said with the usage, exit 2. */
+const usageError = message => { console.error(`storyreel breakdown: ${message}\n${BREAKDOWN_USAGE}`); process.exit(2); };
+
+/**
+ * storyreel breakdown <video> [--out dir] [--beats [--bpm n]] [--ffmpeg path]: the spec, its plain words and its files
+ * (breakdown.mjs · breakdown). --beats reads the beats with the beat map (beats.mjs · beatMap), --bpm handed to it as
+ * its own option; without --beats nothing is read but the picture and whether there is sound. A beat map that refuses
+ * its options (code BEAT_OPTIONS) refuses the breakdown (exit 2); a sound it cannot read is recorded as not run.
+ */
 async function breakdownCommand(args) {
   if (args.includes('--help') || args.includes('help')) { console.log(BREAKDOWN_USAGE); return; }
-  let video = null, out;
+  let video = null, out, beats = false, bpm, ffmpeg;
+  const valueOf = (i, flag, what) => { if (args[i + 1] === undefined || args[i + 1].startsWith('--')) usageError(`${flag} needs ${what}`); return args[i + 1]; };
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--out' && args[i + 1] && !args[i + 1].startsWith('--')) out = args[++i];
+    if (args[i] === '--out') out = valueOf(i++, '--out', 'a folder');
+    else if (args[i] === '--beats') beats = true;
+    else if (args[i] === '--bpm') bpm = valueOf(i++, '--bpm', 'a number, the tempo you hear (e.g. --bpm 95)');
+    else if (args[i] === '--ffmpeg') ffmpeg = valueOf(i++, '--ffmpeg', 'the path of an FFmpeg');
     else if (!args[i].startsWith('--') && video === null) video = args[i];
-    else { console.error(`storyreel breakdown: "${args[i]}" is not understood\n${BREAKDOWN_USAGE}`); process.exit(2); }
+    else usageError(`"${args[i]}" is not understood`);
   }
-  if (!video) { console.error(`storyreel breakdown: name the video\n${BREAKDOWN_USAGE}`); process.exit(2); }
-  const {breakdown} = await import('./breakdown.mjs');
+  if (!video) usageError('name the video');
+  if (bpm !== undefined && !/^\d+(\.\d+)?$/.test(bpm)) usageError(`--bpm needs a number, the tempo you hear (e.g. --bpm 95), not ${JSON.stringify(bpm)}`);
+  if (bpm !== undefined && !beats) usageError('--bpm is the beat map\'s: add --beats');
+  const {breakdown} = await import('./breakdown.mjs'), reader = beats ? (await import('./beats.mjs')).beatMap : null;
   try {
-    const {text, files} = await breakdown(video, out ? {out} : {});
+    const {text, files} = await breakdown(video, {hints: 'cli', ...(out ? {out} : {}), ...(ffmpeg ? {ffmpeg} : {}), ...(reader ? {beatMap: reader, beatOptions: bpm !== undefined ? {bpm: Number(bpm)} : {}} : {})});
     console.log(`${text}\n${files.json}\n${files.md}\n${files.overview} · ${files.sheets.length} shot sheet${files.sheets.length === 1 ? '' : 's'} in ${files.sheets.length ? files.sheets[0].replace(/[^/\\]*$/, '') : '-'}\n${files.record}`);
-  } catch (e) { console.error(`storyreel breakdown: ${String(e?.message ?? e).replace(/^breakdown: /, '')}${recordSoFar(e?.record)}`); process.exit(1); }
+  } catch (e) {
+    console.error(`storyreel breakdown: ${String(e?.message ?? e).replace(/^breakdown: /, '')}${recordSoFar(e?.record)}`);
+    process.exit(e?.cause?.code === 'BEAT_OPTIONS' ? 2 : 1);
+  }
 }
 
 const [command, ...given] = process.argv.slice(2), flags = {};

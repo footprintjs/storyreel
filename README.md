@@ -1506,7 +1506,8 @@ peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and it
   spectral flux on a radix-2 FFT, log-compressed and split into low (< 200 Hz), mid and high bands (a hit in the song's
   first milliseconds is a beat; a pad or a noise floor already sounding at its first sample is not, and neither is
   its end; a first click anywhere in the first 60 ms — an encoder's delay — is found where it is, over a pad too); the tempo by autocorrelation of the
-  onsets, weighed by a prior that prefers 70–180 BPM (`range`), with the ranked alternatives; the beats by dynamic
+  onsets, weighed by a prior that prefers 70–180 BPM (`range`), with the ranked alternatives (a peak within 1% of a
+  stronger one is the same tempo: 192.5 beside 192.0 is one candidate); the beats by dynamic
   programming (Ellis 2007), each moved onto the transient it sits on (an attack heard over a held note: the energy of
   the samples' first difference), the beats the chain carried through a quiet intro or a fading end left out (each
   must stand out from what surrounds it); the bars from low-band onsets; the drop where low
@@ -1543,15 +1544,15 @@ peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and it
   taken and `alternatives` lists eight, each with its own grid. A wrong tempo claimed as certain is the one failure that
   matters, so many songs come out close: a backbeat (the kick on one and three is not a kick on every beat), a click
   track with a kick every fourth click, a dembow, a breakbeat; give `bpm` to settle them.
-- **Checked against a corpus** of 262 songs made sample by sample (`test/songs.mjs · tempoCorpus`,
+- **Checked against a corpus** of 269 songs made sample by sample (`test/songs.mjs · tempoCorpus`,
   `test/tempo-corpus.test.mjs`): 56 drum patterns; nine rhythm families — dembow, son clave, half-time shuffle, trap,
-  four on the floor, breakbeat, sixteenths with the kick on one, bossa nova, funk — at seven tempi; 66 songs; and 77 of
+  four on the floor, breakbeat, sixteenths with the kick on one, bossa nova, funk — at seven tempi; 66 songs; and 84 of
   bass, hands, meters and echoes — a backbeat over eighth-note bass, eighth-note kicks with the snare on 2 and 4, four
   on the floor humanised (±12 ms), a backbeat drifting ±3% in tempo, 6/8, a kick on the and of two, bass on quarters
   with chords, a kick (with its beater's click) and a bass on every eighth under a snare on 2 and 4, a dotted-eighth
   delay on the rim and the snare, an 808 sub on the quarters under a snare on 2 and 4, a backbeat with a dub echo (0.5)
-  on the snare. **None is wrong and certain**; 61 are right and certain, 109 right but close, 92 wrong but close, each
-  of those with the right tempo among its alternatives — and **no beat a film may cut on lies off a true beat, sure or
+  on the snare, a backbeat fading out over its last 8 s. **None is wrong and certain**; 65 are right and certain, 110
+  right but close, 94 wrong but close, each of those with the right tempo among its alternatives — and **no beat a film may cut on lies off a true beat, sure or
   unsure** (phase is checked for both). **The thresholds are calibrated on these synthetic
   songs only**, with room to spare (loosening every one of them but `kicked` together still claims nothing wrong);
   for a real mix, read the verdict and `map.levels` (`storyreel beats <song>`), and give `bpm` to settle it.
@@ -1563,17 +1564,47 @@ peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and it
   0.6 of the median attack on the beats — a delay's repeat a sixteenth before the beat it precedes, or an echo ringing
   on past the song's end, is not a hit; `unheard` counts the shared beats dropped). None at all when any candidate is
   unsure of its phase (its grid could sit on the "and": the onsets half a beat off it as strong as on it, `phaseDoubt`
-  ≥ 0.9). Across the corpus's 201 unsure maps that leaves **0 cuts off a true beat** and 7.1% of the true beats
-  cut-able (652 of 9,172).
+  ≥ 0.9). Across the corpus's 204 unsure maps that leaves **0 cuts off a true beat** and 7.0% of the true beats
+  cut-able (652 of 9,316).
 - **A song's ring-out holds no beat.** No map, sure or unsure, keeps a beat after the song's last hit: the tracker
   carries its grid on through what rings after the music stops — an 808's long tail, a dub echo, a delay's repeats —
   and a beat there sits on nothing, or on an echo off the grid (an 808 on the quarters at 85 kept one, sure, 0.07 s off
-  it). The record says how many it dropped (`ringOut`).
+  it). The record says how many it dropped (`ringOut`). A hit is measured against the song's beats, or against those NEAR
+  it (within 4 s, `BEATS.safe.near`) where they are quieter: an echo still falls under the hit it repeats, while a
+  fade-out's faded hits stand against the faded ones around them — a backbeat fading out over 8 s keeps its beats to
+  within one beat of the map's own tempo of its end: a linear fade drops its last beat or two (two where the map counts
+  half the tempo), each as faint against the one before as an echo is. A hit is never under a tenth of the song's
+  median (`BEATS.safe.quiet`): in a silent gap the noise is no hit.
+- **A beat counts only where music is playing** (`musicAt(map, t)`: a heard hit within one beat period of t). The
+  tracker carries its grid through a silent gap, before the music starts and after it stops; `safeBeats` keeps no beat
+  there, sure map or not, so `fitToMusic` never snaps a cut onto one (kicks from 0–8 s and 11–20 s: a cut at 9.3 s
+  stays where it is), and the breakdown says "no music here" instead of "off the beat by 4.00 s".
+- **No steady beat, no map.** Speech, noise, music with a free tempo, a held tone or pad get no tempo: `beatMap` refuses
+  (no code: it is the sound, not the call) when the onsets keep no steady period — their autocorrelation at the strongest
+  tempo, against their energy, under 0.15 (`BEATS.steady.periodicity`), measured once a half-second moving average is
+  taken out (`BEATS.steady.swell`: a talk's loudness rising and falling correlates with itself at every short lag and is
+  no beat; a recorded talk read 0.31 without it) — or are faint: their 99th percentile under 0.6
+  (`BEATS.steady.onsets`). The reason says which: "no steady period … speech, noise, or music with a free tempo", or
+  "faint … a held tone or pad". Measured, both sides: every song in the corpus has periodicity 0.40 or more (0.28 in the
+  ill-posed group) and onsets 1.15 or more; 27 talks made with macOS `say` (eight voices, 140–230 words a minute, two
+  speakers taking turns, small rooms and a hall — reverb, pink-noise room tone, mains hum, a mic's band, compression,
+  AAC, and slow swells of loudness) reach 0.08 at most; two film scores' 37 tracks split in two — 20 at 0.19 or more,
+  whose maps run (unsure, as a score with no drums is), and 17 at 0.12 or less, refused: seven were refused before
+  too, and the other ten had read with their beats on an onset 31% of the time or less. A 440 Hz tone in an MP4 (AAC) has onsets of 0.09, a held pad 0.34. Neither
+  confidence nor hit density tells speech from music (speech reaches confidence 0.55–1), and nor do the candidates'
+  ratios: two or more candidates within 2% of the best and in no simple ratio to it (2:1, 3:2, 4:3 and their inverses)
+  marked no music at all, but only one of the 27 talks — and a recorded talk's cloud (192.8, 120.9 and 129.7 BPM)
+  holds a pair 0.9% from 2:3. With a tempo given, the grid is laid all the same. A quiet recording (its onsets near the
+  noise floor) can fall under the floor: give `bpm`.
+- **A given tempo sets the tempo, not the phase.** The phase is the onsets': with `bpm` given, the grid sits where they
+  are, and when the half-beats sound as strongly as the beats (120 BPM kicks given as 60: either phase is a kick) the
+  map is not sure of its phase (`sure: false`, `phase: 'unsure'`) and `safeBeats` keeps no beat — a film does not cut,
+  and the breakdown judges no cut, on a grid that could as well sit on the and.
 - **Unsure snaps little; a tempo settles it.** Measured over the corpus the way an editor cuts — a cut every 3–8 s,
-  snapped when a beat it may cut on lies within ±0.15 s — a sure map snaps about 45% of cuts (138 of 306) and an
-  unsure one about **4%** (34 of 856). The intersection is not loosened (no subset of the candidates kept every cut on the beat); instead an unsure
+  snapped when a beat it may cut on lies within ±0.15 s — a sure map snaps about 45% of cuts (148 of 330) and an
+  unsure one about **4%** (34 of 866). The intersection is not loosened (no subset of the candidates kept every cut on the beat); instead an unsure
   map is quick to settle: `likelyTempi(map)` names its candidates scoring 0.5 or more — the true tempo is among them
-  for 196 of the 201 unsure maps — and **a given tempo makes the map sure** (`tempo-given`), so a film cuts on every
+  for 199 of the 204 unsure maps — and **a given tempo makes the map sure** (`tempo-given`), so a film cuts on every
   beat. Hear the song, pick one, give it as `music.bpm`.
 - **`storyreel beats <song>`** prints the map for a person to settle it in seconds — no project needed (`beatMapText`):
 
@@ -1611,6 +1642,8 @@ peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and it
     on every beat of its tempo are a backbeat of the double), and the beats it shares are ON the claps — every one half
     a beat off the true beat (40 over the seven tempi), which no measure can tell. A given tempo does not move the
     beats off the claps: if you hear them as off-beats, leave `snap` out for that song.
+- **Known limits — a long ambient intro.** 30–90 s of pad before the drums come in can leave a clear song unsure (the
+  map weighs the whole song at once). Give `bpm`, or trim the intro before mapping it.
 - **Known limits — a heavy delay on the drums.** Repeats at 80% of a dotted-eighth delay on the kick and the snare
   fill every sixteenth with kick-like hits; at 70 BPM the map can then be sure of four times the tempo. The corpus's
   delay (70% on the rim and the snare) stays right or unsure at every tempo; give `bpm` for a dub mix.
@@ -1727,7 +1760,10 @@ spec.shots[4].motion.why.rules[1].checks;   // ['pan 0.188 ≥ 0.02 ✓', 'expla
 ```
 
 `npx storyreel breakdown reference.mp4 --out work/reference` does the same from the command line; it needs no project
-(`storyreel breakdown --help`; a failure prints where the record stopped and its last decisions). It needs **FFmpeg 5.1
+(`storyreel breakdown --help`; a failure prints where the record stopped and its last decisions). Add **`--beats`** to
+read the sound's beats with the beat map (`footprint-storyreel/beats`) and say which cuts land on the beat;
+`--bpm 120` hands it the tempo you hear (the map is then sure), and `--ffmpeg path` names the FFmpeg both run. Without
+`--beats`, nothing about the beats is read. A tempo the beat map refuses (`--bpm 5`) refuses the breakdown (exit 2). It needs **FFmpeg 5.1
 or later** (it reads frames with `-fps_mode passthrough`, and hands FFmpeg the stills' selection in a file, since a long
 film's runs past what one argument may hold: `-/filter:v` from FFmpeg 7, `-filter_script:v` before. Tested with FFmpeg
 9.0.2 on macOS, which takes only `-/filter:v`, and FFmpeg 6.1.1 on Ubuntu 24.04 in CI, which takes only `-filter_script:v`).
@@ -1775,17 +1811,30 @@ film's runs past what one argument may hold: `-/filter:v` from FFmpeg 7, `-filte
   shots 1–2 of 4, or one that comes back after a cutaway (2 of 3) is lettering; a film of two shots has no logo. Its known
   miss: a name shown in 3 shots of 4 reads as a logo — the record shows that decision with its evidence. It never reads
   the words (no OCR).
-- **Beats.** `beatMap(audioFile, {...beatOptions, ffmpeg})` → `{bpm, beats: [seconds], drop?, confidence?, alternatives?:
-  [{bpm, score}]}` is handed the video's sound as a WAV (in a folder removed after), the beat map's own options
+- **Beats.** `beatMap(videoFile, {...beatOptions, ffmpeg})` → `{bpm, beats: [seconds], drop?, confidence?, alternatives?:
+  [{bpm, score, beats?, phaseDoubt?}], verdict?, sure?, hits?}` is handed the video file itself (it reads the sound: `beats.mjs · beatMap` decodes it at 22050 Hz mono), the beat map's own options
   (`beatOptions`) and this run's FFmpeg, so a beat map such as beats.mjs's fits as it is (`{beatMap}`, or
   `{beatMap: f => beatMap(f, {ffmpeg})}`): `breakdown(file, {beatMap, beatOptions: {bpm: 120}})` lays its grid at 120 BPM
   where it finds no tempo of its own. `beatOptions` are the reader's own: the breakdown hands them on untouched and
   never checks their names or values. A reader that finds them wrong throws an error with `code: 'BEAT_OPTIONS'` — a
   wiring mistake, so the breakdown refuses with it; any other error it throws is a sound it could not read, recorded as
   not run. The spec reports the BPM (and how
-  sure: `confidence`, and `close` when another tempo scores 90% of the best or more), the beats, the drop and the shot on
-  screen there, and which cuts land within 0.05 s of a beat. Without a beat map, without sound, or when the beat map
-  cannot read the sound (it throws: a silent track, no tempo), the spec says the beats were not read, and why (when the beat
+  sure: `confidence`, the map's `verdict` and `sure` when it gives them, and `close` — the next tempo — when the map
+  says it is unsure, or, from a reader that gives no verdict, when another tempo scores 90% of the best or more), the
+  beats, the drop and the shot on screen there, and which cuts land within 0.05 s of a beat. **Which beats a cut is
+  judged against has one owner, `beats.mjs · safeBeats`**: every beat of a sure map (and of a reader that gives no
+  verdict); of an unsure one only the beats every candidate tempo shares and the song hits (`judged`), so no cut is
+  called on the beat against a grid the map is unsure of. A cut near none of those is off the beat for a sure map, and
+  not judged (`onBeat: null`, counted in `unjudged`) for an unsure one; `likely` names the tempi to give (`--bpm`) to
+  judge every cut. Beats not read say which: "the sound has no steady beat (…)" — it was read, and the beat map found
+  no steady beat (its error carries `reason: 'no-steady-beat'`) — or "the beat map could not read the sound (…)"; the fix
+  is worded for whoever asked (`hints`: the API's `beatOptions: {bpm: …}`, or the command line's "add --bpm n"). A cut where no music plays (no heard hit within a beat period: a silent gap, before the music or
+  after it) is "no music here" (`music: false`, counted in `noMusic`), never off the beat — asked of the reader's `hits`:
+  a reader that gives none gets no such check, and every cut is judged against its beats. An unsure map's drop is a
+  maybe (`drop.maybe`: "Maybe a drop at 0:05.6"), and a close call is named only when the next tempo scores 0.9 of the
+  best or more. breakdown.md says the same in words. The beat map is handed the video itself and reads its sound at
+  22050 Hz mono, streamed into one array (an hour: 318 MB of samples); no full-rate copy of the sound is written. Without a beat map, without sound, or when the beat map
+  cannot read the sound (it throws: a silent track, no steady beat), the spec says the beats were not read, and why (when the beat
   map asks for one of its options, the reason says to give it as `beatOptions`); the rest of the breakdown stands. A beat map that answers in another shape refuses, naming the shape.
 - **Every verdict says why.** The breakdown is a footprintjs flowchart (probe → frames → cuts → gradual changes →
   shots → motion → stills → lettering → beats → overview → spec), and each candidate cut, gradual change and shot is
@@ -2230,7 +2279,7 @@ the default because it rarely does; there is no swap repair.
 | `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?, claims?})` | compile + render as a footprintjs pipeline, with `making-of.json` (a segmented render: one subflow per segment; the claims verdict, `check-claims`) |
 | `approveFilm({record, by, note?})` · `checkApproval(approval, inputs)` | the approval lock: approve a watched render from its making-of.json, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
 | `checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})` · `FINISHED_CHECK_NAMES` | checks on the finished file: lengths, blank runs, flash frames, hand-overs and joins, the voice, captions (`footprint-storyreel/finished` adds `ffmpegProbe`, `FINISHED_CHECKS`, `FINISHED`) |
-| `footprint-storyreel/breakdown` → `breakdown(videoFile, {out?, beatMap?, thresholds?, ffmpeg?, probe?})` · `breakdownText(spec)` · `BREAKDOWN` | a reference film as a spec to match: cuts, fades and dissolves, shots, pacing, motion, lettering (a heuristic), cuts on the beat (`beatMap(wav, {ffmpeg})`); every verdict with its evidence |
+| `footprint-storyreel/breakdown` → `breakdown(videoFile, {out?, beatMap?, beatOptions?, thresholds?, ffmpeg?, probe?, hints?})` · `breakdownText(spec)` · `BREAKDOWN` | a reference film as a spec to match: cuts, fades and dissolves, shots, pacing, motion, lettering (a heuristic), cuts on the beat (`beatMap(video, {ffmpeg})`: the reader reads the video's sound itself; `storyreel breakdown --beats`), judged by `safeBeats`; every verdict with its evidence |
 | `segmentedVideo({store, recipe, code?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir)` · `ffmpegJoin()` · `planSegments(film, {fps})` · `segmentKey(…)` · `codeFingerprint(paths)` | re-render only what changed: the picture in cached segments, joined (`renderFilm({…, video})`) |
 | `footprint-storyreel/release` → `makeRelease({targets, post, out, …})` · `loadTarget` · `checkAdapter` · `planProblems` · `TARGET_NAMES` | the post for each platform: the video in its shape, captions, thumbnail, the text to paste, checked against the platform's limits and audience |
 | `readCast(cast)` · `castText(text, cast)` · `withCast(value, cast)` | the cast: `{{role}}` in any text becomes the role's name; kits read the rest from `context.cast` |
