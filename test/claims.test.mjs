@@ -4,12 +4,12 @@
 // decide(), so the record says why.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, writeFileSync, existsSync, readFileSync, readdirSync} from 'node:fs';
+import {mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {compileFilm, evenTimings, makeFilm} from '../src/index.mjs';
-import {numbersIn, numberValue, readFacts, sourceKind, exampleScenes, findClaims, drawnClaims, drawnLines, labelSpans, claimsCount, unsourcedClaims, claimText, CLAIMS_VERDICT} from '../src/claims.mjs';
+import {numbersIn, numberValue, readFacts, sourceKind, exampleScenes, findClaims, drawnClaims, drawnLines, DRAWN, labelSpans, lingeringExamples, claimsCount, unsourcedClaims, claimText, CLAIMS_VERDICT} from '../src/claims.mjs';
 import {approveFilm, checkApproval} from '../src/approval.mjs';
 import {wordsAt, reviewPart} from '../src/review.mjs';
 import {compileLayout} from '../src/layout.mjs';
@@ -39,8 +39,10 @@ test('the numbers a text shows: footprint-narration\'s digit runs, with their si
   assert.deepEqual(numbersIn('it was −5 °C, then -3, from 5-10'), ['−5', '-3', '5', '10'], 'a minus standing on its own is the number\'s sign; one between digits is a range');
   assert.deepEqual(numbersIn('a low of –5 °C, the 10–20 range'), ['–5', '10', '20'], 'an en dash standing on its own is a sign too; between digits, a range');
   assert.equal(numberValue('–5'), -5);
-  assert.deepEqual(numbersIn('by mid-2024, pre-2020 prices'), ['2024', '2020'], 'four digits after a hyphen are a year: a number that needs a source');
-  assert.deepEqual(numbersIn('a B-52, COVID-19, an MP-3'), [], 'anything else after a hyphen after a cased letter stays a name');
+  assert.deepEqual(numbersIn('by mid-2024, pre-2020 prices, post-1990 growth'), ['2024', '2020', '1990'], 'a year after a lower-case word or a time prefix is a number that needs a source');
+  assert.deepEqual(numbersIn('Mid-2024 sales, Early-1999 and summer-2024'), ['2024', '1999', '2024'], 'a time prefix in any case (a sentence opens with it); a lower-case word');
+  assert.deepEqual(numbersIn('dates in ISO-8601, the A-1000 model, text in UTF-8'), [], 'an upper-case code with a number is a name, whatever its digits: four of them are no year after one');
+  assert.deepEqual(numbersIn('a B-52, COVID-19, an MP-3, a mid-3000 dream'), [], 'anything else after a hyphen after a cased letter stays a name: 3000 is no plausible year (1000–2199)');
   assert.deepEqual(numbersIn('no numbers here'), []);
   assert.equal(numberValue('1,000,000'), 1000000); assert.equal(numberValue('1.000.000,5'), 1000000.5); assert.equal(numberValue('16.67'), 16.67);
   assert.equal(numberValue('4,5'), 4.5, 'a decimal comma'); assert.equal(numberValue('0.125'), .125); assert.equal(numberValue('−5'), -5);
@@ -242,6 +244,29 @@ test('an example line that stays up into a real scene keeps its label there: the
   const v = (await reviewPart(f, {every: 1})).verdicts.find(x => x.check === 'claims');
   assert.deepEqual([v.verdict, v.measured.examples, v.measured.open], ['passed', 2, 0], 'labelled the whole time it is up: example data');
   assert.deepEqual(labelSpans([{text: 'x', at: 1, to: 2, scene: 0}, {text: 'y', at: 5, to: 6, scene: 1}], {examples: ['Example data', null], scenes: [{from: 0, to: 3}, {from: 3, to: 9}]}).map(l => [l.from, l.to]), [[0, 3]], 'a real scene\'s line keeps no label up');
+  const r = await reviewPart(f, {every: 1});
+  assert.ok(r.ran.includes('example-lingers') && !r.findings.some(x => x.kind === 'example-lingers'), 'the line lingers, but beside no real number: the label covers nothing it should not');
+});
+
+test('an example line that lingers into a real scene beside a real number is a finding: erase it before the scene', async () => {
+  const sb = {title: 'Shop', facts: [{value: 60, text: '60 Hz', source: 'https://example.org/rates'}],
+    scenes: [{id: 'shop', example: true, narration: 'Say a stall sells 12 cups in a morning, for the sake of the sum.'},
+      {id: 'real', narration: 'Now a real screen: it draws at 60 Hz, and we read that from its record.', say: [['60 Hz', 'sixty hertz']]}]};
+  const items = [{at: ['shop', 'Say a stall'], dur: .6, write: '12 cups', x: 800, y: 300, size: 50, align: 'center'}, {at: ['real', 'Now a real'], dur: .6, write: '60 Hz', x: 800, y: 600, size: 50, align: 'center'}];
+  const compile = story => compileFilm({storyboard: sb, recipe: {story: {kit: 'whiteboard', ...story}}, timings: evenTimings(sb, {wordSeconds: .4, tail: 1}), root});
+  const f = await compile({items}), inReal = f.clock.start('real') + 2, said = wordsAt(f, inReal).map(w => w.text);
+  assert.ok(['12 cups', '60 Hz', 'Example data'].every(w => said.includes(w)), `the reviewer's picture: the example line, the real number and the label, all up in scene real (${said})`);
+  const stretch = lingeringExamples(f.claims, {scenes: f.timings.scenes.map((sc, i) => ({from: f.clock.offsets[i], to: f.clock.offsets[i] + sc.duration})), examples: f.claims.examples, ids: ['shop', 'real']});
+  assert.deepEqual(stretch.map(g => [g.scene, g.example, g.from, +g.to.toFixed(3), [...new Set(g.numbers.map(c => c.number))]]), [['real', 'shop', f.clock.start('real'), +f.total.toFixed(3), ['60']]]);
+  const r = await reviewPart(f, {every: 1}), found = r.findings.filter(x => x.kind === 'example-lingers');
+  assert.deepEqual(found.map(x => [x.scene, x.what]), [['real', 'an example line lingers into scene real beside real numbers (60): erase it before the scene']]);
+  assert.ok(found[0].from >= f.clock.start('real') && /example data over real numbers: an example line lingers/.test(r.text), r.text);
+  assert.equal(r.verdicts.find(x => x.check === 'claims').verdict, 'passed', 'every number has its source: the finding is about what the label seems to cover, not a missing source');
+  // Erased before the scene: the label goes with the line, and the real number stands on its own.
+  const erased = await compile({erasers: {wipe: {at: ['real', 'Now a real', -0.6], dur: .5, box: [500, 220, 1100, 380]}}, items: [{...items[0], erase: 'wipe'}, items[1]]});
+  assert.ok(!wordsAt(erased, erased.clock.start('real') + 2).some(w => w.text === 'Example data'));
+  const clean = await reviewPart(erased, {every: 1});
+  assert.ok(!clean.ran.includes('example-lingers') && !clean.findings.some(x => x.kind === 'example-lingers'), 'nothing lingers: the check has nothing to read');
 });
 
 test('the words drawn in pieces are read whole: "16" + ".67 ms" is 16.67, a code token "-" then "5" is −5', async () => {
@@ -259,14 +284,37 @@ test('the words drawn in pieces are read whole: "16" + ".67 ms" is 16.67, a code
   assert.deepEqual(drawnLines([{text: 'no box'}, {text: '16', box: [0, 0, 40, 40]}, {text: '.5', box: [41, 0, 70, 40]}]), ['16.5', 'no box']);
 });
 
+test('two numbers drawn close stay two: only touching ink, or a sign or a decimal point at its digits, joins without a space', async () => {
+  // The reviewer's case: "12" and "30" drawn 4 px apart in 24-px boxes (0.17 of the height) are 12 and 30, never 1230.
+  assert.deepEqual(drawnLines([{text: '12', box: [0, 0, 30, 24]}, {text: '30', box: [34, 0, 64, 24]}]), ['12 30']);
+  assert.deepEqual(drawnLines([{text: '12', box: [0, 0, 30, 24]}, {text: '30', box: [31, 0, 61, 24]}]), ['1230'], `ink against ink (under ${DRAWN.touch} of the height) is one word drawn in pieces`);
+  // Joined by what they are, at the gaps measured off real fonts: "16" then ".67 ms" (0.10), a Menlo "-" then "5" (0.09).
+  assert.deepEqual(drawnLines([{text: '16', box: [0, 0, 40, 44]}, {text: '.67 ms', box: [44.3, 0, 140, 44]}]), ['16.67 ms'], 'a decimal point at its digits');
+  assert.deepEqual(drawnLines([{text: '16.', box: [0, 0, 48, 44]}, {text: '67', box: [53, 0, 90, 44]}]), ['16.67'], 'a decimal point after its digits');
+  assert.deepEqual(drawnLines([{text: '-', box: [0, 8, 12, 11]}, {text: '5', box: [13.8, 0, 26, 21]}]), ['-5'], 'a minus at its digits is its sign');
+  assert.deepEqual(drawnLines([{text: 'x', box: [0, 0, 20, 20]}, {text: '-', box: [26, 8, 36, 11]}, {text: '5', box: [42, 0, 54, 20]}]), ['x - 5'], 'a minus with room after it is not a sign');
+  assert.deepEqual(drawnLines([{text: 'up', box: [0, 0, 40, 20]}, {text: 'to', box: [46, 0, 70, 20]}]), ['up to'], 'words a space apart are one line, with the space');
+  // Read off a frame: two numbers 4 px apart are two claims.
+  const close = {name: 'close', story: {compile: () => ({hang: 1, draw: c => {
+    c.fillStyle = '#f3eee3'; c.fillRect(0, 0, 1600, 900); c.fillStyle = '#222'; c.font = '24px sans-serif'; c.fillText('12', 200, 300); c.fillText('30', 200 + c.measureText('12').width + 4, 300);
+  }})}};
+  const sb = {title: 'Close', facts: [{value: 12, source: 'https://example.org/a'}, {value: 30, source: 'https://example.org/b'}], scenes: [{id: 'a', narration: 'two numbers drawn close are read as two'}]};
+  const f = await compileFilm({storyboard: sb, recipe: {story: {kit: 'close'}}, timings: evenTimings(sb, {wordSeconds: .4}), kits: [close]});
+  const v = (await reviewPart(f, {every: 1})).verdicts.find(x => x.check === 'claims');
+  assert.deepEqual([v.verdict, v.measured.numbers, v.measured.sourced], ['passed', 2, 2], 'two numbers, each with its source: not one 1230 with none');
+});
+
 test('a source is a URL, a file in the root, or kept as unverified — "trust me" passes, and is counted', async () => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'storyreel-sources-'));
-  writeFileSync(path.join(dir, 'run.json'), '{"steps": []}');
+  const outer = mkdtempSync(path.join(tmpdir(), 'storyreel-sources-')), dir = path.join(outer, 'film');
+  mkdirSync(dir); writeFileSync(path.join(dir, 'run.json'), '{"steps": []}'); writeFileSync(path.join(outer, 'elsewhere.md'), '# outside the film');
   assert.equal(sourceKind('https://example.org/x', {root: dir}), 'url');
   assert.equal(sourceKind('run.json#steps[2]', {root: dir}), 'file', 'a record with a pointer into it');
   assert.equal(sourceKind('missing.csv', {root: dir}), 'unverified');
   assert.equal(sourceKind('trust me', {root: dir}), 'unverified');
-  assert.throws(() => sourceKind('../elsewhere.md', {root: dir, where: 'facts[0]'}), /facts\[0\]: source "\.\.\/elsewhere\.md" is a path outside the film's root .*: put the document inside it, or give its URL/);
+  assert.throws(() => sourceKind('../elsewhere.md', {root: dir, where: 'facts[0]'}), /facts\[0\]: source "\.\.\/elsewhere\.md" is a path outside the film's root .*: put the document inside it, or give its URL/, 'a path that is there, outside the root, refuses');
+  assert.equal(sourceKind('../missing.md', {root: dir}), 'unverified', 'a path that leads nowhere is words');
+  assert.equal(sourceKind('/r/science thread', {root: dir}), 'unverified', 'prose that starts with "/" is words too: kept as unverified, never a refusal');
+  assert.equal(sourceKind('/r/science thread#top', {root: dir}), 'unverified');
   const sb = {title: 'Sources', facts: [{value: 60, text: '60 Hz', source: 'https://example.org/rates'}, {value: 12, source: 'run.json#steps[0]'}, {value: 30, source: 'trust me'}],
     scenes: [{id: 'a', narration: 'A screen at 60 Hz, 12 runs, 30 sheep.', say: [['60 Hz', 'sixty hertz']]}]};
   const f = await compileFilm({storyboard: sb, recipe: {story: {kit: 'whiteboard', items: []}}, timings: evenTimings(sb, {wordSeconds: .4}), root: dir});
@@ -276,4 +324,6 @@ test('a source is a URL, a file in the root, or kept as unverified — "trust me
   assert.equal(v.verdict, 'passed');
   assert.equal(v.summary, '3 numbers on screen: 3 sourced (1 on a source nobody can follow: unverified), 0 in example scenes, 0 with no source');
   await assert.rejects(compileFilm({storyboard: {...sb, facts: [{value: 1, source: '/etc/hosts'}]}, recipe: {story: {kit: 'whiteboard', items: []}}, timings: evenTimings(sb, {wordSeconds: .4}), root: dir}), /source "\/etc\/hosts" is a path outside the film's root/);
+  const prose = await compileFilm({storyboard: {...sb, facts: [{value: 60, text: '60 Hz', source: '/r/science thread'}]}, recipe: {story: {kit: 'whiteboard', items: []}}, timings: evenTimings(sb, {wordSeconds: .4}), root: dir});
+  assert.deepEqual(prose.claims.facts.map(x => x.kind), ['unverified'], 'a prose source compiles, kept as unverified');
 });
