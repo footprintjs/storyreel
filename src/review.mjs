@@ -214,6 +214,16 @@ export const REVIEW_CHECKS = Object.freeze({
       if (wordsSaid(film, part.from, minAlpha) === wordsSaid(film, end, minAlpha) && alike(cellsAt(film, part.from), cellsAt(film, end))) return [];
       return [{kind: 'loop', t: onClock(film, Math.max(part.from, part.to - .001)), what: 'the end is not the start: the loop jumps'}];   // said in the part's last millisecond, so in its own scene
     }},
+  // A camera's freeze (camerawork.mjs) holds the picture while the voice goes on: a drawing the voice names under it
+  // arrives only when the freeze ends, and a mouth on screen stays still while its speaker talks.
+  'frozen-voice': {label: 'A freeze over the voice', why: 'the part has a camera freeze', when: s => (s.facts.freezes ?? 0) > 0,
+    find: ({film, window, samples}) => freezesIn(film, window).flatMap(f => {
+      const said = frozenWords(film, f), named = (film.beats ?? []).filter(b => b.t > f.at && b.t < f.until && drawsSomething(b.path)).map(b => `"${b.path}"`);
+      const what = [...(named.length ? [`the voice names ${[...new Set(named)].join(', ')} while the picture is frozen (it appears when the freeze ends)`] : []), ...(said ? [`a mouth stays still while ${said} speaks`] : [])].join('; ');
+      if (!what) return [];
+      const inside = samples.filter(x => x.t >= f.at && x.t < f.until);
+      return (inside.length ? inside : [{t: Math.max(window.from, Math.min(window.to, f.at))}]).map(x => ({kind: 'frozen-voice', t: x.t, what: `${f.path} from ${clockTenths(f.at)}: ${what}`}));
+    })},
   // The picture is frozen: the same frame for stillFor seconds or more.
   still: {label: 'Nothing changes', why: 'the part is long enough to stand still', when: s => s.facts.seconds >= s.facts.stillFor,
     find: ({samples, frozen}) => frozen.flatMap(({from, to}) => {
@@ -222,7 +232,20 @@ export const REVIEW_CHECKS = Object.freeze({
     })},
 });
 
-const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes', hook: 'no hook', 'text-density': 'too much to read', silences: 'no breath', stale: 'nothing new', loop: 'the loop jumps'};
+/** The camera's freezes that reach the window: {path, at, until}. */
+const freezesIn = (film, window) => (film.camera?.moves ?? []).filter(m => m.move === 'freeze' && m.played !== 'off' && m.until > window.from && m.at < window.to);
+/** A beat whose recipe entry draws something (not a camera word, a note, a read, the poster or a recall). */
+const drawsSomething = path => Boolean(path) && !/^(camera|notes|poster|recalls)\b/.test(path) && !/\.reads\[/.test(path);
+/** Who speaks while a freeze holds a mouth of theirs on screen (sampled 10 times a second), or null. */
+function frozenWords(film, f) {
+  for (let t = f.at; t < f.until; t += .1) {
+    const sp = film.clock.speaking?.(t);
+    if (sp && (film.mouthsAt?.(t) ?? []).some(m => m.who === (sp.speaker ?? null))) return sp.speaker ? `"${sp.speaker}"` : 'the narrator';
+  }
+  return null;
+}
+
+const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes', hook: 'no hook', 'text-density': 'too much to read', silences: 'no breath', stale: 'nothing new', loop: 'the loop jumps', 'frozen-voice': 'a freeze over the voice'};
 /** The findings as lines: "1:21.5–1:23.0 chapters · under the captions: \"requests in\"". */
 export const findingsText = findings => findings.map(f => `${clockTenths(f.from)}–${clockTenths(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}`).join('\n');
 
@@ -297,14 +320,15 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
     const shown = (w, zoomed) => inside(w.box) >= (zoomed ? .5 * Math.max(1, (w.box[2] - w.box[0]) * (w.box[3] - w.box[1])) : 1e-6);
     // Text smaller than `minHeight` of the frame (1.1 %: 12 px at 1080) cannot be read: it is texture (a photo of a page), not reading.
     const legible = w => w.box[3] - w.box[1] >= minHeight * H;
-    review.samples = times.map(t => { const zoomed = (film.focusAt?.(t)?.z ?? 1) > 1.001; return {t, words: wordsAt(film, t, {layout: framed}).filter(w => w.alpha >= minAlpha && legible(w) && shown(w, zoomed))}; });
+    review.samples = times.map(t => { const zoomed = (film.focusAt?.(t)?.z ?? 1) > 1.001 || (film.cameraAt?.(t)?.z ?? 1) > 1.001; return {t, words: wordsAt(film, t, {layout: framed}).filter(w => w.alpha >= minAlpha && legible(w) && shown(w, zoomed))}; });
     // frameHashes keys a moment by its millisecond, and the film's end can sit a hair under its own (21.2999…97 is
     // 21.300): the hashes are keyed by each sample's own time, so a check reads hashes[t].
     const pictures = frameHashes(film, {times, width: 160});
     review.hashes = Object.fromEntries(times.map(t => [t, pictures[+t.toFixed(3)]]));
     review.frozen = frozenRuns(review);
     s.facts = {from: window.from, to: window.to, seconds: +(window.to - window.from).toFixed(3), stillFor, newEvery, loop: Boolean(loop), captions: Boolean(framed?.boxes.captions), samples: times.length, words: review.samples.reduce((n, x) => n + x.words.length, 0),
-      spoken: film.timings.scenes.some((sc, i) => (sc.words ?? []).some(w => film.clock.offsets[i] + w.end > window.from && film.clock.offsets[i] + w.start < window.to))};
+      spoken: film.timings.scenes.some((sc, i) => (sc.words ?? []).some(w => film.clock.offsets[i] + w.end > window.from && film.clock.offsets[i] + w.start < window.to)),
+      ...(freezesIn(film, window).length ? {freezes: freezesIn(film, window).length} : {})};
     s.ran = []; s.hits = []; s.failed = [];
   };
   // The picks go on the review too, so a check can leave a finding to another that runs. A when() that throws is a

@@ -1,5 +1,5 @@
 // Types for footprint-storyreel (the code is plain JavaScript; these describe its public surface).
-import type {CombinedNarrativeEntry, RuntimeSnapshot} from 'footprintjs';
+import type {CombinedNarrativeEntry, RuntimeSnapshot, DecisionEvidence} from 'footprintjs';
 import type {EaseSpec} from './sub/ease.js';
 import type {MoveName, Move, MoveFeelName} from './sub/moves.js';
 import type {FeelName, Feel} from './sub/motion.js';
@@ -98,8 +98,76 @@ export interface Recipe {
   focus?: {strategy: string | string[]; feel?: string | {k: number; d: number}; safe?: [number, number, number, number]; keys: {at: Beat; on: string; size?: 'medium' | 'close' | 'insert'}[]};
   /** Words put in front of the viewer on their beat (pop: big, then a label in the corner; corner; none; or your own). */
   emphasis?: {strategy: string; feel?: string | {k: number; d: number}; words: {at: Beat; text: string; until?: Beat}[]};
+  /** Camera moves by name (camera.mjs · CAMERA_MOVES), in the order they start: one picture each, one camera (they take turns with a moving focus and the pushes). */
+  camera?: CameraMove[];
   [key: string]: unknown;
 }
+
+/** The camera moves (camera.mjs · CAMERA_MOVES). */
+export type CameraMoveName = 'pan' | 'tilt' | 'dolly-in' | 'dolly-out' | 'crane' | 'dutch' | 'truck' | 'track' | 'orbit' | 'dolly-zoom' | 'rack-focus' | 'handheld' | 'speed-ramp' | 'freeze';
+/** view: the framing; follow: a framing that follows a named thing; depth: a world's layers; texture: handheld; time: the picture's clock. */
+export type CameraFamily = 'view' | 'follow' | 'depth' | 'texture' | 'time';
+/** When a camera move starts or arrives: a beat, or seconds on the film's clock. */
+export type CameraTime = Beat | number;
+/** When a move plays: `at`, then `until` or `seconds` (left out: the move's own length; handheld: to the film's end). */
+interface CameraSpan { at: CameraTime; until?: CameraTime; seconds?: number }
+/** How a view, follow or depth move eases: a curve by name (inOut when neither is given), or a spring feel fitted to its seconds. */
+type CameraEase = {ease?: EaseSpec; feel?: never} | {ease?: never; feel?: FeelName | Feel};
+/**
+ * A camera move. view — pan (`amount` px across, + right), tilt (px down, + down), dolly-in / dolly-out (`amount` times
+ * closer / farther; `on`: toward a named thing, as far as the edges allow), crane (`amount` px it rises, `scale` times
+ * closer as it goes), dutch (`amount`: degrees the frame rolls to; 0 levels it); follow — truck (sideways) and track
+ * (both ways) follow a named thing (`on`); depth, on a world's layers — orbit (`amount`: px a layer infinitely far would slide; a layer at depth d slides amount × (1 − 1/d)),
+ * dolly-zoom (`amount`: how much the background grows behind the subject), rack-focus (from the layer `from` to the
+ * layer `on`, `amount` px of blur); texture — handheld (`amount` px of drift, `seed`); time — speed-ramp (`amount`:
+ * the picture's speed half way), freeze. A whip pan is a transition (`enter: "whip"`), not a move.
+ */
+export type CameraMove = CameraSpan & (
+  | ({move: 'pan' | 'tilt' | 'dutch' | 'orbit' | 'dolly-zoom'; amount?: number} & CameraEase)
+  | ({move: 'dolly-in' | 'dolly-out'; amount?: number; on?: string | null} & CameraEase)
+  | ({move: 'crane'; amount?: number; scale?: number} & CameraEase)
+  | ({move: 'truck' | 'track'; on: string} & CameraEase)
+  | ({move: 'rack-focus'; on: string; from?: string | null; amount?: number} & CameraEase)
+  | {move: 'handheld'; amount?: number; seed?: number; ease?: never; feel?: never}
+  | {move: 'speed-ramp'; amount?: number; ease?: never; feel?: never}
+  | {move: 'freeze'; ease?: never; feel?: never});
+/** The camera's state: the point of the frame-as-drawn it centres, its zoom (1: the whole frame) and its roll (radians, clockwise). */
+export interface CameraState { x: number; y: number; z: number; r: number }
+/** A camera move as the film played it (film.camera.moves): when (seconds), its settings, how it played, and until when what it drew lasts (null: the film's end). */
+export interface CameraMovePlayed {
+  path: string; move: CameraMoveName; family: CameraFamily; at: number; until: number;
+  played: 'move' | 'cut' | 'off' | 'kept'; lasts: number | null;
+  /** The world a depth move acted on (its recipe path). */
+  world?: string;
+  /** How far the camera scaled to keep the frame covered, when it had to (a pan at the whole frame, a dutch angle). */
+  covers?: number;
+  /** A view or follow move's resolved end framing, as the viewer sees it (and for a follow, a hash of the path it took). */
+  ends?: CameraState & {path?: string};
+  ease?: EaseSpec; feel?: FeelName | Feel;
+  [setting: string]: unknown;
+}
+/** The camera moves as played (camerawork.mjs): moves, or cuts for reduced motion — and why (the decision's evidence) — each move placed, and the plan's footprintjs narrative. */
+export interface CameraRecord {
+  motion: 'moves' | 'cuts';
+  decision: DecisionEvidence;
+  moves: CameraMovePlayed[];
+  narrative: Omit<CombinedNarrativeEntry, 'rawValue'>[];
+}
+/** What one camera move setting takes: a number in a range (its unit in words), the name of a thing in the picture, or of a world's layer. */
+export type CameraSetting = {number: readonly [number, number]; default: number; unit: string} | {name: true; default?: string | null} | {layer: true; default?: string | null};
+/** A camera move in the catalog: its family, its default length (seconds; handheld: to the film's end), its settings, what it moves, and its family's function. */
+export interface CameraMoveDef {
+  family: CameraFamily; seconds: number; params: Readonly<Record<string, Readonly<CameraSetting>>>;
+  axes(p: Readonly<Record<string, unknown>>): string[];
+  aim?(state: CameraState, p: Readonly<Record<string, unknown>>, box: [number, number, number, number] | null): Partial<CameraState>;
+  follow?(box: [number, number, number, number]): Partial<CameraState>;
+  depth?(p: Readonly<Record<string, unknown>>, layers: readonly WorldLayer[], before: {orbit: number; zoom: number; focus: number | null; blur: number}): Record<string, number>;
+  remap?(u: number, p: Readonly<Record<string, unknown>>): number;
+}
+export const CAMERA_MOVES: Readonly<Record<CameraMoveName, Readonly<CameraMoveDef>>>;
+export const CAMERA_MOVE_NAMES: readonly CameraMoveName[];
+/** A world's layer: its name and its depth (1: the subject's plane; 2 twice as far; 0.5 half way to the camera). */
+export interface WorldLayer { name: string; depth: number }
 
 /** One finding of the watching check (shots.mjs · tooMuchTooFast). */
 export type Watching = {kind: 'burst'; path: string; where: string; at: number; moments: number; seconds: number};
@@ -218,6 +286,10 @@ export interface Film {
   attention: {focus?: {strategy: string; keys: {t: number; on: string; size?: string}[]}; emphasis?: {strategy: string; words: {t: number; text: string}[]}} | null;
   /** Where the focus is at t (the camera's point and zoom, the named thing's box, how focused 0–1), or null without a focus. */
   focusAt: ((t: number) => {cx: number; cy: number; z: number; box: [number, number, number, number]; w: number}) | null;
+  /** The recipe's camera moves as played (camerawork.mjs), or null without them. */
+  camera: CameraRecord | null;
+  /** The camera's framing at t, always covering the frame (null at rest); null without camera moves. Handheld's drift is not a framing. */
+  cameraAt: ((t: number) => CameraState | null) | null;
   /** Lines shown for less time than they need to be read. */
   reading: {path: string; text: string; at: number; seconds: number; needs: number}[];
   /** Every declared read (ShotPlan.reads), timed, with what is wrong with it if anything (two at once, too late, a region not there). */
@@ -286,6 +358,15 @@ export interface StoryWorld {
   texts?(): {text: string; from: number; to: number; path: string}[];
   /** Settles once the world can draw (e.g. its images have decoded); compileFilm waits for it before drawing recalls and before returning. */
   ready?: Promise<unknown>;
+  /**
+   * Its layers, back to front (the farthest first), each at a depth: how far from the camera, as a multiple of the
+   * subject's distance. A camera's depth moves (orbit, dolly-zoom, rack-focus) draw the world layer by layer.
+   */
+  layers?: readonly WorldLayer[];
+  /** Draws one layer, by name, on a clear sheet: every layer, back to front, draws what draw does. */
+  drawLayer?(ctx: any, t: number, name: string, spot: unknown): void;
+  /** When the kit's own camera moves (seconds on the film's clock): a push note and a camera move take turns with it (the cartoon kit's camera keys). */
+  cameraMoves?: readonly {from: number; to: number}[];
 }
 
 /**
@@ -359,6 +440,8 @@ export interface CompileFilmOptions<K = Kit | ContextKit> {
   cast?: Record<string, {name: string} & Record<string, unknown>> | null;
   /** true: the compile runs as a footprintjs flowchart and the film carries `record` (default false: no record). */
   record?: boolean;
+  /** true: the recipe's camera moves are cut to their end framing, handheld off, a speed ramp in step (default false). Only those: a focus, push notes, a kit's camera and transitions play as written. */
+  reducedMotion?: boolean;
   /** Strategies of your own for the recipe's focus and emphasis (attention.mjs), by name. */
   strategies?: {focus?: Record<string, {show(ctx: any, view: {cx: number; cy: number; z: number; box: number[]; w: number}, paint: (ctx: any) => void, theme: unknown): void}>; emphasis?: Record<string, {draw(ctx: any, t: number, word: {t: number; text: string; next: number}, theme: unknown): void}>} | null;
 }
@@ -495,7 +578,9 @@ export function codeFingerprint(paths: string[], options?: {extensions?: string[
 /** What a film was made from, hashed (keys sorted first: reformatting changes nothing): film.inputs, and makeFilm adds the pacing, the voice and the kits' code. */
 export interface FilmInputs { storyboard: string; timings: string; recipe: string; strings: string | null; data: string | null; theme: string;
   /** Every file the film read through its root, by its path from the root. */
-  files: Readonly<Record<string, string>>; pacing?: string; voice?: string; code?: string }
+  files: Readonly<Record<string, string>>; pacing?: string; voice?: string; code?: string;
+  /** Present when the film's camera moves were cut for reduced motion: another film, as far as an approval goes. */
+  reducedMotion?: true }
 /** What a person approved: who, when, the render they watched, and what it was made from. */
 export interface Approval { schemaVersion: 2; approved: string; by: string; note?: string; render?: string; inputs: FilmInputs }
 /** Approve a render as it was watched, from its making-of record (the path of its making-of.json, or the object). */
@@ -541,6 +626,8 @@ export interface MakeFilmOptions<K = Kit | ContextKit> {
   expect?: {seconds?: number; tolerance?: number};
   /** A song under the film: its beat map and the fit (scene starts onto the beat, the drop on a key moment) run as stages of their own; the record keeps both. */
   music?: import('./sub/music.js').MusicOptions | null;
+  /** true: the recipe's camera moves are cut to their end framing, handheld off (as compileFilm). */
+  reducedMotion?: boolean;
 }
 export function makeFilm(options: MakeFilmOptions<Kit>): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;
 export function makeFilm(options: MakeFilmOptions<Kit | ContextKit>): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;

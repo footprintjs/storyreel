@@ -114,8 +114,10 @@ const MAX_PARTS = 256;
  *                     drop on a key moment) run as stages of their own after the pacing; a voiced cut's audio is cut to the new
  *                     lengths in the run's copy (music.mjs · fitVoice); the record's `music` keeps both records. Left out, nothing
  *                     changes.
+ * @param reducedMotion true: the recipe's camera moves are cut to their end framing, handheld off (as compileFilm);
+ *                     the record's `camera` says how they were played and why, and the film's inputs say so
  */
-export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report', code = null, check = null, expect = {}, cast = null, strategies = null, music = null}) {
+export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report', code = null, check = null, expect = {}, cast = null, strategies = null, music = null, reducedMotion = false}) {
   // The cast's names into the text before anything reads it: the pacing, the voice check, the chapters (cast.mjs).
   if (cast) { const c = readCast(cast); storyboard = withCast(storyboard, c, 'storyboard'); recipe = withCast(recipe, c, 'recipe'); if (strings) strings = withCast(strings, c, 'strings'); }
   if (check !== null && check !== 'report' && check !== 'refuse') throw new Error(`check is 'report' (the record lists what the checks on the finished file found), 'refuse' (a problem refuses the film) or left out, not ${JSON.stringify(check)}`);
@@ -179,7 +181,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       scope.seconds = +paced.scenes.reduce((n, s) => n + s.duration, 0).toFixed(3);
     },
     'compile-film': async scope => {
-      film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings, hostKeys, cast, strategies, record: true});
+      film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings, hostKeys, cast, strategies, reducedMotion, record: true});
       scope.beats = film.beats.length; scope.sounds = film.sounds.length; scope.total = +film.total.toFixed(3);
       // What the film is made from (film.inputs, and the pacing, the voice, the kits' code): an approval locks all of it.
       // Sounds placed by their peaks change what is heard, so an approval locks that too — only when it is asked for.
@@ -255,6 +257,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     // Each beat: what was said, when, and the recipe entry that asked for it.
     beats: film.beats.map(({ref, t, path}) => ({said: Array.isArray(ref) ? {scene: ref[0], phrase: ref[1], plus: ref[2] ?? 0} : ref, at: t, ...(path ? {entry: path} : {})})),
     ...(film.notes.length ? {notes: film.notes} : {}),
+    // The camera's moves as played (camerawork.mjs): moves, or cuts for reduced motion, and why; each move placed.
+    ...(film.camera ? {camera: {motion: film.camera.motion, decision: film.camera.decision, moves: film.camera.moves}} : {}),
     sounds: film.sounds.length,
     // What the sound asks of the ear (listening.mjs): the film's changes of picture and the effects against the voice.
     ...(film.listening.length || result.listening.length ? {listening: [...film.listening, ...result.listening]} : {}),

@@ -134,6 +134,10 @@
       "types": "./types/sub/attention.d.ts",
       "default": "./src/attention.mjs"
     },
+    "./camera": {
+      "types": "./types/sub/camera.d.ts",
+      "default": "./src/camera.mjs"
+    },
     "./tools": {
       "types": "./types/sub/tools.d.ts",
       "default": "./src/tools.mjs"

@@ -13,13 +13,13 @@ export function wordsAt(film: Film, t: number, options?: {layout?: ReturnType<ty
 export interface Review {film: Film; window: {from: number; to: number}; part: {from: number; to: number}; maxWords: number; minSilence: number; minAlpha: number; layout: ReturnType<typeof import('../index.js').compileLayout> | null; width: number; height: number; every: number; stillFor: number; newEvery: number;
   samples: {t: number; words: Word[]}[]; hashes: Record<number, string>; frozen: {from: number; to: number}[]; picked: string[]}
 /**
- * A check: a strategy run as its own subflow, picked when `when(scope)` is true (scope.facts: {seconds, stillFor, newEvery, loop, captions, samples, words, spoken}).
+ * A check: a strategy run as its own subflow, picked when `when(scope)` is true (scope.facts: {seconds, stillFor, newEvery, loop, captions, samples, words, spoken, freezes?: the camera freezes that reach the part, when there are any}).
  * `find` answers at once with its hits, copied as {kind, t, what}; a `when` or a `find` that throws, or a `find` that returns anything else
  * (a promise, no list, a hit without a name, a time or words), fails the review, naming the check. Hits with the same kind and `what` merge
  * into one span, so `what` names one stretch.
  */
 export interface ReviewCheck {label: string; why?: string; when(scope: any): boolean; find(review: Review): {kind: string; t: number; what: string}[]}
-export const REVIEW_CHECKS: Readonly<Record<'under-captions' | 'words-overlap' | 'cut-off' | 'hook' | 'text-density' | 'silences' | 'stale' | 'loop' | 'still', ReviewCheck>>;
+export const REVIEW_CHECKS: Readonly<Record<'under-captions' | 'words-overlap' | 'cut-off' | 'hook' | 'text-density' | 'silences' | 'stale' | 'loop' | 'frozen-voice' | 'still', ReviewCheck>>;
 /** A finding: a span on the film clock, the scene it starts in. */
 export interface Finding {kind: string; from: number; to: number; scene: string | null; what: string}
 export function findingsText(findings: Finding[]): string;
