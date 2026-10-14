@@ -924,21 +924,27 @@ spec.shots[4].motion.why.rules[1].checks;   // ['pan 0.188 ≥ 0.02 ✓', 'expla
 
 `npx storyreel breakdown reference.mp4 --out work/reference` does the same from the command line; it needs no project
 (`storyreel breakdown --help`; a failure prints where the record stopped and its last decisions). It needs **FFmpeg 5.1
-or later** (it reads frames with `-fps_mode`).
+or later** (it reads frames with `-fps_mode`, and hands FFmpeg the stills' selection in a file — `-/filter` from FFmpeg 7,
+`-filter_script` before — since a long film's runs past what one argument may hold).
 
 - **What it writes:** `breakdown.json` (the spec), `breakdown.md` (the same in plain words), a contact sheet per shot
   (`shots/shot-01.png`: 3 to 6 stills across it, labelled in yellow when it moves), `overview.png` (one still of every
   shot) and `record.json`.
-- **Times you can trust.** Every frame is read at one constant rate on the file's own timestamps (the nominal rate, a
-  frame repeated where the file has none), so a variable-rate file — a phone's, a screen recording — keeps its cuts where
-  they are; when the average and the nominal rates differ the spec says so under `warnings` (and the record keeps it).
-  A picture stored on its side is read as it is shown: `video.width` and `video.height` are the shown size, with its
-  `rotation`. A file with sound only refuses: there is no picture to break down.
+- **Times you can trust.** Every frame is read at one constant rate on the file's own timestamps, from where the file's
+  clock starts (the nominal rate, a frame repeated where the file has none), so frame k is the frame a player shows at
+  k / rate: a variable-rate file — a phone's, a screen recording — keeps its cuts on the frame shown then, and so does a
+  picture that starts after its sound. A repeated frame takes no part in finding cuts (a one-frame flash read twice is
+  one flash). When the average and the nominal rates differ the spec says so under `warnings` (and the record keeps
+  it); so it does when the file names no length (`video.lengthFrom: 'frames'`: counted from the frames read). A picture
+  stored on its side is read as it is shown: `video.width` and `video.height` are the shown size, with its `rotation`.
+  A file with sound only refuses: there is no picture to break down.
 - **Cuts, and their kinds.** A hard cut is one frame whose change is a peak: 12 grey levels or more, and 3 times the
   change of the frames around it. A flash (one frame unlike the frames either side, which are alike) is reported apart
   and splits no shot. **Fades** are found first, from every run of one colour: the picture fading into it and out of it,
-  followed as a trend (an eased fade moves too little in a frame to rise every frame) and at least 0.2 s long — so a
-  fade's own last step into black, however sudden, is a step of the fade (`fade-step` in the record), never a cut. A fade
+  followed as a trend (an eased fade moves too little in a frame to rise every frame), at least 0.2 s long, and covering
+  most of the way before its last step (the picture at that step has at most half its spread): so a fade's own last step
+  into black, however sudden, is a step of the fade (`fade-step` in the record), never a cut — and a picture that dims a
+  little and then cuts to black was cut. A fade
   in and out round a hold of at most 1 s is a **dip**; a lone **fade-in** or **fade-out** owns its hold. A stretch where the
   picture keeps changing is a **dissolve** when its middle frame is the even mix of its ends, the change runs one way, and
   no shift of the whole picture explains it; anything else that changes is motion. A fade that opens or closes the film
@@ -952,21 +958,25 @@ or later** (it reads frames with `-fps_mode`).
   way the camera pans or tilts, or none when the shift nets out); or **inside** (things move while the frame holds). The
   film's motion every 0.5 s is in `spec.motion.curve`.
 - **Lettering is a heuristic, and says so:** rows of sharp strokes that form lines (at least twice as wide as tall, so
-  an icon or a face is left out), covering 0.8% of a still or more. A mark that stays put in a corner of every still of a
-  shot — a channel's logo, a watermark — is left out (`text.mark` says how much). It never reads the words (no OCR).
-- **Beats.** `beatMap(audioFile, {ffmpeg})` → `{bpm, beats: [seconds], drop?, confidence?, alternatives?: [{bpm, score}]}`
-  is handed the video's sound as a WAV (in a folder removed after) and this run's FFmpeg, so a beat map such as
-  beats.mjs's fits as it is (`{beatMap}`, or `{beatMap: f => beatMap(f, {ffmpeg})}`). The spec reports the BPM (and how
+  an icon or a face is left out), covering 0.8% of a still or more. The film's logo is left out (`text.mark` says how
+  much): a mark that stays put in a corner of every still of a shot, in at least two shots and a quarter of them. A name
+  in a corner for one shot (a lower third) is lettering. It never reads the words (no OCR).
+- **Beats.** `beatMap(audioFile, {...beatOptions, ffmpeg})` → `{bpm, beats: [seconds], drop?, confidence?, alternatives?:
+  [{bpm, score}]}` is handed the video's sound as a WAV (in a folder removed after), the beat map's own options
+  (`beatOptions`) and this run's FFmpeg, so a beat map such as beats.mjs's fits as it is (`{beatMap}`, or
+  `{beatMap: f => beatMap(f, {ffmpeg})}`): `breakdown(file, {beatMap, beatOptions: {bpm: 120}})` lays its grid at 120 BPM
+  where it finds no tempo of its own. The spec reports the BPM (and how
   sure: `confidence`, and `close` when another tempo scores 90% of the best or more), the beats, the drop and the shot on
   screen there, and which cuts land within 0.05 s of a beat. Without a beat map, without sound, or when the beat map
-  cannot read the sound (it throws: a silent track, no tempo), the spec says the beats were not read, and why; the rest
-  of the breakdown stands. A beat map that answers in another shape refuses, naming the shape.
+  cannot read the sound (it throws: a silent track, no tempo), the spec says the beats were not read, and why (when the beat
+  map asks for one of its options, the reason says to give it as `beatOptions`); the rest of the breakdown stands. A beat map that answers in another shape refuses, naming the shape.
 - **Every verdict says why.** The breakdown is a footprintjs flowchart (probe → frames → cuts → gradual changes →
   shots → motion → stills → lettering → beats → overview → spec), and each candidate cut, gradual change and shot is
-  decided with `decide()`, 100 at a time (a subflow that loops over batches, so the decisions running together stay
-  few): each verdict in the spec carries every rule tried, its measures against the thresholds, and `record.json`
-  keeps the run's narrative — `[Condition]: It evaluated Rule 2 "the picture jumps in one frame, far more than the frames
-  around it change": jump 54.7 gte 12 ✓, ratio 54.7 gte 3 ✓, and chose cuts/each~1/cut.`
+  decided with `decide()`, 100 at a time (a subflow that loops over batches — "left 262 gt 0 ✓, and chose cuts/decide the
+  next 100" — so the decisions running together stay few): each verdict in the spec carries every rule tried, its
+  measures against the thresholds, and `record.json` keeps the run's narrative, every line naming its candidate by number
+  and time — `[Condition]: It evaluated Rule 2 "cut candidate 2 at 1.6 s: the picture jumps in one frame, far more than
+  the frames around it change": jump 54.7 gte 12 ✓, ratio 54.7 gte 3 ✓, and chose cuts/each~1/cut.`
 - **The thresholds** are `BREAKDOWN`: `thresholds: {cutJump: 20}` changes one; an unknown name refuses, naming them.
 - **Memory.** It keeps about 4 KB a frame of measures, and a shot's stills only while its sheet is drawn (stills are read
   in one pass and handed over as they come; the overview keeps a small copy of one per shot). Measured: a 4-minute film
@@ -974,7 +984,9 @@ or later** (it reads frames with `-fps_mode`).
 - **Limits.** A wipe, a push or a zoom between shots reads as motion, often as a short moving shot between two cuts. A
   dissolve between two shots that both move is found only where its middle is still the mix of its ends. A zoom is not
   told apart from other motion, and a slow change (a board drawn stroke by stroke) can read as still. Lettering is a
-  guess from strokes: a row of drawn stars can pass for it.
+  guess from strokes: a row of drawn stars can pass for it. Heavy grain through a dip keeps the black from reading as one
+  colour, so the dip can be missed (and read as motion). A synthetic texture that moves (a scrolling pattern) has no
+  stable picture to compare, so its cuts and dissolves are less sure than a filmed scene's.
 
 ## The compile record
 

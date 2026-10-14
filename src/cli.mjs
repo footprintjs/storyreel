@@ -11,8 +11,9 @@ const BREAKDOWN_USAGE = 'storyreel breakdown <video.mp4> [--out dir]   a referen
 /** What a failed breakdown's record says (error.record): where it stopped, and its last decisions with their evidence. */
 function recordSoFar(record) {
   if (!Array.isArray(record) || !record.length) return '';
+  // The error itself is said once, above: the record's own line for it (an error entry) is not repeated.
   const last = record.at(-1), decisions = record.filter(e => e.type === 'condition').slice(-5);
-  return `\nThe record so far (${record.length} ${record.length === 1 ? 'entry' : 'entries'}) stops in "${last.stageName ?? last.stageId ?? '?'}": ${last.text}${decisions.length ? `\nIts last decisions:${decisions.map(e => `\n  ${e.text}`).join('')}` : ''}`;
+  return `\nThe record so far (${record.length} ${record.length === 1 ? 'entry' : 'entries'}) stops in "${last.stageName ?? last.stageId ?? '?'}"${last.type === 'error' ? '.' : `: ${last.text}`}${decisions.length ? `\nIts last decisions:${decisions.map(e => `\n  ${e.text}`).join('')}` : ''}`;
 }
 
 /** storyreel breakdown <video> [--out dir]: the spec, its plain words and its files (breakdown.mjs · breakdown). */

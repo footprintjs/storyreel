@@ -36,31 +36,38 @@ export const FINISHED = Object.freeze({
 });
 
 /**
- * The default probe: FFmpeg and ffprobe (beside the FFmpeg given, or on the PATH). probe(file) → {seconds, video: {seconds, fps, rate,
- * width, height, rotation, frames}, audio: {seconds} | null} — fps the average frame rate, rate the nominal one (they
- * differ in a variable-rate file), width and height as the picture is shown (FFmpeg turns a picture stored on its side
- * as it decodes, so a rotation of ±90° swaps the stored size); frames(file, {width, height, fps?}) → every frame as grey
- * levels (limited range, as the video stores them) — with `fps`, resampled to that constant rate on the file's own
- * timestamps (a frame repeated where the file has none), so frame k is at k / fps whatever the file's timing;
+ * The default probe: FFmpeg and ffprobe (beside the FFmpeg given, or on the PATH). probe(file) → {seconds, start, video:
+ * {seconds, fps, rate, width, height, rotation, frames}, audio: {seconds} | null} — start where the file's clock starts
+ * (a player's 0), fps the average frame rate, rate the nominal one (they differ in a variable-rate file), width and
+ * height as the picture is shown (FFmpeg turns a picture stored on its side as it decodes, so a rotation of ±90° swaps
+ * the stored size); frames(file, {width, height, fps?, start?}) → every frame as grey levels (limited range, as the video
+ * stores them) — with `fps`, resampled to that constant rate on the file's own timestamps from `start` (a frame
+ * repeated where the file has none), so frame k is the frame a player shows at k / fps whatever the file's timing;
  * sound(file, {rate}) → mono samples.
  */
 export function ffmpegProbe({ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', ffprobe = process.env.FFPROBE_BIN || besideOrPath(ffmpeg)} = {}) {
-  const run = (cmd, args) => { const r = spawnSync(cmd, args, {encoding: 'utf8', maxBuffer: 1 << 26}); if (r.error || r.status !== 0) throw new Error(`${cmd} could not read the file: ${r.error?.message ?? String(r.stderr).slice(-300)}`); return r.stdout; };
+  const run = (cmd, args, file) => {
+    const r = spawnSync(cmd, args, {encoding: 'utf8', maxBuffer: 1 << 26});
+    if (r.error?.code === 'ENOENT') throw new Error(`${cmd} could not read the file: there is no ${cmd} there — install FFmpeg (it brings ffprobe), or name another ffprobe with FFPROBE_BIN`);
+    if (r.error || r.status !== 0) throw new Error(`${cmd} could not read the file ${file}: ${(r.error?.message ?? String(r.stderr)).trim().slice(-300)} — give a video file FFmpeg reads (try \`${cmd} "${file}"\` to see why it does not)`);
+    return r.stdout;
+  };
   return {
     name: 'ffmpeg',
     probe(file) {
-      const info = JSON.parse(run(ffprobe, ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', file]));
+      const info = JSON.parse(run(ffprobe, ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', file], file));
       const v = info.streams.find(s => s.codec_type === 'video'), a = info.streams.find(s => s.codec_type === 'audio');
       if (!v) throw new Error(`checkVideo: ${file} has no picture`);
       const rateOf = text => { const [n, d] = String(text).split('/').map(Number); return d ? n / d : n; };
       const fps = rateOf(v.avg_frame_rate && v.avg_frame_rate !== '0/0' ? v.avg_frame_rate : v.r_frame_rate), rate = rateOf(v.r_frame_rate);
       const rotation = Number(v.side_data_list?.find(x => x.rotation !== undefined)?.rotation ?? v.tags?.rotate ?? 0) || 0, turned = Math.abs(rotation) % 180 === 90;
-      return {seconds: Number(info.format.duration), video: {seconds: Number(v.duration ?? info.format.duration), fps, rate: Number.isFinite(rate) && rate > 0 ? rate : fps,
+      const start = Number(info.format.start_time);
+      return {seconds: Number(info.format.duration), start: Number.isFinite(start) ? start : 0, video: {seconds: Number(v.duration ?? info.format.duration), fps, rate: Number.isFinite(rate) && rate > 0 ? rate : fps,
         width: turned ? v.height : v.width, height: turned ? v.width : v.height, rotation, frames: Number(v.nb_frames) || null},
         audio: a ? {seconds: Number(a.duration ?? info.format.duration)} : null};
     },
-    async frames(file, {width, height, fps = null}, each) {
-      const resample = fps ? [`fps=${fps}`] : [], vf = [...resample, `scale=${width}:${height}:flags=area`, 'format=gray'].join(',');
+    async frames(file, {width, height, fps = null, start = null}, each) {
+      const resample = fps ? [`fps=fps=${fps}${start !== null ? `:start_time=${start}` : ''}`] : [], vf = [...resample, `scale=${width}:${height}:flags=area`, 'format=gray'].join(',');
       const size = width * height, ff = spawn(ffmpeg, ['-v', 'error', '-i', file, '-vf', vf, ...(fps ? ['-fps_mode', 'passthrough'] : []), '-f', 'rawvideo', 'pipe:1'], {stdio: ['ignore', 'pipe', 'pipe']});
       // Each frame is filled in place from the chunks as they come (no buffer grown chunk by chunk), and handed over whole.
       let grey = new Uint8Array(size), filled = 0, index = 0, err = '';

@@ -60,15 +60,17 @@ function compareFrames(f, before, grey) {
 
 /**
  * Read every frame of the file once (the probe's frames, `width` pixels wide, resampled to `rate` frames a second on the
- * file's own timestamps, so a variable-rate file keeps its times: frame k is at k / rate) into the measures kept:
+ * file's own timestamps from `start`, where its clock starts — so frame k is the frame a player shows at k / rate, a
+ * variable-rate file's too) into the measures kept:
  * d[k] (the change from frame k-1 to k, 0–255), spread[k] (one colour under about 1.5), share[k] (how much of the grid changed at once),
  * cells[k] (the change in each grid cell), thumbs[k], cols[k] and rows[k]. Frame k is at k / fps.
  */
-export async function readFootage(probe, file, meta, {width = 160, rate = meta.video.fps} = {}) {
+export async function readFootage(probe, file, meta, {width = 160, rate = meta.video.fps, start = meta.start ?? 0} = {}) {
   const W = width, H = Math.max(2, 2 * Math.round(width * meta.video.height / meta.video.width / 2));
-  const f = {fps: rate, W, H, layout: layoutOf(W, H), n: 0, d: [0], share: [0], cells: [new Float32Array(GRID.cols * GRID.rows)], spread: [], thumbs: [], cols: [], rows: []};
+  // Read faster than the file's average rate, some frames are the one before again (a repeat): cut detection skips them.
+  const f = {fps: rate, repeats: rate > meta.video.fps * 1.01, W, H, layout: layoutOf(W, H), n: 0, d: [0], share: [0], cells: [new Float32Array(GRID.cols * GRID.rows)], spread: [], thumbs: [], cols: [], rows: []};
   let before = null;
-  f.n = await probe.frames(file, {width: W, height: H, fps: rate}, (_, grey) => {
+  f.n = await probe.frames(file, {width: W, height: H, fps: rate, start}, (_, grey) => {
     measureFrame(f, grey);
     if (before) compareFrames(f, before, grey);
     before = grey;
@@ -126,27 +128,39 @@ export function moveBetween(f, a, b) {
 // ── Candidates for a cut, and the fades ────────────────────────────────────────────────────────────────────
 
 /**
- * How much of a one-frame change lasts: the frame after it against the frame before it (a cut: about 1; a flash, the
- * picture back as it was: near 0). Both ways round, since the flash frame may be either side of the biggest change:
- * `frame` is the one that would be the flash (k, or k − 1 when the change into k is the flash ending).
+ * The frames cut detection looks at: every frame — or, when the frames were read faster than the file's average rate
+ * (readFootage · repeats), only those that differ from the frame before. A repeat is the same picture again: counted, a
+ * one-frame flash read twice over would be two cuts with a sliver of a shot between.
  */
-function lasting(f, k) {
-  const after = k + 1 < f.n ? thumbDiff(f, k - 1, k + 1) / Math.max(thumbDiff(f, k - 1, k), 1) : Infinity;
-  const before = k >= 2 ? thumbDiff(f, k - 2, k) / Math.max(thumbDiff(f, k - 2, k - 1), 1) : Infinity;
-  const least = Math.min(after, before);
-  return {value: Number.isFinite(least) ? least : 1, frame: before < after ? k - 1 : k};
+function distinctFrames(f) {
+  if (!f.repeats) return Array.from({length: f.n}, (_, k) => k);
+  const out = [0];
+  for (let k = 1; k < f.n; k++) if (f.d[k] > 0) out.push(k);
+  return out;
 }
 
-/** Every frame whose change is a peak at least half a cut's, with its jump, the median change around it, and their ratio. */
-function peaks(f, {cutJump, cutRatio}) {
-  const out = [], reach = Math.max(3, Math.round(f.fps / 3));
-  for (let k = 1; k < f.n; k++) {
-    const jump = f.d[k];
-    if (!(jump >= f.d[k - 1] && jump > (f.d[k + 1] ?? -Infinity)) || jump < cutJump / 2) continue;
+/**
+ * How much of a one-frame change lasts (frames as `seq` lists them, seq[i] the change's): the frame after it against the
+ * frame before it (a cut: about 1; a flash, the picture back as it was: near 0). Both ways round, since the flash may be
+ * either side of the biggest change: `frame` is the frame that would be the flash, `end` the frame the picture comes back on.
+ */
+function lasting(f, seq, i) {
+  const after = i + 1 < seq.length ? thumbDiff(f, seq[i - 1], seq[i + 1]) / Math.max(thumbDiff(f, seq[i - 1], seq[i]), 1) : Infinity;
+  const before = i >= 2 ? thumbDiff(f, seq[i - 2], seq[i]) / Math.max(thumbDiff(f, seq[i - 2], seq[i - 1]), 1) : Infinity;
+  const least = Math.min(after, before), back = before < after;
+  return {value: Number.isFinite(least) ? least : 1, frame: back ? seq[i - 1] : seq[i], end: back ? seq[i] : seq[i + 1] ?? seq[i] + 1};
+}
+
+/** Every frame (of `seq`) whose change is a peak at least half a cut's, with its jump, the median change around it, and their ratio. */
+function peaks(f, seq, {cutJump, cutRatio}) {
+  const out = [], reach = Math.max(3, Math.round(f.fps / 3)), d = i => f.d[seq[i]];
+  for (let i = 1; i < seq.length; i++) {
+    const jump = d(i);
+    if (!(jump >= d(i - 1) && jump > (i + 1 < seq.length ? d(i + 1) : -Infinity)) || jump < cutJump / 2) continue;
     const near = [];
-    for (let j = Math.max(1, k - reach); j <= Math.min(f.n - 1, k + reach); j++) if (Math.abs(j - k) > 1) near.push(f.d[j]);
+    for (let j = Math.max(1, i - reach); j <= Math.min(seq.length - 1, i + reach); j++) if (Math.abs(j - i) > 1) near.push(d(j));
     const around = median(near), ratio = jump / Math.max(around, 1);
-    if (ratio >= cutRatio / 2) out.push({k, jump, around, ratio});
+    if (ratio >= cutRatio / 2) out.push({k: seq[i], i, jump, around, ratio});
   }
   return out;
 }
@@ -172,21 +186,26 @@ const wobble = v => Math.max(.3, .03 * v);
  * The fade into a run of one colour starting at p: back from p while each frame before had at least the spread of the one
  * after it (within a wobble: a fade eased in or out moves too little in a frame to rise every frame), no further than
  * `lo`; then the frames still at the picture's own level are left out, so the fade starts where the picture starts to
- * go. [start, p], or null when it is shorter than `minFade` frames (a cut into the colour).
+ * go. [start, p], or null when it is shorter than `minFade` frames or does not cover most of the way (covered): a cut.
  */
 function fadeInto(f, p, lo, minFade) {
   let s = p; while (s - 1 >= lo && f.spread[s - 1] >= f.spread[s] - wobble(f.spread[s])) s--;
   let top = 0; for (let k = s; k <= p; k++) top = Math.max(top, f.spread[k]);
   let start = s; for (let k = s; k < p; k++) if (f.spread[k] >= top - wobble(top)) start = k;
-  return p - start >= minFade ? [start, p] : null;
+  return p - start >= minFade && covered(f.spread[p - 1], top) ? [start, p] : null;
 }
 /** The fade out of a run of one colour ending at q, the same forward, no further than `hi`: [q, end], or null. */
 function fadeOutOf(f, q, hi, minFade) {
   let e = q; while (e + 1 <= hi && f.spread[e + 1] >= f.spread[e] - wobble(f.spread[e])) e++;
   let top = 0; for (let k = q; k <= e; k++) top = Math.max(top, f.spread[k]);
   let end = e; for (let k = e; k > q; k--) if (f.spread[k] >= top - wobble(top)) end = k;
-  return end - q >= minFade ? [q, end] : null;
+  return end - q >= minFade && covered(f.spread[q + 1], top) ? [q, end] : null;
 }
+/**
+ * A fade covers most of the way to its colour before its last step (into the colour) or after its first (out of it): the
+ * picture at that step has at most half the spread it had. A picture that dims a little and then cuts to black was cut.
+ */
+const covered = (atStep, top) => atStep <= top / 2;
 
 /**
  * The fades: around every run of one colour, the fade into it and the fade out of it, each found by following the
@@ -213,15 +232,15 @@ function fadeHolding(fades, k, fps) {
  * The candidates for a cut — every frame whose change is a peak at least half a cut's (`cutJump`, `cutRatio`) — with what
  * a rule reads: `jump` (its change, 0–255), `around` (the median change of the frames around it), `ratio` (jump over
  * around, around taken as at least 1), `lasting`, and `fade` (the length of the fade the change is a step of, or 0); and
- * `flashFrame`, the frame that would be a flash. Near misses are candidates too, so the record says why each was not a
+ * `flashFrame` and `flashEnd`, the frame that would be a flash and the frame the picture comes back on. Near misses are candidates too, so the record says why each was not a
  * cut. Also the fades (fadesOf), found first, so a fade's last step into its colour is never taken for a cut.
  */
 export function cutsAndFades(f, t) {
-  const found = peaks(f, t), between = ({k}) => f.spread[k - 1] >= t.blank && f.spread[k] >= t.blank;
+  const seq = distinctFrames(f), found = peaks(f, seq, t), between = ({k}) => f.spread[k - 1] >= t.blank && f.spread[k] >= t.blank;
   const fades = fadesOf(f, found.filter(p => p.jump >= t.cutJump && p.ratio >= t.cutRatio && between(p)).map(p => p.k), t);
-  const cuts = found.map(({k, jump, around, ratio}) => {
-    const last = lasting(f, k);
-    return {kind: 'cut', at: round(k / f.fps, 3), frames: [k - 1, k], flashFrame: last.frame,
+  const cuts = found.map(({k, i, jump, around, ratio}) => {
+    const last = lasting(f, seq, i);
+    return {kind: 'cut', at: round(k / f.fps, 3), frames: [k - 1, k], flashFrame: last.frame, flashEnd: last.end,
       measures: {jump: round(jump, 1), around: round(around, 1), ratio: round(ratio, 1), lasting: round(last.value), fade: round(fadeHolding(fades, k, f.fps), 3)}};
   });
   return {cuts, fades};

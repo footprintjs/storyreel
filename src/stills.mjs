@@ -1,9 +1,12 @@
 /**
  * Stills, for breakdown.mjs: colour frames of a video read in one FFmpeg pass and handed over as they come (so the caller
  * holds one shot's stills at a time, never the film's), and how much of a shot's stills looks like lettering — a
- * heuristic, never OCR.
+ * heuristic, never OCR — leaving out a logo that stays in a corner across the film's shots.
  */
-import {spawn} from 'node:child_process';
+import {spawn, spawnSync} from 'node:child_process';
+import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
 
 /**
  * One select expression for many frames, `eq(n,k)` for each: summed as a balanced tree, so its depth grows as log₂ of
@@ -16,16 +19,45 @@ export function selectFrames(frames) {
 }
 
 /**
- * Colour stills of the given frames, `width` × `height`, in one FFmpeg pass: the video resampled to `rate` frames a
- * second (as footage.mjs · readFootage reads it, so frame k is the same frame in both), the frames selected by number,
- * and each handed to `each(frame, {width, height, rgb})` as it comes, in frame order. `each` may be async: the next
- * still is read once it settles. Returns how many came.
+ * How an FFmpeg takes a filter from a file: `-/filter:v file` from FFmpeg 7 on, `-filter_script:v file` before it (7 deprecated
+ * it, and later ones dropped it). Asked once per FFmpeg; a version it cannot read (a build from source) is taken as new.
  */
-export async function eachStill(ffmpeg, file, frames, {width, height, rate}, each) {
+const scriptOptions = new Map();
+export function filterFromFile(ffmpeg) {
+  if (!scriptOptions.has(ffmpeg)) {
+    const major = Number(/version n?(\d+)\./.exec(spawnSync(ffmpeg, ['-version'], {encoding: 'utf8'}).stdout ?? '')?.[1]);
+    scriptOptions.set(ffmpeg, Number.isFinite(major) && major < 7 ? '-filter_script:v' : '-/filter:v');
+  }
+  return scriptOptions.get(ffmpeg);
+}
+
+/**
+ * What FFmpeg is run with to read the stills: the filter (the video resampled to `rate` frames a second from `start`, as
+ * footage.mjs · readFootage reads it, so frame k is the same frame in both; the frames selected by number; scaled) goes
+ * in a file, `script`, since a long film's selection runs past what one argument may hold (131,072 bytes on Linux).
+ * Returns {args, filter}.
+ */
+export function stillsArgs({ffmpeg, file, frames, width, height, rate, start = 0, script}) {
+  const filter = `fps=fps=${rate}:start_time=${start},select='${selectFrames(frames)}',scale=${width}:${height}:flags=area`;
+  return {filter, args: ['-v', 'error', '-i', file, filterFromFile(ffmpeg), script, '-fps_mode', 'passthrough', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1']};
+}
+
+/**
+ * Colour stills of the given frames, `width` × `height`, in one FFmpeg pass (stillsArgs), each handed to
+ * `each(frame, {width, height, rgb})` as it comes, in frame order. `each` may be async: the next still is read once it
+ * settles. Returns how many came.
+ */
+export async function eachStill(ffmpeg, file, frames, {width, height, rate, start = 0}, each) {
   const want = [...new Set(frames)].sort((a, b) => a - b), size = width * height * 3;
   if (!want.length) return 0;
-  const vf = `fps=${rate},select='${selectFrames(want)}',scale=${width}:${height}:flags=area`;
-  const ff = spawn(ffmpeg, ['-v', 'error', '-i', file, '-vf', vf, '-fps_mode', 'passthrough', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], {stdio: ['ignore', 'pipe', 'pipe']});
+  const dir = mkdtempSync(path.join(tmpdir(), 'storyreel-stills-')), script = path.join(dir, 'filter.txt');
+  try { return await readStills(ffmpeg, stillsArgs({ffmpeg, file, frames: want, width, height, rate, start, script}), {script, want, size, width, height}, each); } finally { rmSync(dir, {recursive: true, force: true}); }
+}
+
+/** One FFmpeg pass over the stills: the filter written to its file, the frames read off the pipe and handed over. */
+async function readStills(ffmpeg, {args, filter}, {script, want, size, width, height}, each) {
+  writeFileSync(script, filter);
+  const ff = spawn(ffmpeg, args, {stdio: ['ignore', 'pipe', 'pipe']});
   // A still is filled in place from the chunks as they come (no buffer grown chunk by chunk), and handed over whole.
   let rgb = new Uint8Array(size), filled = 0, err = '', i = 0;
   ff.stderr.on('data', b => { err += b; });
@@ -47,8 +79,9 @@ export async function eachStill(ffmpeg, file, frames, {width, height, rate}, eac
  * lettering is three or more such blocks side by side. Returns {across, down, runs: [{row, from, to}]} in blocks (to
  * exclusive).
  */
+export function strokeRuns(still, options) { return strokeRunsOf(still, options); }
 let greyScratch = new Float32Array(0);
-export function strokeRuns({width, height, rgb}, {edge = 48, block = 8} = {}) {
+function strokeRunsOf({width, height, rgb}, {edge = 48, block = 8} = {}) {
   // One grey buffer, grown when a still needs more and used for every still after: a still at a time, so none is shared.
   if (greyScratch.length < width * height) greyScratch = new Float32Array(width * height);
   const grey = greyScratch;
@@ -88,23 +121,45 @@ function lines(runs) {
   return [...shapes.values()].filter(sh => sh.to - sh.from >= 2 * (sh.bottom - sh.top + 1)).flatMap(sh => sh.runs);
 }
 
+/** A shot's stills read for lettering: each still's rows of strokes in lines (strokeRuns, lines). Small: kept for every shot. */
+export function readLettering(stills) {
+  return stills.map(st => { const r = strokeRunsOf(st); return {...r, runs: lines(r.runs)}; });
+}
+
+/** Whether a row of strokes lies inside a corner quarter of the frame (`corner` of it across and down). */
+const inCorner = ({row, from, to}, {across, down}, corner) => (to <= across * corner || from >= across * (1 - corner)) && (row < down * corner || row >= down * (1 - corner));
+
+/** The blocks of a shot's corner marks that stay put: in a corner, stroke-like in every one of its stills (two or more). */
+export function cornerMarks(reads, {corner = .25} = {}) {
+  if (reads.length < 2 || !reads[0].across) return new Set();
+  const {across} = reads[0], seen = new Map();
+  for (const r of reads) for (const run of r.runs) if (inCorner(run, r, corner)) for (let bx = run.from; bx < run.to; bx++) { const k = run.row * across + bx; seen.set(k, (seen.get(k) ?? 0) + 1); }
+  return new Set([...seen].filter(([, n]) => n === reads.length).map(([k]) => k));
+}
+
+/**
+ * A logo: the corner blocks that stay put in a shot (cornerMarks) in at least two shots and a quarter of them. Lettering in
+ * a corner for one shot (a name at the bottom left) is lettering; a mark that stays across the film is the channel's.
+ */
+export function logoOf(marksByShot) {
+  const count = new Map(), least = Math.max(2, Math.ceil(marksByShot.length / 4));
+  for (const marks of marksByShot) for (const k of marks) count.set(k, (count.get(k) ?? 0) + 1);
+  return new Set([...count].filter(([, n]) => n >= least).map(([k]) => k));
+}
+
 /**
  * How much of a shot looks lettered — a heuristic, never OCR: the most any of its stills shows of rows of strokes in
- * lines (strokeRuns, lines), leaving out a mark that stays put in a corner (a channel's logo, a watermark): a row of strokes inside a corner quarter of the
- * frame whose blocks are stroke-like in every still (two stills or more). Returns {area, mark}, each a share of the frame:
- * the lettering, and the corner mark left out.
+ * lines (readLettering), leaving out a row that is mostly the film's logo (logoOf). Returns {area, mark}, each a share
+ * of the frame: the lettering, and the logo left out.
  */
-export function lettering(stills, {corner = .25} = {}) {
-  const read = stills.map(s => { const r = strokeRuns(s); return {...r, runs: lines(r.runs)}; });
-  if (!read.length || !read[0].across || !read[0].down) return {area: 0, mark: 0};
-  const {across, down} = read[0], seen = new Uint16Array(across * down);
-  for (const r of read) for (const run of r.runs) for (let bx = run.from; bx < run.to; bx++) seen[run.row * across + bx]++;
-  const inCorner = run => (run.to <= across * corner || run.from >= across * (1 - corner)) && (run.row < down * corner || run.row >= down * (1 - corner));
-  const stays = run => { let fixed = 0; for (let bx = run.from; bx < run.to; bx++) if (seen[run.row * across + bx] === read.length) fixed++; return fixed * 2 >= run.to - run.from; };
+export function lettering(reads, logo = new Set()) {
+  if (!reads.length || !reads[0].across || !reads[0].down) return {area: 0, mark: 0};
+  const {across, down} = reads[0];
+  const isLogo = run => { let hits = 0; for (let bx = run.from; bx < run.to; bx++) if (logo.has(run.row * across + bx)) hits++; return hits * 2 >= run.to - run.from; };
   let area = 0, mark = 0;
-  for (const r of read) {
+  for (const r of reads) {
     let kept = 0, left = 0;
-    for (const run of r.runs) { if (read.length >= 2 && inCorner(run) && stays(run)) left += run.to - run.from; else kept += run.to - run.from; }
+    for (const run of r.runs) { if (isLogo(run)) left += run.to - run.from; else kept += run.to - run.from; }
     area = Math.max(area, kept / (across * down)); mark = Math.max(mark, left / (across * down));
   }
   return {area, mark};

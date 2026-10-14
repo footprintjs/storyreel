@@ -271,7 +271,8 @@ import type {BeatReader, BreakdownSpec} from '../types/sub/breakdown.js';
 const beats: BeatReader = async () => ({bpm: 120, beats: Object.freeze([0.5, 1]), drop: null, confidence: .8, alternatives: [{bpm: 60, score: .9}]});
 const wrapped: BeatReader = (file, {ffmpeg}) => ({bpm: 120, beats: [file.length, ffmpeg.length]});
 export const brokenDown = breakdown('ref.mp4', {out: 'ref', beatMap: beats, thresholds: {cutJump: 15}}).then(r => r.spec.shots.map(s => `${s.motion.verdict} ${s.seconds} ${s.in.also?.join() ?? ''}`));
-export const viaWrapper = breakdown('ref.mp4', {beatMap: wrapped});
+export const viaWrapper = breakdown('ref.mp4', {beatMap: wrapped, beatOptions: {bpm: 120}});
+export const measured = (spec: BreakdownSpec): boolean => spec.video.lengthFrom === 'frames';
 export const onBeat = (spec: BreakdownSpec): number => (spec.audio.beats.ran ? spec.audio.beats.onBeat + (spec.audio.beats.close?.score ?? 0) : 0) + BREAKDOWN.onBeat + spec.warnings.length;
 // @ts-expect-error a threshold is a number
 export const wordy = breakdown('ref.mp4', {thresholds: {cutJump: 'high'}});

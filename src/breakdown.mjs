@@ -35,7 +35,7 @@ import {flowChart, narrative, decide} from 'footprintjs';
 import {ffmpegProbe} from './finished.mjs';
 import {contactSheet} from './sheet.mjs';
 import {GRID, readFootage, cutsAndFades, gradualCandidates, shotMotion, energyCurve} from './footage.mjs';
-import {eachStill, lettering} from './stills.mjs';
+import {eachStill, readLettering, cornerMarks, logoOf, lettering} from './stills.mjs';
 import {breakdownText} from './breakdown-text.mjs';
 
 export {breakdownText};
@@ -71,14 +71,14 @@ export const BREAKDOWN = Object.freeze({
 // ── The verdicts: rules over measures, decided with decide() so the record keeps the evidence ───────────────
 
 /** What a candidate for a cut can be. */
-const CUT = t => ({key: 'verdict', rules: [
+const CUT = t => ({key: 'verdict', noun: 'cut candidate', rules: [
   {when: {lasting: {lt: t.flashLasting}}, then: 'flash', label: 'one frame unlike the frames on both sides, which are alike: a flash'},
   {when: {fade: {gte: t.minFade}}, then: 'fade-step', label: 'a step of a fade through one colour (its last into the colour, or its first out of it): part of the fade, not a cut'},
   {when: {jump: {gte: t.cutJump}, ratio: {gte: t.cutRatio}}, then: 'cut', label: 'the picture jumps in one frame, far more than the frames around it change'}],
 fallback: {branch: 'change', label: 'a change, but not one frame\'s jump above the frames around it: motion, not a cut'}});
 
 /** What a gradual change can be. */
-const GRADUAL = t => ({key: 'verdict', rules: [
+const GRADUAL = t => ({key: 'verdict', noun: 'gradual change', rules: [
   {when: {startSpread: {gte: t.blank}, leastSpread: {lt: t.blank}, endSpread: {gte: t.blank}, seconds: {gte: t.minFade}}, then: 'dip', label: 'the picture fades to one colour and fades back in'},
   {when: {startSpread: {lt: t.blank}, endSpread: {gte: t.blank}, seconds: {gte: t.minFade}}, then: 'fade-in', label: 'the picture fades in from one colour'},
   {when: {startSpread: {gte: t.blank}, endSpread: {lt: t.blank}, seconds: {gte: t.minFade}}, then: 'fade-out', label: 'the picture fades out to one colour'},
@@ -86,40 +86,52 @@ const GRADUAL = t => ({key: 'verdict', rules: [
 fallback: {branch: 'motion', label: 'the picture changes over these frames, but not as a mix of two pictures: motion'}});
 
 /** How a shot moves. */
-const MOTION = t => ({key: 'motion', rules: [
+const MOTION = t => ({key: 'motion', noun: 'shot', rules: [
   {when: {busiest: {lt: t.stillCell}}, then: 'still', label: 'nothing in the frame changes: even its busiest part stays put'},
   {when: {pan: {gte: t.minPan}, explained: {gte: t.explained}, share: {gte: t.share}}, then: 'camera', label: 'the whole picture shifts together: the camera moves'}],
 fallback: {branch: 'inside', label: 'parts of the picture change while the frame holds: things move inside it'}});
 
 /** Whether a shot shows lettering. */
-const TEXT = t => ({key: 'text', rules: [
+const TEXT = t => ({key: 'text', noun: 'shot', rules: [
   {when: {textArea: {gte: t.textArea}}, then: 'text', label: 'rows of sharp strokes, as lettering makes (a heuristic, not OCR)'}],
 fallback: {branch: 'no-text', label: 'no rows of sharp strokes like lettering, beyond a mark that stays in a corner'}});
 
 const SIGN = {gt: '>', gte: '≥', lt: '<', lte: '≤', eq: '=', ne: '≠', in: 'in', notIn: 'not in'};
-/** A decision's evidence, short: the verdict, the rule that gave it, and every rule tried with its checks ("jump 54.7 ≥ 12 ✓"). */
-function whyOf(evidence) {
+/**
+ * A decision's evidence, short: the verdict, the rule that gave it, and every rule tried with its checks ("jump 54.7 ≥ 12
+ * ✓"). The labels are the decision's own (without the candidate's name the record's copy carries).
+ */
+function whyOf(evidence, {rules, fallback}) {
   const won = evidence.rules.find(r => r.matched);
-  return {verdict: evidence.chosen, because: won?.label ?? evidence.defaultLabel ?? 'no rule matched',
+  return {verdict: evidence.chosen, because: won ? rules[won.ruleIndex].label : fallback.label,
     rules: evidence.rules.map(r => ({then: r.branch, met: r.matched,
       checks: (r.conditions ?? []).map(c => `${c.key} ${c.actualSummary} ${SIGN[c.op] ?? c.op} ${c.threshold} ${c.result ? '✓' : '✗'}`), ...(r.matchError ? {error: r.matchError} : {})}))};
 }
 
-/** A decider on a chart: decide() over the scope's measures, the evidence written beside the verdict, one branch per verdict. */
-function addDecision(chart, {key, rules, fallback}) {
-  const verdicts = [...rules.map(r => r.then), fallback.branch];
+/**
+ * A decider on a chart: decide() over the scope's measures, each label carrying the candidate's name (its number and
+ * time: "cut candidate 37 at 12.48 s: …"), so every line of the record says which candidate it decided; the evidence
+ * written beside the verdict; one branch per verdict.
+ */
+function addDecision(chart, decision) {
+  const {key, noun, rules, fallback} = decision, verdicts = [...rules.map(r => r.then), fallback.branch];
   let list = chart.addDeciderFunction(`decide ${key}`, s => {
-    const result = decide(s, rules, fallback);
-    s[`${key}Why`] = whyOf(result.evidence);
+    const name = `${noun} ${s.candidate} at ${s.at} s`;
+    const result = decide(s, rules.map(r => ({...r, label: `${name}: ${r.label}`})), {...fallback, label: `${name}: ${fallback.label}`});
+    s[`${key}Why`] = whyOf(result.evidence, decision);
     return result;
   }, `decide-${key}`, `Which rule the measures meet: ${verdicts.join(', ')}`);
   for (const verdict of verdicts) list = list.addFunctionBranch(verdict, verdict, s => { s[key] = verdict; });
   return list.setDefault(fallback.branch).end();
 }
 
-/** One candidate's chart: its measures into the scope (top-level keys, as the rules read them), then its decision. */
+/** One candidate's chart: its number and time, and its measures, into the scope (top-level keys, as the rules read them); then its decision. */
 function verdictChart(decision) {
-  const chart = flowChart('measures', s => { for (const [k, v] of Object.entries(s.$getValue('item').measures)) s[k] = v; }, 'measures', 'The candidate\'s measures, as the rules read them');
+  const chart = flowChart('measures', s => {
+    const item = s.$getValue('item');
+    s.candidate = item.n; s.at = item.at;
+    for (const [k, v] of Object.entries(item.measures)) s[k] = v;
+  }, 'measures', 'The candidate\'s number, time and measures, as the rules read them');
   return addDecision(chart, decision).build();
 }
 
@@ -127,19 +139,22 @@ function verdictChart(decision) {
 const BATCH = 100;
 
 /**
- * Every candidate decided, BATCH at a time: a subflow that takes the next batch of its `items`, decides each in a
- * fan-out (verdictChart: one subflow and one decision per candidate), appends the answers to `decided`, and loops back
- * while candidates are left. Its record keeps every decision with its evidence, as one fan-out over all of them would.
+ * Every candidate decided, BATCH at a time: a subflow that takes the next batch of its `items` (each numbered in the whole
+ * list), decides each in a fan-out (verdictChart: one subflow and one decision per candidate), appends the answers to
+ * `decided`, and loops back while candidates are left (a decision of its own, on how many are left). Its record keeps
+ * every decision with its evidence, as one fan-out over all of them would.
  */
 function decideAll(decision, what) {
   return flowChart('take a batch', s => {
-    const from = s.taken ?? 0; s.batch = (s.$getValue('items') ?? []).slice(from, from + BATCH); s.taken = from + s.batch.length;
-  }, 'take-batch', `The next ${BATCH} ${what}`)
+    const from = s.taken ?? 0;
+    s.batch = (s.$getValue('items') ?? []).slice(from, from + BATCH).map((x, j) => ({...x, n: from + j + 1}));
+    s.taken = from + s.batch.length;
+  }, 'take-batch', `The next ${BATCH} ${what}, numbered in the whole list`)
     .addParallelForEach('decide each', 'each', {items: s => s.batch, branch: () => verdictChart(decision), maxBranches: BATCH, into: 'answers', failFast: true}, `Each of the batch: ${[...decision.rules.map(r => r.then), decision.fallback.branch].join(', ')}`)
-    .addFunction('keep the answers', s => { s.$update('decided', s.$getValue('answers')); }, 'keep-answers', 'The batch\'s answers, after the ones before')
-    .addDeciderFunction('more', s => decide(s, [{when: x => x.taken < x.total, then: 'next-batch', label: `${what} are left`}], {branch: 'all-decided', label: `every one of the ${what} is decided`}), 'more', 'Whether candidates are left')
-    .addFunctionBranch('next-batch', 'the next batch', () => {}, undefined, {loopTo: 'take-batch'})
-    .addFunctionBranch('all-decided', 'all decided', () => {})
+    .addFunction('keep the answers', s => { s.$update('decided', s.$getValue('answers')); s.left = s.total - s.taken; }, 'keep-answers', 'The batch\'s answers, after the ones before; how many are left')
+    .addDeciderFunction('more', s => decide(s, [{when: {left: {gt: 0}}, then: 'next-batch', label: `${s.left} of the ${s.total} ${what} are left`}], {branch: 'all-decided', label: `all ${s.total} ${what} are decided`}), 'more', 'Whether candidates are left')
+    .addFunctionBranch('next-batch', `decide the next ${BATCH}`, () => {}, undefined, {loopTo: 'take-batch'})
+    .addFunctionBranch('all-decided', 'done', () => {})
     .setDefault('all-decided').end().build();
 }
 
@@ -151,7 +166,7 @@ const decided = (s, into, keys) => decidedOf(s.$getValue(into) ?? [], keys);
 
 // ── Options ────────────────────────────────────────────────────────────────────────────────────────────────
 
-const OPTION_KEYS = ['out', 'beatMap', 'ffmpeg', 'probe', 'thresholds'];
+const OPTION_KEYS = ['out', 'beatMap', 'beatOptions', 'ffmpeg', 'probe', 'thresholds'];
 /** Thresholds that count pixels, frames or candidates: whole numbers (a width at least 16 pixels). */
 const WHOLE = {width: 16, stillWidth: 16, gradualFrames: 1, maxCandidates: 1};
 
@@ -172,12 +187,14 @@ function readOptions(videoFile, options) {
   if (!existsSync(videoFile)) throw new Error(`breakdown: there is no file at ${videoFile}: give the path of a video (an .mp4)`);
   for (const k of Object.keys(options)) if (!OPTION_KEYS.includes(k)) throw new Error(`breakdown: "${k}" is not an option; the options are ${OPTION_KEYS.join(', ')}`);
   const {beatMap = null, ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', thresholds = {}} = options;
-  if (beatMap !== null && typeof beatMap !== 'function') throw new Error('breakdown: beatMap is a function, beatMap(audioFile, {ffmpeg}) → {bpm, beats: [seconds], drop?}, or left out');
+  if (beatMap !== null && typeof beatMap !== 'function') throw new Error('breakdown: beatMap is a function, beatMap(audioFile, {ffmpeg, ...beatOptions}) → {bpm, beats: [seconds], drop?}, or left out');
+  const {beatOptions = {}} = options;
+  if (!beatOptions || typeof beatOptions !== 'object' || Array.isArray(beatOptions)) throw new Error(`breakdown: beatOptions are the beat map's own options, an object ({bpm: 120}), not ${JSON.stringify(beatOptions)}`);
   if (typeof ffmpeg !== 'string' || !ffmpeg) throw new Error('breakdown: ffmpeg is the FFmpeg to run (a path or a name on the PATH)');
   if (options.probe !== undefined && !(typeof options.probe?.probe === 'function' && typeof options.probe?.frames === 'function')) throw new Error('breakdown: probe reads the file, {probe(file), frames(file, size, each)} (finished.mjs · ffmpegProbe)');
   if (options.out !== undefined && !(typeof options.out === 'string' && options.out)) throw new Error('breakdown: out is the folder to write, a path');
   const out = path.resolve(options.out ?? `${path.basename(videoFile, path.extname(videoFile))}-breakdown`);
-  return {file: path.resolve(videoFile), out, beatMap, ffmpeg, probe: options.probe ?? ffmpegProbe({ffmpeg}), t: readThresholds(thresholds)};
+  return {file: path.resolve(videoFile), out, beatMap, beatOptions, ffmpeg, probe: options.probe ?? ffmpegProbe({ffmpeg}), t: readThresholds(thresholds)};
 }
 
 // ── The file and its frames ────────────────────────────────────────────────────────────────────────────────
@@ -210,14 +227,14 @@ const probeStage = run => s => {
   const v = run.meta.video;
   if (!(v.fps > 0 && v.width > 0 && v.height > 0)) throw new Error(`breakdown: ${run.o.file} has no frame rate or size the probe can read (fps ${v.fps}, ${v.width}×${v.height})`);
   run.rate = rateOf(v);
-  run.warnings = run.rate.warning ? [run.rate.warning] : [];
-  Object.assign(s, {file: path.basename(run.o.file), seconds: round(v.seconds, 3), fps: round(v.fps, 3), rate: round(run.rate.read, 3), width: v.width, height: v.height,
-    rotation: v.rotation ?? 0, sound: Boolean(run.meta.audio), beatMap: Boolean(run.o.beatMap), ...(run.rate.warning ? {warning: run.rate.warning} : {})});
+  run.warnings = [...(run.rate.warning ? [run.rate.warning] : []), ...(Number.isFinite(v.seconds) ? [] : ['the file names no length: it is counted from the frames read'])];
+  Object.assign(s, {file: path.basename(run.o.file), seconds: Number.isFinite(v.seconds) ? round(v.seconds, 3) : null, start: run.meta.start ?? 0, fps: round(v.fps, 3), rate: round(run.rate.read, 3), width: v.width, height: v.height,
+    rotation: v.rotation ?? 0, sound: Boolean(run.meta.audio), beatMap: Boolean(run.o.beatMap), ...(run.warnings.length ? {warning: run.warnings.join('; ')} : {})});
 };
 
 /** Every frame, read once. */
 const framesStage = run => async s => {
-  run.footage = await readFootage(run.o.probe, run.o.file, run.meta, {width: run.o.t.width, rate: run.rate.read});
+  run.footage = await readFootage(run.o.probe, run.o.file, run.meta, {width: run.o.t.width, rate: run.rate.read, start: run.meta.start ?? 0});
   s.frames = run.footage.n; s.readAs = `${run.footage.W}×${run.footage.H} grey, ${round(run.rate.read, 3)} frames a second`;
 };
 
@@ -239,7 +256,7 @@ const findCutsStage = run => s => {
 const findGradualStage = run => s => {
   run.cuts = decided(s, 'cutVerdicts', ['verdict']);
   run.breaks = new Set();
-  for (const c of run.cuts) { if (c.verdict === 'cut') run.breaks.add(c.frames[1]); if (c.verdict === 'flash') [c.flashFrame, c.flashFrame + 1].forEach(x => run.breaks.add(x)); }
+  for (const c of run.cuts) { if (c.verdict === 'cut') run.breaks.add(c.frames[1]); if (c.verdict === 'flash') [c.flashFrame, c.flashEnd].forEach(x => run.breaks.add(x)); }
   s.breaks = run.breaks.size;
   s.gradualCandidates = bounded(gradualCandidates(run.footage, run.breaks, run.fades, run.o.t), 'stretches could be gradual changes', 'thresholds.gradualFloor', run.o.t.maxCandidates);
 };
@@ -361,10 +378,13 @@ function thumbnailOf({width: W, height: H, rgb}, width = 192) {
   return {width, height, rgb: small};
 }
 
-/** A shot's stills come in: its lettering measured, its sheet drawn and written, a thumbnail of its middle kept, the stills let go. */
+/**
+ * A shot's stills come in: its rows of strokes read (small, kept for the lettering once every shot is read), its sheet
+ * drawn and written, a thumbnail of its middle kept, the stills let go.
+ */
 async function finishShot(run, i, stills) {
   const shot = run.shots[i], frames = run.sheetFrames[i], {fps} = run.footage, kind = run.motion[i].motion === 'still' ? 'settled' : 'moving';
-  run.lettering[i] = lettering([...stills.values()]);
+  run.reads[i] = readLettering([...stills.values()]);
   const file = `shots/shot-${String(shot.index).padStart(2, '0')}.png`;
   writeFileSync(path.join(run.o.out, file), await contactSheet(reelOf(stills, fps), {moments: frames.map((k, j) => ({t: k / fps, label: `shot ${shot.index} · ${j + 1}/${frames.length}`, kind})), columns: Math.min(3, frames.length), width: 1200}));
   run.sheets.shots[i] = file;
@@ -374,20 +394,23 @@ async function finishShot(run, i, stills) {
 
 /**
  * The stills, shot by shot, in one FFmpeg pass (stills.mjs · eachStill): a shot is finished when the first still of the
- * next comes in, so only one shot's stills are ever held; the overview keeps a thumbnail of each.
+ * next comes in, so only one shot's stills are ever held; the overview keeps a thumbnail of each. Then the lettering: a
+ * mark that stays in a corner across shots is the film's logo (stills.mjs · logoOf), left out of every shot's.
  */
 const stillsStage = run => async s => {
   const {width, height} = run.meta.video, w = run.o.t.stillWidth, h = Math.max(2, 2 * Math.round(w * height / width / 2));
   run.motion = decided(s, 'motionVerdicts', ['motion']);
   run.sheetFrames = run.shots.map(sheetFrames);
-  run.lettering = []; run.thumbnails = new Map(); run.sheets = {overview: 'overview.png', shots: []};
+  run.reads = []; run.thumbnails = new Map(); run.sheets = {overview: 'overview.png', shots: []};
   mkdirSync(path.join(run.o.out, 'shots'), {recursive: true});
   const owner = new Map(run.sheetFrames.flatMap((frames, i) => frames.map(k => [k, i])));
   let at = 0, held = new Map();
   const finishUpTo = async i => { while (at < i) { await finishShot(run, at++, held); held = new Map(); } };
-  const read = await eachStill(run.o.ffmpeg, run.o.file, run.sheetFrames.flat(), {width: w, height: h, rate: run.footage.fps}, async (k, still) => { await finishUpTo(owner.get(k)); held.set(k, still); });
+  const read = await eachStill(run.o.ffmpeg, run.o.file, run.sheetFrames.flat(), {width: w, height: h, rate: run.footage.fps, start: run.meta.start ?? 0}, async (k, still) => { await finishUpTo(owner.get(k)); held.set(k, still); });
   await finishUpTo(run.shots.length);
-  s.stills = read;
+  const logo = logoOf(run.reads.map(reads => cornerMarks(reads ?? [])));
+  run.lettering = run.reads.map(reads => lettering(reads ?? [], logo));
+  s.stills = read; s.logo = logo.size;
   s.letteringMeasures = run.lettering.map((l, i) => ({kind: 'shot', index: run.shots[i].index, at: run.shots[i].start, measures: {textArea: round(l.area, 4), mark: round(l.mark, 4)}}));
 };
 
@@ -401,10 +424,11 @@ const verdictsStage = run => s => {
 // ── Beats ──────────────────────────────────────────────────────────────────────────────────────────────────
 
 /** Whether the beats can be read. */
+const BEATS = Object.freeze({rules: [{when: {sound: {eq: false}}, then: 'no-sound', label: 'the video has no sound'}, {when: {beatMap: {eq: true}}, then: 'read-beats', label: 'a beat map was given'}],
+  fallback: {branch: 'beats-not-run', label: 'no beat map was given (breakdown(file, {beatMap}))'}});
 const beatsDecider = s => {
-  const result = decide(s, [{when: {sound: {eq: false}}, then: 'no-sound', label: 'the video has no sound'}, {when: {beatMap: {eq: true}}, then: 'read-beats', label: 'a beat map was given'}],
-    {branch: 'beats-not-run', label: 'no beat map was given (breakdown(file, {beatMap}))'});
-  s.beatsWhy = whyOf(result.evidence);
+  const result = decide(s, BEATS.rules, BEATS.fallback);
+  s.beatsWhy = whyOf(result.evidence, BEATS);
   return result;
 };
 
@@ -428,7 +452,17 @@ function soundOf(run, dir) {
 }
 
 /**
- * The beats: the sound handed to the beat map (with this run's FFmpeg: beatMap(wav, {ffmpeg})), the folder removed after.
+ * Why a beat map could not read the sound, in its own words; when they ask for one of its options, how to give it here
+ * (breakdown hands the beat map `beatOptions`).
+ */
+function notRead(error) {
+  const said = String(error?.message ?? error), option = /options\.(\w+)/.exec(said)?.[1];
+  return `the beat map could not read the sound: ${said}${option ? ` (give it as breakdown(file, {beatMap, beatOptions: {${option}: …}}))` : ''}`;
+}
+
+/**
+ * The beats: the sound handed to the beat map with its options and this run's FFmpeg (beatMap(wav, {...beatOptions, ffmpeg})),
+ * the folder removed after.
  * A beat map that cannot read the sound (a silent track, no tempo) is no failure of the breakdown: the spec says the beats
  * were not read, and why. A beat map that answers in the wrong shape refuses (readBeats).
  */
@@ -439,7 +473,7 @@ const readBeatsStage = run => async s => {
     if (sound.why) run.beatsFailed = sound.why;
     else {
       let answer;
-      try { answer = await run.o.beatMap(sound.wav, {ffmpeg: run.o.ffmpeg}); } catch (e) { run.beatsFailed = `the beat map could not read the sound: ${e?.message ?? e}`; }
+      try { answer = await run.o.beatMap(sound.wav, {...run.o.beatOptions, ffmpeg: run.o.ffmpeg}); } catch (e) { run.beatsFailed = notRead(e); }
       if (!run.beatsFailed) run.beats = readBeats(answer);
     }
   } finally { rmSync(dir, {recursive: true, force: true}); }
@@ -508,7 +542,7 @@ function specOf(run, s) {
   const tally = (list, verdicts) => Object.fromEntries([['candidates', list.length], ...verdicts.map(v => [v, list.filter(x => x.verdict === v).length])]);
   return {
     schemaVersion: 1, file: path.basename(run.o.file), made: new Date().toISOString(),
-    video: {seconds: s.seconds, fps: s.fps, rate: s.rate, width: s.width, height: s.height, ...(s.rotation ? {rotation: s.rotation} : {}), frames: f.n, sound: s.sound, ...(run.rate.warning ? {variable: true} : {})},
+    video: {seconds: s.seconds ?? round(f.n / f.fps, 3), ...(s.seconds === null ? {lengthFrom: 'frames'} : {}), fps: s.fps, rate: s.rate, width: s.width, height: s.height, ...(s.rotation ? {rotation: s.rotation} : {}), frames: f.n, sound: s.sound, ...(run.rate.warning ? {variable: true} : {})},
     read: {width: f.W, height: f.H, rate: round(f.fps, 3), frames: 'every frame, grey, resampled to the rate on the file\'s own timestamps'},
     warnings: run.warnings,
     shots: run.shots.map((_, i) => shotSpec(run, i)),

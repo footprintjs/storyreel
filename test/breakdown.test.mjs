@@ -1,8 +1,8 @@
 // A reference film broken down (breakdown.mjs): films made here with FFmpeg, whose cuts, fades, shots and motion are
 // known, read back. The main one: a red card with a one-frame flash, a hard cut, a crossfade between two cards, a white
-// box moving across black under a corner logo, a camera panning over a texture, a dip through black into a lettered
-// card, and a tone under it all. Beside it: a variable-rate clip, eased fades, a picture stored on its side, a film of
-// 45 quick shots, and a file with sound only.
+// box moving across black, a camera panning over a texture, a dip through black into a lettered card, and a tone under
+// it all. Beside it: variable-rate clips, eased fades, a cut to black, a picture stored on its side, a logo across shots
+// and a name in one, a film of 110 quick shots, a raw stream with no length, and a file with sound only.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync, existsSync, readFileSync, writeFileSync} from 'node:fs';
@@ -12,7 +12,8 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {createCanvas, GlobalFonts} from '@napi-rs/canvas';
 import {breakdown, breakdownText, BREAKDOWN} from '../src/breakdown.mjs';
-import {selectFrames} from '../src/stills.mjs';
+import {selectFrames, stillsArgs, filterFromFile} from '../src/stills.mjs';
+import {ffmpegProbe} from '../src/finished.mjs';
 
 const has = cmd => !spawnSync(cmd, ['-version']).error;
 const skip = has('ffmpeg') && has('ffprobe') ? false : 'needs ffmpeg and ffprobe';
@@ -36,22 +37,21 @@ function drawn(file, {width, height, background = null, lines}) {
 
 /**
  * The reference, 320×180 at 25 fps, 10.4 s: red 0–1.6 (white at frame 20) · cut · blue, dissolving 2.8–3.8 into yellow ·
- * cut at 4.8 · a box moving right 4.8–6.8 under a logo in the bottom-right corner · cut · a pan to the right 6.8–8.8,
+ * cut at 4.8 · a box moving right 4.8–6.8 · cut · a pan to the right 6.8–8.8,
  * fading out from 8.4 · the lettered card fading in to 9.2, until 10.4.
  */
 function makeReference(dir, {sound = true} = {}) {
   const card = drawn(path.join(dir, 'card.png'), {width: 320, height: 180, background: '#2b2d33', lines: [['Match this', 44, 160, 80], ['one shot, one beat', 26, 160, 130]]});
-  const logo = drawn(path.join(dir, 'logo.png'), {width: 60, height: 30, lines: [['HX', 24, 30, 15]]});
   const file = path.join(dir, sound ? 'reference.mp4' : 'silent.mp4');
   const graph = [
     `color=c=red:s=320x180:r=25:d=1.6,drawbox=x=0:y=0:w=iw:h=ih:color=white:t=fill:enable='eq(n\\,20)',${V}[a]`,
     `color=c=blue:s=320x180:r=25:d=2.2,${V}[b]`, `color=c=yellow:s=320x180:r=25:d=2,${V}[c]`, '[b][c]xfade=transition=fade:duration=1:offset=1.2[bc]',
-    'color=c=black:s=320x180:r=25:d=2[bg]', 'color=c=white:s=40x40:r=25:d=2[box]', '[bg][box]overlay=x=\'20+120*t\':y=70[moving]', `[moving][1:v]overlay=x=255:y=145,${V}[d]`,
+    'color=c=black:s=320x180:r=25:d=2[bg]', 'color=c=white:s=40x40:r=25:d=2[box]', `[bg][box]overlay=x='20+120*t':y=70,${V}[d]`,
     `nullsrc=s=800x240:r=25:d=2,geq=lum='${TEXTURE}':cb=128:cr=128,crop=320:180:'20+60*t':20,fade=t=out:st=1.6:d=0.4,${V}[e]`,
     `[0:v]fps=25,${V},fade=t=in:st=0:d=0.4[f]`, '[a][bc][d][e][f]concat=n=5:v=1:a=0[v]'].join(';');
-  ffmpeg(['-loop', '1', '-framerate', '25', '-t', '1.6', '-i', card, '-loop', '1', '-framerate', '25', '-t', '2', '-i', logo,
+  ffmpeg(['-loop', '1', '-framerate', '25', '-t', '1.6', '-i', card,
     ...(sound ? ['-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=22050:duration=10.4'] : []),
-    '-filter_complex', graph, '-map', '[v]', ...(sound ? ['-map', '2:a', '-c:a', 'aac'] : []), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
+    '-filter_complex', graph, '-map', '[v]', ...(sound ? ['-map', '1:a', '-c:a', 'aac'] : []), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
   return file;
 }
 
@@ -119,10 +119,9 @@ test('still or moving: the cards are still, the box moves inside the frame, the 
   near(spec.motion.curve.length, 10.4 / .5, 1, 'the motion curve, every 0.5 s');
 });
 
-test('lettering is a heuristic: the lettered card reads as lettered; a logo that stays in a corner is left out', {skip}, async () => {
-  const {spec} = await brokenDown(), box = spec.shots[3];
+test('lettering is a heuristic: the lettered card reads as lettered; the cards, box and texture do not', {skip}, async () => {
+  const {spec} = await brokenDown();
   assert.deepEqual(spec.shots.map(s => s.text.verdict), ['no-text', 'no-text', 'no-text', 'no-text', 'no-text', 'text']);
-  assert.ok(box.text.mark > 0, `the corner logo is seen, and left out: ${JSON.stringify(box.text)}`);
   assert.deepEqual(spec.text.shots, [6]);
   assert.match(spec.text.heuristic, /no OCR/);
 });
@@ -134,7 +133,6 @@ test('the files: breakdown.json, breakdown.md, a sheet per shot, the overview, a
   assert.equal(text, breakdownText(spec));
   assert.match(text, /\| 3 \| 0:03\.3 \| 0:04\.8 \| 1\.\d+ s \| dissolve 1(\.\d+)? s \| one colour all through \| – \|/);
   assert.match(text, /#5 \(0:06\.8\): the camera pans right/);
-  assert.match(text, /A mark that stays in a corner \(a logo, a watermark\) was left out in #4/);
   assert.match(text, /Not run: no beat map was given/);
   assert.equal(files.sheets.length, 6);
   for (const f of [files.overview, ...files.sheets]) assert.equal(readFileSync(f).subarray(1, 4).toString(), 'PNG', f);
@@ -143,19 +141,19 @@ test('the files: breakdown.json, breakdown.md, a sheet per shot, the overview, a
   const decisions = record.filter(e => e.type === 'condition').map(e => e.text);
   assert.ok(decisions.some(t => /jump [\d.]+ gte 12 ✓, ratio [\d.]+ gte 3 ✓, and chose cuts\/each~\d+\/cut/.test(t)), 'a cut is a decision with its evidence');
   assert.ok(decisions.some(t => /chose gradual\/each~\d+\/dissolve/.test(t)) && decisions.some(t => /chose motion\/each~\d+\/camera/.test(t)));
-  assert.ok(decisions.some(t => /default "every one of the cut candidates is decided"/.test(t)), 'the candidates are decided in batches, and the record says when all are');
+  assert.ok(decisions.some(t => /default "all \d+ cut candidates are decided"/.test(t)), 'the candidates are decided in batches, and the record says when all are');
   assert.ok(decisions.some(t => /default "no beat map was given/.test(t)), 'why the beats were not read');
 });
 
-test('a beat map, when given, is handed the sound and this run\'s FFmpeg; it says which cuts land on a beat, the drop, and a close tempo call', {skip}, async () => {
+test('a beat map, when given, is handed the sound, its own options and this run\'s FFmpeg; it says which cuts land on a beat, the drop, and a close tempo call', {skip}, async () => {
   let heard = null;
   const beatMap = async (file, options) => {
     heard = {file, options, there: existsSync(file), bytes: readFileSync(file).length};
     return Object.freeze({bpm: 75, beats: Object.freeze([4.8, 1.6, 4.0, 8.0]), drop: 7.5, confidence: .8, alternatives: Object.freeze([{bpm: 75, score: 1}, {bpm: 150, score: .95}])});
   };
-  const {spec, text} = await breakdown(reference, {out: path.join(dir, 'beats'), beatMap});
+  const {spec, text} = await breakdown(reference, {out: path.join(dir, 'beats'), beatMap, beatOptions: {bpm: 75}});
   assert.ok(heard.there && heard.bytes > 1000 && heard.file.endsWith('.wav'), 'the beat map hears the sound as a WAV');
-  assert.deepEqual(heard.options, {ffmpeg: process.env.FFMPEG_BIN || 'ffmpeg'});
+  assert.deepEqual(heard.options, {bpm: 75, ffmpeg: process.env.FFMPEG_BIN || 'ffmpeg'});
   assert.equal(existsSync(heard.file), false, 'and the WAV is removed after');
   const b = spec.audio.beats;
   assert.equal(b.ran, true); assert.equal(b.bpm, 75); assert.deepEqual(b.beats, [1.6, 4, 4.8, 8]);
@@ -168,8 +166,8 @@ test('a beat map, when given, is handed the sound and this run\'s FFmpeg; it say
 });
 
 test('a beat map that cannot read the sound is no failure: the beats were not read, and the spec says why', {skip}, async () => {
-  const {spec, text} = await breakdown(reference, {out: path.join(dir, 'no-tempo'), beatMap: () => { throw new Error('the sound has no repeating onsets to measure a tempo from'); }});
-  assert.deepEqual(spec.audio.beats, {ran: false, why: 'the beat map could not read the sound: the sound has no repeating onsets to measure a tempo from'});
+  const {spec, text} = await breakdown(reference, {out: path.join(dir, 'no-tempo'), beatMap: () => { throw new Error('the sound has no repeating onsets to measure a tempo from; give options.bpm to lay a grid anyway'); }});
+  assert.deepEqual(spec.audio.beats, {ran: false, why: 'the beat map could not read the sound: the sound has no repeating onsets to measure a tempo from; give options.bpm to lay a grid anyway (give it as breakdown(file, {beatMap, beatOptions: {bpm: …}}))'});
   assert.equal(spec.shots.length, 6, 'the rest of the breakdown stands');
   assert.match(text, /Not run: the beat map could not read the sound/);
 });
@@ -229,24 +227,106 @@ test('a picture stored on its side is read as it is shown', {skip}, async () => 
   assert.equal(spec.shots.length, 1);
 });
 
-test('a film of 45 quick shots: every cut, and over 100 stills read in one pass', {skip}, async () => {
+test('a film of 110 quick shots: every cut; every decision names its candidate across the batches of 100; over 100 stills in one pass', {skip}, async () => {
   const file = path.join(dir, 'quick.mp4');
-  ffmpeg(['-f', 'lavfi', '-i', 'nullsrc=s=160x90:r=25:d=10.8,geq=lum=\'20+mod(floor(T/0.24)*53\\,200)\':cb=128:cr=128', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
+  ffmpeg(['-f', 'lavfi', '-i', 'nullsrc=s=160x90:r=25:d=22,geq=lum=\'20+mod(floor(T/0.2)*53\\,200)\':cb=128:cr=128', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
   assert.match(selectFrames(Array.from({length: 135}, (_, i) => i)), /^\(\(\(/, 'a balanced sum, not a flat one');
   const {spec, files, record} = await breakdown(file, {out: path.join(dir, 'quick')});
-  assert.equal(spec.shots.length, 45); assert.equal(spec.transitions.filter(t => t.kind === 'cut').length, 44);
-  assert.equal(files.sheets.length, 45);
+  assert.equal(spec.shots.length, 110); assert.equal(spec.transitions.filter(t => t.kind === 'cut').length, 109);
+  assert.equal(files.sheets.length, 110);
+  const decisions = record.filter(e => e.type === 'condition' && /cut candidate \d+ at /.test(e.text)).map(e => e.text);
+  assert.equal(decisions.length, spec.considered.cuts.candidates);
+  assert.equal(new Set(decisions).size, decisions.length, 'every cut decision is its own line');
+  for (const t of spec.transitions.filter(x => x.kind === 'cut')) assert.ok(decisions.some(d => d.includes(` at ${t.at} s: `)), `the decision of the cut at ${t.at} s names it`);
+  assert.ok(record.some(e => e.type === 'condition' && /left \d+ gt 0 ✓, and chose cuts\/decide the next 100/.test(e.text)), 'the batch loop says how many are left');
   const stills = record.find(e => e.key === 'stills' && e.type === 'step');
   assert.ok(Number(/= (\d+)/.exec(stills.text)[1]) > 100, stills.text);
 });
 
+test('the stills\' filter goes to FFmpeg in a file: 9,000 stills fit, though their selection is longer than one argument may be', {skip}, () => {
+  const {args, filter} = stillsArgs({ffmpeg: 'ffmpeg', file: 'film.mp4', frames: Array.from({length: 9000}, (_, i) => 3 * i), width: 480, height: 270, rate: 25, script: '/tmp/filter.txt'});
+  assert.ok(filter.length > 131072, `the selection is ${filter.length} bytes`);
+  assert.equal((filter.match(/eq\(n/g) ?? []).length, 9000);
+  assert.ok(args.every(a => a.length < 1000), 'no argument carries it');
+  assert.equal(args[args.indexOf('/tmp/filter.txt') - 1], filterFromFile('ffmpeg'));
+  assert.match(filterFromFile('ffmpeg'), /^(-\/filter:v|-filter_script:v)$/);
+});
+
+test('a picture that dims a little and cuts to black is cut, not faded: shot, black, shot', {skip}, async () => {
+  // A texture whose contrast falls 8% over its last second, a hard cut to black for 1 s, then a hard cut to a new texture.
+  const file = path.join(dir, 'dimmed.mp4');
+  ffmpeg(['-filter_complex', [`nullsrc=s=320x180:r=25:d=2,geq=lum='128+(${TEXTURE}-128)*(1-0.08*max(0,T-1))':cb=128:cr=128,${V}[a]`,
+    `color=c=black:s=320x180:r=25:d=1,${V}[b]`, `nullsrc=s=320x180:r=25:d=1,geq=lum='128+50*sin(Y/6)+40*sin((X-Y)/9)':cb=128:cr=128,${V}[c]`, '[a][b][c]concat=n=3:v=1:a=0[v]'].join(';'),
+  '-map', '[v]', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
+  const {spec} = await breakdown(file, {out: path.join(dir, 'dimmed')});
+  assert.deepEqual(spec.transitions.map(t => t.kind), ['cut', 'cut'], JSON.stringify(spec.transitions.map(t => [t.kind, t.at, t.seconds])));
+  const expected = [[0, 2], [2, 3], [3, 4]];
+  assert.equal(spec.shots.length, 3);
+  spec.shots.forEach((shot, i) => { near(shot.start, expected[i][0], FRAME, `shot ${i + 1} starts`); near(shot.end, expected[i][1], FRAME, `shot ${i + 1} ends`); });
+  assert.equal(spec.shots[1].blank, true, 'the black is a slug of its own');
+});
+
+test('a logo in a corner of every shot is left out; a name in a corner of one shot is lettering', {skip}, async () => {
+  const logo = drawn(path.join(dir, 'brand.png'), {width: 320, height: 180, lines: [['STORYREEL', 16, 282, 16]]});
+  // A lower third inside the bottom-left corner quarter, for the middle shot only: two lines of a name.
+  const name = drawn(path.join(dir, 'name.png'), {width: 320, height: 180, lines: [['Ada Lovelace', 14, 41, 147], ['mathematician', 14, 41, 165]]});
+  const file = path.join(dir, 'branded.mp4');
+  ffmpeg(['-loop', '1', '-framerate', '25', '-t', '4.5', '-i', logo, '-loop', '1', '-framerate', '25', '-t', '4.5', '-i', name, '-filter_complex', [
+    `color=c=0x2b2d33:s=320x180:r=25:d=1.5[a]`, `color=c=0x4a6fa5:s=320x180:r=25:d=1.5[b]`, `color=c=0x2d6a4f:s=320x180:r=25:d=1.5[c]`, '[a][b][c]concat=n=3:v=1:a=0[bg]',
+    '[bg][1:v]overlay=enable=\'between(t\\,1.5\\,2.99)\'[named]', `[named][0:v]overlay,${V}[v]`].join(';'), '-map', '[v]', '-t', '4.5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
+  const {spec} = await breakdown(file, {out: path.join(dir, 'branded')});
+  assert.equal(spec.shots.length, 3);
+  assert.deepEqual(spec.shots.map(x => x.text.verdict), ['no-text', 'text', 'no-text'], JSON.stringify(spec.shots.map(x => x.text)));
+  assert.ok(spec.shots.every(x => x.text.mark > 0), 'the logo is seen in every shot, and left out');
+  assert.deepEqual(spec.text.shots, [2]);
+});
+
+test('read faster than the file\'s average rate, a repeated frame takes no part: a one-frame flash is one flash, not two cuts', {skip}, async () => {
+  const file = path.join(dir, 'flash.mp4');
+  ffmpeg(['-f', 'lavfi', '-i', `nullsrc=s=320x180:r=25:d=2,geq=lum='if(eq(N\\,20)\\,235\\,90)+20*sin(X/7)':cb=128:cr=128`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
+  const real = ffmpegProbe(), probe = {...real, probe: f => { const m = real.probe(f); return {...m, video: {...m.video, rate: 50}}; }};
+  const {spec} = await breakdown(file, {out: path.join(dir, 'flash'), probe});
+  assert.equal(spec.read.rate, 50, 'read at the nominal rate, every frame twice');
+  assert.equal(spec.flashes.length, 1); near(spec.flashes[0].at, .8, .021, 'the flash');
+  assert.deepEqual(spec.transitions, []); assert.equal(spec.shots.length, 1);
+});
+
+test('variable-rate cut times land on the frame shown at that time — after a dropped frame, and when the picture starts late', {skip}, async () => {
+  // 30 a second with every third frame dropped (nominal 30, average 20): the new picture's first frame is at 1.833 s.
+  const dropped = path.join(dir, 'dropped.mp4'), late = path.join(dir, 'late.mp4');
+  ffmpeg(['-f', 'lavfi', '-i', 'nullsrc=s=320x180:r=30:d=4,geq=lum=\'if(lt(N,55),80,200)+20*sin(X/7)\':cb=128:cr=128', '-vf', 'select=\'not(eq(mod(n\\,3)\\,2))\'', '-fps_mode', 'vfr', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', dropped]);
+  const first = await breakdown(dropped, {out: path.join(dir, 'dropped')});
+  assert.equal(first.spec.video.variable, true);
+  assert.deepEqual(first.spec.transitions.map(t => t.kind), ['cut']); near(first.spec.transitions[0].at, 55 / 30, .001, 'the cut, on the frame shown then');
+  // The same picture starting 0.1 s after the file's clock (the sound starts at 0): the cut is shown at 1.933 s.
+  const plain = path.join(dir, 'plain30.mp4');
+  ffmpeg(['-f', 'lavfi', '-i', 'nullsrc=s=320x180:r=30:d=4,geq=lum=\'if(lt(N,55),80,200)+20*sin(X/7)\':cb=128:cr=128', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', plain]);
+  ffmpeg(['-f', 'lavfi', '-i', 'sine=d=4.1', '-itsoffset', '0.1', '-i', plain, '-map', '0:a', '-map', '1:v', '-c:v', 'copy', '-c:a', 'aac', late]);
+  const second = await breakdown(late, {out: path.join(dir, 'late')});
+  near(second.spec.transitions[0].at, .1 + 55 / 30, .001, 'the cut, on the file\'s clock');
+});
+
+test('a raw stream that names no length says so, and is measured from its frames', {skip}, async () => {
+  const mp4 = path.join(dir, 'tosplit.mp4'), raw = path.join(dir, 'raw.h264');
+  ffmpeg(['-f', 'lavfi', '-i', 'nullsrc=s=320x180:r=25:d=2,geq=lum=\'if(lt(T,1),80,200)+20*sin(X/7)\':cb=128:cr=128', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', mp4]);
+  ffmpeg(['-i', mp4, '-c:v', 'copy', '-bsf:v', 'h264_mp4toannexb', '-f', 'h264', raw]);
+  const {spec, text} = await breakdown(raw, {out: path.join(dir, 'raw')});
+  assert.equal(spec.video.lengthFrom, 'frames'); assert.ok(Number.isFinite(spec.video.seconds) && spec.video.seconds > 0);
+  assert.ok(!/NaN/.test(text), 'never NaN');
+  assert.match(text, /counted from its frames: the file names no length/);
+  assert.ok(spec.warnings.includes('the file names no length: it is counted from the frames read'));
+});
+
 test('refusals name the fix', {skip}, async () => {
   await assert.rejects(breakdown(path.join(dir, 'nothing.mp4')), /there is no file at .*nothing\.mp4: give the path of a video/);
-  await assert.rejects(breakdown(reference, {output: dir}), /"output" is not an option; the options are out, beatMap, ffmpeg, probe, thresholds/);
+  await assert.rejects(breakdown(reference, {output: dir}), /"output" is not an option; the options are out, beatMap, beatOptions, ffmpeg, probe, thresholds/);
+  await assert.rejects(breakdown(reference, {beatMap: () => ({bpm: 1, beats: []}), beatOptions: 120}), /beatOptions are the beat map's own options, an object \(\{bpm: 120\}\), not 120/);
+  const notVideo = path.join(dir, 'notes.mp4'); writeFileSync(notVideo, 'not a video');
+  await assert.rejects(breakdown(notVideo, {out: path.join(dir, 'notes')}), /ffprobe could not read the file .*notes\.mp4: [\s\S]* — give a video file FFmpeg reads \(try `ffprobe ".*notes\.mp4"` to see why it does not\)/);
   await assert.rejects(breakdown(reference, {thresholds: {cutJmp: 10}}), /"cutJmp" is not a threshold; the thresholds are width, cutJump/);
   await assert.rejects(breakdown(reference, {thresholds: {cutJump: -1}}), /thresholds\.cutJump is a number, 0 or more/);
   await assert.rejects(breakdown(reference, {thresholds: {width: 10.5}}), /thresholds\.width is a whole number, 16 or more, not 10\.5/);
-  await assert.rejects(breakdown(reference, {beatMap: 'beats.json'}), /beatMap is a function, beatMap\(audioFile, \{ffmpeg\}\) → \{bpm, beats: \[seconds\], drop\?\}/);
+  await assert.rejects(breakdown(reference, {beatMap: 'beats.json'}), /beatMap is a function, beatMap\(audioFile, \{ffmpeg, \.\.\.beatOptions\}\) → \{bpm, beats: \[seconds\], drop\?\}/);
   const tone = path.join(dir, 'tone.m4a');
   ffmpeg(['-f', 'lavfi', '-i', 'sine=d=1', tone]);
   await assert.rejects(breakdown(tone, {out: path.join(dir, 'tone')}), /tone\.m4a has no picture to break down \(it holds no video stream\): give a video/);
@@ -269,5 +349,6 @@ test('storyreel breakdown <video> --out dir: the spec in plain words and where t
   const missing = run([path.join(dir, 'gone.mp4')]);
   assert.equal(missing.status, 1); assert.match(missing.stderr, /^storyreel breakdown: there is no file at/);
   const sound = run([path.join(dir, 'tone.m4a'), '--out', path.join(dir, 'tone-cli')]);
-  assert.equal(sound.status, 1); assert.match(sound.stderr, /no picture to break down[\s\S]*The record so far \(1 entry\) stops in "probe"/);
+  assert.equal(sound.status, 1); assert.match(sound.stderr, /no picture to break down[\s\S]*The record so far \(1 entry\) stops in "probe"\./);
+  assert.equal(sound.stderr.split('no picture to break down').length - 1, 1, 'the error is said once');
 });
