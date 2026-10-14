@@ -10,7 +10,7 @@ import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {tempDir} from './tmp.mjs';
-import {writeOutput, outputFolder, refuseFolders, securePath, makeFolder, placeVoice, copyVoice, parseMounts, mountOf, privateGroup} from '../src/files.mjs';
+import {writeOutput, outputFolder, refuseFolders, securePath, makeFolder, placeVoice, copyVoice, parseMounts, mountOf, privateGroup, filesOnly} from '../src/files.mjs';
 import {homedir, tmpdir} from 'node:os';
 import {evenTimings, applyPacing, compileFilm, renderFilm, makeFilm} from '../src/index.mjs';
 import {makeRelease} from '../src/release.mjs';
@@ -146,7 +146,7 @@ test('securePath: every folder on the real path is checked up to the root — a 
     refused('/srv/open', 'can be changed by other users \\(mode 0777, no sticky bit\\)'));
   // A sticky folder owned by another user: its owner may rename any entry in it.
   assert.throws(() => securePath('/srv/shared/out', chain({...system, '/srv/shared': stat(0o1777, 4242), '/srv/shared/out': stat(0o755, me)})), refused('/srv/shared', 'belongs to another user'));
-  assert.throws(() => securePath('/srv/team/out', chain({...system, '/srv/team': stat(0o775, me), '/srv/team/out': stat(0o755, me)})), /^Error: \/srv\/team can be changed by its group \(mode 0775, no sticky bit; the group is not yours alone, or \/etc\/group cannot be read\): .* — chmod g-w it, or render into a folder of your own and copy the film out$/);
+  assert.throws(() => securePath('/srv/team/out', chain({...system, '/srv/team': stat(0o775, me), '/srv/team/out': stat(0o755, me)})), /^Error: \/srv\/team can be changed by its group \(mode 0775, no sticky bit; not provably a group of yours alone\): .* — chmod g-w it, or render into a folder of your own and copy the film out$/);
   assert.throws(() => securePath('/srv/theirs/out', chain({...system, '/srv/theirs': stat(0o755, 4242)})), refused('/srv/theirs', 'belongs to another user'), 'the nearest folder that exists, for an out still to be made');
   // Sticky and owned by this user, or by root: accepted.
   assert.equal(securePath('/srv/ours/out', chain({...system, '/srv/ours': stat(0o1777, me), '/srv/ours/out': stat(0o755, me)})), '/srv/ours/out');
@@ -213,18 +213,60 @@ test('a macOS drive mounted with "Ignore ownership" (noowners) is refused: every
   assert.equal(mountOf('/Volumes/Ext Drive2/films', parseMounts(MOUNTS)).point, '/', 'a name that only begins like a mount point is not on it');
   const me = process.getuid(), mine = stat(0o755, me), root = stat(0o755, 0);
   const drive = {'/': root, '/Volumes': root, '/Volumes/Ext Drive': mine, '/Volumes/Ext Drive/films': mine, '/Volumes/Backup': mine, '/Volumes/Backup/films': mine};
-  assert.throws(() => securePath('/Volumes/Ext Drive/films/out', {...chain(drive), mounts: MOUNTS}),
+  assert.throws(() => securePath('/Volumes/Ext Drive/films/out', {...chain(drive), mounts: MOUNTS, platform: 'darwin'}),
     /^Error: \/Volumes\/Ext Drive\/films is on \/Volumes\/Ext Drive, a drive that ignores ownership \(noowners\): every folder on it looks like yours — render on the internal disk and copy the film out$/);
-  assert.equal(securePath('/Volumes/Backup/films/out', {...chain(drive), mounts: MOUNTS}), '/Volumes/Backup/films/out', 'a drive that keeps owners');
+  assert.equal(securePath('/Volumes/Backup/films/out', {...chain(drive), mounts: MOUNTS, platform: 'darwin'}), '/Volumes/Backup/films/out', 'a drive that keeps owners');
+  // A table that cannot be read: refused under /Volumes/ (external drives), never on the internal disk.
+  assert.throws(() => securePath('/Volumes/Backup/films/out', {...chain(drive), mounts: null, platform: 'darwin'}),
+    /^Error: \/Volumes\/Backup\/films is on a drive whose mount table cannot be read \(\/sbin\/mount\), so whether it ignores ownership cannot be told — render on the internal disk and copy the film out$/);
+  const home = {'/': root, '/Users': root, '/Users/me': mine, '/Users/me/films': mine};
+  assert.equal(securePath('/Users/me/films/out', {...chain(home), mounts: null, platform: 'darwin'}), '/Users/me/films/out', 'the internal disk: never refused for an unreadable table');
+  // A path typed in another case on a disk that ignores case: judged (and returned) as the disk spells it.
+  const typed = {...chain(drive), realpath: p => p.replace('/volumes/ext drive', '/Volumes/Ext Drive'), exists: p => chain(drive).exists(p.replace('/volumes/ext drive', '/Volumes/Ext Drive')), mounts: MOUNTS, platform: 'darwin'};
+  assert.throws(() => securePath('/volumes/ext drive/films/out', typed), /is on \/Volumes\/Ext Drive, a drive that ignores ownership/);
+  // A device whose name holds " on ": the point begins at the last " on /".
+  assert.deepEqual(parseMounts('//guest@nas/Films on tour on /Volumes/Films on tour (smbfs, nodev, nosuid, mounted by guest)'), [{point: '/Volumes/Films on tour', flags: ['smbfs', 'nodev', 'nosuid', 'mounted by guest']}]);
   // exFAT and FAT have no owners: every folder on them shows 0777, already refused by the walk.
-  assert.throws(() => securePath('/Volumes/Stick/out', {...chain({'/': root, '/Volumes': root, '/Volumes/Stick': stat(0o777, me)}), mounts: '/dev/disk6s1 on /Volumes/Stick (exfat, local, nodev, nosuid, noowners)'}), /\/Volumes\/Stick can be changed by other users \(mode 0777/);
+  assert.throws(() => securePath('/Volumes/Stick/out', {...chain({'/': root, '/Volumes': root, '/Volumes/Stick': stat(0o777, me)}), mounts: '/dev/disk6s1 on /Volumes/Stick (exfat, local, nodev, nosuid, noowners)', platform: 'darwin'}), /\/Volumes\/Stick can be changed by other users \(mode 0777/);
 });
 
-/** /etc/group and /etc/passwd as a system would hold them, for this user (`me`, primary group `gid`) and another, bob (uid me + 1). */
-const accounts = (me, gid) => ({
-  private: {group: `root:x:0:\nme:x:${gid}:\nstaff:x:${gid + 1}:bob,me\n`, passwd: `root:x:0:0::/root:/bin/sh\nme:x:${me}:${gid}::/home/me:/bin/bash\nbob:x:${me + 1}:${gid + 1}::/home/bob:/bin/bash\n`},
-  listed: {group: `me:x:${gid}:bob\n`, passwd: `me:x:${me}:${gid}::/home/me:/bin/bash\nbob:x:${me + 1}:${gid + 1}::/home/bob:/bin/bash\n`},
-  primary: {group: `me:x:${gid}:\n`, passwd: `me:x:${me}:${gid}::/home/me:/bin/bash\nbob:x:${me + 1}:${gid}::/home/bob:/bin/bash\n`},
+test('the real path is the disk\'s own spelling: a folder typed in another case on a disk that ignores case comes back as the disk spells it', t => {
+  const top = tempDir('case', t); mkdirSync(path.join(top, 'Mixed', 'Inner'), {recursive: true});
+  const typed = path.join(top, 'mixed', 'inner');
+  if (!existsSync(typed)) return t.skip('this disk tells case apart');
+  assert.equal(securePath(typed), path.join(realpathSync(top), 'Mixed', 'Inner'));
+});
+
+/** /etc/group, /etc/passwd and /etc/nsswitch.conf as a Linux system would hold them, for this user (`me`, primary group `gid`) and another, bob (uid me + 1). */
+const FILES = 'passwd:         files\ngroup:          files  # local accounts only\nshadow:         files\nhosts:          files dns\n';
+const accounts = (me, gid) => {
+  const linux = (group, passwd, nsswitch = FILES) => ({group, passwd, nsswitch, platform: 'linux'});
+  const mine = `me:x:${me}:${gid}::/home/me:/bin/bash\n`, bob = `bob:x:${me + 1}:${gid + 1}::/home/bob:/bin/bash\n`;
+  return {
+    private: linux(`root:x:0:\nme:x:${gid}:\nstaff:x:${gid + 1}:bob,me\n`, `root:x:0:0::/root:/bin/sh\n${mine}${bob}`),
+    listed: linux(`me:x:${gid}:bob\n`, `${mine}${bob}`),
+    primary: linux(`me:x:${gid}:\n`, `${mine}bob:x:${me + 1}:${gid}::/home/bob:/bin/bash\n`),
+    sss: linux(`me:x:${gid}:\n`, mine, 'passwd: files sss\ngroup: files sss\n'),
+    ldap: linux(`me:x:${gid}:\n`, mine, 'passwd: files ldap\ngroup: files [NOTFOUND=return] ldap\n'),
+    systemd: linux(`me:x:${gid}:\n`, mine, 'passwd: files systemd\ngroup: files systemd\n'),
+    compat: linux(`me:x:${gid}:\n`, mine, 'passwd: compat\ngroup: compat\n'),
+    compatPlus: linux(`me:x:${gid}:\n+:::\n`, `${mine}+::::::\n`, 'passwd: compat\ngroup: compat\n'),
+    noSwitch: linux(`me:x:${gid}:\n`, mine, null),
+    mac: {group: `staff:*:${gid}:\n`, passwd: mine, nsswitch: null, platform: 'darwin'},
+  };
+};
+
+test('the account files decide a private group only when they are the whole story: nsswitch names exactly files (or compat with no + line); never on macOS', {skip: posix ? false : 'no POSIX owners or modes'}, () => {
+  const ACCOUNTS = accounts(process.getuid(), process.getgid()), gid = process.getgid();
+  assert.equal(filesOnly(ACCOUNTS.private), true, 'passwd and group: files');
+  assert.equal(filesOnly(ACCOUNTS.compat), true, 'compat, and no + line');
+  for (const name of ['sss', 'ldap', 'systemd', 'compatPlus', 'noSwitch']) assert.equal(filesOnly(ACCOUNTS[name]), false, `${name}: a directory can hold members the files never show`);
+  for (const name of ['sss', 'ldap', 'systemd', 'compatPlus', 'noSwitch']) assert.equal(privateGroup(gid, ACCOUNTS[name]), false, name);
+  assert.equal(privateGroup(gid, ACCOUNTS.compat), true);
+  assert.equal(privateGroup(gid, ACCOUNTS.mac), false, 'macOS: staff, with no member listed, is still every user\'s primary group');
+  const root = stat(0o755, 0), project = {'/': root, '/Users': root, '/Users/me': stat(0o755, process.getuid(), gid), '/Users/me/films': stat(0o775, process.getuid(), gid)};
+  assert.throws(() => securePath('/Users/me/films/out', {...chain(project), accounts: ACCOUNTS.mac, mounts: '', platform: 'darwin'}), /\/Users\/me\/films can be changed by its group \(mode 0775, no sticky bit; not provably a group of yours alone\): .* — chmod g-w it/);
+  assert.throws(() => securePath('/Users/me/films/out', {...chain(project), accounts: ACCOUNTS.ldap, mounts: ''}), /can be changed by its group/);
 });
 
 test('a user private group (Linux, umask 002): a 0775 folder whose group is this user\'s alone is not open to others; a shared group, or groups that cannot be read, still refuse, naming chmod g-w', {skip: posix ? false : 'no POSIX owners or modes'}, () => {
@@ -236,7 +278,7 @@ test('a user private group (Linux, umask 002): a 0775 folder whose group is this
   assert.equal(privateGroup(gid, null), false, 'unreadable: not private');
   const project = {'/': root, '/home': root, '/home/me': stat(0o750, me, gid), '/home/me/films': stat(0o775, me, gid)};
   assert.equal(securePath('/home/me/films/out', {...chain(project), accounts: ACCOUNTS.private, mounts: ''}), '/home/me/films/out');
-  const groupWritable = /^Error: \/home\/me\/films can be changed by its group \(mode 0775, no sticky bit; the group is not yours alone, or \/etc\/group cannot be read\): .* — chmod g-w it, or render into a folder of your own and copy the film out$/;
+  const groupWritable = /^Error: \/home\/me\/films can be changed by its group \(mode 0775, no sticky bit; not provably a group of yours alone\): .* — chmod g-w it, or render into a folder of your own and copy the film out$/;
   for (const accounts of [ACCOUNTS.listed, ACCOUNTS.primary, null]) assert.throws(() => securePath('/home/me/films/out', {...chain(project), accounts, mounts: ''}), groupWritable);
   assert.throws(() => securePath('/home/me/films/out', {...chain({...project, '/home/me/films': stat(0o775, me, gid + 1)}), accounts: ACCOUNTS.private, mounts: ''}), groupWritable, 'a group that is not this user\'s own');
   assert.throws(() => securePath('/home/me/films/out', {...chain({...project, '/home/me/films': stat(0o777, me, gid)}), accounts: ACCOUNTS.private, mounts: ''}), /can be changed by other users \(mode 0777/, 'others may write: never private');

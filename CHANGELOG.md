@@ -80,11 +80,15 @@
   every folder on it, up to the root, must be a real folder owned by you or root and writable by no one else unless
   sticky. The first that fails refuses, named. Everything is written through the real path only, and the paths the
   results report are real paths. Node has no `openat`, so no check of a path keeps a folder another user can
-  rearrange safe. Group-write passes when the group is yours alone (a Linux user private group, umask 002: read once
-  from `/etc/group` and `/etc/passwd`; unreadable, it refuses and names `chmod g-w`). `makeFolder` checks the path
-  again once the folders are made, so one another user slipped in on the way (a link `mkdir -p` followed) refuses
-  before anything is written. On macOS a drive mounted with "Ignore ownership" (`noowners`, read once from
-  `/sbin/mount`) is refused; exFAT and FAT show 0777 and are refused by the walk. Not read: an ACL granting others
+  rearrange safe. Group-write passes on Linux when the group is provably yours alone (a user private group, umask
+  002): `/etc/nsswitch.conf` names exactly `files` (or `compat` with no `+` line) for `passwd` and `group`, and
+  `/etc/group` and `/etc/passwd` show no one else in it — read once; with a directory, unreadable files, or on macOS
+  (Directory Services; `staff` is everyone's), it refuses and names `chmod g-w`. The path is judged as the disk spells
+  it (`realpathSync.native`), and so are the paths results report. `makeFolder` checks the path again once the folders
+  are made, so one another user slipped in on the way (a link `mkdir -p` followed) refuses before anything is
+  written. On macOS a drive mounted with "Ignore ownership" (`noowners`, read once from `/sbin/mount`) is refused, and
+  an unreadable mount table refuses a path under `/Volumes/` (never the internal disk); exFAT and FAT show 0777 and are
+  refused by the walk. Not read: an ACL granting others
   write, and a network folder's owners (what the server says): keep out in a folder of your own, on a local disk.
   **Breaking** for anyone rendering below a group-writable team folder, a 0777 folder, a sticky folder another user
   owns, or a drive that ignores ownership: render into a folder of your own and copy the film out.

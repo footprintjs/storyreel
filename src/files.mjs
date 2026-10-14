@@ -70,23 +70,46 @@ export function writeOutput(final, what, fs = {}) {
 const modeText = st => (st.mode & 0o7777).toString(8).padStart(4, '0');
 const FIX = 'render into a folder of your own and copy the film out';
 
-/** This system's groups and accounts as /etc/group and /etc/passwd hold them, read once ({group, passwd}), or null when they cannot be read. */
+/**
+ * This system's accounts, read once: {group, passwd, nsswitch} — /etc/group, /etc/passwd and /etc/nsswitch.conf (null
+ * when it cannot be read) — and the platform; or null when the account files cannot be read.
+ */
 let accountsRead;
+const readOrNull = file => { try { return readFileSync(file, 'utf8'); } catch { return null; } };
 const systemAccounts = () => {
   if (accountsRead === undefined) {
-    try { accountsRead = {group: readFileSync('/etc/group', 'utf8'), passwd: readFileSync('/etc/passwd', 'utf8')}; } catch { accountsRead = null; }
+    const group = readOrNull('/etc/group'), passwd = readOrNull('/etc/passwd');
+    accountsRead = group === null || passwd === null ? null : {group, passwd, nsswitch: readOrNull('/etc/nsswitch.conf'), platform: process.platform};
   }
   return accountsRead;
 };
 
 /**
- * Whether group `gid` is this user's own and no one else's — a user private group (Ubuntu's and Fedora's default, where
- * umask 002 makes a project folder 0775): no member listed in /etc/group but this user, and no other account in
- * /etc/passwd with it as its primary group. `accounts` is {group, passwd} (the files' text), or null when they could not
- * be read — then no group is private: a group-writable folder stays refused.
+ * Whether the account files are the whole story: /etc/nsswitch.conf names exactly `files` for both `passwd` and `group`
+ * — or `compat`, with no `+` line (an entry pulled in from a directory) in /etc/passwd or /etc/group. A directory
+ * (sss, ldap, nis, winbind, systemd's userdb…) can hold members and accounts the files never show.
+ */
+export function filesOnly({nsswitch, passwd, group}) {
+  if (typeof nsswitch !== 'string') return false;
+  const lines = nsswitch.split('\n').map(l => l.replace(/#.*/, '').trim());
+  const sources = db => lines.find(l => new RegExp(`^${db}\\s*:`).test(l))?.replace(/^\w+\s*:/, '').trim().split(/\s+/).filter(t => t && !t.startsWith('[')) ?? null;
+  const fromFiles = db => {
+    const s = sources(db);
+    if (s?.length !== 1) return false;
+    return s[0] === 'files' || (s[0] === 'compat' && ![passwd, group].some(text => /^\+/m.test(String(text))));
+  };
+  return fromFiles('passwd') && fromFiles('group');
+}
+
+/**
+ * Whether group `gid` is this user's own and no one else's — a user private group (Linux's: umask 002 makes a project
+ * folder 0775): the account files are the whole story (filesOnly), no member is listed in /etc/group but this user,
+ * and no other account in /etc/passwd has it as its primary group. Never on macOS: its groups come from Directory
+ * Services, and `staff` (20) is every user's primary group. `accounts` is {group, passwd, nsswitch, platform} (the
+ * files' text), or null when they could not be read — then no group is private: a group-writable folder stays refused.
  */
 export function privateGroup(gid, accounts) {
-  if (!accounts) return false;
+  if (!accounts || (accounts.platform ?? process.platform) === 'darwin' || !filesOnly(accounts)) return false;
   const rows = text => String(text).split('\n').filter(l => l && !l.startsWith('#')).map(l => l.split(':'));
   const me = typeof process.getuid === 'function' ? process.getuid() : -1, users = rows(accounts.passwd);
   const myName = users.find(u => Number(u[2]) === me)?.[0];
@@ -103,7 +126,7 @@ function changeableBy(st, accounts) {
   if (st.mode & 0o1000) return null;
   if (st.mode & 0o002) return {why: `can be changed by other users (mode ${modeText(st)}, no sticky bit)`, fix: FIX};
   const own = typeof process.getgid === 'function' && st.gid === process.getgid() && privateGroup(st.gid, accounts);
-  if ((st.mode & 0o020) && !own) return {why: `can be changed by its group (mode ${modeText(st)}, no sticky bit; the group is not yours alone, or /etc/group cannot be read)`, fix: `chmod g-w it, or ${FIX}`};
+  if ((st.mode & 0o020) && !own) return {why: `can be changed by its group (mode ${modeText(st)}, no sticky bit; not provably a group of yours alone)`, fix: `chmod g-w it, or ${FIX}`};
   return null;
 }
 
@@ -114,13 +137,20 @@ function unsafe(st, accounts) {
   return changeableBy(st, accounts);
 }
 
-/** The mount table, as macOS's /sbin/mount prints it, read once (a reader: it writes nothing); '' when it cannot be read. */
+/** The mount table, as macOS's /sbin/mount prints it, read once (a reader: it writes nothing); null when it cannot be read. */
 let mountsRead;
-const systemMounts = () => (mountsRead ??= spawnSync('/sbin/mount', [], {encoding: 'utf8'}).stdout ?? '');
+const systemMounts = () => {
+  if (mountsRead === undefined) { const r = spawnSync('/sbin/mount', [], {encoding: 'utf8'}); mountsRead = r.error || r.status !== 0 ? null : r.stdout; }
+  return mountsRead;
+};
 
-/** The mounts in /sbin/mount's text: [{point, flags}], one per line "<device> on <point> (<flag>, <flag>, …)". */
+/**
+ * The mounts in /sbin/mount's text: [{point, flags}], one per line "<device> on <point> (<flag>, <flag>, …)". A mount
+ * point is absolute and a device's name may itself hold " on " (an SMB share "Films on tour"), so the point begins at
+ * the LAST " on /" before the final " (…)".
+ */
 export function parseMounts(text) {
-  return String(text).split('\n').map(l => /^(.*?) on (.+) \(([^)]*)\)$/.exec(l.trim())).filter(Boolean)
+  return String(text).split('\n').map(l => /^(.*) on (\/.*) \(([^()]*)\)$/.exec(l.trim())).filter(Boolean)
     .map(([, , point, flags]) => ({point, flags: flags.split(',').map(f => f.trim()).filter(Boolean)}));
 }
 
@@ -138,20 +168,22 @@ export function mountOf(real, mounts) {
  * judged by where it leads), owned by this user or root (scratch.mjs · ownedFolder), and writable by no one else —
  * unless it is sticky, where anyone may add an entry but only its owner (this user or root, as above) may replace or
  * remove one. Group-write is no one else's when the group is this user's own private group (privateGroup: Linux's
- * user private groups, umask 002). The first that fails refuses, naming it and the fix. On macOS, a drive mounted with
- * "Ignore ownership" (noowners) shows every entry as the viewer's, so it is refused outright (the mount table, read
- * once). Node has no openat, so a check of a path is only as good as every folder above it: in a folder another user
+ * user private groups, umask 002, when the account files are the whole story; never on macOS). The first that fails
+ * refuses, naming it and the fix. The real path is the disk's own spelling (realpathSync.native: on a disk that
+ * ignores case, /volumes/ext is /Volumes/Ext). On macOS, a drive mounted with "Ignore ownership" (noowners) shows every
+ * entry as the viewer's, so it is refused outright (the mount table, read once; unreadable, a path under /Volumes/
+ * is refused). Node has no openat, so a check of a path is only as good as every folder above it: in a folder another user
  * could rearrange, they could swap one StoryReel made (its work folder, a target's folder) for a link to a file of
  * yours between the check and the write. Not read: a folder's ACL (macOS's chmod +a), and a network folder's owners
  * are what the server says — keep out in a folder of your own, on a local disk. Checked first, at every entry that
  * writes into a folder the caller names: renderFilm (and its `work`), makeFilm, makeRelease, breakdown, the tools'
- * stills, folderStore, pacing. `fs` replaces any of {lstat, realpath, exists, accounts, mounts} (a test plays another
- * user, another system's folders, groups or drives). On Windows (no POSIX modes) it returns the path resolved, unchecked.
+ * stills, folderStore, pacing. `fs` replaces any of {lstat, realpath, exists, accounts, mounts, platform} (a test plays
+ * another user, another system's folders, groups or drives; `mounts: null` is a table that cannot be read). On Windows (no POSIX modes) it returns the path resolved, unchecked.
  */
 export function securePath(dir, fs = {}) {
   const wanted = path.resolve(dir);
   if (process.platform === 'win32') return wanted;
-  const {lstat = lstatSync, realpath = realpathSync, exists = existsSync} = fs;
+  const {lstat = lstatSync, realpath = realpathSync.native, exists = existsSync, platform = process.platform} = fs;
   const accounts = 'accounts' in fs ? fs.accounts : systemAccounts();
   let found = wanted;
   while (!exists(found) && path.dirname(found) !== found) found = path.dirname(found);
@@ -161,10 +193,23 @@ export function securePath(dir, fs = {}) {
     if (bad) throw new Error(`${at} ${bad.why}: StoryReel writes only below folders no other user can change (each yours or root's, writable by no one else unless sticky) — ${bad.fix}`);
     if (path.dirname(at) === at) break;
   }
-  const table = fs.mounts ?? (process.platform === 'darwin' ? systemMounts() : null);
-  const drive = table === null ? null : mountOf(real, parseMounts(table));
-  if (drive?.flags.includes('noowners')) throw new Error(`${real} is on ${drive.point}, a drive that ignores ownership (noowners): every folder on it looks like yours — render on the internal disk and copy the film out`);
+  if (platform === 'darwin') refuseNoOwners(real, 'mounts' in fs ? fs.mounts : systemMounts());
   return path.join(real, path.relative(found, wanted));
+}
+
+/**
+ * On macOS, refuse a real path on a drive mounted with "Ignore ownership" (noowners), read from the mount table (its
+ * text; null when it could not be read). An unreadable table fails closed under /Volumes/, where external drives mount;
+ * the internal disk (the system volume, /) is never refused for it.
+ */
+function refuseNoOwners(real, table) {
+  const external = real === '/Volumes' || real.startsWith('/Volumes/');
+  if (table === null) {
+    if (external) throw new Error(`${real} is on a drive whose mount table cannot be read (/sbin/mount), so whether it ignores ownership cannot be told — render on the internal disk and copy the film out`);
+    return;
+  }
+  const drive = mountOf(real, parseMounts(table));
+  if (drive?.flags.includes('noowners')) throw new Error(`${real} is on ${drive.point}, a drive that ignores ownership (noowners): every folder on it looks like yours — render on the internal disk and copy the film out`);
 }
 
 /** The mode every folder StoryReel makes asks for: 0755. mkdir only narrows it by the umask (077 gives 0700), never widens it. */

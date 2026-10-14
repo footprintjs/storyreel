@@ -1331,12 +1331,17 @@ This is needed because Node cannot open a file relative to a folder it has check
 rearrange — a team folder at 0775, a 0777 folder anywhere above, a sticky folder someone else owns — they could swap a
 folder StoryReel made for a link to yours between the check and the write. Your home folder, macOS's per-user temp
 folder (`/var/folders/…/T`) and a sticky `/tmp` owned by root all pass; in the sticky one, another user's entry at an
-output's name can at worst make the write fail. Group-write is fine when the group is yours alone (Linux's user
-private groups, where umask 002 makes a project folder 0775: no other member in `/etc/group`, no one else's primary
-group in `/etc/passwd`); when those files cannot be read, `chmod g-w` the folder. Folders StoryReel makes are checked
-again once made, so one another user slips in on the way is refused before anything is written. On macOS, a drive
-mounted with "Ignore ownership" (`noowners`) shows every folder as yours, so it is refused: render on the internal disk
-and copy the film out. exFAT and FAT drives keep no owners and show 0777, so they are refused too. Not read: an ACL
+output's name can at worst make the write fail. Group-write is fine on Linux when the group is provably yours alone
+(a user private group, where umask 002 makes a project folder 0775): `/etc/nsswitch.conf` names exactly `files` for
+`passwd` and `group` (or `compat`, with no `+` line), `/etc/group` lists no other member and `/etc/passwd` no one else
+with it as a primary group. With a directory (sss, ldap, systemd's userdb) or files that cannot be read, and always on
+macOS (its groups come from Directory Services; `staff` is everyone's), `chmod g-w` the folder. The path is judged as
+the disk spells it, so `/volumes/ext` on a disk that ignores case is `/Volumes/Ext`. Folders StoryReel makes are
+checked again once made, so one another user slips in on the way is refused before anything is written. On macOS, a
+drive mounted with "Ignore ownership" (`noowners`) shows every folder as yours, so it is refused: render on the
+internal disk and copy the film out. If the mount table (`/sbin/mount`) cannot be read, a path under `/Volumes/` (where
+external drives mount) is refused the same way; the internal disk never is. exFAT and FAT drives keep no owners and
+show 0777, so they are refused too. Not read: an ACL
 granting others write (macOS's `chmod +a`), and a network folder's owners, which are what the server says (SMB, NFS) —
 keep out in a folder of your own, and render locally.
 
