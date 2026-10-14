@@ -8,9 +8,79 @@
  *
  * A voice is paced in a copy, never in place: copyVoice copies exactly what the render reads, as new
  * files, and requireVoiceApart refuses a render whose out folder and voice folder overlap.
+ *
+ * What StoryReel leaves in a folder the caller names — the video, poster.jpg, chapters.txt, the caption files,
+ * making-of.json, a release's posts, a breakdown's spec and sheets, a tool's stills, a paced voice's files, a kept
+ * segment — goes there one way, writeOutput: made under a new name nobody can have planted (or in the render's own
+ * work folder), then renamed onto its name. A rename replaces whatever is at the name, a link included, and never
+ * follows a link — so a link another user planted at an output's name in a shared folder (/tmp) is replaced, and the
+ * file it points at is never written. The folders StoryReel names inside the caller's (a release's <target>, a
+ * breakdown's shots) are made by outputFolder, which refuses a link there.
  */
 import path from 'node:path';
-import {existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync, chmodSync} from 'node:fs';
+import {randomBytes} from 'node:crypto';
+import {existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync, chmodSync, copyFileSync, linkSync, lstatSync, constants} from 'node:fs';
+
+/** A name beside `final` nobody can have planted: random, and created exclusively by whoever writes it. */
+const besideName = final => path.join(path.dirname(final), `.storyreel-${randomBytes(8).toString('hex')}.part`);
+
+/** Refuse a folder at an output's name: an output is a file, and StoryReel never removes a folder to make room. */
+function refuseFolderAt(final, lstat) {
+  let st; try { st = lstat(final); } catch { return; }
+  if (st.isDirectory()) throw new Error(`${final} is a folder: StoryReel writes a file there, and never removes a folder to make room — move or rename the folder, or give another out`);
+}
+
+/** Make a file under a new name beside `final` (`make` must create it exclusively), then rename it onto `final`; a failure leaves nothing beside it. */
+function viaBeside(final, make, ops) {
+  const temp = besideName(final);
+  try { make(temp); ops.renameSync(temp, final); } catch (e) { try { ops.rmSync(temp, {force: true}); } catch { /* the failure that matters is e */ } throw e; }
+}
+
+/**
+ * Write an output — a file left under a name the caller (or anyone) can predict — so a link already at that name is
+ * replaced, never written through. `what` is the bytes (a Buffer or a string), {move: file} (a file StoryReel made in
+ * its own folder: FFmpeg's video in the render's work folder), or {copy: file, link?} (a file that stays where it is:
+ * a hard link where one can be made, when `link`, else a copy). The file is renamed onto `final`: bytes and copies are
+ * first made beside it under a new random name, created exclusively (so the same folder: the rename never crosses a
+ * disk); a move renames straight from its folder, and when that folder is on another disk (EXDEV: a `work` folder the
+ * caller named elsewhere) it is copied beside `final` the same way first. A folder at `final` is refused, never
+ * removed. Returns `final`. `fs` replaces any of {writeFileSync, renameSync, copyFileSync, linkSync, rmSync, lstatSync}
+ * (a test hands in its own to cross a disk on cue).
+ */
+export function writeOutput(final, what, fs = {}) {
+  const ops = {writeFileSync, renameSync, copyFileSync, linkSync, rmSync, lstatSync, ...fs};
+  refuseFolderAt(final, ops.lstatSync);
+  const copyBeside = from => viaBeside(final, temp => ops.copyFileSync(from, temp, constants.COPYFILE_EXCL), ops);
+  if (typeof what === 'string' || ArrayBuffer.isView(what)) viaBeside(final, temp => ops.writeFileSync(temp, what, {flag: 'wx'}), ops);
+  else if (typeof what?.move === 'string') {
+    try { ops.renameSync(what.move, final); } catch (e) {
+      if (e?.code !== 'EXDEV') throw e;
+      copyBeside(what.move);
+      ops.rmSync(what.move, {force: true});
+    }
+  } else if (typeof what?.copy === 'string') {
+    if (what.link) viaBeside(final, temp => { try { ops.linkSync(what.copy, temp); } catch { ops.copyFileSync(what.copy, temp, constants.COPYFILE_EXCL); } }, ops);
+    else copyBeside(what.copy);
+  } else throw new Error('writeOutput: give the bytes (a Buffer or a string), {move: file} or {copy: file, link?}');
+  return final;
+}
+
+/**
+ * A folder StoryReel names inside the caller's `parent` (a release's <target>, a breakdown's shots/): made when it is
+ * not there, kept when it is a real folder, refused when it is a link or a file — what is written in it would land
+ * wherever the link points. `parent` is the caller's own (made if missing, never judged). Returns the folder's path.
+ */
+export function outputFolder(parent, ...names) {
+  let at = path.resolve(parent);
+  mkdirSync(at, {recursive: true});
+  for (const name of names) {
+    at = path.join(at, name);
+    try { mkdirSync(at); } catch (e) { if (e?.code !== 'EEXIST') throw e; }
+    const st = lstatSync(at);
+    if (!st.isDirectory()) throw new Error(`${at} is ${st.isSymbolicLink() ? 'a link' : 'a file'}: StoryReel writes into a folder of its own there — remove it, or give another out`);
+  }
+  return at;
+}
 
 /**
  * The real path of `file` (relative to `root`, or absolute), or a refusal when it is outside `root`.

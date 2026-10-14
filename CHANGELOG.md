@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Outputs replace a link at their name, never write through it.** In a shared folder (macOS's `/private/tmp` has no
+  `protected_symlinks`), another user could plant a link at `chapters.txt` (or `poster.jpg`, the captions,
+  `making-of.json`, the video FFmpeg wrote with `-y`, …) and have a render overwrite any file of yours it pointed at.
+  Every output is now written by `files.mjs` · `writeOutput`: made under a new name — FFmpeg's video in the work
+  folder, anything else beside the output under a random name created exclusively — then renamed onto its name; a
+  rename replaces a link and never follows one. A video whose work folder is on another disk is copied beside the
+  output the same way first. A folder at an output's name is refused, never removed. That covers the render's video,
+  poster, chapters and captions, `makeFilm`'s making-of, a release's video, captions, thumbnail, `post.json`,
+  `post.txt` and `CREDITS.txt`, a breakdown's `breakdown.json`, `breakdown.md`, `record.json`, `overview.png` and
+  shot sheets, the tools' stills and strips, pacing's paced audio, its `.unpaced.wav` and generated silence, and the
+  segment store's files. The folders StoryReel names inside yours (a release's targets, a breakdown's `shots/`, the
+  tools' `stills/`) refuse a link (`files.mjs` · `outputFolder`). A test lists every raw write left in `src/` (each
+  into StoryReel's own folder) and fails on a new one.
+
 - **A render cleans up after itself.** Its working files (the picture without its sound, the voice and the effects as
   WAVs, FFmpeg's lists, segment files on their way to the cache) go in a hidden `.storyreel-work-…` folder beside the
   video, removed when the render ends, finished or failed (`render.mjs` · `closeRender`; `renderFilm` and `makeFilm` call

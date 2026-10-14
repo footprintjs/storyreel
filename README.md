@@ -1209,6 +1209,16 @@ such as `/tmp` (1777) that would let anyone rewrite the voice the other tools re
 `narration` another user put there cannot be removed: `makeFilm` stops (EPERM) rather than write into it, so make
 films into a folder of your own.
 
+Every output — the video, `poster.jpg`, `chapters.txt`, the caption files, `making-of.json`, a release's post, a
+breakdown's spec and sheets, a tool's stills, a paced voice's files, a kept segment — is written one way
+(`files.mjs` · `writeOutput`): made under a new name (FFmpeg's video in the work folder; anything else beside it, under a
+random name created exclusively), then renamed onto its own name. A rename replaces whatever is at the name, a link
+included, and never follows one: a link someone planted at `chapters.txt` in a shared folder is replaced by the
+chapters, and the file it pointed at is never written. A folder at an output's name is refused, never removed. The
+folders StoryReel names inside yours (a release's `<target>/` and `work/<target>/`, a breakdown's `shots/`, the tools'
+`stills/`) must be real folders: a link there is refused. A `work` folder you name holds working files by fixed names, so
+name one of your own, not a shared folder.
+
 | where | what | kept? |
 |---|---|---|
 | beside `out` | the video, `poster.jpg`, `chapters.txt`, the caption files; with `makeFilm`, `making-of.json` and (with a voice) `narration/`, the paced copy the render read | yes: the outputs |

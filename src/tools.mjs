@@ -9,7 +9,8 @@
  * film() gets the command's flags (--ep ep1 --voice work/ep1/voice), so one config serves every episode.
  */
 import path from 'node:path';
-import {existsSync, readFileSync, mkdirSync, writeFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
+import {writeOutput, outputFolder} from './files.mjs';
 import {pathToFileURL} from 'node:url';
 import {compileFilm, evenTimings, paceTimings, makeFilm} from './index.mjs';
 import {contactSheet} from './sheet.mjs';
@@ -79,11 +80,13 @@ function momentsOf(film, at, tool) {
     return {t: +Math.min(film.total - .001, Math.max(0, t)).toFixed(3), label: m};
   });
 }
+/** The project's stills folder, <out>/stills: a real folder of its own, never a link (files.mjs · outputFolder). */
+const stillsFolder = project => outputFolder(path.resolve(project.cwd, project.inputs.out ?? 'out'), 'stills');
+
 /** One picture to confirm the look: the moments side by side as a PNG. Returns {text, file}. */
 export async function still(project, args = {}) {
-  const moments = momentsOf(project.film, args.at, 'still'), file = path.resolve(project.cwd, project.inputs.out ?? 'out', 'stills', `${scenesOf(args.at).join('_').replace(/[^\w+.-]/g, '-')}.png`);
-  mkdirSync(path.dirname(file), {recursive: true});
-  writeFileSync(file, await contactSheet(project.film, {moments, columns: Math.min(3, moments.length), width: +(args.width ?? 1200)}));
+  const moments = momentsOf(project.film, args.at, 'still'), file = path.join(stillsFolder(project), `${scenesOf(args.at).join('_').replace(/[^\w+.-]/g, '-')}.png`);
+  writeOutput(file, await contactSheet(project.film, {moments, columns: Math.min(3, moments.length), width: +(args.width ?? 1200)}));
   return {text: `${file} · ${moments.length} frame${moments.length > 1 ? 's' : ''}: ${moments.map(m => `${m.label} (${m.t.toFixed(2)} s)`).join(', ')}`, file};
 }
 
@@ -102,9 +105,8 @@ export async function strip(project, args = {}) {
     const t = +(first + k / fps).toFixed(3);
     if (t >= 0 && t < project.film.total) moments.push({t, label: `${k - Math.floor(frames / 2) >= 0 ? '+' : ''}${k - Math.floor(frames / 2)}`});
   }
-  const file = path.resolve(project.cwd, project.inputs.out ?? 'out', 'stills', `strip-${moment.label.replace(/[^\w+.-]/g, '-')}.png`);
-  mkdirSync(path.dirname(file), {recursive: true});
-  writeFileSync(file, await contactSheet(project.film, {moments, columns: Math.min(6, moments.length), width: +(args.width ?? 1200)}));
+  const file = path.join(stillsFolder(project), `strip-${moment.label.replace(/[^\w+.-]/g, '-')}.png`);
+  writeOutput(file, await contactSheet(project.film, {moments, columns: Math.min(6, moments.length), width: +(args.width ?? 1200)}));
   return {text: `${file} · ${moments.length} frames at ${fps} fps around ${moment.label} (${moment.t.toFixed(2)} s): frame 0 is the moment`, file};
 }
 

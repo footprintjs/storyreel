@@ -11,7 +11,7 @@
  */
 import {readCast, withCast} from './cast.mjs';
 import {readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync} from 'node:fs';
-import {copyVoice, requireVoiceApart, placeVoice} from './files.mjs';
+import {copyVoice, requireVoiceApart, placeVoice, writeOutput} from './files.mjs';
 import path from 'node:path';
 import {flowChart, narrative} from 'footprintjs';
 import {applyPacing, validatePacing, paceTimings} from './pacing.mjs';
@@ -288,6 +288,6 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     compile: film.record.narrative,
   };
   const makingOf = path.join(dir, 'making-of.json');
-  writeFileSync(makingOf, JSON.stringify(record, null, 2));
+  writeOutput(makingOf, JSON.stringify(record, null, 2));
   return {...result, makingOf};
 }

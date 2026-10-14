@@ -30,7 +30,8 @@
  * narrating), and an adapter whose platform asks for it says so in the post (YouTube: altered or synthetic content).
  */
 import {readChapters} from 'footprint-narration';
-import {mkdirSync, writeFileSync, copyFileSync, readFileSync, statSync, linkSync, rmSync} from 'node:fs';
+import {readFileSync, statSync} from 'node:fs';
+import {writeOutput, outputFolder} from './files.mjs';
 import path from 'node:path';
 import {makeFilm} from './pipeline.mjs';
 import {FORMAT_NAMES, formatOf, formatScale} from './layout.mjs';
@@ -173,18 +174,13 @@ export function creditsText(post, tools) {
 /** The folder (inside a release's `out`) that holds each target's working files and record, apart from what is posted. */
 export const WORK = 'work';
 
-/** A file of the render in the clean folder: linked (one copy on disk), or copied where a link cannot be made. */
-function deliver(file, dir) {
-  const to = path.join(dir, path.basename(file));
-  rmSync(to, {force: true});
-  try { linkSync(file, to); } catch { copyFileSync(file, to); }
-  return to;
-}
+/** A file of the render in the clean folder: linked (one copy on disk), or copied where a link cannot be made (files.mjs · writeOutput). */
+const deliver = (file, dir) => writeOutput(path.join(dir, path.basename(file)), {copy: file, link: true});
 
 /** The thumbnail in the target's folder: the image given, or the film's poster drawn at the platform's size; null when the platform takes none. */
 async function placeThumbnail(adapter, given, poster, dir) {
   if (!given || !adapter.thumbnail) return null;
-  if (given !== 'poster') { const file = path.join(dir, `thumbnail${path.extname(given)}`); copyFileSync(given, file); return file; }
+  if (given !== 'poster') return writeOutput(path.join(dir, `thumbnail${path.extname(given)}`), {copy: given});
   if (!poster) refuse(adapter, [{problem: 'the thumbnail is to be the film\'s poster, and the render made none', fix: 'name the poster in the recipe (poster: a phrase that is said)'}]);
   const {createCanvas, loadImage} = await import('@napi-rs/canvas');
   const img = await loadImage(readFileSync(poster)), {width, height, maxBytes} = adapter.thumbnail;
@@ -192,7 +188,7 @@ async function placeThumbnail(adapter, given, poster, dir) {
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, (width - img.width * s) / 2, (height - img.height * s) / 2, img.width * s, img.height * s);   // filling the frame, centred
   const file = path.join(dir, 'thumbnail.jpg');
-  for (const q of [92, 85, 75]) { const jpg = await canvas.encode('jpeg', q); if (!maxBytes || jpg.length <= maxBytes) { writeFileSync(file, jpg); return file; } }
+  for (const q of [92, 85, 75]) { const jpg = await canvas.encode('jpeg', q); if (!maxBytes || jpg.length <= maxBytes) return writeOutput(file, jpg); }
   refuse(adapter, [{problem: `the poster is over ${(maxBytes / 1e6).toFixed(1)} MB even as a plainer JPEG`, fix: 'give post.thumbnail an image file'}]);
 }
 
@@ -225,7 +221,8 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
   const stem = base ?? (String(film.storyboard?.title ?? 'film').toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'film');
   const released = [];
   for (const {adapter, options} of loaded) {
-    const dir = path.join(out, options.name), work = path.join(out, WORK, options.name); mkdirSync(dir, {recursive: true}); mkdirSync(work, {recursive: true});
+    // The target's folders, named inside `out`: real folders of the release's own, never a link (files.mjs · outputFolder).
+    const dir = outputFolder(out, options.name), work = outputFolder(out, WORK, options.name);
     const layout = {format: adapter.video.format, ...(adapter.video.captions || options.captions ? {captions: options.captions ?? adapter.video.captions} : {}),
       ...(options.header ? {header: options.header} : adapter.video.header && p.title ? {header: {title: p.title}} : {}), ...(options.crop ? {crop: options.crop} : {}), ...(options.scale !== undefined ? {scale: options.scale} : {})};
     // A platform that takes an uploaded thumbnail (YouTube) shows no frame of the video as one: it starts on the film's own.
@@ -239,9 +236,9 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
     const thumbnail = await placeThumbnail(adapter, p.thumbnail, result.poster, dir);
     const record = {target: adapter.name, label: adapter.label, fields, video: path.basename(video), ...(captions ? {captions: Object.values(captions).map(f => path.basename(f))} : {}),
       ...(thumbnail ? {thumbnail: path.basename(thumbnail)} : {}), seconds: +result.seconds.toFixed(2), format: adapter.video.format, audience: p.audience, ...(p.synthetic.length ? {synthetic: p.synthetic} : {}), ...(p.lang ? {lang: p.lang} : {}), facts: adapter.facts};
-    writeFileSync(path.join(dir, 'post.json'), JSON.stringify(record, null, 2));
-    writeFileSync(path.join(dir, 'post.txt'), postText(adapter, fields));
-    const credits = path.join(dir, 'CREDITS.txt'); writeFileSync(credits, creditsText(p, JSON.parse(readFileSync(result.makingOf, 'utf8')).tools ?? []));
+    writeOutput(path.join(dir, 'post.json'), JSON.stringify(record, null, 2));
+    writeOutput(path.join(dir, 'post.txt'), postText(adapter, fields));
+    const credits = writeOutput(path.join(dir, 'CREDITS.txt'), creditsText(p, JSON.parse(readFileSync(result.makingOf, 'utf8')).tools ?? []));
     released.push({target: options.name, dir, video, captions, thumbnail, credits, post: fields, makingOf: result.makingOf, work});
   }
   return released;
