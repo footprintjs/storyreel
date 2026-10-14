@@ -211,7 +211,8 @@ test('makeFilm: claims "refuse" refuses a number with no source before anything 
   const out = dir => path.join(root, dir, 'film.mp4');
   await assert.rejects(makeFilm({storyboard, recipe, timings, root, out: out('refused'), claims: 'refuse'}),
     /The film shows 2 numbers with no source \(claims: 'refuse'; the check saw declared lines only \(the review also reads what the picture draws\)\): "120" \(scene rate, story\.items\[1\]\) has no source: add \{"value": 120, "source": "…"\} to the facts, or mark scene rate "example": true; "120" \(scene rate, captions\)/);
-  assert.deepEqual(readdirSync(path.join(root, 'refused')), [], 'nothing drawn, nothing left behind');
+  assert.deepEqual(readdirSync(path.join(root, 'refused')), ['making-of.failed.json'], 'nothing drawn: only the failed run\'s record is left');
+  assert.match(JSON.parse(readFileSync(path.join(root, 'refused', 'making-of.failed.json'), 'utf8')).failed.error, /^The film shows 2 numbers with no source/);
   const {facts: _, ...unsourced} = storyboard;
   await assert.rejects(makeFilm({storyboard: unsourced, recipe, timings, root, out: out('unchecked'), claims: 'refuse'}),
     /claims: 'refuse' needs the facts the numbers on screen come from \(the check saw declared lines only \(the review also reads what the picture draws\)\) — the storyboard names no facts, so the numbers outside example scenes cannot be checked: give the storyboard "facts": "facts\.json"/);

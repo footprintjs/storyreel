@@ -93,6 +93,9 @@ const result = await makeFilm({
 console.log(result.out, result.makingOf);         // the film, and making-of.json beside it
 ```
 
+A run that fails writes its record as `making-of.failed.json` (a finished render's `making-of.json` is never replaced),
+marked `failed` with the error's text and holding what the run got to, then throws the same error.
+
 From a clone of the package: `node examples/hello/make.mjs`, `node examples/shepherd/make.mjs`
 (the cartoon kit), `node examples/worlds/make.mjs` (worlds as shots, a pause-and-guess, a string table),
 `node examples/recap/make.mjs` (a recap of the film's own frames and a teaser for the next film).

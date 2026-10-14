@@ -309,11 +309,35 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     .addFunction('place-narration', stages['place-narration'], 'place-narration');
   // Finished or failed, what the run made to work with goes: the render's working files (render.mjs · closeRender:
   // kept only in a `work` folder the caller named) and a paced copy of the voice that never became <out dir>/narration.
-  let run;
-  try { run = await chart.build().recorder(trace).run(); } finally { closeRender(job); dropCopy(); }
   // What this run swept before making its own scratch folders (the ones stopped runs left: scratch.mjs), and what it could
   // not remove — skipped, never a reason to stop.
-  const swept = [...voices.swept, ...(job?.swept ?? [])], unswept = [...voices.failed, ...(job?.unswept ?? [])];
+  const sweptRecord = () => {
+    const swept = [...voices.swept, ...(job?.swept ?? [])], unswept = [...voices.failed, ...(job?.unswept ?? [])];
+    return swept.length || unswept.length ? {swept: {count: swept.length, names: swept, ...(unswept.length ? {failed: unswept} : {})}} : {};
+  };
+  // A run that fails keeps its making-of record too: the failed run is the one most worth reading. It is written as
+  // making-of.failed.json — a finished render's making-of.json is never replaced — marked failed with the error's text,
+  // holding what the run got to (approval.mjs · approveFilm refuses it); then the error goes on to the caller as it was.
+  // A record that cannot be written never takes the error's place.
+  const keepFailedRecord = error => {
+    try {
+      const record = {
+        schemaVersion: 1, failed: {error: errorText(error)}, made: new Date().toISOString(),
+        ...(inputs ? {inputs} : {}),
+        ...(voice ? {voice} : {}),
+        ...(paced ? {pacing: paced.pacing ?? null} : {}),
+        ...sweptRecord(),
+        tools: TOOLS(),
+        pipeline: trace.getEntries(),
+        ...(film?.record ? {compile: film.record.narrative} : {}),
+      };
+      writeOutput(path.join(dir, 'making-of.failed.json'), JSON.stringify(record, null, 2));
+    } catch { /* the run's own error is the one to see */ }
+  };
+  let run;
+  try { run = await chart.build().recorder(trace).run(); }
+  catch (error) { keepFailedRecord(error); throw error; }
+  finally { closeRender(job); dropCopy(); }
   const record = {
     schemaVersion: 1, made: new Date().toISOString(), out: result.out, seconds: result.seconds, chapters: result.chapters,
     // What part of the film this render shows (an approval is of a render of the whole film).
@@ -337,7 +361,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     // Each beat: what was said, when, and the recipe entry that asked for it.
     beats: film.beats.map(({ref, t, path}) => ({said: Array.isArray(ref) ? {scene: ref[0], phrase: ref[1], plus: ref[2] ?? 0} : ref, at: t, ...(path ? {entry: path} : {})})),
     ...(film.notes.length ? {notes: film.notes} : {}),
-    ...(swept.length || unswept.length ? {swept: {count: swept.length, names: swept, ...(unswept.length ? {failed: unswept} : {})}} : {}),
+    ...sweptRecord(),
     // The voice was put in place on a second try (another film placed its own in this folder at the same moment).
     ...(placed ? {narration: {placedAgain: placed}} : {}),
     // The camera's moves as played (camerawork.mjs): moves, or cuts for reduced motion, and why; each move placed.
@@ -358,4 +382,9 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   const makingOf = path.join(dir, 'making-of.json');
   writeOutput(makingOf, JSON.stringify(record, null, 2));
   return {...result, makingOf};
+}
+
+/** The text of what a run threw, for its record: an Error's message, anything else as a string — never a throw itself. */
+function errorText(error) {
+  try { return error instanceof Error ? String(error.message) : String(error); } catch { return 'a thrown value that cannot be shown as text'; }
 }
