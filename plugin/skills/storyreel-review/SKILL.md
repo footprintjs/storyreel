@@ -10,8 +10,10 @@ image only to confirm what the text already told you. (Building a film from noth
 [its SKILL.md](../storyreel-cartoon/SKILL.md).)
 
 The project names its film in `storyreel.config.mjs` (`export default {film: flags => ({storyboard, recipe, kits?,
-root?, narrationDir?, pacing?, layout?, out?})}`; `root` defaults to the folder the command runs in, `out` to `out`);
-every flag also reaches `film()`, e.g. `--ep ep1 --voice work/ep1/voice`.
+timings?, root?, narrationDir?, pacing?, layout?, out?})}`; `root` defaults to the folder the command runs in, `out` to
+`out`). Without `timings` the tools time the film from the voice folder's `timings.json`, or with
+`evenTimings(storyboard)` (a 0.8 s tail a scene): give `timings` when your own scripts time it another way. Every flag
+also reaches `film()`, e.g. `--ep ep1 --voice work/ep1/voice`.
 
 ## The loop
 

@@ -4,7 +4,9 @@
 
 A "final" render should be the film someone actually watched. Every `makeFilm` render's `making-of.json` lists what
 the film was made from, hashed (`inputs`): the storyboard, the timings, the recipe, the strings, the facts, every file
-it read, the pacing, the voice's audio, and the kit's code when you pass `code`. `approveFilm` takes the record of the
+it read, the pacing, the voice's audio, and the kit's code when you pass `code`. `codeFingerprint(paths)` hashes the
+files and folders it is given and follows no imports: name every file that draws (or the kits' folder), or an edit to
+a helper the kit imports changes the film without the approval noticing. `approveFilm` takes the record of the
 render the person watched; `makeFilm({…, approval})` then refuses to render anything else, naming what changed.
 
 ```js

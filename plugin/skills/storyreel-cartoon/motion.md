@@ -63,7 +63,9 @@ console.log(moveAt('pop', 1, {start: 0, reduced: true}).scale);         // 1: re
 
 Eases (`footprint-storyreel/ease` · `easeNamed`): `linear`, `in`, `out`, `inOut`, `back`, `walk`, `jump`, `spring`,
 `bounce`, `outCubic`, `outQuint`, `outExpo`, `outBack`, `inOutCubic`, `standard`, `emphasized`, or a CSS curve
-`"cubic-bezier(0.16, 1, 0.3, 1)"`. Each maps 0..1 to 0..1. `overshoots(name)` says whether it goes past the end (a
+`"cubic-bezier(0.16, 1, 0.3, 1)"`. `easeNamed(name)` returns the curve, a function of how far through its seconds a
+change is (0..1, clamped) to how far the value has gone: `easeNamed('inOut')(0.25)` (its second argument only names
+who asked, in a refusal). `overshoots(name)` says whether it goes past the end (a
 transition refuses one that would show the frame's edge). A spring (`footprint-storyreel/motion` · `spring`) arrives
 by its own physics: `settleTime('heavy')` is about 0.8 s. `track(t, [[time, value], …])` moves a value through many
 targets with one spring per change, so it never jumps.
@@ -106,9 +108,12 @@ and flattened on each landing `{at, speed}`; `burst(t, events, 'flash')` is a on
 ## Acting: a character who thinks
 
 `footprint-storyreel/acting`: `moodAt(keys, t)` acts a change of mood (the eyes close just before it, a take, a
-cross-fade), `idleAt(t, {seed})` keeps a character alive while nothing happens (breath, blink, sway, a glance; give
-each character its own seed so two never blink in step), `follows(f, delay)` makes the head follow the eyes, and
-`mouthAt(clock, t, who)` opens a speaker's mouth only while that speaker says a word.
+cross-fade), `idleAt(t, {seed})` keeps a character alive while nothing happens, `follows(f, delay)` makes the head
+follow the eyes, and `mouthAt(clock, t, who)` opens a speaker's mouth only while that speaker says a word.
+`idleAt` returns `{breath, blink, sway, glance}`: `breath` a scale about 1 (±0.012: scale the body by it), `blink`
+0 open … 1 shut (draw the eyes that closed), `sway` px (add it to x), `glance` −1…1 (a look aside now and then). Give
+each character its own `seed`, so two never blink in step. `drawFigure` draws none of these itself: apply them to
+the pose (`{...pose, x: pose.x + idle.sway}`) or to your own drawing.
 
 ```js run
 import {anticipate, squash} from 'footprint-storyreel/principles';

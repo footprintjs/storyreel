@@ -101,7 +101,13 @@ from a **pose**, standing on `floor` (its y, px), `size` px tall; `colors` overr
 - **`joints`** (optional): `{torso?, neck?, arms?: [{shoulder, elbow}, {shoulder, elbow}], legs?}`, in radians from
   hanging straight down, + forward (the way it faces); `arms[j]` is on `feet[j]`'s side. `drawFigure` bends the arms and
   the neck by them; the legs are always solved to reach the feet. Without `arms`, an arm swings with the walk: shoulder
-  ±0.5 × `swing`, elbow 0.25 (its rest bend). Start a gesture from those values, or it pops.
+  ±0.5 × `swing`, elbow 0.25 (its rest bend). Start a gesture from those values, or it pops. The bones, in torso
+  lengths (`unit`): upper arm 0.55, forearm 0.5, thigh and shin 0.85 each, neck 0.2, head radius 0.32; so a hand is at
+  most 1.05 units from the shoulder. There is no helper that puts a hand at a point: work out the two angles, or try
+  values and read `figureAt(...).hands` back.
+- **`turn` is not `facing`.** A walk turns to go (`turn` 1) and back to us once it settles (`turn` 0), but `facing`
+  keeps its sign: the figure is still drawn side-on toward `facing`, and "forward" for every joint is that way. `turn`
+  moves only the eye.
 - **The points** (`figureAt(pose, {floor, size})`, px on the sheet): `hip`, `shoulder`, `head` (`{x, y, r}`), and per
   side `knees`, `feet`, `elbows`, `hands` (two each, `[j]` on `feet[j]`'s side); `near` is the side drawn in front,
   `unit` one torso length in px (0.3 of `size`). Use them for `regionsAt`, `parts`, and anything drawn on the figure

@@ -27,7 +27,7 @@ usually wrong. Read the record and the review's text first; open a still only to
 | `inputs` | what the film was made from, each hashed: what an approval locks |
 | `pacing`, `chapters` | the pacing as applied; one chapter per titled scene |
 | `beats` | each phrase said (`said`), when (`at`), and the recipe entry it triggered (`entry`) |
-| `camera` | each move as played (`played`, `covers`, `ends`; `lasts`: until when its framing holds, null to the film's end) and the reduced-motion `decision` |
+| `camera` | each move as played (`played`, `ends`; `covers` only when it scaled the picture up to keep the frame covered; `lasts`: until when its framing holds, null to the film's end) and the reduced-motion `decision` |
 | `claims` | the numbers on screen, the verdict and why (declared lines only; the review also reads what the picture draws) |
 | `sounds`, `loudness` | each sound effect; the loudness as measured and set (`type: 'skipped'` with a reason for a silent film) |
 | `finished` | the checks on the MP4 itself (`check: 'report'`): `checked`, `findings`, and `skipped` with why (voice, lip sync and captions need a voice or a caption file to compare) |

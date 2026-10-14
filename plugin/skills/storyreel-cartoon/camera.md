@@ -94,7 +94,7 @@ way. The film's inputs carry `reducedMotion: true`, so an approval of the moving
 
 The plan is a footprintjs flowchart, so `film.camera` says how the film was played and why: `motion` (`moves` or
 `cuts`), `decision` (the reduced-motion rule and its evidence), and each move as placed: `at`, `until`, its settings,
-`played` (`move`, `cut`, `off` or `kept`), `covers`, `ends` (the framing it resolved to, `{x, y, z, r}`).
+`played` (`move`, `cut`, `off` or `kept`), `covers` (when it scaled the picture up), `ends` (the framing it resolved to, `{x, y, z, r}`).
 `film.cameraAt(t)` is the framing at any second. `making-of.json` keeps `camera`.
 
 ## Other camera words

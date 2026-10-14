@@ -10,14 +10,15 @@ camera dollies in, she waves. Each file below is complete. Open the pages beside
 
 ## 1. Set up
 
-`mkdir farm-film && cd farm-film && npm init -y && npm i footprint-storyreel`. Node 22 or later; write the code as
-`.mjs` files (ES modules). FFmpeg on the PATH is needed only for step 6.
+`mkdir farm-film && cd farm-film && npm init -y && npm i footprint-storyreel` (Node 22 or later). Write `.mjs` files,
+and run every script and command from this folder: they read and write relative to it. FFmpeg is needed for step 6.
 
 ## 2. The storyboard: what happens, and when
 
 A silent scene lists **directions**, `[what happens, seconds]`; the recipe names a direction exactly as it would a
-spoken phrase, and a direction is never spoken. A spoken scene has `"narration": "…"` instead ([voice.md](voice.md)).
-The directions here add up to 20 s; `evenTimings` adds a 0.8 s tail to each scene (`evenTimings(storyboard, {tail})`).
+spoken phrase (its words are spread evenly over its seconds, so name it from its first word to land at its start),
+and a direction is never spoken. A spoken scene has `"narration": "…"` instead ([voice.md](voice.md)). These add up to
+20 s; `evenTimings` adds a 0.8 s tail to each scene (`evenTimings(storyboard, {tail})`).
 
 ```json file=storyboard.json
 {"title": "A walk on the farm", "scenes": [{"id": "farm", "title": "The farm", "silent": [
@@ -41,21 +42,22 @@ const FLOOR = 760, SIZE = 300, STYLE = 'stroll';   // where her feet stand (y, p
 function compile(spec, clock) {
   const start = clock.at(spec.walk), stop = clock.at(spec.stop), bird = clock.at(spec.bird), wave = clock.at(spec.wave);
   // Her feet come together at `stop`: the stepping gets what is left after the style's set-off (its anticipation).
-  const her = walkSource(walk({from: 150, to: 1100, start, size: SIZE, style: STYLE, seconds: stop - start - WALKS[STYLE].anticipate}));
+  const plan = walk({from: 150, to: 1100, start, size: SIZE, style: STYLE, seconds: stop - start - WALKS[STYLE].anticipate});
+  const her = walkSource(plan), near = plan.facing === 1 ? 1 : 0;   // the arm on the camera's side (figureAt's `near`)
   // ONE pose for draw, regionsAt and parts, so the camera frames and the review checks what is drawn. The arms swing
   // with the walk; from the wave on, joints raise the near arm (radians from hanging, + forward; the elbow rests at 0.25).
   const poseAt = t => {
-    const pose = her.poseAt(t), u = Math.min(1, (t - wave) / .4);
-    return u <= 0 ? pose : {...pose, joints: {arms: [{shoulder: 0, elbow: .25}, {shoulder: 2.6 * u, elbow: .25 + .3 * u * Math.sin(12 * (t - wave))}]}};
+    const pose = her.poseAt(t), u = Math.min(1, (t - wave) / .4), arms = [{shoulder: 0, elbow: .25}, {shoulder: 0, elbow: .25}];
+    arms[near] = {shoulder: 2.6 * u, elbow: .25 + .3 * u * Math.sin(12 * (t - wave))};
+    return u <= 0 ? pose : {...pose, joints: {arms}};
   };
   const at = t => figureAt(poseAt(t), {floor: FLOOR, size: SIZE});   // the points she is drawn through
   return {
     hang: 1,                                                       // the world fills the frame
     draw(ctx, t) {
-      ctx.fillStyle = '#9fd8ff'; ctx.fillRect(0, 0, 1600, 900);    // sky
+      ctx.fillStyle = '#9fd8ff'; ctx.fillRect(0, 0, 1600, 900); ctx.fillStyle = '#7fcb62'; ctx.fillRect(0, 560, 1600, 340);   // sky, grass
       const cx = (200 + 12 * t) % 1800 - 100;                      // a cloud that drifts: the picture never freezes
       ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(cx, 150, 40, 0, 7); ctx.arc(cx + 50, 140, 50, 0, 7); ctx.fill();
-      ctx.fillStyle = '#7fcb62'; ctx.fillRect(0, 560, 1600, 340);   // grass
       ctx.fillStyle = '#a0683f'; ctx.fillRect(1250, 420, 220, 200);  // the barn
       ctx.fillStyle = '#5b4636'; for (let x = 60; x < 1560; x += 90) ctx.fillRect(x, 640, 14, 90);   // fence posts
       const u = Math.max(0, t - bird);                             // the bird leaves the fence as she passes
@@ -93,7 +95,7 @@ moves by name ([camera.md](camera.md)). An unknown top-level key, or a phrase no
 
 ## 5. Check it before anything renders
 
-The command line reads the film named in `storyreel.config.mjs` (run it from the project folder):
+The command line reads the film named in `storyreel.config.mjs`:
 
 ```js file=storyreel.config.mjs
 import {readFileSync} from 'node:fs';
@@ -108,7 +110,7 @@ npx storyreel review
 ```
 
 `timeline` gives every beat's second; `review` reads the picture as text and gives three verdicts
-([checks.md](checks.md)). The same in code, as a gate that fails on any finding or failed verdict:
+([checks.md](checks.md)). The same in code, as a gate that fails on a finding, a failed verdict or a compile list:
 
 ```js run file=check.mjs
 import {readFileSync} from 'node:fs';
@@ -119,9 +121,9 @@ const read = file => JSON.parse(readFileSync(file, 'utf8'));
 const storyboard = read('storyboard.json'), recipe = read('recipe.json');
 const film = await compileFilm({storyboard, recipe, kits: [farmKit], timings: evenTimings(storyboard)});
 const review = await reviewPart(film);
-console.log(`${film.total} s`, film.camera.moves.map(m => `${m.move} at ${m.at} s: ${m.played}`));
-console.log(review.text || 'nothing found'); console.log(review.verdictText);
-if (review.findings.length || review.verdicts.some(v => v.verdict === 'failed')) process.exit(1);
+const weak = [...film.reading, ...film.watching, ...film.listening];   // what the compile lists without refusing
+console.log(`${film.total} s`, review.text || 'nothing found', `\n${review.verdictText}`, weak);
+if (review.findings.length || review.verdicts.some(v => v.verdict === 'failed') || weak.length) process.exit(1);
 ```
 
 Fix one finding at a time. "Nothing new for 5 s" means no beat landed for 5 s: give the kit or the recipe a moment
@@ -137,7 +139,7 @@ import {farmKit} from './farm.mjs';
 const read = file => JSON.parse(readFileSync(file, 'utf8'));
 const storyboard = read('storyboard.json'), recipe = read('recipe.json');
 const result = await makeFilm({storyboard, recipe, kits: [farmKit], timings: evenTimings(storyboard),
-  code: codeFingerprint(['farm.mjs']),           // the kit's code, so an approval of this render locks it too
+  code: codeFingerprint(['farm.mjs']),   // every file that draws (it follows no imports: name each, or a folder)
   out: 'out/draft/film.mp4', check: 'report', render: {width: 640, height: 360, quality: 'draft'}});
 console.log(result.out, result.makingOf);      // out/draft/: film.mp4, making-of.json, chapters.txt
 ```
@@ -147,14 +149,12 @@ delete drafts you no longer need: films are large.
 
 ## 7. Read the record, approve, release
 
-`making-of.json` says what played and why: `beats` (each phrase and the entry it triggered), `camera`, `claims`,
-`finished` (the MP4 itself checked), `pipeline` and `compile` (each stage's narrative). Read it before guessing
-([record.md](record.md)). When the person signs off the draft they watched, `approveFilm` locks what it was made from
-and the final render refuses any change; `makeRelease` makes each platform's version and post ([release.md](release.md)).
+`making-of.json` says what played and why (`beats`, `camera`, `claims`, `finished`, each stage's narrative): read it
+before guessing ([record.md](record.md)). When the person signs off the draft they watched, `approveFilm` locks what it
+was made from; `makeRelease` makes each platform's version and post ([release.md](release.md)).
 
 ## Where to go next
 
-- The built-in cartoon world (a shepherd and his sheep), the whiteboard, a kit of your own: [kits.md](kits.md).
-  Motion by name (pop, soft-rise), eases, walk styles, acting: [motion.md](motion.md). Camera moves: [camera.md](camera.md).
-- A voice: [voice.md](voice.md). Music: [music.md](music.md). A figure moved by a phone video: [mocap.md](mocap.md).
-- Every check: [checks.md](checks.md). A reference video's cutting: [breakdown.md](breakdown.md). Records: [record.md](record.md).
+[kits.md](kits.md) (the cartoon world, the whiteboard, the figure) · [motion.md](motion.md) · [camera.md](camera.md) ·
+[voice.md](voice.md) · [music.md](music.md) · [mocap.md](mocap.md) (a figure moved by a phone video) · [checks.md](checks.md)
+· [breakdown.md](breakdown.md) (match a reference video) · [release.md](release.md) · [record.md](record.md).
