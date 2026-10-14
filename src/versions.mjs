@@ -15,5 +15,13 @@ export function installedVersion(name) {
   return 'unknown';
 }
 
+/**
+ * The versions an approval locks (pipeline.mjs · makeFilm's inputs): StoryReel's own, which draws the film, and
+ * footprintjs's, which runs the making-of pipeline and decides its verdicts — an update between the draft and the final
+ * render changes the film, so it is named ("storyreel version"). Not in any segment's key: the engine's fingerprint
+ * (segments.mjs · storyreelCode) already holds every file of its code, so a release that changes no code reuses the cache.
+ */
+export const lockedVersions = () => ({storyreel: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version, footprintjs: installedVersion('footprintjs')});
+
 /** What draws a frame: the canvas, the marker strokes, the sketched shapes, the code tokens, the burned-in captions' words. */
 export const DRAWING = Object.freeze(['@napi-rs/canvas', 'perfect-freehand', 'roughjs', 'shiki', 'footprint-narration']);

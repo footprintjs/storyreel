@@ -30,7 +30,7 @@
 import {flowChart, decide, narrative} from 'footprintjs';
 import {readCameraMove, CAMERA_MOVE_NAMES, REST, MAX_ZOOM, coverZoom, covered, viewOf, aimAt, handheldAt, layersAt} from './camera.mjs';
 import {inOut} from './ease.mjs';
-import {then, through} from './regions.mjs';
+import {compose, through} from './regions.mjs';
 import {hashOf} from './hash.mjs';
 
 const VIEW_AXES = ['x', 'y', 'z', 'r'];
@@ -169,7 +169,7 @@ function aim(s, env, work) {
   for (const m of moves) if (m.family === 'view' || m.family === 'follow') m.ends = endsOf(covered(view.stateAt(spanOf(m, cuts)[1])), m.trail);
   const viewAt = t => { const v = view.stateAt(t); return VIEW_AXES.every(a => v[a] === REST[a]) ? null : covered(v); };
   /** The camera's whole view on the frame at t (handheld's drift over its framing), for regions and clicks; null at rest. */
-  const viewOn = t => { const v = viewAt(t), k = shakeAt(t); return !v && !k ? null : !k ? viewOf(v) : !v ? viewOf(k) : then(viewOf(k), viewOf(v)); };
+  const viewOn = t => { const v = viewAt(t), k = shakeAt(t); return !v && !k ? null : !k ? viewOf(v) : !v ? viewOf(k) : compose(viewOf(k), viewOf(v)); };
   const show = (ctx, t, paint) => {
     const v = viewAt(t), k = shakeAt(t);
     if (!v && !k) { paint(ctx); return; }
