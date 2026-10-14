@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **The suite fits a CI runner.** `npm run test:temp` runs the three heaviest test files (claims, review, slideshow)
+  one at a time, after the rest, and the rest as many at once as the machine has cores less one and 4 GB each
+  (`STORYREEL_TEST_CONCURRENCY` sets it): side by side they could need about 20 GB, and a 16 GB runner was shut down
+  mid-suite. The publish workflow now runs the same gates as CI — `test:temp` (it ran `npm test`), publint, attw and
+  the skills' renders — so a release cannot publish what CI would refuse.
+- **One list of typed entry points.** `scripts/typed-entrypoints.mjs` prints every export of `package.json` that has
+  `types`, and both workflows hand it to attw; a test fails if the two disagree. The lists had drifted: the publish
+  missed `camera`, `moves`, `principles` and `breakdown`, and both missed `walk`, `pose`, `mocap` and
+  `kits/cartoon/figure`.
 - **The skills say where StoryReel may write** (release.md · "Where StoryReel may write", and one line in the main
   path where `out` is chosen): every folder from the out's real path up to `/` yours or root's and writable by no one
   else unless sticky; group-write only for a provably private group on Linux, never on macOS; `noowners` drives, an
