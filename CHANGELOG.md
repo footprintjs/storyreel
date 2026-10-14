@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **The suite fits a CI runner.** `npm run test:temp` runs the three heaviest test files (claims, review, slideshow)
+  one at a time, after the rest, and the rest as many at once as the machine has cores less one and 4 GB each
+  (`STORYREEL_TEST_CONCURRENCY` sets it): side by side they could need about 20 GB, and a 16 GB runner was shut down
+  mid-suite. The publish workflow now runs the same gates as CI — `test:temp` (it ran `npm test`), publint, attw and
+  the skills' renders — so a release cannot publish what CI would refuse.
+- **One list of typed entry points.** `scripts/typed-entrypoints.mjs` prints every export of `package.json` that has
+  `types`, and both workflows hand it to attw; a test fails if the two disagree. The lists had drifted: the publish
+  missed `camera`, `moves`, `principles` and `breakdown`, and both missed `walk`, `pose`, `mocap` and
+  `kits/cartoon/figure`.
 - **Skills that build a film, not only review one.** The plugin ships three skills: `storyreel` (start here: the path
   from storyboard to a released film, and which skill or page to read for each job), `storyreel-cartoon` (the main
   path as one working film: a kit, a figure that walks, a camera dolly, the review as a gate, a small draft, approval,

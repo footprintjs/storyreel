@@ -21,7 +21,8 @@ jobs:
       # The whole suite with a temp folder of its own; nothing may be left in it (scripts/temp-hygiene.mjs).
       - run: npm run test:temp
       - run: npx publint
-      - run: npx @arethetypeswrong/cli --pack --profile esm-only --entrypoints . clock pacing ease pins sheet render segments pipeline approval film strings theme reading shots regions review slideshow geometry claims decorative tools motion attention captions layout transitions camera beats music moves principles breakdown acting finished listening release kits/whiteboard kits/cartoon studio  # the typed entry points (README: the drawing internals are untyped)
+      # Every typed entry point, from package.json (scripts/typed-entrypoints.mjs): the same list here and in publish.yml.
+      - run: npx @arethetypeswrong/cli --pack --profile esm-only --entrypoints $(node scripts/typed-entrypoints.mjs)
 
   # The renders the skills describe, as written: the farm film's small draft, its approval and the final, and the
   # approval refusing a changed kit (test/skills-render.mjs; locally `npm run test:skills:render`, kept out of npm test).
