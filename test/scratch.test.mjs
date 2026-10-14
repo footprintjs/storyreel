@@ -172,6 +172,28 @@ test('placing the voice: another film slipping its folder in between is tried on
   assert.throws(() => placeVoice(copy, final, denied), /permission denied/, 'any other error stops the film, as before');
 });
 
+test('placing the voice: the copy gets a plain folder\'s mode before the rename, never after, and never the out folder\'s — in a shared 1777 folder it is not world-writable', {skip: posix ? false : 'no POSIX modes'}, t => {
+  const was = process.umask(0o022);
+  t.after(() => process.umask(was));
+  for (const shared of [true, false]) {
+    const dir = tempDir(shared ? 'sticky' : 'plain', t);
+    if (shared) chmodSync(dir, 0o1777);   // like /tmp: anyone may add an entry
+    const copy = makeScratch(dir, '.narration'), final = path.join(dir, 'narration');
+    writeFileSync(path.join(copy, 'timings.json'), '{}');
+    assert.equal(mode(copy), 0o700, 'made for this user only');
+    assert.equal(placeVoice(copy, final), null);
+    assert.equal(statSync(final).mode & 0o7777, 0o755, `${shared ? 'a 1777' : 'a plain'} out folder: 0777 less the umask, no sticky or world-writable bit`);
+  }
+  // The steps, in order: the chmod is on the copy, before the rename — never on the placed name (a chmod follows links).
+  const steps = [], dir = tempDir('order', t), copy = makeScratch(dir, '.narration'), final = path.join(dir, 'narration');
+  placeVoice(copy, final, {chmodSync: (p, m) => steps.push(['chmod', p, m]), rmSync: p => steps.push(['rm', p]), renameSync: (a, b) => steps.push(['rename', a, b])});
+  assert.deepEqual(steps, [['chmod', copy, 0o755], ['rm', final], ['rename', copy, final]]);
+  // And once more after a race: still no chmod after any rename.
+  steps.length = 0; let tries = 0;
+  placeVoice(copy, final, {chmodSync: (p, m) => steps.push(['chmod', p, m]), rmSync: p => steps.push(['rm', p]), renameSync: (a, b) => { steps.push(['rename', a, b]); if (!tries++) { const e = new Error('exists'); e.code = 'EEXIST'; throw e; } }});
+  assert.deepEqual(steps.map(s => s[0]), ['chmod', 'rm', 'rename', 'rm', 'rename']);
+});
+
 test('this host\'s live run is never swept by age: a voiced makeFilm that renders for days keeps its voice copy', t => {
   const dir = tempDir('quiet', t), quiet = plant(dir, `.narration-${scratchHost}-${process.pid}-1`);
   age(path.join(dir, quiet), 3 * STALE_AFTER);   // last written 3 days ago, by a process still running (this one)

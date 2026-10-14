@@ -1203,8 +1203,11 @@ two passes' scratch, for the moment they run, each removed in a `finally`: the F
 Every scratch folder — those two, a render's working folder, `makeFilm`'s voice copy — is made one way
 (`scratch.mjs` · `makeScratch`): `mkdtemp`, which creates a NEW folder with a random suffix, at once, that only you can
 open (mode 0700). It never takes a name that is already there, so a folder or a link someone else planted in a shared
-temp folder, at a name StoryReel might pick, is never written into. The placed `narration/` takes the out folder's
-permissions.
+temp folder, at a name StoryReel might pick, is never written into. The voice copy gets the mode a plain folder gets
+(0777 less your umask, usually 0755) before it is renamed to `narration/`, never the out folder's: in a shared folder
+such as `/tmp` (1777) that would let anyone rewrite the voice the other tools read. In such a shared folder, a
+`narration` another user put there cannot be removed: `makeFilm` stops (EPERM) rather than write into it, so make
+films into a folder of your own.
 
 | where | what | kept? |
 |---|---|---|

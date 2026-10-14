@@ -22,8 +22,8 @@
   voice copy, the stills' and a breakdown's scratch in the system's temp folder — is made by `scratch.mjs` ·
   `makeScratch`: `mkdtemp`, a new folder with a random suffix, created at once, that only you can open (mode 0700). A
   folder or a link another user planted at a name StoryReel might pick is never written into, and the voice is copied
-  as new files only (`files.mjs` · `copyVoice` creates each exclusively). The placed `narration/` takes the out
-  folder's permissions. A sweep touches only real folders you own: a link with a scratch name, or another user's
+  as new files only (`files.mjs` · `copyVoice` creates each exclusively). The copy gets a plain folder's mode (0777
+  less the umask) before it becomes `narration/` (`files.mjs` · `placeVoice`), never the out folder's mode. A sweep touches only real folders you own: a link with a scratch name, or another user's
   folder, is ignored — not removed, not followed, not listed.
 - **`makeFilm` renders from its own copy of the voice** and makes it `<out dir>/narration` only once the film is made:
   two films made at once into one folder no longer take each other's voice, and a refused or failed film leaves the

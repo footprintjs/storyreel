@@ -10,7 +10,7 @@
  * pass small values and file paths, as footprintjs expects.
  */
 import {readCast, withCast} from './cast.mjs';
-import {readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync, chmodSync} from 'node:fs';
+import {readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync} from 'node:fs';
 import {copyVoice, requireVoiceApart, placeVoice} from './files.mjs';
 import path from 'node:path';
 import {flowChart, narrative} from 'footprintjs';
@@ -179,10 +179,9 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     // failed anywhere before it leaves the folder's narration as it was.
     'place-narration': scope => {
       if (!scope.narration) return;
-      // Another film placing its voice in this folder at the same moment: tried once more, and said in the record (files.mjs · placeVoice).
+      // Placed with the mode a plain folder gets (the copy was made 0700); another film placing its voice in this folder at
+      // the same moment: tried once more, and said in the record (files.mjs · placeVoice).
       const final = path.join(dir, 'narration'), again = placeVoice(scope.narration, final);
-      // The copy was made for this user only (0700); placed, it is the out folder's to share, with that folder's permissions.
-      chmodSync(final, statSync(dir).mode & 0o777);
       scope.narration = final; copy = null;
       if (again) { scope.placedAgain = again; placed = again; }
     },

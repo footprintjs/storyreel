@@ -3,7 +3,7 @@
 // what (a file by its path); reformatting changes nothing; the record keeps it and says what it does not lock.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {writeFileSync, readFileSync, cpSync, readdirSync, statSync} from 'node:fs';
+import {writeFileSync, readFileSync, cpSync, readdirSync, statSync, mkdirSync, chmodSync} from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -94,18 +94,22 @@ test('an approval is of the whole film: a render of a part refuses to be approve
   assert.throws(() => checkApproval({schemaVersion: 2, by: 'S', approved: at.toISOString(), inputs: {}}, null), /give what the film is made from now/);
 });
 
-test('a refused render into an approved render\'s folder leaves its paced narration as it was', {skip: spawnSync('ffmpeg', ['-version']).error ? 'needs ffmpeg' : false}, async () => {
+test('a refused render into an approved render\'s folder leaves its paced narration as it was', {skip: spawnSync('ffmpeg', ['-version']).error ? 'needs ffmpeg' : false}, async t => {
   // A voice: each scene's words timed evenly, its audio a silence of the scene's length.
   const top = tempDir('voiced'), voice = path.join(top, 'voice'), even = evenTimings(storyboard, {tail: 1});
   spawnSync('mkdir', ['-p', voice]);
   const scenes = even.scenes.map(sc => { const audio = `${sc.id}.wav`; spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'anullsrc=r=24000:cl=mono', '-t', String(sc.duration), '-c:a', 'pcm_s16le', path.join(voice, audio)]); return {...sc, audio}; });
   writeFileSync(path.join(voice, 'timings.json'), JSON.stringify({...even, scenes}));
   const pacing = {voiceSpeed: 1, sceneTail: 1, holds: [], tails: {story: 5}}, out = path.join(top, 'final', 'film.mp4'), render = {width: 160, height: 90, fps: 5};
+  // The out folder is shared, like /tmp (1777: anyone may add an entry, only its owner may remove it), and the umask a usual 022.
+  const posix = process.platform !== 'win32', was = process.umask(0o022);
+  t.after(() => process.umask(was));
+  if (posix) { mkdirSync(path.join(top, 'final')); chmodSync(path.join(top, 'final'), 0o1777); }
   const first = await makeFilm({storyboard, recipe, root: dir, narrationDir: voice, pacing, out, render});
   const approval = approveFilm({record: first.makingOf, by: 'S', at}), kept = readFileSync(path.join(top, 'final', 'narration', 'timings.json'), 'utf8');
-  // The copy was paced in a folder only this user could open (scratch.mjs · makeScratch); placed, it shares the out folder's permissions.
-  const mode = f => statSync(f).mode & 0o777;
-  if (process.platform !== 'win32') assert.equal(mode(path.join(top, 'final', 'narration')), mode(path.join(top, 'final')));
+  // The copy was paced in a folder only this user could open (scratch.mjs · makeScratch); placed, it has a plain folder's
+  // mode (0777 less the umask: 0755), never the shared out folder's — everyone could rewrite the voice the other tools read.
+  if (posix) assert.equal(statSync(path.join(top, 'final', 'narration')).mode & 0o7777, 0o755);
   await assert.rejects(makeFilm({storyboard, recipe, root: dir, narrationDir: voice, pacing: {...pacing, sceneTail: 1.5}, out, render, approval}), /pacing.*differ/);
   assert.equal(readFileSync(path.join(top, 'final', 'narration', 'timings.json'), 'utf8'), kept, 'the approved render\'s narration is untouched');
   assert.deepEqual(readdirSync(path.join(top, 'final')).filter(f => f.startsWith('.narration')), [], 'and the refused one\'s copy is gone');

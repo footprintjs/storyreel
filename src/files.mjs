@@ -10,7 +10,7 @@
  * files, and requireVoiceApart refuses a render whose out folder and voice folder overlap.
  */
 import path from 'node:path';
-import {existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync} from 'node:fs';
+import {existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync, chmodSync} from 'node:fs';
 
 /**
  * The real path of `file` (relative to `root`, or absolute), or a refusal when it is outside `root`.
@@ -83,14 +83,23 @@ export function copyVoice(voice, to) {
   return timings;
 }
 
+/** The mode a plain mkdir gives a folder: 0777 less the process's umask. */
+export const plainFolderMode = () => 0o777 & ~process.umask();
+
 /**
- * Put a paced copy of the voice in place as <out folder>/narration: what is there goes, then the copy takes its name.
- * Another run placing its own voice at the same moment can slip a folder in between the two (ENOTEMPTY, EEXIST): then
- * once more — the film is made by then, and its record must still be written. Returns the code it tried again on, or
- * null. `fs` is {rmSync, renameSync} (a test hands in its own to make the race happen on cue).
+ * Put a paced copy of the voice in place as <out folder>/narration. First the copy — made for this user only
+ * (scratch.mjs · makeScratch: 0700) — gets the mode a plain mkdir would give it (plainFolderMode), while it is still
+ * ours and unnamed: never after the rename (a chmod follows links, and the name is then in a shared folder), and never
+ * taken from the out folder (a sticky 1777 folder such as /tmp would make it writable by everyone). Then what is there
+ * goes, and the copy takes its name. Another run placing its own voice at the same moment can slip a folder in between
+ * the two (ENOTEMPTY, EEXIST): then once more — the film is made by then, and its record must still be written. Returns
+ * the code it tried again on, or null. `fs` replaces any of {rmSync, renameSync, chmodSync} (a test hands in its own
+ * to make the race happen on cue, or to see the order of the steps).
  */
-export function placeVoice(copy, final, fs = {rmSync, renameSync}) {
-  const place = () => { fs.rmSync(final, {recursive: true, force: true}); fs.renameSync(copy, final); };
+export function placeVoice(copy, final, fs = {}) {
+  const ops = {rmSync, renameSync, chmodSync, ...fs};
+  ops.chmodSync(copy, plainFolderMode());
+  const place = () => { ops.rmSync(final, {recursive: true, force: true}); ops.renameSync(copy, final); };
   try { place(); return null; } catch (e) {
     if (e?.code !== 'ENOTEMPTY' && e?.code !== 'EEXIST') throw e;
     place();
