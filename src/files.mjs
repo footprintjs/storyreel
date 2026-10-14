@@ -20,6 +20,7 @@
 import path from 'node:path';
 import {randomBytes} from 'node:crypto';
 import {existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync, chmodSync, copyFileSync, linkSync, lstatSync, constants} from 'node:fs';
+import {spawnSync} from 'node:child_process';
 import {ownedFolder} from './scratch.mjs';
 
 /** A name beside `final` nobody can have planted: random, and created exclusively by whoever writes it. */
@@ -66,30 +67,67 @@ export function writeOutput(final, what, fs = {}) {
   return final;
 }
 
-/** Writable by group or others, with no sticky bit: anyone who may write there may swap what is in it for a link. */
-const openToOthers = st => (st.mode & 0o022) !== 0 && (st.mode & 0o1000) === 0;
 const modeText = st => (st.mode & 0o7777).toString(8).padStart(4, '0');
+const FIX = 'render into a folder of your own and copy the film out';
 
-/** The mode every folder StoryReel makes asks for: 0755. mkdir only narrows it by the umask (077 gives 0700), never widens it. */
-export const FOLDER_MODE = 0o755;
+/** This system's groups and accounts as /etc/group and /etc/passwd hold them, read once ({group, passwd}), or null when they cannot be read. */
+let accountsRead;
+const systemAccounts = () => {
+  if (accountsRead === undefined) {
+    try { accountsRead = {group: readFileSync('/etc/group', 'utf8'), passwd: readFileSync('/etc/passwd', 'utf8')}; } catch { accountsRead = null; }
+  }
+  return accountsRead;
+};
 
 /**
- * Make `dir` and any missing folder above it, each asking FOLDER_MODE — so never wider than 0755 under any umask (000
- * included), and narrower under a stricter one. Nothing is chmod-ed afterwards: a chmod follows a link, and would widen a
- * stricter umask. A folder already there is left as it is. Returns `dir`.
+ * Whether group `gid` is this user's own and no one else's — a user private group (Ubuntu's and Fedora's default, where
+ * umask 002 makes a project folder 0775): no member listed in /etc/group but this user, and no other account in
+ * /etc/passwd with it as its primary group. `accounts` is {group, passwd} (the files' text), or null when they could not
+ * be read — then no group is private: a group-writable folder stays refused.
  */
-export function makeFolder(dir) {
-  const target = path.resolve(dir);
-  mkdirSync(target, {recursive: true, mode: FOLDER_MODE});
-  return target;
+export function privateGroup(gid, accounts) {
+  if (!accounts) return false;
+  const rows = text => String(text).split('\n').filter(l => l && !l.startsWith('#')).map(l => l.split(':'));
+  const me = typeof process.getuid === 'function' ? process.getuid() : -1, users = rows(accounts.passwd);
+  const myName = users.find(u => Number(u[2]) === me)?.[0];
+  if (users.some(u => Number(u[3]) === gid && Number(u[2]) !== me)) return false;
+  const row = rows(accounts.group).find(g => Number(g[2]) === gid);
+  return Boolean(row) && (row[3] ?? '').split(',').map(m => m.trim()).filter(Boolean).every(m => m === myName);
 }
 
-/** Why a folder on the way to an out, as lstat describes it (`st`), is not safe to write below — or null when it is. */
-function unsafe(st) {
-  if (!st.isDirectory() || st.isSymbolicLink()) return 'is not a folder';
-  if (!ownedFolder(st) && st.uid !== 0) return 'belongs to another user';
-  if ((st.mode & 0o022) && !(st.mode & 0o1000)) return `can be changed by other users (mode ${modeText(st)}, no sticky bit)`;
+/**
+ * Who besides the folder's owner could change it (`st` as lstat describes it), in words, or null when no one: writable
+ * by others, or by a group other than this user's own private one (privateGroup) — unless sticky.
+ */
+function changeableBy(st, accounts) {
+  if (st.mode & 0o1000) return null;
+  if (st.mode & 0o002) return {why: `can be changed by other users (mode ${modeText(st)}, no sticky bit)`, fix: FIX};
+  const own = typeof process.getgid === 'function' && st.gid === process.getgid() && privateGroup(st.gid, accounts);
+  if ((st.mode & 0o020) && !own) return {why: `can be changed by its group (mode ${modeText(st)}, no sticky bit; the group is not yours alone, or /etc/group cannot be read)`, fix: `chmod g-w it, or ${FIX}`};
   return null;
+}
+
+/** Why a folder on the way to an out, as lstat describes it (`st`), is not safe to write below ({why, fix}) — or null when it is. */
+function unsafe(st, accounts) {
+  if (!st.isDirectory() || st.isSymbolicLink()) return {why: 'is not a folder', fix: FIX};
+  if (!ownedFolder(st) && st.uid !== 0) return {why: 'belongs to another user', fix: FIX};
+  return changeableBy(st, accounts);
+}
+
+/** The mount table, as macOS's /sbin/mount prints it, read once (a reader: it writes nothing); '' when it cannot be read. */
+let mountsRead;
+const systemMounts = () => (mountsRead ??= spawnSync('/sbin/mount', [], {encoding: 'utf8'}).stdout ?? '');
+
+/** The mounts in /sbin/mount's text: [{point, flags}], one per line "<device> on <point> (<flag>, <flag>, …)". */
+export function parseMounts(text) {
+  return String(text).split('\n').map(l => /^(.*?) on (.+) \(([^)]*)\)$/.exec(l.trim())).filter(Boolean)
+    .map(([, , point, flags]) => ({point, flags: flags.split(',').map(f => f.trim()).filter(Boolean)}));
+}
+
+/** The mount holding `real` (the longest mount point it is at or below), or null. */
+export function mountOf(real, mounts) {
+  const below = m => real === m.point || real.startsWith(m.point.endsWith('/') ? m.point : `${m.point}/`);
+  return mounts.filter(below).sort((a, b) => b.point.length - a.point.length)[0] ?? null;
 }
 
 /**
@@ -99,35 +137,61 @@ function unsafe(st) {
  * folder above it that exists) up to the root. Each must be a real folder (the path is resolved first, so a link is
  * judged by where it leads), owned by this user or root (scratch.mjs · ownedFolder), and writable by no one else —
  * unless it is sticky, where anyone may add an entry but only its owner (this user or root, as above) may replace or
- * remove one. The first that fails refuses, naming it and the fix. Node has no openat, so a check of a path is only as
- * good as every folder above it: in a folder another user could rearrange, they could swap one StoryReel made (its work
- * folder, a target's folder) for a link to a file of yours between the check and the write. A folder's ACL is not read
- * (macOS's chmod +a): keep out in a folder of your own. Checked first, at every entry that writes into a folder the
- * caller names: renderFilm (and its `work`), makeFilm, makeRelease, breakdown, the tools' stills, folderStore, pacing.
- * `fs` replaces any of {lstat, realpath, exists} (a test plays another user, or another system's folders). On Windows
- * (no POSIX modes) it returns the path resolved, unchecked.
+ * remove one. Group-write is no one else's when the group is this user's own private group (privateGroup: Linux's
+ * user private groups, umask 002). The first that fails refuses, naming it and the fix. On macOS, a drive mounted with
+ * "Ignore ownership" (noowners) shows every entry as the viewer's, so it is refused outright (the mount table, read
+ * once). Node has no openat, so a check of a path is only as good as every folder above it: in a folder another user
+ * could rearrange, they could swap one StoryReel made (its work folder, a target's folder) for a link to a file of
+ * yours between the check and the write. Not read: a folder's ACL (macOS's chmod +a), and a network folder's owners
+ * are what the server says — keep out in a folder of your own, on a local disk. Checked first, at every entry that
+ * writes into a folder the caller names: renderFilm (and its `work`), makeFilm, makeRelease, breakdown, the tools'
+ * stills, folderStore, pacing. `fs` replaces any of {lstat, realpath, exists, accounts, mounts} (a test plays another
+ * user, another system's folders, groups or drives). On Windows (no POSIX modes) it returns the path resolved, unchecked.
  */
 export function securePath(dir, fs = {}) {
   const wanted = path.resolve(dir);
   if (process.platform === 'win32') return wanted;
   const {lstat = lstatSync, realpath = realpathSync, exists = existsSync} = fs;
+  const accounts = 'accounts' in fs ? fs.accounts : systemAccounts();
   let found = wanted;
   while (!exists(found) && path.dirname(found) !== found) found = path.dirname(found);
   const real = realpath(found);
   for (let at = real; ; at = path.dirname(at)) {
-    const why = unsafe(lstat(at));
-    if (why) throw new Error(`${at} ${why}: StoryReel writes only below folders no other user can change (each yours or root's, writable by no one else unless sticky) — render into a folder of your own and copy the film out`);
+    const bad = unsafe(lstat(at), accounts);
+    if (bad) throw new Error(`${at} ${bad.why}: StoryReel writes only below folders no other user can change (each yours or root's, writable by no one else unless sticky) — ${bad.fix}`);
     if (path.dirname(at) === at) break;
   }
+  const table = fs.mounts ?? (process.platform === 'darwin' ? systemMounts() : null);
+  const drive = table === null ? null : mountOf(real, parseMounts(table));
+  if (drive?.flags.includes('noowners')) throw new Error(`${real} is on ${drive.point}, a drive that ignores ownership (noowners): every folder on it looks like yours — render on the internal disk and copy the film out`);
   return path.join(real, path.relative(found, wanted));
 }
 
+/** The mode every folder StoryReel makes asks for: 0755. mkdir only narrows it by the umask (077 gives 0700), never widens it. */
+export const FOLDER_MODE = 0o755;
+
+/**
+ * Make `dir` and any missing folder above it, each asking FOLDER_MODE — so never wider than 0755 under any umask (000
+ * included), and narrower under a stricter one; nothing is chmod-ed afterwards (a chmod follows a link, and would widen
+ * a stricter umask). The path is checked before (securePath: the folders that exist) and again after (every folder
+ * now, those just made included): a folder another user made on the way, or a link they planted there between the two
+ * — mkdir follows one — refuses, as does a path that now leads anywhere else. Returns the checked real path; write
+ * through it only. `fs` is securePath's, plus `mkdir` (a test plants a link between the check and the mkdir).
+ */
+export function makeFolder(dir, fs = {}) {
+  const planned = securePath(dir, fs);
+  (fs.mkdir ?? mkdirSync)(planned, {recursive: true, mode: FOLDER_MODE});
+  const made = securePath(planned, fs);
+  if (made !== planned) throw new Error(`${planned} changed while StoryReel made it: a folder on the way now leads to ${made} — ${FIX}`);
+  return made;
+}
+
 /** Why StoryReel may not write into the folder lstat describes as `st`, or null when it may (see outputFolder). */
-function notOurs(st) {
+function notOurs(st, accounts) {
   if (st.isSymbolicLink()) return 'is a link';
   if (!st.isDirectory()) return 'is a file';
   if (!ownedFolder(st)) return 'belongs to another user';
-  if (openToOthers(st) && process.platform !== 'win32') return `can be changed by other users (mode ${modeText(st)}, no sticky bit)`;
+  if (process.platform !== 'win32') return changeableBy(st, accounts)?.why ?? null;
   return null;
 }
 
@@ -142,12 +206,12 @@ function notOurs(st) {
  * `fs.lstat` is fs.lstatSync (a test hands in its own to play another user).
  */
 export function outputFolder(parent, names, fs = {}) {
-  const lstat = fs.lstat ?? lstatSync;
-  let at = makeFolder(securePath(parent, fs));
+  const lstat = fs.lstat ?? lstatSync, accounts = 'accounts' in fs ? fs.accounts : systemAccounts();
+  let at = makeFolder(parent, fs);
   for (const name of [].concat(names)) {
     at = path.join(at, name);
     try { mkdirSync(at, {mode: FOLDER_MODE}); } catch (e) { if (e?.code !== 'EEXIST') throw e; }
-    const why = notOurs(lstat(at));
+    const why = notOurs(lstat(at), accounts);
     if (why) throw new Error(`${at} ${why}: StoryReel writes only into a folder of its own there, that no one else can change — remove it, or give another out`);
   }
   return at;

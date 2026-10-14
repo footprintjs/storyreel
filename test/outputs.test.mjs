@@ -10,7 +10,7 @@ import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {tempDir} from './tmp.mjs';
-import {writeOutput, outputFolder, refuseFolders, securePath, makeFolder, placeVoice, copyVoice} from '../src/files.mjs';
+import {writeOutput, outputFolder, refuseFolders, securePath, makeFolder, placeVoice, copyVoice, parseMounts, mountOf, privateGroup} from '../src/files.mjs';
 import {homedir, tmpdir} from 'node:os';
 import {evenTimings, applyPacing, compileFilm, renderFilm, makeFilm} from '../src/index.mjs';
 import {makeRelease} from '../src/release.mjs';
@@ -132,7 +132,7 @@ test('outputFolder: an existing folder another user owns, or one of ours that ot
 // The one rule (files.mjs · securePath): every folder on the real path, up to the root, a real folder owned by this user
 // or root and writable by no one else unless sticky. `chain` plays a system's folders by path for a stubbed lstat.
 const REFUSED = 'StoryReel writes only below folders no other user can change \\(each yours or root\'s, writable by no one else unless sticky\\) — render into a folder of your own and copy the film out';
-const stat = (mode, uid = process.getuid?.() ?? 0) => ({mode: 0o040000 | mode, uid, isDirectory: () => true, isSymbolicLink: () => false});
+const stat = (mode, uid = process.getuid?.() ?? 0, gid = -1) => ({mode: 0o040000 | mode, uid, gid, isDirectory: () => true, isSymbolicLink: () => false});
 function chain(folders) {
   const has = p => p in folders;
   return {lstat: p => { if (!has(p)) throw Object.assign(new Error(`ENOENT ${p}`), {code: 'ENOENT'}); return folders[p]; }, realpath: p => p, exists: has};
@@ -146,7 +146,7 @@ test('securePath: every folder on the real path is checked up to the root — a 
     refused('/srv/open', 'can be changed by other users \\(mode 0777, no sticky bit\\)'));
   // A sticky folder owned by another user: its owner may rename any entry in it.
   assert.throws(() => securePath('/srv/shared/out', chain({...system, '/srv/shared': stat(0o1777, 4242), '/srv/shared/out': stat(0o755, me)})), refused('/srv/shared', 'belongs to another user'));
-  assert.throws(() => securePath('/srv/team/out', chain({...system, '/srv/team': stat(0o775, me), '/srv/team/out': stat(0o755, me)})), refused('/srv/team', 'can be changed by other users \\(mode 0775, no sticky bit\\)'));
+  assert.throws(() => securePath('/srv/team/out', chain({...system, '/srv/team': stat(0o775, me), '/srv/team/out': stat(0o755, me)})), /^Error: \/srv\/team can be changed by its group \(mode 0775, no sticky bit; the group is not yours alone, or \/etc\/group cannot be read\): .* — chmod g-w it, or render into a folder of your own and copy the film out$/);
   assert.throws(() => securePath('/srv/theirs/out', chain({...system, '/srv/theirs': stat(0o755, 4242)})), refused('/srv/theirs', 'belongs to another user'), 'the nearest folder that exists, for an out still to be made');
   // Sticky and owned by this user, or by root: accepted.
   assert.equal(securePath('/srv/ours/out', chain({...system, '/srv/ours': stat(0o1777, me), '/srv/ours/out': stat(0o755, me)})), '/srv/ours/out');
@@ -182,6 +182,64 @@ test('securePath: the real path is returned and written through, so a link in th
   const inside = path.join(open, 'inside'); mkdirSync(inside); chmodSync(inside, 0o755);
   const via = path.join(mine, 'via'); symlinkSync(inside, via, 'dir');
   assert.throws(() => securePath(path.join(via, 'out')), /can be changed by other users \(mode 0777/);
+});
+
+test('makeFolder checks again once the folders are made: a link another user plants between the check and the mkdir (mkdir -p follows it) refuses before anything is written', {skip: posix ? false : 'no POSIX owners or modes'}, t => {
+  const top = tempDir('sticky', t), theirs = tempDir('theirs', t), mine = tempDir('elsewhere', t);
+  chmodSync(top, 0o1777);                                   // sticky and ours: anyone may add an entry
+  const planted = at => (p, o) => { symlinkSync(at, path.join(top, 'a'), 'dir'); return mkdirSync(p, o); };   // the race, on cue
+  const foreign = at => { const st = lstatSync(at); return at === realpathSync(theirs) ? {...st, mode: st.mode, gid: st.gid, uid: process.getuid() + 1, isDirectory: () => true, isSymbolicLink: () => false} : st; };
+  assert.throws(() => makeFolder(path.join(top, 'a', 'b'), {mkdir: planted(theirs), lstat: foreign}), new RegExp(`^Error: ${escape(realpathSync(theirs))} belongs to another user: `));
+  assert.deepEqual(readdirSync(path.join(theirs, 'b')), [], 'mkdir followed the link, and nothing was written there');
+  rmSync(path.join(top, 'a'));
+  // A link to a folder of ours elsewhere passes the walk, and is refused for leading somewhere else.
+  assert.throws(() => makeFolder(path.join(top, 'a', 'b'), {mkdir: planted(mine)}), new RegExp(`^Error: ${escape(path.join(realpathSync(top), 'a', 'b'))} changed while StoryReel made it: a folder on the way now leads to ${escape(path.join(realpathSync(mine), 'b'))} — render into a folder of your own`));
+  rmSync(path.join(top, 'a'));
+  assert.equal(makeFolder(path.join(top, 'a', 'b')), path.join(realpathSync(top), 'a', 'b'), 'no race: made, and its real path returned');
+});
+
+const MOUNTS = [
+  '/dev/disk3s1s1 on / (apfs, sealed, local, read-only, journaled)',
+  '/dev/disk3s5 on /System/Volumes/Data (apfs, local, journaled, nobrowse, protect, root data)',
+  '/dev/disk4s2 on /Volumes/Ext Drive (apfs, local, nodev, nosuid, journaled, noowners)',
+  '/dev/disk5s1 on /Volumes/Backup (apfs, local, nodev, nosuid, journaled)',
+  'map auto_home on /System/Volumes/Data/home (autofs, automounted, nobrowse)',
+].join('\n');
+
+test('a macOS drive mounted with "Ignore ownership" (noowners) is refused: every folder on it looks like the viewer\'s; the parser reads /sbin/mount\'s lines, spaces in a name included', {skip: posix ? false : 'no POSIX owners or modes'}, () => {
+  assert.deepEqual(parseMounts(MOUNTS).map(m => m.point), ['/', '/System/Volumes/Data', '/Volumes/Ext Drive', '/Volumes/Backup', '/System/Volumes/Data/home']);
+  assert.deepEqual(parseMounts(MOUNTS)[2].flags, ['apfs', 'local', 'nodev', 'nosuid', 'journaled', 'noowners']);
+  assert.equal(mountOf('/Volumes/Ext Drive/films', parseMounts(MOUNTS)).point, '/Volumes/Ext Drive');
+  assert.equal(mountOf('/Volumes/Ext Drive2/films', parseMounts(MOUNTS)).point, '/', 'a name that only begins like a mount point is not on it');
+  const me = process.getuid(), mine = stat(0o755, me), root = stat(0o755, 0);
+  const drive = {'/': root, '/Volumes': root, '/Volumes/Ext Drive': mine, '/Volumes/Ext Drive/films': mine, '/Volumes/Backup': mine, '/Volumes/Backup/films': mine};
+  assert.throws(() => securePath('/Volumes/Ext Drive/films/out', {...chain(drive), mounts: MOUNTS}),
+    /^Error: \/Volumes\/Ext Drive\/films is on \/Volumes\/Ext Drive, a drive that ignores ownership \(noowners\): every folder on it looks like yours — render on the internal disk and copy the film out$/);
+  assert.equal(securePath('/Volumes/Backup/films/out', {...chain(drive), mounts: MOUNTS}), '/Volumes/Backup/films/out', 'a drive that keeps owners');
+  // exFAT and FAT have no owners: every folder on them shows 0777, already refused by the walk.
+  assert.throws(() => securePath('/Volumes/Stick/out', {...chain({'/': root, '/Volumes': root, '/Volumes/Stick': stat(0o777, me)}), mounts: '/dev/disk6s1 on /Volumes/Stick (exfat, local, nodev, nosuid, noowners)'}), /\/Volumes\/Stick can be changed by other users \(mode 0777/);
+});
+
+/** /etc/group and /etc/passwd as a system would hold them, for this user (`me`, primary group `gid`) and another, bob (uid me + 1). */
+const accounts = (me, gid) => ({
+  private: {group: `root:x:0:\nme:x:${gid}:\nstaff:x:${gid + 1}:bob,me\n`, passwd: `root:x:0:0::/root:/bin/sh\nme:x:${me}:${gid}::/home/me:/bin/bash\nbob:x:${me + 1}:${gid + 1}::/home/bob:/bin/bash\n`},
+  listed: {group: `me:x:${gid}:bob\n`, passwd: `me:x:${me}:${gid}::/home/me:/bin/bash\nbob:x:${me + 1}:${gid + 1}::/home/bob:/bin/bash\n`},
+  primary: {group: `me:x:${gid}:\n`, passwd: `me:x:${me}:${gid}::/home/me:/bin/bash\nbob:x:${me + 1}:${gid}::/home/bob:/bin/bash\n`},
+});
+
+test('a user private group (Linux, umask 002): a 0775 folder whose group is this user\'s alone is not open to others; a shared group, or groups that cannot be read, still refuse, naming chmod g-w', {skip: posix ? false : 'no POSIX owners or modes'}, () => {
+  const me = process.getuid(), gid = process.getgid(), root = stat(0o755, 0);
+  const ACCOUNTS = accounts(me, gid);
+  assert.equal(privateGroup(gid, ACCOUNTS.private), true, 'no members, and no one else\'s primary group');
+  assert.equal(privateGroup(gid, ACCOUNTS.listed), false, 'bob is listed in it');
+  assert.equal(privateGroup(gid, ACCOUNTS.primary), false, 'bob\'s primary group');
+  assert.equal(privateGroup(gid, null), false, 'unreadable: not private');
+  const project = {'/': root, '/home': root, '/home/me': stat(0o750, me, gid), '/home/me/films': stat(0o775, me, gid)};
+  assert.equal(securePath('/home/me/films/out', {...chain(project), accounts: ACCOUNTS.private, mounts: ''}), '/home/me/films/out');
+  const groupWritable = /^Error: \/home\/me\/films can be changed by its group \(mode 0775, no sticky bit; the group is not yours alone, or \/etc\/group cannot be read\): .* — chmod g-w it, or render into a folder of your own and copy the film out$/;
+  for (const accounts of [ACCOUNTS.listed, ACCOUNTS.primary, null]) assert.throws(() => securePath('/home/me/films/out', {...chain(project), accounts, mounts: ''}), groupWritable);
+  assert.throws(() => securePath('/home/me/films/out', {...chain({...project, '/home/me/films': stat(0o775, me, gid + 1)}), accounts: ACCOUNTS.private, mounts: ''}), groupWritable, 'a group that is not this user\'s own');
+  assert.throws(() => securePath('/home/me/films/out', {...chain({...project, '/home/me/films': stat(0o777, me, gid)}), accounts: ACCOUNTS.private, mounts: ''}), /can be changed by other users \(mode 0777/, 'others may write: never private');
 });
 
 test('every entry that writes into a folder the caller names refuses a shared, non-sticky one before anything is written', {skip: posix ? false : 'no POSIX modes'}, async t => {
@@ -398,6 +456,7 @@ const OWN = [
   ['stills.mjs', 'writeFileSync(script, filter)', 'the stills pass\'s tempScratch folder'],
 ];
 const RUNS = [
+  ['files.mjs', "spawnSync('/sbin/mount', [], {encoding: 'utf8'})", 'macOS\'s mount table, read once by securePath (to stdout): a reader, it writes nothing'],
   ['mcp.mjs', 'spawn(process.execPath, [CLI, name, ...flags]', 'Node running StoryReel\'s own CLI (src/, held to this guard)'],
   ['spawned.mjs', 'const child = spawn(command, args, options);', 'the wrapper: its callers are listed below'],
   ['beats.mjs', 'spawnSync(ffmpeg, decodeArgs(file, rate)', 'FFmpeg decoding to a pipe'],

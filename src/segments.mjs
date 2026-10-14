@@ -261,7 +261,7 @@ export function folderStore(dir) {
       } catch { return null; }
     },
     put(key, file, manifest) {
-      makeFolder(securePath(home));
+      makeFolder(home);   // checked again, made, and checked once more (files.mjs · makeFolder)
       const to = at(key), bytes = statSync(file).size;
       rmSync(to.json, {force: true});
       writeOutput(to.file, {move: file});

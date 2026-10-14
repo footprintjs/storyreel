@@ -53,9 +53,14 @@
   every folder on it, up to the root, must be a real folder owned by you or root and writable by no one else unless
   sticky. The first that fails refuses, named. Everything is written through the real path only, and the paths the
   results report are real paths. Node has no `openat`, so no check of a path keeps a folder another user can
-  rearrange safe. An ACL granting others write is not read: keep out in a folder of your own. **Breaking** for anyone
-  rendering below a group-writable team folder, a 0777 folder, or a sticky folder another user owns: render into a
-  folder of your own and copy the film out.
+  rearrange safe. Group-write passes when the group is yours alone (a Linux user private group, umask 002: read once
+  from `/etc/group` and `/etc/passwd`; unreadable, it refuses and names `chmod g-w`). `makeFolder` checks the path
+  again once the folders are made, so one another user slipped in on the way (a link `mkdir -p` followed) refuses
+  before anything is written. On macOS a drive mounted with "Ignore ownership" (`noowners`, read once from
+  `/sbin/mount`) is refused; exFAT and FAT show 0777 and are refused by the walk. Not read: an ACL granting others
+  write, and a network folder's owners (what the server says): keep out in a folder of your own, on a local disk.
+  **Breaking** for anyone rendering below a group-writable team folder, a 0777 folder, a sticky folder another user
+  owns, or a drive that ignores ownership: render into a folder of your own and copy the film out.
 - **The guard** (`test/outputs.test.mjs`) refuses any writing fs import outside `files.mjs` and the listed own-folder
   writers, by the local name it is given; fs or child_process taken whole or loaded late (a default or namespace
   import, `{default as fs}`, a re-export, `import()`, `require`, `createRequire()(…)`, `process.getBuiltinModule`);
