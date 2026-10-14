@@ -57,22 +57,40 @@ function namedRun(s, at, digits) {
 /** The same numbers with where each stands in the text (its sign's place, when it has one): [{run, at}]. */
 function numberRuns(text) {
   const s = String(text ?? ''), out = []; let from = 0;
-  for (const digits of unsaidDigits(spokenMap(s))) {
-    const at = s.indexOf(digits, from); if (at < 0) continue;
-    from = at + digits.length;
-    if (namedRun(s, at, digits)) continue;
-    const before = s[at - 1], signed = SIGNS.has(before) && !isAlnum(s[at - 2]);
-    out.push(signed ? {run: before + digits, at: at - 1} : {run: digits, at});
+  for (const whole of unsaidDigits(spokenMap(s))) {
+    const found = s.indexOf(whole, from); if (found < 0) continue;
+    from = found + whole.length;
+    for (const {digits, offset} of commaParts(whole)) {
+      const at = found + offset;
+      if (namedRun(s, at, digits)) continue;
+      const before = s[at - 1], signed = SIGNS.has(before) && !isAlnum(s[at - 2]);
+      out.push(signed ? {run: before + digits, at: at - 1} : {run: digits, at});
+    }
   }
   return out;
+}
+
+/**
+ * A digit run cut at its commas, the one comma rule every reading shares (typed, and drawn: drawnLines joins a lone ","
+ * to its digits and leaves the cutting here): a comma joins digits only before a three-digit group — "1,299.99" and
+ * "1,000,000" are one number each, "1,2" and "4,5" are two ("steps 1,2 and 3"; code's f(4,5)) — and, after a dotted
+ * thousands group, it is a decimal comma: "1.299,99" is 1299.99, the one reading in which it is a number at all.
+ * [{digits, offset}], each part with where it stands in the run.
+ */
+function commaParts(run) {
+  if (/^\d{1,3}(\.\d{3})+,\d+$/.test(run)) return [{digits: run, offset: 0}];
+  const parts = []; let start = 0;
+  for (let i = 0; i < run.length; i++) if (run[i] === ',' && !/^\d{3}(?!\d)/.test(run.slice(i + 1))) { parts.push({digits: run.slice(start, i), offset: start}); start = i + 1; }
+  parts.push({digits: run.slice(start), offset: start});
+  return parts.filter(p => p.digits);
 }
 
 /** A thousands group after a first group that does not start with 0: "1,000" or "12.345" (never "0.125"). */
 const ONE_GROUP = /^[1-9]\d{0,2}[.,]\d{3}$/;
 /**
  * The value a number stands for, or the number as it is written when it is not one value: "1,000,000" → 1000000,
- * "1,000.5" and "1.000,5" → 1000.5, "16.67" → 16.67, "4,5" → 4.5, "−5" → −5; "1,000" and "1.000" (a thousand, or one?),
- * a time "3:15" and a version "1.2.3" stay as written.
+ * "1,000.5" and "1.000,5" → 1000.5, "1.299,99" → 1299.99, "16.67" → 16.67, "−5" → −5; "1,000" and "1.000" (a thousand,
+ * or one?), a time "3:15", a version "1.2.3" and "4,5" (two numbers: commaParts) stay as written.
  */
 export function numberValue(run) {
   const s = String(run), negative = SIGNS.has(s[0]), body = negative ? s.slice(1) : s, value = valueOf(body);
@@ -82,7 +100,6 @@ function valueOf(b) {
   if (/^\d+$/.test(b)) return Number(b);
   if (ONE_GROUP.test(b)) return b;   // ambiguous: the reader's language decides, and the screen does not say
   if (/^\d+\.\d+$/.test(b)) return Number(b);
-  if (/^\d+,\d+$/.test(b)) return Number(b.replace(',', '.'));   // a decimal comma ("4,5")
   if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(b)) return Number(b.replaceAll(',', ''));   // 1,000,000 · 1,000.5
   if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(b)) return Number(b.replaceAll('.', '').replace(',', '.'));   // 1.000.000 · 1.000,5
   return b;
@@ -142,13 +159,15 @@ export function exampleScenes(storyboard) {
 
 /**
  * When the example label is up: over each example scene, and on after it while any line that scene shows is still on
- * screen (a whiteboard keeps its writing into the next scene, and the label stays with it). shown: as findClaims takes
- * it; scenes: each scene's span, [{from, to}]; examples: exampleScenes(storyboard). Returns the spans, merged where the
- * same words run on, in time order: [{from, to, words, scene}] (scene: the index of the example scene it is for).
+ * screen (a whiteboard keeps its writing into the next scene, and the label stays with it) — to the line's last ink,
+ * `gone` when it has one (an eraser wipes the line over its own time: the label stays until the wipe ends, never only
+ * until it starts). shown: as findClaims takes it, each with `gone` or not; scenes: each scene's span, [{from, to}];
+ * examples: exampleScenes(storyboard). Returns the spans, merged where the same words run on, in time order: [{from, to,
+ * words, scene}] (scene: the index of the example scene it is for).
  */
 export function labelSpans(shown, {examples = [], scenes = []} = {}) {
   const spans = [...scenes.flatMap((s, i) => (examples[i] ? [{from: s.from, to: s.to, words: examples[i], scene: i}] : [])),
-    ...shown.filter(s => examples[s.scene]).map(s => ({from: s.at, to: Math.max(s.at, s.to), words: examples[s.scene], scene: s.scene}))].sort((a, b) => a.from - b.from);
+    ...shown.filter(s => examples[s.scene]).map(s => ({from: s.at, to: Math.max(s.at, s.to, s.gone ?? s.to), words: examples[s.scene], scene: s.scene}))].sort((a, b) => a.from - b.from);
   const out = [];
   for (const s of spans) { const last = out.at(-1); if (last && last.words === s.words && s.from <= last.to + 1e-6) last.to = Math.max(last.to, s.to); else out.push({...s}); }
   return out;
@@ -230,62 +249,148 @@ export function findClaims(shown, {facts = null, examples = [], scenes = []} = {
 
 /**
  * How close two drawn words stand on a line, as shares of the taller one's height: on one line when the next starts
- * within `near` of the last one's end; TOUCHING when the gap is under `touch` — ink against ink; and a sign or a decimal
- * point stands at its digits within `mark`, closer than a word space (measured: 0.4 of the height or more). No gap tells
- * the pieces of one number from two numbers drawn close, so only touching ink joins on its own. Measured (ink boxes):
- * "12" and "30" drawn 4 px apart in 24-px boxes stand 0.17 apart (two numbers); "16" then ".67 ms" at its advance, 0.10,
- * and a code token "-" then "5" in 28-px Menlo, 0.09 (joined by what they are: glued); but digits drawn one at a time at
- * their advance stand 0.05–0.22 apart (60-px sans-serif), so a number drawn digit by digit reads as its digits: draw a
- * number as one string, as every built-in kit does.
+ * within `near` of the last one's end; TOUCHING when the gap is under `touch` — ink against ink; a sign or a decimal
+ * point written onto its digits ("-" + "5", "16" + ".67") holds to them within `mark`, closer than a word space
+ * (measured: 0.4 of the height or more); and a lone point — a "." or a "," drawn as its own token between digits, as a
+ * code panel draws "16" "." "67" — joins the digits on both sides within `point` of each (measured in 24-px Menlo:
+ * 0.23–0.27), and the number is then read as typed text is (commaParts: "1,299" is one number, f(4,5) two). Two digit groups
+ * of clearly different sizes never join: the smaller under `size` of the taller's height, or its bottom more than
+ * `baseline` of that height off — a superscript or raised cents is its own number (10² is not 102). No gap tells the
+ * pieces of one number from two numbers drawn close, so only touching ink joins on its own. Measured (ink boxes): "12"
+ * and "30" drawn 4 px apart in 24-px boxes stand 0.17 apart (two numbers); "16" then ".67 ms" at its advance, 0.10, and
+ * a code token "-" then "5" in 28-px Menlo, 0.09; but digits drawn one at a time at their advance stand 0.05–0.22 apart
+ * (60-px sans-serif), so a number drawn digit by digit reads as its digits: draw a number as one string, as every
+ * built-in kit does.
  */
-export const DRAWN = Object.freeze({near: .5, touch: .08, mark: .2});
-/** A minus standing alone, or a decimal point, against the digits it belongs to: "-" + "5", "16" + ".67", "16." + "67". */
-const glued = (last, next) => (SIGNS.has(last) && /^\d/.test(next)) || (/\d$/.test(last) && /^\.\d/.test(next)) || (/\d\.$/.test(last) && /^\d/.test(next));
+export const DRAWN = Object.freeze({near: .5, touch: .08, mark: .2, point: .5, size: .7, baseline: .3});
+const LONE_POINT = /^[.,]$/, ENDS_DIGIT = /\d$/, STARTS_DIGIT = /^\d/;
+/** A minus standing alone, or a decimal point written onto its digits: "-" + "5", "16" + ".67", "16." + "67". */
+const glued = (last, next) => (SIGNS.has(last) && STARTS_DIGIT.test(next)) || (ENDS_DIGIT.test(last) && /^\.\d/.test(next)) || (/\d\.$/.test(last) && STARTS_DIGIT.test(next));
+const height = b => b[3] - b[1], tall = (a, b) => Math.max(height(a), height(b)), gapOf = (a, b) => (b[0] - a[2]) / tall(a, b);
+/** Whether two boxes are type of one size on one baseline (DRAWN.size, DRAWN.baseline): a superscript or raised cents is not. */
+const oneSize = (a, b) => Math.min(height(a), height(b)) >= DRAWN.size * tall(a, b) - 1e-6 && Math.abs(a[3] - b[3]) <= DRAWN.baseline * tall(a, b) + 1e-6;
+/**
+ * Whether word k is a lone point between digits of one size, within DRAWN.point of each ("16" "." "67"; "1" "," "299"):
+ * joined as typed text has it, so the one comma rule cuts it as it cuts typed text (commaParts).
+ */
+function lonePoint(words, k) {
+  const [a, p, b] = [words[k - 1], words[k], words[k + 1]];
+  if (!a || !b || !LONE_POINT.test(p.text.trim())) return false;
+  return ENDS_DIGIT.test(a.text.trim()) && STARTS_DIGIT.test(b.text.trim()) && gapOf(a.box, p.box) < DRAWN.point && gapOf(p.box, b.box) < DRAWN.point && oneSize(a.box, b.box);
+}
+/**
+ * Why word i joins the one before it with no space — 'touch', 'sign', 'point' — or null (a space). Two digit groups of
+ * clearly different sizes never join (oneSize).
+ */
+function joinOf(words, i) {
+  const a = words[i - 1], b = words[i], at = a.text.trim(), bt = b.text.trim(), gap = gapOf(a.box, b.box);
+  if (ENDS_DIGIT.test(at) && /^\.?\d/.test(bt) && !oneSize(a.box, b.box)) return null;
+  if (gap < DRAWN.touch) return 'touch';
+  if (gap < DRAWN.mark && glued(at, bt)) return SIGNS.has(at) ? 'sign' : 'point';
+  return lonePoint(words, i) || lonePoint(words, i - 1) ? 'point' : null;
+}
 
 /**
  * The words a frame draws, as the lines they make: two words are on one line when their boxes ([x0, y0, x1, y1], the
  * ink's) share most of the shorter one's height and the next starts within DRAWN.near of the taller one's height of the
- * last one's end. Words on one line are joined with a space, and without one in exactly two cases — when the boxes
- * TOUCH (a gap under DRAWN.touch of that height: one word drawn in pieces) and when a sign or a decimal point stands at
- * the digits it belongs to (glued, within DRAWN.mark: a code token "-" then "5" is −5, "16" then ".67 ms" is 16.67; "x",
- * "-", "5" a space apart is x - 5) — so two numbers drawn close stay two ("12" and "30", 4 px apart, are 12 and 30, never
- * 1230). A word with no box stands alone.
+ * last one's end. Words on one line are joined with a space, and without one only where they are one thing (joinOf):
+ * ink that TOUCHES (a gap under DRAWN.touch: one word drawn in pieces); a sign or a decimal point written onto its
+ * digits (within DRAWN.mark: a code token "-" then "5" is −5, "16" then ".67 ms" is 16.67; "x", "-", "5" a space apart
+ * is x - 5); a lone point between digits (within DRAWN.point: "16" "." "67" is 16.67, "1" "," "299" "." "99" is
+ * 1,299.99, "4" "," "5" is "4,5" — two numbers, as typed). So two numbers drawn close stay two ("12" and "30", 4 px apart, are 12 and 30, never 1230), and so do two
+ * digit groups of clearly different sizes ("$1,299" and a raised "99" are 1,299 and 99: the picture does not say whether
+ * a raised group is cents, a power or a note, so neither is read into the other). A word with no box stands alone.
  */
 export function drawnLines(words) {
   const boxed = words.filter(w => Array.isArray(w.box) && w.box.length === 4), lines = [];
-  const height = b => b[3] - b[1], shares = (a, b) => Math.min(a[3], b[3]) - Math.max(a[1], b[1]) >= .5 * Math.min(height(a), height(b)) - 1e-6;
-  const gapOf = (a, b) => b[0] - a[2], tall = (a, b) => Math.max(height(a), height(b));
+  const shares = (a, b) => Math.min(a[3], b[3]) - Math.max(a[1], b[1]) >= .5 * Math.min(height(a), height(b)) - 1e-6;
   for (const w of [...boxed].sort((a, b) => a.box[0] - b.box[0])) {
-    const line = lines.find(l => { const last = l.words.at(-1).box, gap = gapOf(last, w.box); return shares(last, w.box) && gap >= -.25 * tall(last, w.box) && gap <= DRAWN.near * tall(last, w.box); });
-    if (!line) { lines.push({words: [w], text: w.text}); continue; }
-    const last = line.words.at(-1), gap = gapOf(last.box, w.box) / tall(last.box, w.box);
-    line.text += (gap < DRAWN.touch || (gap < DRAWN.mark && glued(last.text.trim(), w.text.trim())) ? '' : ' ') + w.text;
-    line.words.push(w);
+    const line = lines.find(l => { const last = l.at(-1).box, gap = gapOf(last, w.box); return shares(last, w.box) && gap >= -.25 && gap <= DRAWN.near; });
+    if (line) line.push(w); else lines.push([w]);
   }
-  return [...lines.map(l => l.text), ...words.filter(w => !boxed.includes(w)).map(w => w.text)];
+  return [...lines.map(l => l.map((w, i) => (i && !joinOf(l, i) ? ' ' : '') + w.text).join('')), ...words.filter(w => !boxed.includes(w)).map(w => w.text)];
+}
+
+/**
+ * How long a drawn number must stay up to be a claim: `seconds` (0.5 s), the same number in the same place of the same
+ * line. The claims check reads the frames every `step` (0.25 s) or finer, whatever the review's own step; where that
+ * cannot tell — a number seen at two reads running, up between 0.25 s and 0.75 s — it reads the two edges again every
+ * `fine` (0.05 s). So a number up for 0.5 s or more always counts, and one up for less than 0.4 s never does: a
+ * typewriter's partial "1" of "1299" (0.33 s at 3 characters a second) is no claim.
+ */
+export const HOLD = Object.freeze({seconds: .5, step: .25, fine: .05});
+
+/**
+ * Where a number stands, for telling whether it holds: its whole line with every number masked, and which of the
+ * line's numbers it is. "Sold 40 cups" and "Sold 40 kg" are two places, each checked against its own facts; a counter's
+ * "60" in "frame 16 of 60" keeps its place as the frame number ticks; a typewriter's "1" of "1299" stands where the 1299
+ * will, a different number in the same place.
+ */
+function placeOf(text, runs, k) {
+  let masked = text;
+  for (const r of [...runs].reverse()) masked = `${masked.slice(0, r.at)}#${masked.slice(r.at + r.run.length)}`;
+  return `${masked}\u0000${k}`;
 }
 
 /**
  * The numbers the picture draws that no declared line holds, from the words the review reads off its frames (review.mjs
- * · wordsAt, read once for every check, and made into lines: drawnLines): samples [{t, words: [{text, box?}]}], the
- * film's claims, sceneOf(t) (a scene's index) and the scenes' ids. A drawn number is a declared one when a declared line
- * (not a caption: the captions are the layout's, and never in the frame) shows the same number and the drawn words are
- * that line, or a word-bounded start or end of it (a list line's name and value are drawn apart). A line is claimed once,
- * in the scene where it is first drawn — and it counts as example data only if the example label is up the whole time it
- * is drawn (claims.labels). Returns claims as findClaims does, path 'drawn', from the first sample it is drawn at to the last.
+ * · wordsAt, made into lines: drawnLines): samples [{t, words: [{text, box?, decorative?}]}] in time order, at most
+ * HOLD.step apart for the bound below (the review reads for this check that often, whatever its own step), the film's
+ * claims, sceneOf(t) (a scene's index), the scenes' ids, and wordsAt(t) (the words at any moment, to read an edge
+ * again; without it, a number the reads cannot time is counted). Decorative words (a kit's line numbers,
+ * decorative.mjs) are left out: drawn, never said. A drawn number counts once it HOLDS — the same number in the same
+ * place (placeOf) for HOLD.seconds — timed from the reads (a run of them, and the reads either side), and from its
+ * edges read again every HOLD.fine where the reads cannot tell (past the reads' first and last moment too). A line typed on past its number ("We sold 1299" while "cups" is typed) is the same claim as the line it
+ * becomes. A drawn number is a declared one when a declared line (not a caption: the captions are the layout's, and
+ * never in the frame) shows the same number and the drawn words are that line, or a word-bounded start or end of it.
+ * Each held number is claimed once, in the scene where it first holds, with the line it holds in — and it counts as
+ * example data only if the example label is up the whole time it holds (claims.labels). Returns claims as findClaims
+ * does, path 'drawn', from the first read it holds at to the last.
  */
-export function drawnClaims(samples, {claims, sceneOf, scenes = []}) {
+export function drawnClaims(samples, {claims, sceneOf, scenes = [], wordsAt = null}) {
   const tidy = text => String(text).trim().replace(/\s+/g, ' '), declared = (claims?.numbers ?? []).filter(c => c.path !== 'captions');
   const part = (drawn, line) => drawn === line || line.startsWith(`${drawn} `) || line.endsWith(` ${drawn}`);
   const known = (number, text) => declared.some(c => c.number === number && part(text, tidy(c.line)));
-  const first = new Map();   // each drawn text: when and where it is first drawn, and when last
-  for (const {t, words} of samples) for (const text of drawnLines(words)) {
-    const drawn = tidy(text);
-    if (!numberRuns(drawn).some(n => !known(n.run, drawn))) continue;
-    if (first.has(drawn)) first.get(drawn).to = t; else first.set(drawn, {text: drawn, at: t, to: t, scene: sceneOf(t), path: 'drawn'});
-  }
-  return findClaims([...first.values()], {facts: claims?.facts ?? null, examples: claims?.examples ?? [], scenes})
-    .filter(c => !known(c.number, c.line)).map(c => ({...c, example: c.example && labelledOver(claims?.labels ?? [], c.at, c.to)}));
+  /** A frame's numbers that no declared line holds: [{text, offset, place, number}]. */
+  const numbersOf = words => drawnLines(words.filter(w => !w.decorative)).map(tidy).flatMap(text => {
+    const runs = numberRuns(text);
+    return runs.map((n, k) => ({text, offset: n.at, place: placeOf(text, runs, k), number: n.run})).filter(x => !known(x.number, x.text));
+  });
+  const read = samples.map(({t, words}) => ({t, numbers: numbersOf(words)}));
+  const shows = (numbers, x) => numbers.some(y => y.place === x.place && y.number === x.number);
+  const shownAt = (t, x) => shows(numbersOf(wordsAt(t)), x);
+  /** Whether the number x, at reads i..j and not at the reads either side, is up for HOLD.seconds. */
+  const holds = (i, j, x) => {
+    const first = read[i].t, last = read[j].t, before = read[i - 1], after = read[j + 1];
+    if (last - first >= HOLD.seconds - 1e-9) return true;   // seen up that long
+    if (before && after && after.t - before.t <= HOLD.seconds + 1e-9) return false;   // up for less, whatever falls between the reads
+    if (!wordsAt) return true;   // the reads cannot tell, and there is nothing to read again: counted, never dropped
+    // Read the edges again every HOLD.fine — past the reads' own first and last moment too (a part's window cuts what is
+    // on screen; nothing is up before the film's start) — until it is gone, or seen up HOLD.seconds.
+    let from = before?.t ?? -Infinity, to = after?.t ?? Infinity;
+    for (let t = first - HOLD.fine; t > from + 1e-9 && last - t < HOLD.seconds; t -= HOLD.fine) if (t < 0 || !shownAt(t, x)) { from = t; break; }
+    for (let t = last + HOLD.fine; t < to - 1e-9 && t - from <= HOLD.seconds + 1e-9; t += HOLD.fine) if (!shownAt(t, x)) { to = t; break; }
+    return to - from >= HOLD.seconds - 1e-9;
+  };
+  const held = new Map();   // each number that holds, by its place: its line, its offset, when it first holds and last
+  read.forEach(({numbers}, i) => {
+    for (const x of numbers) {
+      if (i > 0 && shows(read[i - 1].numbers, x)) continue;   // a run starts here, or not at all
+      let j = i; while (read[j + 1] && shows(read[j + 1].numbers, x)) j++;
+      if (!holds(i, j, x)) continue;
+      const id = `${x.place}\u0000${x.number}`, h = held.get(id);
+      if (h) h.to = read[j].t; else held.set(id, {text: x.text, offset: x.offset, number: x.number, at: read[i].t, to: read[j].t});
+    }
+  });
+  // A line typed on past its number is the line it becomes: the number up all the way, in lines that start with it.
+  const typedOn = (a, b) => b.number === a.number && b.offset === a.offset && b.text.length > a.text.length && b.text.startsWith(a.text) && b.at >= a.to
+    && read.every(r => r.t <= a.to || r.t >= b.at || r.numbers.some(y => y.number === a.number && y.offset === a.offset && y.text.startsWith(a.text)));
+  const all = [...held.values()].sort((a, b) => a.text.length - b.text.length);   // shortest first: a chain carries its first moment on
+  for (const a of all) { const b = all.find(b => typedOn(a, b)); if (b) { b.at = Math.min(b.at, a.at); a.gone = true; } }
+  const options = {facts: claims?.facts ?? null, examples: claims?.examples ?? [], scenes};
+  return all.filter(h => !h.gone).flatMap(h => findClaims([{text: h.text, at: h.at, to: h.to, scene: sceneOf(h.at), path: 'drawn'}], options).filter(c => c.offset === h.offset))
+    .map(c => ({...c, example: c.example && labelledOver(claims?.labels ?? [], c.at, c.to)}))
+    .sort((a, b) => a.at - b.at || a.line.localeCompare(b.line) || a.offset - b.offset);
 }
 
 /**

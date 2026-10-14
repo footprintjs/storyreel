@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- **The example label stays until the example line's last ink.** An eraser wipes a line over its own time: the label
+  now holds until the wipe ends (a kit's `texts()` may say when a line's last ink goes, `gone`; the whiteboard does),
+  not only until it starts — an example number is never on screen unlabelled.
+- **A decimal drawn as code tokens is one number.** A lone "." or "," between digits joins them when it stands within
+  half their height of each (`DRAWN.point`): a code panel's "16" "." "67" is 16.67 and "$1" "," "299" "." "99" is
+  1,299.99; `f(4,5)` stays 4 and 5 (the one comma rule below), and "12 30" and "x - 5" stay as they were.
+- **Digit groups of different sizes never join.** "$1,299" with a raised "99" reads as 1,299 and 99 — not 129999 —
+  since the picture does not say whether a raised group is cents, a power or a note (`DRAWN.size`, `DRAWN.baseline`).
+- **`footprint-storyreel/decorative`: text the film does not say.** `decorative(ctx, draw)` marks the words drawn
+  inside it (a code panel's line numbers, a strip's badges): the review reads them for every check, and the claims
+  check leaves them out. Read words carry `decorative: true`.
+- **A drawn number counts once it holds**: the same number, in the same place of the same line (every number masked:
+  "Sold 40 cups" and "Sold 40 kg" are two claims, each checked against its own facts), up for 0.5 s (`HOLD`). A
+  typewriter's partials and a counter's passing values are no claims, and a line typed on past its number is one claim.
+  The hold is timed whatever the review's step: the claims check reads every 0.25 s or finer, and a number's edges
+  again every 0.05 s where it must — a number up 0.5 s or more always counts, one up under 0.4 s never does. At the
+  default step nothing more is read; at `every: 1` the claims check reads every 0.25 s (and finds numbers the coarse
+  reads missed). The four example films read the same numbers as before.
+- **One comma rule, typed and drawn.** A comma joins digits only before a three-digit group: "steps 1,2 and 3" is 1, 2
+  and 3, never 1.2, and a fact `"4,5"` refuses (two numbers). After a dotted thousands group it is a decimal comma:
+  "1.299,99" is 1299.99, typed or drawn.
 - **A render cleans up after itself.** Its working files (the picture without its sound, the voice and the effects as
   WAVs, FFmpeg's lists, segment files on their way to the cache) go in a hidden `.storyreel-work-…` folder beside the
   video, removed when the render ends, finished or failed (`render.mjs` · `closeRender`; `renderFilm` and `makeFilm` call

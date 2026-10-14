@@ -352,8 +352,8 @@ export interface Film {
   partsAt(t: number): (Parts & {path: string})[];
   /** The picture's clock at t: the voice's, except in a camera's freeze (held) or speed ramp (slow, then catching up). */
   pictureAt(t: number): number;
-  /** Every line the film shows to be read (titles, footers, list lines, a world's words, guess cards, the push-in caption, an example scene's label): when it is whole on screen, when it starts to leave, the recipe entry. */
-  lines: readonly {text: string; from: number; to: number; path: string}[];
+  /** Every line the film shows to be read (titles, footers, list lines, a world's words, guess cards, the push-in caption, an example scene's label): when it is whole on screen, when it starts to leave, when its last ink goes (`gone`, an eraser's end, when it has one), the recipe entry. */
+  lines: readonly {text: string; from: number; to: number; gone?: number; path: string}[];
   /** Every change of picture: each stage's arrival (the push-in, an entrance, a hand-over, a cut) and the teaser, from–to. */
   changes: readonly {from: number; to: number; what: string}[];
   /** Every number the film shows and where it comes from: a fact the storyboard names, or an example scene. */
@@ -401,7 +401,8 @@ export interface StoryWorld {
    * into the arriving one's, exactly: the same layer in both stays itself. A film with a pushIn draws none.
    */
   overlay?(ctx: any, t: number): void;
-  texts?(): {text: string; from: number; to: number; path: string}[];
+  /** The lines it shows to be read: whole from `from`, starting to leave at `to`, its last ink gone at `gone` (an eraser's end; `to` when left out). */
+  texts?(): {text: string; from: number; to: number; gone?: number; path: string}[];
   /** Settles once the world can draw (e.g. its images have decoded); compileFilm waits for it before drawing recalls and before returning. */
   ready?: Promise<unknown>;
   /**
