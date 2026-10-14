@@ -18,7 +18,7 @@ const skip = found.stdout?.trim() === 'True' ? false : `no Python 3.8+ as ${PYTH
 /** Run Python with the tool loaded as `tool`; returns {status, stdout, stderr}. */
 function python(code, ...args) {
   const prelude = `import importlib.util, json, os, sys\nspec = importlib.util.spec_from_file_location('tool', ${JSON.stringify(TOOL)})\ntool = importlib.util.module_from_spec(spec); spec.loader.exec_module(tool)\n`;
-  return spawnSync(PYTHON, ['-I', '-c', prelude + code, ...args], {encoding: 'utf8'});
+  return spawnSync(PYTHON, ['-I', '-B', '-c', prelude + code, ...args], {encoding: 'utf8'});   // (-B: no __pycache__ beside the tool)
 }
 
 test('the tool resamples a variable rate onto a steady one: a moment between two frames draws straight between them', {skip}, () => {
