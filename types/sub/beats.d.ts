@@ -64,9 +64,9 @@ export interface LevelRules { pulse: number; phase: number; kicked: number; low:
 /**
  * What safeBeats keeps: beats within `tolerance` seconds on every candidate's grid, none when a candidate's phase doubt
  * reaches `phaseDoubt`, and only where the song hits — an attack at least `hit` of the median one on the beats, the
- * strongest within `local` of a beat either side.
+ * strongest within `local` of a beat either side; the median is the song's, or that of the beats within `near` seconds where lower.
  */
-export interface SafeRules { tolerance: number; phaseDoubt: number; hit: number; local: number }
+export interface SafeRules { tolerance: number; phaseDoubt: number; hit: number; local: number; near: number }
 /** The beat map's rules: the preferred tempos, the meter, the downbeat's margin, the drop's dB and window, what makes a fade-in, onBeat's tolerance, the score of a likely tempo, safeBeats' rules, the level tests. */
 export const BEATS: Readonly<{range: readonly [number, number]; meter: number; downbeat: number; drop: number; window: number; fade: number; sudden: number; onBeat: number; likely: number; safe: Readonly<SafeRules>; level: Readonly<LevelRules>}>;
 /** The evidence one level is judged on (dsp.mjs · levelEvidence): the backbeat's share on its beats, the share of its beats that carry it, and how often the next one is two beats on. */

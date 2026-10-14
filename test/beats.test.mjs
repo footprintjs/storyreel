@@ -310,6 +310,21 @@ test('a song\'s ring-out holds no beat, sure map or not: an 808 sub sounding on 
   }
 });
 
+test('a fade-out is not a ring-out: its faded beats are kept to within a beat of the song\'s end (70, 110, 172), sure maps included', async () => {
+  for (const bpm of [70, 110, 172]) {
+    // Within one of the map's own beats (an unsure map may count half the tempo).
+    const s = rhythm({bpm, family: 'backbeat, an 8 s fade-out'}), map = await beatMapOf(s.samples, 22050), last = s.beats.at(-1), beat = 60 / map.bpm;
+    assert.ok(map.beats.at(-1) >= last - beat - .05, `${bpm} (${map.verdict}): the beats run to ${map.beats.at(-1)} s, the last true beat is ${last.toFixed(3)} s`);
+    assert.deepEqual(map.beats.filter(t => t > last + .05), [], `${bpm}: and none past it`);
+  }
+});
+
+test('a steady sound has no beats to measure: a tone refuses (no code: the sound, not the call), and a given tempo lays its grid anyway', async () => {
+  const tone = Float32Array.from({length: 22050 * 4}, (_, i) => .3 * Math.sin(2 * Math.PI * 440 * i / 22050));
+  await assert.rejects(beatMapOf(tone, 22050), e => /has no beats to measure: none of the \d+ its onsets suggest sits on an onset/.test(e.message) && e.code === undefined);
+  assert.equal((await beatMapOf(tone, 22050, {bpm: 90})).verdict, 'tempo-given');
+});
+
 test('likelyTempi and beatMapText: the tempi an unsure map could be, and the map as text a person settles it from', () => {
   const unsure = {sure: false, verdict: 'tempo-close', bpm: 140.2, seconds: 30, beats: [1, 2], drop: null,
     alternatives: [{bpm: 140.2, score: 1}, {bpm: 70.1, score: .8}, {bpm: 46.7, score: .3}], levels: [{bpm: 70.1, score: .8, fails: ['kicked']}, {bpm: 140.2, score: 1, fails: ['half-time', 'backbeat slower']}]};

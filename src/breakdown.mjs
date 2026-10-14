@@ -37,6 +37,7 @@ import {GRID, readFootage, cutsAndFades, gradualCandidates, shotMotion, energyCu
 import {eachStill, readLettering, cornerMarks, logoCandidates, lettering} from './stills.mjs';
 import {breakdownText} from './breakdown-text.mjs';
 import {tempScratch} from './scratch.mjs';
+import {safeBeats, likelyTempi} from './beats.mjs';
 
 export {breakdownText};
 
@@ -485,17 +486,27 @@ const beatsDecider = s => {
   return result;
 };
 
-const SHAPE = 'a beat map answers {bpm, beats: [seconds, …], drop?: seconds | null, confidence?: 0..1, alternatives?: [{bpm, score}]}';
-/** A beat map's answer, checked (beats.mjs · beatMap answers this shape): a wrong answer is a wiring mistake, and refuses. */
+const SHAPE = 'a beat map answers {bpm, beats: [seconds, …], drop?: seconds | null, confidence?: 0..1, alternatives?: [{bpm, score, beats?, phaseDoubt?}], verdict?, sure?, hits?: [seconds, …]}';
+const seconds = list => Array.isArray(list) && list.every(Number.isFinite);
+/**
+ * A beat map's answer, checked (beats.mjs · beatMap answers this shape): a wrong answer is a wiring mistake, and refuses.
+ * What safeBeats reads — whether the map is sure, each candidate's grid and phase doubt, where the song hits — is kept
+ * when the reader says it; a reader that says none of it is taken as sure (beats.mjs · safeBeats).
+ */
 function readBeats(answer) {
   if (!answer || typeof answer !== 'object') throw new Error(`breakdown: ${SHAPE}, not ${answer === null ? 'null' : typeof answer}`);
-  const {bpm, beats, drop = null, confidence, alternatives = []} = answer;
+  const {bpm, beats, drop = null, confidence, alternatives = [], verdict, sure, hits} = answer;
   if (!(Number.isFinite(bpm) && bpm > 0)) throw new Error(`breakdown: ${SHAPE}; its bpm is beats a minute, more than 0, not ${JSON.stringify(bpm)}`);
   if (!Array.isArray(beats) || !beats.every(Number.isFinite)) throw new Error(`breakdown: ${SHAPE}; its beats are a list of seconds`);
   if (drop !== null && !Number.isFinite(drop)) throw new Error(`breakdown: ${SHAPE}; its drop is seconds, or null when there is none, not ${JSON.stringify(drop)}`);
   if (confidence !== undefined && !(Number.isFinite(confidence) && confidence >= 0 && confidence <= 1)) throw new Error(`breakdown: ${SHAPE}; its confidence is 0..1, not ${JSON.stringify(confidence)}`);
-  if (!Array.isArray(alternatives) || !alternatives.every(a => Number.isFinite(a?.bpm) && Number.isFinite(a?.score))) throw new Error(`breakdown: ${SHAPE}; its alternatives are [{bpm, score}]`);
-  return {bpm, beats: [...beats].sort((a, b) => a - b), drop, ...(confidence !== undefined ? {confidence} : {}), alternatives: alternatives.map(a => ({bpm: a.bpm, score: a.score}))};
+  if (!Array.isArray(alternatives) || !alternatives.every(a => Number.isFinite(a?.bpm) && Number.isFinite(a?.score) && (a.beats === undefined || seconds(a.beats)) && (a.phaseDoubt === undefined || Number.isFinite(a.phaseDoubt)))) throw new Error(`breakdown: ${SHAPE}; its alternatives are [{bpm, score, beats?: [seconds], phaseDoubt?: a number}]`);
+  if (verdict !== undefined && typeof verdict !== 'string') throw new Error(`breakdown: ${SHAPE}; its verdict is a word (tempo-measured, tempo-close, …), not ${JSON.stringify(verdict)}`);
+  if (sure !== undefined && typeof sure !== 'boolean') throw new Error(`breakdown: ${SHAPE}; sure is true or false, not ${JSON.stringify(sure)}`);
+  if (hits !== undefined && !seconds(hits)) throw new Error(`breakdown: ${SHAPE}; its hits are a list of seconds`);
+  return {bpm, beats: [...beats].sort((a, b) => a - b), drop, ...(confidence !== undefined ? {confidence} : {}),
+    alternatives: alternatives.map(a => ({bpm: a.bpm, score: a.score, ...(a.beats ? {beats: [...a.beats]} : {}), ...(a.phaseDoubt !== undefined ? {phaseDoubt: a.phaseDoubt} : {})})),
+    ...(verdict !== undefined ? {verdict} : {}), ...(sure !== undefined ? {sure} : {}), ...(hits ? {hits: [...hits]} : {})};
 }
 
 /** The video's sound as a WAV in a folder of its own: the file, or why it could not be written. */
@@ -535,23 +546,35 @@ const readBeatsStage = run => async s => {
       if (!run.beatsFailed) run.beats = readBeats(answer);
     }
   } finally { rmSync(dir, {recursive: true, force: true}); }
-  if (run.beats) { s.bpm = run.beats.bpm; s.beatCount = run.beats.beats.length; s.drop = run.beats.drop; } else s.beatsFailed = run.beatsFailed;
+  if (run.beats) { s.bpm = run.beats.bpm; s.beatCount = run.beats.beats.length; s.drop = run.beats.drop; if (run.beats.verdict !== undefined) s.tempoVerdict = run.beats.verdict; } else s.beatsFailed = run.beatsFailed;
 };
 
-/** Which cuts land on a beat (within `onBeat` seconds), what is on screen at the drop, and whether the tempo was a close call. */
+/**
+ * Which cuts land on a beat (within `onBeat` seconds), what is on screen at the drop, and whether the tempo was a close
+ * call. The beats a cut is judged against have one owner, beats.mjs · safeBeats: every beat of a sure map (or of a reader
+ * that gives no verdict), and of an unsure one only those every candidate shares and the song hits — so no cut is called
+ * on the beat against a grid the map is unsure of. A cut near none of those is off the beat for a sure map, and not
+ * judged (onBeat null) for an unsure one.
+ */
 function beatsReport(run) {
-  const {t} = run.o, {bpm, beats, drop, confidence, alternatives} = run.beats, nearest = x => beats.reduce((b, y) => (Math.abs(y - x) < Math.abs(b - x) ? y : b), beats[0]);
+  const {t} = run.o, {bpm, beats, drop, confidence, alternatives} = run.beats, cutOn = safeBeats(run.beats), sure = run.beats.sure !== false;
+  const judged = cutOn.beats, nearest = x => judged.reduce((b, y) => (Math.abs(y - x) < Math.abs(b - x) ? y : b), judged[0]);
   const cuts = run.transitions.filter(splits).map(tr => {
-    if (!beats.length) return {at: tr.at, kind: tr.kind, beat: null, off: null, onBeat: false};
-    const beat = nearest(tr.at);
-    return {at: tr.at, kind: tr.kind, beat: round(beat, 3), off: round(tr.at - beat, 3), onBeat: Math.abs(tr.at - beat) <= t.onBeat + 1e-9};
+    if (!judged.length) return {at: tr.at, kind: tr.kind, beat: null, off: null, onBeat: sure ? false : null};
+    const beat = nearest(tr.at), on = Math.abs(tr.at - beat) <= t.onBeat + 1e-9;
+    return {at: tr.at, kind: tr.kind, beat: round(beat, 3), off: round(tr.at - beat, 3), onBeat: on ? true : sure ? false : null};
   });
   const atDrop = drop === null ? null : {at: round(drop, 3), shot: (run.shots.find(x => drop >= x.start && drop < x.end) ?? run.shots.at(-1)).index,
     nearestCut: cuts.length ? cuts.reduce((b, c) => (Math.abs(c.at - drop) < Math.abs(b.at - drop) ? c : b)) : null};
+  // A close call: the map's own verdict when it gives one (unsure, the strongest other tempo named); else the next tempo
+  // scoring `closeTempo` of the best.
   const runnerUp = [...alternatives].sort((a, b) => b.score - a.score).find(a => Math.abs(a.bpm - bpm) > .5), best = Math.max(1e-9, ...alternatives.map(a => a.score));
-  const close = runnerUp && runnerUp.score / best >= t.closeTempo ? {bpm: runnerUp.bpm, score: round(runnerUp.score / best, 2)} : null;
-  return {ran: true, bpm, ...(confidence !== undefined ? {confidence} : {}), ...(alternatives.length ? {alternatives} : {}), ...(close ? {close} : {}),
-    beats: beats.map(b => round(b, 3)), drop: atDrop, cuts, onBeat: cuts.filter(c => c.onBeat).length, of: cuts.length, within: t.onBeat};
+  const called = run.beats.verdict !== undefined || run.beats.sure !== undefined ? !sure : runnerUp && runnerUp.score / best >= t.closeTempo;
+  const close = called && runnerUp ? {bpm: runnerUp.bpm, score: round(runnerUp.score / best, 2)} : null;
+  return {ran: true, bpm, ...(run.beats.verdict !== undefined ? {verdict: run.beats.verdict} : {}), sure, ...(confidence !== undefined ? {confidence} : {}),
+    ...(alternatives.length ? {alternatives: alternatives.map(a => ({bpm: a.bpm, score: a.score}))} : {}), ...(close ? {close} : {}),
+    ...(sure ? {} : {likely: likelyTempi(run.beats)}), judged: {grid: cutOn.grid, beats: cutOn.shared, of: cutOn.of},
+    beats: beats.map(b => round(b, 3)), drop: atDrop, cuts, onBeat: cuts.filter(c => c.onBeat === true).length, ...(sure ? {} : {unjudged: cuts.filter(c => c.onBeat === null).length}), of: cuts.length, within: t.onBeat};
 }
 
 // ── The overview and the spec ──────────────────────────────────────────────────────────────────────────────

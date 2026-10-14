@@ -1499,15 +1499,15 @@ peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and it
   taken and `alternatives` lists eight, each with its own grid. A wrong tempo claimed as certain is the one failure that
   matters, so many songs come out close: a backbeat (the kick on one and three is not a kick on every beat), a click
   track with a kick every fourth click, a dembow, a breakbeat; give `bpm` to settle them.
-- **Checked against a corpus** of 262 songs made sample by sample (`test/songs.mjs · tempoCorpus`,
+- **Checked against a corpus** of 269 songs made sample by sample (`test/songs.mjs · tempoCorpus`,
   `test/tempo-corpus.test.mjs`): 56 drum patterns; nine rhythm families — dembow, son clave, half-time shuffle, trap,
-  four on the floor, breakbeat, sixteenths with the kick on one, bossa nova, funk — at seven tempi; 66 songs; and 77 of
+  four on the floor, breakbeat, sixteenths with the kick on one, bossa nova, funk — at seven tempi; 66 songs; and 84 of
   bass, hands, meters and echoes — a backbeat over eighth-note bass, eighth-note kicks with the snare on 2 and 4, four
   on the floor humanised (±12 ms), a backbeat drifting ±3% in tempo, 6/8, a kick on the and of two, bass on quarters
   with chords, a kick (with its beater's click) and a bass on every eighth under a snare on 2 and 4, a dotted-eighth
   delay on the rim and the snare, an 808 sub on the quarters under a snare on 2 and 4, a backbeat with a dub echo (0.5)
-  on the snare. **None is wrong and certain**; 61 are right and certain, 109 right but close, 92 wrong but close, each
-  of those with the right tempo among its alternatives — and **no beat a film may cut on lies off a true beat, sure or
+  on the snare, a backbeat fading out over its last 8 s. **None is wrong and certain**; 65 are right and certain, 110
+  right but close, 94 wrong but close, each of those with the right tempo among its alternatives — and **no beat a film may cut on lies off a true beat, sure or
   unsure** (phase is checked for both). **The thresholds are calibrated on these synthetic
   songs only**, with room to spare (loosening every one of them but `kicked` together still claims nothing wrong);
   for a real mix, read the verdict and `map.levels` (`storyreel beats <song>`), and give `bpm` to settle it.
@@ -1519,17 +1519,21 @@ peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and it
   0.6 of the median attack on the beats — a delay's repeat a sixteenth before the beat it precedes, or an echo ringing
   on past the song's end, is not a hit; `unheard` counts the shared beats dropped). None at all when any candidate is
   unsure of its phase (its grid could sit on the "and": the onsets half a beat off it as strong as on it, `phaseDoubt`
-  ≥ 0.9). Across the corpus's 201 unsure maps that leaves **0 cuts off a true beat** and 7.1% of the true beats
-  cut-able (652 of 9,172).
+  ≥ 0.9). Across the corpus's 204 unsure maps that leaves **0 cuts off a true beat** and 7.0% of the true beats
+  cut-able (654 of 9,316).
 - **A song's ring-out holds no beat.** No map, sure or unsure, keeps a beat after the song's last hit: the tracker
   carries its grid on through what rings after the music stops — an 808's long tail, a dub echo, a delay's repeats —
   and a beat there sits on nothing, or on an echo off the grid (an 808 on the quarters at 85 kept one, sure, 0.07 s off
-  it). The record says how many it dropped (`ringOut`).
+  it). The record says how many it dropped (`ringOut`). A hit is measured against the song's beats, or against those NEAR
+  it (within 4 s, `BEATS.safe.near`) where they are quieter: an echo still falls under the hit it repeats, while a
+  fade-out's faded hits stand against the faded ones around them — a backbeat fading out over 8 s keeps its beats to within one beat of
+  its end, where the last, faintest beat is as faint against the one before as an echo is. A steady sound with no
+  beat on any onset (a tone, a hum) has no beats to measure and refuses, unless a tempo is given.
 - **Unsure snaps little; a tempo settles it.** Measured over the corpus the way an editor cuts — a cut every 3–8 s,
-  snapped when a beat it may cut on lies within ±0.15 s — a sure map snaps about 45% of cuts (138 of 306) and an
-  unsure one about **4%** (34 of 856). The intersection is not loosened (no subset of the candidates kept every cut on the beat); instead an unsure
+  snapped when a beat it may cut on lies within ±0.15 s — a sure map snaps about 45% of cuts (150 of 330) and an
+  unsure one about **4%** (34 of 866). The intersection is not loosened (no subset of the candidates kept every cut on the beat); instead an unsure
   map is quick to settle: `likelyTempi(map)` names its candidates scoring 0.5 or more — the true tempo is among them
-  for 196 of the 201 unsure maps — and **a given tempo makes the map sure** (`tempo-given`), so a film cuts on every
+  for 199 of the 204 unsure maps — and **a given tempo makes the map sure** (`tempo-given`), so a film cuts on every
   beat. Hear the song, pick one, give it as `music.bpm`.
 - **`storyreel beats <song>`** prints the map for a person to settle it in seconds — no project needed (`beatMapText`):
 
@@ -1683,7 +1687,10 @@ spec.shots[4].motion.why.rules[1].checks;   // ['pan 0.188 ≥ 0.02 ✓', 'expla
 ```
 
 `npx storyreel breakdown reference.mp4 --out work/reference` does the same from the command line; it needs no project
-(`storyreel breakdown --help`; a failure prints where the record stopped and its last decisions). It needs **FFmpeg 5.1
+(`storyreel breakdown --help`; a failure prints where the record stopped and its last decisions). Add **`--beats`** to
+read the sound's beats with the beat map (`footprint-storyreel/beats`) and say which cuts land on the beat;
+`--bpm 120` hands it the tempo you hear (the map is then sure), and `--ffmpeg path` names the FFmpeg both run. Without
+`--beats`, nothing about the beats is read. A tempo the beat map refuses (`--bpm 5`) refuses the breakdown (exit 2). It needs **FFmpeg 5.1
 or later** (it reads frames with `-fps_mode passthrough`, and hands FFmpeg the stills' selection in a file, since a long
 film's runs past what one argument may hold: `-/filter:v` from FFmpeg 7, `-filter_script:v` before. Tested with FFmpeg
 9.0.2 on macOS, which takes only `-/filter:v`, and FFmpeg 6.1.1 on Ubuntu 24.04 in CI, which takes only `-filter_script:v`).
@@ -1732,15 +1739,21 @@ film's runs past what one argument may hold: `-/filter:v` from FFmpeg 7, `-filte
   miss: a name shown in 3 shots of 4 reads as a logo — the record shows that decision with its evidence. It never reads
   the words (no OCR).
 - **Beats.** `beatMap(audioFile, {...beatOptions, ffmpeg})` → `{bpm, beats: [seconds], drop?, confidence?, alternatives?:
-  [{bpm, score}]}` is handed the video's sound as a WAV (in a folder removed after), the beat map's own options
+  [{bpm, score, beats?, phaseDoubt?}], verdict?, sure?, hits?}` is handed the video's sound as a WAV (in a folder removed after), the beat map's own options
   (`beatOptions`) and this run's FFmpeg, so a beat map such as beats.mjs's fits as it is (`{beatMap}`, or
   `{beatMap: f => beatMap(f, {ffmpeg})}`): `breakdown(file, {beatMap, beatOptions: {bpm: 120}})` lays its grid at 120 BPM
   where it finds no tempo of its own. `beatOptions` are the reader's own: the breakdown hands them on untouched and
   never checks their names or values. A reader that finds them wrong throws an error with `code: 'BEAT_OPTIONS'` — a
   wiring mistake, so the breakdown refuses with it; any other error it throws is a sound it could not read, recorded as
   not run. The spec reports the BPM (and how
-  sure: `confidence`, and `close` when another tempo scores 90% of the best or more), the beats, the drop and the shot on
-  screen there, and which cuts land within 0.05 s of a beat. Without a beat map, without sound, or when the beat map
+  sure: `confidence`, the map's `verdict` and `sure` when it gives them, and `close` — the next tempo — when the map
+  says it is unsure, or, from a reader that gives no verdict, when another tempo scores 90% of the best or more), the
+  beats, the drop and the shot on screen there, and which cuts land within 0.05 s of a beat. **Which beats a cut is
+  judged against has one owner, `beats.mjs · safeBeats`**: every beat of a sure map (and of a reader that gives no
+  verdict); of an unsure one only the beats every candidate tempo shares and the song hits (`judged`), so no cut is
+  called on the beat against a grid the map is unsure of. A cut near none of those is off the beat for a sure map, and
+  not judged (`onBeat: null`, counted in `unjudged`) for an unsure one; `likely` names the tempi to give (`--bpm`) to
+  judge every cut. breakdown.md says the same in words. Without a beat map, without sound, or when the beat map
   cannot read the sound (it throws: a silent track, no tempo), the spec says the beats were not read, and why (when the beat
   map asks for one of its options, the reason says to give it as `beatOptions`); the rest of the breakdown stands. A beat map that answers in another shape refuses, naming the shape.
 - **Every verdict says why.** The breakdown is a footprintjs flowchart (probe → frames → cuts → gradual changes →
@@ -2186,7 +2199,7 @@ the default because it rarely does; there is no swap repair.
 | `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?, claims?})` | compile + render as a footprintjs pipeline, with `making-of.json` (a segmented render: one subflow per segment; the claims verdict, `check-claims`) |
 | `approveFilm({record, by, note?})` · `checkApproval(approval, inputs)` | the approval lock: approve a watched render from its making-of.json, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
 | `checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})` · `FINISHED_CHECK_NAMES` | checks on the finished file: lengths, blank runs, flash frames, hand-overs and joins, the voice, captions (`footprint-storyreel/finished` adds `ffmpegProbe`, `FINISHED_CHECKS`, `FINISHED`) |
-| `footprint-storyreel/breakdown` → `breakdown(videoFile, {out?, beatMap?, thresholds?, ffmpeg?, probe?})` · `breakdownText(spec)` · `BREAKDOWN` | a reference film as a spec to match: cuts, fades and dissolves, shots, pacing, motion, lettering (a heuristic), cuts on the beat (`beatMap(wav, {ffmpeg})`); every verdict with its evidence |
+| `footprint-storyreel/breakdown` → `breakdown(videoFile, {out?, beatMap?, beatOptions?, thresholds?, ffmpeg?, probe?})` · `breakdownText(spec)` · `BREAKDOWN` | a reference film as a spec to match: cuts, fades and dissolves, shots, pacing, motion, lettering (a heuristic), cuts on the beat (`beatMap(wav, {ffmpeg})`; `storyreel breakdown --beats`), judged by `safeBeats`; every verdict with its evidence |
 | `segmentedVideo({store, recipe, code?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir)` · `ffmpegJoin()` · `planSegments(film, {fps})` · `segmentKey(…)` · `codeFingerprint(paths)` | re-render only what changed: the picture in cached segments, joined (`renderFilm({…, video})`) |
 | `footprint-storyreel/release` → `makeRelease({targets, post, out, …})` · `loadTarget` · `checkAdapter` · `planProblems` · `TARGET_NAMES` | the post for each platform: the video in its shape, captions, thumbnail, the text to paste, checked against the platform's limits and audience |
 | `readCast(cast)` · `castText(text, cast)` · `withCast(value, cast)` | the cast: `{{role}}` in any text becomes the role's name; kits read the rest from `context.cast` |

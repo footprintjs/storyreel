@@ -516,7 +516,7 @@ test('refusals name the fix', {skip}, async () => {
   ffmpeg(['-f', 'lavfi', '-i', 'sine=d=1', tone]);
   await assert.rejects(breakdown(tone, {out: path.join(dir, 'tone')}), /tone\.m4a has no picture to break down \(it holds no video stream\): give a video/);
   const wrong = await breakdown(reference, {out: path.join(dir, 'wrong'), beatMap: () => ({tempo: 120})}).catch(e => e);
-  assert.match(wrong.message, /a beat map answers \{bpm, beats: \[seconds, …\], drop\?: seconds \| null, confidence\?: 0\.\.1, alternatives\?: \[\{bpm, score\}\]\}; its bpm is beats a minute/);
+  assert.match(wrong.message, /a beat map answers \{bpm, beats: \[seconds, …\], drop\?: seconds \| null, confidence\?: 0\.\.1, alternatives\?: \[\{bpm, score, beats\?, phaseDoubt\?\}\], verdict\?, sure\?, hits\?: \[seconds, …\]\}; its bpm is beats a minute/);
   assert.ok(wrong.record.some(e => e.stageId === 'read-beats'), 'a refused breakdown keeps its record, naming the stage');
 });
 

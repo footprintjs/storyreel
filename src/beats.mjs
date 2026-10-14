@@ -22,7 +22,7 @@ import {ANALYSIS, onsetStrength, tempoCandidates, lowPulse, backbeatPulse, level
  * beat passes to be certain (levelTests).
  */
 export const BEATS = Object.freeze({range: Object.freeze([70, 180]), meter: 4, downbeat: .1, drop: 3, window: 4, fade: 2, sudden: .5, onBeat: .05, likely: .5,
-  safe: Object.freeze({tolerance: .035, phaseDoubt: .9, hit: .6, local: .3}),
+  safe: Object.freeze({tolerance: .035, phaseDoubt: .9, hit: .6, local: .3, near: 4}),
   level: Object.freeze({pulse: 8, phase: .8, kicked: .75, low: .5, steady: .5, fill: Object.freeze({2: .55, 3: .2, 4: .2, any: .55}), halfTime: .375, margin: .3})});
 /** The levels of the beat tried against the strongest tempo: every relative, a quarter to four times it. */
 const LEVELS = Object.freeze([1 / 4, 1 / 3, 1 / 2, 1, 2, 3, 4]);
@@ -189,12 +189,15 @@ async function analyse(read, source, options) {
       const tracked = refineBeats(work.samples, work.rate, frames.map(f => f / fr)).map(t => round(t));
       // Where the song actually hits (dsp.mjs · hitsOf): an unsure map's film cuts only on a shared beat that has one; and
       // no map, sure or not, keeps a beat after the song's last hit — its ring-out (an 808's tail, an echo) is not a beat.
-      work.hits = hitsOf(work.onsets, fr, tracked, work.period / fr, {share: BEATS.safe.hit, local: BEATS.safe.local}).map(t => round(t));
+      work.hits = hitsOf(work.onsets, fr, tracked, work.period / fr, {share: BEATS.safe.hit, local: BEATS.safe.local, near: BEATS.safe.near}).map(t => round(t));
       const lastHit = work.hits.at(-1) ?? Infinity;
       work.beats = tracked.filter(t => t <= lastHit + BEATS.safe.tolerance); work.ringOut = tracked.length - work.beats.length;
       // The BPM the grid keeps (a line through the beats: exact where the tempo is steady), unless one was given.
       work.bpm = o.bpm ?? round(gridTempo(work.beats, work.period / fr) ?? 60 * fr / work.period, 2);
       work.confidence = round(onsetSupport(work.onsets.flux.all, fr, work.beats), 2);
+      // No beat on an onset: a steady sound (a tone, a pad, a hum) whose autocorrelation found a tempo in its noise. It
+      // has no beats to measure; given a tempo, the grid is laid all the same.
+      if (o.bpm === null && work.confidence === 0) throw new Error(`beatMap: ${source} has no beats to measure: none of the ${work.beats.length} its onsets suggest sits on an onset (a steady sound, no hits); give options.bpm to lay a grid anyway`);
       // Every listed candidate's own grid, tracked and refined the same way: when the map is unsure, a film cuts only
       // where they all agree (safeBeats).
       work.grids = work.candidates.map(c => (Math.abs(60 * fr / c.period - 60 * fr / work.period) < 1e-6 ? work.beats

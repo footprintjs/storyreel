@@ -444,19 +444,25 @@ export function levelEvidence({all, body, low}, frameRate, beats, pulse, {reach 
 /**
  * Where the song actually hits: the attacks in the low and mid bands (the rise of their magnitude) that are the strongest
  * within `local` of a beat (`period` seconds) either side — an echo a sixteenth before the hit it repeats is not one —
- * and at least `share` of the median attack at the beats given (an echo ringing on after the song has decayed below
- * the hits it repeats). Takes onsetStrength's result; returns the times in seconds.
+ * and at least `share` of the median attack at the beats — the song's, or the beats NEAR it (those within `near`
+ * seconds) where those are quieter: an echo ringing on after the song falls under the hits it repeats, while a hit in a
+ * fade-out stands against the faded ones around it. (Only ever lowered nearby: a median over a few beats of a kick and a
+ * snare is the one or the other by the count's parity, and must not raise the floor over the kicks.) Takes
+ * onsetStrength's result; returns the times in seconds.
  */
-export function hitsOf({power}, frameRate, beats, period, {share = .6, local = .3} = {}) {
+export function hitsOf({power}, frameRate, beats, period, {share = .6, local = .3, near = 4} = {}) {
   const n = power.low.length, mag = Float32Array.from(power.low, (v, i) => Math.sqrt(v + power.mid[i])), rise = new Float32Array(n);
   for (let f = 1; f < n; f++) rise[f] = Math.max(0, mag[f] - mag[f - 1]);
   const around = f => { let m = 0; for (let k = f - 3; k <= f + 3; k++) m = Math.max(m, rise[k] ?? 0); return m; };
-  const least = share * quantile(beats.map(t => around(Math.round(t * frameRate))), .5), w = Math.max(2, Math.round(local * period * frameRate)), kept = [];
+  const at = beats.map(t => around(Math.round(t * frameRate)));
+  // The floor at t: `share` of the median attack of all the beats, or of those within `near` seconds when that is lower.
+  const all = quantile(at, .5), floorAt = t => { const a = firstAtOrAfter(beats, t - near), b = firstAtOrAfter(beats, t + near + 1e-9); return share * (b > a ? Math.min(all, quantile(at.slice(a, b), .5)) : all); };
+  const w = Math.max(2, Math.round(local * period * frameRate)), kept = [];
   for (let f = 1; f < n; f++) {
-    if (!(rise[f] > 0 && rise[f] >= least)) continue;
+    if (!(rise[f] > 0)) continue;
     let top = true;
     for (let k = Math.max(0, f - w); k <= Math.min(n - 1, f + w) && top; k++) if (k !== f && rise[k] > rise[f]) top = false;
-    if (top) kept.push(f / frameRate);
+    if (top && rise[f] >= floorAt(f / frameRate)) kept.push(f / frameRate);
   }
   return kept;
 }
