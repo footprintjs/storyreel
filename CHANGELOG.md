@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+- **The review's `frozen-voice` names only what a freeze holds.** An emphasis word, a focus key or a guess card is drawn
+  on the voice's clock, so its beat under a freeze is no longer reported as "appears when the freeze ends".
+- **A camera move that starts while another runs aims from where that one is going.** A dolly beside a pan takes the
+  zoom the pan ends on, not its middle, and still starts from what is on screen. Under reduced motion, a move during a
+  follow aims from where the follow cuts to, so both versions end on the same framing.
+- **A dolly on a thing never passes ×4 after it ends.** As it re-aims (a push or the focus moving the picture under
+  it), it keeps the thing on its framing with its own roll, and a later dutch scales up to cover as anywhere. Its hold
+  is checked for ×4 until moves have taken over both where it looks across and up and down (a pan on one leaves the
+  other re-aiming), or its picture changes; a dutch that would take a held dolly past ×4 refuses, naming the dutch and
+  the most the hold would need.
+- **A refusal names the move that moves.** Each move is checked over its own span before any dolly's hold, so a pan
+  that cannot be covered after a held dolly names the pan, not the dolly.
+- **A dolly-out that cannot widen refuses.** When a dutch's cover need holds the zoom up, or the camera is already at
+  the whole frame, a dolly-out would play as nothing or as a zoom in: it refuses instead, naming what holds the zoom
+  (level the dutch first, or leave the dolly-out out). It is judged from where the camera is headed, so both versions
+  of a film decide alike.
+- **The moving film and the reduced-motion film accept and refuse the same recipes, with the same words.** A recipe's
+  camera is checked as written and as cut, whichever version is made, each version with its own moves and its own
+  picture clock (the cut film turns a speed ramp off, so its follows read their things on the voice's clock). A follow
+  both versions read on the same clock is sampled once.
+- **A move is not blamed for where a hold left the camera.** A move that starts with the picture already past ×4 defers
+  to the hold that took it there, which refuses naming the dutch that rolled it.
+
 ## 0.12.0 — walks with feet that roll heel to toe; a turn that reads as a turn
 
 - **The feet roll heel to toe** (`walk(…).at(t).feet[j].angle`, radians, + toes up): a heel strike as a foot lands,
