@@ -14,10 +14,11 @@
  * Each finding is {check, at (seconds in the file), severity: 'problem' | 'look', text}; a report is `ok`
  * when it has no problem ('look': worth a look, not wrong on its face).
  */
-import {spawn, spawnSync} from 'node:child_process';
-import {readFileSync, existsSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
+import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {createCanvas} from '@napi-rs/canvas';
+import {spawned, startError, ffprobeBeside} from './spawned.mjs';
 import {normSpeech, readCaptions} from 'footprint-narration';
 import {spokenTracks} from './captions.mjs';
 
@@ -68,7 +69,7 @@ export function ffmpegProbe({ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', ffprob
     async frames(file, {width, height, fps = null}, each) {
       if (fps) return slotFrames(ffmpeg, file, {width, height, fps}, each);
       const vf = `scale=${width}:${height}:flags=area,format=gray`;
-      const size = width * height, ff = spawn(ffmpeg, ['-v', 'error', '-i', file, '-vf', vf, '-f', 'rawvideo', 'pipe:1'], {stdio: ['ignore', 'pipe', 'pipe']});
+      const size = width * height, {child: ff, finished} = spawned(ffmpeg, ['-v', 'error', '-i', file, '-vf', vf, '-f', 'rawvideo', 'pipe:1'], {stdio: ['ignore', 'pipe', 'pipe']});
       // Each frame is filled in place from the chunks as they come (no buffer grown chunk by chunk), and handed over whole.
       let grey = new Uint8Array(size), filled = 0, index = 0, err = '';
       ff.stderr.on('data', b => { err += b; });
@@ -79,7 +80,7 @@ export function ffmpegProbe({ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', ffprob
           if (filled === size) { each(index++, grey); grey = new Uint8Array(size); filled = 0; }
         }
       }
-      const code = await new Promise(r => ff.once('close', r));
+      const code = await finished.catch(e => { throw new Error(`${ffmpeg} could not read the frames: ${startError(ffmpeg, e)}`); });
       if (code !== 0) throw new Error(`${ffmpeg} could not read the frames: ${err.slice(-300)}`);
       return index;
     },
@@ -139,7 +140,7 @@ export function showinfoReader() {
 async function slotFrames(ffmpeg, file, {width, height, fps}, each) {
   const size = width * height, vf = `scale=${width}:${height}:flags=area,format=gray,showinfo`;
   // -reinit_filter 0: a picture that changes size mid-stream is scaled on (the scale takes it), not given a rebuilt chain.
-  const ff = spawn(ffmpeg, ['-hide_banner', '-nostats', '-v', 'info', '-reinit_filter', '0', '-i', file, '-vf', vf, '-fps_mode', 'passthrough', '-f', 'rawvideo', 'pipe:1'], {stdio: ['ignore', 'pipe', 'pipe']});
+  const {child: ff, finished} = spawned(ffmpeg, ['-hide_banner', '-nostats', '-v', 'info', '-reinit_filter', '0', '-i', file, '-vf', vf, '-fps_mode', 'passthrough', '-f', 'rawvideo', 'pipe:1'], {stdio: ['ignore', 'pipe', 'pipe']});
   const times = [], waiting = [], slots = onSlots(fps, each), read = showinfoReader();
   let tail = '', said = '', decoded = 0, lastTime = -1 / fps;
   const release = (all = false) => {
@@ -164,17 +165,14 @@ async function slotFrames(ffmpeg, file, {width, height, fps}, each) {
       if (filled === size) { waiting.push(grey); release(); grey = new Uint8Array(size); filled = 0; }
     }
   }
-  const code = await new Promise(r => (ff.exitCode !== null ? r(ff.exitCode) : ff.once('close', r)));
+  const code = await finished.catch(e => { throw new Error(`${ffmpeg} could not read the frames: ${startError(ffmpeg, e)}`); });
   if (code !== 0) throw new Error(`${ffmpeg} could not read the frames: ${(said + tail).slice(-300)}`);
   release(true);
   return slots.end();
 }
 
-/** ffprobe beside the FFmpeg given (a folder holding both), or the one on the PATH. */
-function besideOrPath(ffmpeg) {
-  const beside = ffmpeg.includes('/') || ffmpeg.includes(path.sep) ? path.join(path.dirname(ffmpeg), path.extname(ffmpeg) === '.exe' ? 'ffprobe.exe' : 'ffprobe') : null;
-  return beside && existsSync(beside) ? beside : 'ffprobe';
-}
+/** ffprobe beside the FFmpeg given (a folder holding both), or the one on the PATH (spawned.mjs · ffprobeBeside). */
+const besideOrPath = ffprobeBeside;
 
 /** Grey levels of a picture drawn on a canvas (the same weights a video's grey uses), full range. */
 export function greyOf(rgba) {

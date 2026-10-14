@@ -73,9 +73,18 @@ const tempoText = b => `${round(b.bpm, 1)} BPM${b.confidence !== undefined ? ` (
 /** The cuts against the beats, or why they were not read. */
 function beatLines(b) {
   if (!b.ran) return ['## Cuts on the beat', '', `Not run: ${b.why}.`];
-  const out = ['## Cuts on the beat', '', `${tempoText(b)}, ${plural(b.beats.length, 'beat')}. ${b.onBeat} of ${b.of} cuts land on a beat (within ${b.within} s).`];
-  for (const c of b.cuts) out.push(`- ${clockTenths(c.at)} ${KIND_WORDS[c.kind] ?? c.kind}: ${c.beat === null ? 'no beat' : c.onBeat ? `on the beat (${c.off >= 0 ? '+' : ''}${c.off.toFixed(2)} s)` : `off the beat by ${Math.abs(c.off).toFixed(2)} s`}`);
-  out.push(b.drop ? `The drop at ${clockTenths(b.drop.at)}: shot #${b.drop.shot} is on screen${b.drop.nearestCut ? `; the nearest cut is ${Math.abs(b.drop.nearestCut.at - b.drop.at).toFixed(2)} s away` : ''}.` : 'No drop.');
+  const out = ['## Cuts on the beat', ''];
+  if (b.sure === false) {
+    // An unsure map: a cut is judged only against the beats every candidate shares and the song hits (beats.mjs · safeBeats).
+    out.push(b.phase === 'unsure'
+      ? `${tempoText(b)}, ${plural(b.beats.length, 'beat')}. The tempo given (${round(b.bpm, 1)} BPM) sits between the beats heard: its phase is unsure, so no cut is judged${b.likely?.length ? `; try ${b.likely[0]} BPM` : ''}.`
+      : `${tempoText(b)}, ${plural(b.beats.length, 'beat')}. The tempo is unsure (${b.verdict ?? 'a close call'}): a cut is judged only against the ${plural(b.judged.beats, 'beat')} of ${b.judged.of} every candidate tempo shares and the song hits${b.likely?.length ? `; give the tempo (one of ${b.likely.join(', ')} BPM) to judge every cut` : ''}.`,
+      `${b.onBeat} of ${b.of} cuts land on such a beat (within ${b.within} s); ${b.unjudged} cannot be judged${b.noMusic ? `; ${b.noMusic} where no music plays` : ''}.`);
+  } else out.push(`${tempoText(b)}, ${plural(b.beats.length, 'beat')}. ${b.onBeat} of ${b.of} cuts land on a beat (within ${b.within} s)${b.noMusic ? `; ${b.noMusic} where no music plays` : ''}.`);
+  for (const c of b.cuts) out.push(`- ${clockTenths(c.at)} ${KIND_WORDS[c.kind] ?? c.kind}: ${c.music === false ? 'no music here' : c.onBeat === null ? 'not judged (no beat every candidate shares near it)' : c.beat === null ? 'no beat' : c.onBeat ? `on the beat (${c.off >= 0 ? '+' : ''}${c.off.toFixed(2)} s)` : `off the beat by ${Math.abs(c.off).toFixed(2)} s`}`);
+  // An unsure map does not state its drop as fact.
+  const drop = d => `${d.maybe ? 'Maybe a drop' : 'The drop'} at ${clockTenths(d.at)}${d.maybe ? ' (the map is unsure)' : ''}: shot #${d.shot} is on screen${d.nearestCut ? `; the nearest cut is ${Math.abs(d.nearestCut.at - d.at).toFixed(2)} s away` : ''}.`;
+  out.push(b.drop ? drop(b.drop) : 'No drop.');
   return out;
 }
 

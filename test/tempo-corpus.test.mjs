@@ -1,4 +1,4 @@
-// The tempo corpus (test/songs.mjs · tempoCorpus): 262 songs made sample by sample, each with its true tempo and beats,
+// The tempo corpus (test/songs.mjs · tempoCorpus): 269 songs made sample by sample, each with its true tempo and beats,
 // and 21 ill-posed ones. The beat map may be unsure — tempo-close, the strongest taken, the alternatives listed — but it
 // may never claim a wrong tempo as certain, and when it is unsure and wrong, the right tempo is among its alternatives.
 // A film cuts only on the beats safeBeats allows — every beat of a sure map, the shared and heard ones of an unsure
@@ -39,22 +39,26 @@ const percent = (a, b) => `${(100 * a / Math.max(1, b)).toFixed(1)}%`;
 const summary = c => `${c.songs} songs: ${KINDS.map(k => `${c[k]} ${k}`).join(', ')}; ${c['off-beat cuts']} cuts off a true beat (sure and unsure); unsure maps: ${c['cut-able']} of ${c['true beats']} true beats cut-able (${percent(c['cut-able'], c['true beats'])}), the truth among the likely tempi in ${c.likely} of ${c.unsure}; a cut every 3–8 s snaps (±0.15 s): sure ${c.snapped.sure} of ${c.cuts.sure} (${percent(c.snapped.sure, c.cuts.sure)}), unsure ${c.snapped.close} of ${c.cuts.close} (${percent(c.snapped.close, c.cuts.close)})`;
 
 for (const group of GROUPS) test(`${group}: never a wrong tempo claimed as certain; unsure and wrong, the right one among the alternatives; no cut off a true beat`, async t => {
-  const counts = tally(), wrongAndCertain = [], unlisted = [], offBeat = [];
+  const counts = tally(), wrongAndCertain = [], unlisted = [], offBeat = [], twins = [];
   for (const song of tempoCorpus().filter(s => s.group === group)) {
     const {kind, map, truth, off, right} = await judge(song, counts);
     if (kind === 'wrong and certain') wrongAndCertain.push(`${song.name}: ${map.bpm} (${map.verdict}), truth ${truth}`);
     if (!right && !map.alternatives.some(a => near(a.bpm, truth))) unlisted.push(`${song.name}: ${map.bpm}, alternatives ${map.alternatives.map(a => a.bpm).join(', ')}`);
     if (off.length) offBeat.push(`${song.name} (${map.verdict}): ${off.length} cuts off a true beat (${off.slice(0, 3).map(x => x.toFixed(3)).join(', ')} …)`);
+    // One tempo is one candidate: no two alternatives within 1% of each other (dsp.mjs · tempoCandidates merges them).
+    const alike = map.alternatives.filter((a, i) => map.alternatives.some((b, j) => j < i && Math.abs(a.bpm - b.bpm) <= .01 * Math.max(a.bpm, b.bpm)));
+    if (alike.length) twins.push(`${song.name}: ${map.alternatives.map(a => a.bpm).join(', ')}`);
   }
   t.diagnostic(`${group}: ${summary(counts)}`);
   assert.deepEqual(wrongAndCertain, [], 'a wrong tempo is never claimed as certain');
   assert.deepEqual(unlisted, [], 'unsure and wrong, the right tempo is among the alternatives');
   assert.deepEqual(offBeat, [], 'every beat a film may cut on is a true beat, sure or unsure');
+  assert.deepEqual(twins, [], 'no two candidate tempi within 1% of each other');
 });
 
-test('the whole corpus: 262 songs, none wrong and certain, no cut off a true beat', t => {
+test('the whole corpus: 269 songs, none wrong and certain, no cut off a true beat', t => {
   t.diagnostic(`corpus: ${summary(total)}`);
-  assert.equal(total.songs, 262);
+  assert.equal(total.songs, 269);
   assert.equal(total['wrong and certain'], 0);
   assert.equal(total['off-beat cuts'], 0);
 });

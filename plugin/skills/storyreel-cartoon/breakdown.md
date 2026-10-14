@@ -3,13 +3,15 @@
 A director who admires a film says "match this". An agent cannot watch it, but it can read numbers and look at a few
 contact sheets. A breakdown reads any MP4 once, small and grey, and writes down what a viewer would note: every cut
 and what kind it is, the shots and their lengths, the pacing, where the motion is and whether the camera moves, which
-shots carry lettering, and (with a beat map) which cuts land on the beat. It needs FFmpeg 5.1 or later.
+shots carry lettering, and (with `--beats`) which cuts land on the beat. It needs FFmpeg 5.1 or later.
 
 ```sh
 npx storyreel breakdown reference.mp4 --out work/reference
+npx storyreel breakdown reference.mp4 --out work/reference --beats --bpm 120
 ```
 
-No project is needed. It prints the breakdown in plain words and writes, in the `--out` folder:
+No project is needed. `--beats` reads the sound's beats with the beat map ([music.md](music.md)); `--bpm` hands it
+the tempo you hear (the map is then sure); without `--beats` nothing about the beats is read. It prints the breakdown in plain words and writes, in the `--out` folder:
 
 | file | what it holds |
 |---|---|
@@ -36,15 +38,20 @@ No project is needed. It prints the breakdown in plain words and writes, in the 
   a dissolve is `"fade"` ([kits.md](kits.md#three-ways-a-kit-draws)).
 - **Motion**: `camera` with a pan or tilt direction maps to a camera move ([camera.md](camera.md)); `inside` means
   things move in a held frame; `still` warns of a slide (the review's slideshow verdict, [checks.md](checks.md#no-slideshow)).
-- **Cuts on the beat**: give the breakdown a beat map in code, then fit your film to the same song
-  ([music.md](music.md#into-a-film)).
+- **Cuts on the beat** (`--beats`): `spec.audio.beats` gives the tempo, its `verdict` and whether it is `sure`, and
+  each cut on the beat (within 0.05 s) or off it. Cuts are judged only against the beats a film may cut on: an unsure
+  tempo judges a cut only against the beats every candidate shares (the rest are `unjudged`, `onBeat: null`) and
+  names the tempi to try (`likely`: listen, then run again with `--bpm`); a cut where no music plays is "no music
+  here" (`noMusic`), never off the beat. A sound with no steady beat (speech, a pad) is recorded as not read, and why.
+  Then fit your film to the same song ([music.md](music.md#into-a-film)).
 
 ```js
 import {breakdown} from 'footprint-storyreel/breakdown';
 import {beatMap} from 'footprint-storyreel/beats';
 
-const {spec, text, files} = await breakdown('reference.mp4', {out: 'work/reference', beatMap});
-console.log(spec.pacing, spec.audio.beats);   // the cuts that land within 0.05 s of a beat, when it could read the beats
+// The beat reader is handed the video itself; beatOptions go to it untouched (here: the tempo you hear).
+const {spec, text, files} = await breakdown('reference.mp4', {out: 'work/reference', beatMap, beatOptions: {bpm: 120}});
+console.log(spec.pacing, spec.audio.beats);
 ```
 
 `thresholds: {cutJump: 20}` changes one threshold (`footprint-storyreel/breakdown` · `BREAKDOWN` lists them; an

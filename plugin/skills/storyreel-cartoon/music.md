@@ -49,8 +49,11 @@ console.log(safeBeats(map).grid, likelyTempi(map));    // 'every beat' [ 120 ]
 console.log(beatMapText(map, {source: 'kick.wav'}));   // what `npx storyreel beats` prints
 ```
 
-A wrong option throws with `code: 'BEAT_OPTIONS'` (fix the call); an error reading the sound carries no code (fix the
-file).
+A wrong option throws with `code: 'BEAT_OPTIONS'` (fix the call); an error about the sound carries no code (fix the
+file). A sound with no steady beat (speech, noise, music with a free tempo, a held tone or pad) is refused, saying
+which, unless you give `bpm`. A beat counts only where music is playing (a heard hit within one beat), so no cut snaps
+onto a beat in a silent gap, before the music starts or after it stops. A long ambient intro can leave a clear song
+unsure: give `bpm`, or trim the intro.
 
 ## Into a film
 

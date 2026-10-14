@@ -318,6 +318,9 @@ export const badDrop: MusicOptions = {file: 'song.mp3', dropOn: 'story'};
 export const badAt: Parameters<typeof RenderFilm>[0]['soundAt'] = 'middle';
 // Breakdown (types/sub/breakdown.d.ts): a reference film as a spec; a beat reader is any function that answers {bpm, beats, drop?}.
 import {breakdown, BREAKDOWN} from '../types/sub/breakdown.js';
+import {beatMap as readTheBeats} from '../types/sub/beats.js';
+// The beat map fits the breakdown's reader as it is: its verdict, its candidates' grids and its hits are read by safeBeats.
+export const withBeats = breakdown('ref.mp4', {beatMap: readTheBeats, beatOptions: {bpm: 120}}).then(r => r.spec.audio.beats.ran ? `${r.spec.audio.beats.sure} ${r.spec.audio.beats.judged.beats} ${r.spec.audio.beats.cuts.map(c => c.onBeat ?? 'not judged').join()}` : r.spec.audio.beats.why);
 import type {BeatReader, BreakdownSpec} from '../types/sub/breakdown.js';
 const beats: BeatReader = async () => ({bpm: 120, beats: Object.freeze([0.5, 1]), drop: null, confidence: .8, alternatives: [{bpm: 60, score: .9}]});
 const wrapped: BeatReader = (file, {ffmpeg}) => ({bpm: 120, beats: [file.length, ffmpeg.length]});

@@ -13,9 +13,9 @@ import {fitToMusic, fitVoice, readMusic, readSongPlacement, requireOverlap, MUSI
 import {compileFilm} from '../src/film.mjs';
 import {renderFilm} from '../src/render.mjs';
 import {createMotionSound, resolveSoundEvents, soundPeak} from '../src/sound.mjs';
-import {peakOfSamples} from '../src/beats.mjs';
+import {peakOfSamples, beatMapOf, safeBeats} from '../src/beats.mjs';
 import {musicUnderVoice} from '../src/listening.mjs';
-import {song, wavFile} from './songs.mjs';
+import {song, wavFile, rhythm, silenced} from './songs.mjs';
 import {tempDir} from './tmp.mjs';
 
 const ffmpegBin = process.env.FFMPEG_BIN || 'ffmpeg';
@@ -135,6 +135,18 @@ test('an unsure map cuts only on the beats every candidate shares; a sure one on
   const doubtful = await fitToMusic({storyboard: board, timings, beats: {sure: false, beats: grid(.5, 200), drop: null, alternatives: [alternatives[0], {...alternatives[1], phaseDoubt: .95}]}, snap: {tolerance: .3}});
   assert.ok(doubtful.cuts.every(c => c.verdict === 'kept'), 'a candidate unsure of its phase: no cut moves');
   assert.match(doubtful.cutOn.grid, /unsure of its phase/);
+});
+
+test('a beat counts only where music plays: no cut snaps onto a beat the tracker carried through a silent gap', async () => {
+  // Kicks from 0 to 8 s and from 11 to 20 s (120 BPM, a beat every half second).
+  const s = silenced(rhythm({bpm: 120, family: 'four on the floor, eighth hats', bars: 10, lead: 0}), [[8.2, 11]]), map = await beatMapOf(s.samples, 22050);
+  const inGap = t => t > 8.6 && t < 10.4;
+  assert.ok(map.sure, map.verdict); assert.ok(map.beats.some(inGap), 'the tracker carries its grid through the gap');
+  assert.deepEqual(safeBeats(map).beats.filter(inGap), [], 'no beat in it is one a film may cut on');
+  const timings = evenTimings(board, {tail: 1}), lengths = [9.3, 4.2];
+  const fit = await fitToMusic({storyboard: board, timings: {...timings, scenes: timings.scenes.map((t, i) => (i < 2 ? {...t, duration: lengths[i]} : t))}, beats: map, snap: {tolerance: .3}});
+  assert.equal(fit.cuts[0].verdict, 'kept', `the cut at 9.3 s, in the gap: ${fit.cuts[0].why}`);
+  assert.equal(fit.cuts[1].verdict, 'on-beat', `the cut at 13.5 s, in the music: ${fit.cuts[1].why}`);
 });
 
 test('music that would be lost is refused: a key outside the film, a drop past the song\'s end, a song that never plays', async () => {
