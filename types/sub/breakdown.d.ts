@@ -4,7 +4,7 @@ import type {VideoProbe} from '../index.js';
 export interface BreakdownThresholds {
   width: number; cutJump: number; cutRatio: number; flashLasting: number; blank: number; minFade: number; maxFade: number; maxHold: number;
   gradualFloor: number; gradualFrames: number; minChange: number; coherence: number; mix: number; moved: number; maxGradual: number;
-  stillCell: number; minPan: number; explained: number; share: number; textArea: number; onBeat: number; closeTempo: number; stillWidth: number; maxCandidates: number;
+  stillCell: number; minPan: number; explained: number; share: number; textArea: number; logoShare: number; onBeat: number; closeTempo: number; stillWidth: number; maxCandidates: number;
 }
 export const BREAKDOWN: Readonly<BreakdownThresholds>;
 
@@ -22,7 +22,10 @@ export interface BeatMapAnswer {readonly bpm: number; readonly beats: readonly n
  * Reads the beats of a sound: handed a WAV of the video's sound (in a folder removed after it answers), with the breakdown's
  * `beatOptions` and the FFmpeg it runs. One that throws (a silent track, no tempo) leaves the beats unread, saying why.
  */
-export type BeatReader = (audioFile: string, options: {ffmpeg: string} & Record<string, unknown>) => BeatMapAnswer | Promise<BeatMapAnswer>;
+export type BeatReader = (audioFile: string, options: BeatOptions & {ffmpeg: string}) => BeatMapAnswer | Promise<BeatMapAnswer>;
+
+/** The options a beat map takes (beats.mjs · BeatMapOptions, without ffmpeg, which the breakdown gives). */
+export interface BeatOptions {bpm?: number; drop?: number | null; range?: [number, number]}
 
 export type TransitionKind = 'cut' | 'dissolve' | 'dip' | 'fade-in' | 'fade-out';
 /**
@@ -50,7 +53,8 @@ export interface BreakdownSpec {
   schemaVersion: 1; file: string; made: string;
   /** fps: the average frame rate; rate: the one read at; width and height as the picture is shown (rotation applied); variable: the rates differ; lengthFrom: 'frames' when the file names no length */
   video: {seconds: number; lengthFrom?: 'frames'; fps: number; rate: number; width: number; height: number; rotation?: number; frames: number; sound: boolean; variable?: true};
-  read: {width: number; height: number; rate: number; frames: string};
+  /** why: the decision on the rate read at (the nominal, or the average) */
+  read: {width: number; height: number; rate: number; frames: string; why: Why};
   /** what the reader should know before trusting the times (a varying frame rate) */ warnings: string[];
   shots: BreakdownShot[];
   transitions: BreakdownTransition[];
@@ -67,7 +71,8 @@ export interface BreakdownSpec {
 export interface BreakdownOptions {
   /** the folder written (default: <video name>-breakdown in the working folder) */ out?: string;
   beatMap?: BeatReader | null;
-  /** the beat map's own options, handed on with ffmpeg (beats.mjs · beatMap takes {bpm, drop, range}) */ beatOptions?: Record<string, unknown>;
+  /** the beat map's own options, checked before the sound is read and handed on with ffmpeg (beats.mjs · beatMap's {bpm, drop, range}); another key refuses */
+  beatOptions?: BeatOptions;
   /** the FFmpeg run for frames, stills and sound (FFMPEG_BIN, or the one on the PATH): 5.1 or later */ ffmpeg?: string;
   /** the adapter that reads the file (finished.mjs · ffmpegProbe) */ probe?: VideoProbe;
   thresholds?: Partial<BreakdownThresholds>;

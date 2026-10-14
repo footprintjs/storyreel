@@ -302,6 +302,9 @@ const wrapped: BeatReader = (file, {ffmpeg}) => ({bpm: 120, beats: [file.length,
 export const brokenDown = breakdown('ref.mp4', {out: 'ref', beatMap: beats, thresholds: {cutJump: 15}}).then(r => r.spec.shots.map(s => `${s.motion.verdict} ${s.seconds} ${s.in.also?.join() ?? ''}`));
 export const viaWrapper = breakdown('ref.mp4', {beatMap: wrapped, beatOptions: {bpm: 120}});
 export const measured = (spec: BreakdownSpec): boolean => spec.video.lengthFrom === 'frames';
+export const readWhy = (spec: BreakdownSpec): string => spec.read.why.verdict;
+// @ts-expect-error a beat map takes bpm, drop and range
+export const tempo = breakdown('ref.mp4', {beatMap: beats, beatOptions: {tempo: 120}});
 export const onBeat = (spec: BreakdownSpec): number => (spec.audio.beats.ran ? spec.audio.beats.onBeat + (spec.audio.beats.close?.score ?? 0) : 0) + BREAKDOWN.onBeat + spec.warnings.length;
 // @ts-expect-error a threshold is a number
 export const wordy = breakdown('ref.mp4', {thresholds: {cutJump: 'high'}});

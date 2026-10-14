@@ -59,18 +59,18 @@ function compareFrames(f, before, grey) {
 }
 
 /**
- * Read every frame of the file once (the probe's frames, `width` pixels wide, resampled to `rate` frames a second on the
- * file's own timestamps from `start`, where its clock starts — so frame k is the frame a player shows at k / rate, a
- * variable-rate file's too) into the measures kept:
- * d[k] (the change from frame k-1 to k, 0–255), spread[k] (one colour under about 1.5), share[k] (how much of the grid changed at once),
- * cells[k] (the change in each grid cell), thumbs[k], cols[k] and rows[k]. Frame k is at k / fps.
+ * Read every frame of the file once (the probe's frames, `width` pixels wide, on a constant clock of `rate` slots a
+ * second: finished.mjs · onSlots — slot k is the frame a player shows at k / rate, a variable-rate file's too) into the
+ * measures kept: d[k] (the change from slot k-1 to k, 0–255), spread[k] (one colour under about 1.5), share[k] (how much
+ * of the grid changed at once), cells[k] (the change in each grid cell), thumbs[k], cols[k] and rows[k]; and source[k],
+ * the decoded frame slot k shows (a slot no new frame reached repeats the one before, known by its source).
  */
-export async function readFootage(probe, file, meta, {width = 160, rate = meta.video.fps, start = meta.start ?? 0} = {}) {
+export async function readFootage(probe, file, meta, {width = 160, rate = meta.video.fps} = {}) {
   const W = width, H = Math.max(2, 2 * Math.round(width * meta.video.height / meta.video.width / 2));
-  // Read faster than the file's average rate, some frames are the one before again (a repeat): cut detection skips them.
-  const f = {fps: rate, repeats: rate > meta.video.fps * 1.01, W, H, layout: layoutOf(W, H), n: 0, d: [0], share: [0], cells: [new Float32Array(GRID.cols * GRID.rows)], spread: [], thumbs: [], cols: [], rows: []};
+  const f = {fps: rate, W, H, layout: layoutOf(W, H), n: 0, d: [0], share: [0], cells: [new Float32Array(GRID.cols * GRID.rows)], spread: [], thumbs: [], cols: [], rows: [], source: []};
   let before = null;
-  f.n = await probe.frames(file, {width: W, height: H, fps: rate, start}, (_, grey) => {
+  f.n = await probe.frames(file, {width: W, height: H, fps: rate}, (k, grey, source) => {
+    f.source.push(source ?? k);
     measureFrame(f, grey);
     if (before) compareFrames(f, before, grey);
     before = grey;
@@ -128,14 +128,13 @@ export function moveBetween(f, a, b) {
 // ── Candidates for a cut, and the fades ────────────────────────────────────────────────────────────────────
 
 /**
- * The frames cut detection looks at: every frame — or, when the frames were read faster than the file's average rate
- * (readFootage · repeats), only those that differ from the frame before. A repeat is the same picture again: counted, a
- * one-frame flash read twice over would be two cuts with a sliver of a shot between.
+ * The frames cut detection looks at: every slot that shows a new decoded frame (readFootage · source). A slot no new frame
+ * reached repeats the one before — counted, a one-frame flash read twice over would be two cuts with a sliver of a shot
+ * between. A new frame that looks the same as the one before (a still screen recording) is a frame, and counts.
  */
 function distinctFrames(f) {
-  if (!f.repeats) return Array.from({length: f.n}, (_, k) => k);
   const out = [0];
-  for (let k = 1; k < f.n; k++) if (f.d[k] > 0) out.push(k);
+  for (let k = 1; k < f.n; k++) if (f.source[k] !== f.source[k - 1]) out.push(k);
   return out;
 }
 
@@ -241,7 +240,7 @@ export function cutsAndFades(f, t) {
   const cuts = found.map(({k, i, jump, around, ratio}) => {
     const last = lasting(f, seq, i);
     return {kind: 'cut', at: round(k / f.fps, 3), frames: [k - 1, k], flashFrame: last.frame, flashEnd: last.end,
-      measures: {jump: round(jump, 1), around: round(around, 1), ratio: round(ratio, 1), lasting: round(last.value), fade: round(fadeHolding(fades, k, f.fps), 3)}};
+      measures: {jump, around, ratio, lasting: last.value, fade: fadeHolding(fades, k, f.fps)}};
   });
   return {cuts, fades};
 }
@@ -264,7 +263,7 @@ function changingStretches(f, breaks, floor) {
 }
 
 /**
- * What a rule reads of a gradual change from frame a to frame b: how far the picture goes (`change`, 0–255), how
+ * What a rule reads of a gradual change from frame a to frame b (exact: a rule compares the value itself, never a rounding): how far the picture goes (`change`, 0–255), how
  * straight (`coherence`: that change over the path frame by frame, 1 for a mix that only moves one way), whether its
  * middle frame is the even mix of its ends (`mix`: 0 when it is), how much a shift of the whole picture explains
  * (`moved`), how long it takes (`seconds`), and the spread of its first, least and last frames (one colour: a fade).
@@ -274,8 +273,8 @@ function gradualMeasures(f, [a, b], middle = (a + b) / 2, extra = {}) {
   const mid = Math.round((a + b) / 2), change = thumbDiff(f, a, b);
   let least = Infinity; for (let k = a; k <= b; k++) least = Math.min(least, f.spread[k]);
   return {kind: 'gradual', at: round(middle / f.fps, 3), frames: [a, b], ...extra,
-    measures: {change: round(change, 1), coherence: round(change / Math.max(pathBetween(f, a, b), 1e-6)), mix: round(mixError(f, a, mid, b, change)), moved: round(moveBetween(f, a, b).explained),
-      seconds: round((b - a) / f.fps, 3), startSpread: round(f.spread[a], 1), leastSpread: round(least, 1), endSpread: round(f.spread[b], 1)}};
+    measures: {change, coherence: change / Math.max(pathBetween(f, a, b), 1e-6), mix: mixError(f, a, mid, b, change), moved: moveBetween(f, a, b).explained,
+      seconds: (b - a) / f.fps, startSpread: f.spread[a], leastSpread: least, endSpread: f.spread[b]}};
 }
 
 /**
@@ -365,7 +364,7 @@ export function shotMotion(f, c0, c1, {panStep = .2, skip = new Set()} = {}) {
   }
   const mean = v => (count ? v / count : 0), cells = Array.from(grid, mean);
   const camera = cameraMove(f, c0, c1, panStep);
-  return {measures: {energy: round(mean(energy)), busiest: round(Math.max(0, ...cells)), share: round(mean(share)), pan: round(camera.pan, 3), explained: round(camera.explained)},
+  return {measures: {energy: mean(energy), busiest: Math.max(0, ...cells), share: mean(share), pan: camera.pan, explained: camera.explained},
     grid: Array.from({length: GRID.rows}, (_, r) => cells.slice(r * GRID.cols, (r + 1) * GRID.cols).map(v => round(v, 1))), camera: camera.direction};
 }
 

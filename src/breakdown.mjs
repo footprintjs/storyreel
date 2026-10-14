@@ -35,7 +35,7 @@ import {flowChart, narrative, decide} from 'footprintjs';
 import {ffmpegProbe} from './finished.mjs';
 import {contactSheet} from './sheet.mjs';
 import {GRID, readFootage, cutsAndFades, gradualCandidates, shotMotion, energyCurve} from './footage.mjs';
-import {eachStill, readLettering, cornerMarks, logoOf, lettering} from './stills.mjs';
+import {eachStill, readLettering, cornerMarks, logoCandidates, lettering} from './stills.mjs';
 import {breakdownText} from './breakdown-text.mjs';
 
 export {breakdownText};
@@ -62,6 +62,7 @@ export const BREAKDOWN = Object.freeze({
   explained: .5,       // … that shift explains this share of the change …
   share: .6,           // … and this share of the frame changes at once (things moving inside it change a part)
   textArea: .008,      // a shot is lettered when rows of sharp strokes cover this share of a still (a heuristic, not OCR)
+  logoShare: .25,      // a corner mark is the film's logo when it stays in two shots or more, this share of them, across the film
   onBeat: .05,         // seconds: a cut this close to a beat lands on it (beats.mjs · BEATS.onBeat)
   closeTempo: .9,      // a tempo whose next alternative scores this much of it or more is a close call
   stillWidth: 480,     // colour stills, for the sheets and the lettering, are read this wide
@@ -91,12 +92,28 @@ const MOTION = t => ({key: 'motion', noun: 'shot', rules: [
   {when: {pan: {gte: t.minPan}, explained: {gte: t.explained}, share: {gte: t.share}}, then: 'camera', label: 'the whole picture shifts together: the camera moves'}],
 fallback: {branch: 'inside', label: 'parts of the picture change while the frame holds: things move inside it'}});
 
+/** Whether a mark that stays in a corner is the film's logo (left out of the lettering). */
+const LOGO = t => ({key: 'verdict', noun: 'corner mark', rules: [
+  {when: {shots: {gte: 2}, share: {gte: t.logoShare}, spans: {eq: 1}}, then: 'logo', label: 'it stays in a corner across the film: the film\'s logo'}],
+fallback: {branch: 'not-logo', label: 'it stays in a corner of too few shots, or of neighbouring shots only: lettering, not a logo'}});
+
 /** Whether a shot shows lettering. */
 const TEXT = t => ({key: 'text', noun: 'shot', rules: [
   {when: {textArea: {gte: t.textArea}}, then: 'text', label: 'rows of sharp strokes, as lettering makes (a heuristic, not OCR)'}],
 fallback: {branch: 'no-text', label: 'no rows of sharp strokes like lettering, beyond a mark that stays in a corner'}});
 
 const SIGN = {gt: '>', gte: '≥', lt: '<', lte: '≤', eq: '=', ne: '≠', in: 'in', notIn: 'not in'};
+const TEST = {gt: (a, b) => a > b, gte: (a, b) => a >= b, lt: (a, b) => a < b, lte: (a, b) => a <= b};
+/**
+ * A measure as a check shows it: rounded to 3 decimals, or as many more (up to 6) as it takes to show why the check went
+ * the way it did — the rule compared the exact value, and 1.4995 < 1.5 must not read "1.5 < 1.5 ✓".
+ */
+function shownAgainst(actual, op, threshold, result) {
+  const v = Number(actual);
+  if (!Number.isFinite(v) || !TEST[op] || typeof threshold !== 'number') return actual;
+  for (let d = 3; d <= 6; d++) { const shown = +v.toFixed(d); if (TEST[op](shown, threshold) === result) return String(shown); }
+  return String(v);
+}
 /**
  * A decision's evidence, short: the verdict, the rule that gave it, and every rule tried with its checks ("jump 54.7 ≥ 12
  * ✓"). The labels are the decision's own (without the candidate's name the record's copy carries).
@@ -105,7 +122,7 @@ function whyOf(evidence, {rules, fallback}) {
   const won = evidence.rules.find(r => r.matched);
   return {verdict: evidence.chosen, because: won ? rules[won.ruleIndex].label : fallback.label,
     rules: evidence.rules.map(r => ({then: r.branch, met: r.matched,
-      checks: (r.conditions ?? []).map(c => `${c.key} ${c.actualSummary} ${SIGN[c.op] ?? c.op} ${c.threshold} ${c.result ? '✓' : '✗'}`), ...(r.matchError ? {error: r.matchError} : {})}))};
+      checks: (r.conditions ?? []).map(c => `${c.key} ${shownAgainst(c.actualSummary, c.op, c.threshold, c.result)} ${SIGN[c.op] ?? c.op} ${c.threshold} ${c.result ? '✓' : '✗'}`), ...(r.matchError ? {error: r.matchError} : {})}))};
 }
 
 /**
@@ -181,6 +198,25 @@ function readThresholds(thresholds) {
   return {...BREAKDOWN, ...thresholds};
 }
 
+/**
+ * The options a beat map takes, as beats.mjs · beatMap's contract names them (`ffmpeg` is the breakdown's own): each
+ * checked before the sound is read, so a wiring mistake refuses here and never passes for a sound the beat map could
+ * not read.
+ */
+const BEAT_OPTIONS = Object.freeze({
+  bpm: v => (typeof v === 'number' && v >= 30 && v <= 300) || 'is the song\'s tempo, a number 30–300',
+  drop: v => v === null || (typeof v === 'number' && Number.isFinite(v) && v >= 0) || 'is the second the song drops, or null',
+  range: v => (Array.isArray(v) && v.length === 2 && v.every(x => typeof x === 'number' && x >= 30 && x <= 300) && v[0] < v[1]) || 'is the tempos preferred, [low, high] within 30–300',
+});
+function readBeatOptions(beatOptions) {
+  if (!beatOptions || typeof beatOptions !== 'object' || Array.isArray(beatOptions)) throw new Error(`breakdown: beatOptions are the beat map's own options, an object ({bpm: 120}), not ${JSON.stringify(beatOptions)}`);
+  for (const [k, v] of Object.entries(beatOptions)) {
+    if (!Object.hasOwn(BEAT_OPTIONS, k)) throw new Error(`breakdown: beatOptions has "${k}", which a beat map does not take; it takes ${Object.keys(BEAT_OPTIONS).join(', ')}`);
+    const ok = BEAT_OPTIONS[k](v);
+    if (ok !== true) throw new Error(`breakdown: beatOptions.${k} ${ok}, not ${JSON.stringify(v)}`);
+  }
+}
+
 /** The options, checked: an unknown key or threshold refuses, naming the ones there are. */
 function readOptions(videoFile, options) {
   if (typeof videoFile !== 'string' || !videoFile) throw new Error('breakdown: give the video file, breakdown("film.mp4", {out})');
@@ -189,7 +225,7 @@ function readOptions(videoFile, options) {
   const {beatMap = null, ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', thresholds = {}} = options;
   if (beatMap !== null && typeof beatMap !== 'function') throw new Error('breakdown: beatMap is a function, beatMap(audioFile, {ffmpeg, ...beatOptions}) → {bpm, beats: [seconds], drop?}, or left out');
   const {beatOptions = {}} = options;
-  if (!beatOptions || typeof beatOptions !== 'object' || Array.isArray(beatOptions)) throw new Error(`breakdown: beatOptions are the beat map's own options, an object ({bpm: 120}), not ${JSON.stringify(beatOptions)}`);
+  readBeatOptions(beatOptions);
   if (typeof ffmpeg !== 'string' || !ffmpeg) throw new Error('breakdown: ffmpeg is the FFmpeg to run (a path or a name on the PATH)');
   if (options.probe !== undefined && !(typeof options.probe?.probe === 'function' && typeof options.probe?.frames === 'function')) throw new Error('breakdown: probe reads the file, {probe(file), frames(file, size, each)} (finished.mjs · ffmpegProbe)');
   if (options.out !== undefined && !(typeof options.out === 'string' && options.out)) throw new Error('breakdown: out is the folder to write, a path');
@@ -204,14 +240,22 @@ const sum = list => list.reduce((s, v) => s + v, 0);
 const median = list => { const s = [...list].sort((a, b) => a - b), m = s.length >> 1; return !s.length ? 0 : s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 
 /**
- * The rate the frames are read at: the file's nominal rate (every frame of a variable-rate file falls on it), unless that
- * is more than twice the average or past 120, when the average (the times stay true either way: the frames are resampled
- * on their own timestamps). A warning when the average and the nominal rates differ by more than 1%.
+ * The rate the frames are read at, decided: the file's nominal rate (every frame of a variable-rate file falls on it),
+ * unless that is past 120 a second or more than twice the average, when the average. The times hold either way: each
+ * frame is laid on the clock by its own time (finished.mjs · onSlots).
  */
-function rateOf({fps, rate = fps}) {
-  const read = rate > 0 && rate <= 120 && rate <= 2 * fps ? rate : fps;
-  return {read, warning: Math.abs(fps - rate) > .01 * rate ? `the frame rate varies (average ${round(fps, 3)}, nominal ${round(rate, 3)} a second): the frames were read at ${round(read, 3)} a second on the file's own timestamps, so the times hold` : null};
-}
+const RATE = Object.freeze({rules: [{when: {nominal: {lte: 120}, ratio: {lte: 2}}, then: 'nominal-rate', label: 'every frame falls on the nominal rate, at most 120 a second and at most twice the average: read at it'}],
+  fallback: {branch: 'average-rate', label: 'the nominal rate is past 120 a second or more than twice the average: read at the average'}});
+const rateDecider = s => { const result = decide(s, RATE.rules, RATE.fallback); s.rateWhy = whyOf(result.evidence, RATE); return result; };
+
+/** Read at the rate decided; a warning when the average and the nominal rates differ by more than 1%. */
+const readAt = (run, which) => s => {
+  const {fps, rate = fps} = run.meta.video, read = which === 'nominal' ? rate : fps;
+  run.rate = {read};
+  if (Math.abs(fps - rate) > .01 * rate) run.warnings.unshift(`the frame rate varies (average ${round(fps, 3)}, nominal ${round(rate, 3)} a second): the frames were read at ${round(read, 3)} a second, each on its own time, so the times hold`);
+  s.rate = round(read, 3);
+  if (run.warnings.length) s.warning = run.warnings.join('; ');
+};
 
 /** The probe's facts, or a refusal naming why there is nothing to break down (sound only: finished.mjs · ffmpegProbe finds no picture). */
 function probeOf(o) {
@@ -226,15 +270,15 @@ const probeStage = run => s => {
   run.meta = probeOf(run.o);
   const v = run.meta.video;
   if (!(v.fps > 0 && v.width > 0 && v.height > 0)) throw new Error(`breakdown: ${run.o.file} has no frame rate or size the probe can read (fps ${v.fps}, ${v.width}×${v.height})`);
-  run.rate = rateOf(v);
-  run.warnings = [...(run.rate.warning ? [run.rate.warning] : []), ...(Number.isFinite(v.seconds) ? [] : ['the file names no length: it is counted from the frames read'])];
-  Object.assign(s, {file: path.basename(run.o.file), seconds: Number.isFinite(v.seconds) ? round(v.seconds, 3) : null, start: run.meta.start ?? 0, fps: round(v.fps, 3), rate: round(run.rate.read, 3), width: v.width, height: v.height,
-    rotation: v.rotation ?? 0, sound: Boolean(run.meta.audio), beatMap: Boolean(run.o.beatMap), ...(run.warnings.length ? {warning: run.warnings.join('; ')} : {})});
+  run.warnings = Number.isFinite(v.seconds) ? [] : ['the file names no length: it is counted from the frames read'];
+  const nominal = v.rate ?? v.fps;
+  Object.assign(s, {file: path.basename(run.o.file), seconds: Number.isFinite(v.seconds) ? round(v.seconds, 3) : null, fps: round(v.fps, 3), width: v.width, height: v.height,
+    rotation: v.rotation ?? 0, sound: Boolean(run.meta.audio), beatMap: Boolean(run.o.beatMap), nominal, average: v.fps, ratio: nominal / v.fps});
 };
 
 /** Every frame, read once. */
 const framesStage = run => async s => {
-  run.footage = await readFootage(run.o.probe, run.o.file, run.meta, {width: run.o.t.width, rate: run.rate.read, start: run.meta.start ?? 0});
+  run.footage = await readFootage(run.o.probe, run.o.file, run.meta, {width: run.o.t.width, rate: run.rate.read});
   s.frames = run.footage.n; s.readAs = `${run.footage.W}×${run.footage.H} grey, ${round(run.rate.read, 3)} frames a second`;
 };
 
@@ -267,7 +311,7 @@ const findGradualStage = run => s => {
 function transitionsOf(run) {
   const {fps} = run.footage;
   const cuts = run.cuts.filter(c => c.verdict === 'cut').map(c => ({kind: 'cut', at: c.at, frame: c.frames[1], frames: c.frames, why: c.verdictWhy}));
-  const changes = run.gradual.filter(g => g.verdict !== 'motion').map(g => ({kind: g.verdict, at: g.at, from: round(g.frames[0] / fps, 3), to: round(g.frames[1] / fps, 3), seconds: g.measures.seconds,
+  const changes = run.gradual.filter(g => g.verdict !== 'motion').map(g => ({kind: g.verdict, at: g.at, from: round(g.frames[0] / fps, 3), to: round(g.frames[1] / fps, 3), seconds: round(g.measures.seconds, 3),
     frame: Math.round(g.at * fps), frames: g.frames, ...(g.opens && g.verdict === 'fade-in' ? {opens: true} : {}), ...(g.closes && g.verdict === 'fade-out' ? {closes: true} : {}), why: g.verdictWhy}));
   return [...cuts, ...changes].sort((a, b) => a.at - b.at);
 }
@@ -394,8 +438,9 @@ async function finishShot(run, i, stills) {
 
 /**
  * The stills, shot by shot, in one FFmpeg pass (stills.mjs · eachStill): a shot is finished when the first still of the
- * next comes in, so only one shot's stills are ever held; the overview keeps a thumbnail of each. Then the lettering: a
- * mark that stays in a corner across shots is the film's logo (stills.mjs · logoOf), left out of every shot's.
+ * next comes in, so only one shot's stills are ever held; the overview keeps a thumbnail of each, and each shot keeps its
+ * rows of strokes. Last, the marks that stay in a corner, joined across shots: the candidates for the film's logo (stills.mjs
+ * · logoCandidates), each decided next (LOGO).
  */
 const stillsStage = run => async s => {
   const {width, height} = run.meta.video, w = run.o.t.stillWidth, h = Math.max(2, 2 * Math.round(w * height / width / 2));
@@ -403,15 +448,28 @@ const stillsStage = run => async s => {
   run.sheetFrames = run.shots.map(sheetFrames);
   run.reads = []; run.thumbnails = new Map(); run.sheets = {overview: 'overview.png', shots: []};
   mkdirSync(path.join(run.o.out, 'shots'), {recursive: true});
-  const owner = new Map(run.sheetFrames.flatMap((frames, i) => frames.map(k => [k, i])));
-  let at = 0, held = new Map();
-  const finishUpTo = async i => { while (at < i) { await finishShot(run, at++, held); held = new Map(); } };
-  const read = await eachStill(run.o.ffmpeg, run.o.file, run.sheetFrames.flat(), {width: w, height: h, rate: run.footage.fps, start: run.meta.start ?? 0}, async (k, still) => { await finishUpTo(owner.get(k)); held.set(k, still); });
+  // The stills are read by decoded frame (footage.mjs · readFootage's source): each serves every slot of a shot that shows it.
+  const wanted = new Map();
+  run.sheetFrames.forEach((frames, i) => frames.forEach(k => { const j = run.footage.source[k]; wanted.set(j, [...(wanted.get(j) ?? []), [i, k]]); }));
+  const held = new Map();
+  let at = 0;
+  const finishUpTo = async i => { while (at < i) { await finishShot(run, at, held.get(at) ?? new Map()); held.delete(at); at++; } };
+  const read = await eachStill(run.o.ffmpeg, run.o.file, [...wanted.keys()], {width: w, height: h}, async (j, still) => {
+    const pairs = wanted.get(j);
+    await finishUpTo(Math.min(...pairs.map(([i]) => i)));
+    for (const [i, k] of pairs) { if (!held.has(i)) held.set(i, new Map()); held.get(i).set(k, still); }
+  });
   await finishUpTo(run.shots.length);
-  const logo = logoOf(run.reads.map(reads => cornerMarks(reads ?? [])));
+  s.stills = read;
+  s.logoCandidates = logoCandidates(run.reads.map(reads => cornerMarks(reads ?? [])), run.shots, run.reads.find(r => r?.length)?.[0].across ?? 0);
+};
+
+/** The lettering, each shot's, leaving out the corner marks decided to be the film's logo. */
+const findLetteringStage = run => s => {
+  const logo = new Set(decided(s, 'logoVerdicts', ['verdict']).filter(c => c.verdict === 'logo').flatMap(c => c.blocks));
   run.lettering = run.reads.map(reads => lettering(reads ?? [], logo));
-  s.stills = read; s.logo = logo.size;
-  s.letteringMeasures = run.lettering.map((l, i) => ({kind: 'shot', index: run.shots[i].index, at: run.shots[i].start, measures: {textArea: round(l.area, 4), mark: round(l.mark, 4)}}));
+  s.logoBlocks = logo.size;
+  s.letteringMeasures = run.lettering.map((l, i) => ({kind: 'shot', index: run.shots[i].index, at: run.shots[i].start, measures: {textArea: l.area, mark: l.mark}}));
 };
 
 /** Each shot's verdicts, its motion and its lettering, side by side. */
@@ -473,7 +531,11 @@ const readBeatsStage = run => async s => {
     if (sound.why) run.beatsFailed = sound.why;
     else {
       let answer;
-      try { answer = await run.o.beatMap(sound.wav, {...run.o.beatOptions, ffmpeg: run.o.ffmpeg}); } catch (e) { run.beatsFailed = notRead(e); }
+      try { answer = await run.o.beatMap(sound.wav, {...run.o.beatOptions, ffmpeg: run.o.ffmpeg}); } catch (e) {
+        // A beat map that flags its error as about its options (code 'BEAT_OPTIONS') is wired wrong: that refuses.
+        if (e?.code === 'BEAT_OPTIONS') throw new Error(`breakdown: the beat map refused its options: ${e.message}`, {cause: e});
+        run.beatsFailed = notRead(e);
+      }
       if (!run.beatsFailed) run.beats = readBeats(answer);
     }
   } finally { rmSync(dir, {recursive: true, force: true}); }
@@ -528,11 +590,14 @@ function filmGrid(shots, moves) {
   return Array.from({length: GRID.rows}, (_, r) => Array.from({length: GRID.cols}, (_, c) => round(sum(moves.map((m, i) => m.grid[r][c] * (shots[i].clean[1] - shots[i].clean[0]))) / total, 1)));
 }
 
+/** Measures as the spec shows them: 3 decimals (the rules read them exact). */
+const shown = measures => Object.fromEntries(Object.entries(measures).map(([k, v]) => [k, typeof v === 'number' ? round(v, 3) : v]));
+
 /** One shot as the spec holds it. */
 function shotSpec(run, i) {
   const shot = run.shots[i], v = run.verdicts[i], m = run.moves[i], camera = v.motion === 'camera' ? m.camera : undefined;
   return {index: shot.index, start: shot.start, end: shot.end, seconds: shot.seconds, in: shot.in, out: shot.out, ...(shot.blank ? {blank: true} : {}),
-    motion: {verdict: v.motion, words: motionWords(v, shot, m.camera), ...(camera !== undefined ? {camera} : {}), ...m.measures, grid: m.grid, why: v.motionWhy},
+    motion: {verdict: v.motion, words: motionWords(v, shot, m.camera), ...(camera !== undefined ? {camera} : {}), ...shown(m.measures), grid: m.grid, why: v.motionWhy},
     text: {verdict: v.text, area: round(run.lettering[i].area, 4), mark: round(run.lettering[i].mark, 4), why: v.textWhy}, sheet: run.sheets.shots[i]};
 }
 
@@ -542,8 +607,8 @@ function specOf(run, s) {
   const tally = (list, verdicts) => Object.fromEntries([['candidates', list.length], ...verdicts.map(v => [v, list.filter(x => x.verdict === v).length])]);
   return {
     schemaVersion: 1, file: path.basename(run.o.file), made: new Date().toISOString(),
-    video: {seconds: s.seconds ?? round(f.n / f.fps, 3), ...(s.seconds === null ? {lengthFrom: 'frames'} : {}), fps: s.fps, rate: s.rate, width: s.width, height: s.height, ...(s.rotation ? {rotation: s.rotation} : {}), frames: f.n, sound: s.sound, ...(run.rate.warning ? {variable: true} : {})},
-    read: {width: f.W, height: f.H, rate: round(f.fps, 3), frames: 'every frame, grey, resampled to the rate on the file\'s own timestamps'},
+    video: {seconds: s.seconds ?? round(f.n / f.fps, 3), ...(s.seconds === null ? {lengthFrom: 'frames'} : {}), fps: s.fps, rate: s.rate, width: s.width, height: s.height, ...(s.rotation ? {rotation: s.rotation} : {}), frames: f.n, sound: s.sound, ...(run.warnings.some(w => w.startsWith('the frame rate varies')) ? {variable: true} : {})},
+    read: {width: f.W, height: f.H, rate: round(f.fps, 3), frames: 'every frame, grey, laid on the rate by its own time', why: s.$getValue('rateWhy')},
     warnings: run.warnings,
     shots: run.shots.map((_, i) => shotSpec(run, i)),
     transitions: run.transitions.map(({frames, ...tr}) => tr),
@@ -574,6 +639,10 @@ const QUIET = Object.freeze({info() {}, log() {}, debug() {}, error() {}, warn: 
 function breakdownChart(run) {
   const {t} = run.o;
   return flowChart('probe', probeStage(run), 'probe', 'The file\'s facts: length, frame rates, size as shown, sound')
+    .addDeciderFunction('read rate', rateDecider, 'read-rate', 'The rate the frames are read at: the nominal, or the average')
+    .addFunctionBranch('nominal-rate', 'read at the nominal rate', readAt(run, 'nominal'))
+    .addFunctionBranch('average-rate', 'read at the average rate', readAt(run, 'average'))
+    .setDefault('average-rate').end()
     .addFunction('frames', framesStage(run), 'frames', 'Every frame read once, small and grey, at one constant rate on the file\'s own timestamps')
     .addFunction('find cuts', findCutsStage(run), 'find-cuts', 'The fades, then the frames whose change peaks: the candidates for a cut')
     .addSubFlowChartNext('cuts', decideAll(CUT(t), 'cut candidates'), 'decide each cut', decideMount('cutCandidates', 'cutVerdicts'))
@@ -583,6 +652,8 @@ function breakdownChart(run) {
     .addFunction('find motion', findMotionStage(run), 'find-motion', 'Each shot\'s motion measures')
     .addSubFlowChartNext('motion', decideAll(MOTION(t), 'shots'), 'decide each shot\'s motion', decideMount('shotMeasures', 'motionVerdicts'))
     .addFunction('stills', stillsStage(run), 'stills', 'Shot by shot: its stills read, its lettering measured, its sheet drawn, then let go')
+    .addSubFlowChartNext('logos', decideAll(LOGO(t), 'corner marks'), 'decide each corner mark', decideMount('logoCandidates', 'logoVerdicts'))
+    .addFunction('find lettering', findLetteringStage(run), 'find-lettering', 'Each shot\'s lettering, leaving out the film\'s logo')
     .addSubFlowChartNext('lettering', decideAll(TEXT(t), 'shots'), 'decide each shot\'s lettering', decideMount('letteringMeasures', 'textVerdicts'))
     .addFunction('verdicts', verdictsStage(run), 'verdicts', 'The shots as decided')
     .addDeciderFunction('beats', beatsDecider, 'beats', 'Whether the beats can be read: the sound, and a beat map')

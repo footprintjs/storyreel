@@ -65,6 +65,7 @@ test('the probe: length, frame rate, size and sound', {skip}, async () => {
   near(spec.video.seconds, 10.4, FRAME, 'the length'); near(spec.video.fps, 25, .01, 'the frame rate'); near(spec.video.frames, 260, 1, 'the frames');
   assert.deepEqual([spec.video.width, spec.video.height, spec.video.sound, spec.video.rotation, spec.video.variable], [320, 180, true, undefined, undefined]);
   assert.deepEqual([spec.read.width, spec.read.height, spec.read.rate], [BREAKDOWN.width, 90, 25]);
+  assert.equal(spec.read.why.verdict, 'nominal-rate'); assert.deepEqual(spec.read.why.rules[0].checks, ['nominal 25 ≤ 120 ✓', 'ratio 1 ≤ 2 ✓']);
   assert.deepEqual(spec.warnings, []);
 });
 
@@ -317,10 +318,84 @@ test('a raw stream that names no length says so, and is measured from its frames
   assert.ok(spec.warnings.includes('the file names no length: it is counted from the frames read'));
 });
 
+test('a file whose clock does not start at 0 is read whole: a transport stream, and an MP4 offset by half a second', {skip}, async () => {
+  // 4 s at 25 fps: a flash at frame 25 (1.0 s), grey 80 until 2.0 s, then grey 200.
+  const made = path.join(dir, 'clocked.mp4'), ts = path.join(dir, 'clocked.ts'), offset = path.join(dir, 'offset.mp4');
+  ffmpeg(['-f', 'lavfi', '-i', 'nullsrc=s=320x180:r=25:d=4,geq=lum=\'if(eq(N\\,25)\\,235\\,if(lt(T\\,2)\\,80\\,200))+20*sin(X/7)\':cb=128:cr=128', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', made]);
+  ffmpeg(['-i', made, '-c', 'copy', '-f', 'mpegts', ts]);
+  ffmpeg(['-i', made, '-c', 'copy', '-output_ts_offset', '0.5', offset]);
+  for (const file of [ts, offset]) {
+    const {spec} = await breakdown(file, {out: path.join(dir, path.basename(file) + '-out')});
+    near(spec.video.frames, 100, 1, `${path.basename(file)}: every frame`);
+    assert.equal(spec.flashes.length, 1, path.basename(file)); near(spec.flashes[0].at, 1, FRAME, `${path.basename(file)}: the flash`);
+    assert.deepEqual(spec.transitions.map(t => t.kind), ['cut'], path.basename(file)); near(spec.transitions[0].at, 2, FRAME, `${path.basename(file)}: the cut`);
+  }
+});
+
+test('a variable-rate recording with still frames keeps its cuts: a repeat is a frame no new frame reached, not a frame that looks the same', {skip}, async () => {
+  // Nominal 60, about half the frames kept (a screen recording): red with a white flash at 1.0 s, blue from 2.0 s.
+  const flashy = path.join(dir, 'screen.mp4');
+  ffmpeg(['-f', 'lavfi', '-i', 'color=c=red:s=320x180:r=60:d=3', '-vf', `drawbox=x=0:y=0:w=iw:h=ih:color=white:t=fill:enable='eq(n\\,60)',drawbox=x=0:y=0:w=iw:h=ih:color=blue:t=fill:enable='gte(t\\,2)',select='not(mod(n\\,2))+eq(mod(n\\,13)\\,1)+eq(n\\,60)'`, '-fps_mode', 'vfr', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', flashy]);
+  const one = await breakdown(flashy, {out: path.join(dir, 'screen')});
+  assert.equal(one.spec.video.variable, true);
+  assert.equal(one.spec.flashes.length, 1); near(one.spec.flashes[0].at, 1, 1 / 60, 'the flash');
+  assert.deepEqual(one.spec.transitions.map(t => t.kind), ['cut']); near(one.spec.transitions[0].at, 2, 1 / 30, 'the cut');
+  assert.equal(one.spec.shots.length, 2);
+  // Slides changing every second, nominal 30 with every third frame dropped: all four changes, as the constant-rate copy has.
+  const slides = path.join(dir, 'slides.mp4'), steady = path.join(dir, 'slides-steady.mp4'), lum = 'lum=\'40+40*floor(T)\':cb=128:cr=128';
+  ffmpeg(['-f', 'lavfi', '-i', `nullsrc=s=320x180:r=30:d=5,geq=${lum}`, '-vf', 'select=\'not(eq(mod(n\\,3)\\,2))\'', '-fps_mode', 'vfr', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', slides]);
+  ffmpeg(['-f', 'lavfi', '-i', `nullsrc=s=320x180:r=30:d=5,geq=${lum}`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', steady]);
+  for (const file of [slides, steady]) {
+    const {spec} = await breakdown(file, {out: path.join(dir, path.basename(file) + '-out')});
+    assert.deepEqual(spec.transitions.map(t => t.kind), ['cut', 'cut', 'cut', 'cut'], path.basename(file));
+    spec.transitions.forEach((t, i) => near(t.at, i + 1, 1 / 30, `${path.basename(file)}: cut ${i + 1}`));
+    assert.equal(spec.shots.length, 5);
+  }
+});
+
+test('an eased (cos²) fade whose last frames sit just under one colour is one fade out: the rules read exact values, never a rounding', {skip}, async () => {
+  // A probe that hands over frames made here, so the spread is known exactly: a fixed pattern of ±1 on 40% of the pixels,
+  // its amplitude eased (cos²) from 50 grey levels at 1 s down to 2 at 4 s. At 2 the spread is 1.47 — under one colour's
+  // 1.5, and 1.5 once rounded to one decimal, which is how the earlier code compared it.
+  const n = 100, fps = 25, W = 160, H = 90, pattern = Int8Array.from({length: W * H}, (_, i) => (i * 7919 % 10 < 2 ? 1 : i * 7919 % 10 < 4 ? -1 : 0));
+  const amplitude = k => Math.round(2 + 48 * Math.cos(Math.PI / 2 * Math.min(Math.max(k / fps - 1, 0) / 2.7, 1)) ** 2);
+  const file = path.join(dir, 'pattern.mp4');
+  ffmpeg(['-f', 'lavfi', '-i', 'color=c=gray:s=320x180:r=25:d=4', '-pix_fmt', 'yuv420p', file]);
+  const real = ffmpegProbe();
+  const probe = {name: 'made', probe: () => ({seconds: n / fps, video: {seconds: n / fps, fps, rate: fps, width: 320, height: 180, rotation: 0, frames: n}, audio: null}),
+    async frames(_file, {width, height}, each) {
+      assert.deepEqual([width, height], [W, H]);
+      for (let k = 0; k < n; k++) { const a = amplitude(k); each(k, Uint8Array.from(pattern, p => 128 + a * p), k); }
+      return n;
+    }, sound: real.sound};
+  const {spec} = await breakdown(file, {out: path.join(dir, 'cos2'), probe});
+  assert.deepEqual(spec.transitions.map(t => t.kind), ['fade-out'], JSON.stringify(spec.transitions.map(t => [t.kind, t.at, t.why.rules.flatMap(r => r.checks)])));
+  assert.equal(spec.transitions[0].closes, true);
+  assert.equal(spec.shots.length, 1, 'no phantom shot at the end');
+  const end = spec.transitions[0].why.rules.find(r => r.then === 'fade-out').checks.find(c => c.startsWith('endSpread'));
+  assert.match(end, /^endSpread 1\.47\d* < 1\.5 ✓$/, 'the check shows the value it compared');
+});
+
+test('a caption in a corner of two neighbouring shots is lettering, not the film\'s logo', {skip}, async () => {
+  const caption = drawn(path.join(dir, 'caption.png'), {width: 320, height: 180, lines: [['Paris', 15, 285, 148], ['1889', 15, 285, 165]]});
+  const file = path.join(dir, 'paris.mp4');
+  ffmpeg(['-loop', '1', '-framerate', '25', '-t', '6', '-i', caption, '-filter_complex', [
+    'color=c=0x2b2d33:s=320x180:r=25:d=1.5[a]', 'color=c=0x4a6fa5:s=320x180:r=25:d=1.5[b]', 'color=c=0x2d6a4f:s=320x180:r=25:d=1.5[c]', 'color=c=0x8a5a44:s=320x180:r=25:d=1.5[e]',
+    '[a][b][c][e]concat=n=4:v=1:a=0[bg]', `[bg][0:v]overlay=enable='lt(t\\,2.99)',${V}[v]`].join(';'), '-map', '[v]', '-t', '6', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
+  const {spec, record} = await breakdown(file, {out: path.join(dir, 'paris')});
+  assert.equal(spec.shots.length, 4);
+  assert.deepEqual(spec.shots.map(x => x.text.verdict), ['text', 'text', 'no-text', 'no-text'], JSON.stringify(spec.shots.map(x => x.text)));
+  assert.ok(record.some(e => e.type === 'condition' && /corner mark \d+ at 0 s: it stays in a corner of too few shots, or of neighbouring shots only/.test(e.text)), 'the logo decision says why not');
+});
+
 test('refusals name the fix', {skip}, async () => {
   await assert.rejects(breakdown(path.join(dir, 'nothing.mp4')), /there is no file at .*nothing\.mp4: give the path of a video/);
   await assert.rejects(breakdown(reference, {output: dir}), /"output" is not an option; the options are out, beatMap, beatOptions, ffmpeg, probe, thresholds/);
   await assert.rejects(breakdown(reference, {beatMap: () => ({bpm: 1, beats: []}), beatOptions: 120}), /beatOptions are the beat map's own options, an object \(\{bpm: 120\}\), not 120/);
+  await assert.rejects(breakdown(reference, {beatMap: () => ({bpm: 1, beats: []}), beatOptions: {tempo: 120}}), /beatOptions has "tempo", which a beat map does not take; it takes bpm, drop, range/);
+  await assert.rejects(breakdown(reference, {beatMap: () => ({bpm: 1, beats: []}), beatOptions: {bpm: 900}}), /beatOptions\.bpm is the song's tempo, a number 30–300, not 900/);
+  const typed = Object.assign(new Error('beatMap: range must be [low, high]'), {code: 'BEAT_OPTIONS'});
+  await assert.rejects(breakdown(reference, {out: path.join(dir, 'typed'), beatMap: () => { throw typed; }}), /the beat map refused its options: beatMap: range must be \[low, high\]/);
   const notVideo = path.join(dir, 'notes.mp4'); writeFileSync(notVideo, 'not a video');
   await assert.rejects(breakdown(notVideo, {out: path.join(dir, 'notes')}), /ffprobe could not read the file .*notes\.mp4: [\s\S]* — give a video file FFmpeg reads \(try `ffprobe ".*notes\.mp4"` to see why it does not\)/);
   await assert.rejects(breakdown(reference, {thresholds: {cutJmp: 10}}), /"cutJmp" is not a threshold; the thresholds are width, cutJump/);

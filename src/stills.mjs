@@ -32,26 +32,26 @@ export function filterFromFile(ffmpeg) {
 }
 
 /**
- * What FFmpeg is run with to read the stills: the filter (the video resampled to `rate` frames a second from `start`, as
- * footage.mjs · readFootage reads it, so frame k is the same frame in both; the frames selected by number; scaled) goes
- * in a file, `script`, since a long film's selection runs past what one argument may hold (131,072 bytes on Linux).
- * Returns {args, filter}.
+ * What FFmpeg is run with to read the stills: every decoded frame passed through (no frame dropped or repeated, as
+ * finished.mjs · onSlots counts them), the frames wanted selected by number (`frames`: decoded frames, footage.mjs ·
+ * readFootage's source), scaled. The filter goes in a file, `script`, since a long film's selection runs past what one
+ * argument may hold (131,072 bytes on Linux). Returns {args, filter}.
  */
-export function stillsArgs({ffmpeg, file, frames, width, height, rate, start = 0, script}) {
-  const filter = `fps=fps=${rate}:start_time=${start},select='${selectFrames(frames)}',scale=${width}:${height}:flags=area`;
+export function stillsArgs({ffmpeg, file, frames, width, height, script}) {
+  const filter = `select='${selectFrames(frames)}',scale=${width}:${height}:flags=area`;
   return {filter, args: ['-v', 'error', '-i', file, filterFromFile(ffmpeg), script, '-fps_mode', 'passthrough', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1']};
 }
 
 /**
- * Colour stills of the given frames, `width` × `height`, in one FFmpeg pass (stillsArgs), each handed to
+ * Colour stills of the given decoded frames, `width` × `height`, in one FFmpeg pass (stillsArgs), each handed to
  * `each(frame, {width, height, rgb})` as it comes, in frame order. `each` may be async: the next still is read once it
  * settles. Returns how many came.
  */
-export async function eachStill(ffmpeg, file, frames, {width, height, rate, start = 0}, each) {
+export async function eachStill(ffmpeg, file, frames, {width, height}, each) {
   const want = [...new Set(frames)].sort((a, b) => a - b), size = width * height * 3;
   if (!want.length) return 0;
   const dir = mkdtempSync(path.join(tmpdir(), 'storyreel-stills-')), script = path.join(dir, 'filter.txt');
-  try { return await readStills(ffmpeg, stillsArgs({ffmpeg, file, frames: want, width, height, rate, start, script}), {script, want, size, width, height}, each); } finally { rmSync(dir, {recursive: true, force: true}); }
+  try { return await readStills(ffmpeg, stillsArgs({ffmpeg, file, frames: want, width, height, script}), {script, want, size, width, height}, each); } finally { rmSync(dir, {recursive: true, force: true}); }
 }
 
 /** One FFmpeg pass over the stills: the filter written to its file, the frames read off the pipe and handed over. */
@@ -137,19 +137,43 @@ export function cornerMarks(reads, {corner = .25} = {}) {
   return new Set([...seen].filter(([, n]) => n === reads.length).map(([k]) => k));
 }
 
+/** The shapes a set of blocks makes (blocks touching across or down), each a list of block numbers. */
+function shapesOf(blocks, across) {
+  const left = new Set(blocks), out = [];
+  for (const start of blocks) {
+    if (!left.has(start)) continue;
+    const shape = [], queue = [start]; left.delete(start);
+    while (queue.length) {
+      const b = queue.pop(); shape.push(b);
+      const col = b % across, next = [col > 0 ? b - 1 : -1, col + 1 < across ? b + 1 : -1, b - across, b + across];
+      for (const c of next) if (left.has(c)) { left.delete(c); queue.push(c); }
+    }
+    out.push(shape.sort((x, y) => x - y));
+  }
+  return out;
+}
+
 /**
- * A logo: the corner blocks that stay put in a shot (cornerMarks) in at least two shots and a quarter of them. Lettering in
- * a corner for one shot (a name at the bottom left) is lettering; a mark that stays across the film is the channel's.
+ * The film's candidate logos: the marks that stay put in a corner of a shot (cornerMarks), joined across shots into
+ * shapes, each with what a rule reads — in how many shots it stays (`shots`), what share of the film's shots that is
+ * (`share`), and whether it spans the film (`spans`: 1 when two of its shots have another between them, or its shots
+ * reach into both the first and the last third of the film's time). `shots` are the shots' {start, end}.
  */
-export function logoOf(marksByShot) {
-  const count = new Map(), least = Math.max(2, Math.ceil(marksByShot.length / 4));
-  for (const marks of marksByShot) for (const k of marks) count.set(k, (count.get(k) ?? 0) + 1);
-  return new Set([...count].filter(([, n]) => n >= least).map(([k]) => k));
+export function logoCandidates(marksByShot, shots, across) {
+  if (!across) return [];
+  const end = Math.max(0, ...shots.map(x => x.end)), all = [...new Set(marksByShot.flatMap(m => [...m]))];
+  return shapesOf(all, across).map(blocks => {
+    const inShots = marksByShot.flatMap((marks, i) => (blocks.some(b => marks.has(b)) ? [i] : []));
+    const apart = inShots.some((i, k) => inShots.slice(k + 1).some(j => j - i >= 2));
+    const thirds = inShots.some(i => shots[i].start < end / 3) && inShots.some(i => shots[i].end > 2 * end / 3);
+    return {kind: 'logo', at: shots[inShots[0]].start, blocks, shotsWith: inShots.map(i => i + 1),
+      measures: {shots: inShots.length, share: inShots.length / shots.length, spans: apart || thirds ? 1 : 0}};
+  }).filter(c => c.measures.shots > 0);
 }
 
 /**
  * How much of a shot looks lettered — a heuristic, never OCR: the most any of its stills shows of rows of strokes in
- * lines (readLettering), leaving out a row that is mostly the film's logo (logoOf). Returns {area, mark}, each a share
+ * lines (readLettering), leaving out a row that is mostly the film's logo (logoCandidates, decided in breakdown.mjs). Returns {area, mark}, each a share
  * of the frame: the lettering, and the logo left out.
  */
 export function lettering(reads, logo = new Set()) {
