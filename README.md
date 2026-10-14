@@ -2044,6 +2044,11 @@ not list it still draws, but a speed note on a film with one of its worlds refus
 *every* camera move). A stage kit's `compile` gets `{clock, data, motion}`, and may add
 `regions(handle, t, cardBox)` for the studio (boxes on the frame, paths relative to its stage).
 
+**One context, every frame.** A kit draws any moment as a pure function of time, and a review draws every moment on
+the same context object, reset to new before each frame (`ctx.reset()`, review.mjs · readingCanvas): keep nothing on
+the context (a property of your own, a map keyed by it) and never compare contexts across frames — nothing carries
+over from the frame before.
+
 **The kit context.** A story kit that declares `context: true` is compiled as `compile(spec, context)`
 instead: one frozen object `{clock, motion, theme, root, library, labels, insideRoot, readFile}`. `theme`
 is the film's theme; `library` and `labels` are the recipe's (empty until a recipe carries them). Files go

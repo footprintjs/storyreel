@@ -267,3 +267,49 @@ test('a check answers with its hits, [{kind, t, what}]: anything else fails the 
   await assert.rejects(mine(() => [{kind: 'x', t: 1, what: 'LOST'}]), /review: a check failed, so the review is incomplete — "mine": it did not finish \(the engine: .*LOST could not be cloned/);
   assert.equal(printed.reduce((n, m) => n + m.mock.callCount(), 0), 0, 'the engine\'s own lines are kept for the report, never printed on stdout');
 });
+
+// review.mjs · readingCanvas reads every moment on one canvas per size, reset before each frame: the review is only
+// as true as ctx.reset() is. Pinned here on every platform CI runs: a canvas left in every state a kit can leave it in
+// is, after reset(), a new canvas — every setting, no clip, no path, no saved state, nothing drawn — and draws a scene
+// byte for byte as a new one does.
+test('ctx.reset() makes a used canvas a new one: every setting, no clip, path or saved state, nothing drawn, the same pixels for the same scene', () => {
+  const W = 200, H = 120, fresh = () => createCanvas(W, H).getContext('2d');
+  const SETTINGS = ['globalAlpha', 'globalCompositeOperation', 'font', 'textAlign', 'textBaseline', 'direction', 'lineDashOffset', 'filter', 'imageSmoothingEnabled',
+    'imageSmoothingQuality', 'shadowBlur', 'shadowColor', 'shadowOffsetX', 'shadowOffsetY', 'lineWidth', 'lineCap', 'lineJoin', 'miterLimit', 'fillStyle', 'strokeStyle',
+    'letterSpacing', 'wordSpacing', 'fontKerning', 'fontStretch', 'fontVariantCaps', 'textRendering'];
+  const state = ctx => ({...Object.fromEntries(SETTINGS.map(k => [k, ctx[k]])), lineDash: ctx.getLineDash(), transform: [...ctx.getTransform().toFloat64Array()]});
+  const NEW = state(fresh());
+  // A used canvas: two saves deep, clipped, turned and scaled, a path begun and not drawn, every setting changed.
+  const used = fresh();
+  used.fillStyle = '#123456'; used.fillRect(0, 0, W, H);
+  used.save(); used.translate(30, 20); used.rotate(.3);
+  used.save(); used.beginPath(); used.rect(10, 10, 40, 30); used.clip();
+  used.beginPath(); used.moveTo(0, 0); used.lineTo(W, H); used.lineTo(0, H);
+  Object.assign(used, {globalAlpha: .4, globalCompositeOperation: 'multiply', font: 'bold 31px serif', textAlign: 'center', textBaseline: 'middle', direction: 'rtl',
+    lineDashOffset: 3, filter: 'blur(2px)', imageSmoothingEnabled: false, imageSmoothingQuality: 'high', shadowBlur: 7, shadowColor: '#ff0000', shadowOffsetX: 4, shadowOffsetY: 5,
+    lineWidth: 9, lineCap: 'round', lineJoin: 'bevel', miterLimit: 3, fillStyle: '#00ff00', strokeStyle: '#0000ff', letterSpacing: '3px', wordSpacing: '5px',
+    fontKerning: 'none', fontStretch: 'condensed', fontVariantCaps: 'small-caps', textRendering: 'optimizeSpeed'});
+  used.setLineDash([4, 2]);
+  assert.notDeepEqual(state(used), NEW, 'the used canvas is in another state');
+  used.reset();
+  assert.deepEqual(state(used), NEW, 'every setting as a new canvas has it');
+  assert.ok(used.getImageData(0, 0, W, H).data.every(v => v === 0), 'nothing drawn: every pixel transparent');
+  used.fill();
+  assert.ok(used.getImageData(0, 0, W, H).data.every(v => v === 0), 'no path left to fill');
+  used.restore(); used.restore();
+  assert.deepEqual(state(used), NEW, 'no saved state to go back to');
+  used.fillRect(0, 0, W, H);
+  assert.equal(used.getImageData(0, 0, W, H).data.filter((v, i) => i % 4 === 3 && v === 255).length, W * H, 'no clip: a fill covers the whole canvas');
+  // The same scene, on the reset canvas and on a new one: the same bytes.
+  const scene = ctx => {
+    ctx.fillStyle = '#f3eee3'; ctx.fillRect(0, 0, W, H);
+    ctx.save(); ctx.translate(100, 60); ctx.rotate(.2); ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 3;
+    ctx.font = '24px sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#222'; ctx.fillText('Sold 40 cups', 0, 8);
+    ctx.restore();
+    const g = ctx.createLinearGradient(0, 0, W, 0); g.addColorStop(0, '#2a77a8'); g.addColorStop(1, '#e0b040');
+    ctx.globalAlpha = .7; ctx.strokeStyle = g; ctx.lineWidth = 5; ctx.setLineDash([6, 3]); ctx.beginPath(); ctx.arc(60, 70, 30, 0, Math.PI * 1.5); ctx.stroke();
+  };
+  used.reset(); scene(used);
+  const again = fresh(); scene(again);
+  assert.ok(Buffer.from(used.getImageData(0, 0, W, H).data).equals(Buffer.from(again.getImageData(0, 0, W, H).data)), 'the reset canvas draws the scene byte for byte as a new one');
+});

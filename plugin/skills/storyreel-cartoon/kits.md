@@ -83,6 +83,9 @@ Words a kit draws that claim nothing (line numbers, a step counter) go inside `f
 
 - **A pure function of time.** `draw(ctx, t)` draws any moment in any order the same way: no state carried from
   the frame before, no `Date.now()`, no random numbers without a fixed seed. Work everything out in `compile`.
+- **One context, every frame.** A review draws every moment on the same `ctx` object, reset to new before each
+  frame (`ctx.reset()`): keep nothing on the context (a property of your own, a map keyed by it) and never compare
+  contexts across frames — nothing carries over from the frame before.
 - **Times from phrases.** A second written in the code drifts when the voice changes; `clock.at` does not.
 - **Leave the canvas as you found it.** `ctx.save()` and `ctx.restore()` around any transform, alpha, shadow,
   filter or clip.
