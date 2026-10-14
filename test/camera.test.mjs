@@ -425,9 +425,15 @@ test('moving and reduced motion accept and refuse the same recipes, with the sam
   const moves = {
     pan: () => ({amount: between(-400, 400)}), tilt: () => ({amount: between(-250, 250)}), dutch: () => ({amount: between(-25, 25)}),
     'dolly-in': () => ({amount: between(1.05, 2.5), ...(rand() < .5 ? {on: pick(['red', 'blue'])} : {})}), 'dolly-out': () => ({amount: between(1.05, 2)}),
-    crane: () => ({amount: between(-150, 150), scale: between(.8, 1.3)}), track: () => ({on: pick(['red', 'blue'])}),
+    crane: () => ({amount: between(-150, 150), scale: between(.8, 1.3)}), track: () => ({on: pick(['red', 'blue'])}), truck: () => ({on: pick(['red', 'blue'])}),
+    'speed-ramp': () => ({amount: between(0, 2.5)}), freeze: () => ({}), handheld: () => ({amount: between(2, 12), seed: Math.floor(rand() * 9)}),
   };
-  const said = async (camera, options) => { try { const f = await make({camera}, options); return `accepted ${JSON.stringify(f.camera.moves.map(m => m.ends ?? null).at(-1))}`; } catch (e) { return e.message; } };
+  // Red walks right (60 px a second), blue stays: a follow on red samples it on the picture's clock, which a speed ramp changes.
+  const pair = {name: 'pair', story: {compile: () => ({hang: 1, regionsAt: t => [{box: moving(t), path: 'red', label: 'red', name: 'red'}, {box: BLUE_BOX, path: 'blue', label: 'blue', name: 'blue'}],
+    draw: (c, t) => { fill(c, GROUND, [0, 0, 1600, 900]); fill(c, RED, moving(t)); fill(c, BLUE, BLUE_BOX); }})}};
+  const said = async (camera, options) => {
+    try { const f = await compileFilm({storyboard, timings, recipe: {story: {kit: 'pair'}, camera}, kits: [pair], ...options}); return `accepted ${JSON.stringify(f.camera.moves.map(m => m.ends ?? null).at(-1))}`; } catch (e) { return e.message; }
+  };
   let refused = 0;
   for (let k = 0; k < 40; k++) {
     const at = [...new Set(Array.from({length: 2 + Math.floor(rand() * 3)}, () => beats.indexOf(pick(beats))))].sort((a, b) => a - b);
@@ -438,4 +444,24 @@ test('moving and reduced motion accept and refuse the same recipes, with the sam
     if (!moving.startsWith('accepted')) assert.equal(calm, moving, `recipe ${k}: the same words`);
   }
   assert.ok(refused > 3 && refused < 37, `a mix of accepted and refused recipes (${refused} of 40 refused)`);
+});
+
+test('each version is checked with its own moves and its own clock: a speed ramp the cut film turns off does not hide what that film\'s track needs', async () => {
+  const runner = {name: 'runner', story: {compile: () => { const red = t => [130 + 200 * t, 400, 330 + 200 * t, 500]; return {hang: 1,
+    regionsAt: t => [{box: red(t), path: 'red', label: 'red', name: 'red'}], draw: (c, t) => { fill(c, GROUND, [0, 0, 1600, 900]); fill(c, RED, red(t)); }}; }}};
+  const camera = [{move: 'track', at: 4, until: 6, on: 'red'}, {move: 'speed-ramp', at: 5.5, seconds: 2, amount: 2.5}];
+  const said = async options => { try { await compileFilm({storyboard, timings, recipe: {story: {kit: 'runner'}, camera}, kits: [runner], ...options}); return 'accepted'; } catch (e) { return e.message; } };
+  const [moving, calm] = [await said({}), await said({reducedMotion: true})];
+  assert.match(calm, /camera\[0\] \(track\) would need the picture at ×4\.71 at 6\.00 s to keep the frame covered/, 'the cut film plays its track on the voice\'s clock');
+  assert.equal(moving, calm, 'and the moving film refuses it with the same words');
+});
+
+test('a move that starts where a hold has already taken the camera past ×4 is not blamed: the hold, and the dutch that rolled it, are', async () => {
+  const TOP = [700, 30, 900, 110], topKit = {name: 'top', story: {compile: () => ({hang: 1, regionsAt: () => [{box: TOP, path: 'top', label: 'top', name: 'top'}],
+    draw: c => { fill(c, GROUND, [0, 0, 1600, 900]); fill(c, RED, TOP); }})}};
+  await assert.rejects(compileFilm({storyboard, timings, kits: [topKit], recipe: {story: {kit: 'top'},
+    focus: {strategy: 'camera', keys: [{at: ['a', 'First'], on: 'top'}, {at: ['b', 'blue'], on: 'wide'}]},
+    camera: [{move: 'dolly-in', at: ['a', 'sits'], seconds: 1, on: 'top', amount: 3}, {move: 'truck', at: ['a', 'quietly'], seconds: 1, on: 'top'},
+      {move: 'dutch', at: ['a', 'corner'], seconds: 1, amount: 30}, {move: 'tilt', at: ['b', 'back'], seconds: .5, amount: 20}]}}),
+    /^Error: camera\[2\] \(dutch\) rolls the frame while camera\[0\] \(dolly-in\) holds on "top": at [\d.]+ s the picture would need ×5\.26 to keep the frame covered/);
 });

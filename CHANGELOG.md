@@ -19,7 +19,11 @@
   (level the dutch first, or leave the dolly-out out). It is judged from where the camera is headed, so both versions
   of a film decide alike.
 - **The moving film and the reduced-motion film accept and refuse the same recipes, with the same words.** A recipe's
-  camera is checked as written and as cut, whichever version is made.
+  camera is checked as written and as cut, whichever version is made, each version with its own moves and its own
+  picture clock (the cut film turns a speed ramp off, so its follows read their things on the voice's clock). A follow
+  both versions read on the same clock is sampled once.
+- **A move is not blamed for where a hold left the camera.** A move that starts with the picture already past ×4 defers
+  to the hold that took it there, which refuses naming the dutch that rolled it.
 
 ## 0.12.0 — walks with feet that roll heel to toe; a turn that reads as a turn
 

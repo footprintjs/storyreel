@@ -136,22 +136,35 @@ function oneCamera(s, {focus = null, pushes = [], spotlight = () => null, kitCam
 /** Branch: how each move is played — as written, or (reduced motion) as a cut, with handheld and a speed ramp off and a freeze kept. */
 function played(s, work, cuts) {
   work.cuts = cuts;
-  for (const m of work.moves) m.played = !cuts ? 'move' : m.move === 'freeze' ? 'kept' : m.family === 'texture' || m.move === 'speed-ramp' ? 'off' : 'cut';
+  for (const m of work.moves) m.played = playedAs(m, cuts);
   s.played = work.moves.map(m => `${m.path} ${m.move}: ${m.played}`);
 }
+/** How a move plays in one version: as written ('move'), or as cut: 'cut', 'kept' (a freeze) or 'off' (handheld, a speed ramp). */
+const playedAs = (m, cuts) => (!cuts ? 'move' : m.move === 'freeze' ? 'kept' : m.family === 'texture' || m.move === 'speed-ramp' ? 'off' : 'cut');
+/** The part of a version's picture clock a move reads: the time moves over its span, by path (alike in both versions: shared). */
+const clockKey = (moves, m) => moves.filter(x => x.family === 'time' && x.at < m.until && x.until > m.at).map(x => x.path).join(',');
 
 /** Stage: the moves aimed (where each takes the camera), kept covering the frame, and the plan's functions. */
 function aim(s, env, work) {
-  const moves = work.moves.filter(m => m.played !== 'off'), cuts = work.cuts;
-  const clockAt = clockOf(moves);
-  // The recipe is checked as written and as cut, whichever version is made, in that order, so the moving film and the
-  // reduced-motion film accept and refuse the same recipes, with the same words. The version made is planned last.
-  const lanesOf = asCuts => viewLanes(moves, {...env, clockAt, cuts: asCuts}), other = lanesOf(!cuts), view = lanesOf(cuts);
-  const [moving, cut] = cuts ? [other, view] : [view, other];
-  checkWidens(moves, view.timeline);
-  checkCover(moves, moving.stateAt, false); checkHolds(moves, moving.stateAt, false);
-  checkCover(moves, cut.stateAt, true); checkHolds(moves, cut.stateAt, true);
-  for (const [m, most] of checkCover(moves, view.stateAt, cuts)) m.covers = most;
+  const cuts = work.cuts, paths = new Map();   // follow paths, by move and picture clock: both versions share them where they can
+  // Each version from its own moves and its own picture clock (cuts turn handheld and a speed ramp off). The recipe is
+  // checked as written and as cut, in that order, whichever version is made, so the moving film and the reduced-motion
+  // film accept and refuse the same recipes, with the same words. The version made is planned last.
+  const versionOf = asCuts => {
+    const moves = work.moves.filter(m => playedAs(m, asCuts) !== 'off'), clockAt = clockOf(moves);
+    return {moves, clockAt, cuts: asCuts, lanes: viewLanes(moves, {...env, clockAt, cuts: asCuts, paths})};
+  };
+  const other = versionOf(!cuts), made = versionOf(cuts);
+  for (const v of cuts ? [other, made] : [made, other]) {
+    // Each move where it moves; then each hold (what put the camera where a later move starts); then whether each
+    // dolly-out widens — judged last, on framings already known to be coverable.
+    const {covers, inherited} = checkCover(v.moves, v.lanes.stateAt, v.cuts);
+    checkHolds(v.moves, v.lanes.stateAt, v.cuts);
+    if (inherited) throw new Error(`${inherited.m.path} (${inherited.m.move}) starts where the picture already needs ×${inherited.need.toFixed(2)} to keep the frame covered (at ${inherited.t.toFixed(2)} s), past the ×${MAX_ZOOM} a camera goes to: a move before it holds the camera there`);
+    checkWidens(v.moves, v.lanes.timeline);
+    if (v === made) for (const [m, most] of covers) m.covers = most;
+  }
+  const {moves, clockAt} = made, view = made.lanes;
   const depth = depthLanes(moves, cuts), shakeAt = shakeOf(moves);
   for (const m of moves) if (m.family === 'view' || m.family === 'follow') m.ends = endsOf(covered(view.stateAt(spanOf(m, cuts)[1])), m.trail);
   const viewAt = t => { const v = view.stateAt(t); return VIEW_AXES.every(a => v[a] === REST[a]) ? null : covered(v); };
@@ -200,7 +213,7 @@ const spanOf = (m, cuts) => (!cuts ? [m.at, m.until] : m.family === 'follow' ? [
  * as it starts (the zoom that covers the frame included, so a dolly after a pan or a dutch angle is a change of what
  * is on screen), and back to rest over each change of picture.
  */
-function viewLanes(moves, {changes, named, under, clockAt, cuts, total}) {
+function viewLanes(moves, {changes, named, under, clockAt, cuts, total, paths = new Map()}) {
   const lanes = {x: [], y: [], z: [], r: []}, stateAt = t => Object.fromEntries(VIEW_AXES.map(axis => [axis, laneAt(lanes[axis], t, REST[axis])]));
   // Where every move started so far is going (each axis's last change, at its end): a move aims from there — not from
   // the middle of a move still running beside it, and not, under reduced motion, from before a follow that cuts later.
@@ -230,7 +243,9 @@ function viewLanes(moves, {changes, named, under, clockAt, cuts, total}) {
       // How long it re-aims: until its picture changes (the same in both versions: no change falls inside a move).
       if (anchor) m.holdEnd = Math.min(total, changes.filter(x => x.from >= m.until).reduce((t, x) => Math.min(t, x.from), Infinity));
     } else {
-      const {path, points} = followed(m, {named, under, clockAt});
+      const key = `${m.path}|${clockKey(moves, m)}`;   // a follow both versions read on the same clock is sampled once
+      if (!paths.has(key)) paths.set(key, followed(m, {named, under, clockAt}));
+      const {path, points} = paths.get(key);
       m.trail = points;
       for (const axis of axes) { lanes[axis].push(segment(a, b, start[axis], t => path(t)[axis], m.ease)); settled[axis] = path(m.until)[axis]; }
     }
@@ -269,14 +284,19 @@ function followed(m, {named, under, clockAt}) {
 
 /**
  * Each view and follow move, sampled over its own span (each is checked where it moves, so a refusal names the move
- * that moves): never past MAX_ZOOM. Returns how far each had to scale up to keep the frame covered, where it did
- * (Map move → zoom), for the record.
+ * that moves): never past MAX_ZOOM. Returns {covers: how far each had to scale up to keep the frame covered, where it
+ * did (Map move → zoom), for the record; inherited: the first move that starts already past the limit, or null} — that
+ * one did not take the camera there, so it is not named for it: a hold did (checkHolds, which runs next, names it).
  */
 function checkCover(moves, stateAt, cuts) {
   const covers = new Map();
+  let inherited = null;   // the first move that starts already past the limit: what held the camera there is to blame
   for (const m of moves) {
     if (m.family !== 'view' && m.family !== 'follow') continue;
     const [a, b] = spanOf(m, cuts), n = Math.max(1, Math.ceil((b - a) / SAMPLE));
+    // Already past the limit just before it starts (a cut's one moment is its own arrival, so judged a hair before)?
+    const was = stateAt(a - 1e-6), wasNeed = Math.max(was.z, coverZoom(was));
+    if (!(wasNeed <= MAX_ZOOM)) { inherited ??= {m, need: wasNeed, t: a}; continue; }
     let most = 0, zoomed = {z: 0}, needed = {z: 0};   // the most it scaled to cover; the furthest it zooms, or needs to
     for (let i = 0; i <= n; i++) {
       const t = a + (b - a) * i / n, v = stateAt(t), need = coverZoom(v), z = Math.max(v.z, need);
@@ -289,7 +309,7 @@ function checkCover(moves, stateAt, cuts) {
     if (!(needed.z <= MAX_ZOOM)) throw new Error(`${m.path} (${m.move}) would need the picture at ${Number.isFinite(needed.z) ? `×${needed.z.toFixed(2)}` : 'more than any zoom'} at ${needed.t.toFixed(2)} s to keep the frame covered (a camera goes to ×${MAX_ZOOM}; it looks at most 600 px across and 337 px up or down from the middle): move it less far`);
     if (most) covers.set(m, r3(most));
   }
-  return covers;
+  return {covers, inherited};
 }
 
 /** The move that rolled the frame by t (the last one on the roll axis to start), or null. */
