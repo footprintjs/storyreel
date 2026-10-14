@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+### Outputs in a shared folder
+
 - **Outputs replace a link at their name, never write through it.** In a shared folder (macOS's `/private/tmp` has no
   `protected_symlinks`), another user could plant a link at `chapters.txt` (or `poster.jpg`, the captions,
   `making-of.json`, the video FFmpeg wrote with `-y`, …) and have a render overwrite any file of yours it pointed at.
@@ -11,17 +13,97 @@
   output the same way first. A folder at an output's name is refused, never removed. That covers the render's video,
   poster, chapters and captions, `makeFilm`'s making-of, a release's video, captions, thumbnail, `post.json`,
   `post.txt` and `CREDITS.txt`, a breakdown's `breakdown.json`, `breakdown.md`, `record.json`, `overview.png` and
-  shot sheets, the tools' stills and strips, pacing's paced audio, its `.unpaced.wav` and generated silence, and the
-  segment store's files. The folders StoryReel names inside yours (a release's targets, a breakdown's `shots/`, the
+  shot sheets, the tools' stills and strips, pacing's paced audio, its `.unpaced.wav` and generated silence,
+  `fitVoice`'s fitted audio, and the segment store's files. The folders StoryReel names inside yours (a release's targets, a breakdown's `shots/`, the
   tools' `stills/`) refuse a link (`files.mjs` · `outputFolder`). A test lists every raw write left in `src/` (each
   into StoryReel's own folder) and fails on a new one.
 
+### Beats in the breakdown
+
+- **`storyreel breakdown <video> --beats`** reads the video's sound with the beat map (`beats.mjs · beatMap`) and says
+  which cuts land on the beat; `--bpm n` hands it the tempo you hear, `--ffmpeg path` names the FFmpeg both run.
+  Without `--beats` nothing about the beats is read. A tempo the map refuses (`--bpm 5`, code `BEAT_OPTIONS`) refuses
+  the breakdown (exit 2); a sound it cannot read is recorded as not run.
+- **The breakdown judges cuts with `safeBeats`**, the one owner of which beats count: every beat of a sure map, only
+  the beats every candidate shares and the song hits of an unsure one. A cut near none of those is off the beat for a
+  sure map and not judged (`onBeat: null`, `unjudged`) for an unsure one; the spec gains `verdict`, `sure`, `judged`,
+  `likely` and `phase`, and an unsure map's drop is a maybe. A close call is named only at 0.9 of the best or more, and
+  never the winning tempo again.
+- **"No music here."** A beat counts only where music is playing (`beats.mjs · musicAt`: a heard hit within one beat
+  period): no beat in a silent gap, before the music starts or after it stops is one a film may cut on, so
+  `fitToMusic` never snaps onto one, and the breakdown says "no music here" (`music: false`, `noMusic`) instead of
+  "off the beat by 4.00 s". A reader that gives no `hits` gets no such check.
+- **No steady beat, no map.** `beatMap` refuses (no code) a sound whose onsets keep no steady period — speech, noise,
+  or music with a free tempo — or are faint (a held tone or pad), unless a tempo is given; the breakdown records it as
+  not run, "the sound has no steady beat (…)", told apart from "the beat map could not read the sound (…)", the fix
+  worded for the API or the command line (`hints`).
+- **A given tempo sets the tempo, not the phase.** When the half-beats sound as strongly as the beats the map is not
+  sure of its phase (`phase: 'unsure'`), keeps no beat to cut on, and says to try twice the tempo given.
+- **Breaking: a breakdown's beat reader is handed the video itself**, not a WAV of its sound. A reader that expected a
+  WAV must read the sound through FFmpeg (as `beatMap` does: 22050 Hz mono, streamed into one array; on a synthetic
+  hour, `breakdown --beats` peaked at 1.1 GB where it took 2.8 GB). No compatibility shim.
+- **A missing FFmpeg is a refusal, never a crash**: every streamed FFmpeg (the breakdown's frames and stills, the beat
+  map's sound) catches the start error (`spawned.mjs`) and rejects naming it.
+
+- **Full-width separators are read.** Chinese and Japanese text's full-width comma and point (，．) are a "," and a
+  "." as the Arabic ٬ ٫ are, and the full-width minus (－) is a sign: `ja` "１，０００円" is 1000, "３．５kg" 3.5, "－５℃" −5,
+  typed or drawn. The ideographic comma 、 stays a list separator, never a group mark.
+- **Code joins digits by "_"**: under `code()`, `1_000_000` (JavaScript, Python) is 1000000; outside code "_" joins nothing.
+
+- **Numbers are read in the language the film is shown in.** `compileFilm` takes `lang` (a BCP 47 tag) and keeps it as
+  `film.lang` (and `film.inputs.lang`, for an approval to lock); `makeFilm`'s `lang`, which named the string table only,
+  is now passed through: one value. Both claims checks read numbers by it, with the language's own group and decimal
+  symbols and grouping (`Intl.NumberFormat`, `numberLocale`): `de` "2,5 kg" is 2.5 and "1.299,99" 1299.99, `fr`
+  "1 299,99" (narrow no-break space) 1299.99, `en-IN`/`ta`/`te` "1,00,000" 100000. A tag that is not BCP 47 refuses.
+- **Without a language, "2,5" is ambiguous**: kept as written, like "1,000" — only a fact written the same way sources
+  it — and so are "1,00,000" and "1,2". An unsourced
+  ambiguous number's fix says how to give the film its language. A fact `"2,5"` is accepted as written; a fact value
+  with words or several numbers is refused with what to do (never "put the words around it" for a number).
+  `numbersIn(text, {lang})` and `numberValue(run, {lang})` take the language as an option.
+- **A language's own digits are numbers.** Arabic-Indic, Persian, Devanagari, Bengali, Telugu, Tamil, Thai — every
+  script's digits (Unicode Nd) are read, with or without a language, and the Arabic separators ٬ and ٫ as a group and a
+  decimal mark (`ar-EG` "1٬234٫5" is 1234.5). A film in its own digits used to pass as "shows no number". A number that
+  mixes scripts is ambiguous; a fact in native digits ("١٢٣٤") sources the same number.
+- **Code is read as code** (`footprint-storyreel/decorative` · `code`): words drawn inside it read "." as the decimal
+  mark and "," as a separator, never grouping, whatever the film's language; the built-in code stage marks its code.
+  The words carry `code: true`.
+- **An as-written number is sourced only by a fact written the same way**: "16.67" in a `de` film (no German number)
+  is no longer sourced by the number 16.67 because it prints alike.
+- **Approvals made with a `lang` before this release** report their inputs changed (`film.inputs.lang` is new): approve
+  the film again.
+- **A line typed again is typed on again.** A typewriter line typed twice is one claim, its fullest line, each time:
+  the typed-on merge now joins run to run before the runs of one number are pooled.
+- **The review reads nothing after the film's end** when it times a number's hold: a typewriter caught mid-number by
+  the film's last frame is no claim.
+
+- **The example label stays until the example line's last ink.** An eraser wipes a line over its own time: the label
+  now holds until the wipe ends (a kit's `texts()` may say when a line's last ink goes, `gone`; the whiteboard does),
+  not only until it starts — an example number is never on screen unlabelled.
+- **A decimal drawn as code tokens is one number.** A lone "." or "," between digits joins them when it stands within
+  half their height of each (`DRAWN.point`): a code panel's "16" "." "67" is 16.67 and "$1" "," "299" "." "99" is
+  1,299.99; `f(4,5)` is read as typed (by the film's language), and "12 30" and "x - 5" stay as they were.
+- **Digit groups of different sizes never join.** "$1,299" with a raised "99" reads as 1,299 and 99 — not 129999 —
+  since the picture does not say whether a raised group is cents, a power or a note (`DRAWN.size`, `DRAWN.baseline`).
+- **`footprint-storyreel/decorative`: text the film does not say.** `decorative(ctx, draw)` marks the words drawn
+  inside it (a code panel's line numbers, a strip's badges): the review reads them for every check, and the claims
+  check leaves them out. Read words carry `decorative: true`.
+- **A drawn number counts once it holds**: the same number, in the same place of the same line (every number masked:
+  "Sold 40 cups" and "Sold 40 kg" are two claims, each checked against its own facts), up for 0.5 s (`HOLD`). A
+  typewriter's partials and a counter's passing values are no claims, and a line typed on past its number is one claim.
+  The hold is timed whatever the review's step: the claims check reads every 0.25 s or finer, and a number's edges
+  again every 0.05 s where it must — a number up 0.5 s or more always counts, one up under 0.4 s never does. At the
+  default step nothing more is read; at `every: 1` the claims check reads every 0.25 s (and finds numbers the coarse
+  reads missed). The four example films read the same numbers as before.
+- **Typed and drawn numbers are read by one rule** (numberValue, by the film's language): a fact of 1.2 never sources
+  "steps 1,2 and 3" in a film without one; without one, "1.299,99" and "1,299.99" are both 1299.99 (the one reading in
+  which each is a number).
 - **A render cleans up after itself.** Its working files (the picture without its sound, the voice and the effects as
   WAVs, FFmpeg's lists, segment files on their way to the cache) go in a hidden `.storyreel-work-…` folder beside the
   video, removed when the render ends, finished or failed (`render.mjs` · `closeRender`; `renderFilm` and `makeFilm` call
   it in a `finally`). Only the outputs stay beside the video. To keep the working files, name a folder for them:
-  `renderFilm({…, work})` (or `makeFilm({…, render: {work}})`). The system's temp folder holds only two passes' scratch
-  while they run (the stills' FFmpeg filter, a breakdown's sound for its beat map), each removed in a `finally`.
+  `renderFilm({…, work})` (or `makeFilm({…, render: {work}})`). The system's temp folder holds only one pass's scratch
+  while it runs (the stills' FFmpeg filter), removed in a `finally`; a breakdown's beat map reads the video's sound
+  itself, so no copy of it is written.
 - **A stopped render's folders are swept by the next one.** Scratch folders are named `<prefix>-<host>-<pid>-<XXXXXX>`
   (`scratch.mjs`): a render sweeps the `.storyreel-work-…` folders beside it whose process on this host is gone (Ctrl-C,
   a killed process: the library installs no signal handler), and `makeFilm` the `.narration-…` copies too; the
@@ -29,11 +111,11 @@
   runs, never by age: a live run's is never swept, however quiet. Any other folder untouched for more than a day (by the
   newest write inside it) is swept: 0.12's `.narration-<pid>`, another host's, this host under an earlier name. A fresh
   folder from another host (left for that host's own next run) and a `work` folder you named are never swept. The two
-  passes that use the system's temp folder (stills, a breakdown's sound) name theirs `storyreel-scratch-…` and sweep it
+  pass that uses the system's temp folder (the stills) names its `storyreel-scratch-…` and sweeps it
   the same way. Cleaning up never fails a run: a folder that cannot be removed is skipped and listed in
   `swept.failed: [{name, why}]`.
 - **Scratch folders are safe in a shared temp folder** (CWE-377). Every one — a render's working folder, `makeFilm`'s
-  voice copy, the stills' and a breakdown's scratch in the system's temp folder — is made by `scratch.mjs` ·
+  voice copy, the stills' scratch in the system's temp folder — is made by `scratch.mjs` ·
   `makeScratch`: `mkdtemp`, a new folder with a random suffix, created at once, that only you can open (mode 0700). A
   folder or a link another user planted at a name StoryReel might pick is never written into, and the voice is copied
   as new files only (`files.mjs` · `copyVoice` creates each exclusively). The copy gets a plain folder's mode (0777

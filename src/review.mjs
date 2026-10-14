@@ -37,10 +37,13 @@ import {clockTenths} from './clock.mjs';
 import {verdictChart, verdictsText, readVerdict} from './verdict.mjs';
 import {slideshowOf, SLIDESHOW, SLIDESHOW_VERDICT} from './slideshow.mjs';
 import {geometryOf, breakText, GEOMETRY_VERDICT} from './geometry.mjs';
-import {claimsCount, unsourcedClaims, claimText, drawnClaims, lingeringExamples, lingerText, CLAIMS_VERDICT} from './claims.mjs';
+import {claimsCount, unsourcedClaims, claimText, drawnClaims, lingeringExamples, lingerText, HOLD, CLAIMS_VERDICT} from './claims.mjs';
+import {isDecorative, isCode} from './decorative.mjs';
 
 /**
- * The words a frame draws at t: [{text, box: [x0, y0, x1, y1], alpha}], in the layout's output pixels (or on the
+ * The words a frame draws at t: [{text, box: [x0, y0, x1, y1], alpha, decorative?, code?}] (decorative: drawn inside
+ * decorative.mjs · decorative, which only the claims check leaves out; code: inside decorative.mjs · code, whose numbers
+ * the claims check reads as code writes them), in the layout's output pixels (or on the
  * 1600×900 frame). A kit draws on its world's own sheet, which the film then lays on the frame under the camera,
  * so the words are followed from canvas to canvas: each line is noted on the canvas it is drawn on, and carried
  * (box and alpha mapped) wherever that canvas is drawn. The 2D context's drawing calls are watched only while
@@ -65,7 +68,7 @@ function readWords(canvas, paint) {
   const note = (ctx, text, x, y) => {
     const s = String(text); if (!s.trim()) return;
     const m = ctx.measureText(s), box = [x - (m.actualBoundingBoxLeft ?? 0), y - (m.actualBoundingBoxAscent ?? 0), x + (m.actualBoundingBoxRight ?? m.width), y + (m.actualBoundingBoxDescent ?? 0)];
-    on(ctx.canvas).push({text: s, quad: apply(ctx.getTransform(), corners(box)), alpha: ctx.globalAlpha});
+    on(ctx.canvas).push({text: s, quad: apply(ctx.getTransform(), corners(box)), alpha: ctx.globalAlpha, ...(isDecorative(ctx) ? {decorative: true} : {}), ...(isCode(ctx) ? {code: true} : {})});
   };
   proto.fillText = function (text, x, y, ...rest) { note(this, text, x, y); return original.fillText.call(this, text, x, y, ...rest); };
   proto.strokeText = function (text, x, y, ...rest) { note(this, text, x, y); return original.strokeText.call(this, text, x, y, ...rest); };
@@ -87,14 +90,14 @@ function readWords(canvas, paint) {
       const T = this.getTransform(), kx = dw / sw, ky = dh / sh, here = on(this.canvas);
       for (const n of carried) {
         const [x0, y0, x1, y1] = bounds(n.quad); if (!(x1 > sx && x0 < sx + sw && y1 > sy && y0 < sy + sh)) continue;
-        here.push({text: n.text, quad: apply(T, n.quad.map(([x, y]) => [dx + (x - sx) * kx, dy + (y - sy) * ky])), alpha: n.alpha * this.globalAlpha});
+        here.push({text: n.text, quad: apply(T, n.quad.map(([x, y]) => [dx + (x - sx) * kx, dy + (y - sy) * ky])), alpha: n.alpha * this.globalAlpha, ...(n.decorative ? {decorative: true} : {}), ...(n.code ? {code: true} : {})});
       }
     }
     return original.drawImage.call(this, src, ...args);
   };
   try { paint(); } finally { Object.assign(proto, original); }
   const round = p => p.map(v => +v.toFixed(1));
-  return (notes.get(canvas) ?? []).map(w => ({text: w.text, box: round(bounds(w.quad)), quad: w.quad.map(round), alpha: +w.alpha.toFixed(3)}));
+  return (notes.get(canvas) ?? []).map(w => ({text: w.text, box: round(bounds(w.quad)), quad: w.quad.map(round), alpha: +w.alpha.toFixed(3), ...(w.decorative ? {decorative: true} : {}), ...(w.code ? {code: true} : {})}));
 }
 
 // Areas of convex quads, and of where two meet (Sutherland–Hodgman: one clipped by the other's edges).
@@ -411,10 +414,11 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
     // A mark with no letter or digit ("-", ".") has a short ink box, however big its type: it is kept apart (`marks`), for
     // the claims check to join to the digits it touches (claims.mjs · drawnLines), and is no word for the other checks.
     const mark = w => !/[\p{L}\p{N}]/u.test(w.text);
-    review.samples = times.map(t => {
+    const sampleAt = t => {
       const zoomed = (film.focusAt?.(t)?.z ?? 1) > 1.001 || (film.cameraAt?.(t)?.z ?? 1) > 1.001, drawn = wordsAt(film, t, {layout: framed}).filter(w => w.alpha >= minAlpha && shown(w, zoomed));
       return {t, words: drawn.filter(legible), marks: drawn.filter(w => !legible(w) && mark(w))};
-    });
+    };
+    review.samples = times.map(sampleAt);
     // frameHashes keys a moment by its millisecond, and the film's end can sit a hair under its own (21.2999…97 is
     // 21.300): the hashes are keyed by each sample's own time, so a check reads hashes[t].
     // The same drawing gives each sample's grey levels (finished.mjs · greyOf), for the slideshow check.
@@ -424,9 +428,13 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
     review.frozen = frozenRuns(review);
     // The numbers the picture draws that no declared line holds (claims.mjs · drawnClaims), read once from the samples'
     // words and marks, and where an example line lingers into a real scene beside numbers: for the claims checks.
+    // The claims check times a number's hold in seconds (claims.mjs · HOLD), so it reads every HOLD.step or finer
+    // whatever `every` is — the review's own reads when they are that fine — and reads a moment again where it must.
     if (film.claims) {
-      const ids = film.timings.scenes.map(sc => sc.id);
-      review.drawn = drawnClaims(review.samples.map(x => ({t: x.t, words: [...x.words, ...(x.marks ?? [])]})), {claims: film.claims, sceneOf: t => film.clock.locate(t).index, scenes: ids});
+      const ids = film.timings.scenes.map(sc => sc.id), both = x => [...x.words, ...(x.marks ?? [])], steps = [];
+      if (every > HOLD.step + 1e-9) for (let t = window.from; t <= window.to + 1e-9; t += HOLD.step) steps.push(onClock(film, t));
+      const reads = steps.length ? steps.map(sampleAt) : review.samples;
+      review.drawn = drawnClaims(reads.map(x => ({t: x.t, words: both(x)})), {claims: film.claims, sceneOf: t => film.clock.locate(t).index, scenes: ids, wordsAt: t => (t > film.total + 1e-9 ? [] : both(sampleAt(onClock(film, t)))), lang: film.lang ?? null});   // nothing is up after the film's end
       review.lingers = lingeringExamples({labels: film.claims.labels, numbers: [...film.claims.numbers, ...review.drawn]},
         {scenes: film.timings.scenes.map((sc, i) => ({from: film.clock.offsets[i], to: film.clock.offsets[i] + sc.duration})), examples: film.claims.examples, ids})
         .filter(g => g.from < window.to - 1e-6 && g.to > window.from + 1e-6);

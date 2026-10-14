@@ -3,10 +3,11 @@
  * holds one shot's stills at a time, never the film's), and how much of a shot's stills looks like lettering — a
  * heuristic, never OCR — leaving out a logo that stays in a corner across the film's shots.
  */
-import {spawn, spawnSync} from 'node:child_process';
+import {spawnSync} from 'node:child_process';
 import {rmSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {tempScratch} from './scratch.mjs';
+import {spawned, startError} from './spawned.mjs';
 
 /**
  * One select expression for many frames, `eq(n,k)` for each: summed as a balanced tree, so its depth grows as log₂ of
@@ -58,7 +59,7 @@ export async function eachStill(ffmpeg, file, frames, {width, height}, each) {
 /** One FFmpeg pass over the stills: the filter written to its file, the frames read off the pipe and handed over. */
 async function readStills(ffmpeg, {args, filter}, {script, want, size, width, height}, each) {
   writeFileSync(script, filter);
-  const ff = spawn(ffmpeg, args, {stdio: ['ignore', 'pipe', 'pipe']});
+  const {child: ff, finished} = spawned(ffmpeg, args, {stdio: ['ignore', 'pipe', 'pipe']});
   // A still is filled in place from the chunks as they come (no buffer grown chunk by chunk), and handed over whole.
   let rgb = new Uint8Array(size), filled = 0, err = '', i = 0;
   ff.stderr.on('data', b => { err += b; });
@@ -69,7 +70,7 @@ async function readStills(ffmpeg, {args, filter}, {script, want, size, width, he
       if (filled === size) { if (i < want.length) await each(want[i++], {width, height, rgb}); rgb = new Uint8Array(size); filled = 0; }
     }
   }
-  const code = await new Promise(r => (ff.exitCode !== null ? r(ff.exitCode) : ff.once('close', r)));
+  const code = await finished.catch(e => { throw new Error(`breakdown: ${ffmpeg} could not read the stills: ${startError(ffmpeg, e)}`); });
   if (code !== 0) throw new Error(`breakdown: ${ffmpeg} could not read the stills: ${err.slice(-300)}`);
   return i;
 }

@@ -712,7 +712,9 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
 - **An example scene** (`"example": true`) says so on screen: an "Example data" label in the top right corner (the
   emphasis corner label's look) — in a format that crops the frame (portrait, vertical), in the corner of what the crop
   shows — over the scene, and on after it while any line the scene shows is still on screen (a whiteboard keeps its
-  writing into the next scene; the label stays with it: `film.claims.labels`). `"example": "Beispieldaten"` puts the
+  writing into the next scene; the label stays with it: `film.claims.labels`), to the line's last ink: an eraser that
+  starts 0.4 s after the cut and wipes for 0.8 s keeps the label up until 1.2 s, not 0.4 s (a kit's `texts()` says
+  when a line's last ink goes as `gone`). `"example": "Beispieldaten"` puts the
   label in the film's language. Its numbers need no source while they are labelled, and the label is in the key of
   every segment that shows it. Beside a real number, a lingering label seems to cover that number too, so the review
   says so (**example data over real numbers**: `an example line lingers into scene real beside real numbers (60):
@@ -723,23 +725,106 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
   hyphen after one (COVID-19, B-52, ISO-8601, A-1000, UTF-8) — unless it is a year (1000–2199) after a lower-case word
   or a time prefix (mid-, pre-, post-, early-, late-, in any case): "mid-2024", "pre-2020", "post-1990" are numbers,
   which need a source. A unit written onto a number stays a number
-  (60Hz, 4K), and a number after a CJK character is a number (価格は100円). A number with one separator before exactly
-  three digits ("1,000", "1.000") is a thousand in one language and one in another, and the screen does not say which:
-  it is **ambiguous**, so only a fact that writes it the same way (`"value": "1.000"`) sources it — never `1` or `1000`.
+  (60Hz, 4K), and a number after a CJK character is a number (価格は100円).
+- **Read in the film's language.** A number is read by the language the film is shown in: `lang`, one BCP 47 tag
+  (`compileFilm({…, lang: 'de'})`, `film.lang`; `makeFilm`'s `lang`, which also names its string table, is the same
+  value), its group and decimal symbols and its grouping taken from `Intl.NumberFormat(lang)`. In `de` "2,5 kg" is 2.5
+  and "1.299,99 €" 1299.99; in `fr` "2,5" is 2.5 and "1 299,99" (a narrow or plain no-break space) 1299.99; in `en-IN`,
+  `ta`, `te` and `hi` "1,00,000" is 100000 (Indian grouping); in `en` "1,000" is a thousand. What the language does not
+  write as one number ("16.67" in `de`, "2,5" in `en`) is kept as written. Without a language, a number the languages
+  read apart — "1,000" and "1.000" (a thousand, or one?), "2,5" (a decimal comma, or a list?), "1,00,000" — is
+  **ambiguous**: kept as written, so only a fact that writes it the same way (`"value": "2,5"`) sources it, never `2.5`,
+  and the fix says how to give the film its language. What every language reads alike is one value ("1,000,000",
+  "1,299.99" and "1.299,99", "16.67"). Typed and drawn numbers are read by the same rule, and the language is in what an
+  approval locks (`film.inputs.lang`). An as-written number is sourced only by a fact written the same way: `"2,5"`
+  sources "2,5", and a fact of 2.5 does not, however its digits print.
+  A language's own digits are numbers too — Arabic-Indic (`ar-EG`: "١٢٣٤", and "1٬234٫5" with its own separators is
+  1234.5), Persian (`fa`), Devanagari (`hi-IN-u-nu-deva`: "१,००,०००"), Bengali (`bn`), Telugu, Tamil, Thai, the
+  full-width digits and separators of Chinese and Japanese text (`ja` "１，０００円" is 1000, "３．５kg" 3.5, "－５℃" −5;
+  the ideographic comma 、 separates a list, never a group) — and in a
+  film with no language a digit of any script is read as a digit; a number that mixes scripts ("١2٣") is ambiguous. Two
+  writings to watch:
+  - **French with a plain space.** `fr` groups with a no-break space ("1 299,99": U+202F, which is what
+    `Intl.NumberFormat('fr')` writes, or U+00A0). Typed with a plain space, "1 299,99" is two numbers, 1 and 299.99: write
+    the no-break space (`'1\u202f299,99'`), or give the fact as written.
+  - **International grouping in an Indian film.** `en-IN` groups 1,00,000; "1,000,000" is not how it writes a million, so
+    it is kept as written: source it with a fact written the same way (`{"value": "1,000,000", …}`), or write 10,00,000.
+
+  ```js
+  const film = await compileFilm({storyboard, recipe, timings, lang: 'de'});   // facts: [{"value": 2.5, "text": "2,5 kg", "source": "…"}]
+  film.claims.numbers[0];   // {number: '2,5', lang: 'de', source: '…', …}; with no lang: {number: '2,5', ambiguous: 'no language', source: null, …}
+  ```
+
   `film.claims` lists them all: `{facts, examples, numbers: [{number, line, offset, at, to, scene, path, example,
-  source}]}` — one per place in a line (the same number twice in a line is two claims), from when the line is whole on
+  source, lang?, ambiguous?}]}` — one per place in a line (the same number twice in a line is two claims), from when the line is whole on
   screen to when it starts to leave, decided in the scene where the line is first shown.
 - **What is drawn.** The review also reads the numbers in every word its frames draw — the words it reads for every
   check, so no frame is drawn again: measured, 1.9 ms for the 1,495 words of the hello example's 128 samples, against
   about 4 s for its whole review. Words on one line are read with a space between them, and as one only where their
-  ink touches (a gap under 8 % of their height) or a sign or a decimal point stands at its digits ("16" then ".67 ms"
-  is 16.67; code tokens "-" then "5" are −5) — so "12" and "30" drawn 4 px apart are two numbers, never 1230. A number
-  drawn a digit at a time reads as its digits (they stand 5–22 % of their height apart, as two numbers drawn close
-  do): draw a number as one string, as every built-in kit does. A drawn number counts as example data only while the
-  label is up the whole time it is drawn. A drawn number is a
+  ink touches (a gap under 8 % of their height), a sign or a decimal point is written onto its digits ("16" then ".67
+  ms" is 16.67; code tokens "-" then "5" are −5), or a lone point stands between digits within half their height (a
+  code panel's tokens "16" "." "67" are 16.67, "$1" "," "299" "." "99" are 1,299.99, and `f(4,5)` drawn token by token
+  is read as typed) — so "12" and "30" drawn 4 px apart are two numbers, never 1230, and so are two digit
+  groups of different sizes: "$1,299" with a raised "99" is 1,299 and 99, since the picture does not say whether a
+  raised group is cents, a power (10²) or a note. A number drawn a digit at a time reads as its digits (they stand
+  5–22 % of their height apart, as two numbers drawn close do): draw a number as one string, as every built-in kit
+  does. A drawn number counts once it **holds** — the same number, in the same place of the same line (the line with
+  its numbers masked: "Sold 40 cups" and "Sold 40 kg" are two claims, each checked against its own facts), up for 0.5 s
+  (`HOLD`) — so a typewriter's partials ("1", "12", "129" on the way to 1299, 0.33 s each at 3 characters a second) and
+  a counter's passing values are no claims, and a line typed on past its number ("We sold 1299" while "cups" is typed)
+  is one claim, the line it becomes. The hold is timed, whatever the review's step: the claims check reads the frames
+  every 0.25 s or finer (the review's own reads when they are that fine; measured on the four examples at the default
+  0.25 s, no frame read again and under 20 ms; at `every: 1` it reads 4 times the frames, 0.9–2.3 s against 0.3–0.7 s
+  for their whole review, and finds the numbers the coarse reads missed — worlds' three), and reads a number's edges
+  again every 0.05 s where the reads cannot tell: a number up for 0.5 s or more always counts, one up for less than
+  0.4 s never does. A drawn number counts as example data only while the label is up the whole time it holds. A drawn number is a
   declared one when a declared line holds it and the drawn words are that line, or a word-bounded start or end of it;
   any other is a claim of its own (`path: 'drawn'`). `makeFilm`'s `check-claims` reads the declared lines only (it
   draws no frame).
+- **Decorative text.** Words a kit draws that the film does not say — a code panel's line numbers, a strip's frame
+  badges — are drawn through `decorative` (`footprint-storyreel/decorative`): the review reads them for every check
+  (under the captions, over each other, cut off, how much there is to read), and the claims check leaves them out.
+
+  ```js
+  import {decorative} from 'footprint-storyreel/decorative';
+
+  lines.forEach((line, i) => {
+    decorative(ctx, () => ctx.fillText(String(i + 1), x + 52, y + i * lh));   // the line number: read, never a claim
+    ctx.fillText(line, x + 72, y + i * lh);                                     // the code: its numbers need a source
+  });
+  ```
+
+  The mark rides on the context while the function runs (a shared symbol, so a kit with its own copy of the library
+  marks words the engine reads); a frame drawn without the review is unchanged by it. Mark the context the words are
+  DRAWN on: text drawn onto an offscreen canvas and then laid on the frame is marked through that canvas's own context,
+  never the frame's:
+
+  ```js
+  const sheet = createCanvas(400, 900), s = sheet.getContext('2d');
+  decorative(s, () => s.fillText(String(i + 1), 40, y));   // marked where it is drawn; ctx.drawImage(sheet, 0, 0) carries the mark
+  ```
+
+  A step counter is decorative too — it counts the film's own steps, it claims nothing about the world:
+
+  ```js
+  decorative(ctx, () => ctx.fillText(`Step ${step} of 300`, 1500, 60));   // neither the step nor the 300 needs a source
+  ```
+
+  The built-in code stage draws no line numbers.
+- **Code is read as code.** A code panel's numbers follow its programming language, not the film's: in a `de` film
+  `x = 16.67` is 16.67 and `f(4,5)` is 4 and 5. Draw code inside `code` (the same module): its words are read with "."
+  as the decimal mark, "," always a separator, never any grouping, and "_" between digits joining them as JavaScript
+  and Python write it (`1_000_000` is 1000000; outside code "_" joins nothing) — and they still need a source. The built-in code
+  stage marks its own code; a kit's code panel marks its own:
+
+  ```js
+  import {code, decorative} from 'footprint-storyreel/decorative';
+
+  lines.forEach((line, i) => {
+    decorative(ctx, () => ctx.fillText(String(i + 1), x + 52, y + i * lh));   // the line number: no claim
+    code(ctx, () => ctx.fillText(line, x + 72, y + i * lh));                    // "f(4,5)": 4 and 5, in any film
+  });
+  ```
 - **The verdict**: `failed` when a number outside an example scene has no source — each listed with its scene, its
   recipe entry and the fix (`"120" (scene rate, story.items[1]) has no source: add {"value": 120, "source": "…"} to
   the facts, or mark scene rate "example": true`); `not run` when the storyboard names no facts and a number shows
@@ -1210,7 +1295,7 @@ such as `/tmp` (1777) that would let anyone rewrite the voice the other tools re
 films into a folder of your own.
 
 Every output — the video, `poster.jpg`, `chapters.txt`, the caption files, `making-of.json`, a release's post, a
-breakdown's spec and sheets, a tool's stills, a paced voice's files, a kept segment — is written one way
+breakdown's spec and sheets, a tool's stills, a paced or fitted voice's files, a kept segment — is written one way
 (`files.mjs` · `writeOutput`): made under a new name (FFmpeg's video in the work folder; anything else beside it, under a
 random name created exclusively), then renamed onto its own name. A rename replaces whatever is at the name, a link
 included, and never follows one: a link someone planted at `chapters.txt` in a shared folder is replaced by the
@@ -1330,6 +1415,8 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   package ships the skill that teaches the order — timeline, review, fix, part, one still last — as a Claude Code
   plugin: `claude plugin marketplace add footprintjs/storyreel`, then `claude plugin install storyreel@storyreel`
   (or copy `plugin/skills/storyreel-review/SKILL.md` into a project's `.claude/skills/`). `footprint-storyreel/tools` is the one core both use.
+  `npx storyreel beats <song>` needs no project: it prints a song's beat map for settling its tempo (see Music: cut on
+  the beat).
 - **And as an MCP server,** for any assistant that speaks MCP: `storyreel mcp [--flag value …]` serves the same
   five tools over stdio (the flags are every call's defaults; a still or a strip comes back as the picture). Each call runs in
   a fresh process, so an edit to a kit between two calls is always seen:
@@ -1400,6 +1487,235 @@ start to bury the words. `"listening": "refuse"` refuses the film's own findings
 "stages": [{"scene": "loop", "enter": {"type": "zoom", "sound": "whoosh"}}, {"scene": "frame", "enter": {"type": "push", "sound": false}}]
 ```
 
+## Music: cut on the beat
+
+A cut that lands just off the beat feels late even when nobody can say why, so an editor cuts on the beat — and does
+not trust an automatic beat grid blindly: a grid can be a half or a double of the real tempo, and a song's drop is not
+always where its loudest moment is. StoryReel measures the song, says how sure it is and what else the tempo could be,
+and fits the film to it only where asked, never further than you allow.
+
+```js
+import {beatMap, peakOf, safeBeats, likelyTempi} from 'footprint-storyreel/beats';
+
+const map = await beatMap('music/theme.mp3');
+map.bpm;            // 123 — a line through the beats
+map.beats;          // [0.3, 0.788, 1.275, …] seconds, each on the transient it sits on
+map.bars;           // every bar's first beat (a 4/4 guess; the downbeat from low-band onsets)
+map.drop;           // 8.105 — the largest sustained rise in low and mid energy after a quieter build, on its beat (null: none)
+map.confidence;     // 0..1: the share of beats that sit on a measured onset
+map.verdict;        // 'tempo-close' — or tempo-measured, -faster, -slower, -given; map.sure is false only when close
+map.alternatives;   // [{bpm: 123.02, score: 1, phaseDoubt: 0.4, beats: […]}, {bpm: 61.51, score: 0.82, …}, …] — the tempos the onsets also fit, each with its grid
+map.levels;         // [{bpm: 61.51, score: 0.82, fails: ['kicked']}, …] — every level of the beat tried, and why it is not sure
+safeBeats(map);     // {beats: [0.3, 1.275, …], grid: 'shared', shared: 20, of: 40, tempi: [123.02, 61.51, …]} — what a film may cut on
+likelyTempi(map);   // [123, 62] — an unsure map's candidates scoring 0.5 or more: the tempi to settle it with
+map.nearestBeat(12.4); map.nextBeat(12.4); map.onBeat(12.4, .05);
+peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and its thud lands on the event
+```
+
+- **How it measures** (plain functions, `src/dsp.mjs`): the song read through FFmpeg as mono samples; onset strength as
+  spectral flux on a radix-2 FFT, log-compressed and split into low (< 200 Hz), mid and high bands (a hit in the song's
+  first milliseconds is a beat; a pad or a noise floor already sounding at its first sample is not, and neither is
+  its end; a first click anywhere in the first 60 ms — an encoder's delay — is found where it is, over a pad too); the tempo by autocorrelation of the
+  onsets, weighed by a prior that prefers 70–180 BPM (`range`), with the ranked alternatives (a peak within 1% of a
+  stronger one is the same tempo: 192.5 beside 192.0 is one candidate); the beats by dynamic
+  programming (Ellis 2007), each moved onto the transient it sits on (an attack heard over a held note: the energy of
+  the samples' first difference), the beats the chain carried through a quiet intro or a fading end left out (each
+  must stand out from what surrounds it); the bars from low-band onsets; the drop where low
+  and mid energy rise most and hold, and arrive at once.
+- **The map is a flowchart, and its record explains it.** decode → onsets → choose-tempo → track-beats → find-bars →
+  measure-rise → find-drop, each verdict `decide()` evidence in `map.record`: `It examined "One level of the beat passes
+  both tests — the kick pulse and the in-betweens agree — and it is the strongest": passing=(1 item), strongest=92.12,
+  and chose tempo-measured.` `map.levels` lists every level tried and the tests each failed.
+- **One rule for being sure: two pieces of evidence must agree.** The same beat scores well at other levels — a steady
+  pulse also repeats every two and three beats, hats on the eighths twice a beat, a syncopated snare between them — so
+  the map tries every level from a quarter to four times the strongest tempo (`map.levels`), and a level is certain
+  only when it passes both tests (`levelTests`, `BEATS.level`):
+  - *the kick pulse*, when the song has one (eight kicks or more): a kick is a low-band peak that DIES — within 0.1 s
+    it falls below 0.55 of its peak — and arrives with a broadband transient, so a sustained bass note is not a kick
+    (`dsp.mjs · lowPulse`). The kicks land on the level's beats (in phase), on nearly every one of them (`kicked`
+    0.75, not loosened), and never between them;
+  - *the in-betweens*: the beats carry the song's body evenly, and no subdivision is filled — the half-beats may sound
+    (hats on the eighths) but not as strongly as the beats, the thirds and quarters not at all, and nothing sounds as
+    strongly anywhere between the beats (a level whose every quarter-beat sounds is too slow; one with a hit on the
+    fifth sixteenth is wrong too). With no kick pulse, the level's own score must also stand 0.3 over every other.
+  - *a backbeat names the tactus*: a snare or a clap (`dsp.mjs · backbeatPulse`: noise rising in the mid and high bands
+    at once that RINGS — 45 ms on, the high band still holds a fifth of its rise, where a kick's beater click or a closed
+    hat has died) on every other beat of a level — 2 and 4 of a bar — makes that level the beat, and no other level can
+    be certain (`backbeatEveryOther`): not a faster one (`backbeat slower`) — a kick and a bass on every eighth fill
+    every beat of the double, but the snare is on only every fourth — nor a slower one whose beats are the backbeat
+    (`backbeat faster`): an 808 on the quarters under a snare on 2 and 4 at 150 was heard, sure, at 75, its grid on the
+    snares. A level
+    that keeps the backbeat on at most 3 in 8 of its beats fails `half-time` on its own: it is twice too fast.
+
+  When exactly one level passes, the verdict is certain: `tempo-measured` (the strongest), `tempo-faster` or
+  `tempo-slower` — unless another level was refused by the kicks alone (`refusedByKicksAlone`: it failed only kick
+  tests, and passes the in-betweens once the kicks are masked): a level that wins only because the right one failed
+  "no kick between" is never certain. Otherwise — none passes, or more than one — it is `tempo-close`: the strongest is
+  taken and `alternatives` lists eight, each with its own grid. A wrong tempo claimed as certain is the one failure that
+  matters, so many songs come out close: a backbeat (the kick on one and three is not a kick on every beat), a click
+  track with a kick every fourth click, a dembow, a breakbeat; give `bpm` to settle them.
+- **Checked against a corpus** of 269 songs made sample by sample (`test/songs.mjs · tempoCorpus`,
+  `test/tempo-corpus.test.mjs`): 56 drum patterns; nine rhythm families — dembow, son clave, half-time shuffle, trap,
+  four on the floor, breakbeat, sixteenths with the kick on one, bossa nova, funk — at seven tempi; 66 songs; and 84 of
+  bass, hands, meters and echoes — a backbeat over eighth-note bass, eighth-note kicks with the snare on 2 and 4, four
+  on the floor humanised (±12 ms), a backbeat drifting ±3% in tempo, 6/8, a kick on the and of two, bass on quarters
+  with chords, a kick (with its beater's click) and a bass on every eighth under a snare on 2 and 4, a dotted-eighth
+  delay on the rim and the snare, an 808 sub on the quarters under a snare on 2 and 4, a backbeat with a dub echo (0.5)
+  on the snare, a backbeat fading out over its last 8 s. **None is wrong and certain**; 65 are right and certain, 110
+  right but close, 94 wrong but close, each of those with the right tempo among its alternatives — and **no beat a film may cut on lies off a true beat, sure or
+  unsure** (phase is checked for both). **The thresholds are calibrated on these synthetic
+  songs only**, with room to spare (loosening every one of them but `kicked` together still claims nothing wrong);
+  for a real mix, read the verdict and `map.levels` (`storyreel beats <song>`), and give `bpm` to settle it.
+- **An unsure map cuts only where every candidate agrees and the song hits** (`safeBeats(map)`, the one rule the
+  pipeline and `fitToMusic` both use): a sure map gives every beat; a close one only the beats that lie on EVERY
+  listed candidate's grid (within 0.035 s, `BEATS.safe.tolerance`) — the right tempo is among the candidates, so such
+  a beat is a true beat whichever it is — and, of those, only where the song actually hits (`map.hits`, `dsp.mjs ·
+  hitsOf`: an attack in the low or mid band, the strongest within a little over a sixteenth either side and at least
+  0.6 of the median attack on the beats — a delay's repeat a sixteenth before the beat it precedes, or an echo ringing
+  on past the song's end, is not a hit; `unheard` counts the shared beats dropped). None at all when any candidate is
+  unsure of its phase (its grid could sit on the "and": the onsets half a beat off it as strong as on it, `phaseDoubt`
+  ≥ 0.9). Across the corpus's 204 unsure maps that leaves **0 cuts off a true beat** and 7.0% of the true beats
+  cut-able (652 of 9,316).
+- **A song's ring-out holds no beat.** No map, sure or unsure, keeps a beat after the song's last hit: the tracker
+  carries its grid on through what rings after the music stops — an 808's long tail, a dub echo, a delay's repeats —
+  and a beat there sits on nothing, or on an echo off the grid (an 808 on the quarters at 85 kept one, sure, 0.07 s off
+  it). The record says how many it dropped (`ringOut`). A hit is measured against the song's beats, or against those NEAR
+  it (within 4 s, `BEATS.safe.near`) where they are quieter: an echo still falls under the hit it repeats, while a
+  fade-out's faded hits stand against the faded ones around them — a backbeat fading out over 8 s keeps its beats to
+  within one beat of the map's own tempo of its end: a linear fade drops its last beat or two (two where the map counts
+  half the tempo), each as faint against the one before as an echo is. A hit is never under a tenth of the song's
+  median (`BEATS.safe.quiet`): in a silent gap the noise is no hit.
+- **A beat counts only where music is playing** (`musicAt(map, t)`: a heard hit within one beat period of t). The
+  tracker carries its grid through a silent gap, before the music starts and after it stops; `safeBeats` keeps no beat
+  there, sure map or not, so `fitToMusic` never snaps a cut onto one (kicks from 0–8 s and 11–20 s: a cut at 9.3 s
+  stays where it is), and the breakdown says "no music here" instead of "off the beat by 4.00 s".
+- **No steady beat, no map.** Speech, noise, music with a free tempo, a held tone or pad get no tempo: `beatMap` refuses
+  (no code: it is the sound, not the call) when the onsets keep no steady period — their autocorrelation at the strongest
+  tempo, against their energy, under 0.15 (`BEATS.steady.periodicity`), measured once a half-second moving average is
+  taken out (`BEATS.steady.swell`: a talk's loudness rising and falling correlates with itself at every short lag and is
+  no beat; a recorded talk read 0.31 without it) — or are faint: their 99th percentile under 0.6
+  (`BEATS.steady.onsets`). The reason says which: "no steady period … speech, noise, or music with a free tempo", or
+  "faint … a held tone or pad". Measured, both sides: every song in the corpus has periodicity 0.40 or more (0.28 in the
+  ill-posed group) and onsets 1.15 or more; 27 talks made with macOS `say` (eight voices, 140–230 words a minute, two
+  speakers taking turns, small rooms and a hall — reverb, pink-noise room tone, mains hum, a mic's band, compression,
+  AAC, and slow swells of loudness) reach 0.08 at most; two film scores' 37 tracks split in two — 20 at 0.19 or more,
+  whose maps run (unsure, as a score with no drums is), and 17 at 0.12 or less, refused: seven were refused before
+  too, and the other ten had read with their beats on an onset 31% of the time or less. A 440 Hz tone in an MP4 (AAC) has onsets of 0.09, a held pad 0.34. Neither
+  confidence nor hit density tells speech from music (speech reaches confidence 0.55–1), and nor do the candidates'
+  ratios: two or more candidates within 2% of the best and in no simple ratio to it (2:1, 3:2, 4:3 and their inverses)
+  marked no music at all, but only one of the 27 talks — and a recorded talk's cloud (192.8, 120.9 and 129.7 BPM)
+  holds a pair 0.9% from 2:3. With a tempo given, the grid is laid all the same. A quiet recording (its onsets near the
+  noise floor) can fall under the floor: give `bpm`.
+- **A given tempo sets the tempo, not the phase.** The phase is the onsets': with `bpm` given, the grid sits where they
+  are, and when the half-beats sound as strongly as the beats (120 BPM kicks given as 60: either phase is a kick) the
+  map is not sure of its phase (`sure: false`, `phase: 'unsure'`) and `safeBeats` keeps no beat — a film does not cut,
+  and the breakdown judges no cut, on a grid that could as well sit on the and.
+- **Unsure snaps little; a tempo settles it.** Measured over the corpus the way an editor cuts — a cut every 3–8 s,
+  snapped when a beat it may cut on lies within ±0.15 s — a sure map snaps about 45% of cuts (148 of 330) and an
+  unsure one about **4%** (34 of 866). The intersection is not loosened (no subset of the candidates kept every cut on the beat); instead an unsure
+  map is quick to settle: `likelyTempi(map)` names its candidates scoring 0.5 or more — the true tempo is among them
+  for 199 of the 204 unsure maps — and **a given tempo makes the map sure** (`tempo-given`), so a film cuts on every
+  beat. Hear the song, pick one, give it as `music.bpm`.
+- **`storyreel beats <song>`** prints the map for a person to settle it in seconds — no project needed (`beatMapText`):
+
+  ```
+  $ npx storyreel beats music/theme.wav
+  theme.wav · 31.566 s · tempo-close (unsure: a film cuts only on the beats every candidate shares) · 190 BPM, 96 beats
+
+  candidate tempi (score against the strongest):
+     190.55 BPM  1.00
+      95.15 BPM  0.94
+      63.27 BPM  0.85
+      47.47 BPM  0.25  (unlikely)
+
+  levels of the beat tried (a level is sure only when it passes every test, and no other does):
+      47.64 BPM  phase, kick between (2), kick between (4), filled (2), filled (4), filled (between)
+      63.52 BPM  phase, kick between (3), filled (3), filled (between)
+      95.28 BPM  phase, kick between (2), filled (2), filled (between)
+     190.55 BPM  half-time, backbeat slower
+
+  settle it: give the tempo you hear — music.bpm in makeFilm, or beatMap(file, {bpm}) — one of 191, 95, 63 BPM; the map is then sure, and a film cuts on every beat.
+  ```
+
+  `--bpm 95` checks a tempo (the map is then sure); `--ffmpeg` names the FFmpeg. A bad option exits 2, a song that
+  cannot be read 1.
+- **Known limits — ill-posed rhythms.** Three rhythms no measure can settle, because each is a pulse at more than one
+  tempo or phase as much as at the true one; they are in the corpus as their own group (`ill-posed`, 21 songs), pinned
+  only to give a verdict the record keeps, never scored:
+  - *a snare alone on 2 and 4*: a snare every other beat is a steady pulse at half the tempo; the map is unsure, at
+    half the tempo (35 BPM for a song at 70, the only likely one), and its shared beats are the snares — a film cuts on
+    2 and 4 only (144 cut-able over the seven tempi, every one a true beat);
+  - *a kick-only tresillo* (3 + 3 + 2): three uneven kicks a bar fit several grids, none evenly; always `tempo-close`,
+    the strongest seldom the true tempo — and the beats it lets a film cut on (92 over the seven tempi) all fall on
+    true beats;
+  - *claps alone on the off-beats*: claps on the "and"s are as well a pulse on the beat; the map is unsure (the claps
+    on every beat of its tempo are a backbeat of the double), and the beats it shares are ON the claps — every one half
+    a beat off the true beat (40 over the seven tempi), which no measure can tell. A given tempo does not move the
+    beats off the claps: if you hear them as off-beats, leave `snap` out for that song.
+- **Known limits — a long ambient intro.** 30–90 s of pad before the drums come in can leave a clear song unsure (the
+  map weighs the whole song at once). Give `bpm`, or trim the intro before mapping it.
+- **Known limits — a heavy delay on the drums.** Repeats at 80% of a dotted-eighth delay on the kick and the snare
+  fill every sixteenth with kick-like hits; at 70 BPM the map can then be sure of four times the tempo. The corpus's
+  delay (70% on the rim and the snare) stays right or unsure at every tempo; give `bpm` for a dub mix.
+- No beat in four standing out is `bars-guessed`; no rise that holds is `drop-none`; a rise that climbs for more than
+  2 s with no hit at its start is `drop-fade` — a fade-in, not a drop (`drop: null` both ways).
+- **Override what it got wrong**: `beatMap(file, {bpm: 128, drop: 42.5})` — the record then says the tempo and the drop
+  were given (a drop past the song's end refuses). `beatMapOf(samples, 22050)` maps samples already in hand.
+- **A wrong option says so by code.** Every error `beatMap` throws for the caller's options — an unknown key
+  (`{tempo: 120}`), a value out of range (`{bpm: 5}`), a drop past the song's end, samples that are not mono Float32 at
+  22050 Hz — carries `code: 'BEAT_OPTIONS'`; an error reading the sound (a missing file, FFmpeg failing, a silent song)
+  carries none, so a caller can tell "fix the call" from "fix the file":
+
+  ```js
+  try { await beatMap(file, {tempo: 120}); } catch (e) { if (e.code === 'BEAT_OPTIONS') …; }  // "tempo is not an option; the options are bpm, drop, range, ffmpeg"
+  ```
+
+**Into a film**, all opt-in — a film without `music` renders byte for byte as before:
+
+```js
+await makeFilm({storyboard, recipe, narrationDir, pacing, out: 'out/film.mp4',
+  music: {file: 'music/theme.mp3', gain: .2,
+    snap: {tolerance: .15},                      // scene starts onto a beat, no scene's length changed by more than 0.15 s
+    dropOn: ['story', 'came home']},             // the song starts so its drop lands on this phrase
+  render: {soundAt: 'peak'}});                   // every sound effect's loudest moment on its moment
+```
+
+- **Snapping** (`music.mjs · fitToMusic`) moves each scene start — a cut, and the transition anchored on it (three
+  quarters of its change before the start) — onto the nearest beat within the tolerance. It changes only how long a
+  scene's silence after its last word lasts, and **each scene's length changes by at most the tolerance**, so every
+  word, drawing and caption keeps its place inside its scene. A scene is never made shorter than its last word, its
+  latest keyed moment (a drawing at `["story", "came home", 0.4]` lands after the last word) and then the silence
+  after them: 0.1 s (`MUSIC.clear`), or the lead of the entrance into the next scene, which plays in this scene's tail
+  (three quarters of a transition; 0.65 s for a hand-over on the page). A beat that would need more is passed over, and
+  a cut with no such beat stays where it is, saying why.
+- **The moves add up.** The film after a moved cut moves with it, so a cut can end up further from where it was than
+  the tolerance: the record keeps each cut's drift (how far it now sits from where it was, against the film's start or
+  the key moment), and when two beats are within the tolerance, the one that brings the drift back is taken. Twelve
+  scenes, each landing 0.17 s further past a beat than the last, keep every cut within the tolerance of its place.
+- **The drop on a key moment.** With `dropOn`, the song starts where its drop lands on that phrase (before the film, the
+  song begins part way in; after, the film plays without it until then). That scene's own start is then held by the drop;
+  the cuts after it are fitted forward and the ones before it backward from it. A song with no drop the map can find
+  refuses with the fix: give `music.drop`, the second it drops. So does anything that would lose the song silently: a
+  key moment outside the film, a drop past the song's end, a song placed where it never plays during the film.
+- **A voice follows.** In a voiced cut, each moved scene's audio in the run's copy of the voice is padded with silence or
+  cut short (faded over 10 ms) to its new length, by whole samples (`fitVoice`; a 16-bit PCM WAV voice, as pacing needs);
+  the voice folder itself is never touched.
+- **The record.** `map-beats` and `fit-to-music` run as stages of the pipeline, after the pacing; `making-of.json` gets
+  `music`: the song, its gain, where it starts, its beat map (tempo, verdict, `sure`, the levels tried, alternatives,
+  drop, confidence), the grid the fit cut on (`fit.cutOn`: every beat, shared, or none) and every cut's verdict, with
+  both flowcharts' records. An unsure map that snapped leaves a finding in `music.findings`, with the tempi to pick
+  from (`tempi`): *tempo unsure (close): cuts only on beats every candidate shares (20 of 40); give music.bpm (one of
+  123, 62) to cut on every beat — storyreel beats <song> shows why*. The song and every setting are part of what an approval locks
+  (`inputs.music`), and so is `soundAt: 'peak'` when it is asked for (`inputs.soundAt`): a film without either keeps
+  the inputs it had.
+- **In the mix.** The song plays under the voice and the effects at `gain` (0..1 of its own level), fading out over the
+  film's last `fadeOut` seconds (1.5), measured apart as a role (`result.loudness.roles.music`); a song less than 10 LU
+  under the voice is a listening finding, as loud effects are. `renderFilm({…, music: {file, start, gain?, fadeOut?}})`
+  places a song by hand.
+- **Sounds by their peaks.** `soundAt: 'peak'` starts each sound its peak earlier (`sound.mjs · soundPeak`: a door thuds
+  0.32 s in, a whoosh swells to its middle, a click is at once), never before its scene starts; left out, every sound
+  begins on its moment as before. `peakOf(file)` gives the same for a sound file of your own.
+
 ## Check the finished file
 
 A render can pass every check before it and still come out wrong: a segment joined a frame off, a voice
@@ -1454,7 +1770,10 @@ spec.shots[4].motion.why.rules[1].checks;   // ['pan 0.188 ≥ 0.02 ✓', 'expla
 ```
 
 `npx storyreel breakdown reference.mp4 --out work/reference` does the same from the command line; it needs no project
-(`storyreel breakdown --help`; a failure prints where the record stopped and its last decisions). It needs **FFmpeg 5.1
+(`storyreel breakdown --help`; a failure prints where the record stopped and its last decisions). Add **`--beats`** to
+read the sound's beats with the beat map (`footprint-storyreel/beats`) and say which cuts land on the beat;
+`--bpm 120` hands it the tempo you hear (the map is then sure), and `--ffmpeg path` names the FFmpeg both run. Without
+`--beats`, nothing about the beats is read. A tempo the beat map refuses (`--bpm 5`) refuses the breakdown (exit 2). It needs **FFmpeg 5.1
 or later** (it reads frames with `-fps_mode passthrough`, and hands FFmpeg the stills' selection in a file, since a long
 film's runs past what one argument may hold: `-/filter:v` from FFmpeg 7, `-filter_script:v` before. Tested with FFmpeg
 9.0.2 on macOS, which takes only `-/filter:v`, and FFmpeg 6.1.1 on Ubuntu 24.04 in CI, which takes only `-filter_script:v`).
@@ -1502,17 +1821,30 @@ film's runs past what one argument may hold: `-/filter:v` from FFmpeg 7, `-filte
   shots 1–2 of 4, or one that comes back after a cutaway (2 of 3) is lettering; a film of two shots has no logo. Its known
   miss: a name shown in 3 shots of 4 reads as a logo — the record shows that decision with its evidence. It never reads
   the words (no OCR).
-- **Beats.** `beatMap(audioFile, {...beatOptions, ffmpeg})` → `{bpm, beats: [seconds], drop?, confidence?, alternatives?:
-  [{bpm, score}]}` is handed the video's sound as a WAV (in a folder removed after), the beat map's own options
+- **Beats.** `beatMap(videoFile, {...beatOptions, ffmpeg})` → `{bpm, beats: [seconds], drop?, confidence?, alternatives?:
+  [{bpm, score, beats?, phaseDoubt?}], verdict?, sure?, hits?}` is handed the video file itself (it reads the sound: `beats.mjs · beatMap` decodes it at 22050 Hz mono), the beat map's own options
   (`beatOptions`) and this run's FFmpeg, so a beat map such as beats.mjs's fits as it is (`{beatMap}`, or
   `{beatMap: f => beatMap(f, {ffmpeg})}`): `breakdown(file, {beatMap, beatOptions: {bpm: 120}})` lays its grid at 120 BPM
   where it finds no tempo of its own. `beatOptions` are the reader's own: the breakdown hands them on untouched and
   never checks their names or values. A reader that finds them wrong throws an error with `code: 'BEAT_OPTIONS'` — a
   wiring mistake, so the breakdown refuses with it; any other error it throws is a sound it could not read, recorded as
   not run. The spec reports the BPM (and how
-  sure: `confidence`, and `close` when another tempo scores 90% of the best or more), the beats, the drop and the shot on
-  screen there, and which cuts land within 0.05 s of a beat. Without a beat map, without sound, or when the beat map
-  cannot read the sound (it throws: a silent track, no tempo), the spec says the beats were not read, and why (when the beat
+  sure: `confidence`, the map's `verdict` and `sure` when it gives them, and `close` — the next tempo — when the map
+  says it is unsure, or, from a reader that gives no verdict, when another tempo scores 90% of the best or more), the
+  beats, the drop and the shot on screen there, and which cuts land within 0.05 s of a beat. **Which beats a cut is
+  judged against has one owner, `beats.mjs · safeBeats`**: every beat of a sure map (and of a reader that gives no
+  verdict); of an unsure one only the beats every candidate tempo shares and the song hits (`judged`), so no cut is
+  called on the beat against a grid the map is unsure of. A cut near none of those is off the beat for a sure map, and
+  not judged (`onBeat: null`, counted in `unjudged`) for an unsure one; `likely` names the tempi to give (`--bpm`) to
+  judge every cut. Beats not read say which: "the sound has no steady beat (…)" — it was read, and the beat map found
+  no steady beat (its error carries `reason: 'no-steady-beat'`) — or "the beat map could not read the sound (…)"; the fix
+  is worded for whoever asked (`hints`: the API's `beatOptions: {bpm: …}`, or the command line's "add --bpm n"). A cut where no music plays (no heard hit within a beat period: a silent gap, before the music or
+  after it) is "no music here" (`music: false`, counted in `noMusic`), never off the beat — asked of the reader's `hits`:
+  a reader that gives none gets no such check, and every cut is judged against its beats. An unsure map's drop is a
+  maybe (`drop.maybe`: "Maybe a drop at 0:05.6"), and a close call is named only when the next tempo scores 0.9 of the
+  best or more. breakdown.md says the same in words. The beat map is handed the video itself and reads its sound at
+  22050 Hz mono, streamed into one array (an hour: 318 MB of samples); no full-rate copy of the sound is written. Without a beat map, without sound, or when the beat map
+  cannot read the sound (it throws: a silent track, no steady beat), the spec says the beats were not read, and why (when the beat
   map asks for one of its options, the reason says to give it as `beatOptions`); the rest of the breakdown stands. A beat map that answers in another shape refuses, naming the shape.
 - **Every verdict says why.** The breakdown is a footprintjs flowchart (probe → frames → cuts → gradual changes →
   shots → motion → stills → lettering → beats → overview → spec), and each candidate cut, gradual change and shot is
@@ -1627,7 +1959,7 @@ const myKit = {name: 'cartoon', story: {
       layers: [{name: 'sky', depth: 8}, {name: 'hero', depth: 1}],  // optional, back to front: what a camera's orbit,
       drawLayer(ctx, t, name, spot) { },      //   dolly-zoom and rack-focus move by depth (see Camera moves by name)
       cameraMoves: [{from: 4.2, to: 5.8}],    // optional: when the kit's own camera moves (seconds): pushes and camera moves take turns with it
-      texts() { return []; },                 // optional, for the reading check: [{text, from, to, path}]
+      texts() { return []; },                 // optional, for the reading check: [{text, from, to, gone?, path}] (gone: its last ink, an eraser's end)
       parts(t) { return {segments: {}}; },    // optional, for the geometry audit: {segments, regions, apart} (see Three verdicts)
       sounds: [{time: clock.at(['story', 'But wait']), type: 'chime'}],
     };
@@ -1771,6 +2103,8 @@ short, quiet and made by procedural synthesis (no samples). A kit's sound is `{t
   `whoosh` .8, `crumble` .7). **A gain is relative to its scene**: each scene's sounds are scaled by one
   factor, set by the loudest moment in that scene (`sound.mjs · createMotionSound`), so a loud door turns
   down every tap in the same scene.
+- **Where it sits on its moment**: a sound begins on its moment; `renderFilm({…, soundAt: 'peak'})` starts each one its
+  peak earlier, so its hit lands there instead (a door's thud, a whoosh's swell; see *Music: cut on the beat*).
 - Names, gains and the count are checked when the film is built (`compileFilm`), not after rendering: a
   misspelled name refuses, naming the kit and the sounds there are, and a scene with more than 64 sounds
   (the engine's and every kit's together) refuses, naming the scene.
@@ -1955,7 +2289,7 @@ the default because it rarely does; there is no swap repair.
 | `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?, claims?})` | compile + render as a footprintjs pipeline, with `making-of.json` (a segmented render: one subflow per segment; the claims verdict, `check-claims`) |
 | `approveFilm({record, by, note?})` · `checkApproval(approval, inputs)` | the approval lock: approve a watched render from its making-of.json, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
 | `checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})` · `FINISHED_CHECK_NAMES` | checks on the finished file: lengths, blank runs, flash frames, hand-overs and joins, the voice, captions (`footprint-storyreel/finished` adds `ffmpegProbe`, `FINISHED_CHECKS`, `FINISHED`) |
-| `footprint-storyreel/breakdown` → `breakdown(videoFile, {out?, beatMap?, thresholds?, ffmpeg?, probe?})` · `breakdownText(spec)` · `BREAKDOWN` | a reference film as a spec to match: cuts, fades and dissolves, shots, pacing, motion, lettering (a heuristic), cuts on the beat (`beatMap(wav, {ffmpeg})`); every verdict with its evidence |
+| `footprint-storyreel/breakdown` → `breakdown(videoFile, {out?, beatMap?, beatOptions?, thresholds?, ffmpeg?, probe?, hints?})` · `breakdownText(spec)` · `BREAKDOWN` | a reference film as a spec to match: cuts, fades and dissolves, shots, pacing, motion, lettering (a heuristic), cuts on the beat (`beatMap(video, {ffmpeg})`: the reader reads the video's sound itself; `storyreel breakdown --beats`), judged by `safeBeats`; every verdict with its evidence |
 | `segmentedVideo({store, recipe, code?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir)` · `ffmpegJoin()` · `planSegments(film, {fps})` · `segmentKey(…)` · `codeFingerprint(paths)` | re-render only what changed: the picture in cached segments, joined (`renderFilm({…, video})`) |
 | `footprint-storyreel/release` → `makeRelease({targets, post, out, …})` · `loadTarget` · `checkAdapter` · `planProblems` · `TARGET_NAMES` | the post for each platform: the video in its shape, captions, thumbnail, the text to paste, checked against the platform's limits and audience |
 | `readCast(cast)` · `castText(text, cast)` · `withCast(value, cast)` | the cast: `{{role}}` in any text becomes the role's name; kits read the rest from `context.cast` |
@@ -1966,11 +2300,14 @@ the default because it rarely does; there is no swap repair.
 | `footprint-storyreel/review` → `reviewPart(film, {part?, layout?, checks?, …})` · `REVIEW_CHECKS` · `findingsText` · `verdictsText` · `wordsAt` | a part reviewed by reading it: findings with times, and three verdicts (passed, failed, not run) with their `decide()` evidence |
 | `footprint-storyreel/slideshow` → `slideshowOf(film, {from?, to?, every?, rule?})` · `shotMotion` · `shotInsides` · `moved` · `SLIDESHOW` · `SLIDESHOW_VERDICT` | no slideshow: how much each shot moves in its middle, and whether most of the running time is dead (held still more than 3 s) |
 | `footprint-storyreel/geometry` → `geometryOf(film, {from?, to?, rule?})` · `auditParts` · `readParts` · `crosses` · `breakText` · `GEOMETRY` · `GEOMETRY_VERDICT` | a kit's drawn parts audited: mounted ends stay on, pairs kept apart never cross, a planted end stays where it was planted |
-| `footprint-storyreel/claims` → `numbersIn` · `numberValue` · `readFacts` · `sourceKind` · `exampleScenes` · `labelSpans` · `findClaims` · `drawnLines` · `drawnClaims` · `claimsCount` · `unsourcedClaims` · `claimText` · `CLAIMS_VERDICT` | every number on screen with its source: a fact the storyboard names, or an example scene (`film.claims`; the review adds what the picture draws) |
+| `footprint-storyreel/claims` → `numbersIn` · `numberValue` · `numberLocale` · `CODE_READING` · `readFacts` · `sourceKind` · `exampleScenes` · `labelSpans` · `findClaims` · `drawnLines` · `DRAWN` · `HOLD` · `drawnClaims` · `lingeringExamples` · `claimsCount` · `unsourcedClaims` · `claimText` · `CLAIMS_VERDICT` | every number on screen with its source: a fact the storyboard names, or an example scene (`film.claims`; the review adds what the picture draws) |
+| `footprint-storyreel/decorative` → `decorative` · `code` · `isDecorative` · `isCode` · `DECORATIVE` · `CODE` | text a kit draws but the film does not say (line numbers, badges): read by every review check but the claims check |
 | `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `bezier(x1, y1, x2, y2)` · `overshoots(name)` · `inOut` | the one ease table (`linear in out inOut back walk jump spring bounce outCubic outQuint outExpo outBack inOutCubic standard emphasized`), and four-number curves as CSS writes them |
 | `footprint-storyreel/moves` → `moveAt(move, t, {start, seconds?, feel?, reduced?})` · `stagger(items, gap)` · `movesBy({feel, use, kind})` · `readMove` · `applyMove` · `MOVES` | motion asked for by name: 30 moves as data, by feel and use, with the practitioners' timing rules |
 | `footprint-storyreel/principles` → `anticipate` · `squash` · `envelope` · `burst` · `arc` · `BURSTS` | anticipation, volume-keeping squash and stretch, one-shot events that add, paths that curve like a hand |
 | `footprint-storyreel/acting` → `moodAt(keys, t)` · `idleAt(t, {seed})` · `follows(f, delay?)` · `ACTING` | a mood change acted (anticipation, a take, a cross-fade), an idle layer that never moves in step |
+| `footprint-storyreel/beats` → `beatMap(file, {bpm?, drop?, range?})` · `beatMapOf(samples, 22050)` · `safeBeats(map)` · `likelyTempi(map)` · `beatMapText(map)` · `peakOf(file)` · `peakOfSamples` · `BEATS` | a song's tempo, beats, bars and drop, with the alternatives and how sure (its record: every verdict with its evidence); the beats an unsure map may be cut on, and the tempi to settle it with (`storyreel beats <song>`); a sound's peak; a bad option throws with `code: 'BEAT_OPTIONS'` |
+| `footprint-storyreel/music` → `fitToMusic({storyboard, timings, beats, snap?, dropOn?, recipe?, kits?})` · `fitVoice(runDir, before, after)` · `MUSIC` | scene starts onto the beat (each scene's length changed by at most a tolerance, never past its words, keys or the next entrance's lead; off unless `snap` is given); the song started so its drop lands on a key moment (`makeFilm({…, music})` runs both) |
 | `footprint-storyreel/pose` → `motionSource({name, poseAt})` · `walkSource(walk)` · `checkPose(pose)` · `POSE_KEYS` · `TORSO_SHARE` | the motion-source port: one pose shape for everything that moves a figure; the planned walk as one adapter |
 | `footprint-storyreel/mocap` → `fromPose(keypoints, {x, size, …})` · `MOCAP` · `SCHEMES` · `RIG_JOINTS` | motion copied from a video's 2D keypoints (COCO-17, MediaPipe-33), as a motion source with its record |
 | `footprint-storyreel/kits/cartoon/figure` → `drawFigure(ctx, pose, {floor, size})` · `figureAt` · `FIGURE_COLORS` | a cartoon figure any motion source moves; planted feet stay put |
@@ -1979,7 +2316,7 @@ the default because it rarely does; there is no swap repair.
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/review`, `/slideshow`, `/geometry`, `/claims`, `/regions`, `/captions`, `/layout`, `/transitions`, `/breakdown`, `/camera`, `/kits/whiteboard`, `/kits/cartoon`, `/pose`, `/mocap`, `/kits/cartoon/figure`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/review`, `/slideshow`, `/geometry`, `/claims`, `/decorative`, `/regions`, `/captions`, `/layout`, `/transitions`, `/breakdown`, `/camera`, `/beats`, `/music`, `/kits/whiteboard`, `/kits/cartoon`, `/pose`, `/mocap`, `/kits/cartoon/figure`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws

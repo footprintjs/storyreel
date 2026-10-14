@@ -33,7 +33,7 @@ import {icons} from './kits/whiteboard/board.mjs';
 import {drawCard, drawStage, drawSummary, drawConnector, cardEdge, PANEL, drawRecap, recapSlotBox, drawRecallFramed, drawGuess, GUESS_PLACES, GUESS_FLIP, cardPlacement, cardRowBoxes, stageBoxes} from './kits/paper/paper.mjs';
 import {tokenize, excerpt} from './kits/paper/code.mjs';
 import {readAttention, chip} from './attention.mjs';
-import {readFacts, exampleScenes, findClaims, labelSpans} from './claims.mjs';
+import {readFacts, exampleScenes, findClaims, labelSpans, numberLocale} from './claims.mjs';
 import {planCamera} from './camerawork.mjs';
 import {readNotes, placePushes, pushAt} from './notes.mjs';
 import {view, then, about, through, back} from './regions.mjs';
@@ -129,13 +129,13 @@ function fileLedger(root) {
  * reach every frame (film.inputs.files, in every segment's key): they are hashed on their own (film.inputs.facts), for
  * an approval to lock — a source corrected redraws nothing.
  */
-function storyFacts(given, root) {
+function storyFacts(given, root, lang = null) {
   if (given === undefined) return null;
-  if (typeof given !== 'string') return Object.freeze(readFacts(given, 'storyboard.facts', {root}));
+  if (typeof given !== 'string') return Object.freeze(readFacts(given, 'storyboard.facts', {root, lang}));
   const file = insideRoot(root, given);
   if (!existsSync(file)) throw new Error(`storyboard.facts names ${given}, which is not a file in the film's root (${root}): write the facts there ([{"value", "text"?, "source"}]), or give the list itself`);
   let list; try { list = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new Error(`storyboard.facts: ${given} is not JSON (${e.message}); it is a list of facts, [{"value", "text"?, "source"}]`); }
-  return Object.freeze(readFacts(list, `storyboard.facts (${given})`, {root}));
+  return Object.freeze(readFacts(list, `storyboard.facts (${given})`, {root, lang}));
 }
 
 /** Whether a story kit takes the context (`context: true`) or today's (spec, clock, motion). */
@@ -179,6 +179,8 @@ async function readyWorlds(readies) {
  * @param theme      a theme object, or the name of a built-in theme (default 'paper')
  * @param root       directory that recipe file paths (code excerpts) are relative to (default cwd)
  * @param strings    the string table for the film's language ({key: text}), when the recipe names strings
+ * @param lang       the language the film is shown in, a BCP 47 tag ("de", "fr", "en-IN", "ta"), or null: the numbers on
+ *                   screen are read by it (claims.mjs · numberLocale) — film.lang, and film.inputs.lang when given
  * @param hostKeys   top-level recipe keys the host application reads itself (allowed, ignored); any other unknown key refuses
  * @param record     true → the compile runs as a footprintjs flowchart and the film carries `record`
  *                   {narrative, snapshot} (record.mjs · recordSteps); false (default) → no record, nothing else changes
@@ -200,10 +202,12 @@ export async function compileFilm(options) {
  * summary)`, where `summary()` (called only when recording) says what the segment read and wrote.
  * The segments run the same code in the same order whether or not the compile is recorded.
  */
-async function* compileSteps({storyboard, board, timings, recipe, data, capture, kits = [], theme, root = process.cwd(), strings = null, hostKeys = [], cast = null, strategies = null, reducedMotion = false}) {
+async function* compileSteps({storyboard, board, timings, recipe, data, capture, kits = [], theme, root = process.cwd(), strings = null, lang = null, hostKeys = [], cast = null, strategies = null, reducedMotion = false}) {
   storyboard ??= board; data ??= capture ?? null;
   if (typeof reducedMotion !== 'boolean') throw new Error(`compileFilm: reducedMotion must be true (the camera's moves cut to their end framing; handheld off) or false (the default), not ${JSON.stringify(reducedMotion)}`);
   checkRecipeKeys(recipe, hostKeys);
+  // The language the film is shown in (a BCP 47 tag, or none): the numbers on screen are read by it (claims.mjs).
+  let filmLang; try { filmLang = numberLocale(lang)?.lang ?? null; } catch (e) { throw new Error(`compileFilm: ${e.message}`); }
   // The cast's names go into the text first ({{role}} → name; cast.mjs), so every reader sees the film as it is said.
   const castGiven = cast; cast = readCast(cast);
   storyboard = withCast(storyboard, cast, 'storyboard'); recipe = withCast(recipe, cast, 'recipe'); strings = strings === null ? null : withCast(strings, cast, 'strings');
@@ -223,7 +227,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const files = fileLedger(root), within = file => files.note(insideRoot(root, file));
   // Claims (claims.mjs): the facts the storyboard names — from inside the root, hashed for an approval but in no
   // segment's key (they draw nothing) — and the scenes it marks as example data, checked before anything is built.
-  const factList = storyFacts(storyboard.facts, root), examples = exampleScenes(storyboard);
+  const factList = storyFacts(storyboard.facts, root, filmLang), examples = exampleScenes(storyboard);
   let labels = [];   // when the example label is up (claims.mjs · labelSpans): set once the film's lines are known
   const allKits = [whiteboardKit, ...kits];
   const storyKits = Object.fromEntries(allKits.filter(k => k.story).map(k => [k.name, k.story]));
@@ -912,7 +916,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   };
   // An emphasis word is up from its beat until the next word's, or its own `until` (read again on the plain clock: no beat is logged twice).
   const emphasized = attention?.record?.emphasis?.words ?? [], untilOf = i => { const u = recipe.emphasis?.words?.[i]?.until; return u === undefined ? Infinity : base.at(u); };
-  const shown = [...shownLines.filter(l => Number.isFinite(l.from) && l.from < clock.total).map(l => ({text: l.text, at: Math.max(0, l.from), to: Math.min(clock.total, l.to), scene: sceneOf(Math.max(0, l.from)), path: l.path})),
+  const shown = [...shownLines.filter(l => Number.isFinite(l.from) && l.from < clock.total).map(l => ({text: l.text, at: Math.max(0, l.from), to: Math.min(clock.total, l.to), ...(l.gone !== undefined ? {gone: Math.min(clock.total, l.gone)} : {}), scene: sceneOf(Math.max(0, l.from)), path: l.path})),
     ...emphasized.map((w, i) => ({text: w.text, at: w.t, to: Math.min(untilOf(i), emphasized[i + 1]?.t ?? Infinity, clock.total), scene: sceneOf(w.t), path: `emphasis.words[${i}]`})),
     ...storyboard.scenes.flatMap(captionsOf)];
   // The example label (exampleLabel): over each example scene, and on while any line it shows is still on screen.
@@ -932,10 +936,11 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const readProblems = reads.filter(r => r.problem);
   if (readingRule === 'refuse' && readProblems.length) throw new Error(`Reads that cannot land (the recipe says reading: "refuse"): ${readProblems.slice(0, 3).map(r => r.problem).join('; ')}${readProblems.length > 3 ? `; and ${readProblems.length - 3} more` : ''}`);
   if (readingRule === 'refuse' && reading.length) throw new Error(`Too short to read (the recipe says reading: "refuse"): ${reading.slice(0, 3).map(l => `"${l.text}" (${l.path}) is up ${l.seconds} s and needs ${l.needs} s`).join('; ')}${reading.length > 3 ? `; and ${reading.length - 3} more` : ''}`);
-  /** Every line the film shows to be read, with when it is whole on screen and when it starts to leave. */
+  /** Every line the film shows to be read, with when it is whole on screen, when it starts to leave and (gone) when its last ink does. */
   function readableLines() {
     const lines = [], leaves = i => stages[i + 1] ? arrivalOf(stages[i + 1]).from : (teaser ? teaser.at : clock.total);
-    const worldLines = (w, prefix, from, to) => { for (const l of w.instance.texts?.() ?? []) lines.push({...l, path: `${prefix}.${l.path}`, from: Math.max(l.from, from), to: Math.min(l.to, to)}); };
+    // A line's `gone` (its last ink: an eraser's end) is held to the world's time on screen too, and never before its `to`.
+    const worldLines = (w, prefix, from, to) => { for (const l of w.instance.texts?.() ?? []) lines.push({...l, path: `${prefix}.${l.path}`, from: Math.max(l.from, from), to: Math.min(l.to, to), ...(l.gone !== undefined ? {gone: Math.min(Math.max(l.gone, l.to), to)} : {})}); };
     worldLines(storyWorld, recipe.story ? 'story' : 'whiteboard', 0, push ? boardEnd + TURN * .45 : (stages[0] ? arrivalOf(stages[0]).from : clock.total));
     stages.forEach((st, i) => {
       const sp = `stages[${i}]`, whole = arrivalOf(st).to, gone = leaves(i);
@@ -1039,20 +1044,21 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     data: data === null ? null : hashOf(data), theme: hashOf(paper), files: Object.freeze(files.list()), ...(castGiven ? {cast: hashOf(castGiven)} : {}),
     // A film whose camera moves are cut for reduced motion is another film: an approval of the moving one does not cover it.
     ...(reducedMotion && camerawork ? {reducedMotion: true} : {}),
-    ...(factList ? {facts: hashOf(factList.map(({kind, ...written}) => written))} : {})});   // the facts as written
+    ...(factList ? {facts: hashOf(factList.map(({kind, ...written}) => written))} : {}),   // the facts as written
+    ...(filmLang ? {lang: filmLang} : {})});   // the language its numbers are read by: an approval of the film in one is not of it in another
   // Each string's own hash (segments.mjs): a segment's key holds only the strings its entries name, so changing one
   // word redraws the segments that show it, not the whole film. Not part of `inputs` (the table's hash is).
   const stringHashes = strings ? Object.freeze(Object.fromEntries(Object.keys(strings).map(k => [k, hashOf(strings[k])]))) : null;
   // Claims (claims.mjs): every number the film shows, each with the fact that backs it or the example scene it sits in
   // (an example line is labelled for as long as it is up: labelSpans).
   const claims = Object.freeze({facts: factList, examples: Object.freeze([...examples]), labels: Object.freeze(labels.map(l => Object.freeze({...l}))),
-    numbers: Object.freeze(findClaims(shown, {facts: factList, examples, scenes: storyboard.scenes.map(sc => sc.id)}).map(Object.freeze))});
+    numbers: Object.freeze(findClaims(shown, {facts: factList, examples, scenes: storyboard.scenes.map(sc => sc.id), lang: filmLang}).map(Object.freeze))});
   // What is drawn over every shot for a while: the guess cards, from their question to the card gone.
   const overlays = Object.freeze(guesses.map((g, n) => Object.freeze({path: `guesses[${n}]`, from: g.start, to: g.until + .5})));
   return {total: clock.total, clock, timings, sounds, listening, frame, beats, strings: [...used], notes: notesApplied, attention: attention?.record ?? null, focusAt: attention?.focus?.viewAt ?? null,
     camera: camerawork?.record ?? null, cameraAt: camerawork?.viewAt ?? null, reading, reads, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching,
     rows: Object.freeze(rows().map(Object.freeze)), overlays, inputs, stringHashes, mouthsAt, partsAt, pictureAt: pictureClock,
-    lines: Object.freeze(lines.map(l => Object.freeze({...l}))), changes: Object.freeze(pictureChanges().map(c => Object.freeze({...c}))), claims};
+    lines: Object.freeze(lines.map(l => Object.freeze({...l}))), changes: Object.freeze(pictureChanges().map(c => Object.freeze({...c}))), claims, lang: filmLang};
 }
 
 /** What reading the inputs gave (record.mjs): the recipe's top-level keys, each scene's seconds, the notes, the strings used. */

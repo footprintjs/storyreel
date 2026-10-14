@@ -88,9 +88,12 @@ function placeOf(item) {
   return {box: [Math.min(...xs) - pad, Math.min(...ys) - pad, Math.max(...xs) + pad, Math.max(...ys) + pad], label: shapesOf.map(([kind]) => kind).join(', ')};
 }
 
-/** The words written on the board: [{text, from (fully written), to (the eraser starts), path}] — for the reading-time check. */
+/**
+ * The words written on the board: [{text, from (fully written), to (the eraser starts), gone? (the eraser's end: its last
+ * ink), path}] — for the reading-time check (from–to) and the example label, which stays while any ink does (to gone).
+ */
 export function boardTexts(board) {
-  return board.places.filter(p => p.write).map(p => ({text: p.label, from: p.at + p.dur, to: p.erase ? p.erase.at : Infinity, path: p.path}));
+  return board.places.filter(p => p.write).map(p => ({text: p.label, from: p.at + p.dur, to: p.erase ? p.erase.at : Infinity, ...(p.erase ? {gone: p.erase.at + p.erase.dur} : {}), path: p.path}));
 }
 
 /** What the board shows at t, item by item: [{box, path: 'items[n]', label, name?}] (drawn, and not yet wiped away). */

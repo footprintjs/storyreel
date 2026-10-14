@@ -35,7 +35,13 @@ export interface NumberFact { value: number | string; text?: string; source: str
  * screen (`at`) to when it starts to leave (`to`), its scene and recipe entry (`captions` for the captions, `drawn` for a
  * word the review read off the picture), whether the scene is example data, and the backing fact's source (or null).
  */
-export interface Claim { number: string; line: string; offset: number; at: number; to: number; scene: string | null; path: string; example: boolean; source: string | null; sourceKind: 'url' | 'file' | 'unverified' | null }
+export interface Claim { number: string; line: string; offset: number; at: number; to: number; scene: string | null; path: string; example: boolean; source: string | null; sourceKind: 'url' | 'file' | 'unverified' | null;
+  /** The language it was read by (the film's lang), when the film has one. */
+  lang?: string;
+  /** Drawn as code (decorative.mjs · code): read as code writes numbers, whatever the film's language. */
+  code?: true;
+  /** Not one number as read: 'no language' ("2,5" in a film with none — a decimal comma, or a list?), or the language it is not one number in. Only a fact written the same way sources it. */
+  ambiguous?: string }
 /** When the example label is up: over an example scene, and on while any line it shows is still on screen. */
 export interface ExampleLabel { from: number; to: number; words: string; scene: number }
 /** Every number the film shows, with the facts the storyboard names (null: none, so the numbers outside example scenes cannot be checked), each scene's example label (or null) and when a label is up. */
@@ -352,12 +358,14 @@ export interface Film {
   partsAt(t: number): (Parts & {path: string})[];
   /** The picture's clock at t: the voice's, except in a camera's freeze (held) or speed ramp (slow, then catching up). */
   pictureAt(t: number): number;
-  /** Every line the film shows to be read (titles, footers, list lines, a world's words, guess cards, the push-in caption, an example scene's label): when it is whole on screen, when it starts to leave, the recipe entry. */
-  lines: readonly {text: string; from: number; to: number; path: string}[];
+  /** Every line the film shows to be read (titles, footers, list lines, a world's words, guess cards, the push-in caption, an example scene's label): when it is whole on screen, when it starts to leave, when its last ink goes (`gone`, an eraser's end, when it has one), the recipe entry. */
+  lines: readonly {text: string; from: number; to: number; gone?: number; path: string}[];
   /** Every change of picture: each stage's arrival (the push-in, an entrance, a hand-over, a cut) and the teaser, from–to. */
   changes: readonly {from: number; to: number; what: string}[];
   /** Every number the film shows and where it comes from: a fact the storyboard names, or an example scene. */
   claims: Claims;
+  /** The language the film is shown in (compileFilm's lang, canonical BCP 47), or null: its numbers are read by it. */
+  lang: string | null;
   /** The recipe's poster frame (seconds), or null. */
   posterAt: number | null;
   /** Stills worth checking: each settled picture and each change half way. */
@@ -401,7 +409,8 @@ export interface StoryWorld {
    * into the arriving one's, exactly: the same layer in both stays itself. A film with a pushIn draws none.
    */
   overlay?(ctx: any, t: number): void;
-  texts?(): {text: string; from: number; to: number; path: string}[];
+  /** The lines it shows to be read: whole from `from`, starting to leave at `to`, its last ink gone at `gone` (an eraser's end; `to` when left out). */
+  texts?(): {text: string; from: number; to: number; gone?: number; path: string}[];
   /** Settles once the world can draw (e.g. its images have decoded); compileFilm waits for it before drawing recalls and before returning. */
   ready?: Promise<unknown>;
   /**
@@ -482,6 +491,8 @@ export interface ContextKit extends Omit<Kit, 'story'> {
 export interface CompileFilmOptions<K = Kit | ContextKit> {
   storyboard: Storyboard; timings: Timings; recipe: Recipe; data?: unknown; kits?: K[];
   theme?: string | Record<string, unknown>; root?: string; strings?: Record<string, string> | null;
+  /** The language the film is shown in, a BCP 47 tag ("de", "fr", "en-IN", "ta"): the numbers on screen are read by it (film.lang). Without one, a number the languages read apart ("2,5", "1,000") is ambiguous. */
+  lang?: string | null;
   /** Top-level recipe keys the host application reads itself: allowed, and ignored by the engine. */
   hostKeys?: string[];
   /** Who is in the film ({role: {name, …}}): {{role}} in the text becomes the name; kits get it as context.cast. */
@@ -509,10 +520,10 @@ export interface Loudness {
   /** Why the pass was skipped: 'the audio is silent: …' for pure silence, else 'could not read: <fields>'. */
   reason?: string;
   /** Each role measured apart before the mix (integrated loudness, LUFS; null when there is none): the effects stay well under the voice. */
-  roles?: {voice: number | null; effects: number | null};
+  roles?: {voice: number | null; effects: number | null; music?: number | null};
 }
 /** One thing the sound asks too much of the ear for (listening.mjs). */
-export interface ListeningFinding { kind: 'every-change' | 'same-twice' | 'effects-loud'; at: number; where?: string; text: string }
+export interface ListeningFinding { kind: 'every-change' | 'same-twice' | 'effects-loud' | 'music-loud'; at: number; where?: string; text: string }
 
 /** The shapes a film is posted in (layout.mjs): landscape 1920×1080, square 1080×1080, portrait 1080×1350, vertical 1080×1920 (portrait and vertical show a 4:3 crop). */
 export type FormatName = 'landscape' | 'square' | 'portrait' | 'vertical';
@@ -581,6 +592,10 @@ export function renderFilm(options: {
   posterFrame?: boolean;
   /** How the picture is made: wholeVideo() (the default: every frame in one pass) or segmentedVideo({...}) (cached segments, joined). */
   video?: VideoStrategy;
+  /** A song under the film: its first second plays at film second `start` (negative: it begins that far in), at `gain` (0.2), fading over the last `fadeOut` seconds (1.5). */
+  music?: import('./sub/music.js').SongPlacement | null;
+  /** 'start' (the default: each sound begins on its moment) or 'peak' (each sound's loudest transient lands on it). */
+  soundAt?: 'start' | 'peak';
 }): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; format?: FormatName; captions?: {vtt?: string; srt?: string}; loudness: Loudness; listening: ListeningFinding[]; video?: SegmentsReport}>;
 
 /** A way to make the picture (segments.mjs): plan the parts, make each one, join them; render runs the three in order. */
@@ -632,7 +647,9 @@ export interface FilmInputs { storyboard: string; timings: string; recipe: strin
   /** Present when the film's camera moves were cut for reduced motion: another film, as far as an approval goes. */
   reducedMotion?: true;
   /** The facts the storyboard names (storyboard.facts), hashed on their own: an approval locks them; they are in no segment's key (they draw nothing). */
-  facts?: string }
+  facts?: string;
+  /** The language the film's numbers are read by, when it has one: an approval of the film in one language is not of it in another. */
+  lang?: string }
 /** What a person approved: who, when, the render they watched, and what it was made from. */
 export interface Approval { schemaVersion: 2; approved: string; by: string; note?: string; render?: string; inputs: FilmInputs }
 /** Approve a render as it was watched, from its making-of record (the path of its making-of.json, or the object). */
@@ -678,6 +695,8 @@ export interface MakeFilmOptions<K = Kit | ContextKit> {
   check?: 'report' | 'refuse' | null;
   /** The length the brief asks for, for the duration check. */
   expect?: {seconds?: number; tolerance?: number};
+  /** A song under the film: its beat map and the fit (scene starts onto the beat, the drop on a key moment) run as stages of their own; the record keeps both. */
+  music?: import('./sub/music.js').MusicOptions | null;
   /** true: the recipe's camera moves are cut to their end framing, handheld off (as compileFilm). */
   reducedMotion?: boolean;
   /** Every number on screen has a source (a verdict, with its decide() evidence in the record): 'report' (the default: the record's `claims` lists the numbers with no source) or 'refuse' (one refuses the film before it is drawn, and so does a film whose numbers cannot be checked). */
@@ -706,7 +725,7 @@ export function speechIndex(scene: Storyboard['scenes'][number], timing: SceneTi
 export function phraseMatches(index: unknown, phrase: string): {start: number; end: number}[];
 export function ramp(t: number, at: number, d?: number): number;
 export function withStrings<T>(recipe: T, strings: Record<string, string> | null, used?: Set<string>): T;
-export function createSound(options: {duration: number; events: SoundEvent[]; peakCeilingDBFS?: number}): {wav: Uint8Array};
+export function createSound(options: {duration: number; events: SoundEvent[]; peakCeilingDBFS?: number; soundAt?: 'start' | 'peak'}): {wav: Uint8Array};
 export function loadTheme(name?: string): Record<string, unknown>;
 export function validateTheme(theme: unknown): void;
 export const whiteboardKit: Kit;

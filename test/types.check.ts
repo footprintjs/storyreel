@@ -294,8 +294,33 @@ export const walkNames: readonly string[] = WALK_NAMES;
 // @ts-expect-error a walk needs the figure's size
 walk({from: 0, to: 100, start: 0});
 
+// The beat map (beats.ts) and music under a film (music.ts): a map's questions, the fit's verdicts, the options.
+import {beatMap, peakOf, BEATS, type BeatMap} from '../types/sub/beats.js';
+import {fitToMusic, MUSIC, type MusicOptions, type MusicCut} from '../types/sub/music.js';
+export const mapped: Promise<BeatMap> = beatMap('song.mp3', {bpm: 120, range: [80, 160]});
+export const onTheBeat = (map: BeatMap): boolean => map.onBeat(map.nearestBeat(3) ?? 0, BEATS.onBeat) && map.nextBeat(1) !== null && map.drop !== 0;
+export const hitAt: number = peakOf('door.wav');
+export const musicOptions: MusicOptions = {file: 'song.mp3', gain: .2, snap: {tolerance: MUSIC.tolerance}, dropOn: ['story', 'came home', .5]};
+export const fitted = (storyboard: Storyboard, timings: import('../types/index.js').Timings, map: BeatMap): Promise<MusicCut[]> => fitToMusic({storyboard, timings, beats: map, snap: true}).then(f => f.cuts);
+// An unsure map cuts only on the beats every candidate shares; the fit says which grid it cut on; bad options carry a code.
+import {safeBeats, likelyTempi, beatMapText, backbeatEveryOther, type SafeBeats, type BeatOptionsError} from '../types/sub/beats.js';
+export const settleWith = (map: BeatMap): string => `${beatMapText(map, {source: 'theme.mp3'})}\n${likelyTempi(map, BEATS.likely).join(', ')} · ${map.hits.length} hits · ${safeBeats(map).unheard ?? 0} unheard`;
+export const tactus = (map: BeatMap): boolean => map.levels.some(l => l.fails.includes('backbeat slower')) || backbeatEveryOther({phase: 1, kicked: 1, steady: 1, backbeat: {phase: 1, covered: .5, alternate: 1}, fill: {2: {full: 0, low: 0}, 3: {full: 0, low: 0}, 4: {full: 0, low: 0}}});
+export const cutOnly = (map: BeatMap): readonly number[] => map.sure ? map.beats : safeBeats(map).beats;
+export const gridOf = (map: BeatMap): SafeBeats['grid'] => map.verdict === 'tempo-close' ? safeBeats(map, {tolerance: BEATS.safe.tolerance}).grid : 'every beat';
+export const fitGrid = (storyboard: Storyboard, timings: import('../types/index.js').Timings, map: BeatMap): Promise<string> => fitToMusic({storyboard, timings, beats: map, snap: true}).then(f => `${f.cutOn.grid}: ${f.cutOn.beats} of ${f.cutOn.of}`);
+export const isOptionsError = (e: unknown): e is BeatOptionsError => e instanceof Error && (e as Partial<BeatOptionsError>).code === 'BEAT_OPTIONS';
+// @ts-expect-error a verdict is one of the five
+export const badVerdict: BeatMap['verdict'] = 'tempo-maybe';
+// @ts-expect-error dropOn is a key, not a scene id
+export const badDrop: MusicOptions = {file: 'song.mp3', dropOn: 'story'};
+// @ts-expect-error soundAt is 'start' or 'peak'
+export const badAt: Parameters<typeof RenderFilm>[0]['soundAt'] = 'middle';
 // Breakdown (types/sub/breakdown.d.ts): a reference film as a spec; a beat reader is any function that answers {bpm, beats, drop?}.
 import {breakdown, BREAKDOWN} from '../types/sub/breakdown.js';
+import {beatMap as readTheBeats} from '../types/sub/beats.js';
+// The beat map fits the breakdown's reader as it is: its verdict, its candidates' grids and its hits are read by safeBeats.
+export const withBeats = breakdown('ref.mp4', {beatMap: readTheBeats, beatOptions: {bpm: 120}}).then(r => r.spec.audio.beats.ran ? `${r.spec.audio.beats.sure} ${r.spec.audio.beats.judged.beats} ${r.spec.audio.beats.cuts.map(c => c.onBeat ?? 'not judged').join()}` : r.spec.audio.beats.why);
 import type {BeatReader, BreakdownSpec} from '../types/sub/breakdown.js';
 const beats: BeatReader = async () => ({bpm: 120, beats: Object.freeze([0.5, 1]), drop: null, confidence: .8, alternatives: [{bpm: 60, score: .9}]});
 const wrapped: BeatReader = (file, {ffmpeg}) => ({bpm: 120, beats: [file.length, ffmpeg.length]});
@@ -378,3 +403,22 @@ export const joined: string = drawnLines([{text: '12', box: [0, 0, 30, 24]}, {te
 export const lingers = (film: Film): string[] => lingeringExamples(film.claims, {scenes: [{from: 0, to: film.total}], examples: film.claims.examples, ids: ['a']}).filter(g => g.numbers.length).map(g => lingerText(g));
 export const lingerCheck: string = CHECKS['example-lingers'].label;
 export const sharedNumbers: ReviewCheck = {label: 'Drawn numbers', when: () => true, find: ({drawn, lingers: stretches}) => [...drawn.map(c => ({kind: 'drawn', t: c.at, what: c.number})), ...stretches.map(g => ({kind: 'lingers', t: g.from, what: g.scene ?? ''}))]};
+// Decorative text (types/sub/decorative.d.ts): drawn and read, never a claim; a line's last ink (`gone`) on a kit's texts.
+import {decorative, isDecorative, DECORATIVE} from '../types/sub/decorative.js';
+import type {Word} from '../types/sub/review.js';
+export const numbered = (ctx: {fillText(t: string, x: number, y: number): void}): number => decorative(ctx, c => { c.fillText('1', 0, 0); return 1; }) + (isDecorative(ctx) ? 1 : 0);
+export const marked = (w: Word): boolean => w.decorative === true && typeof DECORATIVE === 'symbol';
+export const joins: number = DRAWN.point + DRAWN.size + DRAWN.baseline;
+import {HOLD, drawnClaims as heldDrawn} from '../types/sub/claims.js';
+export const heldFor = (film: Film): number => heldDrawn([{t: 0, words: [{text: 'load 42 %'}]}], {claims: film.claims, sceneOf: () => 0, wordsAt: () => []}).length + HOLD.seconds + HOLD.step + HOLD.fine;
+export const lastInk = (film: Film): number => film.lines.reduce((n, l) => Math.max(n, l.gone ?? l.to), 0);
+// The film's language (compileFilm's lang): numbers read by it.
+import {numberLocale, numberValue} from '../types/sub/claims.js';
+import type {CompileFilmOptions} from '../types/index.js';
+export const readInLang = (film: Film): string => `${numberValue('2,5', {lang: film.lang})} ${numberLocale('en-IN')?.secondary ?? 0} ${film.inputs.lang ?? ''} ${film.claims.numbers[0]?.ambiguous ?? ''}`;
+export const inGerman = (o: CompileFilmOptions): CompileFilmOptions => ({...o, lang: 'de'});
+// Code is read as code (types/sub/decorative.d.ts · code): a mark beside decorative.
+import {code, isCode, CODE} from '../types/sub/decorative.js';
+import {CODE_READING} from '../types/sub/claims.js';
+export const coded = (ctx: {fillText(t: string, x: number, y: number): void}): boolean => code(ctx, c => { c.fillText('x = 16.67;', 0, 0); return isCode(c); }) && typeof CODE === 'symbol' && CODE_READING.cut === ',';
+export const codeWord = (w: Word): boolean => w.code === true;

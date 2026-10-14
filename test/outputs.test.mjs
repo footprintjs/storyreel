@@ -16,6 +16,7 @@ import {makeRelease} from '../src/release.mjs';
 import {breakdown} from '../src/breakdown.mjs';
 import {loadProject, still} from '../src/tools.mjs';
 import {folderStore} from '../src/segments.mjs';
+import {fitVoice} from '../src/music.mjs';
 
 const has = cmd => !spawnSync(cmd, ['-version']).error;
 const posix = process.platform !== 'win32';
@@ -189,6 +190,16 @@ test('pacing a voice in place replaces a link at the scene\'s audio and at the u
   assert.ok(readFileSync(path.join(run, 'a.wav')).length > tone.length, 'the paced audio, with its tail');
 });
 
+test('fitting a voice to a song replaces a link at a scene\'s audio, and never writes the take it points at', t => {
+  const run = tempDir('fit', t), victims = tempDir('victims', t), take = path.join(victims, 'take.wav'), tone = toneWav(1);
+  writeFileSync(take, tone); symlinkSync(take, path.join(run, 'a.wav'));
+  const before = {scenes: [{id: 'a', audio: 'a.wav', duration: 1, words: []}]}, after = {scenes: [{id: 'a', audio: 'a.wav', duration: 1.5, words: []}]};
+  assert.equal(fitVoice(run, before, after).scenes[0].duration, 1.5);
+  assert.ok(lstatSync(path.join(run, 'a.wav')).isFile(), 'a file of the run\'s own');
+  assert.equal(readFileSync(path.join(run, 'a.wav')).length, tone.length + 24000, 'padded by half a second at 24 kHz, 16-bit');
+  assert.deepEqual(readFileSync(take), tone, 'the take is untouched');
+});
+
 test('the segment store replaces a link planted at a segment\'s file or its manifest, and reuses the segment', t => {
   const dir = tempDir('store', t), work = tempDir('work', t), store = folderStore(dir), key = 'k'.repeat(24);
   const planted = plant(t, dir, [`${key}.mp4`, `${key}.json`]);
@@ -212,6 +223,7 @@ const OWN = [
   ['files.mjs', "writeFileSync(path.join(to, 'timings.json'), bytes, {flag: 'wx'})", 'copyVoice: into the voice copy makeScratch made (0700), exclusively'],
   ['files.mjs', "writeFileSync(target, readFileSync(path.join(base, f)), {flag: 'wx'})", 'copyVoice: the same'],
   ['pipeline.mjs', "writeFileSync(path.join(copy, 'timings.json')", 'the voice copy makeScratch made'],
+  ['pipeline.mjs', "if (scope.narration) writeFileSync(path.join(scope.narration, 'timings.json')", 'fit-to-music: the same copy (place-narration, the last stage, makes it narration/)'],
   ['render.mjs', "spawnSync(ffmpeg, ['-y', '-hide_banner'", 'runReporting: the mux, into the work folder (finishRender renames it onto out)'],
   ['render.mjs', "writeFileSync(path.join(dir, 'film-narration.txt')", 'joinVoice: called with the work folder'],
   ['render.mjs', "spawn(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'rawvideo'", 'encodeFrames: a picture in the work folder (wholeVideo, segmentedVideo)'],
@@ -223,7 +235,6 @@ const OWN = [
   ['segments.mjs', 'writeFileSync(list, files.map(', 'ffmpegJoin: beside its out, the joined picture in the work folder'],
   ['segments.mjs', "spawnSync(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'concat'", 'ffmpegJoin: the same'],
   ['stills.mjs', 'writeFileSync(script, filter)', 'the stills pass\'s tempScratch folder'],
-  ['breakdown.mjs', "spawnSync(run.o.ffmpeg, ['-v', 'error', '-y'", 'readBeatsStage: the sound, in a tempScratch folder'],
 ];
 
 test('no write in src/ goes around writeOutput: every raw write is one listed as writing into StoryReel\'s own folder', () => {
