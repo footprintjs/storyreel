@@ -62,7 +62,7 @@ function readLevel({gain = MUSIC.gain, fadeOut = MUSIC.fadeOut}, who) {
 /** A song file that exists, or a refusal naming it. */
 function songFile(file, who) {
   if (typeof file !== 'string' || !file.trim()) throw new Error(`${who}: file is the song (any audio FFmpeg reads), e.g. "music/theme.mp3"`);
-  if (!existsSync(file)) throw new Error(`${who}: there is no song at ${file}`);
+  if (!existsSync(file)) throw new Error(`${who}: there is no song at ${file}: give the path of a WAV or MP3 file (relative to the film's root)`);
   return file;
 }
 
@@ -277,7 +277,7 @@ function move(work, choice) {
 
 /** A 16-bit PCM WAV, read: its rate, its channels and its sample frames (the bytes after the header). */
 function readWav(bytes, name) {
-  if (bytes.toString('ascii', 0, 4) !== 'RIFF' || bytes.toString('ascii', 8, 12) !== 'WAVE') throw new Error(`music: ${name} is not a WAV file`);
+  if (bytes.toString('ascii', 0, 4) !== 'RIFF' || bytes.toString('ascii', 8, 12) !== 'WAVE') throw new Error(`music: ${name} is not a WAV file: convert it (ffmpeg -i song.mp3 song.wav)`);
   let at = 12, fmt = null, data = null;
   while (at + 8 <= bytes.length) {
     const id = bytes.toString('ascii', at, at + 4), size = bytes.readUInt32LE(at + 4);

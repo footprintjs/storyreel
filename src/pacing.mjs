@@ -23,10 +23,12 @@ const FADE = .015; // seconds of fade either side of an insertion (no clicks)
 export function validatePacing(pacing, board) {
   if (pacing === undefined) return null;
   if (!pacing || typeof pacing !== 'object' || Array.isArray(pacing)) throw new TypeError('pacing must be an object');
-  for (const key of Object.keys(pacing)) if (!['voiceSpeed', 'sceneTail', 'holds', 'tails'].includes(key)) throw new TypeError(`pacing has unsupported key ${key}`);
+  for (const key of Object.keys(pacing)) if (!['voiceSpeed', 'sceneTail', 'holds', 'tails'].includes(key)) throw new TypeError(`pacing has unsupported key ${key} (pacing takes voiceSpeed, sceneTail, holds, tails)`);
   if (!(pacing.voiceSpeed >= .8 && pacing.voiceSpeed <= 1.1)) throw new RangeError('pacing.voiceSpeed must be between 0.8 and 1.1');
-  if (!(pacing.sceneTail >= .3 && pacing.sceneTail <= 3)) throw new RangeError('pacing.sceneTail must be between 0.3 and 3 seconds');
-  if (!Array.isArray(pacing.holds) || pacing.holds.length > 120) throw new TypeError('pacing.holds must list at most 120 holds');
+  if (pacing.sceneTail === undefined) throw new TypeError('pacing.sceneTail is missing: give the settle after each scene\'s last word, 0.3–3 seconds (e.g. "sceneTail": 0.8)');
+  if (!(pacing.sceneTail >= .3 && pacing.sceneTail <= 3)) throw new RangeError(`pacing.sceneTail must be between 0.3 and 3 seconds, not ${JSON.stringify(pacing.sceneTail)}`);
+  if (pacing.holds === undefined) throw new TypeError('pacing.holds is missing: give a list of {scene, after, seconds}, or [] for none');
+  if (!Array.isArray(pacing.holds) || pacing.holds.length > 120) throw new TypeError('pacing.holds must be a list of {scene, after, seconds}, at most 120 holds');
   for (const [i, hold] of pacing.holds.entries()) {
     if (!hold || typeof hold !== 'object') throw new TypeError(`holds[${i}] must be an object`);
     for (const key of Object.keys(hold)) if (!['scene', 'after', 'seconds'].includes(key)) throw new TypeError(`holds[${i}] has unsupported key ${key}`);
@@ -41,7 +43,7 @@ export function validatePacing(pacing, board) {
     if (!pacing.tails || typeof pacing.tails !== 'object' || Array.isArray(pacing.tails)) throw new TypeError('pacing.tails must be an object of scene id → seconds');
     for (const [id, seconds] of Object.entries(pacing.tails)) {
       if (!(seconds >= .3 && seconds <= 8)) throw new RangeError(`pacing.tails.${id} must be between 0.3 and 8 seconds`);
-      if (board && !board.scenes.some(s => s.id === id)) throw new TypeError(`pacing.tails.${id} is not a storyboard scene`);
+      if (board && !board.scenes.some(s => s.id === id)) throw new TypeError(`pacing.tails.${id} is not a storyboard scene (the scenes are ${board.scenes.map(s => s.id).join(', ')})`);
     }
   }
   return pacing;
@@ -153,7 +155,7 @@ export function paceTimings(board, timings, pacing) {
   timings = withDirections(board, timings);
   const scenes = board.scenes.map((scene, index) => {
     const timing = timings.scenes[index];
-    if (timing?.id !== scene.id) throw new Error('Pacing scene identity mismatch');
+    if (timing?.id !== scene.id) throw new Error('Pacing scene identity mismatch');   // refusal: internal (withDirections lines the timings up first)
     const speech = speechIndex(scene, timing);
     if (!speech) throw new Error(`Pacing needs complete word timings for ${scene.id}`);
     const plan = pacing.holds.filter(h => h.scene === scene.id).map(hold => {
@@ -189,7 +191,7 @@ async function voiceRate(runDir, board, timings) {
 async function silentAudio(runDir, scene, timing, rate) {
   if (timing.audio && await exists(path.join(runDir, timing.audio))) return false;
   const name = `silent-${String(scene.id).replace(/[^\w-]/g, '_')}.wav`, file = path.join(runDir, name);
-  if (await exists(file.replace(/\.wav$/, '.unpaced.wav'))) throw new Error(`Pacing already applied to ${scene.id}`);
+  if (await exists(file.replace(/\.wav$/, '.unpaced.wav'))) throw new Error(`Pacing already applied to ${scene.id}: pace a fresh copy of the voice folder (its .unpaced.wav files are the originals)`);
   writeOutput(file, silentWav(timing.duration, rate));
   timing.audio = name;
   return true;
@@ -209,10 +211,10 @@ export async function applyPacing({runDir, board, timings, pacing}) {
   const records = [], rate = await voiceRate(runDir, board, timings);
   for (const [index, scene] of board.scenes.entries()) {
     const timing = timings.scenes[index];
-    if (timing.id !== scene.id) throw new Error('Pacing scene identity mismatch');
+    if (timing.id !== scene.id) throw new Error('Pacing scene identity mismatch');   // refusal: internal (withDirections lines the timings up first)
     const generated = scene.silent !== undefined && await silentAudio(runDir, scene, timing, rate);
     const file = path.join(runDir, timing.audio), original = file.replace(/\.wav$/, '.unpaced.wav');
-    await access(original).then(() => { throw new Error(`Pacing already applied to ${scene.id}`); }, () => {});
+    await access(original).then(() => { throw new Error(`Pacing already applied to ${scene.id}: pace a fresh copy of the voice folder (its .unpaced.wav files are the originals)`); }, () => {});
     const wav = readPcm16(await readFile(file));
     const plan = planHolds(scene, timing, pacing.holds, wav);
     const lastWord = timing.words.filter(w => w.text.replace(/[^\p{L}\p{N}]/gu, '')).at(-1).end;

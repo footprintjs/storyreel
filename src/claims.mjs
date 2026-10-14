@@ -192,14 +192,15 @@ function valueOf(b) {
 const ambiguous = (run, locale) => typeof valueIn(run, locale) === 'string' && (mixedScripts(run) || /^[−\-–]?\d+([.,]\d+)+$/.test(plainDigits(String(run)).plain));
 
 /**
- * What a fact's source is: 'url' (an http or https address), 'file' (a path inside the film's root that is there — a
+ * What a fact's source is: 'url' (an http or https address, alone or followed by notes after a space: "https://x.org/t
+ * table 2, 2024 figures" — the leading URL is the source, the rest its notes), 'file' (a path inside the film's root that is there — a
  * document, or a record with a pointer into it after '#': "run.json#steps[2]"), or 'unverified' (anything else: words
  * nobody can follow, kept and reported, never refused — "/r/science thread" and "trust me" too). Only a path that is
  * there, outside the root, refuses, naming the fix: words that lead nowhere are words, whatever they start with.
  * Without a root, only a URL is verified.
  */
 export function sourceKind(source, {root = null, where = 'facts'} = {}) {
-  if (/^https?:\/\/[^\s]+$/i.test(source)) return 'url';
+  if (/^https?:\/\/[^\s]+(\s|$)/i.test(source)) return 'url';
   if (root === null) return 'unverified';
   const file = source.split('#')[0];
   if (!file.trim() || !existsSync(path.resolve(root, file))) return 'unverified';
@@ -223,7 +224,7 @@ export function readFacts(list, where = 'facts', {root = null, lang = null} = {}
     if (!Number.isFinite(f.value)) {
       const found = typeof f.value === 'string' ? numbersIn(f.value, {lang}) : [], shows = `value is the number as the screen shows it (16.67, −5, or "1,000", "2,5", "3:15" as written), not ${JSON.stringify(f.value)}`;
       if (typeof f.value !== 'string' || !found.length) throw new Error(`${name}: ${shows}`);
-      if (found.length > 1) throw new Error(`${name}: ${shows}, which shows ${found.length} numbers (${found.map(n => JSON.stringify(n)).join(', ')}): one fact per number`);
+      if (found.length > 1) throw new Error(`${name}: ${shows}, which shows ${found.length} numbers (${found.map(n => JSON.stringify(n)).join(', ')}): one fact per number: give each number a fact of its own`);
       if (found[0] !== f.value) throw new Error(`${name}: ${shows}: give the number alone (${JSON.stringify(found[0])}) and the words around it in text`);
     }
     if (f.text !== undefined && !(typeof f.text === 'string' && normSpeech(f.text))) throw new Error(`${name}: text is the words the number is shown with ("16.67 ms"), or left out`);

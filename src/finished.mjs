@@ -58,7 +58,7 @@ export function ffmpegProbe({ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', ffprob
     probe(file) {
       const info = JSON.parse(run(ffprobe, ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', file], file));
       const v = info.streams.find(s => s.codec_type === 'video'), a = info.streams.find(s => s.codec_type === 'audio');
-      if (!v) throw new Error(`checkVideo: ${file} has no picture`);
+      if (!v) throw new Error(`checkVideo: ${file} has no picture: give a video with a picture track`);
       const rateOf = text => { const [n, d] = String(text).split('/').map(Number); return d ? n / d : n; };
       const fps = rateOf(v.avg_frame_rate && v.avg_frame_rate !== '0/0' ? v.avg_frame_rate : v.r_frame_rate), rate = rateOf(v.r_frame_rate);
       const rotation = Number(v.side_data_list?.find(x => x.rotation !== undefined)?.rotation ?? v.tags?.rotate ?? 0) || 0, turned = Math.abs(rotation) % 180 === 90;

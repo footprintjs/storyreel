@@ -105,7 +105,7 @@ function worldOf(m, worldAt) {
   layers.forEach((l, i) => {
     if (!l || typeof l.name !== 'string' || !l.name.trim() || seen.has(l.name)) throw new Error(`${where}: the kit "${kit}"'s layers[${i}] needs a name of its own (a layer is {name, depth})`);
     if (!(Number.isFinite(l.depth) && l.depth > 0)) throw new Error(`${where}: the kit "${kit}"'s layer "${l.name}" has depth ${JSON.stringify(l.depth)}; a depth is a number above 0 (1: the subject's plane, 2 twice as far)`);
-    if (i && l.depth > layers[i - 1].depth) throw new Error(`${where}: the kit "${kit}"'s layers go back to front, the farthest first; "${l.name}" (depth ${l.depth}) is farther than "${layers[i - 1].name}" (depth ${layers[i - 1].depth}), above it`);
+    if (i && l.depth > layers[i - 1].depth) throw new Error(`${where}: the kit "${kit}"'s layers go back to front, the farthest first; "${l.name}" (depth ${l.depth}) is farther than "${layers[i - 1].name}" (depth ${layers[i - 1].depth}), above it: list "${l.name}" first`);
     seen.add(l.name);
   });
   return {world: on.world, path: on.path, layers: layers.map(l => Object.freeze({name: l.name, depth: l.depth}))};

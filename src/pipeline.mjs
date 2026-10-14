@@ -174,7 +174,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   const video = checkVideoStrategy(render.video ?? wholeVideo()), done = [];
   const stages = {
     'check-inputs': scope => {
-      if (!storyboard?.scenes?.length) throw new Error('The storyboard has no scenes');
+      if (!storyboard?.scenes?.length) throw new Error('The storyboard has no scenes: give it scenes: [{id, narration} or {id, silent: [[what happens, seconds]]}]');
       // A silent cut has no voice speed to check; its holds and tails are checked the same way.
       if (pacing) validatePacing(narrationDir ? pacing : {voiceSpeed: 1, ...pacing}, storyboard);
       scope.scenes = storyboard.scenes.length;
@@ -197,7 +197,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
         if (voiceCheck === 'refuse') {
           if (!voice) throw new Error(`voiceCheck: 'refuse' needs the voice's word check, and ${narrationDir} has no word-check.json: check the voice (check_words.py) before the final render`);
           if (!voice.checked) throw new Error(`voiceCheck: 'refuse' needs a word check that listened back (notHeardCount in ${path.join(narrationDir, 'word-check.json')}); this one only aligned the words: check the voice again (check_words.py)`);
-          if (voice.stale) throw new Error(`voiceCheck: 'refuse': ${voice.stale}`);
+          if (voice.stale) throw new Error(`voiceCheck: 'refuse': ${voice.stale}`);   // refusal: voice.stale says what to check again
           if (voice.notHeard.length) throw new Error(`The voice check did not hear ${voice.notHeard.map(w => `"${w.word}" (${w.scene})`).join(', ')}: choose another take (voice_takes.py), reword the line, or write a number as a say slot`);
         }
       } else {

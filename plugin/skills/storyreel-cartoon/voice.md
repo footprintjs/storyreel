@@ -29,7 +29,9 @@ voice port with a clip cache keyed by what is said; any engine fits it.
 `pacing: {voiceSpeed, sceneTail, holds: [{scene, after, seconds}], tails?}` inserts silence after a phrase so a
 drawing can land, and at each scene's end. `voiceSpeed` is 0.8–1.1 (1 for a silent cut), `sceneTail` 0.3–3 s, a hold
 0.1–6 s, `tails: {scene: seconds}` overrides one scene's tail. With a voice the silence is cut into the audio; in a
-silent cut `paceTimings` shifts the word times the same way. A silent scene takes no hold: lengthen its direction.
+silent cut `paceTimings` shifts the word times the same way, and a film with no voice at all is paced too: `makeFilm`
+paces the `timings` it is given, and the CLI paces its even timings by the config's `pacing`. `sceneTail` and `holds`
+are required (`holds: []` for none). A silent scene takes no hold: lengthen its direction.
 
 ```js run
 import assert from 'node:assert/strict';

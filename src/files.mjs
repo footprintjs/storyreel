@@ -227,7 +227,7 @@ export function makeFolder(dir, fs = {}) {
   const planned = securePath(dir, fs);
   (fs.mkdir ?? mkdirSync)(planned, {recursive: true, mode: FOLDER_MODE});
   const made = securePath(planned, fs);
-  if (made !== planned) throw new Error(`${planned} changed while StoryReel made it: a folder on the way now leads to ${made} — ${FIX}`);
+  if (made !== planned) throw new Error(`${planned} changed while StoryReel made it: a folder on the way now leads to ${made} — ${FIX}`);   // refusal: FIX names it
   return made;
 }
 

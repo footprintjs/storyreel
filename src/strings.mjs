@@ -21,7 +21,7 @@ export function withStrings(recipe, strings, used = new Set()) {
     if (keys.length === 1 && keys[0] === '$string') {
       const key = value.$string;
       if (!strings) throw new Error(`${where} names the string "${key}", and no string table was given`);
-      if (!Object.hasOwn(strings, key) || typeof strings[key] !== 'string') throw new Error(`The string table has no "${key}" (${where})`);
+      if (!Object.hasOwn(strings, key) || typeof strings[key] !== 'string') throw new Error(`The string table has no "${key}" (${where}): add "${key}" to it, or name a string it has`);
       used.add(key);
       return strings[key];
     }

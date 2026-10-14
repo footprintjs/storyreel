@@ -155,17 +155,17 @@ export function makeClock(board, timings) {
   board.scenes.forEach((scene, i) => {
     checkScene(scene, i);
     const timing = timings.scenes[i];
-    if (timing.id !== scene.id) throw new Error(`Timing ${i} is ${timing.id}, expected ${scene.id}`);
+    if (timing.id !== scene.id) throw new Error(`Timing ${i} is ${timing.id}, expected ${scene.id}: give the timings in the storyboard's scene order`);
     offsets.push(at); byId[scene.id] = i;
     speech[scene.id] = speechIndex(scene, timing);
-    if (!speech[scene.id]) throw new Error(`Complete word timings are required for ${scene.id}`);
+    if (!speech[scene.id]) throw new Error(`Complete word timings are required for ${scene.id}: give every word of its narration a timing ({text, start, end}), or time it with evenTimings`);
     maps[i] = speech[scene.id].slots;
     const words = timing.words.filter(w => w.text.replace(/[^\p{L}\p{N}]/gu, ''));
     spoken[scene.id] = {first: words[0].start, last: words.at(-1).end};
     at += timing.duration;
   });
   const total = at;
-  const sceneIndex = id => { if (!(id in byId)) throw new Error(`Unknown scene ${id}`); return byId[id]; };
+  const sceneIndex = id => { if (!(id in byId)) throw new Error(`Unknown scene ${id} (the scenes are ${Object.keys(byId).join(', ')})`); return byId[id]; };
   // Each scene's said words on the whole-lesson clock (a silent scene's directions are seen, never said).
   // Who says each word: the word's own `speaker` (a voice step that knows who said what writes it — the narrator and
   // the characters taking turns inside one scene), else the scene's, else null (the narrator).

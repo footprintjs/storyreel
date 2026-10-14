@@ -320,6 +320,8 @@ test('a source is a URL, a file in the root, or kept as unverified — "trust me
   const outer = tempDir('sources', t), dir = path.join(outer, 'film');
   mkdirSync(dir); writeFileSync(path.join(dir, 'run.json'), '{"steps": []}'); writeFileSync(path.join(outer, 'elsewhere.md'), '# outside the film');
   assert.equal(sourceKind('https://example.org/x', {root: dir}), 'url');
+  assert.equal(sourceKind('https://example.org/x table 2, the 2024 figures', {root: dir}), 'url', 'a URL followed by notes: the leading URL is the source');
+  assert.equal(sourceKind('see https://example.org/x', {root: dir}), 'unverified', 'words first lead nowhere');
   assert.equal(sourceKind('run.json#steps[2]', {root: dir}), 'file', 'a record with a pointer into it');
   assert.equal(sourceKind('missing.csv', {root: dir}), 'unverified');
   assert.equal(sourceKind('trust me', {root: dir}), 'unverified');

@@ -581,7 +581,8 @@ r.record.filter(e => e.type === 'condition').map(e => e.text);
 
 `r.verdicts` is the same as data, `[{check, label, verdict, why, measured, summary}]`, every verdict check in order.
 A failed verdict's reasons are findings too (`r.findings`, `r.text`): the stretches held still, the parts that break,
-the numbers with no source. `npx storyreel review` prints the verdicts under the findings. A verdict check of your own
+the numbers with no source. `npx storyreel review --full` prints the verdicts under the findings (by default, the
+counts and the verdicts that did not pass). A verdict check of your own
 is `{label, why, notRun, when(scope), measure(review) → {measured, hits}, verdict: {rules, passed}}` in `checks`:
 each measured value goes on the scope by its name, for the rules' filters (`{deadShare: {gt: .5}}`).
 
@@ -1460,7 +1461,11 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   package ships the skill that teaches the order — timeline, review, fix, part, one still last — `storyreel-review`,
   beside the skills that build a film ([Skills for AI agents](#skills-for-ai-agents)). `footprint-storyreel/tools` is the one core both use.
   `npx storyreel beats <song>` needs no project: it prints a song's beat map for settling its tempo (see Music: cut on
-  the beat).
+  the beat). **Short by default:** `review` and `part` print a summary an agent can afford to read — the counts, the
+  verdicts that did not pass with why, the first 5 findings (errors before advice), the rest counted
+  (`footprint-storyreel/review` · `reviewSummary`); `--full` prints every finding and every verdict's why. Every
+  command takes `--help` (`npx storyreel still --help`). A config's `pacing` paces a film with no voice too (its even
+  timings), as `makeFilm` paces the timings it is given.
 - **And as an MCP server,** for any assistant that speaks MCP: `storyreel mcp [--flag value …]` serves the same
   five tools over stdio (the flags are every call's defaults; a still or a strip comes back as the picture). Each call runs in
   a fresh process, so an edit to a kit between two calls is always seen:

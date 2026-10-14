@@ -9,5 +9,7 @@ export default {
   film: flags => ({
     storyboard: {title: 'Tools', scenes: [{id: 'one', title: 'One', narration: 'A first scene with a few words in it, said slowly.'}, {id: 'two', narration: 'And a second scene, a little shorter.'}]},
     recipe: {story: {kit: 'words'}}, kits: [words], layout: {format: 'landscape', captions: true}, out: flags.out ?? 'out',
+    // --paced: a film with no voice, paced (a 2 s hold, a 1.5 s tail); --paced notail: the holds without their sceneTail.
+    ...(flags.paced ? {pacing: {...(flags.paced === 'notail' ? {} : {sceneTail: 1.5}), holds: [{scene: 'one', after: 'a few words', seconds: 2}]}} : {}),
   }),
 };

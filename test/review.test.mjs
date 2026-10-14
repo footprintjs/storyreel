@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import {createCanvas} from '@napi-rs/canvas';
 import {compileFilm, evenTimings} from '../src/index.mjs';
 import {compileLayout} from '../src/layout.mjs';
-import {wordsAt, reviewPart, findingsText, REVIEW_CHECKS} from '../src/review.mjs';
+import {wordsAt, reviewPart, findingsText, reviewSummary, wordsOnScreen, REVIEW_CHECKS} from '../src/review.mjs';
+import {code} from '../src/decorative.mjs';
 
 // One long spoken scene; the picture: a title, two labels over each other from 2 s to 4 s, a word under the
 // caption band from 5 s to 7 s, a word past the right edge throughout, a moving square until 8 s, then nothing moves.
@@ -71,7 +72,7 @@ test('a director\'s checks: no hook when nothing moves in the first 3 s; too muc
   const r = await reviewPart(tight);
   const of = kind => r.findings.filter(f => f.kind === kind);
   assert.ok(of('hook').length === 1 && of('hook')[0].from === 0 && near(of('hook')[0].to, 3), JSON.stringify(of('hook')));
-  assert.ok(of('text-density').length === 1 && near(of('text-density')[0].from, 10) && near(of('text-density')[0].to, 12.75) && of('text-density')[0].what === 'more than 35 words on screen');
+  assert.ok(of('text-density').length === 1 && near(of('text-density')[0].from, 10) && near(of('text-density')[0].to, 12.75) && /^64 words on screen, more than 35 \(captions count, code does not\): "this is line 0 of a long block \/ this is line 1 of a long block \/ this is line 2 of a long…"; cut words, or show them in turn$/.test(of('text-density')[0].what), of('text-density')[0]?.what);
   assert.match(of('silences')[0]?.what ?? '', /^no real silence \(0\.8 s or more with nothing playing\)/);
   const paused = await compileFilm({storyboard: board, timings: evenTimings(board, {wordSeconds: .5, tail: 1.5}), recipe: {story: {kit: 'still-start'}}, kits: [kit]});
   assert.match((await reviewPart(paused)).findings.find(f => f.kind === 'silences')?.what ?? '', /^only one real silence/, 'the pause between the two scenes is one breath');
@@ -87,6 +88,38 @@ test('a fill over the whole frame veils the words under it: under a near-opaque 
   assert.equal(wordsAt(f, .5).find(w => w.text === 'UNDER').alpha, 1);
   const after = wordsAt(f, 1.5);
   assert.ok(after.find(w => w.text === 'UNDER').alpha < .2, 'veiled'); assert.equal(after.find(w => w.text === 'OVER').alpha, 1);
+});
+
+test('too much to read counts words as a reader does: draws joined into lines, a sign is no word, code() is left out, and the finding quotes what it counted', async () => {
+  // Syntax colouring draws code token by token: "const total = items.reduce(sum);" is 11 draws and 5 words.
+  const TOKENS = ['const', ' ', 'total', ' = ', 'items', '.', 'reduce', '(', 'sum', ')', ';'];
+  const draw = (c, lines) => lines.forEach(y => { let x = 100; for (const p of TOKENS) { c.fillText(p, x, y); x += c.measureText(p).width; } });
+  const kitOf = (name, rows, asCode = false) => ({name, story: {compile: () => ({hang: 1, draw: (c, t) => {
+    c.fillStyle = '#eee'; c.fillRect(0, 0, 1600, 900); c.fillStyle = '#222'; c.font = '28px sans-serif'; c.textBaseline = 'middle'; c.textAlign = 'left';
+    c.fillRect(100 + 40 * t, 800, 30, 30);
+    const lines = Array.from({length: rows}, (_, i) => 80 + 60 * i);
+    if (asCode) code(c, () => draw(c, lines)); else draw(c, lines);
+  }})}});
+  const dense = async kit => (await reviewPart(await compileFilm({storyboard, timings: evenTimings(storyboard, {wordSeconds: .5}), recipe: {story: {kit: kit.name}}, kits: [kit]}), {from: 1, to: 3})).findings.filter(f => f.kind === 'text-density');
+  assert.equal((await dense(kitOf('six', 6))).length, 0, '6 lines are 30 words (66 draws, and 60 by the old count of every draw\'s pieces)');
+  const eight = await dense(kitOf('eight', 8));
+  assert.equal(eight.length, 1, 'one finding for the run, not one per sample');
+  assert.match(eight[0].what, /^40 words on screen, more than 35 \(captions count, code does not\): "const total = items reduce \(sum\); \/ const total = items reduce \(sum\); \/ const total = item…"; cut words, or show them in turn$/, 'a "." is no word; touching draws join');
+  assert.equal((await dense(kitOf('coded', 8, true))).length, 0, 'code is studied, not read at once: it is not counted');
+  assert.equal(wordsOnScreen([{text: 'a = b', box: [0, 0, 50, 20]}, {text: '.', box: [60, 0, 62, 20]}]).count, 2);
+});
+
+test('a review said short: the counts, the verdicts that did not pass with why, the first findings (errors before advice), the rest counted', () => {
+  const findings = [
+    {kind: 'still', from: 1, to: 7, scene: 'a', what: 'the picture does not change'},
+    ...Array.from({length: 6}, (_, i) => ({kind: 'words-overlap', from: 10 + i, to: 11 + i, scene: 'b', what: `"A${i}" and "B${i}"`}))];
+  const verdicts = [{check: 'slideshow', label: 'No slideshow', verdict: 'passed', why: 'it moves'}, {check: 'geometry', label: 'Drawn parts hold together', verdict: 'not run', why: 'no kit gives its parts'}];
+  assert.equal(reviewSummary({findings, verdicts}, {more: '--full lists every one'}), [
+    '7 findings: 1 nothing changes, 6 words over words · verdicts: 1 passed, 1 not run',
+    'Drawn parts hold together · not run: no kit gives its parts',
+    ...[0, 1, 2, 3, 4].map(i => `0:${10 + i}.0–0:${11 + i}.0 b · words over words: "A${i}" and "B${i}"`),
+    '… 2 more findings: --full lists every one'].join('\n'));
+  assert.equal(reviewSummary({findings: [], verdicts: [verdicts[0]]}), 'nothing found · verdicts: 1 passed');
 });
 
 test('text too small to read is texture: a photo of a page does not count as words on screen', async () => {

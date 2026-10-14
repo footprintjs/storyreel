@@ -62,7 +62,7 @@ export const icons = {
 };
 /** A sign drawn crisp and at once (on paper: beside a code line, on a tag), in the current transform. */
 export function drawIcon(ctx, name, x, y, s, color, width = 2) {
-  if (!icons[name]) throw new Error(`Unknown icon ${name}`);
+  if (!icons[name]) throw new Error(`Unknown icon ${name} (the icons are ${Object.keys(icons).join(', ')})`);
   ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   for (const line of icons[name](x, y, s)) { ctx.beginPath(); line.forEach(([px, py], i) => i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)); ctx.stroke(); }
   ctx.restore();

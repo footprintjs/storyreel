@@ -1,24 +1,23 @@
 ---
 name: storyreel-cartoon
-description: Build a cartoon film with StoryReel (footprint-storyreel) from scratch - project setup, a storyboard (spoken or silent), a kit that draws the world, a figure that walks, a recipe with camera moves, review checks, a small draft render, approval and release. Use when making a cartoon, an animated short or an explainer with footprint-storyreel, or adding a scene, a walk or a camera move to one.
+description: Build a cartoon film with StoryReel (footprint-storyreel) from scratch - setup, a storyboard (spoken or silent), a kit that draws the world, a walking figure, a recipe with camera moves, review, a small draft render, approval and release. Use when making a cartoon, animated short or explainer with footprint-storyreel, or adding a scene, walk or camera move to one.
 ---
 
 # Build a cartoon with StoryReel
 
 The main path as one working, silent 20.8 s film: a figure walks across a farm, a bird flies off the fence, the
-camera dollies in, she waves. Each file below is complete. Open the pages beside this file only when a step needs more.
+camera dollies in, she waves. Each file below is complete; open a page beside this one only when a step needs more.
 
 ## 1. Set up
 
-`mkdir farm-film && cd farm-film && npm init -y && npm i footprint-storyreel` (Node 22 or later). Write `.mjs` files,
-and run every script and command from this folder: they read and write relative to it. FFmpeg is needed for step 6.
+`mkdir farm-film && cd farm-film && npm init -y && npm i footprint-storyreel` (Node 22 or later). Write `.mjs` files
+and run everything from this folder (paths are relative to it). FFmpeg is needed for step 6.
 
 ## 2. The storyboard: what happens, and when
 
-A silent scene lists **directions**, `[what happens, seconds]`; the recipe names a direction exactly as it would a
-spoken phrase (its words are spread evenly over its seconds, so name it from its first word to land at its start),
-and a direction is never spoken. A spoken scene has `"narration": "…"` instead ([voice.md](voice.md)). These add up to
-20 s; `evenTimings` adds a 0.8 s tail to each scene (`evenTimings(storyboard, {tail})`).
+A silent scene lists **directions**, `[what happens, seconds]`, never spoken; the recipe names one as it would a
+spoken phrase (from its first word, to land at its start). A spoken scene has `"narration": "…"` ([voice.md](voice.md)).
+These add up to 20 s; `evenTimings` adds a 0.8 s tail to each scene (`evenTimings(storyboard, {tail})`).
 
 ```json file=storyboard.json
 {"title": "A walk on the farm", "scenes": [{"id": "farm", "title": "The farm", "silent": [
@@ -28,10 +27,10 @@ and a direction is never spoken. A spoken scene has `"narration": "…"` instead
 
 ## 3. The kit: what is drawn
 
-A story kit's `compile(spec, clock)` gets the recipe's `story` entry and returns `draw(ctx, t)`: the whole 1600×900
-frame at any second `t`. Times come from phrases (`clock.at([scene, phrase])`), never from seconds in the code. `walk`
-plans feet that never slide, `drawFigure` draws any pose, `regionsAt` names what a camera can frame, `parts` lets the
-review check the legs. The pose, `joints` and `figureAt`'s points: [kits.md](kits.md#a-figure-the-pose-and-its-points).
+A story kit's `compile(spec, clock)` gets the recipe's `story` entry and returns `draw(ctx, t)`: the 1600×900 frame
+at any second `t`, its times from phrases (`clock.at([scene, phrase])`), never seconds in the code. `walk` plans feet
+that never slide, `drawFigure` draws a pose, `regionsAt` names what a camera can frame, `parts` lets the review check
+the legs ([kits.md](kits.md#a-figure-the-pose-and-its-points)).
 
 ```js file=farm.mjs
 import {walk, WALKS} from 'footprint-storyreel/walk';
@@ -84,7 +83,8 @@ export const farmKit = {name: 'farm', story: {compile}};
 ## 4. The recipe: when, by phrase
 
 `story.kit` names the kit; the other `story` keys are the kit's own (here, the phrases it acts on). `camera` lists
-moves by name ([camera.md](camera.md)). An unknown top-level key, or a phrase not in the storyboard, refuses.
+moves by name ([camera.md](camera.md)). `[scene, phrase, seconds]` lands that many seconds after the phrase starts
+(`["farm", "she waves", 1.5]`). An unknown top-level key, or a phrase not in the storyboard, refuses.
 
 ```json file=recipe.json
 {"story": {"kit": "farm",
@@ -109,25 +109,24 @@ npx storyreel timeline
 npx storyreel review
 ```
 
-`timeline` gives every beat's second; `review` reads the picture as text and gives three verdicts
-([checks.md](checks.md)). The same in code, as a gate that fails on a finding, a failed verdict or a compile list:
+`timeline` gives every beat's second; `review` reads the picture as text: a summary and three verdicts (`--full` for
+every finding; [checks.md](checks.md)). The same as a gate in code, failing on a finding, a failed verdict or a list:
 
 ```js run file=check.mjs
 import {readFileSync} from 'node:fs';
 import {compileFilm, evenTimings} from 'footprint-storyreel';
 import {reviewPart} from 'footprint-storyreel/review';
 import {farmKit} from './farm.mjs';
-const read = file => JSON.parse(readFileSync(file, 'utf8'));
-const storyboard = read('storyboard.json'), recipe = read('recipe.json');
-const film = await compileFilm({storyboard, recipe, kits: [farmKit], timings: evenTimings(storyboard)});
-const review = await reviewPart(film);
+const read = file => JSON.parse(readFileSync(file, 'utf8')), storyboard = read('storyboard.json');
+const film = await compileFilm({storyboard, recipe: read('recipe.json'), kits: [farmKit], timings: evenTimings(storyboard)});
+const {findings, verdicts, verdictText} = await reviewPart(film);
 const weak = [...film.reading, ...film.watching, ...film.listening];   // what the compile lists without refusing
-console.log(`${film.total} s`, review.text || 'nothing found', `\n${review.verdictText}`, weak);
-if (review.findings.length || review.verdicts.some(v => v.verdict === 'failed') || weak.length) process.exit(1);
+console.log(verdictText, weak);
+if (findings.length || verdicts.some(v => v.verdict === 'failed') || weak.length) process.exit(1);
 ```
 
-Fix one finding at a time ("nothing new": no beat landed, so give the kit or recipe a moment to act on, here the bird).
-Look at frames last (`npx storyreel still --at farm+12`); the full loop is [storyreel-review](../storyreel-review/SKILL.md).
+Fix one finding at a time ("nothing new": no beat landed; give the kit a moment to act on, here the bird). Look at
+frames last (`npx storyreel still --at farm+12`); the full loop is [storyreel-review](../storyreel-review/SKILL.md).
 
 ## 6. A small draft render
 
@@ -143,18 +142,16 @@ const result = await makeFilm({storyboard, recipe, kits: [farmKit], timings: eve
 console.log(result.out, result.makingOf);      // real paths: out/draft/ holds film.mp4, making-of.json, chapters.txt
 ```
 
-`node make.mjs` takes seconds; without `width`/`height` a render is 1280×720<!-- RENDER_DEFAULTS.width RENDER_DEFAULTS.height -->. Render into a folder of your own:
-every folder above `out` must be yours or root's and writable by no one else unless sticky, or the render is refused
-([release.md](release.md#where-storyreel-may-write)). Delete drafts you no longer need: films are large.
+`node make.mjs` takes seconds; without `width`/`height` a render is 1280×720<!-- RENDER_DEFAULTS.width RENDER_DEFAULTS.height -->. With a `layout` (captions, a
+platform's shape) the format sets the size and `width`/`height` refuse: a captioned draft is `render: {layout:
+{format: 'landscape', captions: true, scale: 2/3}}`, 1280×720 ([release.md](release.md#one-film-every-platform)).
+Render into a folder of your own: one others can write to is refused ([release.md](release.md#where-storyreel-may-write)).
+Delete drafts you no longer need: films are large.
 
 ## 7. Read the record, approve, release
 
 `making-of.json` says what played and why (`beats`, `camera`, `claims`, `finished`, each stage's narrative): read it
 before guessing ([record.md](record.md)). When the person signs off the draft they watched, `approveFilm` locks what it
-was made from; `makeRelease` makes each platform's version and post ([release.md](release.md)).
-
-## Where to go next
-
-[kits.md](kits.md) (the cartoon world, the whiteboard, the figure) · [motion.md](motion.md) · [camera.md](camera.md) ·
-[voice.md](voice.md) · [music.md](music.md) · [mocap.md](mocap.md) (a figure moved by a phone video) · [checks.md](checks.md)
-· [breakdown.md](breakdown.md) (match a reference video) · [release.md](release.md) · [record.md](record.md).
+was made from; `makeRelease` makes each platform's version and post ([release.md](release.md)). More: [kits.md](kits.md)
+· [motion.md](motion.md) · [camera.md](camera.md) · [voice.md](voice.md) · [music.md](music.md) · [mocap.md](mocap.md)
+· [breakdown.md](breakdown.md).

@@ -32,7 +32,7 @@
      "phrase": "One",
      "nth": 0
     },
-    "says": "note \"push across mid the push-in\": the push runs from 15.12 s to 20.80 s, across the push-in (15.76 s); a push stays on one picture"
+    "says": "note \"push across mid the push-in\": the push runs from 15.12 s to 20.80 s, across the push-in (15.76 s); a push stays on one picture: end it before 15.76 s, or start it after the change"
    },
    {
     "across": "start of rule",
@@ -47,7 +47,7 @@
      "phrase": "One",
      "nth": 0
     },
-    "says": "note \"push across start of rule\": the push runs from 15.12 s to 20.80 s, across the push-in (15.76 s); a push stays on one picture"
+    "says": "note \"push across start of rule\": the push runs from 15.12 s to 20.80 s, across the push-in (15.76 s); a push stays on one picture: end it before 15.76 s, or start it after the change"
    }
   ]
  },
@@ -136,7 +136,7 @@
      "phrase": "Now",
      "nth": 0
     },
-    "says": "note \"push across mid the fade into valley\": the push runs from 6.00 s to 8.44 s, across the fade into valley (6.54 s); a push stays on one picture"
+    "says": "note \"push across mid the fade into valley\": the push runs from 6.00 s to 8.44 s, across the fade into valley (6.54 s); a push stays on one picture: end it before 6.54 s, or start it after the change"
    },
    {
     "across": "start of valley",
@@ -151,7 +151,7 @@
      "phrase": "Now",
      "nth": 0
     },
-    "says": "note \"push across start of valley\": the push runs from 6.00 s to 8.44 s, across the fade into valley (6.54 s); a push stays on one picture"
+    "says": "note \"push across start of valley\": the push runs from 6.00 s to 8.44 s, across the fade into valley (6.54 s); a push stays on one picture: end it before 6.54 s, or start it after the change"
    },
    {
     "across": "mid the wipe into rule",
@@ -166,7 +166,7 @@
      "phrase": "Here",
      "nth": 0
     },
-    "says": "note \"push across mid the wipe into rule\": the push runs from 21.84 s to 24.68 s, across the wipe into rule (22.78 s); a push stays on one picture"
+    "says": "note \"push across mid the wipe into rule\": the push runs from 21.84 s to 24.68 s, across the wipe into rule (22.78 s); a push stays on one picture: end it before 22.78 s, or start it after the change"
    },
    {
     "across": "start of rule",
@@ -181,7 +181,7 @@
      "phrase": "Here",
      "nth": 0
     },
-    "says": "note \"push across start of rule\": the push runs from 21.84 s to 24.68 s, across the wipe into rule (22.78 s); a push stays on one picture"
+    "says": "note \"push across start of rule\": the push runs from 21.84 s to 24.68 s, across the wipe into rule (22.78 s); a push stays on one picture: end it before 22.78 s, or start it after the change"
    },
    {
     "across": "mid the iris into again",
@@ -196,7 +196,7 @@
      "phrase": "Back",
      "nth": 0
     },
-    "says": "note \"push across mid the iris into again\": the push runs from 29.00 s to 31.45 s, across the iris into again (29.55 s); a push stays on one picture"
+    "says": "note \"push across mid the iris into again\": the push runs from 29.00 s to 31.45 s, across the iris into again (29.55 s); a push stays on one picture: end it before 29.55 s, or start it after the change"
    },
    {
     "across": "start of again",
@@ -211,7 +211,7 @@
      "phrase": "Back",
      "nth": 0
     },
-    "says": "note \"push across start of again\": the push runs from 29.00 s to 31.45 s, across the iris into again (29.55 s); a push stays on one picture"
+    "says": "note \"push across start of again\": the push runs from 29.00 s to 31.45 s, across the iris into again (29.55 s); a push stays on one picture: end it before 29.55 s, or start it after the change"
    }
   ]
  },
@@ -276,7 +276,7 @@
      "phrase": "The",
      "nth": 0
     },
-    "says": "note \"push across start of code\": the push runs from 12.08 s to 16.36 s, across the cut into code (15.06 s); a push stays on one picture"
+    "says": "note \"push across start of code\": the push runs from 12.08 s to 16.36 s, across the cut into code (15.06 s); a push stays on one picture: end it before 15.06 s, or start it after the change"
    },
    {
     "across": "mid the hand-over to keep",
@@ -291,7 +291,7 @@
      "phrase": "What",
      "nth": 0
     },
-    "says": "note \"push across mid the hand-over to keep\": the push runs from 21.82 s to 26.10 s, across the hand-over to keep (24.15 s); a push stays on one picture"
+    "says": "note \"push across mid the hand-over to keep\": the push runs from 21.82 s to 26.10 s, across the hand-over to keep (24.15 s); a push stays on one picture: end it before 24.15 s, or start it after the change"
    },
    {
     "across": "start of keep",
@@ -306,7 +306,7 @@
      "phrase": "What",
      "nth": 0
     },
-    "says": "note \"push across start of keep\": the push runs from 21.82 s to 26.10 s, across the hand-over to keep (24.15 s); a push stays on one picture"
+    "says": "note \"push across start of keep\": the push runs from 21.82 s to 26.10 s, across the hand-over to keep (24.15 s); a push stays on one picture: end it before 24.15 s, or start it after the change"
    },
    {
     "across": "start of recap",
@@ -321,7 +321,7 @@
      "phrase": "So",
      "nth": 0
     },
-    "says": "note \"push across start of recap\": the push runs from 31.94 s to 36.22 s, across the hand-over to recap (34.27 s); a push stays on one picture"
+    "says": "note \"push across start of recap\": the push runs from 31.94 s to 36.22 s, across the hand-over to recap (34.27 s); a push stays on one picture: end it before 34.27 s, or start it after the change"
    },
    {
     "across": "mid the hand-over to recap",
@@ -336,7 +336,7 @@
      "phrase": "So",
      "nth": 0
     },
-    "says": "note \"push across mid the hand-over to recap\": the push runs from 31.94 s to 36.22 s, across the hand-over to recap (34.27 s); a push stays on one picture"
+    "says": "note \"push across mid the hand-over to recap\": the push runs from 31.94 s to 36.22 s, across the hand-over to recap (34.27 s); a push stays on one picture: end it before 34.27 s, or start it after the change"
    },
    {
     "across": "mid the teaser",
@@ -351,7 +351,7 @@
      "phrase": "add",
      "nth": 0
     },
-    "says": "note \"push across mid the teaser\": the push runs from 50.80 s to 52.18 s, across the teaser (47.76 s); a push stays on one picture"
+    "says": "note \"push across mid the teaser\": the push runs from 50.80 s to 52.18 s, across the teaser (47.76 s); a push stays on one picture: end it before 47.76 s, or start it after the change"
    }
   ]
  }

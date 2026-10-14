@@ -25,7 +25,7 @@ export function jsonLines(text) {
         else value(`${path}[${n++}]`);
         space();
         if (text[i] === ',') { i++; continue; }
-        if (text[i] !== close) throw new Error(`Not JSON near line ${line}`);
+        if (text[i] !== close) throw new Error(`Not JSON near line ${line}: a comma or a closing ${close} is missing there`);
         i++; return;
       }
     }

@@ -16,7 +16,7 @@ import {compileFilm, evenTimings, paceTimings, makeFilm} from './index.mjs';
 import {contactSheet} from './sheet.mjs';
 import {partWindow, partTimeline, timelineText, RENDER_DEFAULTS} from './render.mjs';
 import {formatScale} from './layout.mjs';
-import {reviewPart, REVIEW_DEFAULTS} from './review.mjs';
+import {reviewPart, reviewSummary, REVIEW_DEFAULTS, SUMMARY_TOP} from './review.mjs';
 
 export const CONFIG = 'storyreel.config.mjs';
 const FILM_KEYS = ['storyboard', 'timings', 'recipe', 'kits', 'root', 'strings', 'data', 'theme', 'cast', 'lang', 'hostKeys'];
@@ -31,7 +31,9 @@ export async function loadProject({config = CONFIG, cwd = process.cwd(), ...flag
   const inputs = await made.film(flags);
   for (const key of ['storyboard', 'recipe']) if (!inputs?.[key]) throw new Error(`${config}: film() must return the ${key}`);
   const voiced = inputs.narrationDir && existsSync(path.join(inputs.narrationDir, 'timings.json'));
-  const timings = inputs.timings ?? (voiced ? paceTimings(inputs.storyboard, JSON.parse(readFileSync(path.join(inputs.narrationDir, 'timings.json'), 'utf8')), {voiceSpeed: 1, ...(inputs.pacing ?? {})}) : evenTimings(inputs.storyboard));
+  // A film with no voice is timed evenly — and paced, when the config names a pacing, as makeFilm paces given timings.
+  const even = () => (inputs.pacing ? paceTimings(inputs.storyboard, evenTimings(inputs.storyboard), {voiceSpeed: 1, ...inputs.pacing}) : evenTimings(inputs.storyboard));
+  const timings = inputs.timings ?? (voiced ? paceTimings(inputs.storyboard, JSON.parse(readFileSync(path.join(inputs.narrationDir, 'timings.json'), 'utf8')), {voiceSpeed: 1, ...(inputs.pacing ?? {})}) : even());
   const film = await compileFilm({...pick(inputs, FILM_KEYS), timings, root: inputs.root ?? cwd});
   return {film, inputs: {...inputs, timings, voiced}, cwd};
 }
@@ -39,6 +41,10 @@ export async function loadProject({config = CONFIG, cwd = process.cwd(), ...flag
 /** The tools' defaults, as data: a part's handles (seconds either side, a render's), a strip's frames and their rate, a still's width (px). */
 export const TOOL_DEFAULTS = Object.freeze({handles: RENDER_DEFAULTS.handles, frames: 12, fps: 30, width: 1200});
 
+/** A flag that is on: true, or 'true' as the command line and MCP hand it. */
+const yes = v => v === true || v === 'true';
+/** What a summary says to list the rest: the review's own flag. */
+const FULL_HINT = '--full lists every one';
 const scenesOf = v => (typeof v === 'string' ? v.split(',') : Array.isArray(v) ? v : []).map(s => String(s).trim()).filter(Boolean);
 const partOf = ({scene, scenes, handles} = {}) => { const list = scenesOf(scenes ?? scene); return list.length ? {scenes: list, handles: handles === undefined ? TOOL_DEFAULTS.handles : +handles} : null; };
 const head = (film, part, w) => `${part ? part.scenes.join(' + ') : 'the whole film'}: ${w.from.toFixed(2)}–${w.to.toFixed(2)} s of ${film.total.toFixed(2)} s`;
@@ -55,9 +61,10 @@ export async function timeline(project, args = {}) {
  * the end of its own scenes (the handles are not the part) must come round to their start.
  */
 export async function review(project, args = {}) {
-  const part = partOf(args), loop = args.loop === true || args.loop === 'true';
+  const part = partOf(args), loop = yes(args.loop);
   const r = await reviewPart(project.film, {...(part ? {part} : {}), layout: project.inputs.layout ?? null, loop});
-  return `${head(project.film, part, r.window)} — review (${r.ran.join(', ') || 'no check fits'}):\n${r.text || 'nothing found'}${r.verdicts?.length ? `\nverdicts:\n${r.verdictText}` : ''}`;
+  const said = yes(args.full) ? `${r.text || 'nothing found'}${r.verdicts?.length ? `\nverdicts:\n${r.verdictText}` : ''}` : reviewSummary(r, {more: FULL_HINT});
+  return `${head(project.film, part, r.window)} — review (${r.ran.join(', ') || 'no check fits'}):\n${said}`;
 }
 
 /** A quick look: the scenes with their handles, half size where the format allows, the draft encode; reviewed first. */
@@ -71,7 +78,8 @@ export async function part(project, args = {}) {
     ...(inputs.voiced ? {narrationDir: inputs.narrationDir, pacing: {voiceSpeed: 1, ...(inputs.pacing ?? {})}} : {timings: inputs.timings}),
     render: {part: p, quality: 'draft', stamp: `PART · ${p.scenes.join(' + ')}`, ...(layout ? {layout: {...layout, scale: half}} : {})}});
   const finished = JSON.parse(readFileSync(result.makingOf, 'utf8')).finished ?? {};
-  return `${read}\n${result.out} · ${result.seconds.toFixed(1)} s · made in ${((Date.now() - started) / 1000).toFixed(1)} s · checks ${finished.ok ? 'clean' : finished.ok === false ? 'problems found' : 'not run'}${(finished.findings ?? []).map(f => `\n  ${f.text ?? JSON.stringify(f)}`).join('')}`;
+  const found = finished.findings ?? [], shown = yes(args.full) ? found : found.slice(0, SUMMARY_TOP);
+  return `${read}\n${result.out} · ${result.seconds.toFixed(1)} s · made in ${((Date.now() - started) / 1000).toFixed(1)} s · checks ${finished.ok ? 'clean' : finished.ok === false ? 'problems found' : 'not run'}${shown.map(f => `\n  ${f.text ?? JSON.stringify(f)}`).join('')}${found.length > shown.length ? `\n  … ${found.length - shown.length} more: ${FULL_HINT}` : ''}`;
 }
 
 /** Moments as "scene+seconds", or seconds on the film clock; `tool` is the tool that asked, so a refusal names it. */
@@ -113,14 +121,16 @@ export async function strip(project, args = {}) {
   return {text: `${file} · ${moments.length} frames at ${fps} fps around ${moment.label} (${moment.t.toFixed(2)} s): frame 0 is the moment`, file};
 }
 
+/** The full flag: by default a review says the counts, the verdicts that did not pass and the first findings (review.mjs · reviewSummary). */
+const FULL_ARG = `true for every finding and every verdict's why (default: the counts, what did not pass, the first ${SUMMARY_TOP} findings)`;
 /** The tools, as the command line and an MCP server list them: what each does and what it takes. */
 export const TOOLS = Object.freeze({
   timeline: {run: timeline, about: 'When each scene starts and each beat lands, as text (times from the part\'s start). Read it before choosing a moment to look at.',
     args: {scene: 'scene ids, comma-separated (default: the whole film)', handles: `seconds of the film shown either side of the scenes (${TOOL_DEFAULTS.handles})`}},
   review: {run: review, about: `What is wrong, read from the picture as text: words under the captions, over each other, cut off at the edge, the picture frozen for ${REVIEW_DEFAULTS.stillFor} s, nothing new for ${REVIEW_DEFAULTS.newEvery} s while it moves. Times on the film clock. Then three verdicts (passed, failed, or not run): no slideshow, drawn parts hold together, every number on screen has a source.`,
-    args: {scene: 'scene ids, comma-separated (default: the whole film)', handles: `seconds either side (${TOOL_DEFAULTS.handles})`, loop: 'true when the part is made to loop: the end of its scenes (not the handles) must come round to their start'}},
+    args: {scene: 'scene ids, comma-separated (default: the whole film)', handles: `seconds either side (${TOOL_DEFAULTS.handles})`, loop: 'true when the part is made to loop: the end of its scenes (not the handles) must come round to their start', full: FULL_ARG}},
   part: {run: part, about: `A quick look at scenes: rendered with ${TOOL_DEFAULTS.handles} s of the film either side (both cuts seen), the draft encode (half size when the config names a layout); reviewed first. Prints the video's path.`,
-    args: {scene: 'scene ids, comma-separated (required)', handles: `seconds either side (${TOOL_DEFAULTS.handles})`}},
+    args: {scene: 'scene ids, comma-separated (required)', handles: `seconds either side (${TOOL_DEFAULTS.handles})`, full: FULL_ARG}},
   still: {run: still, picture: true, about: 'One picture to confirm the look: frames at the moments given, side by side, as a PNG. Look at it last, after the timeline and the review.',
     args: {at: 'moments: scene+seconds (or seconds), comma-separated (required)', width: `the picture's width in pixels (${TOOL_DEFAULTS.width})`}},
   strip: {run: strip, picture: true, about: 'A fast move frame by frame: consecutive frames around one moment, side by side, as a PNG — to catch a pop, a jump or two things crossing.',
