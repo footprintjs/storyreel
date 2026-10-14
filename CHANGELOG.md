@@ -9,13 +9,17 @@
   follow aims from where the follow cuts to, so both versions end on the same framing.
 - **A dolly on a thing never passes ×4 after it ends.** As it re-aims (a push or the focus moving the picture under
   it), it keeps the thing on its framing with its own roll, and a later dutch scales up to cover as anywhere. Its hold
-  is checked for ×4 until the next move on where the camera looks, or its picture changes; a dutch that would take a
-  held dolly past ×4 refuses, naming the dutch.
+  is checked for ×4 until moves have taken over both where it looks across and up and down (a pan on one leaves the
+  other re-aiming), or its picture changes; a dutch that would take a held dolly past ×4 refuses, naming the dutch and
+  the most the hold would need.
 - **A refusal names the move that moves.** Each move is checked over its own span before any dolly's hold, so a pan
   that cannot be covered after a held dolly names the pan, not the dolly.
 - **A dolly-out that cannot widen refuses.** When a dutch's cover need holds the zoom up, or the camera is already at
   the whole frame, a dolly-out would play as nothing or as a zoom in: it refuses instead, naming what holds the zoom
-  (level the dutch first, or leave the dolly-out out).
+  (level the dutch first, or leave the dolly-out out). It is judged from where the camera is headed, so both versions
+  of a film decide alike.
+- **The moving film and the reduced-motion film accept and refuse the same recipes, with the same words.** A recipe's
+  camera is checked as written and as cut, whichever version is made.
 
 ## 0.12.0 — walks with feet that roll heel to toe; a turn that reads as a turn
 

@@ -390,9 +390,52 @@ test('a refusal names the move that moves: a pan after a held dolly is checked o
 test('a dolly-out that cannot widen refuses as the no-op it is: a dutch holds the zoom up, or the camera is already at the whole frame', async () => {
   // A dolly in, then a 15° dutch with a dolly-out beside it: the dutch's cover need would zoom the picture IN (×1.3 → ×1.43).
   await assert.rejects(make({camera: [{move: 'dolly-in', at: ['a', 'red square'], until: ['a', 'quietly']}, {move: 'dutch', at: ['a', 'quietly'], seconds: 2, amount: 15}, {move: 'dolly-out', at: ['a', 'in'], seconds: 1.5}]}),
-    /camera\[2\] \(dolly-out\) cannot widen here: the dutch \(camera\[1\]\) needs ×1\.43 to keep the frame covered, and the camera is at ×1\.30 as it starts \(it would end at ×1\.43\); level the dutch first \(amount 0\), or leave the dolly-out out/);
+    /camera\[2\] \(dolly-out\) cannot widen here: the dutch \(camera\[1\]\) needs ×1\.43 to keep the frame covered; the camera is headed for ×1\.43 as it starts, and would end at ×1\.43; level the dutch first \(amount 0\), or leave the dolly-out out/);
   await assert.rejects(make({camera: [{move: 'dolly-out', at: ['a', 'red square']}]}), /camera\[0\] \(dolly-out\) cannot widen here: the camera is already at the whole frame/);
   const widens = await make({camera: [{move: 'dolly-in', at: ['a', 'red square'], until: ['a', 'quietly'], amount: 2}, {move: 'dutch', at: ['a', 'quietly'], seconds: 1, amount: 8}, {move: 'dolly-out', at: ['a', 'corner'], amount: 1.3}]});
   const c = at(widens, 'a', 'corner');
   assert.ok(widens.cameraAt(c + 2.5).z < widens.cameraAt(c - .1).z, 'a dolly-out the dutch leaves room for still widens');
+});
+
+test('a held dolly is checked until moves have taken over both where it looks across and up and down: a pan on x leaves y re-aiming', async () => {
+  const TOP = [700, 30, 900, 110], topKit = {name: 'top', story: {compile: () => ({hang: 1, regionsAt: () => [{box: TOP, path: 'top', label: 'top', name: 'top'}],
+    draw: c => { fill(c, GROUND, [0, 0, 1600, 900]); fill(c, RED, TOP); }})}};
+  const film = camera => compileFilm({storyboard, timings, kits: [topKit], recipe: {story: {kit: 'top'}, camera,
+    focus: {strategy: 'camera', keys: [{at: ['a', 'First'], on: 'top'}, {at: ['b', 'blue'], on: 'wide'}]}}});
+  const dolly = {move: 'dolly-in', at: ['a', 'sits'], seconds: 1, on: 'top', amount: 3}, dutch = {move: 'dutch', at: ['a', 'corner'], seconds: 1, amount: 30};
+  await assert.rejects(film([dolly, {move: 'pan', at: ['a', 'quietly'], seconds: .5, amount: 10}, dutch]),
+    /camera\[2\] \(dutch\) rolls the frame while camera\[0\] \(dolly-in\) holds on "top": at [\d.]+ s the picture would need ×5\.26 to keep the frame covered/);
+  // Without the pan the same hold refuses the same way (it used to name its first moment past ×4, ×4.13; now its furthest).
+  await assert.rejects(film([dolly, dutch]), /camera\[1\] \(dutch\) rolls the frame while camera\[0\] \(dolly-in\) holds on "top": at [\d.]+ s the picture would need ×5\.26/);
+});
+
+test('a dolly-out is judged from where the camera is headed, so the moving film and reduced motion refuse it alike', async () => {
+  const camera = [{move: 'dutch', at: ['a', 'First'], seconds: 1, amount: 20}, {move: 'dutch', at: ['a', 'sits'], seconds: 1.5, amount: 5}, {move: 'dolly-out', at: ['a', 'here'], seconds: 1}];
+  const said = async options => { try { await make({camera}, options); return 'accepted'; } catch (e) { return e.message; } };
+  const [moving, calm] = [await said({}), await said({reducedMotion: true})];
+  assert.match(moving, /camera\[2\] \(dolly-out\) cannot widen here: the dutch \(camera\[1\]\) needs ×1\.15 to keep the frame covered; the camera is headed for ×1\.15 as it starts, and would end at ×1\.15/);
+  assert.equal(calm, moving);
+});
+
+test('moving and reduced motion accept and refuse the same recipes, with the same words (generated recipes)', async () => {
+  let seed = 7;
+  const rand = () => { seed = (seed + 0x6D2B79F5) | 0; let x = Math.imul(seed ^ (seed >>> 15), 1 | seed); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+  const pick = list => list[Math.floor(rand() * list.length)], between = (a, b) => +(a + (b - a) * rand()).toFixed(2);
+  const beats = [['a', 'First'], ['a', 'red square'], ['a', 'sits'], ['a', 'here'], ['a', 'quietly'], ['a', 'in its'], ['a', 'corner'], ['a', 'of the page'], ['b', 'Then'], ['b', 'blue'], ['b', 'and then'], ['b', 'back'], ['b', 'whole page']];
+  const moves = {
+    pan: () => ({amount: between(-400, 400)}), tilt: () => ({amount: between(-250, 250)}), dutch: () => ({amount: between(-25, 25)}),
+    'dolly-in': () => ({amount: between(1.05, 2.5), ...(rand() < .5 ? {on: pick(['red', 'blue'])} : {})}), 'dolly-out': () => ({amount: between(1.05, 2)}),
+    crane: () => ({amount: between(-150, 150), scale: between(.8, 1.3)}), track: () => ({on: pick(['red', 'blue'])}),
+  };
+  const said = async (camera, options) => { try { const f = await make({camera}, options); return `accepted ${JSON.stringify(f.camera.moves.map(m => m.ends ?? null).at(-1))}`; } catch (e) { return e.message; } };
+  let refused = 0;
+  for (let k = 0; k < 40; k++) {
+    const at = [...new Set(Array.from({length: 2 + Math.floor(rand() * 3)}, () => beats.indexOf(pick(beats))))].sort((a, b) => a - b);
+    const camera = at.map(i => { const move = pick(Object.keys(moves)); return {move, at: beats[i], seconds: between(.5, 1.5), ...moves[move]()}; });
+    const [moving, calm] = [await said(camera, {}), await said(camera, {reducedMotion: true})];
+    if (!moving.startsWith('accepted')) refused++;
+    assert.equal(calm.startsWith('accepted'), moving.startsWith('accepted'), `recipe ${k}: ${JSON.stringify(camera)}\nmoving: ${moving}\nreduced: ${calm}`);
+    if (!moving.startsWith('accepted')) assert.equal(calm, moving, `recipe ${k}: the same words`);
+  }
+  assert.ok(refused > 3 && refused < 37, `a mix of accepted and refused recipes (${refused} of 40 refused)`);
 });
