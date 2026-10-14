@@ -371,14 +371,14 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   const dir = path.dirname(path.resolve(out)); mkdirSync(dir, {recursive: true});
   // The working files' folder: the caller's (kept, never swept), or a hidden one beside the video, removed by closeRender
   // — named by host, process and count (scratch.mjs), after sweeping the ones this host's stopped renders left there.
-  const swept = work === null ? sweepScratch(dir, '.storyreel-work') : [];
+  const {swept, failed: unswept} = work === null ? sweepScratch(dir, '.storyreel-work') : {swept: [], failed: []};
   const workDir = work === null ? path.join(dir, scratchName('.storyreel-work')) : path.resolve(work);
   mkdirSync(workDir, {recursive: true});
   to = Math.min(to, film.total);
   // A render starts on the film's frame grid (a part's window is rounded to the millisecond): frame f shows film second
   // start + f / fps, so a drawing held on twos (motion.mjs · heldTime) pairs the same frames in a part as in the film.
   const withIntro = intro && from < 0, start = Math.floor(Math.max(0, from) * fps + 1e-6) / fps;
-  const job = {film, storyboard, timings, narrationDir, out, dir, work: workDir, keepWork: work !== null, swept, width, height, fps, intro, withIntro, stamp, start, to, poster, posterFrame, peakCeilingDBFS, loudness, layout, framed, blur, captionKinds, ffmpeg,
+  const job = {film, storyboard, timings, narrationDir, out, dir, work: workDir, keepWork: work !== null, swept, unswept, width, height, fps, intro, withIntro, stamp, start, to, poster, posterFrame, peakCeilingDBFS, loudness, layout, framed, blur, captionKinds, ffmpeg,
     /** How many frames the film part has (the intro's are extra). */
     frames: Math.ceil((to - start) * fps),
     /** What changes a frame's pixels besides the film itself: a segment's cache key includes it (segments.mjs). */

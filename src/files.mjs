@@ -10,7 +10,7 @@
  * files, and requireVoiceApart refuses a render whose out folder and voice folder overlap.
  */
 import path from 'node:path';
-import {existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync} from 'node:fs';
+import {existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync} from 'node:fs';
 
 /**
  * The real path of `file` (relative to `root`, or absolute), or a refusal when it is outside `root`.
@@ -81,6 +81,21 @@ export function copyVoice(voice, to) {
     writeFileSync(target, readFileSync(path.join(base, f)));
   }
   return timings;
+}
+
+/**
+ * Put a paced copy of the voice in place as <out folder>/narration: what is there goes, then the copy takes its name.
+ * Another run placing its own voice at the same moment can slip a folder in between the two (ENOTEMPTY, EEXIST): then
+ * once more — the film is made by then, and its record must still be written. Returns the code it tried again on, or
+ * null. `fs` is {rmSync, renameSync} (a test hands in its own to make the race happen on cue).
+ */
+export function placeVoice(copy, final, fs = {rmSync, renameSync}) {
+  const place = () => { fs.rmSync(final, {recursive: true, force: true}); fs.renameSync(copy, final); };
+  try { place(); return null; } catch (e) {
+    if (e?.code !== 'ENOTEMPTY' && e?.code !== 'EEXIST') throw e;
+    place();
+    return e.code;
+  }
 }
 
 /**

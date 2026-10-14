@@ -7,12 +7,22 @@
  *   const fixture = tempDir('voice');  // gone after this file
  */
 import {after} from 'node:test';
-import {mkdtempSync, rmSync} from 'node:fs';
+import {mkdtempSync, rmSync, readdirSync, lstatSync, chmodSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 
 const made = new Set();
-const remove = dir => { rmSync(dir, {recursive: true, force: true}); made.delete(dir); };
+/** Every folder under `dir` made writable again (a test may leave one read-only), so it can be removed. */
+function writable(dir) {
+  for (const stack = [dir]; stack.length;) {
+    const at = stack.pop();
+    try { if (!lstatSync(at).isDirectory()) continue; chmodSync(at, 0o755); for (const name of readdirSync(at)) stack.push(path.join(at, name)); } catch { /* gone, or not ours: rmSync says */ }
+  }
+}
+const remove = dir => {
+  try { rmSync(dir, {recursive: true, force: true}); } catch { writable(dir); rmSync(dir, {recursive: true, force: true}); }
+  made.delete(dir);
+};
 // The file's own end: whatever its tests left (and every folder made outside a test).
 after(() => { for (const dir of [...made]) remove(dir); });
 

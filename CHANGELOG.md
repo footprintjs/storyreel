@@ -10,11 +10,15 @@
 - **A stopped render's folders are swept by the next one.** Scratch folders are named `<prefix>-<host>-<pid>-<n>`
   (`scratch.mjs`): a render sweeps the `.storyreel-work-…` folders beside it whose process on this host is gone (Ctrl-C,
   a killed process: the library installs no signal handler), and `makeFilm` the `.narration-…` copies too; the
-  making-of lists what was swept (`swept: {count, names}`). A live run's folders, another host's (left for that host's
-  own next run) and a `work` folder you named are never swept.
+  making-of lists what was swept (`swept: {count, names}`). A folder untouched for more than a day (by the newest write
+  inside it) is swept whatever its name says: 0.12's `.narration-<pid>`, a host renamed since, a reused pid. A live
+  run's folders, a fresh one from another host (left for that host's own next run) and a `work` folder you named are
+  never swept. Cleaning up never fails a run: a folder that cannot be removed is skipped and listed in
+  `swept.failed: [{name, why}]`.
 - **`makeFilm` renders from its own copy of the voice** and makes it `<out dir>/narration` only once the film is made:
   two films made at once into one folder no longer take each other's voice, and a refused or failed film leaves the
-  folder's narration as it was.
+  folder's narration as it was. If the other film's folder slips in between the two steps of putting it in place
+  (ENOTEMPTY, EEXIST), it is tried once more and the record says so (`narration: {placedAgain}`).
 - **The tests clean up after themselves.** Every test folder comes from one helper (`test/tmp.mjs` · `tempDir`), named
   `storyreel-…` and removed when its test or its file ends. `npm run test:temp` runs the suite with a temp folder of its
   own and fails if anything is left; CI runs it. Stopped (Ctrl-C, SIGTERM), it stops the suite, removes its own folder

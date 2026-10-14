@@ -3,12 +3,13 @@
 // the caller named. And the hygiene script (scripts/temp-hygiene.mjs) cleans up after itself when it is stopped.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdirSync, writeFileSync, readdirSync, readFileSync, existsSync} from 'node:fs';
+import {mkdirSync, writeFileSync, readdirSync, readFileSync, existsSync, chmodSync, utimesSync, rmSync, renameSync} from 'node:fs';
 import {spawn, spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {tempDir} from './tmp.mjs';
-import {scratchName, scratchHost, sweepScratch} from '../src/scratch.mjs';
+import {scratchName, scratchHost, sweepScratch, STALE_AFTER} from '../src/scratch.mjs';
+import {placeVoice} from '../src/files.mjs';
 import {compileFilm, evenTimings, renderFilm, makeFilm} from '../src/index.mjs';
 
 const ffmpeg = spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-version']).status === 0;
@@ -34,10 +35,10 @@ test('a sweep takes what this host\'s dead processes left, and only that: a live
   const dir = tempDir('sweep', t), dead = deadPid();
   const stale = plant(dir, `.storyreel-work-${scratchHost}-${dead}-1`), live = plant(dir, `.storyreel-work-${scratchHost}-${process.pid}-99`);
   const elsewhere = plant(dir, `.storyreel-work-elsewhere.example-${dead}-1`), named = plant(dir, 'work'), voice = plant(dir, `.narration-${scratchHost}-${dead}-2`);
-  assert.deepEqual(sweepScratch(dir, '.storyreel-work'), [stale]);
+  assert.deepEqual(sweepScratch(dir, '.storyreel-work'), {swept: [stale], failed: []});
   assert.deepEqual(readdirSync(dir).sort(), [live, elsewhere, named, voice].sort(), 'the live run\'s, the other host\'s (its own next run sweeps it), the named folder and the voice copy stay');
-  assert.deepEqual(sweepScratch(dir, '.narration'), [voice], 'a voice copy is swept by its own prefix');
-  assert.deepEqual(sweepScratch(path.join(dir, 'missing'), '.storyreel-work'), [], 'no folder, nothing to sweep');
+  assert.deepEqual(sweepScratch(dir, '.narration'), {swept: [voice], failed: []}, 'a voice copy is swept by its own prefix');
+  assert.deepEqual(sweepScratch(path.join(dir, 'missing'), '.storyreel-work'), {swept: [], failed: []}, 'no folder, nothing to sweep');
 });
 
 test('a render sweeps the working folders a stopped render left beside it; one given `work` sweeps nothing, and its folder is never swept', {skip: ffmpeg ? false : 'ffmpeg not on PATH'}, async t => {
@@ -77,4 +78,51 @@ test('the hygiene script, stopped (SIGINT or SIGTERM), stops its suite, removes 
     assert.deepEqual(await ended, {status: code, sig: null}, `${signal}: exits ${code}`);
     assert.deepEqual(readdirSync(tmp), [], `${signal}: its own folder is gone`);
   }
+});
+
+/** Set a folder and everything in it to have been last written `ms` ago. */
+function age(dir, ms) {
+  const when = new Date(Date.now() - ms);
+  for (const name of readdirSync(dir)) utimesSync(path.join(dir, name), when, when);
+  utimesSync(dir, when, when);
+}
+
+test('a folder untouched for more than a day is swept whatever its name says — an old name, another host, a reused pid; a fresh one from another host, or one still being written, stays', t => {
+  const dir = tempDir('aged', t), day = STALE_AFTER;
+  const oldFormat = plant(dir, '.narration-12345');                                         // 0.12's name: no host
+  const renamedHost = plant(dir, `.narration-old-laptop-name.local-${process.pid}-4`);      // a host renamed since (and a pid now reused)
+  const freshForeign = plant(dir, `.narration-elsewhere.example-${deadPid()}-1`);
+  const writing = plant(dir, `.narration-elsewhere.example-${process.pid}-5`);
+  age(path.join(dir, oldFormat), day + 3600e3); age(path.join(dir, renamedHost), day + 60e3);
+  age(path.join(dir, writing), day + 3600e3); utimesSync(path.join(dir, writing, 'film-video.mp4'), new Date(), new Date());   // its folder is old; a file in it was written just now
+  assert.deepEqual(sweepScratch(dir, '.narration'), {swept: [oldFormat, renamedHost].sort(), failed: []});
+  assert.deepEqual(readdirSync(dir).sort(), [freshForeign, writing].sort(), 'a fresh folder from another host, and one still being written, stay');
+});
+
+test('cleaning up never fails a run: a left folder that cannot be removed is skipped, and the making-of says so', {skip: ffmpeg ? false : 'ffmpeg not on PATH'}, async t => {
+  const dir = tempDir('stuck', t), dead = deadPid();
+  // A stopped run's folder holding a read-only folder with a file in it: removing it fails (EACCES, or ENOTEMPTY).
+  const stuck = plant(dir, `.storyreel-work-${scratchHost}-${dead}-1`), locked = path.join(dir, stuck, 'locked');
+  mkdirSync(locked); writeFileSync(path.join(locked, 'part.wav'), 'x'); chmodSync(locked, 0o555);   // tempDir makes it writable again to remove it
+  const result = sweepScratch(dir, '.storyreel-work');
+  assert.deepEqual(result.swept, []); assert.equal(result.failed.length, 1);
+  assert.equal(result.failed[0].name, stuck); assert.match(result.failed[0].why, /^(EACCES|ENOTEMPTY|EPERM)$/);
+  const made = await makeFilm({storyboard, timings, recipe: {story: {kit: 'plain'}}, kits: [kit], out: path.join(dir, 'film.mp4'), render: small});
+  assert.ok(existsSync(made.out), 'the film is made all the same');
+  const swept = JSON.parse(readFileSync(made.makingOf, 'utf8')).swept;
+  assert.deepEqual({count: swept.count, names: swept.names, failed: swept.failed.map(f => f.name)}, {count: 0, names: [], failed: [stuck]}, 'and the record says what could not be removed');
+});
+
+test('placing the voice: another film slipping its folder in between is tried once more, and said; any other error is not', t => {
+  const dir = tempDir('place', t), copy = path.join(dir, '.narration-copy'), final = path.join(dir, 'narration');
+  mkdirSync(copy); writeFileSync(path.join(copy, 'timings.json'), '{}');
+  let tries = 0;
+  const race = {rmSync, renameSync: (a, b) => { if (!tries++) { mkdirSync(path.join(b, 'theirs'), {recursive: true}); const e = new Error('directory not empty'); e.code = 'ENOTEMPTY'; throw e; } renameSync(a, b); }};
+  assert.equal(placeVoice(copy, final, race), 'ENOTEMPTY', 'tried once more, and the code it tried again on is returned');
+  assert.deepEqual(readdirSync(final), ['timings.json'], 'the voice is in place, the other film\'s folder gone');
+  mkdirSync(copy); writeFileSync(path.join(copy, 'timings.json'), '{}');
+  assert.equal(placeVoice(copy, final), null, 'no race: placed at once');
+  mkdirSync(copy);
+  const denied = {rmSync, renameSync: () => { const e = new Error('permission denied'); e.code = 'EACCES'; throw e; }};
+  assert.throws(() => placeVoice(copy, final, denied), /permission denied/, 'any other error stops the film, as before');
 });

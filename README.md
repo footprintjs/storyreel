@@ -1205,10 +1205,14 @@ render itself (`prepareRender`) writes its working files to `job.work` and ends 
 **A render that was stopped** (Ctrl-C, a killed process) cannot clean up: no library sees a SIGKILL, and StoryReel
 installs no signal handler. Its hidden folders are named for the host, the process and a count, so the next render
 into that folder on the same host sweeps the ones whose process is gone (and a `makeFilm` the voice copies), and the
-making-of record lists what it swept (`swept: {count, names}`). A live render's folders are never touched, nor a folder
-you named with `work`; a folder another host left is left for that host's own next render, since its process cannot be
-seen from here. Two films made at once into one folder each read their own copy of the voice; `narration/` is the one
-made last. The tests
+making-of record lists what it swept (`swept: {count, names}`). Any such folder untouched for more than a day is swept
+too, whatever its name says (an older name, a host renamed since, a reused pid); untouched means the newest time anything
+inside it was written, so a long render still writing is never swept. A live render's folders are never touched, nor a
+folder you named with `work`; a fresh folder another host left is left for that host's own next render, since its
+process cannot be seen from here. Cleaning up never fails a render: a left folder that cannot be removed (a read-only
+folder in it, another user's) is skipped and listed (`swept.failed: [{name, why}]`). Two films made at once into one
+folder each read their own copy of the voice; `narration/` is the one made last (placed once more if the other slipped
+in between; the record says `narration: {placedAgain}`). The tests
 make their folders through one helper (`test/tmp.mjs` · `tempDir`), each removed when its test or file ends;
 `npm run test:temp` runs the whole suite with a temp folder of its own and fails if anything is left (stopped,
 it stops the suite and removes that folder too).

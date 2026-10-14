@@ -10,8 +10,8 @@
  * pass small values and file paths, as footprintjs expects.
  */
 import {readCast, withCast} from './cast.mjs';
-import {readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync, renameSync} from 'node:fs';
-import {copyVoice, requireVoiceApart} from './files.mjs';
+import {readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync} from 'node:fs';
+import {copyVoice, requireVoiceApart, placeVoice} from './files.mjs';
 import path from 'node:path';
 import {flowChart, narrative} from 'footprintjs';
 import {applyPacing, validatePacing, paceTimings} from './pacing.mjs';
@@ -123,8 +123,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   mkdirSync(dir, {recursive: true});
   // Where the voice is paced (a copy of it, named by host, process and count: scratch.mjs, after sweeping the copies this
   // host's stopped runs left): the render reads it, and it becomes <out dir>/narration once the film is made, or is removed.
-  const sweptVoices = sweepScratch(dir, '.narration'), copy = path.join(dir, scratchName('.narration'));
-  let film, paced, result, job, plan, inputs, finished = null, voice = null;
+  const voices = sweepScratch(dir, '.narration'), copy = path.join(dir, scratchName('.narration'));
+  let film, paced, result, job, plan, inputs, finished = null, voice = null, placed = null;
   const video = checkVideoStrategy(render.video ?? wholeVideo()), done = [];
   const stages = {
     'check-inputs': scope => {
@@ -175,7 +175,11 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     // never a folder another run could replace — becomes <out dir>/narration. The last stage, so a film refused or
     // failed anywhere before it leaves the folder's narration as it was.
     'place-narration': scope => {
-      if (scope.narration) { const final = path.join(dir, 'narration'); rmSync(final, {recursive: true, force: true}); renameSync(scope.narration, final); scope.narration = final; }
+      if (!scope.narration) return;
+      // Another film placing its voice in this folder at the same moment: tried once more, and said in the record (files.mjs · placeVoice).
+      const final = path.join(dir, 'narration'), again = placeVoice(scope.narration, final);
+      scope.narration = final;
+      if (again) { scope.placedAgain = again; placed = again; }
     },
     // The picture: planned as one pass or as segments (render.mjs · wholeVideo, segments.mjs · segmentedVideo).
     'plan-picture': scope => {
@@ -240,8 +244,9 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   // kept only in a `work` folder the caller named) and a paced copy of the voice that never became <out dir>/narration.
   let run;
   try { run = await chart.build().recorder(trace).run(); } finally { closeRender(job); rmSync(copy, {recursive: true, force: true}); }
-  // What this run swept before making its own scratch folders: the ones this host's stopped runs left (scratch.mjs).
-  const swept = [...sweptVoices, ...(job?.swept ?? [])];
+  // What this run swept before making its own scratch folders (the ones stopped runs left: scratch.mjs), and what it could
+  // not remove — skipped, never a reason to stop.
+  const swept = [...voices.swept, ...(job?.swept ?? [])], unswept = [...voices.failed, ...(job?.unswept ?? [])];
   const record = {
     schemaVersion: 1, made: new Date().toISOString(), out: result.out, seconds: result.seconds, chapters: result.chapters,
     // What part of the film this render shows (an approval is of a render of the whole film).
@@ -262,7 +267,9 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     // Each beat: what was said, when, and the recipe entry that asked for it.
     beats: film.beats.map(({ref, t, path}) => ({said: Array.isArray(ref) ? {scene: ref[0], phrase: ref[1], plus: ref[2] ?? 0} : ref, at: t, ...(path ? {entry: path} : {})})),
     ...(film.notes.length ? {notes: film.notes} : {}),
-    ...(swept.length ? {swept: {count: swept.length, names: swept}} : {}),
+    ...(swept.length || unswept.length ? {swept: {count: swept.length, names: swept, ...(unswept.length ? {failed: unswept} : {})}} : {}),
+    // The voice was put in place on a second try (another film placed its own in this folder at the same moment).
+    ...(placed ? {narration: {placedAgain: placed}} : {}),
     // The camera's moves as played (camerawork.mjs): moves, or cuts for reduced motion, and why; each move placed.
     ...(film.camera ? {camera: {motion: film.camera.motion, decision: film.camera.decision, moves: film.camera.moves}} : {}),
     sounds: film.sounds.length,
