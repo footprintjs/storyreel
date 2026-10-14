@@ -294,6 +294,25 @@ export const walkNames: readonly string[] = WALK_NAMES;
 // @ts-expect-error a walk needs the figure's size
 walk({from: 0, to: 100, start: 0});
 
+// Breakdown (types/sub/breakdown.d.ts): a reference film as a spec; a beat reader is any function that answers {bpm, beats, drop?}.
+import {breakdown, BREAKDOWN} from '../types/sub/breakdown.js';
+import type {BeatReader, BreakdownSpec} from '../types/sub/breakdown.js';
+const beats: BeatReader = async () => ({bpm: 120, beats: Object.freeze([0.5, 1]), drop: null, confidence: .8, alternatives: [{bpm: 60, score: .9}]});
+const wrapped: BeatReader = (file, {ffmpeg}) => ({bpm: 120, beats: [file.length, ffmpeg.length]});
+export const brokenDown = breakdown('ref.mp4', {out: 'ref', beatMap: beats, thresholds: {cutJump: 15}}).then(r => r.spec.shots.map(s => `${s.motion.verdict} ${s.seconds} ${s.in.also?.join() ?? ''}`));
+export const viaWrapper = breakdown('ref.mp4', {beatMap: wrapped, beatOptions: {bpm: 120}});
+export const measured = (spec: BreakdownSpec): boolean => spec.video.lengthFrom === 'frames';
+export const readWhy = (spec: BreakdownSpec): string => spec.read.why.verdict;
+// The beat map's options are its own: any it takes are handed on.
+export const tempo = breakdown('ref.mp4', {beatMap: beats, beatOptions: {tempo: 120}});
+// @ts-expect-error beatOptions are an object
+export const bare = breakdown('ref.mp4', {beatMap: beats, beatOptions: 120});
+export const onBeat = (spec: BreakdownSpec): number => (spec.audio.beats.ran ? spec.audio.beats.onBeat + (spec.audio.beats.close?.score ?? 0) : 0) + BREAKDOWN.onBeat + spec.warnings.length;
+// @ts-expect-error a threshold is a number
+export const wordy = breakdown('ref.mp4', {thresholds: {cutJump: 'high'}});
+// @ts-expect-error a beat reader answers its beats
+export const noBeats: BeatReader = () => ({bpm: 120});
+
 // Four-number curves (ease.ts), the move vocabulary (moves.ts) and the principles (principles.ts).
 import {bezier, overshoots, type EaseSpec} from '../types/sub/ease.js';
 import {moveAt, movesBy, stagger, readMove, applyMove, MOVES, type Move, type MoveValues} from '../types/sub/moves.js';
