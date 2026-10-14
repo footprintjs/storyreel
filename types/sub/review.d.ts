@@ -1,4 +1,4 @@
-import type {Film, Layout, Verdict, VerdictRules} from '../index.js';
+import type {Claim, Film, Layout, Verdict, VerdictRules} from '../index.js';
 /** A line of text a frame draws: its box (axis-aligned) and quad (its four corners, rotation kept) in output pixels, and its alpha. */
 export interface Word {text: string; box: [number, number, number, number]; quad: [number, number][]; alpha: number}
 /** The words a frame draws at t, followed from each world's sheet onto the frame (through the layout when given). */
@@ -14,9 +14,13 @@ export interface Review {film: Film; window: {from: number; to: number}; part: {
   /** words: what the checks read; marks: a sign or a point too short to read on its own ("-", "."), for the claims check to join to the digits it touches. */
   samples: {t: number; words: Word[]; marks?: Word[]}[]; hashes: Record<number, string>;
   /** Each sample's frame as grey levels, 160 × 90 (the same drawing as its hash): what the slideshow check reads. */
-  greys: Map<number, Uint8Array>; frozen: {from: number; to: number}[]; picked: string[]}
+  greys: Map<number, Uint8Array>; frozen: {from: number; to: number}[]; picked: string[];
+  /** The numbers the picture draws that no declared line holds (claims.mjs · drawnClaims), read once for the claims checks. */
+  drawn: Claim[];
+  /** Where an example line lingers into a scene that is not example data, in the window, with the real numbers beside it (claims.mjs · lingeringExamples). */
+  lingers: {scene: string | null; example: string | null; from: number; to: number; numbers: Claim[]}[]}
 /**
- * A check: a strategy run as its own subflow, picked when `when(scope)` is true (scope.facts: {seconds, stillFor, newEvery, loop, captions, samples, words, spoken, parts, claims, freezes?: the camera freezes that reach the part, when there are any}).
+ * A check: a strategy run as its own subflow, picked when `when(scope)` is true (scope.facts: {seconds, stillFor, newEvery, loop, captions, samples, words, spoken, parts, claims, freezes?: the camera freezes that reach the part, when there are any, lingers?: the stretches where an example line lingers into a scene that is not example data, when there are any}).
  * `find` answers at once with its hits, copied as {kind, t, what}; a `when` or a `find` that throws, or a `find` that returns anything else
  * (a promise, no list, a hit without a name, a time or words), fails the review, naming the check. Hits with the same kind and `what` merge
  * into one span, so `what` names one stretch.
@@ -32,7 +36,7 @@ export interface VerdictCheck {label: string; why?: string; notRun?: string; whe
   verdict: VerdictRules; summary?(measured: any): string}
 export type ReviewCheck = FindingCheck | VerdictCheck;
 /** The built-in checks; slideshow, geometry and claims answer with a verdict. */
-export const REVIEW_CHECKS: Readonly<Record<'under-captions' | 'words-overlap' | 'cut-off' | 'hook' | 'text-density' | 'silences' | 'stale' | 'loop' | 'frozen-voice' | 'still', FindingCheck> & Record<'slideshow' | 'geometry' | 'claims', VerdictCheck>>;
+export const REVIEW_CHECKS: Readonly<Record<'under-captions' | 'words-overlap' | 'cut-off' | 'hook' | 'text-density' | 'silences' | 'stale' | 'loop' | 'frozen-voice' | 'still' | 'example-lingers', FindingCheck> & Record<'slideshow' | 'geometry' | 'claims', VerdictCheck>>;
 /** What a verdict check answered: its verdict, why (the rule that matched, or what passing means), what it measured, and its numbers in words. */
 export interface ReviewVerdict {check: string; label: string; verdict: Verdict; why: string; measured: Record<string, unknown>; summary?: string}
 export function verdictsText(verdicts: ReviewVerdict[]): string;

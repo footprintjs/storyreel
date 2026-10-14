@@ -13,10 +13,12 @@
  * the review, every word the picture draws (drawnClaims: a kit's own words, a card's rows, code). The numbers in them
  * are found the way the voice tools find digits (footprint-narration · unsaidDigits, over the text as written), with
  * their sign; a digit run right after a cased letter, or after a hyphen that follows one, is part of a name (H2O, MP4,
- * COVID-19), not a number. A number with one separator before exactly three digits ("1,000", "1.000") is a thousand in
- * one language and one in another: it is ambiguous, and only a fact that writes it the same way sources it.
+ * COVID-19, ISO-8601), not a number — but a year after a lower-case word or a time prefix is one ("mid-2024"). A number
+ * with one separator before exactly three digits ("1,000", "1.000") is a thousand in one language and one in another:
+ * it is ambiguous, and only a fact that writes it the same way sources it.
  */
 import {existsSync, statSync} from 'node:fs';
+import path from 'node:path';
 import {spokenMap, unsaidDigits, normSpeech} from 'footprint-narration';
 import {insideRoot} from './files.mjs';
 
@@ -30,20 +32,36 @@ const SIGNS = new Set(['-', '\u2212', '\u2013']), HYPHENS = new Set(['-', '\u201
 /**
  * The numbers a text shows, in order ("One frame takes 16.67 ms at 60 Hz." → ["16.67", "60"]; "−5 °C" → ["−5"]):
  * footprint-narration's digit runs, each with its sign when a minus (or an en dash) stands right before it on its own,
- * less a run that is part of a name — right after a cased letter (H2O, MP4, v2), or after a hyphen right after one
- * (COVID-19, B-52) unless it is four digits: a year ("mid-2024", "pre-2020" are years, and need a source). A unit written
- * onto a number stays a number ("60Hz", "5km", "4K"); a number after a CJK character is a number ("価格は100円").
+ * less a run that is part of a name (namedRun) — right after a cased letter (H2O, MP4, v2), or after a hyphen right after
+ * one (COVID-19, B-52, ISO-8601, A-1000, UTF-8) unless it is a year after a lower-case word or a time prefix ("mid-2024",
+ * "pre-2020", "post-1990" are years, and need a source). A unit written onto a number stays a number ("60Hz", "5km",
+ * "4K"); a number after a CJK character is a number ("価格は100円").
  */
 export const numbersIn = text => numberRuns(text).map(n => n.run);
+/** The words before a hyphen that make the year after it a time ("Mid-2024" opens a sentence): any case. */
+const YEAR_PREFIXES = new Set(['mid', 'pre', 'post', 'early', 'late']);
+/** A plausible year: four digits, 1000–2199. */
+const isYear = digits => /^\d{4}$/.test(digits) && +digits >= 1000 && +digits <= 2199;
+/**
+ * Whether the digit run at `at` in `s` is part of a name, not a number: right after a cased letter (H2O, MP4, v2); or
+ * after a hyphen right after a word, unless the run is a plausible year and the word a lower-case one or a time prefix
+ * (YEAR_PREFIXES) — an upper-case code with a number is a name (COVID-19, B-52, ISO-8601, A-1000), whatever its digits.
+ */
+function namedRun(s, at, digits) {
+  const before = s[at - 1];
+  if (isCased(before)) return true;
+  if (!(HYPHENS.has(before) && isCased(s[at - 2]))) return false;
+  const word = /\p{L}+$/u.exec(s.slice(0, at - 1))[0];
+  return !(isYear(digits) && (/^\p{Ll}+$/u.test(word) || YEAR_PREFIXES.has(word.toLowerCase())));
+}
 /** The same numbers with where each stands in the text (its sign's place, when it has one): [{run, at}]. */
 function numberRuns(text) {
   const s = String(text ?? ''), out = []; let from = 0;
   for (const digits of unsaidDigits(spokenMap(s))) {
     const at = s.indexOf(digits, from); if (at < 0) continue;
     from = at + digits.length;
-    const before = s[at - 1];
-    if (isCased(before) || (HYPHENS.has(before) && isCased(s[at - 2]) && !/^\d{4}$/.test(digits))) continue;
-    const signed = SIGNS.has(before) && !isAlnum(s[at - 2]);
+    if (namedRun(s, at, digits)) continue;
+    const before = s[at - 1], signed = SIGNS.has(before) && !isAlnum(s[at - 2]);
     out.push(signed ? {run: before + digits, at: at - 1} : {run: digits, at});
   }
   return out;
@@ -73,16 +91,17 @@ function valueOf(b) {
 /**
  * What a fact's source is: 'url' (an http or https address), 'file' (a path inside the film's root that is there — a
  * document, or a record with a pointer into it after '#': "run.json#steps[2]"), or 'unverified' (anything else: words
- * nobody can follow, kept and reported, never refused). A path that leads out of the root refuses, naming the fix.
+ * nobody can follow, kept and reported, never refused — "/r/science thread" and "trust me" too). Only a path that is
+ * there, outside the root, refuses, naming the fix: words that lead nowhere are words, whatever they start with.
  * Without a root, only a URL is verified.
  */
 export function sourceKind(source, {root = null, where = 'facts'} = {}) {
   if (/^https?:\/\/[^\s]+$/i.test(source)) return 'url';
   if (root === null) return 'unverified';
   const file = source.split('#')[0];
-  if (!file.trim()) return 'unverified';
+  if (!file.trim() || !existsSync(path.resolve(root, file))) return 'unverified';
   let real; try { real = insideRoot(root, file); } catch { throw new Error(`${where}: source ${JSON.stringify(source)} is a path outside the film's root (${root}): put the document inside it, or give its URL`); }
-  return existsSync(real) && statSync(real).isFile() ? 'file' : 'unverified';
+  return statSync(real).isFile() ? 'file' : 'unverified';
 }
 
 /**
@@ -142,6 +161,27 @@ export function labelledOver(labels, from, to) {
 }
 
 /**
+ * Where an example line lingers into a scene that is not example data: the label stays up with the line (labelSpans),
+ * so beside a real number it seems to cover that number too — the viewer cannot tell which numbers are examples. The
+ * fix is the film's, not the label's: erase the line before the scene (a label per number would be one more thing to
+ * read). labels: claims.labels; numbers: the claims on screen (declared and drawn); scenes: each scene's span, [{from,
+ * to}]; examples: exampleScenes(storyboard); ids: the scenes' ids. Returns each stretch where a label is up in a scene
+ * that is not example data, [{scene, example, from, to, numbers}] in time order — `scene` the real scene's id, `example`
+ * the example scene's, `numbers` the claims outside example data on screen in the stretch (none: nothing is covered).
+ */
+export function lingeringExamples({labels = [], numbers = []} = {}, {scenes = [], examples = [], ids = []} = {}) {
+  const out = [];
+  for (const l of labels) scenes.forEach((sc, j) => {
+    const from = Math.max(l.from, sc.from), to = Math.min(l.to, sc.to);
+    if (examples[j] || !(to - from > 1e-6)) return;
+    out.push({scene: ids[j] ?? null, example: ids[l.scene] ?? null, from, to, numbers: numbers.filter(c => !c.example && c.at < to - 1e-6 && c.to > from + 1e-6)});
+  });
+  return out.sort((a, b) => a.from - b.from);
+}
+/** One lingering example line beside real numbers, in words, with the fix. */
+export const lingerText = g => `an example line lingers into scene ${g.scene} beside real numbers (${[...new Set(g.numbers.map(c => c.number))].join(', ')}): erase it before the scene`;
+
+/**
  * Where a fact's words stand in a line: [[from, to)] — case ignored, a space matching any spacing ("60 Hz" is "60Hz"),
  * and never starting or ending inside a run of digits ("6 Hz" is not in "16 Hz").
  */
@@ -189,20 +229,37 @@ export function findClaims(shown, {facts = null, examples = [], scenes = []} = {
 }
 
 /**
- * The words a frame draws, as the lines they make: two words touch when their boxes ([x0, y0, x1, y1], the ink's) share
- * most of the shorter one's height and the next starts within half the taller one's height of the last one's end; words
- * that touch are joined — with a space when the gap is more than a fifth of that height — so a number drawn in pieces is
- * read whole: "16" + ".67 ms" is 16.67, a code token "-" then "5" is −5. A word with no box stands alone.
+ * How close two drawn words stand on a line, as shares of the taller one's height: on one line when the next starts
+ * within `near` of the last one's end; TOUCHING when the gap is under `touch` — ink against ink; and a sign or a decimal
+ * point stands at its digits within `mark`, closer than a word space (measured: 0.4 of the height or more). No gap tells
+ * the pieces of one number from two numbers drawn close, so only touching ink joins on its own. Measured (ink boxes):
+ * "12" and "30" drawn 4 px apart in 24-px boxes stand 0.17 apart (two numbers); "16" then ".67 ms" at its advance, 0.10,
+ * and a code token "-" then "5" in 28-px Menlo, 0.09 (joined by what they are: glued); but digits drawn one at a time at
+ * their advance stand 0.05–0.22 apart (60-px sans-serif), so a number drawn digit by digit reads as its digits: draw a
+ * number as one string, as every built-in kit does.
+ */
+export const DRAWN = Object.freeze({near: .5, touch: .08, mark: .2});
+/** A minus standing alone, or a decimal point, against the digits it belongs to: "-" + "5", "16" + ".67", "16." + "67". */
+const glued = (last, next) => (SIGNS.has(last) && /^\d/.test(next)) || (/\d$/.test(last) && /^\.\d/.test(next)) || (/\d\.$/.test(last) && /^\d/.test(next));
+
+/**
+ * The words a frame draws, as the lines they make: two words are on one line when their boxes ([x0, y0, x1, y1], the
+ * ink's) share most of the shorter one's height and the next starts within DRAWN.near of the taller one's height of the
+ * last one's end. Words on one line are joined with a space, and without one in exactly two cases — when the boxes
+ * TOUCH (a gap under DRAWN.touch of that height: one word drawn in pieces) and when a sign or a decimal point stands at
+ * the digits it belongs to (glued, within DRAWN.mark: a code token "-" then "5" is −5, "16" then ".67 ms" is 16.67; "x",
+ * "-", "5" a space apart is x - 5) — so two numbers drawn close stay two ("12" and "30", 4 px apart, are 12 and 30, never
+ * 1230). A word with no box stands alone.
  */
 export function drawnLines(words) {
   const boxed = words.filter(w => Array.isArray(w.box) && w.box.length === 4), lines = [];
   const height = b => b[3] - b[1], shares = (a, b) => Math.min(a[3], b[3]) - Math.max(a[1], b[1]) >= .5 * Math.min(height(a), height(b)) - 1e-6;
   const gapOf = (a, b) => b[0] - a[2], tall = (a, b) => Math.max(height(a), height(b));
   for (const w of [...boxed].sort((a, b) => a.box[0] - b.box[0])) {
-    const line = lines.find(l => { const last = l.words.at(-1).box, gap = gapOf(last, w.box); return shares(last, w.box) && gap >= -.25 * tall(last, w.box) && gap <= .5 * tall(last, w.box); });
+    const line = lines.find(l => { const last = l.words.at(-1).box, gap = gapOf(last, w.box); return shares(last, w.box) && gap >= -.25 * tall(last, w.box) && gap <= DRAWN.near * tall(last, w.box); });
     if (!line) { lines.push({words: [w], text: w.text}); continue; }
-    const last = line.words.at(-1).box;
-    line.text += (gapOf(last, w.box) > .2 * tall(last, w.box) ? ' ' : '') + w.text;
+    const last = line.words.at(-1), gap = gapOf(last.box, w.box) / tall(last.box, w.box);
+    line.text += (gap < DRAWN.touch || (gap < DRAWN.mark && glued(last.text.trim(), w.text.trim())) ? '' : ' ') + w.text;
     line.words.push(w);
   }
   return [...lines.map(l => l.text), ...words.filter(w => !boxed.includes(w)).map(w => w.text)];
@@ -210,7 +267,7 @@ export function drawnLines(words) {
 
 /**
  * The numbers the picture draws that no declared line holds, from the words the review reads off its frames (review.mjs
- * · wordsAt, read once for every check, joined where they touch: drawnLines): samples [{t, words: [{text, box?}]}], the
+ * · wordsAt, read once for every check, and made into lines: drawnLines): samples [{t, words: [{text, box?}]}], the
  * film's claims, sceneOf(t) (a scene's index) and the scenes' ids. A drawn number is a declared one when a declared line
  * (not a caption: the captions are the layout's, and never in the frame) shows the same number and the drawn words are
  * that line, or a word-bounded start or end of it (a list line's name and value are drawn apart). A line is claimed once,

@@ -39,8 +39,8 @@ npm i footprint-storyreel
 ```
 
 - **Node 22 or later.**
-- **FFmpeg on your PATH** to render MP4s (`brew install ffmpeg`, `apt install ffmpeg`, …). Compiling,
-  drawing frames, the studio and the checks need no FFmpeg.
+- **FFmpeg on your PATH** to render MP4s (`brew install ffmpeg`, `apt install ffmpeg`, …); breaking a reference film
+  down needs FFmpeg 5.1 or later. Compiling, drawing frames, the studio and the checks need no FFmpeg.
 - Drawing is native (`@napi-rs/canvas`, prebuilt for macOS, Linux and Windows). The handwriting font
   (Caveat, SIL OFL) is bundled.
 
@@ -607,7 +607,12 @@ measured, not guessed (`footprint-storyreel/slideshow`):
   all; the test's touches 0 %), while the example shot that moves least (worlds' code stage) touches 0.94 %. And the film fails, too, when more than `still` (85 %) of its
   shots' running time is still at all, however short each stretch: a deck swapped every 3 s holds no stretch past 3 s
   and is still 93 % of the time (its findings say so: `is still 93 % of its 10.5 s, in stretches of 3 s or less (a deck
-  of slides)`); the stillest example film, hello, is still 63 % of the time.
+  of slides)`); the stillest example film, hello, is still 63 % of the time. Real code films stay well under the cap
+  (measured, compiled with their own voices and read every 0.25 s at 160 px): two lessons of a video course, 29 % and
+  45 %; a starter film, 54 %; two episodes of a browser series, 26 % and 18 % (the second not voiced yet: even
+  timings); the stillest single shot of any, 80 %.
+  Their code stages animate what they reveal (no more than one change in five moves for a single step), so a word
+  swapped in one step every 2 s — 88 % still — is a slide shown fast, not a code stage.
 - **The two rules meet at a deck that changes a word.** Slides that differ by one digit or one short word fail on every
   platform, but which rule fails them rides on the font: where the changed glyph is a different width (proportional
   digits, as macOS's sans-serif has: "1" is 21 px wide at 60 px, "2" 32 px) the rest of the line shifts, the changes
@@ -696,8 +701,9 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
   `1000000` for "1,000,000"; as written when it is not one value: `"1,000"`, `"3:15"`); `text` the words it is shown
   with — they must stand around it in the line that shows it, so `60 Hz` is not `60 sheep`, and `6 Hz` is not the 6 in
   "6 apples and 16 Hz"; `source` where it comes from: an http(s) URL; a file inside the film's root that is there (a
-  document, or a record with a pointer into it after `#`: `run.json#steps[2]`) — a path that leads out of the root
-  refuses; or anything else ("Smith, 2020", "trust me"), which passes, kept as **unverified**: the verdict counts the
+  document, or a record with a pointer into it after `#`: `run.json#steps[2]`) — a path that is there outside the root
+  refuses; or anything else ("Smith, 2020", "trust me", "/r/science thread": words that lead to no file are words,
+  whatever they start with), which passes, kept as **unverified**: the verdict counts the
   numbers that rest on a source nobody can follow, and says so (`4 sourced (1 on a source nobody can follow:
   unverified)`). `facts` is a JSON
   file inside the film's root, or the list itself. The facts draw nothing, so they are in no segment's key (a source
@@ -708,12 +714,15 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
   shows — over the scene, and on after it while any line the scene shows is still on screen (a whiteboard keeps its
   writing into the next scene; the label stays with it: `film.claims.labels`). `"example": "Beispieldaten"` puts the
   label in the film's language. Its numbers need no source while they are labelled, and the label is in the key of
-  every segment that shows it.
+  every segment that shows it. Beside a real number, a lingering label seems to cover that number too, so the review
+  says so (**example data over real numbers**: `an example line lingers into scene real beside real numbers (60):
+  erase it before the scene`) — erase the example line before the next scene starts.
 - **The numbers** are found the way the voice tools find digits (footprint-narration's `unsaidDigits`), with their
   sign — a minus, the minus sign or an en dash standing on its own: "−5 °C" and "–5 °C" are −5, which a fact for `5`
   does not source — less a digit run that is part of a name: right after a cased letter (H2O, MP4, v2), or after a
-  hyphen after one (COVID-19, B-52) — unless it is four digits after the hyphen, which is a year ("mid-2024",
-  "pre-2020": numbers, which need a source). A unit written onto a number stays a number
+  hyphen after one (COVID-19, B-52, ISO-8601, A-1000, UTF-8) — unless it is a year (1000–2199) after a lower-case word
+  or a time prefix (mid-, pre-, post-, early-, late-, in any case): "mid-2024", "pre-2020", "post-1990" are numbers,
+  which need a source. A unit written onto a number stays a number
   (60Hz, 4K), and a number after a CJK character is a number (価格は100円). A number with one separator before exactly
   three digits ("1,000", "1.000") is a thousand in one language and one in another, and the screen does not say which:
   it is **ambiguous**, so only a fact that writes it the same way (`"value": "1.000"`) sources it — never `1` or `1000`.
@@ -722,9 +731,12 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
   screen to when it starts to leave, decided in the scene where the line is first shown.
 - **What is drawn.** The review also reads the numbers in every word its frames draw — the words it reads for every
   check, so no frame is drawn again: measured, 1.9 ms for the 1,495 words of the hello example's 128 samples, against
-  about 4 s for its whole review. Words that touch on one line are read as one ("16" then ".67 ms" is 16.67; code
-  tokens "-" then "5" are −5), and a drawn number counts as example data only while the label is up the whole time it
-  is drawn. A drawn number is a
+  about 4 s for its whole review. Words on one line are read with a space between them, and as one only where their
+  ink touches (a gap under 8 % of their height) or a sign or a decimal point stands at its digits ("16" then ".67 ms"
+  is 16.67; code tokens "-" then "5" are −5) — so "12" and "30" drawn 4 px apart are two numbers, never 1230. A number
+  drawn a digit at a time reads as its digits (they stand 5–22 % of their height apart, as two numbers drawn close
+  do): draw a number as one string, as every built-in kit does. A drawn number counts as example data only while the
+  label is up the whole time it is drawn. A drawn number is a
   declared one when a declared line holds it and the drawn words are that line, or a word-bounded start or end of it;
   any other is a claim of its own (`path: 'drawn'`). `makeFilm`'s `check-claims` reads the declared lines only (it
   draws no frame).
@@ -1183,7 +1195,9 @@ ctx.beginPath(); ctx.arc(0, -40, 40, 0, Math.PI * 2); ctx.fill(); ctx.restore();
 
 ## Where StoryReel writes, and what it cleans
 
-A render writes only where you point it, and leaves only what you asked for. Nothing goes to the system's temp folder.
+A render writes only where you point it, and leaves only what you asked for. The system's temp folder holds only
+two passes' scratch, for the moment they run, each removed in a `finally`: the FFmpeg filter that reads a video's stills
+(`stills.mjs`), and the sound a breakdown hands its beat map (`breakdown.mjs`).
 
 | where | what | kept? |
 |---|---|---|
@@ -1267,7 +1281,8 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   words under the captions while a caption shows, words over other words, words cut off at the edge, the picture
   frozen for 5 s (`still`), nothing new for 5 s while it moves (`stale`: no scene, no beat and no new words —
   `newEvery`), a camera freeze over the voice (`frozen-voice`: the voice names a drawing while the picture is held, or
-  a mouth stays still while its speaker talks), and — with `loop: true`, for a part made to loop — an end that does not come round to its start (the
+  a mouth stays still while its speaker talks), an example line beside real numbers (`example-lingers`: its "Example
+  data" label stays up with it into a real scene), and — with `loop: true`, for a part made to loop — an end that does not come round to its start (the
   part's own scenes, not its handles: its last moment against its first, as the eye takes them in and word for word).
   Motion that steps rather than runs (a flipbook, a blink, a part drawn on twos) is read one drawing short of coming
   round, so such a loop reads as a jump even when it loops cleanly: look at a strip of the seam before changing it.
@@ -1397,6 +1412,106 @@ sound}`), and each check a strategy (`footprint-storyreel/finished` · `FINISHED
 first run of these checks found a bug in the renderer itself: FFmpeg's `-shortest` stopped the picture a few
 frames early, so the last frames of every film were lost; the sound is now padded to the picture's exact
 length instead.
+
+## Break down a reference film
+
+A director who admires a film says "match this". An agent cannot watch it, but it can read numbers and look at
+contact sheets. `breakdown(videoFile)` (`footprint-storyreel/breakdown`) reads any MP4 once, small and grey, and writes
+down what a viewer would note: every cut and what kind it is, the shots and their lengths, the pacing, where the motion
+lives and whether the camera moves, which shots carry lettering, and — given a beat map — which cuts land on the beat.
+
+```js
+import {breakdown} from 'footprint-storyreel/breakdown';
+const {spec, text, files} = await breakdown('reference.mp4', {out: 'work/reference'});
+console.log(text);   // breakdown.md, in plain words:
+// | # | from | to | length | comes in by | motion | lettering |
+// | 4 | 0:04.8 | 0:06.8 | 2 s | hard cut | things move inside the frame | – |
+// | 5 | 0:06.8 | 0:08.8 | 2 s | hard cut | the camera pans right | – |
+// | 6 | 0:08.8 | 0:10.4 | 1.6 s | dip through one colour 0.8 s | still | yes |
+spec.shots[4].motion.why.rules[1].checks;   // ['pan 0.188 ≥ 0.02 ✓', 'explained 0.97 ≥ 0.5 ✓', 'share 1 ≥ 0.6 ✓']
+```
+
+`npx storyreel breakdown reference.mp4 --out work/reference` does the same from the command line; it needs no project
+(`storyreel breakdown --help`; a failure prints where the record stopped and its last decisions). It needs **FFmpeg 5.1
+or later** (it reads frames with `-fps_mode passthrough`, and hands FFmpeg the stills' selection in a file, since a long
+film's runs past what one argument may hold: `-/filter:v` from FFmpeg 7, `-filter_script:v` before. Tested with FFmpeg
+9.0.2 on macOS, which takes only `-/filter:v`, and FFmpeg 6.1.1 on Ubuntu 24.04 in CI, which takes only `-filter_script:v`).
+
+- **What it writes:** `breakdown.json` (the spec), `breakdown.md` (the same in plain words), a contact sheet per shot
+  (`shots/shot-01.png`: 3 to 6 stills across it, labelled in yellow when it moves), `overview.png` (one still of every
+  shot) and `record.json`.
+- **Times you can trust.** Every decoded frame is read with its own time (FFmpeg starts every file's clock at 0, a
+  transport stream's and an offset MP4's too) and laid on a constant clock (`finished.mjs · onSlots`): slot k is the frame
+  a player shows at k / rate (each time exact: showinfo's integer `pts` in its time base, never its `pts_time`, which
+  FFmpeg before 7 rounds to six digits — 10 ms past 1,000 s), so a variable-rate file — a phone's, a screen recording — keeps its cuts on the frame shown
+  then, and so does a picture that starts after its sound. A picture that changes size mid-stream (two streams joined, a
+  WebM) is read on one running count of frames: FFmpeg's filter chain is never rebuilt (`-reinit_filter 0`, the scale
+  takes the new size), and showinfo's lines are counted by the reader, never by their own `n`. A slot no new frame reached repeats the one before, and a
+  repeat takes no part in finding cuts (a one-frame flash read twice is one flash); a new frame that looks the same as
+  the one before — a still screen — is a frame, and counts. The rate is decided, with its evidence in `read.why`: the
+  nominal rate, unless it is past 120 a second or more than twice the average. When the two differ the spec says so under
+  `warnings` (and the record keeps it); so it does when the file names no length (`video.lengthFrom: 'frames'`: counted
+  from the frames read). A picture stored on its side is read as it is shown: `video.width` and `video.height` are the
+  shown size, with its `rotation`. A file with sound only refuses: there is no picture to break down.
+- **Cuts, and their kinds.** A hard cut is one frame whose change is a peak: 12 grey levels or more, and 3 times the
+  change of the frames around it. A flash (one frame unlike the frames either side, which are alike) is reported apart
+  and splits no shot. **Fades** are found first, from every run of one colour: the picture fading into it and out of it,
+  followed as a trend (an eased fade moves too little in a frame to rise every frame), at least 0.2 s long, and covering
+  most of the way before its last step (the picture at that step has at most half its spread): so a fade's own last step
+  into black, however sudden, is a step of the fade (`fade-step` in the record), never a cut — and a picture that dims a
+  little and then cuts to black was cut. A fade
+  in and out round a hold of at most 1 s is a **dip**; a lone **fade-in** or **fade-out** owns its hold. A stretch where the
+  picture keeps changing is a **dissolve** when its middle frame is the even mix of its ends, the change runs one way, and
+  no shift of the whole picture explains it; anything else that changes is motion. A fade that opens or closes the film
+  splits no shot.
+- **Shots and pacing:** each shot's start, end and length and how it comes in (a dissolve's middle is the boundary;
+  transitions on one frame — a fade out to black, then a cut to white — make one boundary, the others under `also`); the
+  median and mean shot, the shortest and longest, cuts a minute. A shot of one colour all through (a slug of black, a
+  colour card) says so.
+- **Motion:** per shot, a 6 × 4 grid of where the picture changes, and a verdict: **still**; **camera** (the whole
+  picture shifts together, found from the row and column means, and most of the frame changes at once; it says which
+  way the camera pans or tilts, or none when the shift nets out); or **inside** (things move while the frame holds). The
+  film's motion every 0.5 s is in `spec.motion.curve`.
+- **Lettering is a heuristic, and says so:** rows of sharp strokes that form lines (at least twice as wide as tall, so
+  an icon or a face is left out), covering 0.8% of a still or more. The film's logo is left out (`text.mark` says how
+  much): each mark that stays put in a corner of every still of a shot is a candidate, decided by one rule — a logo when
+  it stays put in at least 3 shots and at least three quarters of them. A bug in every shot, in shots 1, 2 and 4 of 4, or
+  missing only from the title and the credits (8 of 10) is the logo; a name in a corner of one shot, a caption over
+  shots 1–2 of 4, or one that comes back after a cutaway (2 of 3) is lettering; a film of two shots has no logo. Its known
+  miss: a name shown in 3 shots of 4 reads as a logo — the record shows that decision with its evidence. It never reads
+  the words (no OCR).
+- **Beats.** `beatMap(audioFile, {...beatOptions, ffmpeg})` → `{bpm, beats: [seconds], drop?, confidence?, alternatives?:
+  [{bpm, score}]}` is handed the video's sound as a WAV (in a folder removed after), the beat map's own options
+  (`beatOptions`) and this run's FFmpeg, so a beat map such as beats.mjs's fits as it is (`{beatMap}`, or
+  `{beatMap: f => beatMap(f, {ffmpeg})}`): `breakdown(file, {beatMap, beatOptions: {bpm: 120}})` lays its grid at 120 BPM
+  where it finds no tempo of its own. `beatOptions` are the reader's own: the breakdown hands them on untouched and
+  never checks their names or values. A reader that finds them wrong throws an error with `code: 'BEAT_OPTIONS'` — a
+  wiring mistake, so the breakdown refuses with it; any other error it throws is a sound it could not read, recorded as
+  not run. The spec reports the BPM (and how
+  sure: `confidence`, and `close` when another tempo scores 90% of the best or more), the beats, the drop and the shot on
+  screen there, and which cuts land within 0.05 s of a beat. Without a beat map, without sound, or when the beat map
+  cannot read the sound (it throws: a silent track, no tempo), the spec says the beats were not read, and why (when the beat
+  map asks for one of its options, the reason says to give it as `beatOptions`); the rest of the breakdown stands. A beat map that answers in another shape refuses, naming the shape.
+- **Every verdict says why.** The breakdown is a footprintjs flowchart (probe → frames → cuts → gradual changes →
+  shots → motion → stills → lettering → beats → overview → spec), and each candidate cut, gradual change and shot is
+  decided with `decide()`, 100 at a time (a subflow that loops over batches — "left 262 gt 0 ✓, and chose cuts/decide the
+  next 100" — so the decisions running together stay few): each verdict in the spec carries every rule tried, its
+  measures against the thresholds, and `record.json` keeps the run's narrative, every line naming its candidate by number
+  and time — `[Condition]: It evaluated Rule 2 "cut candidate 2 at 1.6 s: the picture jumps in one frame, far more than
+  the frames around it change": jump 54.7 gte 12 ✓, ratio 54.7 gte 3 ✓, and chose cuts/each~1/cut.` (the path's `each~N` counts
+  within its batch of 100 — footprintjs numbers a fan-out's branches — so the candidate's own number is in the label).
+- **Exact values.** A rule compares a measure as it is; the spec rounds it only to show it, and a check shows as many
+  decimals as it takes to agree with its verdict (`endSpread 1.472 < 1.5 ✓`, never "1.5 < 1.5").
+- **The thresholds** are `BREAKDOWN`: `thresholds: {cutJump: 20}` changes one; an unknown name refuses, naming them.
+- **Memory.** It keeps about 4 KB a frame of measures, and a shot's stills only while its sheet is drawn (stills are read
+  in one pass and handed over as they come; the overview keeps a small copy of one per shot). Measured: a 4-minute film
+  of 385 shots peaks at about 0.6 GB.
+- **Limits.** A wipe, a push or a zoom between shots reads as motion, often as a short moving shot between two cuts. A
+  dissolve between two shots that both move is found only where its middle is still the mix of its ends. A zoom is not
+  told apart from other motion, and a slow change (a board drawn stroke by stroke) can read as still. Lettering is a
+  guess from strokes: a row of drawn stars can pass for it. Heavy grain through a dip keeps the black from reading as one
+  colour, so the dip can be missed (and read as motion). A synthetic texture that moves (a scrolling pattern) has no
+  stable picture to compare, so its cuts and dissolves are less sure than a filmed scene's.
 
 ## The compile record
 
@@ -1818,6 +1933,7 @@ the default because it rarely does; there is no swap repair.
 | `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?, claims?})` | compile + render as a footprintjs pipeline, with `making-of.json` (a segmented render: one subflow per segment; the claims verdict, `check-claims`) |
 | `approveFilm({record, by, note?})` · `checkApproval(approval, inputs)` | the approval lock: approve a watched render from its making-of.json, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
 | `checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})` · `FINISHED_CHECK_NAMES` | checks on the finished file: lengths, blank runs, flash frames, hand-overs and joins, the voice, captions (`footprint-storyreel/finished` adds `ffmpegProbe`, `FINISHED_CHECKS`, `FINISHED`) |
+| `footprint-storyreel/breakdown` → `breakdown(videoFile, {out?, beatMap?, thresholds?, ffmpeg?, probe?})` · `breakdownText(spec)` · `BREAKDOWN` | a reference film as a spec to match: cuts, fades and dissolves, shots, pacing, motion, lettering (a heuristic), cuts on the beat (`beatMap(wav, {ffmpeg})`); every verdict with its evidence |
 | `segmentedVideo({store, recipe, code?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir)` · `ffmpegJoin()` · `planSegments(film, {fps})` · `segmentKey(…)` · `codeFingerprint(paths)` | re-render only what changed: the picture in cached segments, joined (`renderFilm({…, video})`) |
 | `footprint-storyreel/release` → `makeRelease({targets, post, out, …})` · `loadTarget` · `checkAdapter` · `planProblems` · `TARGET_NAMES` | the post for each platform: the video in its shape, captions, thumbnail, the text to paste, checked against the platform's limits and audience |
 | `readCast(cast)` · `castText(text, cast)` · `withCast(value, cast)` | the cast: `{{role}}` in any text becomes the role's name; kits read the rest from `context.cast` |
@@ -1841,7 +1957,7 @@ the default because it rarely does; there is no swap repair.
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/review`, `/slideshow`, `/geometry`, `/claims`, `/regions`, `/captions`, `/layout`, `/transitions`, `/camera`, `/kits/whiteboard`, `/kits/cartoon`, `/pose`, `/mocap`, `/kits/cartoon/figure`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/review`, `/slideshow`, `/geometry`, `/claims`, `/regions`, `/captions`, `/layout`, `/transitions`, `/breakdown`, `/camera`, `/kits/whiteboard`, `/kits/cartoon`, `/pose`, `/mocap`, `/kits/cartoon/figure`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws

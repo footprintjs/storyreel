@@ -37,7 +37,7 @@ import {clockTenths} from './clock.mjs';
 import {verdictChart, verdictsText, readVerdict} from './verdict.mjs';
 import {slideshowOf, SLIDESHOW, SLIDESHOW_VERDICT} from './slideshow.mjs';
 import {geometryOf, breakText, GEOMETRY_VERDICT} from './geometry.mjs';
-import {claimsCount, unsourcedClaims, claimText, drawnClaims, CLAIMS_VERDICT} from './claims.mjs';
+import {claimsCount, unsourcedClaims, claimText, drawnClaims, lingeringExamples, lingerText, CLAIMS_VERDICT} from './claims.mjs';
 
 /**
  * The words a frame draws at t: [{text, box: [x0, y0, x1, y1], alpha}], in the layout's output pixels (or on the
@@ -163,7 +163,7 @@ const pct = share => `${Math.round(share * 100)} %`;
 
 /**
  * The checks, each a strategy: label, why (said when it is picked), when(scope) (picked when true: scope.facts
- * holds {seconds, captions, words, parts, claims}), find(review) → [{kind, t, what}] from the shared samples. Same shape
+ * holds {seconds, captions, words, parts, claims, freezes?, lingers?}), find(review) → [{kind, t, what}] from the shared samples. Same shape
  * for a check of your own, passed in reviewPart's `checks`. find answers at once, and its hits are copied as {kind, t,
  * what} (plainHits): a find that throws or returns anything else fails the review, naming the check. review.picked says
  * which checks run beside it, so one can leave a finding to another (stale leaves a frozen picture to still). A
@@ -283,15 +283,21 @@ export const REVIEW_CHECKS = Object.freeze({
   // draw that none of them holds (claims.mjs · drawnClaims: the words read once, for every check — no second drawing).
   claims: {label: 'Every number has a source', why: 'the film lists the numbers it shows', notRun: 'the film does not list the numbers it shows (compileFilm lists them as film.claims)',
     when: s => s.facts.claims,
-    measure: ({film, window, samples}) => {
+    measure: ({film, window, drawn}) => {
       const declared = film.claims.numbers.filter(c => c.at <= window.to + 1e-6 && c.to >= window.from - 1e-6);
-      const drawn = drawnClaims(samples.map(x => ({t: x.t, words: [...x.words, ...(x.marks ?? [])]})), {claims: film.claims, sceneOf: t => film.clock.locate(t).index, scenes: film.timings.scenes.map(sc => sc.id)});
       const claims = {...film.claims, numbers: [...declared, ...drawn]}, open = unsourcedClaims(claims);
       return {measured: {...claimsCount(claims), drawn: drawn.length, unsourcedNumbers: open.map(c => ({number: c.number, scene: c.scene, path: c.path, at: c.at}))},
         hits: open.map(c => ({kind: 'claims', t: Math.max(c.at, window.from), what: claimText(c)}))};
     },
     summary: m => (m.numbers ? `${m.numbers} number${m.numbers === 1 ? '' : 's'} on screen: ${m.sourced} sourced${m.unverified ? ` (${m.unverified} on a source nobody can follow: unverified)` : ''}, ${m.examples} in example scenes${m.factsGiven ? `, ${m.unsourced} with no source` : `, ${m.open - m.sourced} unchecked`}` : ''),
     verdict: CLAIMS_VERDICT},
+  // An example line that stays up into a scene that is not example data keeps its label (claims.mjs · labelSpans): beside
+  // a real number there, the label seems to cover it too (claims.mjs · lingeringExamples). Said while both are on screen.
+  'example-lingers': {label: 'Example data over real numbers', why: 'an example line stays up into a scene that is not example data', when: s => (s.facts.lingers ?? 0) > 0,
+    find: ({samples, lingers}) => lingers.filter(g => g.numbers.length).flatMap(g => {
+      const what = lingerText(g), both = t => t >= g.from - 1e-9 && t <= g.to + 1e-9 && g.numbers.some(c => t >= c.at - 1e-9 && t <= c.to + 1e-9);
+      return samples.filter(x => both(x.t)).map(x => ({kind: 'example-lingers', t: x.t, what}));
+    })},
 });
 
 /** The camera's freezes that reach the window: {path, at, until}. */
@@ -312,7 +318,7 @@ function frozenWords(film, f) {
 }
 
 const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes', hook: 'no hook', 'text-density': 'too much to read', silences: 'no breath', stale: 'nothing new', loop: 'the loop jumps', 'frozen-voice': 'a freeze over the voice',
-  slideshow: 'held still', geometry: 'the drawing breaks', claims: 'no source'};
+  slideshow: 'held still', geometry: 'the drawing breaks', claims: 'no source', 'example-lingers': 'example data over real numbers'};
 /** What a verdict check's scope keeps for itself: never a measured value's name. */
 const MACHINERY = new Set(['hits', 'failed', 'measured', 'verdict', 'why', 'summary']);
 /** The findings as lines: "1:21.5–1:23.0 chapters · under the captions: \"requests in\"". */
@@ -339,10 +345,11 @@ const SAYS = Object.freeze({find: {promise: 'find returned a promise', list: 'fi
   measure: {promise: "measure's hits are a promise", list: "measure's hits must be a list of hits", hit: "measure's hit"}});
 /**
  * Hits on sample times → spans of the same thing, each with the scene it starts in; a word's span shorter than `lasting`
- * is passing (a fade, a page turning) and dropped — never a hit of a picture check, or of a verdict (`held`: a reason).
+ * is passing (a fade, a page turning) and dropped — never a hit of a picture check, of the record's own spans (an example
+ * line beside real numbers: when the lines are up, not a frame), or of a verdict (`held`: a reason).
  */
 function spans(film, hits, every, lasting) {
-  const held = new Set(['still', 'hook', 'silences', 'stale', 'loop', ...hits.filter(h => h.held).map(h => h.kind)]);
+  const held = new Set(['still', 'hook', 'silences', 'stale', 'loop', 'example-lingers', ...hits.filter(h => h.held).map(h => h.kind)]);
   const groups = new Map();
   for (const h of hits) { const k = `${h.kind}\u0000${h.what}`; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(h.t); }
   const sceneAt = t => { let id = null; film.timings.scenes.forEach((s, i) => { if (film.clock.offsets[i] <= t + 1e-6) id = s.id; }); return id; };
@@ -389,7 +396,7 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
     if (!c || typeof c.when !== 'function' || typeof c.label !== 'string' || (typeof c.find !== 'function' && !(typeof c.measure === 'function' && c.verdict))) throw new Error(`review check "${id}" must be {label, why?, when(scope), find(review)} — or, answering with a verdict, {label, why?, notRun?, when(scope), measure(review), verdict: {rules, passed}}`);
     if (typeof c.find !== 'function') readVerdict(c.verdict, `review check "${id}": verdict`);
   }
-  const review = {film, window, part: own, layout: framed, width: framed?.width ?? 1600, height: framed?.height ?? 900, every, stillFor, maxWords, minSilence, newEvery, minAlpha, samples: [], hashes: {}, greys: new Map(), frozen: [], picked: []};
+  const review = {film, window, part: own, layout: framed, width: framed?.width ?? 1600, height: framed?.height ?? 900, every, stillFor, maxWords, minSilence, newEvery, minAlpha, samples: [], hashes: {}, greys: new Map(), frozen: [], drawn: [], lingers: [], picked: []};
   let findings = [];
   const read = async s => {
     const times = []; for (let t = window.from; t <= window.to + 1e-9; t += every) times.push(onClock(film, t));
@@ -415,13 +422,22 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
     review.greys = greys;
     review.hashes = Object.fromEntries(times.map(t => [t, pictures[+t.toFixed(3)]]));
     review.frozen = frozenRuns(review);
+    // The numbers the picture draws that no declared line holds (claims.mjs · drawnClaims), read once from the samples'
+    // words and marks, and where an example line lingers into a real scene beside numbers: for the claims checks.
+    if (film.claims) {
+      const ids = film.timings.scenes.map(sc => sc.id);
+      review.drawn = drawnClaims(review.samples.map(x => ({t: x.t, words: [...x.words, ...(x.marks ?? [])]})), {claims: film.claims, sceneOf: t => film.clock.locate(t).index, scenes: ids});
+      review.lingers = lingeringExamples({labels: film.claims.labels, numbers: [...film.claims.numbers, ...review.drawn]},
+        {scenes: film.timings.scenes.map((sc, i) => ({from: film.clock.offsets[i], to: film.clock.offsets[i] + sc.duration})), examples: film.claims.examples, ids})
+        .filter(g => g.from < window.to - 1e-6 && g.to > window.from + 1e-6);
+    }
     // A kit that gives its parts (geometry.mjs) at a sample: one whose parts(t) throws gives them too, so the geometry
     // check is picked and names the error.
     const drawsParts = t => { try { return (film.partsAt?.(t) ?? []).length > 0; } catch { return true; } };
     s.facts = {from: window.from, to: window.to, seconds: +(window.to - window.from).toFixed(3), stillFor, newEvery, loop: Boolean(loop), captions: Boolean(framed?.boxes.captions), samples: times.length, words: review.samples.reduce((n, x) => n + x.words.length, 0),
       spoken: film.timings.scenes.some((sc, i) => (sc.words ?? []).some(w => film.clock.offsets[i] + w.end > window.from && film.clock.offsets[i] + w.start < window.to)),
       parts: times.filter(drawsParts).length, claims: Boolean(film.claims),
-      ...(freezesIn(film, window).length ? {freezes: freezesIn(film, window).length} : {})};
+      ...(freezesIn(film, window).length ? {freezes: freezesIn(film, window).length} : {}), ...(review.lingers.length ? {lingers: review.lingers.length} : {})};
     s.ran = []; s.hits = []; s.failed = []; s.verdicts = [];
   };
   // The picks go on the review too, so a check can leave a finding to another that runs. A when() that throws is a

@@ -6,7 +6,8 @@
   WAVs, FFmpeg's lists, segment files on their way to the cache) go in a hidden `.storyreel-work-…` folder beside the
   video, removed when the render ends, finished or failed (`render.mjs` · `closeRender`; `renderFilm` and `makeFilm` call
   it in a `finally`). Only the outputs stay beside the video. To keep the working files, name a folder for them:
-  `renderFilm({…, work})` (or `makeFilm({…, render: {work}})`). StoryReel writes nothing to the system's temp folder.
+  `renderFilm({…, work})` (or `makeFilm({…, render: {work}})`). The system's temp folder holds only two passes' scratch
+  while they run (the stills' FFmpeg filter, a breakdown's sound for its beat map), each removed in a `finally`.
 - **A stopped render's folders are swept by the next one.** Scratch folders are named `<prefix>-<host>-<pid>-<n>`
   (`scratch.mjs`): a render sweeps the `.storyreel-work-…` folders beside it whose process on this host is gone (Ctrl-C,
   a killed process: the library installs no signal handler), and `makeFilm` the `.narration-…` copies too; the
@@ -23,6 +24,21 @@
   `storyreel-…` and removed when its test or its file ends. `npm run test:temp` runs the suite with a temp folder of its
   own and fails if anything is left; CI runs it. Stopped (Ctrl-C, SIGTERM), it stops the suite, removes its own folder
   and exits with the signal's code. A full run used to leave 87 folders behind; it now leaves none.
+- **An example line beside real numbers is a finding.** An example scene's line that stays up into a real scene keeps
+  its "Example data" label, which then seems to cover the real numbers beside it: the review's new
+  `example-lingers` check says so while both are on screen (`an example line lingers into scene real beside real
+  numbers (60): erase it before the scene`). `claims.mjs · lingeringExamples` finds the stretches.
+- **"ISO-8601" and "A-1000" are names, not numbers.** A number after a hyphen after a word is a number only when it is a
+  plausible year (1000–2199) after a lower-case word or a time prefix (mid-, pre-, post-, early-, late-, in any case):
+  "mid-2024", "pre-2020" and "post-1990" still need a source; an upper-case code (COVID-19, B-52, UTF-8) does not.
+- **Two numbers drawn close stay two.** The review joins drawn words without a space only where their ink touches (a
+  gap under 8 % of their height, `DRAWN.touch`) or a sign or a decimal point stands at its digits (within 20 %,
+  `DRAWN.mark`): "12" and "30" drawn 4 px apart are 12 and 30, never 1230; "16" then ".67 ms" is still 16.67, and "-"
+  then "5" still −5. A number drawn a digit at a time now reads as its digits: draw it as one string.
+- **A prose source is unverified, not refused.** A fact's source that leads to no file ("/r/science thread") is kept as
+  unverified; only a path that is there, outside the film's root, refuses.
+- **The slideshow's still cap is measured on real code films**, and stays: they are still 18–54 % of the time (the
+  cap is 85 %), their stillest shot 80 %.
 
 - **The review's `frozen-voice` names only what a freeze holds.** An emphasis word, a focus key or a guess card is drawn
   on the voice's clock, so its beat under a freeze is no longer reported as "appears when the freeze ends".
