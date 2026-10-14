@@ -53,8 +53,9 @@ release, with reference pages for motion, camera, music, motion from a video, ch
 records) and **`storyreel-review`** (fix one by reading it first). Install them as a Claude Code plugin —
 `claude plugin marketplace add footprintjs/storyreel`, then `claude plugin install storyreel@storyreel` — or copy the
 folders in `plugin/skills/` into a project's `.claude/skills/`. The skills cannot drift from the code:
-`test/skills.test.mjs` checks every command and flag, subpath, import, link and package path they name, and runs every
-example marked `run`.
+`test/skills.test.mjs` checks every command and flag, subpath, import, option, link and package path they name, compares
+their catalog tables with the code, and runs every example marked `run` (each asserts what it claims);
+`npm run test:skills:render` renders the main path's film, approves it and renders the final.
 
 ## Your first film
 

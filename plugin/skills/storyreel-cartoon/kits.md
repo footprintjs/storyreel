@@ -18,6 +18,7 @@ Pass every kit the film uses: `compileFilm({…, kits: [myKit, cartoonKit]})` (a
 `whiteboard` kit needs no passing.
 
 ```js run
+import assert from 'node:assert/strict';
 import {compileFilm, evenTimings, cartoonKit} from 'footprint-storyreel';
 
 // A story kit of your own: a sunrise. compile() runs once; draw(ctx, t) draws any moment.
@@ -39,8 +40,8 @@ const recipe = {
   stages: [{type: 'world', scene: 'field', enter: {type: 'iris', at: [800, 600]},
     world: {kit: 'cartoon', flock: {count: 3, out: {at: ['field', 'a sheep went out'], every: 1.2}, home: {at: ['field', 'through the gate'], every: 1.2}}}}]};
 const film = await compileFilm({storyboard, recipe, kits: [sunrise, cartoonKit], timings: evenTimings(storyboard)});
-console.log(film.shots.map(s => `${s.where}: ${s.from}–${s.to} s`));   // [ 'the story: 0–6.8 s', 'stage field: 6.8–12.84 s' ]
-console.log(film.regionsAt(9).map(r => r.name).filter(Boolean));      // what a camera can frame: sun, shepherd, sack, pen, gate
+assert.deepEqual(film.shots.map(s => `${s.where}: ${s.from}–${s.to} s`), ['the story: 0–6.8 s', 'stage field: 6.8–12.84 s']);
+assert.deepEqual(film.regionsAt(9).map(r => r.name).filter(Boolean), ['sun', 'shepherd', 'sack', 'pen', 'gate']);   // what a camera can frame
 ```
 
 ## What a story kit's compile returns
@@ -114,6 +115,7 @@ from a **pose**, standing on `floor` (its y, px), `size` px tall; `colors` overr
   (a hat at `head`, a bag at `hands[near]`), from the same pose `draw` uses.
 
 ```js run
+import assert from 'node:assert/strict';
 import {walk} from 'footprint-storyreel/walk';
 import {walkSource, checkPose} from 'footprint-storyreel/pose';
 import {figureAt, FIGURE_COLORS} from 'footprint-storyreel/kits/cartoon/figure';
@@ -121,8 +123,11 @@ import {figureAt, FIGURE_COLORS} from 'footprint-storyreel/kits/cartoon/figure';
 const her = walkSource(walk({from: 150, to: 1100, start: 0, size: 300}));
 const pose = her.poseAt(2), p = figureAt(pose, {floor: 760, size: 300});
 checkPose(pose);                                       // a pose of your own: it throws, naming each key that is wrong
-console.log(pose.feet, p.head, p.hands[p.near], p.unit);   // a hat goes on p.head; unit is 90 px
-console.log(Object.keys(FIGURE_COLORS));                                    // skin, shirt, legs, shoes, ink
+assert.equal(p.unit, 90);                                     // one torso length: 0.3 of size
+assert.deepEqual(Object.keys(p), ['hip', 'shoulder', 'head', 'knees', 'feet', 'elbows', 'hands', 'near', 'unit']);
+assert.equal(p.near, 1);                                      // walking toward +x, feet[1]'s side is drawn in front
+assert.equal(p.feet[0].y, 760 - pose.feet[0].lift);           // a foot is where the pose puts it: a hat goes on p.head
+assert.deepEqual(Object.keys(FIGURE_COLORS), ['skin', 'shirt', 'legs', 'shoes', 'ink']);
 ```
 
 ## The whiteboard

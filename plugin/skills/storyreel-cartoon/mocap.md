@@ -34,6 +34,7 @@ from, `from`/`to` the stretch of the video to use. It returns `{poseAt(t), start
 planned walk gives, so `drawFigure` draws either, and a kit never asks where a pose came from.
 
 ```js run
+import assert from 'node:assert/strict';
 import {fromPose} from 'footprint-storyreel/mocap';
 import {walkSource} from 'footprint-storyreel/pose';
 
@@ -47,8 +48,10 @@ const frames = Array.from({length: 30}, (_, k) => {
 const wave = await fromPose({scheme: 'coco-17', fps: 30, coordinates: 'pixels', width: 1280, height: 720, frames}, {x: 900, size: 420, start: 6});
 const enter = walkSource({from: 100, to: 900, start: 0, size: 420});   // walks in first, then waves as the person did
 const poseAt = t => (t < wave.start ? enter : wave).poseAt(t);          // in a kit: drawFigure(ctx, poseAt(t), {floor, size})
-console.log(poseAt(6.9).joints.arms[1]);                                 // the raised arm's angles, radians
-console.log(wave.record.contacts.map(c => `${c.foot}: ${c.why}`));       // each foot planted, and why
+assert.ok(poseAt(6.9).joints.arms[1].shoulder > 1.5);                   // the raised arm, radians from hanging
+assert.ok(Math.abs(poseAt(6).joints.arms[1].shoulder) < .3);            // … where it started, down
+assert.deepEqual(wave.record.contacts.map(c => c.how), ['planted', 'planted']);   // each foot planted …
+assert.match(wave.record.contacts[0].why, /^still long enough, on the floor/);    // … and why
 ```
 
 ## 3. What it decides, and why (read the record)

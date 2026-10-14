@@ -15,14 +15,31 @@
 //       ```js run``` (or ```js run file=check.mjs```)               run with node: it must exit 0
 //       ```sh run```                                              each line an `npx storyreel …` command: it must exit 0
 //     A block marked `run` is small and fast: it compiles, reviews or computes, and never renders (a render is minutes
-//     of FFmpeg, not a check), so a run block that renders, or calls a command that does, is refused here.
+//     of FFmpeg, not a check), so a run block that renders, or calls a command that does, is refused here. It asserts
+//     what it claims (node:assert, or a gate's exit code): a claim left in a comment beside a console.log is refused;
+//   - every js block parses (node --check), the ones not run too;
+//   - every option a js block hands a typed function is one its type takes (TypeScript's types, test/skills-options.mjs);
+//   - the catalog tables say what the code says: the camera moves, the review's checks, the slideshow's thresholds, the
+//     formats' sizes, the release targets, the feels, the moves, the eases, the walks and evenTimings' defaults.
+// The renders the pages describe (the draft, the approval, the final) run in test/skills-render.mjs: npm run test:skills:render.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync, readdirSync, statSync, existsSync, writeFileSync, mkdirSync, symlinkSync} from 'node:fs';
-import {spawn, execFileSync} from 'node:child_process';
+import {readFileSync, readdirSync, statSync, existsSync, writeFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {tempDir} from './tmp.mjs';
+import {unknownOptions} from './skills-options.mjs';
+import {blocksOf, CODE, run, project} from './skills-blocks.mjs';
+import {compileFilm, evenTimings, compileLayout, FORMAT_NAMES} from '../src/index.mjs';
+import {CAMERA_MOVES, CAMERA_MOVE_NAMES} from '../src/camera.mjs';
+import {REVIEW_CHECKS, findingsText} from '../src/review.mjs';
+import {SLIDESHOW} from '../src/slideshow.mjs';
+import {TARGET_NAMES} from '../src/release.mjs';
+import {FEEL_NAMES} from '../src/motion.mjs';
+import {MOVES, MOVE_KINDS} from '../src/moves.mjs';
+import {EASE_NAMES} from '../src/ease.mjs';
+import {WALK_NAMES} from '../src/walk.mjs';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const plugin = path.join(repo, 'plugin');
@@ -38,23 +55,6 @@ const markdownIn = dir => readdirSync(dir).sort().flatMap(name => {
 });
 const pages = markdownIn(skills).map(file => ({file, text: readFileSync(file, 'utf8')}));
 
-/** A page's fenced code blocks: {lang, run, file, code, line}. A fence may be indented (inside a list item). */
-function blocksOf(text) {
-  const out = [], lines = text.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    const open = /^(\s*)```(\S*)\s*(.*)$/.exec(lines[i]);
-    if (!open) continue;
-    const [, indent, lang, info] = open, body = [];
-    let j = i + 1;
-    for (; j < lines.length && !new RegExp(`^${indent}\`\`\`\\s*$`).test(lines[j]); j++) body.push(lines[j].startsWith(indent) ? lines[j].slice(indent.length) : lines[j]);
-    if (j >= lines.length) throw new Error(`a code block opened on line ${i + 1} is never closed`);
-    const words = info.split(/\s+/).filter(Boolean);
-    out.push({lang, run: words.includes('run'), file: words.find(w => w.startsWith('file='))?.slice(5) ?? null, code: body.join('\n'), line: i + 1});
-    i = j;
-  }
-  return out;
-}
-const CODE = new Set(['js', 'mjs', 'javascript', 'ts', 'typescript']);
 
 // ── What the CLI says it has ────────────────────────────────────────────────────────────────────────────────────────
 /** {command: Set(flags)} as `storyreel --help` lists them (and `storyreel breakdown --help`); mcp takes any flag. */
@@ -131,21 +131,6 @@ function ships(relPath) {
 
 // ── Running a page's blocks ─────────────────────────────────────────────────────────────────────────────────────────
 const RENDERS = /\b(makeFilm|renderFilm|makeRelease|checkVideo|breakdown|beatMap|peakOf)\s*\(|storyreel (part|breakdown|beats)\b/;
-// A block runs as a program of its own, never as part of this test run (the runner's NODE_TEST_CONTEXT stays here).
-const {NODE_TEST_CONTEXT: _runner, ...ownEnv} = process.env;
-const run = (args, cwd) => new Promise(resolve => {
-  const child = spawn(process.execPath, args, {cwd, env: ownEnv}), out = [], err = [];
-  const timer = setTimeout(() => child.kill('SIGKILL'), 30_000);
-  child.stdout.on('data', d => out.push(d)); child.stderr.on('data', d => err.push(d));
-  child.on('close', code => { clearTimeout(timer); resolve({code, out: Buffer.concat(out).toString(), err: Buffer.concat(err).toString()}); });
-});
-/** A folder with the package installed in it, as `npm i` would leave it: node_modules/footprint-storyreel. */
-function project(t) {
-  const dir = tempDir('skills', t);
-  mkdirSync(path.join(dir, 'node_modules'));
-  symlinkSync(repo, path.join(dir, 'node_modules', 'footprint-storyreel'), 'dir');
-  return dir;
-}
 /** `npx storyreel review --scene farm` → the CLI's arguments (words, or "quoted words"). */
 const argsOf = line => [...line.replace(/^npx storyreel\s+/, '').matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map(m => m[1] ?? m[2] ?? m[3]);
 
@@ -250,4 +235,113 @@ test('the code blocks run: each page\'s files are written and its run blocks exi
       assert.equal(r.code, 0, `${where}: the block exited ${r.code}\n${r.err || r.out}`);
     }
   })));
+});
+
+// ── Meaning, not only names ─────────────────────────────────────────────────────────────────────────────────────────
+const pageText = name => pages.find(p => rel(p.file) === `plugin/skills/${name}`).text;
+const jsBlocks = () => pages.flatMap(page => blocksOf(page.text).filter(b => CODE.has(b.lang)).map(b => ({...b, page})));
+/** The rows of the table whose header row starts with `header`: each row's cells, trimmed (the separator row left out). */
+function tableAt(text, header) {
+  const lines = text.split('\n'), at = lines.findIndex(l => l.startsWith(header));
+  assert.ok(at >= 0, `no table starting ${header}`);
+  const rows = [];
+  for (const line of lines.slice(at + 2)) { if (!line.startsWith('|')) break; rows.push(line.slice(1, -1).split('|').map(c => c.trim())); }
+  return rows;
+}
+const ticked = cell => [...cell.matchAll(/`([^`]+)`/g)].map(m => m[1]);
+/** The backticked names in the stretch of text from `from` to the first `to` after it. */
+const namesBetween = (text, from, to) => { const i = text.indexOf(from); assert.ok(i >= 0, `no "${from}"`); return ticked(text.slice(i + from.length, text.indexOf(to, i + from.length))); };
+
+test('a block marked run asserts what it claims: node:assert, or a gate that exits non-zero; no claim left in a comment', () => {
+  const wrong = [];
+  for (const b of jsBlocks().filter(b => b.run)) {
+    const where = `${rel(b.page.file)}:${b.line}`;
+    if (!/from 'node:assert(\/strict)?'/.test(b.code) && !/process\.exit\(1\)/.test(b.code)) wrong.push(`${where}: asserts nothing (import assert from 'node:assert/strict')`);
+    for (const line of b.code.split('\n')) if (/console\.log\(.*\/\/ /.test(line)) wrong.push(`${where}: a claim in a comment beside console.log — assert it: ${line.trim()}`);
+  }
+  assert.deepEqual(wrong, []);
+});
+
+test('every js block parses, the ones not run too (node --check)', async t => {
+  const dir = tempDir('skills-parse', t), blocks = jsBlocks();
+  const results = await Promise.all(blocks.map((b, i) => {
+    const file = path.join(dir, `block-${i}.mjs`);
+    writeFileSync(file, b.code);
+    return run(['--check', file], dir).then(r => ({...r, where: `${rel(b.page.file)}:${b.line}`}));
+  }));
+  assert.deepEqual(results.filter(r => r.code !== 0).map(r => `${r.where}: ${r.err.split('\n').find(l => /Error/.test(l)) ?? r.err}`), []);
+  assert.ok(blocks.length >= 20, `${blocks.length} js blocks read`);
+});
+
+test('every option a js block hands a typed function is one its type takes (excess keys, by the package\'s own types)', async t => {
+  const dir = project(t), files = jsBlocks().map((b, i) => {
+    const file = path.join(dir, `block-${i}.mjs`);
+    writeFileSync(file, b.code);
+    return {file, b};
+  });
+  const where = new Map(files.map(({file, b}) => [path.resolve(file), b]));
+  const exported = new Set([...(await exportsOf(Object.keys(pkg.exports).filter(k => k !== './package.json' && k !== './studio').map(k => k.replace(/^\.\/?/, '')))).values()].flatMap(set => [...set]));
+  const wrong = unknownOptions(files.map(f => f.file), {dir, exported}).map(({file, line, key, name, known}) => {
+    const b = where.get(file), at = `${rel(b.page.file)}:${b.line + line}`;
+    return key === null ? `${at}: calls ${name} without importing it, so nothing it is handed can be checked` : `${at}: "${key}" is not an option there (it takes ${known.join(', ')})`;
+  });
+  assert.deepEqual(wrong, []);
+});
+
+test('the catalog tables say what the code says', async t => {
+  await t.test('camera.md: each move\'s family, its settings\' defaults and its length are CAMERA_MOVES\'', () => {
+    let family = null;
+    const seen = [], wrong = [];
+    for (const [fam, moveCell, , settings, length] of tableAt(pageText('storyreel-cartoon/camera.md'), '| family | move |')) {
+      family = fam || family;
+      const [name] = ticked(moveCell), move = CAMERA_MOVES[name];
+      seen.push(name);
+      if (!move) { wrong.push(`${name}: no such move`); continue; }
+      if (move.family !== family) wrong.push(`${name}: family ${family}, the code says ${move.family}`);
+      const lasts = Number.isFinite(move.seconds) ? `${move.seconds} s` : "to the film's end";
+      if (length !== lasts) wrong.push(`${name}: length ${length}, the code says ${lasts}`);
+      const said = new Map([...settings.matchAll(/`([a-z]+)`([^`]*)/g)].map(([, key, rest]) => [key, {default: /\((-?[\d.]+)\)/.exec(rest)?.[1], required: /\(required\)/.test(rest)}]));
+      for (const [key, spec] of Object.entries(move.params)) {
+        if (typeof spec.default === 'number' && Number(said.get(key)?.default) !== spec.default) wrong.push(`${name}: ${key} defaults to ${spec.default}, the table says ${said.get(key)?.default ?? 'nothing'}`);
+        if (!('default' in spec) && !said.get(key)?.required) wrong.push(`${name}: ${key} is required, the table does not say so`);
+      }
+      for (const key of said.keys()) if (!(key in move.params)) wrong.push(`${name}: the table names ${key}, which it does not take`);
+    }
+    assert.deepEqual(wrong, []);
+    assert.deepEqual(seen.sort(), [...CAMERA_MOVE_NAMES].sort());
+  });
+  await t.test('checks.md: the findings table is the review\'s checks, each with the label the review prints', () => {
+    const rows = tableAt(pageText('storyreel-cartoon/checks.md'), '| id | finding |');
+    const labelOf = kind => /· (.*): x$/.exec(findingsText([{from: 0, to: 0, scene: '', kind, what: 'x'}]))[1];
+    assert.deepEqual(rows.map(r => ticked(r[0])[0]).sort(), Object.keys(REVIEW_CHECKS).sort());
+    assert.deepEqual(rows.filter(r => r[1] !== labelOf(ticked(r[0])[0])).map(r => `${r[0]}: "${r[1]}", the review prints "${labelOf(ticked(r[0])[0])}"`), []);
+  });
+  await t.test('checks.md: the slideshow\'s thresholds are SLIDESHOW', () => {
+    const rows = tableAt(pageText('storyreel-cartoon/checks.md'), '| threshold | value |');
+    assert.deepEqual(Object.fromEntries(rows.map(([key, value]) => [ticked(key)[0], Number(value)])), {...SLIDESHOW});
+  });
+  await t.test('release.md: each format\'s size is the size compileLayout makes; the targets are TARGET_NAMES', async () => {
+    const storyboard = {scenes: [{id: 'a', narration: 'One sheep, one pebble.'}]};
+    const film = await compileFilm({storyboard, recipe: {story: {kit: 'whiteboard', items: []}}, timings: evenTimings(storyboard)});
+    const rows = tableAt(pageText('storyreel-cartoon/release.md'), '| format | size |');
+    assert.deepEqual(rows.map(r => ticked(r[0])[0]), [...FORMAT_NAMES]);
+    for (const [format, size] of rows) { const l = compileLayout(film, {format: ticked(format)[0]}); assert.equal(size, `${l.width}×${l.height}`, format); }
+    assert.deepEqual(namesBetween(pageText('storyreel-cartoon/release.md'), 'Targets: ', ' each as'), [...TARGET_NAMES]);
+  });
+  await t.test('motion.md and camera.md: the feels, the moves by kind, the eases and the walk styles are the code\'s', () => {
+    const motion = pageText('storyreel-cartoon/motion.md');
+    assert.deepEqual(namesBetween(motion, 'feels ', ')').sort(), [...FEEL_NAMES].sort());
+    assert.deepEqual(namesBetween(pageText('storyreel-cartoon/camera.md'), '`feel`: a spring (', '{k, d}').sort(), [...FEEL_NAMES].sort());
+    const kinds = Object.fromEntries(tableAt(motion, '| kind | moves |').map(([kind, names]) => [kind, ticked(names)]));
+    assert.deepEqual(kinds, Object.fromEntries(MOVE_KINDS.map(k => [k, Object.values(MOVES).filter(m => m.kind === k).map(m => m.name)])));
+    assert.deepEqual(namesBetween(motion, '`easeNamed`): ', 'or a CSS curve'), [...EASE_NAMES]);
+    assert.deepEqual(namesBetween(motion, 'Styles: ', 'or `{cadence'), [...WALK_NAMES]);
+  });
+  await t.test('evenTimings\' defaults, as the pages state them: seconds a word, and the tail', () => {
+    const even = evenTimings({scenes: [{id: 'a', narration: 'one two'}, {id: 'b', silent: [['it goes', 2]]}]});
+    const [one, two] = even.scenes[0].words, word = +(two.start - one.start).toFixed(3), tail = +(even.scenes[1].duration - 2).toFixed(3);
+    assert.ok(pageText('storyreel-cartoon/voice.md').includes(`(${word} s a word)`), `voice.md says ${word} s a word`);
+    assert.ok(pageText('storyreel-cartoon/SKILL.md').includes(`adds a ${tail} s tail to each scene`), `SKILL.md says a ${tail} s tail`);
+    assert.ok(pageText('storyreel-review/SKILL.md').includes(`(a ${tail} s tail a scene)`), `storyreel-review says a ${tail} s tail`);
+  });
 });

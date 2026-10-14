@@ -26,7 +26,9 @@ needs FFmpeg on the PATH.
 6. **Draft.** `npx storyreel part --scene <id>` for a quick look at a few scenes, or a small `makeFilm` render of
    the whole film.
 7. **Read the record.** `making-of.json` beside the video says what played, when, and why.
-8. **Approve** the draft the person watched (`approveFilm`); the final render refuses anything that changed since.
+8. **Approve** the draft the person watched (`approveFilm`). The final render refuses when an input it hashed changed
+   (the storyboard, recipe, timings, pacing, strings, data, theme, cast, facts, language, files the recipe read, the
+   voice, a song) or the files named to `codeFingerprint`; the render settings (size, format, captions) are not locked.
 9. **Release.** `makeRelease` makes the post for each platform: the video in its shape, captions, the post text.
 
 ## Which skill or page for each job
@@ -58,6 +60,7 @@ footprintjs's `decide()`, so its record keeps **why**: the rule that matched, th
 looks wrong, read that record and the review's text before you guess, and before you look at a picture. A picture
 costs many tokens and hides its times; the record and the timeline do not. Open a still last, to confirm the look.
 
-- A refusal is a message that names the fix: read it whole. A refused compile carries `error.record`.
+- A refusal is a message that names the fix: read it whole. A compile run with `record: true` that refuses carries
+  `error.record`.
 - A verdict says `passed`, `failed` or `not run`, each with why. `not run` checked nothing: never read it as passed.
 - Never guess a time: the timeline gives every beat's second.

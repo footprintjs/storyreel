@@ -32,6 +32,7 @@ drawing can land, and at each scene's end. `voiceSpeed` is 0.8–1.1 (1 for a si
 silent cut `paceTimings` shifts the word times the same way. A silent scene takes no hold: lengthen its direction.
 
 ```js run
+import assert from 'node:assert/strict';
 import {evenTimings, paceTimings, makeClock, spokenText, unsaidNumbers} from 'footprint-storyreel';
 
 const storyboard = {title: 'Frames', scenes: [
@@ -39,12 +40,15 @@ const storyboard = {title: 'Frames', scenes: [
   {id: 'frame', narration: 'One frame takes 16.67 ms at 60 Hz. That is fast.',
    say: [['16.67 ms', 'sixteen point six seven milliseconds'], ['60 Hz', 'sixty hertz']]},
   {id: 'more', narration: 'A film has 24 frames a second.'}]};
-console.log(spokenText(storyboard.scenes[1]));   // what the voice must say: the numbers in words
-console.log(unsaidNumbers(storyboard));          // [{scene: 'more', text: '24'}]: digits with no say slot yet
-const even = evenTimings(storyboard);            // the timings.json shape a voice folder holds
+assert.equal(spokenText(storyboard.scenes[1]),     // what the voice must say: the numbers in words
+  'One frame takes sixteen point six seven milliseconds at sixty hertz. That is fast.');
+assert.deepEqual(unsaidNumbers(storyboard), [{scene: 'more', text: '24'}]);   // digits with no say slot yet
+const even = evenTimings(storyboard);              // the timings.json shape a voice folder holds
+assert.deepEqual(Object.keys(even.scenes[1]), ['id', 'duration', 'words', 'alignment']);
+assert.equal(even.scenes[0].duration, 2.8);        // a silent scene: its directions' seconds, plus the 0.8 s tail
 const paced = paceTimings(storyboard, even, {voiceSpeed: 1, sceneTail: .8, holds: [{scene: 'frame', after: 'at 60 Hz', seconds: 1.5}]});
-const clock = makeClock(storyboard, paced);
-console.log(paced.scenes.map(s => s.duration), clock.at(['frame', 'That is fast']));   // the hold moved "That is fast" 1.5 s later
+const at = (timings, phrase) => makeClock(storyboard, timings).at(['frame', phrase]);
+assert.equal(+(at(paced, 'That is fast') - at(even, 'That is fast')).toFixed(3), 1.5);   // the hold moved it 1.5 s later
 ```
 
 ## Numbers: shown in digits, said in words

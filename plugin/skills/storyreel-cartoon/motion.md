@@ -30,6 +30,7 @@ listing them. The timing rules are in the data: an exit takes half its entrance'
 0.09 s apart, an entrance ends at rest. A whole shot can enter with a move too: `"enter": {"move": "soft-rise"}`.
 
 ```js run
+import assert from 'node:assert/strict';
 import {writeFileSync} from 'node:fs';
 import {compileFilm, evenTimings, contactSheet} from 'footprint-storyreel';
 import {moveAt, stagger, applyMove, movesBy} from 'footprint-storyreel/moves';
@@ -55,8 +56,9 @@ const sign = {name: 'sign', story: {compile(spec, clock) {
 const storyboard = {scenes: [{id: 'shop', silent: [['the sign pops up', 2], ['open today', 2]]}]};
 const film = await compileFilm({storyboard, recipe: {story: {kit: 'sign', pop: ['shop', 'the sign pops up'], text: 'Open today'}}, kits: [sign], timings: evenTimings(storyboard)});
 writeFileSync('sign.png', await contactSheet(film, {moments: [0.1, 0.25, 0.5, 1.5].map(t => ({t, label: `${t} s`}))}));
-console.log(movesBy({feel: 'bouncy', use: 'logo'}).map(m => m.name));   // overshoot, bounce-landing, pop, pop-out, wiggle
-console.log(moveAt('pop', 1, {start: 0, reduced: true}).scale);         // 1: reduced motion is the end state at once
+assert.deepEqual(movesBy({feel: 'bouncy', use: 'logo'}).map(m => m.name), ['overshoot', 'bounce-landing', 'pop', 'pop-out', 'wiggle']);
+assert.equal(moveAt('pop', 1, {start: 0, reduced: true}).scale, 1);    // reduced motion: the end state at once
+assert.ok(moveAt('pop', .15, {start: 0}).scale > 0.9);               // part way through its swell
 ```
 
 ## Eases and springs
@@ -83,14 +85,17 @@ or `{cadence, stride, bob, …}` of your own (`footprint-storyreel/walk` · `WAL
 `footprint-storyreel/pose` · `walkSource(plan)` turns it into the pose `drawFigure` draws ([SKILL.md](SKILL.md)).
 
 ```js run
-import {walk} from 'footprint-storyreel/walk';
+import assert from 'node:assert/strict';
+import {walk, WALKS} from 'footprint-storyreel/walk';
 import {heldTime} from 'footprint-storyreel/motion';
 
 const w = walk({from: 100, to: 900, start: 1, size: 300, style: 'bouncy'});
-console.log(w.steps, 'steps; feet together at', w.arrive.toFixed(2), 's; settled at', w.end.toFixed(2), 's');
-const planted = [1.8, 1.85, 1.9].map(t => w.at(t).feet.filter(f => f.lift === 0).map(f => f.x));
-console.log(planted);              // the planted foot keeps its x from moment to moment
-console.log(heldTime(1.01, 'twos'));   // 1: on twos a drawing is held for two frames; draw the figure at heldTime(t)
+assert.equal(w.steps, 9);
+assert.equal(+(w.arrive - w.start - WALKS.bouncy.anticipate).toFixed(3), +(9 / WALKS.bouncy.cadence).toFixed(3));   // steps at the style's cadence
+assert.equal(+(w.end - w.arrive).toFixed(3), WALKS.bouncy.settle);                                                 // then it settles
+const planted = [1.8, 1.85, 1.9].map(t => w.at(t).feet.find(f => f.lift === 0).x);
+assert.equal(new Set(planted).size, 1);       // the planted foot keeps its x from moment to moment
+assert.equal(heldTime(1.01, 'twos'), 1);      // on twos a drawing is held for two frames: draw the figure at heldTime(t)
 ```
 
 A hand-drawn cartoon holds each drawing for two frames while its camera moves on every frame: work out a figure's
@@ -116,11 +121,17 @@ each character its own `seed`, so two never blink in step. `drawFigure` draws no
 the pose (`{...pose, x: pose.x + idle.sway}`) or to your own drawing.
 
 ```js run
+import assert from 'node:assert/strict';
 import {anticipate, squash} from 'footprint-storyreel/principles';
 import {idleAt, moodAt} from 'footprint-storyreel/acting';
 
-console.log(anticipate(1.95, {at: 2, distance: 300}));              // about −22 px: a step back before it goes
-console.log(squash(2, {landings: [{at: 2, speed: 1400}]}));         // {sx: 1.39, sy: 0.72}: flattened as it lands
-console.log(idleAt(3, {seed: 1}).blink, idleAt(3, {seed: 2}).sway);
-console.log(moodAt([{at: 0, mood: 'calm'}, {at: 2, mood: 'surprised', take: 1}], 2.1).take);
+assert.equal(Math.round(anticipate(1.95, {at: 2, distance: 300})), -22);   // a step back before it goes
+const {sx, sy} = squash(2, {landings: [{at: 2, speed: 1400}]});
+assert.deepEqual([+sx.toFixed(2), +sy.toFixed(2)], [1.39, 0.72]);           // flattened as it lands …
+assert.equal(+(sx * sy).toFixed(9), 1);                                      // … keeping its volume
+const one = idleAt(3, {seed: 1}), two = idleAt(3, {seed: 2});
+assert.ok(Math.abs(one.breath - 1) <= .012 && one.blink >= 0 && one.blink <= 1 && Math.abs(one.sway) <= 2);
+assert.notEqual(one.sway, two.sway);                                         // two seeds never move in step
+const mood = moodAt([{at: 0, mood: 'calm'}, {at: 2, mood: 'surprised', take: 1}], 2.1);
+assert.equal(mood.mood, 'surprised'); assert.equal(mood.from, 'calm'); assert.ok(mood.take > 0);
 ```

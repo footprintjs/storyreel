@@ -5,7 +5,8 @@ word lands, whether the picture moves, whether a drawn foot slides, whether a nu
 the moment, the scene and the recipe entry, so the fix is a lookup, not a hunt. There are four layers:
 
 1. **The compile refuses** what cannot be right: a phrase not in the storyboard, an unknown key, a camera move that
-   would uncover the frame, a guess with no pause. The message names the fix; a refused compile carries `error.record`.
+   would uncover the frame, a guess with no pause. The message names the fix; compiled with `record: true`, the refusal
+   carries `error.record`.
 2. **The compile lists** what is weak, without refusing: `film.reading` (lines up too briefly to read),
    `film.watching` (more than 4 moments in 2 s), `film.reads`, `film.listening` (too many sounds on cuts).
    `"reading": "refuse"`, `"watching": "refuse"`, `"listening": "refuse"` in the recipe make each one a refusal.
@@ -50,7 +51,18 @@ Each says `passed`, `failed` or `not run`, with why, decided with footprintjs's 
 The shots must move inside themselves. Each shot is read in its middle (transitions cut out) as small grey frames;
 a still stretch longer than 3 s is **dead**. It fails when more than half the shots' running time is dead, or more
 than 85% is still at all (a deck of slides swapped every 3 s). A kit cannot exempt itself. Fix: motion inside the
-shot (a move, a drift, an idle), not more cuts. `footprint-storyreel/slideshow` · `slideshowOf(film)` measures it alone.
+shot (a move, a drift, an idle), not more cuts. `footprint-storyreel/slideshow` · `slideshowOf(film)` measures it alone,
+with the thresholds as data (`footprint-storyreel/slideshow` · `SLIDESHOW`; `slideshowOf(film, {rule: {...SLIDESHOW, hold: 4}})`):
+
+| threshold | value | what it is |
+|---|---|---|
+| `width` | 160 | frames are read this many pixels wide |
+| `level` | 4 | grey levels a cell must change by to count as changed |
+| `area` | 0.0002 | share of the cells that must change for a step to move |
+| `hold` | 3 | seconds still before a stretch is dead |
+| `most` | 0.5 | share of the running time dead that fails the film |
+| `cover` | 0.0025 | a shot whose changes touch less of the frame than this never moves |
+| `still` | 0.85 | share of the running time still at all that fails the film |
 
 ### Drawn parts hold together
 
@@ -69,21 +81,23 @@ storyboard names, or sit in a scene marked as **example data**. A storyboard wit
 as one number shows.
 
 ```js run
+import assert from 'node:assert/strict';
 import {compileFilm, evenTimings} from 'footprint-storyreel';
 import {reviewPart} from 'footprint-storyreel/review';
 
 const recipe = {story: {kit: 'whiteboard', items: [
   {at: ['stall', 'Mia sold'], dur: 1, write: 'Sold 12 cups', x: 800, y: 300, size: 64, align: 'center'}]}};
 const scene = {id: 'stall', narration: 'Mia sold lemonade at her stall all morning, one cup at a time.'};
-for (const storyboard of [
-  {scenes: [scene]},                                                                    // not run: no facts
-  {facts: [{value: 13, source: 'https://example.org/ledger'}], scenes: [scene]},       // failed: 12 has no source
-  {facts: [{value: 12, text: '12 cups', source: 'https://example.org/ledger'}], scenes: [scene]},   // passed
-  {facts: [], scenes: [{...scene, example: true}]}]) {                                  // passed: example data
+const verdictOf = async storyboard => {
   const film = await compileFilm({storyboard, recipe, timings: evenTimings(storyboard)});
-  const claims = (await reviewPart(film)).verdicts.find(v => v.check === 'claims');
-  console.log(`${claims.verdict}: ${claims.why}`);
-}
+  return (await reviewPart(film)).verdicts.find(v => v.check === 'claims');
+};
+assert.equal((await verdictOf({scenes: [scene]})).verdict, 'not run');                                     // no facts
+const failed = await verdictOf({facts: [{value: 13, source: 'https://example.org/ledger'}], scenes: [scene]});
+assert.equal(failed.verdict, 'failed');                                                                    // 12 has no source
+assert.deepEqual(failed.measured.unsourcedNumbers.map(n => [n.number, n.scene, n.path]), [['12', 'stall', 'story.items[0]']]);
+assert.equal((await verdictOf({facts: [{value: 12, text: '12 cups', source: 'https://example.org/ledger'}], scenes: [scene]})).verdict, 'passed');
+assert.equal((await verdictOf({facts: [], scenes: [{...scene, example: true}]})).verdict, 'passed');        // example data
 ```
 
 - **A fact** is `{value, text?, source}`. `value` is the number as shown (`16.67`, `-5`, `1000000` for

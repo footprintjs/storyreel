@@ -61,6 +61,7 @@ is distance from the camera as a multiple of the subject's: 1 is the subject's p
 depth move on a kit with no layers refuses and says what to add.
 
 ```js run
+import assert from 'node:assert/strict';
 import {compileFilm, evenTimings} from 'footprint-storyreel';
 
 const paint = {hills: c => { c.fillStyle = '#9cc29a'; c.fillRect(0, 0, 1600, 900); },
@@ -77,18 +78,27 @@ const recipe = {story: {kit: 'farm'}, camera: [
   {move: 'dolly-in', at: ['farm', 'shepherd'], until: ['farm', 'his sheep'], on: 'shepherd', amount: 1.4},
   {move: 'orbit', at: ['farm', 'at the gate'], seconds: 2, amount: 140},
   {move: 'rack-focus', at: ['farm', 'the hills'], from: 'shepherd', on: 'hills'}]};
-for (const reducedMotion of [false, true]) {
+const played = async reducedMotion => {
   const film = await compileFilm({storyboard, timings: evenTimings(storyboard), recipe, kits: [farm], reducedMotion});
-  console.log(film.camera.motion, film.camera.moves.map(m => `${m.move} ${m.at}–${m.until} s: ${m.played}`));
-}   // moves [ 'dolly-in 0.68–1.44 s: move', … ]   then   cuts [ 'dolly-in 0.68–1.44 s: cut', … ]
+  return [film.camera.motion, ...film.camera.moves.map(m => `${m.move} ${m.at}–${m.until} s: ${m.played}`)];
+};
+assert.deepEqual(await played(false), ['moves', 'dolly-in 0.68–1.44 s: move', 'orbit 2.2–4.2 s: move', 'rack-focus 3.72–5.22 s: move']);
+assert.deepEqual(await played(true), ['cuts', 'dolly-in 0.68–1.44 s: cut', 'orbit 2.2–4.2 s: cut', 'rack-focus 3.72–5.22 s: cut']);
+// One camera: a dolly-out while the dolly-in still moves refuses, naming both and the times.
+const both = {story: {kit: 'farm'}, camera: [{move: 'dolly-in', at: ['farm', 'shepherd'], seconds: 3, on: 'shepherd'}, {move: 'dolly-out', at: ['farm', 'his sheep']}]};
+await assert.rejects(compileFilm({storyboard, timings: evenTimings(storyboard), recipe: both, kits: [farm]}),
+  {message: /^camera\[1\] \(dolly-out\) starts at 1\.44 s while camera\[0\] \(dolly-in\) still moves the camera's left–right \(until 3\.68 s\)/});
 ```
 
 ## Reduced motion
 
 `compileFilm({…, reducedMotion: true})` (and `makeFilm`) is the version for a viewer who asks for less motion: each
-move cuts to its end framing on its first moment, handheld is off, a freeze is kept. It changes only the recipe's
-camera moves (transitions and what kits animate play as written). The same recipes are accepted and refused either
-way. The film's inputs carry `reducedMotion: true`, so an approval of the moving film does not cover it.
+move cuts to its end framing on its first moment, except a `truck` or a `track`, which cuts at its last moment (to
+where its thing then is); the return over a change of picture cuts at its start; handheld is off; a speed ramp plays
+in step with the voice; a freeze is kept. It changes only the recipe's camera moves (transitions and what kits animate
+play as written). The same recipes are accepted and refused either way. When the recipe has camera moves, the film's
+inputs carry `reducedMotion: true`, so an approval of the moving film does not cover it; a film without them is the
+same either way.
 
 ## The record
 

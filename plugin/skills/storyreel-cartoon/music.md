@@ -35,6 +35,7 @@ it is not sure), `record` (the flowchart's narrative, every verdict with its `de
 `nearestBeat(t)`, `nextBeat(t)`, `onBeat(t, tolerance)`. `safeBeats(map)` is what a film may cut on.
 
 ```js run
+import assert from 'node:assert/strict';
 import {beatMapOf, safeBeats, likelyTempi, beatMapText} from 'footprint-storyreel/beats';
 
 // Twelve seconds of a kick drum at 120 BPM, made sample by sample (a song file goes to beatMap(file) instead).
@@ -44,9 +45,10 @@ for (let beat = 0; beat < 24; beat++) {
   for (let i = 0; i < rate * .12; i++) song[at + i] += Math.sin(2 * Math.PI * 60 * i / rate) * Math.exp(-i / (rate * .03)) + (i < 40 ? .25 * Math.sin(i * 12.9898) : 0);
 }
 const map = await beatMapOf(song, rate);
-console.log(map.bpm, map.verdict, map.sure);           // 120 'tempo-measured' true
-console.log(safeBeats(map).grid, likelyTempi(map));    // 'every beat' [ 120 ]
-console.log(beatMapText(map, {source: 'kick.wav'}));   // what `npx storyreel beats` prints
+assert.deepEqual([map.bpm, map.verdict, map.sure], [120, 'tempo-measured', true]);
+assert.equal(safeBeats(map).grid, 'every beat');      // a sure map: a film may cut on every beat
+assert.deepEqual(likelyTempi(map), [120]);
+assert.match(beatMapText(map, {source: 'kick.wav'}), /^kick\.wav · 12 s · tempo-measured/);   // what `npx storyreel beats` prints
 ```
 
 A wrong option throws with `code: 'BEAT_OPTIONS'` (fix the call); an error about the sound carries no code (fix the
@@ -58,6 +60,8 @@ unsure: give `bpm`, or trim the intro.
 ## Into a film
 
 ```js
+import {makeFilm} from 'footprint-storyreel';
+// storyboard, recipe, kits and pacing as for any film (a voiced one here: narrationDir)
 await makeFilm({storyboard, recipe, kits, narrationDir: 'voice', pacing, out: 'out/film.mp4',
   music: {file: 'music/theme.mp3', gain: .2, bpm: 95,       // bpm: the tempo you settled on (left out: measured)
     snap: {tolerance: .15},                                 // scene starts onto a beat, each scene's length changed by at most 0.15 s

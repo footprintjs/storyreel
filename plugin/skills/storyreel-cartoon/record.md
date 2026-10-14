@@ -27,13 +27,13 @@ usually wrong. Read the record and the review's text first; open a still only to
 | `inputs` | what the film was made from, each hashed: what an approval locks |
 | `pacing`, `chapters` | the pacing as applied; one chapter per titled scene |
 | `beats` | each phrase said (`said`), when (`at`), and the recipe entry it triggered (`entry`) |
-| `camera` | each move as played (`played`, `ends`; `covers` only when it scaled the picture up to keep the frame covered; `lasts`: until when its framing holds, null to the film's end) and the reduced-motion `decision` |
 | `claims` | the numbers on screen, the verdict and why (declared lines only; the review also reads what the picture draws) |
-| `sounds`, `loudness` | each sound effect; the loudness as measured and set (`type: 'skipped'` with a reason for a silent film) |
-| `finished` | the checks on the MP4 itself (`check: 'report'`): `checked`, `findings`, and `skipped` with why (voice, lip sync and captions need a voice or a caption file to compare) |
+| `sounds`, `loudness` | how many sound effects the film has (a count); the loudness as measured and set (`type: 'skipped'` with a reason for a silent film) |
 | `tools` | the tools and versions it was made with |
 | `pipeline`, `compile` | the render pipeline's narrative and the compile's, stage by stage |
-| only when used | `music` (a song), `voice` (a voice folder's word check), `picture` (a segmented render: each segment drawn or reused, and why), `approval` (rendered under one), `swept` (folders a stopped render left, removed), `version` (a layout, motion blur, caption files or `soundAt: 'peak'`) |
+| `camera` (only when the recipe has camera moves) | each move as played (`played`, `ends`; `covers` only when it scaled the picture up to keep the frame covered; `lasts`: until when its framing holds, null to the film's end) and the reduced-motion `decision` |
+| `finished` (only with `check`) | the checks on the MP4 itself: `checked`, `findings`, and `skipped` with why (voice, lip sync and captions need a voice or a caption file to compare) |
+| only when used | `notes` (director's notes as applied), `strings` (the language and the keys used), `reading` (lines too short to read), `poster` (its file and second), `listening` (the sound's findings), `narration` (the voice placed on a second try), `music` (a song), `voice` (a voice folder's word check), `picture` (a segmented render: each segment drawn or reused, and why), `approval` (rendered under one), `swept` (folders a stopped render left, removed), `version` (a layout, motion blur, caption files or `soundAt: 'peak'`) |
 
 A silent film's MP4 still has a sound track: silence, plus any sound effects the kits make.
 
@@ -44,6 +44,7 @@ written), `condition` (a decision, with the rule, the values and the thresholds)
 rather than reading it all: the decisions are `type === 'condition'`, a failure is the last entry.
 
 ```js run
+import assert from 'node:assert/strict';
 import {compileFilm, evenTimings} from 'footprint-storyreel';
 import {reviewPart} from 'footprint-storyreel/review';
 
@@ -54,19 +55,21 @@ const storyboard = {scenes: [{id: 'field', silent: [['a box slides along', 3], [
 const recipe = {story: {kit: 'field'}, camera: [{move: 'dolly-in', at: ['field', 'the camera moves in'], on: 'box'}]};
 
 const film = await compileFilm({storyboard, recipe, kits: [field], timings: evenTimings(storyboard), record: true});
-console.log(film.record.narrative.filter(e => e.type === 'stage').map(e => e.text));   // the compile, stage by stage
-console.log(film.camera.decision.chosen, film.camera.moves.map(m => `${m.path} ${m.move}: ${m.played}`));
-console.log(film.beats.map(b => `${b.t} s ${b.ref[1]} → ${b.path}`));                   // each phrase and who asked for it
+assert.deepEqual(film.record.narrative.filter(e => e.type === 'stage').map(e => e.text.replace(/^Stage \d+: [^.]*?(with|to) /, '')),
+  ['read inputs.', 'build worlds and stages.', 'guesses and notes.', 'checks.', 'resolve lines.']);   // the compile, stage by stage
+assert.equal(film.camera.decision.chosen, 'moves');                                  // the reduced-motion decision
+assert.deepEqual(film.camera.moves.map(m => `${m.path} ${m.move}: ${m.played}`), ['camera[0] dolly-in: move']);
+assert.deepEqual(film.beats.map(b => `${b.t} s ${b.ref[1]} → ${b.path}`), ['3 s the camera moves in → camera[0].at']);   // who asked
 
 const review = await reviewPart(film);
-console.log(review.record.filter(e => e.type === 'condition').map(e => e.text)[0]);     // a verdict, with its rule
+assert.match(review.record.filter(e => e.type === 'condition')[0].text, /^\[Condition\]: .*slideshow\/passed\.$/);   // a verdict, with its rule
 
-try {   // a refusal names the fix, and its record ends where it stopped
-  await compileFilm({storyboard, recipe: {...recipe, camera: [{...recipe.camera[0], on: 'sheep'}]}, kits: [field], timings: evenTimings(storyboard), record: true});
-} catch (error) {
-  console.log(error.message);
-  console.log(error.record.narrative.at(-1).text);
-}
+const wrong = {...recipe, camera: [{...recipe.camera[0], on: 'sheep'}]};   // a refusal names the fix, and its record ends where it stopped
+await assert.rejects(compileFilm({storyboard, recipe: wrong, kits: [field], timings: evenTimings(storyboard), record: true}), error => {
+  assert.equal(error.message, 'camera[0] (dolly-in on "sheep"): nothing in the picture is called "sheep" at 3.00 s; the names there are box');
+  assert.match(error.record.narrative.at(-1).text, /^\[Error\]: An error occurred at guesses and notes/);
+  return true;
+});
 ```
 
 ## Rules for reading

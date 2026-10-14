@@ -9,7 +9,7 @@ files and folders it is given and follows no imports: name every file that draws
 a helper the kit imports changes the film without the approval noticing. `approveFilm` takes the record of the
 render the person watched; `makeFilm({…, approval})` then refuses to render anything else, naming what changed.
 
-```js
+```js file=approve.mjs
 import {readFileSync, writeFileSync} from 'node:fs';
 import {approveFilm, makeFilm, evenTimings, codeFingerprint} from 'footprint-storyreel';
 import {farmKit} from './farm.mjs';
@@ -40,7 +40,8 @@ band and a caption band where the shape leaves room. `render: {layout: {format, 
 | `vertical` | 1080×1920 | Shorts, Reels, TikTok | title band, a 4:3 crop, captions |
 
 - **Captions** come from the voice's own word times (or a silent film's even times; directions are never captioned).
-  `captionFiles: true` in `render` writes `captions.vtt` and `captions.srt` beside the video instead of burning them in.
+  The layout's `captions` decides whether they are burned into the picture; `captionFiles: true` in `render` only adds
+  `captions.vtt` and `captions.srt` beside the video, whatever the layout burns in.
 - **A crop follows the action** in portrait and vertical: `crop: [{at: [scene, phrase], x}]` eases the crop's centre
   (an x on the 1600-wide frame) to `x` at each phrase; it is centred until the first.
 - `scale: .5` is a half-size draft of a format; `scale: 2` with `quality: 'high'` is 4K for YouTube.
@@ -56,12 +57,18 @@ name or `{target, from?, to?, crop?, scale?, header?, captions?, limits?}`. `pos
 'kids' | 'general', tags?, thumbnail?: 'poster' | an image, synthetic?: ['voice'], credits?}`.
 
 ```js
+import {readFileSync} from 'node:fs';
+import {evenTimings} from 'footprint-storyreel';
 import {makeRelease} from 'footprint-storyreel/release';
+import {farmKit} from './farm.mjs';
+
+const read = file => JSON.parse(readFileSync(file, 'utf8'));
+const storyboard = read('storyboard.json'), recipe = read('recipe.json');
 await makeRelease({storyboard, recipe, kits: [farmKit], timings: evenTimings(storyboard), out: 'release/ep01',
   post: {title: 'A walk on the farm', description: 'A short walk, a bird, a wave.', audience: 'general'},
   targets: ['youtube', {target: 'youtube-shorts', from: 0, to: 20}]});
 // release/ep01/youtube/: the video, captions.srt + .vtt, post.json, post.txt (the text to paste), CREDITS.txt
-// release/ep01/work/youtube/: the render's working files and its making-of.json
+// release/ep01/work/youtube/: the render as made (video, chapters, captions) and its making-of.json; the files above link to it
 ```
 
 Whatever can be known before a frame is drawn is checked first, for every target, and nothing renders if one
@@ -70,11 +77,16 @@ limit, a thumbnail of the wrong shape, a part too long. The length and the text 
 Uploading is not a release's job: it needs the account owner's sign-in.
 
 ```js run
+import assert from 'node:assert/strict';
 import {loadTarget, planProblems, readPost, TARGET_NAMES} from 'footprint-storyreel/release';
 
 const post = readPost({title: 'How counting began', description: 'One sheep, one pebble.', audience: 'kids'});
+const plan = {};
 for (const name of TARGET_NAMES) {
   const {adapter} = await loadTarget(name);
-  console.log(name, adapter.video.format, planProblems(adapter, post, {seconds: 50}).map(p => `${p.problem}: ${p.fix}`));
-}   // youtube landscape [] … tiktok vertical [ 'TikTok is for people aged 13 and over, and this film is made for kids: …' ]
+  plan[name] = [adapter.video.format, planProblems(adapter, post, {seconds: 50}).map(p => p.problem)];
+}
+assert.deepEqual(plan.youtube, ['landscape', []]);   // YouTube takes a film made for kids (and marks it so)
+assert.deepEqual(plan.tiktok, ['vertical', ['TikTok is for people aged 13 and over, and this film is made for kids']]);
+assert.deepEqual(Object.keys(plan).filter(n => plan[n][1].length), ['linkedin', 'tiktok', 'instagram-reels', 'x']);
 ```

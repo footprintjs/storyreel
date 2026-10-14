@@ -13,7 +13,13 @@
   the CLI's `--help` lists, every `footprint-storyreel/<subpath>` is in the exports, every imported name is a real
   export, every link between pages resolves inside the plugin, every path into the installed package ships in it, and
   every code block marked `run` runs (in a temp folder, with the package installed there; compile, review or compute
-  only, never a render). About 3 s.
+  only, never a render) and asserts what it claims. Every js block parses, and every option it hands a typed function
+  is one the function's type takes (`test/skills-options.mjs`: TypeScript's excess-key check, one literal at a time;
+  `render` held to renderFilm's options). The catalog tables are compared with the code: the camera moves' families,
+  defaults and lengths, the review's check ids and labels, the slideshow's thresholds, the formats' sizes, the release
+  targets, the feels, the moves by kind, the eases, the walk styles and evenTimings' defaults. About 3 s.
+- **`npm run test:skills:render`** (its own CI job, kept out of `npm test`) renders the main path's farm film as the
+  skills write it: the small draft, the approval, the final, and the approval refusing a changed kit.
 
 ### Beats in the breakdown
 
