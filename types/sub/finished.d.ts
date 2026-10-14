@@ -7,3 +7,7 @@ export const FINISHED: Readonly<{width: number; blank: number; blankFrames: numb
 export function ffmpegProbe(options?: {ffmpeg?: string; ffprobe?: string}): VideoProbe;
 /** The checks, each a strategy over what the probe read: what it needs (frames, the film, the captions, a voiced render), and run. */
 export const FINISHED_CHECKS: Readonly<Record<string, {needs: string[]; run(context: unknown): Omit<FinishedFinding, 'check'>[] | {skip: string}}>>;
+/** The film drawn small, as the checks compare it: draw(t) → grey levels (the frame, 16:9, `width` wide). */
+export function filmPainter(film: import('../index.js').Film, width: number): (t: number) => Uint8Array;
+/** Grey levels of a picture drawn on a canvas (RGBA), with the weights a video's grey uses, full range. */
+export function greyOf(rgba: Uint8Array | Uint8ClampedArray): Uint8Array;

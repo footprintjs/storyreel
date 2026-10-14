@@ -162,7 +162,7 @@ const inside = (p, paths) => paths.some(q => p === q || p.startsWith(`${q}.`));
  * What draws a segment, on its own clock (seconds from its first frame), so a segment whose shot did not
  * change keeps its key when an earlier scene grows or shrinks by whole frames: the recipe entries of its rows
  * (and of the row an entrance also draws) and of the guess cards over it, every line they resolved, the words
- * spoken in and around it (captions and mouths), the director's notes over it, what reaches every frame (the
+ * spoken in and around it (captions and mouths; an example scene's label), the director's notes over it, what reaches every frame (the
  * strings, the data, the theme, every file the film read: film.inputs), the frame settings, and the code.
  */
 export function segmentMaterial(film, seg, {recipe, storyboard = null, pixels, code = null, fps = 30, margin = 3}) {
@@ -175,7 +175,8 @@ export function segmentMaterial(film, seg, {recipe, storyboard = null, pixels, c
     .map(({sc, start}) => {
       const board = storyboard?.scenes?.find(b => b.id === sc.id);
       return {id: sc.id, start: at(start), duration: round(sc.duration), words: (sc.words ?? []).map(w => [w.text, at(start + w.start), at(start + w.end), ...(w.speaker ? [w.speaker] : [])]),
-        ...(board ? {said: board.narration ?? board.silent ?? null, say: board.say ?? null, speaker: board.speaker ?? null} : {})};
+        ...(board ? {said: board.narration ?? board.silent ?? null, say: board.say ?? null, speaker: board.speaker ?? null} : {}),
+        ...(board?.example ? {example: board.example} : {})};   // an example scene's label is drawn over it (film.mjs · exampleLabel)
     });
   const near = t => spans.some(([f, to]) => t >= f - margin && t <= to + margin);
   const {strings = null, data = null, theme = null, files = {}, cast = null} = film.inputs ?? {};

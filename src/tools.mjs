@@ -53,7 +53,7 @@ export async function timeline(project, args = {}) {
 export async function review(project, args = {}) {
   const part = partOf(args), loop = args.loop === true || args.loop === 'true';
   const r = await reviewPart(project.film, {...(part ? {part} : {}), layout: project.inputs.layout ?? null, loop});
-  return `${head(project.film, part, r.window)} — review (${r.ran.join(', ') || 'no check fits'}):\n${r.text || 'nothing found'}`;
+  return `${head(project.film, part, r.window)} — review (${r.ran.join(', ') || 'no check fits'}):\n${r.text || 'nothing found'}${r.verdicts?.length ? `\nverdicts:\n${r.verdictText}` : ''}`;
 }
 
 /** A quick look: the scenes with their handles, half size where the format allows, the draft encode; reviewed first. */
@@ -112,7 +112,7 @@ export async function strip(project, args = {}) {
 export const TOOLS = Object.freeze({
   timeline: {run: timeline, about: 'When each scene starts and each beat lands, as text (times from the part\'s start). Read it before choosing a moment to look at.',
     args: {scene: 'scene ids, comma-separated (default: the whole film)', handles: 'seconds of the film shown either side of the scenes (1.5)'}},
-  review: {run: review, about: 'What is wrong, read from the picture as text: words under the captions, over each other, cut off at the edge, the picture frozen for 5 s, nothing new for 5 s while it moves. Times on the film clock.',
+  review: {run: review, about: 'What is wrong, read from the picture as text: words under the captions, over each other, cut off at the edge, the picture frozen for 5 s, nothing new for 5 s while it moves. Times on the film clock. Then three verdicts (passed, failed, or not run): no slideshow, drawn parts hold together, every number on screen has a source.',
     args: {scene: 'scene ids, comma-separated (default: the whole film)', handles: 'seconds either side (1.5)', loop: 'true when the part is made to loop: the end of its scenes (not the handles) must come round to their start'}},
   part: {run: part, about: 'A quick look at scenes: rendered with 1.5 s of the film either side (both cuts seen), half size, draft encode; reviewed first. Prints the video\'s path.',
     args: {scene: 'scene ids, comma-separated (required)', handles: 'seconds either side (1.5)'}},

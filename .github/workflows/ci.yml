@@ -21,4 +21,4 @@ jobs:
       # The whole suite with a temp folder of its own; nothing may be left in it (scripts/temp-hygiene.mjs).
       - run: npm run test:temp
       - run: npx publint
-      - run: npx @arethetypeswrong/cli --pack --profile esm-only --entrypoints . clock pacing ease pins sheet render segments pipeline approval film strings theme reading shots regions review tools motion attention captions layout transitions camera moves principles acting finished listening release kits/whiteboard kits/cartoon studio  # the typed entry points (README: the drawing internals are untyped)
+      - run: npx @arethetypeswrong/cli --pack --profile esm-only --entrypoints . clock pacing ease pins sheet render segments pipeline approval film strings theme reading shots regions review slideshow geometry claims tools motion attention captions layout transitions camera moves principles acting finished listening release kits/whiteboard kits/cartoon studio  # the typed entry points (README: the drawing internals are untyped)
