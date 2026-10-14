@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **The skills say where StoryReel may write** (release.md · "Where StoryReel may write", and one line in the main
+  path where `out` is chosen): every folder from the out's real path up to `/` yours or root's and writable by no one
+  else unless sticky; group-write only for a provably private group on Linux, never on macOS; `noowners` drives, an
+  unreadable mount table under `/Volumes/`, exFAT and FAT refused; ACLs and network owners not read. Results report real
+  paths (`/var/…` is `/private/var/…` on macOS); each output is written under a temporary name and renamed into place,
+  never through a planted link; a `work` folder you name keeps fixed working-file names. `npm run test:skills:render`
+  checks the draft's real path and that a team folder anyone can write to is refused.
+
 - **Skills that build a film, not only review one.** The plugin ships three skills: `storyreel` (start here: the path
   from storyboard to a released film, and which skill or page to read for each job), `storyreel-cartoon` (the main
   path as one working film: a kit, a figure that walks, a camera dolly, the review as a gate, a small draft, approval,

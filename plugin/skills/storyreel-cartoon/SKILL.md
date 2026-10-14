@@ -126,9 +126,8 @@ console.log(`${film.total} s`, review.text || 'nothing found', `\n${review.verdi
 if (review.findings.length || review.verdicts.some(v => v.verdict === 'failed') || weak.length) process.exit(1);
 ```
 
-Fix one finding at a time. "Nothing new for 5 s" means no beat landed for 5 s: give the kit or the recipe a moment
-to act on (here, the bird). Look at frames last (`npx storyreel still --at farm+12`); the full loop is the
-`storyreel-review` skill ([its SKILL.md](../storyreel-review/SKILL.md)).
+Fix one finding at a time ("nothing new": no beat landed, so give the kit or recipe a moment to act on, here the bird).
+Look at frames last (`npx storyreel still --at farm+12`); the full loop is [storyreel-review](../storyreel-review/SKILL.md).
 
 ## 6. A small draft render
 
@@ -141,11 +140,12 @@ const storyboard = read('storyboard.json'), recipe = read('recipe.json');
 const result = await makeFilm({storyboard, recipe, kits: [farmKit], timings: evenTimings(storyboard),
   code: codeFingerprint(['farm.mjs']),   // the kit's code and everything it imports, for the approval to lock
   out: 'out/draft/film.mp4', check: 'report', render: {width: 640, height: 360, quality: 'draft'}});
-console.log(result.out, result.makingOf);      // out/draft/: film.mp4, making-of.json, chapters.txt
+console.log(result.out, result.makingOf);      // real paths: out/draft/ holds film.mp4, making-of.json, chapters.txt
 ```
 
-`node make.mjs` takes seconds. Without `width`/`height` a render is 1280×720<!-- RENDER_DEFAULTS.width RENDER_DEFAULTS.height -->. Give each render its own folder, and
-delete drafts you no longer need: films are large.
+`node make.mjs` takes seconds; without `width`/`height` a render is 1280×720<!-- RENDER_DEFAULTS.width RENDER_DEFAULTS.height -->. Render into a folder of your own:
+every folder above `out` must be yours or root's and writable by no one else unless sticky, or the render is refused
+([release.md](release.md#where-storyreel-may-write)). Delete drafts you no longer need: films are large.
 
 ## 7. Read the record, approve, release
 
