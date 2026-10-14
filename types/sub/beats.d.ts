@@ -1,8 +1,14 @@
 /** One line of a flowchart's narrative (footprintjs): what a stage did, read or wrote, and each decision with its evidence. */
 export interface RecordEntry { type: string; text: string; depth: number; stageId?: string; stageName?: string; runtimeStageId?: string; [key: string]: unknown }
 
-/** A tempo the onsets also fit: its BPM and its score relative to the best (1). */
-export interface TempoAlternative { bpm: number; score: number }
+/**
+ * A tempo the onsets also fit: its BPM, its score relative to the best (1), its own grid of beats, and its phase doubt —
+ * the onset strength half a beat off its grid against the strength on it (near 1 or above: the grid may sit on the "and").
+ */
+export interface TempoAlternative { readonly bpm: number; readonly score: number; readonly phaseDoubt: number; readonly beats: readonly number[] }
+
+/** How the map chose its tempo: measured and certain, a faster or slower level certain, unsure (close), or given. */
+export type TempoVerdict = 'tempo-measured' | 'tempo-faster' | 'tempo-slower' | 'tempo-close' | 'tempo-given';
 
 /**
  * A song's beat map (beats.mjs · beatMap): its tempo, beats, bars and drop on the song's own clock, how sure it is, and
@@ -12,6 +18,10 @@ export interface TempoAlternative { bpm: number; score: number }
 export interface BeatMap {
   /** The grid's tempo: a line through the beats (or the one given). */
   readonly bpm: number;
+  /** How the tempo was chosen; `tempo-close` when no single level of the beat passes both tests. */
+  readonly verdict: TempoVerdict;
+  /** False exactly when the verdict is `tempo-close`: cut only on safeBeats(map), the beats every candidate shares. */
+  readonly sure: boolean;
   /** Every beat, seconds, each on the transient it sits on. */
   readonly beats: readonly number[];
   /** Every bar's first beat (a 4/4 guess; the downbeat from low-band onsets). */
@@ -38,15 +48,49 @@ export interface BeatMap {
 /** bpm and drop override the measured ones; range is the tempos preferred ([70, 180]); ffmpeg names the FFmpeg to read with. */
 export interface BeatMapOptions { bpm?: number | null; drop?: number | null; range?: [number, number]; ffmpeg?: string }
 
-/** One level of the beat tried: its BPM, its score among the candidates (0 when it is none), the tests it fails ([] passes). */
-export interface BeatLevel { readonly bpm: number; readonly score: number; readonly fails: readonly string[] }
-/** The tests a level must pass to be certain (levelTests): the kick pulse (phase, kicked, no kick between) and the in-betweens (steady, no subdivision filled), and the score margin when there is no kick pulse. */
-export interface LevelRules { phase: number; kicked: number; low: number; steady: number; fill: {2: number; 3: number; 4: number}; margin: number }
-/** The beat map's rules: the preferred tempos, the meter, the downbeat's margin, the drop's dB and window, what makes a fade-in, onBeat's tolerance, the level tests. */
-export const BEATS: Readonly<{range: readonly [number, number]; meter: number; downbeat: number; drop: number; window: number; fade: number; sudden: number; onBeat: number; level: Readonly<LevelRules>}>;
+/**
+ * One level of the beat tried: its BPM, its score among the candidates (0 when it is none), the tests it fails ([] passes),
+ * and `kicksAlone` when the kicks alone refused it (refusedByKicksAlone) — then no other level may be certain.
+ */
+export interface BeatLevel { readonly bpm: number; readonly score: number; readonly fails: readonly string[]; readonly kicksAlone?: true }
+/**
+ * The tests a level must pass to be certain (levelTests): a kick pulse of at least `pulse` hits (phase, kicked, no kick
+ * between) and the in-betweens (steady, no subdivision filled, nothing filled anywhere between, not a half-time
+ * backbeat covering at most `halfTime` of the beats), and the score margin when there is no kick pulse.
+ */
+export interface LevelRules { pulse: number; phase: number; kicked: number; low: number; steady: number; fill: {2: number; 3: number; 4: number; any: number}; halfTime: number; margin: number }
+/** What safeBeats keeps: beats within `tolerance` seconds on every candidate's grid, none when a candidate's phase doubt reaches `phaseDoubt`. */
+export interface SafeRules { tolerance: number; phaseDoubt: number }
+/** The beat map's rules: the preferred tempos, the meter, the downbeat's margin, the drop's dB and window, what makes a fade-in, onBeat's tolerance, safeBeats' rules, the level tests. */
+export const BEATS: Readonly<{range: readonly [number, number]; meter: number; downbeat: number; drop: number; window: number; fade: number; sudden: number; onBeat: number; safe: Readonly<SafeRules>; level: Readonly<LevelRules>}>;
+/** The evidence one level is judged on (dsp.mjs · levelEvidence). */
+export interface LevelEvidence { phase: number | null; kicked: number | null; steady: number; backbeat?: {phase: number; covered: number} | null; fill: Record<2 | 3 | 4, {full: number; low: number}> & {any?: {full: number}} }
 /** The tests one level of the beat fails (none: it passes), from its evidence (dsp.mjs · levelEvidence) and the other levels tried. */
-export function levelTests(level: {bpm: number; score: number; evidence: {phase: number | null; kicked: number | null; steady: number; fill: Record<2 | 3 | 4, {full: number; low: number}>}}, all: {score: number}[], rules?: LevelRules): string[];
-/** A song's beat map, read through FFmpeg (any audio it reads). */
+export function levelTests(level: {bpm: number; score: number; evidence: LevelEvidence; masked?: LevelEvidence}, all: {score: number}[], rules?: LevelRules): string[];
+/** Whether a level was refused by the kicks alone: its only failures are kick tests, and its in-betweens with the kicks masked pass. */
+export function refusedByKicksAlone(level: {fails: readonly string[]; masked?: LevelEvidence; evidence: LevelEvidence; bpm: number; score: number}, rules?: LevelRules): boolean;
+
+/**
+ * The beats a film may cut on (the product rule): a sure map, every beat; an unsure (`tempo-close`) one, only the beats
+ * every listed candidate's grid shares, and none when any candidate is unsure of its phase. A map without `sure` (a
+ * hand-made list of beats) is taken as sure.
+ */
+export interface SafeBeats {
+  readonly beats: readonly number[];
+  readonly grid: 'every beat' | 'shared' | 'none: a candidate is unsure of its phase';
+  /** How many beats were kept, of how many the map holds. */
+  readonly shared: number;
+  readonly of: number;
+  /** The candidates' tempi the beats were checked against. */
+  readonly tempi: readonly number[];
+  /** The tempi unsure of their phase, when that left no beat. */
+  readonly unsure?: readonly number[];
+}
+export function safeBeats(map: {beats: readonly number[]; sure?: boolean; alternatives?: readonly {bpm: number; beats?: readonly number[]; phaseDoubt?: number}[]}, options?: {tolerance?: number; doubt?: number}): SafeBeats;
+
+/** An error for the caller's options (an unknown key, a value out of range, a drop past the song's end, samples not mono Float32 at 22050 Hz): `code` is 'BEAT_OPTIONS'. An error reading the sound carries no such code. */
+export interface BeatOptionsError extends Error { code: 'BEAT_OPTIONS' }
+/** A song's beat map, read through FFmpeg (any audio it reads). Bad options reject with a BeatOptionsError. */
 export function beatMap(audioFile: string, options?: BeatMapOptions): Promise<BeatMap>;
 /** The same from mono samples at 22050 Hz (-1..1). */
 export function beatMapOf(samples: Float32Array, rate: 22050, options?: Omit<BeatMapOptions, 'ffmpeg'>): Promise<BeatMap>;

@@ -16,6 +16,7 @@ import {makeClock} from './clock.mjs';
 import {firstAtOrAfter} from './dsp.mjs';
 import {hashOf, hashBytes} from './hash.mjs';
 import {QUIET, plainNarrative} from './record.mjs';
+import {safeBeats} from './beats.mjs';
 import {readEntrance, transitionCatalog} from './transitions.mjs';
 
 /**
@@ -184,21 +185,25 @@ const pick = choices => choices.filter(c => c.keeps).sort((a, b) => Math.abs(a.d
  * Fit a film to a song. timings: the paced timings; beats: a beat map (beats.mjs · beatMap: its `beats`, `drop` and
  * `seconds`, on the song's clock); snap: false (the default: no cut moves), true or {tolerance}; dropOn: a key
  * (["scene", "phrase", plus?]) the song's drop lands on, or null (the song starts with the film); recipe and kits: the
- * film's, so no scene is made shorter than its keyed moments or the entrance after it (floorsOf). Returns {timings
- * (the scenes' lengths changed), start (the film second the song's first second plays at), cuts: [{scene, verdict, by,
- * beat, drift, at, why}], record}.
+ * film's, so no scene is made shorter than its keyed moments or the entrance after it (floorsOf). A cut lands only on
+ * the beats beats.mjs · safeBeats allows: every beat of a sure map, only those every candidate shares of an unsure one.
+ * Returns {timings (the scenes' lengths changed), start (the film second the song's first second plays at), cuts:
+ * [{scene, verdict, by, beat, drift, at, why}], cutOn: {grid, beats, of, tempi}, record}.
  */
 export async function fitToMusic({storyboard, timings, beats, snap = false, dropOn = null, recipe = null, kits = []}) {
   const snapping = readSnap(snap, 'fitToMusic'), rule = snapping ?? {tolerance: 0}, key = readKey(dropOn, 'fitToMusic');
   if (!Array.isArray(beats?.beats)) throw new Error('fitToMusic: beats is the song\'s beat map (beatMap(file)), with its beats in seconds');
   if (timings?.scenes?.length !== storyboard?.scenes?.length) throw new Error('fitToMusic: give the storyboard and its paced timings, one timing per scene');
   const ids = storyboard.scenes.map(s => s.id), durations = timings.scenes.map(s => s.duration), song = Number.isFinite(beats.seconds) ? beats.seconds : null;
-  const work = {ids, snap: rule, beats: [...beats.beats], durations, base: [...durations], queue: [], cuts: [], anchor: 0, key: null};
+  // The beats a cut may land on (beats.mjs · safeBeats): every beat of a sure map; of an unsure one, only those every
+  // candidate shares — the one rule the pipeline reads too.
+  const cutOn = safeBeats(beats);
+  const work = {ids, snap: rule, beats: cutOn.beats, durations, base: [...durations], queue: [], cuts: [], anchor: 0, key: null};
   work.floor = floorsOf({storyboard, timings, recipe, kits});
   work.songStart = () => (work.key === null ? 0 : offsetsOf(work.durations)[work.anchor] + work.key - beats.drop);
   const chart = flowChart('read-cuts', s => {
     s.scenes = ids.length; s.tolerance = rule.tolerance; s.snap = snapping !== null;
-    s.dropOn = key; s.songDrop = beats.drop ?? null; s.songSeconds = song;
+    s.dropOn = key; s.songDrop = beats.drop ?? null; s.songSeconds = song; s.grid = cutOn.grid; s.cutBeats = cutOn.shared;
     if (key !== null) {
       if (beats.drop === null || beats.drop === undefined) throw new Error(`fitToMusic: dropOn needs the song's drop, and the beat map found none (nothing rises and holds after a quieter build): give the drop, music.drop (the second the song drops)`);
       if (song !== null && beats.drop > song) throw new Error(`fitToMusic: the song's drop (${beats.drop} s) is past its end (${song} s): give the second it drops, inside it (music.drop)`);
@@ -253,7 +258,7 @@ export async function fitToMusic({storyboard, timings, beats, snap = false, drop
   const offsets = offsetsOf(work.durations);
   const cuts = work.cuts.sort((a, b) => a.index - b.index).map(({index, ...c}) => ({...c, at: round(offsets[index], 4)}));
   return {timings: {...timings, scenes: timings.scenes.map((t, i) => (work.durations[i] === t.duration ? t : {...t, duration: round(work.durations[i])}))},
-    start: round(work.songStart(), 5), cuts, record: plainNarrative(trace)};
+    start: round(work.songStart(), 5), cuts, cutOn: {grid: cutOn.grid, beats: cutOn.shared, of: cutOn.of, tempi: cutOn.tempi, ...(cutOn.unsure ? {unsure: cutOn.unsure} : {})}, record: plainNarrative(trace)};
 }
 
 /** Write a cut's verdict down: the scene, what happened, how far it moved against the song, the beat, its drift after. */

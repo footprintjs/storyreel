@@ -34,6 +34,8 @@ export interface MusicCut { scene: string; verdict: 'moved' | 'on-beat' | 'held'
 
 /** The music's rules: the default tolerance, the silence kept after a shortened scene's last word or key, a page hand-over's lead, the gain, the fade, on-beat closeness. */
 export const MUSIC: Readonly<{tolerance: number; clear: number; handOver: number; gain: number; fadeOut: number; onBeat: number}>;
+/** The grid a fit cut on (beats.mjs · safeBeats): every beat of a sure map, or only the beats every candidate of an unsure one shares (`beats` of `of` kept), or none when a candidate is unsure of its phase. */
+export interface MusicCutOn { grid: 'every beat' | 'shared' | 'none: a candidate is unsure of its phase'; beats: number; of: number; tempi: readonly number[]; unsure?: readonly number[] }
 /**
  * Fit a film to a song: scene starts onto a beat within the tolerance — each scene's length changed by at most it, and
  * never below its last word, its latest keyed moment or the lead of the entrance after it (give the recipe and kits) —
@@ -41,6 +43,6 @@ export const MUSIC: Readonly<{tolerance: number; clear: number; handOver: number
  * Only the scenes' lengths change. A key outside the film, a drop past the song's end (`beats.seconds`) or a song that
  * would never play refuses. `record` is the fit's flowchart narrative.
  */
-export function fitToMusic(options: {storyboard: Storyboard; timings: Timings; beats: {beats: readonly number[]; drop?: number | null; seconds?: number}; snap?: Snap; dropOn?: KeyMoment | null; recipe?: import('../index.js').Recipe | null; kits?: unknown[]}): Promise<{timings: Timings; start: number; cuts: MusicCut[]; record: RecordEntry[]}>;
+export function fitToMusic(options: {storyboard: Storyboard; timings: Timings; beats: {beats: readonly number[]; drop?: number | null; seconds?: number; sure?: boolean; bpm?: number; alternatives?: readonly {bpm: number; beats?: readonly number[]; phaseDoubt?: number}[]}; snap?: Snap; dropOn?: KeyMoment | null; recipe?: import('../index.js').Recipe | null; kits?: unknown[]}): Promise<{timings: Timings; start: number; cuts: MusicCut[]; cutOn: MusicCutOn; record: RecordEntry[]}>;
 /** A voiced cut fitted: each moved scene's 16-bit PCM WAV in `runDir` (a copy of the voice) padded or cut short to its new length. */
 export function fitVoice(runDir: string, before: Timings, after: Timings): Timings;

@@ -51,6 +51,11 @@ const kitVoices = noise => ({
   rim: a => .3 * Math.exp(-a * 60) * Math.sin(2 * Math.PI * 1250 * a),
   ride: a => .08 * Math.exp(-a * 6) * (Math.sin(2 * Math.PI * 3100 * a) + Math.sin(2 * Math.PI * 4700 * a) + .5 * noise()),
 });
+/** A plucked bass note at f0 Hz, `length` seconds: it sustains (a slow decay) and is let go over its last 10 ms. */
+const bassNote = (f0, length) => a => .35 * Math.min(1, a / .005) * Math.exp(-a * 3) * Math.min(1, Math.max(0, (length - a) / .01))
+  * (Math.sin(2 * Math.PI * f0 * a) + .5 * Math.sin(2 * Math.PI * 2 * f0 * a) + .25 * Math.sin(2 * Math.PI * 3 * f0 * a));
+/** A held chord (three notes), `length` seconds, a soft attack: harmony, not an onset. */
+const chordNote = length => a => .06 * Math.min(1, a / .03) * Math.min(1, Math.max(0, (length - a) / .03)) * [220, 277.2, 329.6].reduce((sum, f) => sum + Math.sin(2 * Math.PI * f * a), 0);
 /** A high-passed noise burst (a hat): `decay` per second. */
 const hatVoice = (noise, decay) => { let hp = 0, last = 0; return a => { const n = noise(); hp = .9 * (hp + n - last); last = n; return Math.exp(-a * decay) * hp; }; };
 
@@ -80,30 +85,46 @@ export const RHYTHMS = Object.freeze({
   'sixteenths, kick on one only': {grid: 4, steps: 16, kick: [0], hat: range(16), level: {hat: 3}},
   'bossa nova': {grid: 4, steps: 32, kick: [0, 6, 8, 14, 16, 22, 24, 30], rim: [0, 6, 12, 20, 26], hat: range(32, 2), level: {hat: .6}},
   funk: {grid: 4, steps: 16, kick: [0, 3, 10], snare: [4, 12, [7, .25], [9, .25], [14, .25]], hat: range(16), level: {hat: .8}},
+  // The sets of the sixth review: a bass or a kick on the eighths, a human hand, a drifting tempo, 6/8, a pushed kick,
+  // and harmony with no drums. 6/8 counts its dotted-quarter beat: three eighths a beat.
+  'backbeat, eighth-note bass': {grid: 4, steps: 16, kick: [0, 8], snare: [4, 12], hat: range(16, 2), bass: range(16, 2), length: {bass: 2}},
+  'eighth-note kicks, snare on 2 and 4': {grid: 4, steps: 16, kick: range(16, 2), snare: [4, 12], hat: range(16, 2)},
+  'four on the floor, humanised': {grid: 4, steps: 16, kick: [0, 4, 8, 12], clap: [4, 12], open: [2, 6, 10, 14], humanise: .012},
+  'backbeat, drifting tempo': {grid: 4, steps: 16, kick: [0, 8], snare: [4, 12], hat: range(16, 2), drift: .03},
+  '6/8': {grid: 3, steps: 6, kick: [0], snare: [3], hat: range(6)},
+  'kick on the and of two': {grid: 4, steps: 16, kick: [0, 6, 8], snare: [4, 12], hat: range(16, 2)},
+  'bass on quarters with chords': {grid: 4, steps: 16, bass: range(16, 4), chord: [0, 8], length: {bass: 4, chord: 8}},
 });
 export const DRUM_PATTERNS = Object.freeze(Object.keys(RHYTHMS).slice(0, 8));
-export const RHYTHM_FAMILIES = Object.freeze(Object.keys(RHYTHMS).slice(8));
+export const RHYTHM_FAMILIES = Object.freeze(Object.keys(RHYTHMS).slice(8, 17));
+export const LATER_SETS = Object.freeze(Object.keys(RHYTHMS).slice(17));
 
 /** A rhythm from RHYTHMS at `bpm`, `bars` long; returns {samples, rate, beats} with the quarter-note beats as truth. */
 export function rhythm({bpm, family, bars = 12, lead = .25, tail = 1, rate = 22050}) {
   const spec = RHYTHMS[family];
   if (!spec) throw new Error(`no rhythm "${family}"`);
-  const beat = 60 / bpm, step = beat / spec.grid, noise = noiseFrom(17), voices = kitVoices(noise);
-  const patternBeats = spec.steps / spec.grid, repeats = Math.ceil(bars * 4 / patternBeats);
-  const x = new Float32Array(Math.round((lead + repeats * patternBeats * beat + tail) * rate));
-  const add = (t0, seconds, f, gain) => { const a = Math.round(t0 * rate); for (let i = 0; i < seconds * rate && a + i < x.length; i++) x[a + i] += gain * f(i / rate); };
+  const beat = 60 / bpm, step = beat / spec.grid, noise = noiseFrom(17), jitter = noiseFrom(29), voices = kitVoices(noise);
+  const patternBeats = spec.steps / spec.grid, repeats = Math.ceil(bars * 4 / patternBeats), total = repeats * spec.steps;
+  // Where step n falls: evenly, or (drift) on a tempo that wanders ±drift around its mean over every 32 beats.
+  const at = n => (spec.drift ? lead + beat * (n / spec.grid - spec.drift * 32 / (2 * Math.PI) * (Math.cos(2 * Math.PI * n / spec.grid / 32) - 1)) : lead + n * step);
+  const x = new Float32Array(Math.round((at(total) + tail) * rate));
+  const add = (t0, seconds, f, gain) => { const a = Math.max(0, Math.round(t0 * rate)); for (let i = 0; i < seconds * rate && a + i < x.length; i++) x[a + i] += gain * f(i / rate); };
   const sounds = {kick: [voices.kick, .3], sub: [voices.sub, .8], snare: [voices.snare, .2], clap: [voices.clap, .12], rim: [voices.rim, .08], ride: [voices.ride, .5],
     hat: [null, .04, 120, .12], open: [null, .15, 15, .1]};
   for (let r = 0; r < repeats; r++) for (const [voice, hits] of Object.entries(spec)) {
-    if (!sounds[voice]) continue;
-    const [f, seconds, decay, base] = sounds[voice], scale = (spec.level?.[voice] ?? 1) * (base ?? 1);
-    for (const hit of hits) {
-      const [at, level] = Array.isArray(hit) ? hit : [hit, 1];
-      add(lead + (r * spec.steps + at) * step, seconds, f ?? hatVoice(noise, decay), scale * level);
+    if (!sounds[voice] && voice !== 'bass' && voice !== 'chord') continue;
+    const [f, seconds, decay, base] = sounds[voice] ?? [], scale = (spec.level?.[voice] ?? 1) * (base ?? 1);
+    for (const [index, hit] of hits.entries()) {
+      const [n, level] = Array.isArray(hit) ? hit : [hit, 1], when = at(r * spec.steps + n) + (spec.humanise ? spec.humanise * jitter() : 0);
+      const length = spec.length?.[voice] ? at(r * spec.steps + n + spec.length[voice]) - at(r * spec.steps + n) : seconds;
+      const sound = voice === 'bass' ? bassNote(index % 4 === 2 ? 82.4 : 55, length) : voice === 'chord' ? chordNote(length) : f ?? hatVoice(noise, decay);
+      add(when, length, sound, scale * level);
     }
   }
   for (let i = 0; i < x.length; i++) x[i] += .004 * noise();
-  return {samples: x, rate, beats: Array.from({length: repeats * patternBeats}, (_, k) => lead + k * beat)};
+  const beats = Array.from({length: repeats * patternBeats}, (_, k) => at(k * spec.grid));
+  // The true tempo is the song's own mean (a drifting tempo's is not quite the one it wanders around).
+  return {samples: x, rate, beats, bpm: (beats.length - 1) * 60 / (beats.at(-1) - beats[0])};
 }
 
 /** The tempi every rhythm is played at. */
@@ -118,12 +139,16 @@ const fadeIn = t => (t < 6 ? .05 : t < 12 ? .05 + .95 * (t - 6) / 6 : 1), bridge
  * - 'rhythm families': the nine RHYTHM_FAMILIES — dembow, son clave with a kick, half-time shuffle, trap hats over a
  *   half-time snare, four on the floor, breakbeat, sixteenths with the kick on one only, bossa nova, funk — at seven
  *   tempi (63);
+ * - 'bass, hands and meters': a backbeat over an eighth-note bass, eighth-note kicks with the snare on 2 and 4, four on
+ *   the floor played by hand (±12 ms), a tempo drifting ±3%, 6/8 (its dotted-quarter beat), a kick on the and of two,
+ *   a bass on the quarters under held chords — at seven tempi (49);
  * - 'songs': click tracks (plain, and with a kick every fourth click), builds and drops, pads, first clicks 0–50 ms
  *   in, quiet intros, fade-ins, a quiet bridge, a fade-out (66).
  */
 export function tempoCorpus() {
   const list = [], add = (group, name, bpm, make) => list.push({group, name, bpm, make});
-  for (const family of Object.keys(RHYTHMS)) for (const bpm of CORPUS_TEMPI) add(DRUM_PATTERNS.includes(family) ? 'drum patterns' : 'rhythm families', `${family} at ${bpm}`, bpm, () => rhythm({bpm, family}));
+  const groupOf = family => (DRUM_PATTERNS.includes(family) ? 'drum patterns' : RHYTHM_FAMILIES.includes(family) ? 'rhythm families' : 'bass, hands and meters');
+  for (const family of Object.keys(RHYTHMS)) for (const bpm of CORPUS_TEMPI) add(groupOf(family), `${family} at ${bpm}`, bpm, () => rhythm({bpm, family}));
   const click = (name, bpm, o) => add('songs', `${name} at ${bpm}`, bpm, () => song({bpm, count: 40, rate: 22050, one: 9, ...o}));
   for (const bpm of [92, 100, 110, 123, 128, 140, 150, 160, 175, 190, 210]) { click('click track', bpm); click('click track, a kick every fourth click', bpm, {one: 1}); }
   for (const bpm of [92, 110, 123, 140, 160]) click('build and drop', bpm, {one: 1, dropAt: 16});

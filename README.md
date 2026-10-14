@@ -1128,7 +1128,7 @@ always where its loudest moment is. StoryReel measures the song, says how sure i
 and fits the film to it only where asked, never further than you allow.
 
 ```js
-import {beatMap, peakOf} from 'footprint-storyreel/beats';
+import {beatMap, peakOf, safeBeats} from 'footprint-storyreel/beats';
 
 const map = await beatMap('music/theme.mp3');
 map.bpm;            // 123 — a line through the beats
@@ -1136,8 +1136,10 @@ map.beats;          // [0.3, 0.788, 1.275, …] seconds, each on the transient i
 map.bars;           // every bar's first beat (a 4/4 guess; the downbeat from low-band onsets)
 map.drop;           // 8.105 — the largest sustained rise in low and mid energy after a quieter build, on its beat (null: none)
 map.confidence;     // 0..1: the share of beats that sit on a measured onset
-map.alternatives;   // [{bpm: 123.02, score: 1}, {bpm: 61.51, score: 0.82}, …] — the tempos the onsets also fit
+map.verdict;        // 'tempo-close' — or tempo-measured, -faster, -slower, -given; map.sure is false only when close
+map.alternatives;   // [{bpm: 123.02, score: 1, phaseDoubt: 0.4, beats: […]}, {bpm: 61.51, score: 0.82, …}, …] — the tempos the onsets also fit, each with its grid
 map.levels;         // [{bpm: 61.51, score: 0.82, fails: ['kicked']}, …] — every level of the beat tried, and why it is not sure
+safeBeats(map);     // {beats: [0.3, 1.275, …], grid: 'shared', shared: 20, of: 40, tempi: [123.02, 61.51, …]} — what a film may cut on
 map.nearestBeat(12.4); map.nextBeat(12.4); map.onBeat(12.4, .05);
 peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and its thud lands on the event
 ```
@@ -1159,27 +1161,54 @@ peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and it
   pulse also repeats every two and three beats, hats on the eighths twice a beat, a syncopated snare between them — so
   the map tries every level from a quarter to four times the strongest tempo (`map.levels`), and a level is certain
   only when it passes both tests (`levelTests`, `BEATS.level`):
-  - *the kick pulse* (when the song has one: the low band's strongest rises, read in power, leading the mix): the kicks
-    land on the level's beats (in phase), on nearly every one of them, and never between them;
+  - *the kick pulse*, when the song has one (eight kicks or more): a kick is a low-band peak that DIES — within 0.1 s
+    it falls below 0.55 of its peak — and arrives with a broadband transient, so a sustained bass note is not a kick
+    (`dsp.mjs · lowPulse`). The kicks land on the level's beats (in phase), on nearly every one of them (`kicked`
+    0.75, not loosened), and never between them;
   - *the in-betweens*: the beats carry the song's body evenly, and no subdivision is filled — the half-beats may sound
-    (hats on the eighths) but not as strongly as the beats, the thirds and quarters not at all (a level whose every
-    quarter-beat sounds is too slow). With no kick pulse, the level's own score must also stand 0.3 over every other.
+    (hats on the eighths) but not as strongly as the beats, the thirds and quarters not at all, and nothing sounds as
+    strongly anywhere between the beats (a level whose every quarter-beat sounds is too slow; one with a hit on the
+    fifth sixteenth is wrong too). A snare and clap together on every other beat (`dsp.mjs · backbeatPulse`) is a
+    half-time backbeat: a level that keeps it on its beats but on at most 3 in 8 of them is twice too slow. With no
+    kick pulse, the level's own score must also stand 0.3 over every other.
 
   When exactly one level passes, the verdict is certain: `tempo-measured` (the strongest), `tempo-faster` or
-  `tempo-slower`. Otherwise — none passes, or more than one — it is `tempo-close`: the strongest is taken and
-  `alternatives` lists eight. A wrong tempo claimed as certain is the one failure that matters, so many songs come out
-  close: a backbeat (the kick on one and three is not a kick on every beat), a click track with a kick every fourth
-  click, a dembow, a breakbeat; give `bpm` to settle them. The rule is checked against a corpus of 185 songs made
-  sample by sample (`test/songs.mjs · tempoCorpus`, `test/tempo-corpus.test.mjs`: 56 drum patterns, nine rhythm families
-  — dembow, son clave, half-time shuffle, trap, four on the floor, breakbeat, sixteenths with the kick on one, bossa
-  nova, funk — at seven tempi, and 66 songs): none is wrong and certain; 49 are right and certain, 72 right but close,
-  64 wrong but close, each of those with the right tempo among its alternatives. **The thresholds are calibrated on
-  these synthetic songs only**, with room to spare (loosening every one of them together still claims nothing wrong);
-  for a real mix, read the verdict and `map.levels`, and give `bpm` to settle it.
+  `tempo-slower` — unless another level was refused by the kicks alone (`refusedByKicksAlone`: it failed only kick
+  tests, and passes the in-betweens once the kicks are masked): a level that wins only because the right one failed
+  "no kick between" is never certain. Otherwise — none passes, or more than one — it is `tempo-close`: the strongest is
+  taken and `alternatives` lists eight, each with its own grid. A wrong tempo claimed as certain is the one failure that
+  matters, so many songs come out close: a backbeat (the kick on one and three is not a kick on every beat), a click
+  track with a kick every fourth click, a dembow, a breakbeat; give `bpm` to settle them.
+- **Checked against a corpus** of 234 songs made sample by sample (`test/songs.mjs · tempoCorpus`,
+  `test/tempo-corpus.test.mjs`): 56 drum patterns; nine rhythm families — dembow, son clave, half-time shuffle, trap,
+  four on the floor, breakbeat, sixteenths with the kick on one, bossa nova, funk — at seven tempi; 66 songs; and 49 of
+  bass, hands and meters — a backbeat over eighth-note bass, eighth-note kicks with the snare on 2 and 4, four on the
+  floor humanised (±12 ms), a backbeat drifting ±3% in tempo, 6/8, a kick on the and of two, bass on quarters with
+  chords. **None is wrong and certain**; 59 are right and certain, 97 right but close, 78 wrong but close, each of
+  those with the right tempo among its alternatives. **The thresholds are calibrated on these synthetic songs only**,
+  with room to spare (loosening every one of them but `kicked` together still claims nothing wrong); for a real mix,
+  read the verdict and `map.levels`, and give `bpm` to settle it.
+- **Ill-posed, so not in the corpus**: a snare alone on 2 and 4 and a kick-only tresillo. Each is a pulse at two
+  tempi equally (a snare every other beat is also a slower beat; three uneven kicks in a bar fit several grids), and no
+  measure can tell them apart — only the music can. Expect `tempo-close` and give `bpm`.
+- **An unsure map cuts only where every candidate agrees** (`safeBeats(map)`, the one rule the pipeline and
+  `fitToMusic` both use): a sure map gives every beat; a close one only the beats that lie on EVERY listed candidate's
+  grid (within 0.035 s, `BEATS.safe.tolerance`) — the right tempo is among the candidates, so such a beat is a true
+  beat whichever it is — and none at all when any candidate is unsure of its phase (its grid could sit on the "and":
+  the onsets half a beat off it as strong as on it, `phaseDoubt` ≥ 0.9). Across the corpus's 175 unsure maps that
+  leaves **0 cuts off a true beat** and 7.5% of the true beats cut-able (597 of 7,924); give `bpm` to cut on every beat.
 - No beat in four standing out is `bars-guessed`; no rise that holds is `drop-none`; a rise that climbs for more than
   2 s with no hit at its start is `drop-fade` — a fade-in, not a drop (`drop: null` both ways).
 - **Override what it got wrong**: `beatMap(file, {bpm: 128, drop: 42.5})` — the record then says the tempo and the drop
   were given (a drop past the song's end refuses). `beatMapOf(samples, 22050)` maps samples already in hand.
+- **A wrong option says so by code.** Every error `beatMap` throws for the caller's options — an unknown key
+  (`{tempo: 120}`), a value out of range (`{bpm: 5}`), a drop past the song's end, samples that are not mono Float32 at
+  22050 Hz — carries `code: 'BEAT_OPTIONS'`; an error reading the sound (a missing file, FFmpeg failing, a silent song)
+  carries none, so a caller can tell "fix the call" from "fix the file":
+
+  ```js
+  try { await beatMap(file, {tempo: 120}); } catch (e) { if (e.code === 'BEAT_OPTIONS') …; }  // "tempo is not an option; the options are bpm, drop, range, ffmpeg"
+  ```
 
 **Into a film**, all opt-in — a film without `music` renders byte for byte as before:
 
@@ -1212,8 +1241,10 @@ await makeFilm({storyboard, recipe, narrationDir, pacing, out: 'out/film.mp4',
   cut short (faded over 10 ms) to its new length, by whole samples (`fitVoice`; a 16-bit PCM WAV voice, as pacing needs);
   the voice folder itself is never touched.
 - **The record.** `map-beats` and `fit-to-music` run as stages of the pipeline, after the pacing; `making-of.json` gets
-  `music`: the song, its gain, where it starts, its beat map (tempo, alternatives, drop, confidence) and every cut's
-  verdict, with both flowcharts' records. The song and every setting are part of what an approval locks
+  `music`: the song, its gain, where it starts, its beat map (tempo, verdict, `sure`, the levels tried, alternatives,
+  drop, confidence), the grid the fit cut on (`fit.cutOn`: every beat, shared, or none) and every cut's verdict, with
+  both flowcharts' records. An unsure map that snapped leaves a finding in `music.findings`: *tempo unsure (close):
+  cuts only on beats every candidate shares (20 of 40); give music.bpm to cut on every beat*. The song and every setting are part of what an approval locks
   (`inputs.music`), and so is `soundAt: 'peak'` when it is asked for (`inputs.soundAt`): a film without either keeps
   the inputs it had.
 - **In the mix.** The song plays under the voice and the effects at `gain` (0..1 of its own level), fading out over the

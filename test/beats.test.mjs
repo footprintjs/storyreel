@@ -1,19 +1,20 @@
 // The beat map (beats.mjs) on songs made here, sample by sample, so every beat, bar and drop is known exactly: a click
 // track at a known tempo with a kick on the one, a quiet build, then a drop. No downloaded audio. The map is a flowchart:
 // its tempo, bars and drop are each decide() evidence in its record.
-import test from 'node:test';
+import test, {after} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync} from 'node:fs';
+import {mkdtempSync, rmSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {beatMap, beatMapOf, peakOf, peakOfSamples, BEATS} from '../src/beats.mjs';
-import {fftOf, tempoPrior} from '../src/dsp.mjs';
+import {beatMap, beatMapOf, peakOf, peakOfSamples, safeBeats, BEATS} from '../src/beats.mjs';
+import {fftOf, tempoPrior, onsetStrength, lowPulse} from '../src/dsp.mjs';
 import {song, rhythm, wavFile, noiseFrom} from './songs.mjs';
 
 const ffmpeg = spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-version']).status === 0;
 const needs = {skip: ffmpeg ? false : 'ffmpeg not on PATH'};
-const tmp = () => mkdtempSync(path.join(tmpdir(), 'storyreel-beats-'));
+const made = [], tmp = () => { const dir = mkdtempSync(path.join(tmpdir(), 'storyreel-beats-')); made.push(dir); return dir; };
+after(() => { for (const dir of made) rmSync(dir, {recursive: true, force: true}); });
 
 /** The farthest a list of times lies from the nearest of another. */
 const worst = (times, from) => Math.max(...times.map(t => Math.min(...from.map(u => Math.abs(u - t)))));
@@ -36,10 +37,11 @@ test('a click track with a build and a drop: BPM within 1, every beat within 20 
   assert.ok(Math.abs(map.seconds - s.samples.length / s.rate) < .01);
   // Every verdict is decide() evidence in the record, with what it weighed.
   const lines = verdicts(map.record), writes = map.record.filter(e => e.type === 'step').map(e => e.text);
-  // The kick comes on every fourth click, not on every beat, so the kick pulse and the in-betweens do not agree on one
-  // level: the right tempo, said to be close (a level claimed wrongly is what must never happen).
+  // A kick on every fourth click is no kick on every beat, and the half tempo scores near: the right tempo, said to be
+  // close (a level claimed wrongly is what must never happen), and the record says what kept it from sure.
   assert.match(lines[0], /fell back to default "No level of the beat, or more than one, passes both tests.*tempo-close/);
-  assert.deepEqual(map.levels.find(l => Math.abs(l.bpm - 123) < 1).fails, ['kicked'], 'the tempo itself fails only the kick test');
+  assert.equal(map.verdict, 'tempo-close'); assert.equal(map.sure, false);
+  assert.ok(['kicked', 'margin'].some(name => map.levels.find(l => Math.abs(l.bpm - 123) < 1).fails.includes(name)), 'the tempo itself fails the kick test, or the margin');
   assert.ok(map.levels.every(l => l.fails.length), 'no level passes');
   assert.ok(writes.some(t => /Write strongest = 123/.test(t)) && writes.some(t => /Write levels = "30\.\d+: /.test(t)), 'the record says what it weighed');
   assert.match(lines[1], /Low-band onsets mark one beat in 4.*chose bars-measured/);
@@ -213,3 +215,44 @@ test('the DSP: the FFT is exact on a pure tone, and the prior prefers 70–180 B
   assert.ok(tempoPrior(240) < tempoPrior(200));
   assert.deepEqual(BEATS.range, [70, 180]);
 });
+
+test('a refusal of the options carries code BEAT_OPTIONS; a sound that cannot be read or measured does not', async () => {
+  const code = async promise => { try { await promise; } catch (e) { return e.code ?? null; } return 'no error'; };
+  assert.equal(await code(beatMap('x.wav', {tempo: 120})), 'BEAT_OPTIONS', 'an unknown key');
+  assert.equal(await code(beatMap('x.wav', {bpm: 5})), 'BEAT_OPTIONS', 'a bpm out of range');
+  assert.equal(await code(beatMapOf(song({bpm: 120, count: 8, rate: 22050}).samples, 22050, {drop: 99})), 'BEAT_OPTIONS', 'a drop past the end');
+  assert.equal(await code(beatMapOf(new Float32Array(10), 44100)), 'BEAT_OPTIONS', 'samples at another rate');
+  assert.equal(await code(beatMap(path.join(tmp(), 'missing.wav'))), null, 'a file that is not there');
+  assert.equal(await code(beatMapOf(new Float32Array(22050), 22050)), null, 'a song with nothing to measure');
+});
+
+test('the kick pulse hears kicks, not bass notes: a kick dies away within 0.1 s, a bass note sustains', () => {
+  const pulse = family => { const s = rhythm({bpm: 110, family}), o = onsetStrength(s.samples, 22050); return lowPulse(o, o.frameRate).length; };
+  assert.equal(pulse('four on the floor, eighth hats'), 48, 'every kick');
+  assert.ok(pulse('backbeat, eighth-note bass') <= 24, 'never a bass note: at most the 24 kicks');
+  assert.equal(pulse('bass on quarters with chords'), 0, 'a bass alone is no kick pulse');
+});
+
+test('the rhythms of the sixth review: an eighth-note bass under a backbeat, eighth-note kicks — never double claimed as sure', async () => {
+  for (const [family, bpm] of [['backbeat, eighth-note bass', 95], ['backbeat, eighth-note bass', 128], ['eighth-note kicks, snare on 2 and 4', 95], ['eighth-note kicks, snare on 2 and 4', 128]]) {
+    const map = await beatMapOf(rhythm({bpm, family}).samples, 22050), right = Math.abs(map.bpm - bpm) <= Math.max(1, bpm * .01);
+    assert.ok(right || !map.sure, `${family} at ${bpm}: ${map.bpm}, ${map.verdict}`);
+  }
+});
+
+test('safeBeats: a sure map cuts on every beat; an unsure one only where every candidate agrees, and nowhere when one is unsure of its phase', () => {
+  const grid = (period, n, from = 0) => Array.from({length: n}, (_, k) => +(from + k * period).toFixed(4));
+  const map = (sure, alternatives) => ({sure, bpm: 120, beats: grid(.5, 24), alternatives});
+  const half = {bpm: 60, score: .9, phaseDoubt: .4, beats: grid(1, 12)};
+  assert.deepEqual(safeBeats(map(true, [])).beats, grid(.5, 24));
+  assert.equal(safeBeats(map(true, [])).grid, 'every beat');
+  const twice = safeBeats(map(false, [{bpm: 120, score: 1, phaseDoubt: .3, beats: grid(.5, 24)}, half]));
+  assert.deepEqual(twice.beats, grid(1, 12), 'two tempi a level apart: the slower grid');
+  assert.equal(twice.grid, 'shared'); assert.equal(twice.of, 24);
+  const fourThree = safeBeats(map(false, [{bpm: 120, score: 1, phaseDoubt: .3, beats: grid(.5, 24)}, {bpm: 160, score: .9, phaseDoubt: .3, beats: grid(.375, 32)}]));
+  assert.deepEqual(fourThree.beats, grid(1.5, 8), 'a 4:3 pair: the beats they meet on');
+  const doubt = safeBeats(map(false, [{bpm: 120, score: 1, phaseDoubt: .3, beats: grid(.5, 24)}, {...half, phaseDoubt: .95}]));
+  assert.deepEqual(doubt.beats, []); assert.match(doubt.grid, /unsure of its phase/); assert.deepEqual(doubt.unsure, [60]);
+  assert.deepEqual(safeBeats({beats: [1, 2, 3]}).beats, [1, 2, 3], 'a hand-made map is taken as sure');
+});
+

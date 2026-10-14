@@ -71,13 +71,18 @@ export function readVoiceCheck(narrationDir) {
     notHeard: spoken.flatMap(s => (s.notHeard ?? []).map(word => ({scene: s.scene, word}))), checked: report.notHeardCount !== undefined, ...(stale ? {stale: 'word-check.json is older than timings.json: check the voice again'} : {})};
 }
 /**
- * The music in the making-of record: the song and its level, its beat map (tempo, the alternatives, the drop, how sure),
- * where it starts on the film, every cut's verdict, and the two records — the beat map's and the fit's.
+ * The music in the making-of record: the song and its level, its beat map (tempo, the verdict and how sure, the levels
+ * tried and why each failed, the alternatives, the drop), where it starts on the film, the grid the film actually cut
+ * on (beats.mjs · safeBeats), every cut's verdict, the two records — the beat map's and the fit's — and, when the map is
+ * unsure, the finding that says so and how to settle it.
  */
 function musicRecord(song, beats, fit) {
+  const unsure = !beats.sure && song.snap;
   return {file: path.basename(song.file), gain: song.gain, fadeOut: song.fadeOut, start: fit.start,
-    beats: {bpm: beats.bpm, alternatives: beats.alternatives, beats: beats.beats.length, bars: beats.bars.length, drop: beats.drop, confidence: beats.confidence, seconds: beats.seconds, record: beats.record},
-    fit: {snap: song.snap, ...(song.dropOn ? {dropOn: song.dropOn} : {}), cuts: fit.cuts, record: fit.record}};
+    beats: {bpm: beats.bpm, verdict: beats.verdict, sure: beats.sure, levels: beats.levels, alternatives: beats.alternatives.map(({bpm, score}) => ({bpm, score})),
+      beats: beats.beats.length, bars: beats.bars.length, drop: beats.drop, confidence: beats.confidence, seconds: beats.seconds, record: beats.record},
+    fit: {snap: song.snap, ...(song.dropOn ? {dropOn: song.dropOn} : {}), cutOn: fit.cutOn, cuts: fit.cuts, record: fit.record},
+    ...(unsure ? {findings: [{kind: 'tempo-unsure', text: `tempo unsure (close): cuts only on beats every candidate shares (${fit.cutOn.beats} of ${fit.cutOn.of}${fit.cutOn.unsure ? `; none, as ${fit.cutOn.unsure.join(', ')} BPM is unsure of its phase` : ''}); give music.bpm to cut on every beat`}]} : {})};
 }
 
 /** The most parts a picture is planned in (segments.mjs · planSegments makes one per row of pictures). */
@@ -170,14 +175,14 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     // The song's beat map: its own flowchart, its record kept in making-of.json (music.beats.record).
     'map-beats': async scope => {
       beats = await beatMap(song.file, {...song.beats, ...(render.ffmpeg ? {ffmpeg: render.ffmpeg} : {})});
-      scope.bpm = beats.bpm; scope.songBeats = beats.beats.length; scope.drop = beats.drop; scope.confidence = beats.confidence;
+      scope.bpm = beats.bpm; scope.verdict = beats.verdict; scope.songBeats = beats.beats.length; scope.drop = beats.drop; scope.confidence = beats.confidence;
     },
     // The film fitted to it: scene starts onto the beat, the drop on its key moment; a voiced cut's audio follows.
     'fit-to-music': async scope => {
       fit = await fitToMusic({storyboard, timings: paced, beats, snap: song.snap ?? false, dropOn: song.dropOn, recipe, kits});
       paced = scope.narration ? fitVoice(scope.narration, paced, fit.timings) : fit.timings;
       if (scope.narration) writeFileSync(path.join(scope.narration, 'timings.json'), JSON.stringify(paced, null, 2));
-      scope.start = fit.start; scope.moved = fit.cuts.filter(c => c.verdict === 'moved').length;
+      scope.start = fit.start; scope.cutOn = fit.cutOn.grid; scope.moved = fit.cuts.filter(c => c.verdict === 'moved').length;
       scope.seconds = +paced.scenes.reduce((n, s) => n + s.duration, 0).toFixed(3);
     },
     'compile-film': async scope => {

@@ -302,6 +302,14 @@ export const onTheBeat = (map: BeatMap): boolean => map.onBeat(map.nearestBeat(3
 export const hitAt: number = peakOf('door.wav');
 export const musicOptions: MusicOptions = {file: 'song.mp3', gain: .2, snap: {tolerance: MUSIC.tolerance}, dropOn: ['story', 'came home', .5]};
 export const fitted = (storyboard: Storyboard, timings: import('../types/index.js').Timings, map: BeatMap): Promise<MusicCut[]> => fitToMusic({storyboard, timings, beats: map, snap: true}).then(f => f.cuts);
+// An unsure map cuts only on the beats every candidate shares; the fit says which grid it cut on; bad options carry a code.
+import {safeBeats, type SafeBeats, type BeatOptionsError} from '../types/sub/beats.js';
+export const cutOnly = (map: BeatMap): readonly number[] => map.sure ? map.beats : safeBeats(map).beats;
+export const gridOf = (map: BeatMap): SafeBeats['grid'] => map.verdict === 'tempo-close' ? safeBeats(map, {tolerance: BEATS.safe.tolerance}).grid : 'every beat';
+export const fitGrid = (storyboard: Storyboard, timings: import('../types/index.js').Timings, map: BeatMap): Promise<string> => fitToMusic({storyboard, timings, beats: map, snap: true}).then(f => `${f.cutOn.grid}: ${f.cutOn.beats} of ${f.cutOn.of}`);
+export const isOptionsError = (e: unknown): e is BeatOptionsError => e instanceof Error && (e as Partial<BeatOptionsError>).code === 'BEAT_OPTIONS';
+// @ts-expect-error a verdict is one of the five
+export const badVerdict: BeatMap['verdict'] = 'tempo-maybe';
 // @ts-expect-error dropOn is a key, not a scene id
 export const badDrop: MusicOptions = {file: 'song.mp3', dropOn: 'story'};
 // @ts-expect-error soundAt is 'start' or 'peak'

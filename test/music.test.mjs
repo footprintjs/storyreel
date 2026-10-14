@@ -2,9 +2,9 @@
 // past a spoken word — the song started so its drop lands on a key moment, sound effects placed by their peaks, and
 // makeFilm running it all as stages of its own. Every cut's verdict is decide() evidence in the fit's record. Without
 // the option nothing changes (pinned by hand against main: the same MP4 bytes, silent and voiced).
-import test from 'node:test';
+import test, {after} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, mkdirSync, readFileSync, writeFileSync, chmodSync} from 'node:fs';
+import {mkdtempSync, mkdirSync, readFileSync, writeFileSync, chmodSync, rmSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -21,7 +21,8 @@ import {song, wavFile} from './songs.mjs';
 const ffmpegBin = process.env.FFMPEG_BIN || 'ffmpeg';
 const ffmpeg = spawnSync(ffmpegBin, ['-version']).status === 0;
 const needs = {skip: ffmpeg ? false : 'ffmpeg not on PATH'};
-const tmp = () => mkdtempSync(path.join(tmpdir(), 'storyreel-music-'));
+const made = [], tmp = () => { const dir = mkdtempSync(path.join(tmpdir(), 'storyreel-music-')); made.push(dir); return dir; };
+after(() => { for (const dir of made) rmSync(dir, {recursive: true, force: true}); });
 const hello = fileURLToPath(new URL('../examples/hello/', import.meta.url));
 const helloBoard = JSON.parse(readFileSync(hello + 'storyboard.json', 'utf8')), helloRecipe = JSON.parse(readFileSync(hello + 'recipe.json', 'utf8'));
 const small = {width: 160, height: 90, fps: 4};
@@ -121,6 +122,20 @@ test('the drop lands on the key moment: the song starts to put it there, and the
   const placed = await fitToMusic({storyboard: board, timings, beats, snap: false, dropOn: key});
   assert.ok(Math.abs(makeClock(board, placed.timings).at(key) - placed.start - drop) < 1e-6);
   assert.deepEqual(placed.cuts, []);
+});
+
+test('an unsure map cuts only on the beats every candidate shares; a sure one on every beat, exactly as before', async () => {
+  const timings = evenTimings(board, {tail: 1}), alternatives = [{bpm: 120, score: 1, phaseDoubt: .3, beats: grid(.5, 200)}, {bpm: 60, score: .9, phaseDoubt: .4, beats: grid(1, 100)}];
+  const sure = await fitToMusic({storyboard: board, timings, beats: {sure: true, beats: grid(.5, 200), drop: null, alternatives}, snap: {tolerance: .3}});
+  const unsure = await fitToMusic({storyboard: board, timings, beats: {sure: false, beats: grid(.5, 200), drop: null, alternatives}, snap: {tolerance: .3}});
+  const plain = await fitToMusic({storyboard: board, timings, beats: {beats: grid(.5, 200), drop: null}, snap: {tolerance: .3}});
+  assert.deepEqual(sure.timings, plain.timings, 'a sure map cuts as a plain list of beats always did');
+  assert.equal(sure.cutOn.grid, 'every beat'); assert.equal(unsure.cutOn.grid, 'shared'); assert.equal(unsure.cutOn.beats, 100);
+  const starts = makeClock(board, unsure.timings).offsets.slice(1);
+  for (const [i, cut] of unsure.cuts.entries()) if (cut.verdict !== 'kept') assert.ok(Math.abs(starts[i] - Math.round(starts[i])) < 1e-4, `${cut.scene} lands on a beat both tempi share (${starts[i]})`);
+  const doubtful = await fitToMusic({storyboard: board, timings, beats: {sure: false, beats: grid(.5, 200), drop: null, alternatives: [alternatives[0], {...alternatives[1], phaseDoubt: .95}]}, snap: {tolerance: .3}});
+  assert.ok(doubtful.cuts.every(c => c.verdict === 'kept'), 'a candidate unsure of its phase: no cut moves');
+  assert.match(doubtful.cutOn.grid, /unsure of its phase/);
 });
 
 test('music that would be lost is refused: a key outside the film, a drop past the song\'s end, a song that never plays', async () => {
@@ -236,6 +251,11 @@ test('makeFilm with music: the beat map and the fit run as stages, the drop land
   assert.ok(record.inputs.music, 'an approval locks the song');
   assert.equal(record.version.soundAt, 'peak');
   assert.equal(record.inputs.soundAt, 'peak', 'sounds placed by their peaks change what is heard: an approval locks it');
+  // The map's verdict, the levels tried and the grid the film cut on are in the record; unsure, the finding says so.
+  assert.equal(music.beats.verdict, 'tempo-close'); assert.equal(music.beats.sure, false);
+  assert.ok(music.beats.levels.length >= 3 && music.beats.levels.every(l => Array.isArray(l.fails)));
+  assert.match(music.fit.cutOn.grid, /^(shared|none: a candidate is unsure of its phase)$/);
+  assert.match(music.findings[0].text, /^tempo unsure \(close\): cuts only on beats every candidate shares \(\d+ of \d+.*\); give music\.bpm to cut on every beat$/);
   await assert.rejects(makeFilm({storyboard: helloBoard, recipe: helloRecipe, root: hello, timings: evenTimings(helloBoard, {tail: 4}), out: path.join(dir, 'x/film.mp4'), render: {music: {file}}, music: {file}}), /leave render\.music out/);
 });
 
