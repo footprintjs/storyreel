@@ -54,6 +54,9 @@ export function tokenize(source) {
       if (t.type !== 'punct') return false;
       if (t.value === ')') return Boolean(t.condition);
       if (t.value === '}') return /\n/.test(s.slice(t.end, k));   // a block that ended its line
+      // After a postfix ++ or -- (i++ / 2) a value stands before it: a division.
+      const before = out.at(-2), value = out.at(-3);
+      if ((t.value === '+' || t.value === '-') && before?.value === t.value && before.end === t.end - 1 && value && (value.type === 'name' || value.type === 'number' || value.value === ')' || value.value === ']')) return false;
       return t.value !== ']';
     };
     while (i < s.length) {
@@ -81,8 +84,11 @@ export function tokenize(source) {
       if (c === '/' && regexAllowed(i)) {   // a regular expression: up to its closing slash (not one in a class), then its flags
         let j = i + 1, inClass = false;
         while (j < s.length && s[j] !== '\n') { const d = s[j]; if (d === '\\') { j += 2; continue; } if (d === '[') inClass = true; else if (d === ']') inClass = false; else if (d === '/' && !inClass) break; j++; }
-        j++; while (j < s.length && /[a-z]/i.test(s[j])) j++;
-        out.push({type: 'regex', value: ''}); i = j; continue;
+        if (s[j] === '/') {
+          j++; while (j < s.length && /[a-z]/i.test(s[j])) j++;
+          out.push({type: 'regex', value: ''}); i = j; continue;
+        }
+        // No closing slash on its line: no regular expression after all — a division, read as one below.
       }
       if (/[A-Za-z_$\u0080-￿]/.test(c)) { let j = i + 1; while (j < s.length && /[\w$\u0080-￿]/.test(s[j])) j++; out.push({type: 'name', value: s.slice(i, j)}); i = j; continue; }
       if (/\d/.test(c)) { let j = i + 1; while (j < s.length && /[\w.]/.test(s[j])) j++; out.push({type: 'number', value: s.slice(i, j)}); i = j; continue; }

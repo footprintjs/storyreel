@@ -296,7 +296,10 @@ test('a module the reader cannot finish is reported, never silent; computed URLs
   const real = fs.realpathSync(top), rel = f => path.relative(real, f), next = "\nimport a from './a.mjs';\n";
   write('a.mjs', 'export default 1;');
   // A regular expression holding a backtick, where it is easy to misread as a division.
-  for (const [name, code] of [['cond.mjs', 'if (ok) /`/.test(s);'], ['block.mjs', '}\n/`x/.test(s);'], ['template.mjs', 'const t = `${ /`/.source }`;']]) {
+  // A division read as a regular expression would stop at its line's end and take the next line's letters as flags:
+  // a slash with no closing slash on its line is a division, and so is one after a postfix ++ or --.
+  for (const [name, code] of [['cond.mjs', 'if (ok) /`/.test(s);'], ['block.mjs', '}\n/`x/.test(s);'], ['template.mjs', 'const t = `${ /`/.source }`;'],
+    ['postfix.mjs', 'const r = i++ / 2; const t = `x`;'], ['object.mjs', 'const o = {a: 1}\n/ 2;']]) {
     write(name, code + next);
     const cover = codeCover(codeFingerprint([path.join(top, name)]));
     assert.deepEqual([cover.files.map(rel), cover.unparsed], [['a.mjs', name], []], `${name}: read whole, its import followed`);
