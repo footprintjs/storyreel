@@ -146,6 +146,7 @@ function aim(s, env, work) {
   const clockAt = clockOf(moves);
   const view = viewLanes(moves, {...env, clockAt, cuts}), depth = depthLanes(moves, cuts), shakeAt = shakeOf(moves);
   checkCover(moves, view.stateAt, cuts);
+  checkHolds(moves, view.stateAt, cuts);
   for (const m of moves) if (m.family === 'view' || m.family === 'follow') m.ends = endsOf(covered(view.stateAt(spanOf(m, cuts)[1])), m.trail);
   const viewAt = t => { const v = view.stateAt(t); return VIEW_AXES.every(a => v[a] === REST[a]) ? null : covered(v); };
   /** The camera's whole view on the frame at t (handheld's drift over its framing), for regions and clicks; null at rest. */
@@ -195,7 +196,6 @@ const spanOf = (m, cuts) => (!cuts ? [m.at, m.until] : m.family === 'follow' ? [
  */
 function viewLanes(moves, {changes, named, under, clockAt, cuts, total}) {
   const lanes = {x: [], y: [], z: [], r: []}, stateAt = t => Object.fromEntries(VIEW_AXES.map(axis => [axis, laneAt(lanes[axis], t, REST[axis])]));
-  const rollAt = t => laneAt(lanes.r, t, REST.r);
   // Where every move started so far is going (each axis's last change, at its end): a move aims from there — not from
   // the middle of a move still running beside it, and not, under reduced motion, from before a follow that cuts later.
   const settled = {...REST};
@@ -212,9 +212,9 @@ function viewLanes(moves, {changes, named, under, clockAt, cuts, total}) {
     const [a, b] = spanOf(m, cuts), axes = m.def.axes(m.p), base = covered(settled), now = stateAt(m.at), start = {...now, z: covered(now).z};
     if (m.family === 'view') {
       const anchor = m.p.on ? anchorOf(m, {named, under, clockAt}) : null, end = m.def.aim(base, m.p, anchor ? anchor(m.at) : null);
-      // A dolly on a thing re-aims as the picture moves under it, recentring for the roll the camera has then: it keeps
-      // its zoom and gives up centring, so it never needs more zoom than it was checked at (checkCover samples it all).
-      const reaim = axis => t => m.def.aim({...base, r: rollAt(t)}, m.p, anchor(t))[axis];
+      // A dolly on a thing re-aims as the picture moves under it, with its own roll: it keeps the thing on its framing,
+      // and a later dutch scales the picture up to cover, as a dutch does anywhere (checkCover samples the hold for ×4).
+      const reaim = axis => t => m.def.aim(base, m.p, anchor(t))[axis];
       for (const axis of axes) {
         const follows = anchor && (axis === 'x' || axis === 'y'), target = follows ? reaim(axis) : end[axis];
         lanes[axis].push(segment(a, b, start[axis], target, m.ease, {live: follows}));
@@ -259,14 +259,14 @@ function followed(m, {named, under, clockAt}) {
 }
 
 /**
- * Each view and follow move, sampled where it plays (a dolly on a thing: wherever it re-aims, its hold too): never past
- * MAX_ZOOM; where it had to scale up to keep the frame covered, the record says how far.
+ * Each view and follow move, sampled over its own span (each is checked where it moves, so a refusal names the move
+ * that moves): never past MAX_ZOOM; where it had to scale up to keep the frame covered, the record says how far; and a
+ * dolly-out that cannot widen — a dutch's cover need, or the whole frame, is a floor — refuses as the no-op it is.
  */
 function checkCover(moves, stateAt, cuts) {
   for (const m of moves) {
     if (m.family !== 'view' && m.family !== 'follow') continue;
-    // A dolly on a thing is checked for as long as it re-aims (until its picture changes), not only while it moves.
-    const [a, b] = m.reaims ?? spanOf(m, cuts), n = Math.max(1, Math.ceil((b - a) / SAMPLE));
+    const [a, b] = spanOf(m, cuts), n = Math.max(1, Math.ceil((b - a) / SAMPLE));
     let most = 0, zoomed = {z: 0}, needed = {z: 0};   // the most it scaled to cover; the furthest it zooms, or needs to
     for (let i = 0; i <= n; i++) {
       const t = a + (b - a) * i / n, v = stateAt(t), need = coverZoom(v), z = Math.max(v.z, need);
@@ -278,6 +278,43 @@ function checkCover(moves, stateAt, cuts) {
     if (zoomed.z > MAX_ZOOM) throw new Error(`${m.path} (${m.move}) takes the camera to ×${zoomed.z.toFixed(2)} at ${zoomed.t.toFixed(2)} s, past the ×${MAX_ZOOM} a camera goes to (dollies multiply: each starts from the zoom on screen, a pan's or a dutch's included): dolly in less, or dolly out between them`);
     if (!(needed.z <= MAX_ZOOM)) throw new Error(`${m.path} (${m.move}) would need the picture at ${Number.isFinite(needed.z) ? `×${needed.z.toFixed(2)}` : 'more than any zoom'} at ${needed.t.toFixed(2)} s to keep the frame covered (a camera goes to ×${MAX_ZOOM}; it looks at most 600 px across and 337 px up or down from the middle): move it less far`);
     if (most) m.covers = r3(most);
+    if (m.move === 'dolly-out') checkWidens(m, moves, stateAt, [a, b], cuts);
+  }
+}
+
+/** The move that rolled the frame by t (the last one on the roll axis to start), or null. */
+const rollerAt = (moves, t, cuts) => moves.filter(x => x.def.axes(x.p).includes('r') && spanOf(x, cuts)[0] <= t).at(-1) ?? null;
+
+/**
+ * A dolly-out must widen what is on screen: if the zoom the viewer sees at its end is no lower than as it starts — a
+ * dutch's cover need holds it up, or the camera is already at the whole frame — it would play as nothing, or as a
+ * zoom IN, so it refuses, naming what holds the zoom.
+ */
+function checkWidens(m, moves, stateAt, [a, b], cuts) {
+  const before = covered(stateAt(a - 1e-6)).z, after = covered(stateAt(b)), need = coverZoom(after);
+  if (after.z < before - 1e-6) return;
+  const roller = need >= after.z - 1e-6 && after.r ? rollerAt(moves, b, cuts) : null;
+  const why = roller ? `the ${roller.move} (${roller.path}) needs ×${need.toFixed(2)} to keep the frame covered`
+    : before <= 1 + 1e-6 ? 'the camera is already at the whole frame' : `where it looks, the frame needs ×${need.toFixed(2)} to stay covered`;
+  throw new Error(`${m.path} (dolly-out) cannot widen here: ${why}, and the camera is at ×${before.toFixed(2)} as it starts (it would end at ×${after.z.toFixed(2)}); ${roller ? `level the ${roller.move} first (amount 0), or leave the dolly-out out` : 'leave the dolly-out out'}`);
+}
+
+/**
+ * Each dolly on a thing, while it holds: it re-aims as a push or the focus moves the picture under it, from its end
+ * until the next move on x or y starts or its picture changes. With its own roll it needs no more zoom than it has —
+ * only a later dutch can raise the need, so a hold past ×4 refuses naming the dutch.
+ */
+function checkHolds(moves, stateAt, cuts) {
+  const looks = moves.filter(x => (x.family === 'view' || x.family === 'follow') && x.def.axes(x.p).some(axis => axis === 'x' || axis === 'y'));
+  for (const m of moves.filter(x => x.reaims)) {
+    const b = spanOf(m, cuts)[1], next = looks.filter(x => x !== m && spanOf(x, cuts)[0] >= b).map(x => spanOf(x, cuts)[0]);
+    const end = Math.min(m.reaims[1], ...next), n = Math.ceil((end - b) / SAMPLE);
+    for (let i = 1; i <= n; i++) {
+      const t = b + (end - b) * i / n, v = stateAt(t), need = coverZoom(v);
+      if (Math.max(v.z, need) <= MAX_ZOOM) continue;
+      const roller = rollerAt(moves, t, cuts), who = roller ? `${roller.path} (${roller.move}) rolls the frame while ${m.path} (${m.move})` : `${m.path} (${m.move})`;
+      throw new Error(`${who} holds on "${m.p.on}": at ${t.toFixed(2)} s the picture would need ×${(Number.isFinite(need) ? need : Infinity).toFixed(2)} to keep the frame covered (a camera goes to ×${MAX_ZOOM}): ${roller ? `roll less, or dolly in less before it` : 'dolly in less'}`);
+    }
   }
 }
 

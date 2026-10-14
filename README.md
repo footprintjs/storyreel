@@ -804,12 +804,14 @@ The moves (`footprint-storyreel/camera` · `CAMERA_MOVES`), a catalog like the t
   change of what the viewer sees), and goes toward its thing only as far as the edges allow, as a push note does; it
   then stays on the thing's place in the picture, so a push or the focus that moves the picture under the camera
   later does not leave it framing an empty spot (a thing that walks away is followed by a `truck` or a `track`). As it
-  re-aims it keeps its zoom and recentres for the roll the camera has then (a dutch after it moves the look point in a
-  little rather than scale up), so it never needs more zoom than it was checked at. A move that starts while another
-  runs aims from where that one is going — a dolly beside a pan from the zoom the pan ends on — and starts from what is
-  on screen, so it never jumps; reduced motion ends on the same framing. A move past ×4 refuses, whether it needs that
-  to cover the frame or dollies stack up to it — a dolly on a thing is checked for as long as it re-aims, until its
-  picture changes. Every move's framing is a pure function of time.
+  re-aims it keeps the thing on its framing, with its own roll: a later dutch scales the picture up to cover, as a
+  dutch does anywhere. A move that starts while another runs aims from where that one is going — a dolly beside a pan
+  from the zoom the pan ends on — and starts from what is on screen, so it never jumps; reduced motion ends on the same
+  framing. A move past ×4 refuses, naming the move that moves: each is checked over its own span, then a dolly on a
+  thing over its hold (until the next move on where the camera looks, or its picture changes) — a dutch that would
+  take a held dolly past ×4 refuses, naming the dutch. A dolly-out that cannot widen — a dutch's cover need holds the
+  zoom up, or the camera is already at the whole frame — refuses as the no-op it is (it would play as nothing, or as
+  a zoom in). Every move's framing is a pure function of time.
 - **Depth.** A world gives its layers a depth: `layers: [{name, depth}]`, back to front, and `drawLayer(ctx, t, name,
   spot)`, which draws one layer on a clear sheet (all of them, in order, draw what `draw` does). The depth is how far
   the layer is from the camera, as a multiple of the subject's distance: **1 is the subject's plane**, 2 twice as far,

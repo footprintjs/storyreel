@@ -8,9 +8,14 @@
   zoom the pan ends on, not its middle, and still starts from what is on screen. Under reduced motion, a move during a
   follow aims from where the follow cuts to, so both versions end on the same framing.
 - **A dolly on a thing never passes ×4 after it ends.** As it re-aims (a push or the focus moving the picture under
-  it), it keeps its zoom and recentres for the roll the camera has then. The ×4 check samples every moment it re-aims,
-  until its picture changes. So a dutch after a dolly on a thing now moves the look point in a little, rather than
-  scaling up.
+  it), it keeps the thing on its framing with its own roll, and a later dutch scales up to cover as anywhere. Its hold
+  is checked for ×4 until the next move on where the camera looks, or its picture changes; a dutch that would take a
+  held dolly past ×4 refuses, naming the dutch.
+- **A refusal names the move that moves.** Each move is checked over its own span before any dolly's hold, so a pan
+  that cannot be covered after a held dolly names the pan, not the dolly.
+- **A dolly-out that cannot widen refuses.** When a dutch's cover need holds the zoom up, or the camera is already at
+  the whole frame, a dolly-out would play as nothing or as a zoom in: it refuses instead, naming what holds the zoom
+  (level the dutch first, or leave the dolly-out out).
 
 ## 0.12.0 — walks with feet that roll heel to toe; a turn that reads as a turn
 
