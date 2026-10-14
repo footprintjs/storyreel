@@ -46,6 +46,26 @@ export function spring(t, feel = 'default') {
   return 1 - Math.exp(-w0 * t) * (1 + w0 * t);   // critically damped (and heavier): no overshoot
 }
 
+// settleTime keeps each feel's answer: it scans the spring once, at 1/240 s steps.
+const SETTLE_STEP = 1 / 240, SETTLE_LIMIT = 30, settled = new Map();
+
+/**
+ * How long a feel's spring takes to come within `within` of its end and stay there (seconds, to 1/240 s): snappy
+ * about 0.4 s, heavy and playful about 0.8 s. What "still moving" means for a spring, which never quite arrives — a
+ * camera that eases on a feel is moving until then (attention.mjs, camerawork.mjs).
+ */
+export function settleTime(feel = 'default', {within = .005} = {}) {
+  const f = readFeel(feel);
+  if (!(Number.isFinite(within) && within > 0 && within < 1)) throw new Error(`settleTime: within is how near the end counts as arrived, above 0 and below 1 (0.005: half a percent), not ${shown(within)}`);
+  const key = `${f.k}|${f.d}|${within}`;
+  if (!settled.has(key)) {
+    let last = 0;
+    for (let i = 1; i * SETTLE_STEP <= SETTLE_LIMIT; i++) if (Math.abs(1 - spring(i * SETTLE_STEP, f)) > within) last = i;
+    settled.set(key, (last + 1) * SETTLE_STEP);
+  }
+  return settled.get(key);
+}
+
 /** A pop: the scale of something arriving at `at`, 0 → 1 with the feel's overshoot (playful by default). */
 export const pop = (t, at, feel = 'playful') => spring(t - at, feel);
 

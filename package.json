@@ -134,9 +134,21 @@
       "types": "./types/sub/mocap.d.ts",
       "default": "./src/mocap.mjs"
     },
+    "./moves": {
+      "types": "./types/sub/moves.d.ts",
+      "default": "./src/moves.mjs"
+    },
+    "./principles": {
+      "types": "./types/sub/principles.d.ts",
+      "default": "./src/principles.mjs"
+    },
     "./attention": {
       "types": "./types/sub/attention.d.ts",
       "default": "./src/attention.mjs"
+    },
+    "./camera": {
+      "types": "./types/sub/camera.d.ts",
+      "default": "./src/camera.mjs"
     },
     "./tools": {
       "types": "./types/sub/tools.d.ts",

@@ -1,6 +1,9 @@
 // Checked by test/types.test.mjs with tsc: what the types accept, and what they refuse.
-import type {Recipe, DirectorNote, Film, Kit, ContextKit, KitContext, Loudness, Storyboard, frameHashes, compileFilm} from '../types/index.js';
+import type {Recipe, DirectorNote, Film, Kit, ContextKit, KitContext, Loudness, Storyboard, frameHashes, compileFilm, CameraMove} from '../types/index.js';
 import type {startStudio} from '../types/studio.js';
+import type {coverZoom, speedRamp, layersAt, readCameraMove} from '../types/sub/camera.js';
+import type {settleTime} from '../types/sub/motion.js';
+import type {view} from '../types/sub/regions.js';
 import {sliceForKey, keysReadFromExecutionTree} from 'foottrace';
 
 const notes: DirectorNote[] = [
@@ -9,6 +12,31 @@ const notes: DirectorNote[] = [
   {note: 'Push in on the card', push: {at: [380, 490], zoom: 1.3, from: ['build', 'The order line'], to: ['build', 'The policy line']}},
 ];
 export const recipe: Recipe = {story: {kit: 'whiteboard', items: []}, notes, reading: 'refuse', poster: ['summary', 'What to keep', 1]};
+// Camera moves by name: a beat or seconds, an ease or a feel, each move's own settings.
+export const camera: CameraMove[] = [
+  {move: 'dolly-in', at: ['leak', 'leaves the building'], until: ['leak', 'the door'], on: 'database', amount: 1.4},
+  {move: 'dutch', at: 12.5, seconds: 1, amount: 6, feel: 'heavy'},
+  {move: 'rack-focus', at: ['turn', 'look'], from: 'hills', on: 'shepherd'},
+  {move: 'handheld', at: ['turn', 'Stop'], amount: 5, seed: 2},
+  {move: 'freeze', at: ['turn', 'Stop'], seconds: 1.5},
+];
+export const moving: Recipe = {...recipe, camera};
+export const reduced = (make: typeof compileFilm, board: Storyboard, timings: Parameters<typeof compileFilm>[0]['timings']) => make({storyboard: board, timings, recipe: moving, reducedMotion: true});
+export const zoomAt = (film: Film, t: number): number => film.cameraAt?.(t)?.z ?? 1;
+export const played = (film: Film): string[] => film.camera?.moves.map(m => `${m.move}: ${m.played}`) ?? [];
+export const layered: Kit = {name: 'layered', story: {compile: () => ({draw: () => {}, layers: [{name: 'sky', depth: 8}, {name: 'hero', depth: 1}], drawLayer: (ctx, t, name) => {}})}};
+export const covering = (cover: typeof coverZoom, ramp: typeof speedRamp, settle: typeof settleTime): number => cover({x: 600, y: 450, r: .1}) + ramp(.5, .3) + settle('heavy');
+export const rolled = (v: typeof view) => v(1.2, -40, -20, .1).r;
+export const blurOf = (layers: typeof layersAt) => layers([{name: 'sky', depth: 8}], {focus: 1, blur: 8})[0].blur;
+export const placed = (read: typeof readCameraMove) => read({move: 'pan', at: 2}, 'camera[0]', {at: () => 0, total: 10}).until;
+// @ts-expect-error a freeze takes no ease
+export const easedFreeze: CameraMove = {move: 'freeze', at: 3, ease: 'out'};
+// @ts-expect-error a track follows a named thing
+export const lostTrack: CameraMove = {move: 'track', at: 3};
+// @ts-expect-error an ease or a feel, not both
+export const twoEases: CameraMove = {move: 'pan', at: 3, ease: 'out', feel: 'heavy'};
+// @ts-expect-error a whip pan is a transition, not a camera move
+export const whip: CameraMove = {move: 'whip', at: 3};
 export const kit: Kit = {name: 'plain', story: {motion: ['cameraSpeed'], compile: () => ({hang: 1, draw: () => {}})}};
 export const seconds = (film: Film): number => film.total + film.moments().length + film.reading.length;
 export type Studio = typeof startStudio;
@@ -83,8 +111,9 @@ import type {EASES, easeNamed, Ease, EaseName} from '../types/sub/ease.js';
 export type Subpaths = [typeof makeClock, typeof checkScene, typeof hitTest, View, typeof tooShortToRead, typeof compileWhiteboard, Board, typeof compileCartoon, typeof paceTimings, typeof shiftWords, typeof EASES, typeof easeNamed, Ease, EaseName];
 export const backEase = (table: typeof EASES): Ease => table.back;
 export const springEase = (table: typeof EASES): Ease => table.spring;
-// @ts-expect-error bounce is not in the table yet
 export const bounceEase = (table: typeof EASES): Ease => table.bounce;
+// @ts-expect-error wobble is not in the table
+export const wobbleEase = (table: typeof EASES): Ease => table.wobble;
 
 // Formats: a layout per platform; caption files beside the video.
 import type {Layout, Enter, Transition, renderFilm as RenderFilm, transitionCatalog as Catalog} from '../types/index.js';
@@ -264,3 +293,33 @@ export const springier: WalkStyle = readWalk({...WALKS.bouncy, bob: .06});
 export const walkNames: readonly string[] = WALK_NAMES;
 // @ts-expect-error a walk needs the figure's size
 walk({from: 0, to: 100, start: 0});
+
+// Four-number curves (ease.ts), the move vocabulary (moves.ts) and the principles (principles.ts).
+import {bezier, overshoots, type EaseSpec} from '../types/sub/ease.js';
+import {moveAt, movesBy, stagger, readMove, applyMove, MOVES, type Move, type MoveValues} from '../types/sub/moves.js';
+import {anticipate, squash, envelope, burst, arc} from '../types/sub/principles.js';
+export const css: EaseSpec = 'cubic-bezier(0.16, 1, 0.3, 1)';
+export const curve: Ease = bezier(.16, 1, .3, 1);
+export const past: boolean = overshoots('outBack') && overshoots(css);
+export const kitEase: Transition = {...curtain, ease: 'cubic-bezier(0.2, 0, 0, 1)'};
+export const risen: MoveValues = moveAt('soft-rise', 1.2, {start: 1, feel: 'bouncy', reduced: false});
+export const sprung: number = moveAt('pop', 1, {feel: {k: 200, d: 12}}).scale + MOVES.pop.seconds;
+export const bouncyLogos: readonly Move[] = movesBy({feel: 'bouncy', use: 'logo', kind: 'entrance'});
+export const words: number[] = stagger(['one', 'sheep'], 'text-reveal-word').map(w => w.delay);
+export const nudge: Move = {name: 'nudge-in', kind: 'entrance', feel: 'crisp', uses: ['ui'], seconds: .3, ease: 'outQuint', props: {x: [30, 0]}};
+export const read: Readonly<Move> = readMove(nudge);
+export const shows: boolean = applyMove(null, risen, {box: [0, 0, 100, 100]});
+export const moveEntrances: Enter[] = [{move: 'soft-rise'}, {move: 'pop', seconds: .6, feel: 'heavy', sound: false}, {move: nudge}];
+// @ts-expect-error a move entrance takes no type
+export const mixedEnter: Enter = {move: 'pop', type: 'push'};
+// @ts-expect-error a move feels smooth, crisp, soft, heavy or bouncy
+movesBy({feel: 'snappy'});
+// @ts-expect-error a move's kind is entrance, exit, feedback or ambient
+export const badMove: Move = {...nudge, kind: 'arrival'};
+export const wound: number = anticipate(2, {at: 2, distance: 300});
+export const woundXY: number[] = anticipate(2, {at: 2, distance: [300, 40]});
+export const squashed: number = squash(1, {velocity: 800, landings: [{at: 1, speed: 1200}], axis: 'y'}).sx;
+export const flash: number = envelope(.05, 'flash') + burst(1, [0.9, {at: 1, strength: .5}], {attack: .06, decay: .2});
+export const curved: [number, number] = arc([0, 0], [800, 0], .5, {bend: .1, toward: 'up'});
+// @ts-expect-error a burst's shape is flash, pop, shake or {attack, decay}
+envelope(.1, 'boom');

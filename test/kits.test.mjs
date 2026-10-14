@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createCanvas} from '@napi-rs/canvas';
 import {compileFilm, evenTimings, loadTheme} from '../src/index.mjs';
-import {EASES, easeNamed, inOut} from '../src/ease.mjs';
+import {EASES, easeNamed, inOut, overshoots} from '../src/ease.mjs';
 import {ease as boardEase} from '../src/kits/whiteboard/board.mjs';
 
 // The ease table (src/ease.mjs): one place every curve is named.
@@ -18,14 +18,16 @@ test('ease table: inOut is exactly the whiteboard ease every film used before, a
   for (const u of grid) assert.equal(inOut(u), before(u), `inOut(${u})`);
 });
 
-test('ease table: every curve goes 0 → 1, clamps outside its seconds, and only back and spring leave 0..1', () => {
-  assert.deepEqual(Object.keys(EASES), ['linear', 'in', 'out', 'inOut', 'back', 'walk', 'jump', 'spring']);
+test('ease table: every curve goes 0 → 1, clamps outside its seconds, and only back, outBack and spring leave 0..1', () => {
+  assert.deepEqual(Object.keys(EASES), ['linear', 'in', 'out', 'inOut', 'back', 'walk', 'jump', 'spring', 'bounce', 'outCubic', 'outQuint', 'outExpo', 'outBack', 'inOutCubic', 'standard', 'emphasized']);
   assert.ok(Object.isFrozen(EASES));
   for (const [name, f] of Object.entries(EASES)) {
     assert.equal(f(0), 0, `${name}(0)`); assert.ok(Math.abs(f(1) - 1) < 1e-12, `${name}(1)`);
     assert.equal(f(-3), f(0), `${name} before its start`); assert.equal(f(4), f(1), `${name} after its end`);
-    if (name === 'back' || name === 'spring') continue;
-    for (let i = 1; i < grid.length; i++) assert.ok(f(grid[i]) >= f(grid[i - 1]) - 1e-12 && f(grid[i]) <= 1, `${name} never goes back or past the end at ${grid[i]}`);
+    assert.equal(overshoots(name), ['back', 'outBack', 'spring'].includes(name), `${name} says whether it overshoots`);
+    if (overshoots(name)) continue;
+    // bounce comes back off the end (that is the bounce) but never past it; every other curve only goes forward.
+    for (let i = 1; i < grid.length; i++) assert.ok((name === 'bounce' || f(grid[i]) >= f(grid[i - 1]) - 1e-12) && f(grid[i]) >= 0 && f(grid[i]) <= 1, `${name} never goes back or past the end at ${grid[i]}`);
   }
   const peak = Math.max(...grid.map(EASES.back));
   assert.ok(peak > 1.09 && peak < 1.11, `back overshoots about 10% (${peak})`);
@@ -42,7 +44,7 @@ test('ease table: every curve goes 0 → 1, clamps outside its seconds, and only
 test('ease table: an unknown name refuses, naming the eases there are', () => {
   assert.equal(easeNamed('back'), EASES.back);
   assert.equal(easeNamed('spring'), EASES.spring);
-  for (const name of ['bounce', 'hold', 'constructor', 42, undefined]) assert.throws(() => easeNamed(name, 'items[0].keys[1]'), /items\[0\]\.keys\[1\]: ".*" is not an ease; the eases are linear, in, out, inOut, back, walk, jump, spring/);
+  for (const name of ['wobble', 'hold', 'constructor', 42, undefined]) assert.throws(() => easeNamed(name, 'items[0].keys[1]'), /items\[0\]\.keys\[1\]: ".*" is not an ease; the eases are linear, in, out, inOut, back, walk, jump, spring, bounce, outCubic, outQuint, outExpo, outBack, inOutCubic, standard, emphasized, or a four-number curve as CSS writes it, "cubic-bezier\(0.16, 1, 0.3, 1\)"/);
 });
 
 // The kit context: a story kit that declares context: true is compiled as kit.compile(spec, context).
