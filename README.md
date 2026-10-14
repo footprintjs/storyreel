@@ -1443,7 +1443,21 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
 A "final" render should be the film someone actually watched. Every `makeFilm` render's `making-of.json`
 lists what the film was made from, hashed (`inputs`): the storyboard, the timings, the recipe, the strings,
 the data, the theme, every file the film read through its root, the pacing, the voice's audio, and — when you
-pass `code: codeFingerprint(['film/kits'])` — the kits' drawing code. `approveFilm` takes the record of the
+pass `code: codeFingerprint(['film/kits'])` — the kits' drawing code, and every file it reads: imports followed
+transitively, JavaScript and TypeScript (a helper in `../lib` the kit imports is its code too; `./x.js` finds `x.ts`), a
+package linked or in a workspace (`npm link`, a `file:` dependency) as code, each package in `node_modules` by its
+installed version, and the assets a module loads by `new URL('./font.ttf', import.meta.url)`. Imports are read as code,
+so one in a comment or a string is none. What it cannot follow it lists, never throws on: an import that leads nowhere
+(`missing`), one chosen at run time (`unfollowed`: `import(\`./scenes/${name}.mjs\`)`, `new URL(name, import.meta.url)`)
+and a module the reader lost its way in (`unparsed`, with the line: it ends inside a string or a template, as a regular
+expression holding a backtick can make it). **A kit that loads files another
+way (a path it builds, a folder it reads) names that folder too: `codeFingerprint(['film/kits', 'film/art'])`.** The
+record lists what the fingerprint covered (`"code": {fingerprint, files, packages, missing?, unfollowed?, unparsed?}`, files from the
+film's root) — and what draws the film: StoryReel's version and its code (`inputs.engine`, the engine's fingerprint
+every segment key holds: every file of its code and the versions of what it draws with), and footprintjs's version
+(`inputs.storyreel`, `inputs.footprintjs`). An `npm update` between the draft and the final render is named
+("storyreel version (0.12.0 approved, 0.13.0 now)"), and so is a change under the same version — a `file:` dependency,
+a local edit ("StoryReel's code (same version 0.12.0)"). `approveFilm` takes the record of the
 render the person watched, and `makeFilm({…, approval})` refuses to render anything else, naming what changed:
 
 ```js
@@ -2280,7 +2294,7 @@ the default because it rarely does; there is no swap repair.
 | `approveFilm({record, by, note?})` · `checkApproval(approval, inputs)` | the approval lock: approve a watched render from its making-of.json, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
 | `checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})` · `FINISHED_CHECK_NAMES` | checks on the finished file: lengths, blank runs, flash frames, hand-overs and joins, the voice, captions (`footprint-storyreel/finished` adds `ffmpegProbe`, `FINISHED_CHECKS`, `FINISHED`) |
 | `footprint-storyreel/breakdown` → `breakdown(videoFile, {out?, beatMap?, beatOptions?, thresholds?, ffmpeg?, probe?, hints?})` · `breakdownText(spec)` · `BREAKDOWN` | a reference film as a spec to match: cuts, fades and dissolves, shots, pacing, motion, lettering (a heuristic), cuts on the beat (`beatMap(video, {ffmpeg})`: the reader reads the video's sound itself; `storyreel breakdown --beats`), judged by `safeBeats`; every verdict with its evidence |
-| `segmentedVideo({store, recipe, code?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir)` · `ffmpegJoin()` · `planSegments(film, {fps})` · `segmentKey(…)` · `codeFingerprint(paths)` | re-render only what changed: the picture in cached segments, joined (`renderFilm({…, video})`) |
+| `segmentedVideo({store, recipe, code?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir)` · `ffmpegJoin()` · `planSegments(film, {fps})` · `segmentKey(…)` · `codeFingerprint(paths)` · `codeCover(fingerprint)` | re-render only what changed: the picture in cached segments, joined (`renderFilm({…, video})`) |
 | `footprint-storyreel/release` → `makeRelease({targets, post, out, …})` · `loadTarget` · `checkAdapter` · `planProblems` · `TARGET_NAMES` | the post for each platform: the video in its shape, captions, thumbnail, the text to paste, checked against the platform's limits and audience |
 | `readCast(cast)` · `castText(text, cast)` · `withCast(value, cast)` | the cast: `{{role}}` in any text becomes the role's name; kits read the rest from `context.cast` |
 | `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |
