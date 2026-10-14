@@ -213,11 +213,14 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   // record says why it passed, failed or could not run. A refusal comes before anything is drawn, and leaves the voice
   // folder as it was (the paced copy is removed).
   const refuse = message => { rmSync(pacedCopy, {recursive: true, force: true}); throw new Error(message); };
+  // What this check reads: the lines the film declares (film.claims), never the picture — it draws no frame. The review
+  // reads what the picture draws too (claims.mjs · drawnClaims); the refusal and the record say so.
+  const SAW = 'declared lines only (the review also reads what the picture draws)';
   const claimsCheck = verdictChart({name: 'check-claims', id: 'check-claims', description: 'Every number on screen, sourced by a fact or shown in an example scene', verdict: CLAIMS_VERDICT,
     measure: s => { Object.assign(s, claimsCount(film.claims)); s.measured = true; },
     on: claims !== 'refuse' ? {} : {
-      failed: () => { const open = unsourcedClaims(film.claims); refuse(`The film shows ${open.length} number${open.length > 1 ? 's' : ''} with no source (claims: 'refuse'): ${open.slice(0, 3).map(claimText).join('; ')}${open.length > 3 ? `; and ${open.length - 3} more` : ''}`); },
-      'not run': s => refuse(`claims: 'refuse' needs the facts the numbers on screen come from — ${s.why}: give the storyboard "facts": "facts.json" ([{"value", "text"?, "source"}]), or mark the scenes that show example data "example": true`),
+      failed: () => { const open = unsourcedClaims(film.claims); refuse(`The film shows ${open.length} number${open.length > 1 ? 's' : ''} with no source (claims: 'refuse'; the check saw ${SAW}): ${open.slice(0, 3).map(claimText).join('; ')}${open.length > 3 ? `; and ${open.length - 3} more` : ''}`); },
+      'not run': s => refuse(`claims: 'refuse' needs the facts the numbers on screen come from (the check saw ${SAW}) — ${s.why}: give the storyboard "facts": "facts.json" ([{"value", "text"?, "source"}]), or mark the scenes that show example data "example": true`),
     }});
   const trace = narrative();
   const chart = flowChart('check-inputs', stages['check-inputs'], 'check-inputs')
@@ -246,7 +249,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       ...(result.captions ? {captionFiles: Object.values(result.captions).map(f => path.basename(f))} : {})}} : {}),
     ...(film.reading.length ? {reading: {tooShort: film.reading}} : {}),
     // Every number on screen and where it comes from (claims.mjs), with the verdict and why (check-claims).
-    claims: {...(run?.state ?? run?.sharedState ?? {}).claims, ...claimsCount(film.claims), unsourced: unsourcedClaims(film.claims).map(c => ({number: c.number, scene: c.scene, path: c.path, at: c.at, fix: claimText(c)}))},
+    claims: {...(run?.state ?? run?.sharedState ?? {}).claims, saw: SAW, ...claimsCount(film.claims), unsourced: unsourcedClaims(film.claims).map(c => ({number: c.number, scene: c.scene, path: c.path, at: c.at, fix: claimText(c)}))},
     // Each beat: what was said, when, and the recipe entry that asked for it.
     beats: film.beats.map(({ref, t, path}) => ({said: Array.isArray(ref) ? {scene: ref[0], phrase: ref[1], plus: ref[2] ?? 0} : ref, at: t, ...(path ? {entry: path} : {})})),
     ...(film.notes.length ? {notes: film.notes} : {}),

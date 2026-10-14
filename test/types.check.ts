@@ -350,4 +350,5 @@ export const myVerdict: VerdictCheck = {label: 'Short enough', when: () => true,
   verdict: {rules: [{when: {seconds: {gt: 600}}, then: 'failed', label: 'longer than ten minutes'}], passed: 'ten minutes or less'}};
 // @ts-expect-error a verdict rule's then is passed, failed or not run
 export const badVerdict: VerdictCheck = {label: 'x', when: () => true, measure: () => ({measured: {}}), verdict: {rules: [{when: {}, then: 'maybe', label: 'x'}], passed: 'y'}};
-export const partsAtNow = (film: Film): number => film.partsAt(1).length + film.lines.length + film.changes.length + (film.claims.facts?.length ?? 0) + film.claims.examples.length;
+export const partsAtNow = (film: Film): number => film.partsAt(1).length + film.lines.length + film.changes.length + (film.claims.facts?.length ?? 0) + film.claims.examples.length + film.claims.labels.length + film.pictureAt(1);
+export const stillAll = (film: Film): number => slideshowOf(film).stillShare + slideshowOf(film).stillShots.length + SLIDESHOW.cover + SLIDESHOW.still + GEOMETRY.jump;

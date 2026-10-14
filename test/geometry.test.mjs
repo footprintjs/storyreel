@@ -142,6 +142,23 @@ test('walk.mjs\'s feet roll heel to toe: drawn about the end on the floor, and n
   assert.ok(geometryOf(await filmOf({flat: true})).breaks.some(b => b.rule === 'slide'));
 });
 
+test('a camera freeze holds the picture and then jumps it: the planted feet start again there, and a correct walk passes', async () => {
+  const camera = move => compileFilm({storyboard, timings, recipe: {story: {kit: 'walker'}, camera: [move]}, kits: [walker]});
+  for (const at of [['walk', 'the frame'], ['walk', 'figure walks']]) {
+    const film = await camera({move: 'freeze', at, seconds: 1.5}), g = geometryOf(film);
+    assert.deepEqual(g.breaks, [], `a freeze at "${at[1]}"`);
+    assert.ok(g.checked.planted > 500, 'the feet are still checked, across the hold too');
+    // The same walk, read as if the picture's clock never jumped: the feet seem to slide where the freeze lets go.
+    assert.ok(geometryOf(film, {rule: {...GEOMETRY, jump: Infinity}}).breaks.length > 0, 'without the jump, the freeze would break a correct walk');
+  }
+  // A speed ramp plays the picture slow and fast, but never jumps it: the planted feet are held all the way.
+  for (const amount of [.3, 2.5]) {
+    const g = geometryOf(await camera({move: 'speed-ramp', at: ['walk', 'across the floor'], seconds: 2, amount}));
+    assert.deepEqual(g.breaks, [], `a speed ramp at ${amount}`); assert.ok(g.checked.planted > 500);
+  }
+  assert.equal(GEOMETRY.jump, 3);
+});
+
 test('the review decides it with decide(): passed, failed with the breaks as findings, or not run without parts', async () => {
   const ok = await reviewPart(await filmOf({}));
   const v = ok.verdicts.find(x => x.check === 'geometry');

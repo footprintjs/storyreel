@@ -11,7 +11,8 @@ export function wordsAt(film: Film, t: number, options?: {layout?: ReturnType<ty
  * `minAlpha`, how opaque a word must be drawn to count.
  */
 export interface Review {film: Film; window: {from: number; to: number}; part: {from: number; to: number}; maxWords: number; minSilence: number; minAlpha: number; layout: ReturnType<typeof import('../index.js').compileLayout> | null; width: number; height: number; every: number; stillFor: number; newEvery: number;
-  samples: {t: number; words: Word[]}[]; hashes: Record<number, string>;
+  /** words: what the checks read; marks: a sign or a point too short to read on its own ("-", "."), for the claims check to join to the digits it touches. */
+  samples: {t: number; words: Word[]; marks?: Word[]}[]; hashes: Record<number, string>;
   /** Each sample's frame as grey levels, 160 × 90 (the same drawing as its hash): what the slideshow check reads. */
   greys: Map<number, Uint8Array>; frozen: {from: number; to: number}[]; picked: string[]}
 /**

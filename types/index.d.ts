@@ -27,15 +27,19 @@ export interface Storyboard {
   [key: string]: unknown;
 }
 /** A fact a number on screen comes from: `value` as the screen shows it (16.67, 1000, or "3:15"), `text` the words it is shown with (the line must contain them), `source` a URL, a document or a record pointer. */
-export interface NumberFact { value: number | string; text?: string; source: string }
+export interface NumberFact { value: number | string; text?: string; source: string;
+  /** What the source is, as read (claims.mjs · sourceKind): a URL, a file inside the root, or neither — kept, and reported as unverified. */
+  readonly kind?: 'url' | 'file' | 'unverified' }
 /**
  * A number the film shows (claims.mjs), with its sign: the line it is in and where (`offset`), from when it is whole on
  * screen (`at`) to when it starts to leave (`to`), its scene and recipe entry (`captions` for the captions, `drawn` for a
  * word the review read off the picture), whether the scene is example data, and the backing fact's source (or null).
  */
-export interface Claim { number: string; line: string; offset: number; at: number; to: number; scene: string | null; path: string; example: boolean; source: string | null }
-/** Every number the film shows, with the facts the storyboard names (null: none, so the numbers outside example scenes cannot be checked) and each scene's example label (or null). */
-export interface Claims { facts: readonly NumberFact[] | null; examples: readonly (string | null)[]; numbers: readonly Claim[] }
+export interface Claim { number: string; line: string; offset: number; at: number; to: number; scene: string | null; path: string; example: boolean; source: string | null; sourceKind: 'url' | 'file' | 'unverified' | null }
+/** When the example label is up: over an example scene, and on while any line it shows is still on screen. */
+export interface ExampleLabel { from: number; to: number; words: string; scene: number }
+/** Every number the film shows, with the facts the storyboard names (null: none, so the numbers outside example scenes cannot be checked), each scene's example label (or null) and when a label is up. */
+export interface Claims { facts: readonly NumberFact[] | null; examples: readonly (string | null)[]; labels: readonly ExampleLabel[]; numbers: readonly Claim[] }
 /**
  * A kit's drawn parts at one moment (geometry.mjs), in its own coordinates: segments by name — `a` the root, `b` the tip,
  * `width`, `mount` (the part `a` lands on: a segment or a region), `ends` ('mounted': `b` lands on it too), `contact`
@@ -344,8 +348,10 @@ export interface Film {
   stringHashes: Readonly<Record<string, string>> | null;
   /** The mouths drawn at t (each kit on screen that draws one says so: mouthsAt), with the recipe entry that drew it. */
   mouthsAt(t: number): {who: string | null; open: number; path: string}[];
-  /** The parts drawn at t (each kit on screen that gives them: parts), with the recipe entry that drew them: what the geometry audit reads. */
+  /** The parts drawn at t (each kit on screen that gives them: parts), with the recipe entry that drew them: what the geometry audit reads. Read on the picture's clock. */
   partsAt(t: number): (Parts & {path: string})[];
+  /** The picture's clock at t: the voice's, except in a camera's freeze (held) or speed ramp (slow, then catching up). */
+  pictureAt(t: number): number;
   /** Every line the film shows to be read (titles, footers, list lines, a world's words, guess cards, the push-in caption, an example scene's label): when it is whole on screen, when it starts to leave, the recipe entry. */
   lines: readonly {text: string; from: number; to: number; path: string}[];
   /** Every change of picture: each stage's arrival (the push-in, an entrance, a hand-over, a cut) and the teaser, from–to. */

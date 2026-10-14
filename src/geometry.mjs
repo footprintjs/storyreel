@@ -29,9 +29,12 @@
  *   reach  how far past touching a mounted end may sit before it has come off (2 px: under a stroke's own wobble)
  *   slide  how far a planted end may be from where it was first planted (1 px: rounding, never a step — a drift of
  *          a fraction of a pixel a moment adds up, and fails)
- * Moments further apart than 1.5 × every (the parts were not on screen in between) start the planted ends again.
+ *   jump   the most the picture's clock may run per second of the film's and still be the same picture moving on: a
+ *          speed ramp plays it at up to 2.5 × (camera.mjs · speedRamp), so 3 × is a jump — a freeze ending, a cut
+ * Moments further apart than 1.5 × every (the parts were not on screen in between), or across a jump of the picture's
+ * clock, start the planted ends again: what was planted before is not the same picture's.
  */
-export const GEOMETRY = Object.freeze({every: 1 / 30, reach: 2, slide: 1});
+export const GEOMETRY = Object.freeze({every: 1 / 30, reach: 2, slide: 1, jump: 3});
 const ENDS = ['free', 'mounted'];
 const SEGMENT_KEYS = ['a', 'b', 'width', 'mount', 'ends', 'contact'];
 const isPoint = p => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite);
@@ -97,18 +100,21 @@ function offMount(end, segment, mount, {segments, regions}) {
 }
 
 /**
- * Audit parts over a stretch: samples [{t, parts: [{path, …parts}]}] in time order (film.partsAt at each t, `rule.every`
- * apart). Returns {checked: {mounts, pairs, planted}, breaks: [{rule: 'mount' | 'cross' | 'slide', path, part, other?,
- * end?, t, px?}]} — every moment something breaks: an end `px` off its mount, a pair crossing, a planted end `px` from
- * where it was first planted.
+ * Audit parts over a stretch: samples [{t, picture?, parts: [{path, …parts}]}] in time order (film.partsAt at each t,
+ * `rule.every` apart; `picture`, the picture's clock there — film.pictureAt — when a camera holds or ramps it). Returns
+ * {checked: {mounts, pairs, planted}, breaks: [{rule: 'mount' | 'cross' | 'slide', path, part, other?, end?, t, px?}]} —
+ * every moment something breaks: an end `px` off its mount, a pair crossing, a planted end `px` from where it was first
+ * planted.
  */
 export function auditParts(samples, rule = GEOMETRY) {
   const checked = {mounts: 0, pairs: 0, planted: 0}, breaks = [];
   let planted = new Map(), last = null;
-  for (const {t, parts} of samples) {
-    // Not the next moment (the parts were off screen in between): what was planted before is not known to be still there.
-    if (last !== null && t - last > rule.every * 1.5 + 1e-9) planted = new Map();
-    last = t;
+  for (const {t, picture = t, parts} of samples) {
+    // Not the next moment (the parts were off screen in between), or the picture's clock jumped (a freeze ending): what
+    // was planted before is not known to be still there. A freeze holding, or a speed ramp, is the same picture moving on.
+    const dt = last && t - last.t, dp = last && picture - last.picture;
+    if (last && (dt > rule.every * 1.5 + 1e-9 || dp < -1e-9 || dp > rule.jump * dt + 1e-9)) planted = new Map();
+    last = {t, picture};
     const now = new Map();
     for (const given of parts) {
       const where = `${given.path} at ${t.toFixed(2)} s`, p = readParts(given, where);
@@ -155,7 +161,7 @@ export function geometryOf(film, {from = 0, to = film.total, rule = GEOMETRY} = 
   const samples = [];
   for (let k = 0, t = from; t <= to + 1e-9; t = from + ++k * rule.every) {
     const at = Math.min(film.total, +t.toFixed(4)), parts = film.partsAt?.(at) ?? [];
-    if (parts.length) samples.push({t: at, parts});
+    if (parts.length) samples.push({t: at, picture: film.pictureAt?.(at) ?? at, parts});
   }
   const {checked, breaks} = auditParts(samples, rule), worst = new Map();
   for (const b of breaks) { const text = breakText(b), w = worst.get(text); if (!w || (b.px ?? 0) > (w.px ?? 0)) worst.set(text, {text, t: b.t, ...(b.px !== undefined ? {px: b.px} : {})}); }

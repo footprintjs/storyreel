@@ -9,11 +9,14 @@ import {compileExample} from './golden.mjs';
 import {SLIDESHOW, shotInsides, moved, shotMotion, slideshowOf, SLIDESHOW_VERDICT} from '../src/slideshow.mjs';
 import {reviewPart, REVIEW_CHECKS} from '../src/review.mjs';
 
-// A card world: its title, and — when it moves — a dot circling; `every` turns to a new page name every that many seconds.
+// A card world: its title, and — when it moves — a dot circling; `every` turns to a new page name every that many
+// seconds; `deck` swaps the whole slide every that many seconds; `caret` blinks a text caret twice a second.
 const card = {name: 'card', story: {compile: spec => ({hang: 1, draw: (c, t) => {
   c.fillStyle = '#f3eee3'; c.fillRect(0, 0, 1600, 900);
-  c.fillStyle = '#222'; c.font = '60px sans-serif'; c.textBaseline = 'middle'; c.fillText(spec.title, 200, 200);
-  if (spec.every) c.fillText(`page ${'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(t / spec.every) % 26]}`, 200, 400);
+  c.fillStyle = '#222'; c.font = '60px sans-serif'; c.textBaseline = 'middle';
+  if (spec.deck) c.fillText(`Slide ${Math.floor(t / spec.deck) + 1}: a point made in full`, 200, 300); else c.fillText(spec.title, 200, 200);
+  if (spec.caret && Math.floor(t * 2) % 2 === 0) c.fillRect(1000, 180, 4, 44);
+  if (spec.every) c.fillText(['a first point', 'then another one', 'a third, longer point', 'and the last word'][Math.floor(t / spec.every) % 4], 200, 400);
   if (spec.moves) { c.beginPath(); c.arc(800 + 200 * Math.cos(t * 2), 500 + 200 * Math.sin(t * 2), 30, 0, 7); c.fill(); }
 }})}};
 const storyboard = {title: 'Cards', scenes: ['one', 'two', 'three'].map(id => ({id, narration: 'these are the words said while the card is on the screen for a while'}))};
@@ -80,7 +83,7 @@ test('the review decides it with decide(): failed names the dead stretches as fi
   assert.equal(v.verdict, 'failed');
   assert.equal(v.why, SLIDESHOW_VERDICT.rules[1].label);
   assert.equal(v.measured.deadShare, 1);
-  assert.match(v.summary, /^100 % of [\d.]+ s dead; held still: the story 100 %, stage two 100 %, stage three 100 %$/);
+  assert.match(v.summary, /^100 % of [\d.]+ s dead, 100 % still; held still: the story 100 %, stage two 100 %, stage three 100 %$/);
   assert.equal(r.findings.filter(f => f.kind === 'slideshow').length, 0, 'every dead stretch here is frozen: the still check names it, once');
   assert.ok(r.findings.some(f => f.kind === 'still'));
   const said = r.record.filter(e => e.type === 'condition').map(e => e.text).join('\n');
@@ -103,21 +106,37 @@ test('not stale: a new page every 5 s keeps stale quiet, and a picture that only
   assert.deepEqual([v.verdict, v.measured.deadShare], ['failed', .631], 'but the picture does not move between the pages');
 });
 
+test('the rule cannot be gamed: a deck swapped every 3 s, and a still card with a blinking caret, are slideshows', async () => {
+  const one = {title: 'Deck', scenes: [{id: 'one', narration: 'these are the words said while the deck is on the screen for a good long while so we can see it'}]};
+  const solo = spec => compileFilm({storyboard: one, timings: evenTimings(one, {wordSeconds: .45, tail: .5}), recipe: {story: {kit: 'card', title: 'A card', ...spec}}, kits: [card]});
+  // A deck: no still stretch reaches 3 s, so none is dead — but the picture is still 93 % of the time.
+  const deck = await solo({deck: 3}), d = slideshowOf(deck);
+  assert.deepEqual([d.deadShare, d.stillShare], [0, .929]);
+  const r = await reviewPart(deck), v = r.verdicts.find(x => x.check === 'slideshow');
+  assert.deepEqual([v.verdict, v.why], ['failed', SLIDESHOW_VERDICT.rules[2].label]);
+  assert.ok(r.findings.some(f => f.kind === 'slideshow' && /is still 93 % of its [\d.]+ s, in stretches of 3 s or less \(a deck of slides\)/.test(f.what)), 'and the review says where');
+  // A caret blinking on a still card: its steps move, but together they touch almost none of the frame.
+  const caret = slideshowOf(await solo({caret: true}));
+  assert.ok(caret.deadShots[0].cover < SLIDESHOW.cover, `${caret.deadShots[0].cover} of the frame`);
+  assert.equal(caret.deadShare, 1, 'a still card: all dead');
+  assert.deepEqual([SLIDESHOW.cover, SLIDESHOW.still], [.0025, .85]);
+});
+
 test('the example films\' verdicts, as the README gives them', async () => {
   const verdicts = {};
   for (const name of ['hello', 'recap', 'shepherd', 'worlds']) {
     const [slides, parts, claims] = (await reviewPart(await compileExample(name))).verdicts;
-    verdicts[name] = {slideshow: [slides.verdict, slides.measured.deadShare, slides.measured.deadShots.map(s => `${s.where} ${s.deadShare}`)],
+    verdicts[name] = {slideshow: [slides.verdict, slides.measured.deadShare, slides.measured.stillShare, slides.measured.deadShots.map(s => `${s.where} ${s.deadShare}`)],
       geometry: [parts.verdict, parts.measured.parts ?? 0], claims: [claims.verdict, claims.measured.numbers ?? 0, claims.measured.drawn ?? 0]};
   }
   assert.deepEqual(verdicts, {
     // A whiteboard and a code stage, still between their reveals: held still for a third of their time, and moving for
     // the rest. The numbers they draw (the card's "sheep 1", a 0 in the code) have no facts to be checked against.
-    hello: {slideshow: ['passed', .324, ['stage rule 0.75']], geometry: ['not run', 0], claims: ['not run', 4, 4]},
-    recap: {slideshow: ['passed', .146, ['the story 0.217', 'stage code 0.371']], geometry: ['not run', 0], claims: ['not run', 12, 9]},
+    hello: {slideshow: ['passed', .324, .631, ['stage rule 0.75']], geometry: ['not run', 0], claims: ['not run', 4, 4]},
+    recap: {slideshow: ['passed', .146, .584, ['the story 0.217', 'stage code 0.371']], geometry: ['not run', 0], claims: ['not run', 12, 9]},
     // The cartoon kit gives its parts; its world moves all the time.
-    shepherd: {slideshow: ['passed', 0, []], geometry: ['passed', 21], claims: ['passed', 0, 0]},
-    worlds: {slideshow: ['passed', 0, []], geometry: ['passed', 17], claims: ['not run', 3, 3]}});
+    shepherd: {slideshow: ['passed', 0, 0, []], geometry: ['passed', 21], claims: ['passed', 0, 0]},
+    worlds: {slideshow: ['passed', 0, .341, []], geometry: ['passed', 17], claims: ['not run', 3, 3]}});
 });
 
 test('a part too short to hold a shot is not run, never passed', async () => {

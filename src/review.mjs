@@ -259,10 +259,13 @@ export const REVIEW_CHECKS = Object.freeze({
     measure: ({film, window, every, samples, greys, frozen, picked}) => {
       const m = slideshowOf(film, {from: window.from, to: window.to, every, times: samples.map(x => x.t), frameAt: t => greys.get(t)});
       const left = picked.includes('still') ? frozen : [], named = t => left.some(r => t >= r.from - 1e-9 && t < r.to - 1e-9);
-      const hits = m.deadShots.flatMap(s => s.deadAt.filter(t => !named(t)).map(t => ({kind: 'slideshow', t, what: `${s.where} holds still: ${pct(s.deadShare)} of its ${s.seconds.toFixed(1)} s is dead (still for more than ${SLIDESHOW.hold} s at a time)`})));
-      return {measured: {shots: m.shots, seconds: m.seconds, dead: m.dead, deadShare: m.deadShare, deadShots: m.deadShots.map(({where, scene, seconds, dead, deadShare}) => ({where, scene, seconds, dead, deadShare}))}, hits};
+      const dead = m.deadShots.flatMap(s => s.deadAt.filter(t => !named(t)).map(t => ({kind: 'slideshow', t, what: `${s.where} holds still: ${pct(s.deadShare)} of its ${s.seconds.toFixed(1)} s is dead (still for more than ${SLIDESHOW.hold} s at a time)`})));
+      // A deck (slides swapped every few seconds) holds no stretch past `hold`: its findings are its still steps.
+      const deck = m.stillShare > SLIDESHOW.still ? m.stillShots.flatMap(s => s.stillAt.filter(t => !named(t) && !s.deadAt.includes(t)).map(t => ({kind: 'slideshow', t, what: `${s.where} is still ${pct(s.stillShare)} of its ${s.seconds.toFixed(1)} s, in stretches of ${SLIDESHOW.hold} s or less (a deck of slides)`}))) : [];
+      return {measured: {shots: m.shots, seconds: m.seconds, still: m.still, stillShare: m.stillShare, dead: m.dead, deadShare: m.deadShare,
+        deadShots: m.deadShots.map(({where, scene, seconds, dead, deadShare}) => ({where, scene, seconds, dead, deadShare}))}, hits: [...dead, ...deck]};
     },
-    summary: m => `${pct(m.deadShare)} of ${m.seconds.toFixed(1)} s dead${m.deadShots.length ? `; held still: ${m.deadShots.map(s => `${s.where} ${pct(s.deadShare)}`).join(', ')}` : ''}`,
+    summary: m => `${pct(m.deadShare)} of ${m.seconds.toFixed(1)} s dead, ${pct(m.stillShare)} still${m.deadShots.length ? `; held still: ${m.deadShots.map(s => `${s.where} ${pct(s.deadShare)}`).join(', ')}` : ''}`,
     verdict: SLIDESHOW_VERDICT},
   // The drawn parts hold together (geometry.mjs): for a kit that gives its parts, a mounted end stays on, a pair kept
   // apart never crosses, a planted part does not slide.
@@ -282,12 +285,12 @@ export const REVIEW_CHECKS = Object.freeze({
     when: s => s.facts.claims,
     measure: ({film, window, samples}) => {
       const declared = film.claims.numbers.filter(c => c.at <= window.to + 1e-6 && c.to >= window.from - 1e-6);
-      const drawn = drawnClaims(samples, {claims: film.claims, sceneOf: t => film.clock.locate(t).index, scenes: film.timings.scenes.map(sc => sc.id)});
+      const drawn = drawnClaims(samples.map(x => ({t: x.t, words: [...x.words, ...(x.marks ?? [])]})), {claims: film.claims, sceneOf: t => film.clock.locate(t).index, scenes: film.timings.scenes.map(sc => sc.id)});
       const claims = {...film.claims, numbers: [...declared, ...drawn]}, open = unsourcedClaims(claims);
       return {measured: {...claimsCount(claims), drawn: drawn.length, unsourcedNumbers: open.map(c => ({number: c.number, scene: c.scene, path: c.path, at: c.at}))},
         hits: open.map(c => ({kind: 'claims', t: Math.max(c.at, window.from), what: claimText(c)}))};
     },
-    summary: m => (m.numbers ? `${m.numbers} number${m.numbers === 1 ? '' : 's'} on screen: ${m.sourced} sourced, ${m.examples} in example scenes${m.factsGiven ? `, ${m.unsourced} with no source` : `, ${m.open - m.sourced} unchecked`}` : ''),
+    summary: m => (m.numbers ? `${m.numbers} number${m.numbers === 1 ? '' : 's'} on screen: ${m.sourced} sourced${m.unverified ? ` (${m.unverified} on a source nobody can follow: unverified)` : ''}, ${m.examples} in example scenes${m.factsGiven ? `, ${m.unsourced} with no source` : `, ${m.open - m.sourced} unchecked`}` : ''),
     verdict: CLAIMS_VERDICT},
 });
 
@@ -394,7 +397,13 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
     const shown = (w, zoomed) => inside(w.box) >= (zoomed ? .5 * Math.max(1, (w.box[2] - w.box[0]) * (w.box[3] - w.box[1])) : 1e-6);
     // Text smaller than `minHeight` of the frame (1.1 %: 12 px at 1080) cannot be read: it is texture (a photo of a page), not reading.
     const legible = w => w.box[3] - w.box[1] >= minHeight * H;
-    review.samples = times.map(t => { const zoomed = (film.focusAt?.(t)?.z ?? 1) > 1.001 || (film.cameraAt?.(t)?.z ?? 1) > 1.001; return {t, words: wordsAt(film, t, {layout: framed}).filter(w => w.alpha >= minAlpha && legible(w) && shown(w, zoomed))}; });
+    // A mark with no letter or digit ("-", ".") has a short ink box, however big its type: it is kept apart (`marks`), for
+    // the claims check to join to the digits it touches (claims.mjs · drawnLines), and is no word for the other checks.
+    const mark = w => !/[\p{L}\p{N}]/u.test(w.text);
+    review.samples = times.map(t => {
+      const zoomed = (film.focusAt?.(t)?.z ?? 1) > 1.001 || (film.cameraAt?.(t)?.z ?? 1) > 1.001, drawn = wordsAt(film, t, {layout: framed}).filter(w => w.alpha >= minAlpha && shown(w, zoomed));
+      return {t, words: drawn.filter(legible), marks: drawn.filter(w => !legible(w) && mark(w))};
+    });
     // frameHashes keys a moment by its millisecond, and the film's end can sit a hair under its own (21.2999…97 is
     // 21.300): the hashes are keyed by each sample's own time, so a check reads hashes[t].
     // The same drawing gives each sample's grey levels (finished.mjs · greyOf), for the slideshow check.
