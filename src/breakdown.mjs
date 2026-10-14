@@ -27,8 +27,8 @@
  *   spec           breakdown.json and breakdown.md
  */
 import path from 'node:path';
-import {existsSync, mkdirSync} from 'node:fs';
-import {writeOutput, outputFolder, refuseFolders} from './files.mjs';
+import {existsSync} from 'node:fs';
+import {writeOutput, outputFolder, refuseFolders, refuseShared, makeFolder} from './files.mjs';
 import {createCanvas} from '@napi-rs/canvas';
 import {flowChart, narrative, decide} from 'footprintjs';
 import {ffmpegProbe} from './finished.mjs';
@@ -704,9 +704,11 @@ const recordOf = trace => JSON.parse(JSON.stringify(trace.getEntries().map(({raw
  */
 export async function breakdown(videoFile, options = {}) {
   const run = {o: readOptions(videoFile, options ?? {})};
-  // Its files' names, before a frame is read: a folder at one refuses now, not after the sheets (files.mjs · refuseFolders).
+  // An out folder another user could rearrange refuses (files.mjs · refuseShared); then its files' names, before a frame
+  // is read: a folder at one refuses now, not after the sheets (files.mjs · refuseFolders).
+  refuseShared(run.o.out);
   refuseFolders(['breakdown.json', 'breakdown.md', 'record.json', 'overview.png'].map(f => path.join(run.o.out, f)));
-  mkdirSync(run.o.out, {recursive: true});
+  makeFolder(run.o.out);
   const trace = narrative();
   try { await breakdownChart(run).recorder(trace).run(); } catch (error) {
     if (error && typeof error === 'object' && !('record' in error)) error.record = recordOf(trace);

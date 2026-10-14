@@ -14,7 +14,7 @@
  * a voiced cut gets a generated silence of the right length when the voice folder has no audio for it.
  */
 import {readFile, access} from 'node:fs/promises';
-import {writeOutput} from './files.mjs';
+import {writeOutput, refuseShared} from './files.mjs';
 import path from 'node:path';
 import {speechIndex, phraseMatches, withDirections} from './clock.mjs';
 
@@ -203,6 +203,7 @@ async function silentAudio(runDir, scene, timing, rate) {
  * the voice left out is filled in first (clock.mjs · withDirections) and given generated silence.
  */
 export async function applyPacing({runDir, board, timings, pacing}) {
+  refuseShared(runDir);   // a voice folder another user could rearrange refuses (files.mjs · refuseShared)
   validatePacing(pacing, board);
   timings.scenes = withDirections(board, timings).scenes;
   const records = [], rate = await voiceRate(runDir, board, timings);

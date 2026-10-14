@@ -10,7 +10,7 @@
  * song itself is a beat map (beats.mjs).
  */
 import {readFileSync, existsSync} from 'node:fs';
-import {writeOutput} from './files.mjs';
+import {writeOutput, refuseShared} from './files.mjs';
 import path from 'node:path';
 import {flowChart, narrative, decide} from 'footprintjs';
 import {makeClock} from './clock.mjs';
@@ -310,6 +310,7 @@ const FADE = .01;
  * after: what it returned. Returns the timings to render with.
  */
 export function fitVoice(runDir, before, after) {
+  refuseShared(runDir);   // a voice folder another user could rearrange refuses (files.mjs · refuseShared)
   return {...after, scenes: after.scenes.map((t, i) => {
     const was = before.scenes[i];
     if (t.duration === was.duration || !t.audio) return t;

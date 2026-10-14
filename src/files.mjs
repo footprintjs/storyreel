@@ -68,13 +68,66 @@ export function writeOutput(final, what, fs = {}) {
 
 /** Writable by group or others, with no sticky bit: anyone who may write there may swap what is in it for a link. */
 const openToOthers = st => (st.mode & 0o022) !== 0 && (st.mode & 0o1000) === 0;
+const modeText = st => (st.mode & 0o7777).toString(8).padStart(4, '0');
+
+/** The mode of every folder StoryReel makes: 0755, whatever the umask (a umask of 000 would leave 0777, open to all). */
+export const FOLDER_MODE = 0o755;
+
+/**
+ * Make `dir` and any missing folder above it, each FOLDER_MODE: set again after mkdir, so no umask widens it (mkdir only
+ * narrows). A folder already there is left as it is. Returns `dir`.
+ */
+export function makeFolder(dir) {
+  const target = path.resolve(dir), first = mkdirSync(target, {recursive: true, mode: FOLDER_MODE});
+  if (first === undefined) return target;
+  for (let at = target; ; at = path.dirname(at)) {
+    chmodSync(at, FOLDER_MODE);
+    if (at === path.resolve(first) || path.dirname(at) === at) break;
+  }
+  return target;
+}
+
+/**
+ * Why another user could rearrange the folder lstat describes as `st` — rename an entry in it, or swap one for a link —
+ * or null when only its owner can: a sticky folder (anyone may add an entry, only its owner may replace or remove it),
+ * or one writable by no one but its owner, who is this user (scratch.mjs · ownedFolder) or root.
+ */
+function rearrangeable(st) {
+  if (st.mode & 0o1000) return null;
+  if (st.mode & 0o022) return `can be changed by other users (mode ${modeText(st)}, no sticky bit)`;
+  if (!ownedFolder(st) && st.uid !== 0) return 'belongs to another user (and has no sticky bit)';
+  return null;
+}
+
+/**
+ * Refuse an out folder another user could rearrange: one writable by group or others without the sticky bit, or
+ * another user's without it — and the same of the folder holding it, since a folder that can be swapped is no safer
+ * than its contents. Node has no openat, so no check of a path can make such a folder safe: between the check and the
+ * write, another user could swap a folder StoryReel made there (its work folder, a target's folder) for a link to
+ * yours. A private folder (0755, 0700) and a sticky shared one (/tmp, 1777: at worst a write fails) pass. An out that
+ * does not exist yet is judged by the nearest folder above it that does (everything below, StoryReel makes 0755).
+ * Checked first, at every entry that writes into a folder the caller names: renderFilm (and its `work`), makeFilm,
+ * makeRelease, breakdown, the tools' stills, folderStore and pacing. `fs.lstat` is fs.lstatSync (a test plays another
+ * user). Nothing to check on Windows (no POSIX modes).
+ */
+export function refuseShared(dir, fs = {}) {
+  if (process.platform === 'win32') return;
+  const lstat = fs.lstat ?? lstatSync;
+  let at = path.resolve(dir);
+  while (!existsSync(at) && path.dirname(at) !== at) at = path.dirname(at);
+  const real = realpathSync(at);
+  for (const folder of new Set([real, path.dirname(real)])) {
+    const why = rearrangeable(lstat(folder));
+    if (why) throw new Error(`${folder} ${why}: another user could swap what StoryReel writes there for a link to a file of yours — render into a folder of your own and copy the film out, or give the shared folder the sticky bit (chmod +t ${folder})`);
+  }
+}
 
 /** Why StoryReel may not write into the folder lstat describes as `st`, or null when it may (see outputFolder). */
 function notOurs(st) {
   if (st.isSymbolicLink()) return 'is a link';
   if (!st.isDirectory()) return 'is a file';
   if (!ownedFolder(st)) return 'belongs to another user';
-  if (openToOthers(st) && process.platform !== 'win32') return `can be changed by other users (mode ${(st.mode & 0o7777).toString(8).padStart(4, '0')}, no sticky bit)`;
+  if (openToOthers(st) && process.platform !== 'win32') return `can be changed by other users (mode ${modeText(st)}, no sticky bit)`;
   return null;
 }
 
@@ -90,11 +143,11 @@ function notOurs(st) {
  */
 export function outputFolder(parent, names, fs = {}) {
   const lstat = fs.lstat ?? lstatSync;
-  let at = path.resolve(parent);
-  mkdirSync(at, {recursive: true});
+  refuseShared(parent, fs);
+  let at = makeFolder(parent);
   for (const name of [].concat(names)) {
     at = path.join(at, name);
-    try { mkdirSync(at, {mode: 0o755}); } catch (e) { if (e?.code !== 'EEXIST') throw e; }
+    try { mkdirSync(at, {mode: FOLDER_MODE}); chmodSync(at, FOLDER_MODE); } catch (e) { if (e?.code !== 'EEXIST') throw e; }
     const why = notOurs(lstat(at));
     if (why) throw new Error(`${at} ${why}: StoryReel writes only into a folder of its own there, that no one else can change — remove it, or give another out`);
   }
@@ -175,18 +228,18 @@ export function copyVoice(voice, to) {
   writeFileSync(path.join(to, 'timings.json'), bytes, {flag: 'wx'});
   for (const f of files) {
     const target = path.join(to, f);
-    mkdirSync(path.dirname(target), {recursive: true});
+    makeFolder(path.dirname(target));
     writeFileSync(target, readFileSync(path.join(base, f)), {flag: 'wx'});
   }
   return timings;
 }
 
-/** The mode a plain mkdir gives a folder: 0777 less the process's umask. */
-export const plainFolderMode = () => 0o777 & ~process.umask();
+/** The mode the placed narration/ gets: FOLDER_MODE (0755) less the process's umask — never more than 0755, whatever the umask. */
+export const plainFolderMode = () => FOLDER_MODE & ~process.umask();
 
 /**
  * Put a paced copy of the voice in place as <out folder>/narration. First the copy — made for this user only
- * (scratch.mjs · makeScratch: 0700) — gets the mode a plain mkdir would give it (plainFolderMode), while it is still
+ * (scratch.mjs · makeScratch: 0700) — gets a folder's own mode, 0755 at most (plainFolderMode), while it is still
  * ours and unnamed: never after the rename (a chmod follows links, and the name is then in a shared folder), and never
  * taken from the out folder (a sticky 1777 folder such as /tmp would make it writable by everyone). Then what is there
  * goes, and the copy takes its name. Another run placing its own voice at the same moment can slip a folder in between

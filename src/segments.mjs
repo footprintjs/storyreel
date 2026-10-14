@@ -22,8 +22,8 @@
  * when its frames did not move with the film's clock — a kit that animates on it (the cartoon's drifting
  * clouds) makes it draw again — and a key whose frames still changed is drawn again, saying so.
  */
-import {readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, rmSync} from 'node:fs';
-import {writeOutput} from './files.mjs';
+import {readFileSync, writeFileSync, existsSync, readdirSync, statSync, rmSync} from 'node:fs';
+import {writeOutput, refuseShared, makeFolder} from './files.mjs';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -230,6 +230,7 @@ export function sampleOffsets(seg, count = 6, fps = 30) {
  */
 export function folderStore(dir) {
   if (typeof dir !== 'string' || !dir) throw new Error('folderStore: give the folder the segments are kept in');
+  refuseShared(dir);   // a store another user could rearrange refuses, when it is made and at each put (files.mjs · refuseShared)
   const at = key => ({file: path.join(dir, `${key}.mp4`), json: path.join(dir, `${key}.json`)});
   return {
     name: 'folder', dir: path.resolve(dir),
@@ -242,7 +243,7 @@ export function folderStore(dir) {
       } catch { return null; }
     },
     put(key, file, manifest) {
-      mkdirSync(dir, {recursive: true});
+      refuseShared(dir); makeFolder(dir);
       const to = at(key), bytes = statSync(file).size;
       rmSync(to.json, {force: true});
       writeOutput(to.file, {move: file});

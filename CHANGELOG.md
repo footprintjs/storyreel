@@ -18,9 +18,20 @@
   (a render, a film, a release, a breakdown), so a folder at one refuses up front. The folders StoryReel names inside
   yours (a release's targets, a breakdown's `shots/`, the tools' `stills/`) are made 0755 and refuse a link, another
   user's folder, or one others can change without a sticky bit (`files.mjs` · `outputFolder`, through `scratch.mjs` ·
-  `ownedFolder`, the sweep's one check of "ours"); the `out` folder itself is yours to choose, and a shared one can at
-  worst make a write fail. A test refuses any writing fs import outside `files.mjs` and the listed own-folder writers,
-  and any write line not listed with where it writes.
+  `ownedFolder`, the sweep's one check of "ours"). Every folder StoryReel makes is 0755, whatever the umask (000
+  included), and `narration/` is 0755 at most.
+- **An out folder another user could rearrange is refused** (`files.mjs` · `refuseShared`), first, at every entry that
+  writes into a folder you name — `renderFilm` (and its `work`), `makeFilm`, `makeRelease`, `breakdown`, the tools'
+  stills, `folderStore`, `applyPacing`, `fitVoice`: writable by group or others without the sticky bit (0777, 0775),
+  another user's without it, or inside such a folder. Node has no `openat`, so no check of a path keeps such a folder
+  safe. A private folder and a sticky shared one (`/tmp`, 1777: at worst a write fails) pass. **Breaking** for anyone
+  rendering into a group-writable team folder: render into a folder of your own and copy the film out, or `chmod +t`
+  the shared folder.
+- **The guard** (`test/outputs.test.mjs`) refuses any writing fs import outside `files.mjs` and the listed own-folder
+  writers, by the local name it is given; fs or child_process taken whole or loaded late (a default or namespace
+  import, `{default as fs}`, a re-export, `import()`, `require`, `createRequire()(…)`, `process.getBuiltinModule`);
+  any program run that is not listed with where its output goes; and any FFmpeg or ffprobe flag that writes a file
+  (`-y`, `-report`, `-progress`, `-vstats_file`, `-o`, `FFREPORT`, …) on a line not listed.
 
 ### Beats in the breakdown
 

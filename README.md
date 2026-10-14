@@ -1288,8 +1288,8 @@ two passes' scratch, for the moment they run, each removed in a `finally`: the F
 Every scratch folder — those two, a render's working folder, `makeFilm`'s voice copy — is made one way
 (`scratch.mjs` · `makeScratch`): `mkdtemp`, which creates a NEW folder with a random suffix, at once, that only you can
 open (mode 0700). It never takes a name that is already there, so a folder or a link someone else planted in a shared
-temp folder, at a name StoryReel might pick, is never written into. The voice copy gets the mode a plain folder gets
-(0777 less your umask, usually 0755) before it is renamed to `narration/`, never the out folder's: in a shared folder
+temp folder, at a name StoryReel might pick, is never written into. The voice copy gets 0755 at most (less your umask)
+before it is renamed to `narration/`, never the out folder's mode: in a shared folder
 such as `/tmp` (1777) that would let anyone rewrite the voice the other tools read. In such a shared folder, a
 `narration` another user put there cannot be removed: `makeFilm` stops (EPERM) rather than write into it, so make
 films into a folder of your own.
@@ -1303,10 +1303,16 @@ chapters, and the file it pointed at is never written. A folder at an output's n
 drawn, never removed. The folders StoryReel names inside yours (a release's `<target>/` and `work/<target>/`, a
 breakdown's `shots/`, the tools' `stills/`) are made 0755 and written into only when they are real folders you own that
 no one else can change (not writable by group or others, unless sticky): a link there, another user's folder, or one
-of yours left open (0777) is refused, naming the fix. The `out` folder itself is your choice and is never judged: a
-shared one such as `/tmp` can at worst make a write fail (another user's entry at an output's name cannot be replaced
-there), never send it elsewhere. A `work` folder you name holds working files by fixed names, so name one of your own,
-not a shared folder.
+of yours left open (0777) is refused, naming the fix. Every folder StoryReel makes is 0755, whatever your umask.
+
+**An out folder another user could rearrange is refused** (`files.mjs` · `refuseShared`), first, by `renderFilm`
+(and its `work`), `makeFilm`, `makeRelease`, `breakdown`, the tools' stills, `folderStore` and pacing: one writable by
+group or others without the sticky bit (0777, a team folder at 0775), another user's without it, or one inside such a
+folder. Node cannot open a file relative to a folder it has checked, so in such a folder another user could swap a
+folder StoryReel made (its work folder, a target's folder) for a link to yours between the check and the write. Render
+into a folder of your own and copy the film out, or give the shared folder the sticky bit (`chmod +t`). In a private
+folder, or a sticky shared one such as `/tmp` (1777), a write is never sent elsewhere; in the sticky one, another
+user's entry at an output's name can at worst make the write fail.
 
 | where | what | kept? |
 |---|---|---|

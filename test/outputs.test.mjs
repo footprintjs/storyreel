@@ -5,18 +5,19 @@
 // segment store write, and a guard that no write in src/ goes around it.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdirSync, writeFileSync, readFileSync, readdirSync, lstatSync, symlinkSync, existsSync, chmodSync, statSync, renameSync, copyFileSync} from 'node:fs';
+import {mkdirSync, writeFileSync, readFileSync, readdirSync, lstatSync, symlinkSync, existsSync, chmodSync, statSync, renameSync, copyFileSync, realpathSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {tempDir} from './tmp.mjs';
-import {writeOutput, outputFolder, refuseFolders} from '../src/files.mjs';
+import {writeOutput, outputFolder, refuseFolders, refuseShared, makeFolder, placeVoice, copyVoice} from '../src/files.mjs';
 import {evenTimings, applyPacing, compileFilm, renderFilm, makeFilm} from '../src/index.mjs';
 import {makeRelease} from '../src/release.mjs';
 import {breakdown} from '../src/breakdown.mjs';
 import {loadProject, still} from '../src/tools.mjs';
 import {folderStore} from '../src/segments.mjs';
 import {fitVoice} from '../src/music.mjs';
+import {makeScratch} from '../src/scratch.mjs';
 
 const has = cmd => !spawnSync(cmd, ['-version']).error;
 const posix = process.platform !== 'win32';
@@ -125,6 +126,60 @@ test('outputFolder: an existing folder another user owns, or one of ours that ot
   assert.throws(() => outputFolder(out, ['work', 'youtube']), /work can be changed by other users \(mode 0777, no sticky bit\): StoryReel writes only into a folder of its own there/);
   chmodSync(path.join(out, 'work'), 0o1777);
   assert.equal(outputFolder(out, ['work', 'youtube']), path.join(out, 'work', 'youtube'), 'sticky: others may add an entry, never replace one of ours');
+});
+
+test('refuseShared: an out folder another user could rearrange is refused — 0777, 0775, another user\'s, or one inside a 0777 folder; a private one or a sticky 1777 one is not', {skip: posix ? false : 'no POSIX owners or modes'}, t => {
+  const shared = (mode, ...below) => { const dir = tempDir('shared', t); chmodSync(dir, mode); return path.join(dir, ...below); };
+  const why = mode => new RegExp(`can be changed by other users \\(mode ${mode}, no sticky bit\\): another user could swap what StoryReel writes there for a link to a file of yours — render into a folder of your own and copy the film out, or give the shared folder the sticky bit \\(chmod \\+t `);
+  assert.throws(() => refuseShared(shared(0o777)), why('0777'));
+  assert.throws(() => refuseShared(shared(0o775)), why('0775'), 'a team folder, writable by its group');
+  const inOpen = shared(0o777, 'mine'); mkdirSync(inOpen); chmodSync(inOpen, 0o755);
+  assert.throws(() => refuseShared(inOpen), why('0777'), 'a private out inside a 0777 folder: the out itself can be swapped');
+  assert.throws(() => refuseShared(shared(0o777, 'not', 'there', 'yet')), why('0777'), 'an out still to be made, under a 0777 folder');
+  const theirs = tempDir('theirs', t), foreign = at => { const st = lstatSync(at); return at === realpathSync(theirs) ? {...st, mode: st.mode, uid: process.getuid() + 1, isDirectory: () => true, isSymbolicLink: () => false} : st; };
+  assert.throws(() => refuseShared(theirs, {lstat: foreign}), /belongs to another user \(and has no sticky bit\): another user could swap/);
+  refuseShared(shared(0o1777));                       // sticky, like /tmp: at worst a write fails
+  const inSticky = shared(0o1777, 'mine'); mkdirSync(inSticky); refuseShared(inSticky);
+  refuseShared(shared(0o755)); refuseShared(shared(0o700)); refuseShared(shared(0o755, 'missing', 'film'));
+});
+
+test('every entry that writes into a folder the caller names refuses a shared, non-sticky one before anything is written', {skip: posix ? false : 'no POSIX modes'}, async t => {
+  const open = tempDir('open', t); chmodSync(open, 0o777);
+  const refused = /can be changed by other users \(mode 0777, no sticky bit\)/, at = (...p) => path.join(open, ...p);
+  const compiled = await compileFilm({...film, render: undefined});
+  await assert.rejects(renderFilm({film: compiled, storyboard, timings: film.timings, out: at('film.mp4'), width: 160, height: 90, fps: 5}), refused);
+  await assert.rejects(renderFilm({film: compiled, storyboard, timings: film.timings, out: path.join(tempDir('private', t), 'film.mp4'), work: at('work'), width: 160, height: 90, fps: 5}), refused, 'a `work` named in a shared folder');
+  await assert.rejects(makeFilm({...film, out: at('made', 'film.mp4')}), refused);
+  await assert.rejects(makeRelease({...film, out: at('release'), targets: ['youtube'], post: {title: 'Links', description: 'A test.', audience: 'general'}}), refused);
+  writeFileSync(at('v.mp4'), 'never read');
+  await assert.rejects(breakdown(at('v.mp4'), {out: at('breakdown')}), refused);
+  const project = fileURLToPath(new URL('./fixtures/tools/', import.meta.url));
+  await assert.rejects(still(await loadProject({cwd: project, out: at('tools')}), {at: 'one+2.5'}), refused);
+  assert.throws(() => folderStore(at('store')), refused);
+  await assert.rejects(applyPacing({runDir: open, board: {scenes: []}, timings: {scenes: []}, pacing: {voiceSpeed: 1, sceneTail: 1, holds: []}}), refused);
+  assert.throws(() => fitVoice(open, {scenes: []}, {scenes: []}), refused);
+  assert.deepEqual(readdirSync(open), ['v.mp4'], 'nothing written there');
+});
+
+test('every folder StoryReel makes is 0755, whatever the umask — even 000 — and so is the placed narration/', {skip: posix ? false : 'no POSIX modes'}, async t => {
+  const was = process.umask(0o000);
+  t.after(() => process.umask(was));
+  const mode = f => statSync(f).mode & 0o7777, top = tempDir('umask', t);
+  makeFolder(path.join(top, 'a', 'b', 'c'));
+  assert.deepEqual(['a', 'a/b', 'a/b/c'].map(f => mode(path.join(top, f))), [0o755, 0o755, 0o755]);
+  outputFolder(path.join(top, 'out'), ['work', 'youtube']);
+  assert.deepEqual(['out', 'out/work', 'out/work/youtube'].map(f => mode(path.join(top, f))), [0o755, 0o755, 0o755]);
+  // makeFilm's out folder, made before its first stage (which refuses this storyboard).
+  await assert.rejects(makeFilm({...film, storyboard: {title: 'x', scenes: []}, out: path.join(top, 'made', 'deep', 'film.mp4')}), /no scenes/);
+  assert.deepEqual(['made', 'made/deep'].map(f => mode(path.join(top, f))), [0o755, 0o755]);
+  // The voice copy's folders, and narration/ once placed.
+  const voice = path.join(top, 'voice'); makeFolder(path.join(voice, 'audio'));
+  writeFileSync(path.join(voice, 'timings.json'), JSON.stringify({scenes: [{id: 'a', audio: 'audio/a.wav'}]})); writeFileSync(path.join(voice, 'audio', 'a.wav'), 'A');
+  const copy = makeScratch(top, '.narration');
+  copyVoice(voice, copy);
+  assert.equal(mode(path.join(copy, 'audio')), 0o755);
+  placeVoice(copy, path.join(top, 'narration'));
+  assert.equal(mode(path.join(top, 'narration')), 0o755, '0755 at most, never 0777');
 });
 
 test('refuseFolders: a folder at any of the names refuses before anything is written; the others are fine missing or as files', t => {
@@ -255,18 +310,26 @@ test('the segment store replaces a link planted at a segment\'s file or its mani
   assert.deepEqual(parts(dir), []);
 });
 
-// The guard, in two parts. First by import: only files.mjs — the one owner of writing outputs — and the files listed in
-// IMPORTS may import an fs function that writes or changes a file (any that can follow a link at its path: write, open,
-// append, truncate, copy, rename, link, chmod, chown, utimes, a write stream, fs.promises), each by name; a whole-module
-// import of fs, a dynamic import or a require of it is refused anywhere. Then by line: every call of such a function, and
-// every FFmpeg -y, is one listed in OWN with where it writes — StoryReel's own folder (the render's work folder, a
-// makeScratch or tempScratch folder) or writeOutput's own steps. A new raw write fails until it goes through
-// writeOutput or is listed with its reason; a listed import or line that is gone fails too.
+// The guard. A source file in src/ may write a file only through files.mjs · writeOutput, except where it writes into
+// StoryReel's own folder, each such place listed here with where it writes:
+//   - by import: only the files in IMPORTS may import an fs function that writes or changes a file (write, open, append,
+//     truncate, copy, rename, link, chmod, chown, utimes, a write stream, fs.promises), each by name; fs or
+//     child_process taken whole (a default or namespace import, {default as x}, a re-export), loaded at run time (a
+//     dynamic import, require, createRequire()(…), any call given the module's name) or reached through
+//     process.getBuiltinModule is refused anywhere;
+//   - by call: every call of such a function, under whatever local name it was imported as, is one listed in OWN;
+//   - by program: every program StoryReel runs (spawn, spawnSync, spawned, exec…, fork — by their local names) is one
+//     listed in RUNS, with what it is and where its output goes; and every flag that makes FFmpeg or ffprobe write a
+//     file (-y, -report, -progress, -vstats, -vstats_file, -passlogfile, -dump_attachment, -sdp_file, -o, FFREPORT),
+//     wherever it is written in src/, is on a line listed in OWN.
+// A new write fails until it goes through writeOutput or is listed with its reason; a listed one that is gone fails too.
 const WRITERS = ['writeFileSync', 'writeFile', 'openSync', 'open', 'writeSync', 'write', 'writevSync', 'writev', 'appendFileSync', 'appendFile',
   'truncateSync', 'truncate', 'ftruncateSync', 'ftruncate', 'copyFileSync', 'copyFile', 'cpSync', 'cp', 'renameSync', 'rename', 'linkSync', 'link',
   'symlinkSync', 'symlink', 'chmodSync', 'chmod', 'chownSync', 'chown', 'utimesSync', 'utimes', 'createWriteStream', 'promises'];
+const RUNNERS = ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork'];
+const FLAGS = ['-y', '-report', '-progress', '-vstats', '-vstats_file', '-passlogfile', '-dump_attachment', '-sdp_file', '-o'];
 const IMPORTS = {
-  'files.mjs': ['writeFileSync', 'renameSync', 'chmodSync', 'copyFileSync', 'linkSync'],   // the owner: writeOutput, copyVoice, placeVoice
+  'files.mjs': ['writeFileSync', 'renameSync', 'chmodSync', 'copyFileSync', 'linkSync'],   // the owner: writeOutput, makeFolder, copyVoice, placeVoice
   'pipeline.mjs': ['writeFileSync'], 'render.mjs': ['writeFileSync'], 'segments.mjs': ['writeFileSync'], 'stills.mjs': ['writeFileSync'],
 };
 const OWN = [
@@ -275,6 +338,8 @@ const OWN = [
   ['files.mjs', 'ops.linkSync(what.copy, temp)', 'writeOutput: the same'],
   ['files.mjs', 'try { make(temp); ops.renameSync(temp, final); }', 'writeOutput: that name renamed onto the output (a rename replaces a link, never follows it)'],
   ['files.mjs', 'try { ops.renameSync(what.move, final); }', 'writeOutput: a move, renamed the same way'],
+  ['files.mjs', 'chmodSync(at, FOLDER_MODE);', 'makeFolder: a folder it has just made, set to 0755'],
+  ['files.mjs', 'try { mkdirSync(at, {mode: FOLDER_MODE}); chmodSync(at, FOLDER_MODE); }', 'outputFolder: the same'],
   ['files.mjs', "writeFileSync(path.join(to, 'timings.json'), bytes, {flag: 'wx'})", 'copyVoice: into the voice copy makeScratch made (0700), exclusively'],
   ['files.mjs', "writeFileSync(target, readFileSync(path.join(base, f)), {flag: 'wx'})", 'copyVoice: the same'],
   ['files.mjs', 'ops.chmodSync(copy, plainFolderMode())', 'placeVoice: the voice copy, before it is renamed'],
@@ -293,12 +358,41 @@ const OWN = [
   ['segments.mjs', "spawnSync(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'concat'", 'ffmpegJoin: the same'],
   ['stills.mjs', 'writeFileSync(script, filter)', 'the stills pass\'s tempScratch folder'],
 ];
-const FS = String.raw`['"](?:node:)?fs(?:/promises)?['"]`;
-/** What a source file takes from fs: each name imported, and any whole-module import, dynamic import or require of it. */
-function fsImports(code) {
-  const named = [...code.matchAll(new RegExp(String.raw`import\s*\{([^}]*)\}\s*from\s*` + FS, 'g'))].flatMap(m => m[1].split(',').map(n => n.trim().split(/\s+as\s+/)[0]).filter(Boolean));
-  const whole = [...code.matchAll(new RegExp(String.raw`import\s+(?:\*\s+as\s+\w+|\w+)(?:\s*,\s*\{[^}]*\})?\s*from\s*` + FS, 'g')),
-    ...code.matchAll(new RegExp(String.raw`(?:import|require)\s*\(\s*` + FS, 'g'))].map(m => m[0].replace(/\s+/g, ' '));
+const RUNS = [
+  ['mcp.mjs', 'spawn(process.execPath, [CLI, name, ...flags]', 'Node running StoryReel\'s own CLI (src/, held to this guard)'],
+  ['spawned.mjs', 'const child = spawn(command, args, options);', 'the wrapper: its callers are listed below'],
+  ['beats.mjs', 'spawnSync(ffmpeg, decodeArgs(file, rate)', 'FFmpeg decoding to a pipe'],
+  ['beats.mjs', 'spawnSync(ffprobeBeside(ffmpeg), [', 'ffprobe, to stdout'],
+  ['beats.mjs', 'spawned(ffmpeg, decodeArgs(file, rate)', 'FFmpeg decoding to a pipe'],
+  ['stills.mjs', "spawnSync(ffmpeg, ['-version']", 'FFmpeg\'s version'],
+  ['stills.mjs', 'spawned(ffmpeg, args, {stdio:', 'FFmpeg reading stills to a pipe (stills.mjs · stillsArgs)'],
+  ['render.mjs', "spawnSync(ffmpeg, ['-y', '-hide_banner'", 'FFmpeg: the mux, into the work folder'],
+  ['render.mjs', "spawnSync(ffmpeg, ['-hide_banner', '-nostats', '-i', wav, '-filter_complex', 'ebur128", 'FFmpeg measuring, to null'],
+  ['render.mjs', "spawn(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'rawvideo'", 'FFmpeg encoding into the work folder'],
+  ['render.mjs', "spawnSync(ffmpeg, ['-y', '-loglevel', 'error', ...args]", 'FFmpeg: the sound, in the work folder'],
+  ['render.mjs', "spawnSync(ffmpeg, ['-hide_banner', '-nostdin', '-i', file]", 'FFmpeg reading a song\'s length, no output'],
+  ['finished.mjs', 'spawnSync(cmd, args, {encoding:', 'ffprobe / FFmpeg reading a file, to stdout'],
+  ['finished.mjs', "spawned(ffmpeg, ['-v', 'error', '-i', file, '-vf', vf, '-f', 'rawvideo', 'pipe:1']", 'FFmpeg frames to a pipe'],
+  ['finished.mjs', "spawnSync(ffmpeg, ['-v', 'error', '-i', file, '-vn', '-ac', '1'", 'FFmpeg sound to a pipe'],
+  ['finished.mjs', "spawned(ffmpeg, ['-hide_banner', '-nostats', '-v', 'info', '-reinit_filter'", 'FFmpeg frames to a pipe'],
+  ['segments.mjs', "spawnSync(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'concat'", 'FFmpeg joining into the work folder'],
+];
+const MODULE = String.raw`(?:node:)?(?:fs(?:/promises)?|child_process)`, QUOTED = String.raw`[\x60'"]${MODULE}[\x60'"]`;
+const isFs = spec => /^(?:node:)?fs(?:\/promises)?$/.test(spec), isCp = spec => /^(?:node:)?child_process$/.test(spec);
+/** What a source file takes from fs and child_process: each name and its local name, and every way it takes a module whole or late. */
+function moduleUse(code) {
+  const named = [], whole = [];
+  for (const m of code.matchAll(new RegExp(String.raw`import\s*\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]`, 'g'))) {
+    if (!isFs(m[2]) && !isCp(m[2])) continue;
+    for (const part of m[1].split(',').map(p => p.trim()).filter(Boolean)) {
+      const [name, local = name] = part.split(/\s+as\s+/).map(x => x.trim());
+      if (name === 'default') whole.push(`{default as ${local}} from '${m[2]}'`); else named.push({module: isFs(m[2]) ? 'fs' : 'cp', name, local});
+    }
+  }
+  for (const m of code.matchAll(new RegExp(String.raw`import\s+(?:\*\s*as\s+\w+|\w+)\s*(?:,\s*(?:\{[^}]*\}|\*\s*as\s+\w+))?\s*from\s*` + QUOTED, 'g'))) whole.push(m[0].replace(/\s+/g, ' '));
+  for (const m of code.matchAll(new RegExp(String.raw`export\s*(?:\*(?:\s*as\s+\w+)?|\{[^}]*\})\s*from\s*` + QUOTED, 'g'))) whole.push(m[0].replace(/\s+/g, ' '));
+  for (const m of code.matchAll(new RegExp(String.raw`\(\s*` + QUOTED + String.raw`\s*\)`, 'g'))) whole.push(`a call given ${m[0].replace(/\s+/g, '')} (import(), require(), createRequire()(…))`);
+  for (const m of code.matchAll(/getBuiltinModule/g)) whole.push('process.getBuiltinModule');
   return {named, whole};
 }
 const srcFiles = () => {
@@ -306,47 +400,64 @@ const srcFiles = () => {
   const walk = (at = '') => readdirSync(path.join(src, at), {withFileTypes: true}).flatMap(e => e.isDirectory() ? walk(path.join(at, e.name)) : e.name.endsWith('.mjs') ? [path.join(at, e.name)] : []);
   return walk().map(file => ({file, code: readFileSync(path.join(src, file), 'utf8')}));
 };
+const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const callsOf = names => new RegExp(String.raw`(?<![\w.$])(${names.map(escape).join('|') || '(?!)'})\s*\(`);
+const flagged = new RegExp(String.raw`[\x60'"](${FLAGS.map(escape).join('|')})[\x60'"]|\bFFREPORT\b`);   // a flag as written, or FFmpeg's report variable
 
-/** Every way src/ could write a file around writeOutput (empty when there is none): by import, then by line. */
+/** Every way src/ could write a file around writeOutput, or run a program not listed (empty when there is none). */
 function rawWrites(files = srcFiles()) {
   const problems = [];
   for (const {file, code} of files) {
-    const {named, whole} = fsImports(code), allowed = IMPORTS[file] ?? [];
-    for (const w of whole) problems.push(`${file}: ${w} — import fs functions by name`);
-    for (const name of named.filter(n => WRITERS.includes(n) && !allowed.includes(n))) problems.push(`${file}: imports ${name}, which writes a file — write the output through files.mjs · writeOutput`);
-    for (const name of allowed.filter(n => !named.includes(n))) problems.push(`${file}: listed as importing ${name}, and it does not — remove it from IMPORTS`);
-    const calls = new RegExp(String.raw`\b(${named.filter(n => WRITERS.includes(n)).join('|') || '(?!)'})\s*\(|'-y'`);
+    const {named, whole} = moduleUse(code), allowed = IMPORTS[file] ?? [];
+    for (const w of whole) problems.push(`${file}: ${w} — import fs and child_process functions by name`);
+    const writers = named.filter(n => n.module === 'fs' && WRITERS.includes(n.name));
+    for (const {name} of writers.filter(n => !allowed.includes(n.name))) problems.push(`${file}: imports ${name}, which writes a file — write the output through files.mjs · writeOutput`);
+    for (const name of allowed.filter(n => !writers.some(w => w.name === n))) problems.push(`${file}: listed as importing ${name}, and it does not — remove it from IMPORTS`);
+    // The programs: child_process's runners and spawned.mjs's wrapper, by the names this file gives them.
+    const runners = [...named.filter(n => n.module === 'cp' && RUNNERS.includes(n.name)).map(n => n.local),
+      ...[...code.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]\.\/spawned\.mjs['"]/g)].flatMap(m => m[1].split(',').map(p => p.trim().split(/\s+as\s+/)).filter(([n]) => n === 'spawned').map(([n, l = n]) => l))];
+    const writes = callsOf(writers.map(n => n.local)), runs = callsOf(runners);
     code.split('\n').forEach((line, i) => {
-      const text = line.trim();
-      if (text.startsWith('//') || text.startsWith('*') || !calls.test(text)) return;
-      if (!OWN.some(([f, has]) => f === file && text.includes(has))) problems.push(`${file}:${i + 1} ${text.slice(0, 120)} — write the output through files.mjs · writeOutput, or list it in OWN with where it writes`);
+      const text = line.trim(), at = `${file}:${i + 1} ${text.slice(0, 120)}`;
+      if (text.startsWith('//') || text.startsWith('/*') || text.startsWith('*')) return;
+      if ((writes.test(text) || flagged.test(text)) && !OWN.some(([f, has]) => f === file && text.includes(has))) problems.push(`${at} — write the output through files.mjs · writeOutput, or list it in OWN with where it writes`);
+      if (runs.test(text) && !RUNS.some(([f, has]) => f === file && text.includes(has))) problems.push(`${at} — a program StoryReel runs: list it in RUNS with what it is and where its output goes`);
     });
   }
-  for (const [f, has] of OWN) if (!files.some(({file, code}) => file === f && code.includes(has))) problems.push(`${f}: "${has}" is listed in OWN and gone — remove it`);
+  for (const [list, entries] of [['OWN', OWN], ['RUNS', RUNS]]) for (const [f, has] of entries) if (!files.some(({file, code}) => file === f && code.includes(has))) problems.push(`${f}: "${has}" is listed in ${list} and gone — remove it`);
   return problems;
 }
 
-test('no write in src/ goes around writeOutput: by import (only files.mjs and the listed own-folder writers take a writing fs function) and by line', () => {
+test('no write in src/ goes around writeOutput, and every program it runs is listed: by import, by call (under any local name), by flag', () => {
   assert.deepEqual(rawWrites(), []);
 });
 
-test('the guard catches a write it was not told about: an openSync + writeSync, a fs.promises handle, a whole-module or dynamic import of fs', () => {
-  const files = srcFiles(), with_ = (file, edit) => files.map(f => f.file === file ? {file, code: edit(f.code)} : f);
-  const opened = with_('render.mjs', c => c.replace("import {writeFileSync, mkdirSync, rmSync} from 'node:fs';", "import {writeFileSync, mkdirSync, rmSync, openSync, writeSync} from 'node:fs';")
-    .replace("writeOutput(path.join(dir, 'chapters.txt'), ", "writeSync(openSync(path.join(dir, 'chapters.txt'), 'w'), "));
-  const found = rawWrites(opened);
-  assert.equal(found.length, 3, found.join('\n'));
-  assert.match(found[0], /^render\.mjs: imports openSync, which writes a file — write the output through files\.mjs · writeOutput$/);
-  assert.match(found[1], /^render\.mjs: imports writeSync, which writes a file/);
-  assert.match(found[2], /^render\.mjs:\d+ writeSync\(openSync\(path\.join\(dir, 'chapters\.txt'\), 'w'\), .* — write the output through files\.mjs · writeOutput, or list it in OWN/);
-  const handle = with_('tools.mjs', c => `import {open} from 'node:fs/promises';\n${c}`);
-  assert.match(rawWrites(handle).join('\n'), /tools\.mjs: imports open, which writes a file/);
-  const promises = with_('tools.mjs', c => `import {promises as fsp} from 'fs';\n${c}`);
-  assert.match(rawWrites(promises).join('\n'), /tools\.mjs: imports promises, which writes a file/);
-  const whole = with_('tools.mjs', c => `import * as fs from 'node:fs';\n${c}`);
-  assert.match(rawWrites(whole).join('\n'), /tools\.mjs: import \* as fs from 'node:fs' — import fs functions by name/);
-  const dynamic = with_('tools.mjs', c => `${c}\nconst later = () => import('node:fs/promises');\n`);
-  assert.match(rawWrites(dynamic).join('\n'), /tools\.mjs: import\('node:fs\/promises' — import fs functions by name/);
-  const ffmpeg = with_('breakdown.mjs', c => `${c}\nconst y = ['-y', 'out.mp4'];\n`);
-  assert.match(rawWrites(ffmpeg).join('\n'), /breakdown\.mjs:\d+ const y = \['-y', 'out\.mp4'\];/);
+test('the guard catches each way around it, planted in src/: openSync + writeSync, a local alias, {default as fs}, getBuiltinModule, createRequire, a template import, fs/promises, an unlisted program, a writing FFmpeg flag', () => {
+  const files = srcFiles(), plant = (file, edit) => files.map(f => f.file === file ? {file, code: edit(f.code)} : f);
+  const caught = (planted, re) => { const found = rawWrites(planted); assert.ok(found.some(p => re.test(p)), `not caught: ${re}\n${found.join('\n')}`); return found; };
+  const fsImport = "import {writeFileSync, rmSync} from 'node:fs';";
+  assert.ok(files.find(f => f.file === 'render.mjs').code.includes(fsImport), 'render.mjs imports fs as the plants expect');
+  // openSync + writeSync in render.mjs, in place of the chapters' writeOutput: both imports and the line.
+  const opened = rawWrites(plant('render.mjs', c => c.replace(fsImport, "import {writeFileSync, rmSync, openSync, writeSync} from 'node:fs';").replace("writeOutput(path.join(dir, 'chapters.txt'), ", "writeSync(openSync(path.join(dir, 'chapters.txt'), 'w'), ")));
+  assert.equal(opened.length, 3, opened.join('\n'));
+  assert.match(opened[0], /^render\.mjs: imports openSync, which writes a file — write the output through files\.mjs · writeOutput$/);
+  assert.match(opened[1], /^render\.mjs: imports writeSync, which writes a file/);
+  assert.match(opened[2], /^render\.mjs:\d+ writeSync\(openSync\(path\.join\(dir, 'chapters\.txt'\), 'w'\), .* — write the output through files\.mjs · writeOutput, or list it in OWN/);
+  // A writer it may import, called under another name.
+  caught(plant('render.mjs', c => c.replace(fsImport, "import {writeFileSync, writeFileSync as put, rmSync} from 'node:fs';").replace("writeOutput(path.join(dir, 'chapters.txt'), ", "put(path.join(dir, 'chapters.txt'), ")), /^render\.mjs:\d+ put\(path\.join\(dir, 'chapters\.txt'\)/);
+  // fs taken whole, or late.
+  caught(plant('tools.mjs', c => `import {default as fs} from 'node:fs';\n${c}`), /^tools\.mjs: \{default as fs\} from 'node:fs' — import fs and child_process functions by name$/);
+  caught(plant('tools.mjs', c => `${c}\nconst fs = process.getBuiltinModule('node:fs');\n`), /^tools\.mjs: process\.getBuiltinModule/);
+  caught(plant('tools.mjs', c => `import {createRequire} from 'node:module';\n${c}\nconst fs = createRequire(import.meta.url)('node:fs');\n`), /^tools\.mjs: a call given \('node:fs'\)/);
+  caught(plant('tools.mjs', c => `${c}\nconst later = () => import(\x60node:fs\x60);\n`), /^tools\.mjs: a call given \(\x60node:fs\x60\)/);
+  caught(plant('tools.mjs', c => `import * as cp from 'node:child_process';\n${c}`), /^tools\.mjs: import \* as cp from 'node:child_process'/);
+  caught(plant('tools.mjs', c => `export * from 'node:fs';\n${c}`), /^tools\.mjs: export \* from 'node:fs'/);
+  caught(plant('tools.mjs', c => `import {open} from 'node:fs/promises';\n${c}`), /^tools\.mjs: imports open, which writes a file/);
+  caught(plant('tools.mjs', c => `import {promises as fsp} from 'fs';\n${c}`), /^tools\.mjs: imports promises, which writes a file/);
+  // A program not listed (curl writing a file), under its own name and under another.
+  caught(plant('tools.mjs', c => `import {spawnSync} from 'node:child_process';\n${c}\nspawnSync('curl', ['-o', 'film.mp4', 'https://example.com']);\n`), /^tools\.mjs:\d+ spawnSync\('curl'.* — a program StoryReel runs: list it in RUNS/);
+  caught(plant('tools.mjs', c => `import {execFileSync as run} from 'node:child_process';\n${c}\nrun('cp', ['a', 'b']);\n`), /^tools\.mjs:\d+ run\('cp', \['a', 'b'\]\);/);
+  // A flag that makes FFmpeg or ffprobe write a file, wherever it is written.
+  for (const flag of ['-progress', '-report', '-vstats_file', '-y']) caught(plant('beats.mjs', c => `${c}\nconst extra = ['${flag}', 'out.txt'];\n`), new RegExp(`^beats\\.mjs:\\d+ const extra = \\['${escape(flag)}'`));
+  caught(plant('beats.mjs', c => `${c}\nconst env = {FFREPORT: 'file=report.log'};\n`), /^beats\.mjs:\d+ const env = \{FFREPORT/);
 });
