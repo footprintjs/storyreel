@@ -6,7 +6,8 @@
  *    "fps": 30,                                   the video's frames a second
  *    "coordinates": "pixels" | "normalised",      normalised: x and y are shares of the width and the height
  *    "width": 1280, "height": 720,                the video's size in px (needed for normalised coordinates)
- *    "frames": [ frame | null, … ]}               null: nobody was found in that frame
+ *    "frames": [ frame | null, … ],              null: nobody was found in that frame
+ *    "unread": 74}                                optional: frames the video states that could not be read (damaged)
  *
  *   a frame   the scheme's points in its order ([[x, y, confidence], …]: 17 or 33 of them), or by name
  *             ({"nose": [x, y, confidence], …}: a name left out was not seen)
@@ -42,8 +43,9 @@ function readHeader(doc) {
   if (!COORDINATES.includes(doc.coordinates)) throw new Error(`keypoints: coordinates is 'pixels' or 'normalised' (x and y as shares of the width and the height), not ${shown(doc.coordinates)}`);
   const normalised = doc.coordinates !== 'pixels';
   if (normalised && !(positive(doc.width) && positive(doc.height))) throw new Error(`keypoints: normalised coordinates need the video's width and height in px (x is a share of one, y of the other), so the figure keeps its proportions; give width and height, not ${shown(doc.width)} × ${shown(doc.height)}`);
+  if (doc.unread !== undefined && !(Number.isInteger(doc.unread) && doc.unread >= 0)) throw new Error(`keypoints: unread is how many frames the video states that could not be read (a whole number, 0 or more), not ${shown(doc.unread)}`);
   if (!Array.isArray(doc.frames) || doc.frames.length < 2) throw new Error(`keypoints: frames is a list of at least 2 frames (a frame's points, or null), not ${Array.isArray(doc.frames) ? `${doc.frames.length} frame` : shown(doc.frames)}`);
-  return {scheme: doc.scheme, names: SCHEMES[doc.scheme], fps: doc.fps, normalised, width: normalised ? doc.width : doc.width ?? null, height: normalised ? doc.height : doc.height ?? null};
+  return {scheme: doc.scheme, names: SCHEMES[doc.scheme], fps: doc.fps, unread: doc.unread ?? 0, normalised, width: normalised ? doc.width : doc.width ?? null, height: normalised ? doc.height : doc.height ?? null};
 }
 
 /** A point as given → {x, y, c} in px, or null when not seen; anything else refuses, naming the frame and the joint. */
@@ -129,5 +131,5 @@ export function readKeypoints(doc, {from = null, to = null, minConfidence = .5, 
     const summed = dropoutsOf(joint, points.slice(first - lo, last - lo + 1), low.slice(first - lo, last - lo + 1), first);
     if (summed) dropouts.push(summed);
   }
-  return {scheme: h.scheme, fps: h.fps, normalised: h.normalised, width: h.width, height: h.height, first, last, count: kept.length, lo, hi, tracks, reported, dropouts, empty: kept.filter(f => f === null).length};
+  return {scheme: h.scheme, fps: h.fps, unread: h.unread, normalised: h.normalised, width: h.width, height: h.height, first, last, count: kept.length, lo, hi, tracks, reported, dropouts, empty: kept.filter(f => f === null).length};
 }

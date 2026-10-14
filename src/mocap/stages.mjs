@@ -8,10 +8,9 @@ import {gapsOf, fillGap, smoothTrack, median, least, most} from './tracks.mjs';
 import {SIDES, torsoLength, toRig, bodyTracks, armTracks, legTracks, legLengths, solveKnee, turnOf, wrapAngle} from './rig.mjs';
 import {absolute, floorOf, slowRuns, spotsOf, lockFoot} from './feet.mjs';
 import {footSlides, bestCut} from './seam.mjs';
-import {PAIRS, pairMoves, trade} from './swaps.mjs';
 import {clipClock, poseBetween} from './clip.mjs';
 import {TORSO_SHARE} from '../pose.mjs';
-import {report, verdict, SWAP_GAIN, SWAP_RULES, SWAP_DEFAULT, GAP_RULES, GAP_DEFAULT, FACING_RULES, FACING_DEFAULT, CONTACT_RULES, CONTACT_DEFAULT, LOOP_RULES, LOOP_DEFAULT, gapRefusal, loopRefusal} from './verdicts.mjs';
+import {report, verdict, GAP_RULES, GAP_DEFAULT, FACING_RULES, FACING_DEFAULT, CONTACT_RULES, CONTACT_DEFAULT, LOOP_RULES, LOOP_DEFAULT, gapRefusal, loopRefusal} from './verdicts.mjs';
 
 /** Half the angle between the arms (radians) that counts as a whole swing (pose.swing ±1). */
 const SWING = .6;
@@ -29,54 +28,33 @@ export function readStage(s, keypoints, o, work, record) {
   Object.assign(work, {read: k, tracks: k.tracks});
   report(s, record, {scheme: k.scheme, fps: k.fps, coordinates: k.normalised ? 'normalised' : 'pixels',
     kept: {frames: [k.first, k.last], count: k.count, seconds: round((k.count - 1) / k.fps), ...(k.lo < k.first || k.hi > k.last ? {context: [k.lo, k.hi]} : {})},
-    nobody: k.empty, dropouts: k.dropouts});
-}
-
-/**
- * Left and right traded back where the detector swapped them (mocap/swaps.mjs). Frame by frame, each pair is held
- * against the last frame both were seen in (at most a fifth of a second before). A frame where trading would move it
- * at least SWAP_GAIN less is decided — trading by less is the detector's noise, never a verdict — and where trading
- * moves it at most half as far, it is traded back, so the next frame is held against the repaired one. The record
- * keeps, for each pair, the frames traded (video frame numbers) with each verdict, and how many it decided to keep.
- */
-export function swapStage(s, o, work, record) {
-  const {read: k, tracks} = work, scale = torsoLength(tracks), reach = Math.max(1, Math.round(.2 * k.fps)), swaps = [];
-  if (!(scale > 0)) { report(s, record, {swaps}); return; }   // (no torso seen: the smoothing refuses the clip, naming it)
-  for (const pair of PAIRS) {
-    const [L, R] = [tracks[`left_${pair}`], tracks[`right_${pair}`]], traded = L.map(() => false), verdicts = [];
-    let ref = -1, kept = 0;
-    for (let f = 0; f < L.length; f++) {
-      if (!L[f] || !R[f]) continue;
-      const moves = ref >= 0 && f - ref <= reach ? pairMoves(L, R, ref, f, scale) : null;
-      ref = f;
-      if (!moves || !(moves.keep - moves.swap >= SWAP_GAIN)) continue;
-      const [keep, swap] = [round(moves.keep), round(moves.swap)];
-      const v = verdict(s, {swapPair: pair, keepMoves: keep, swapMoves: swap, swapGain: round(moves.keep - moves.swap), swapShare: round(moves.swap / moves.keep)}, SWAP_RULES, SWAP_DEFAULT);
-      if (v.how !== 'swap') { kept++; continue; }
-      trade(tracks, k.reported, pair, f); traded[f] = true;
-      verdicts.push({frame: k.lo + f, keepMoves: keep, swapMoves: swap, why: v.why, evidence: v.evidence});
-    }
-    if (verdicts.length || kept) swaps.push({pair, frames: runsOf(traded).map(([a, b]) => [k.lo + a, k.lo + b]), traded: verdicts.length, kept, verdicts});
-  }
-  report(s, record, {swaps});
+    nobody: k.empty, dropouts: k.dropouts,
+    ...(k.unread ? {unread: {frames: k.unread, note: `the video states ${k.unread} more frames than could be read: it may be damaged, and the clip ends early`}} : {})});
 }
 
 /** A gap wholly in the context around a cut is filled for the smoothing's sake, never decided: it is not shown. */
 const contextOnly = (gap, k) => gap.to < k.first - k.lo || gap.from > k.last - k.lo;
 
 /**
- * What made a gap: points never found (missing), points reported under minConfidence (unsure), or both (mixed) —
- * with how many were reported, and at what confidence.
+ * A confidence to the thousandth, never rounded up: a point under 0.5 is never said to be at 0.5. (A float a hair under
+ * a thousandth — 0.19999999999999998 — is that thousandth.)
  */
-function whyMissing(reported, gap) {
+const thousandths = c => Math.floor(c * 1000 + 1e-9) / 1000;
+
+/**
+ * What made a gap, over the frames of it that are kept (what is shown): points never found (missing), points reported
+ * under minConfidence (unsure), or both (mixed) — with how many were reported, and at what confidence.
+ */
+function whyMissing(reported, gap, k) {
+  const from = Math.max(gap.from, k.first - k.lo), to = Math.min(gap.to, k.last - k.lo);
   let unsure = 0, low = 1, high = 0;
-  for (let i = gap.from; i <= gap.to; i++) {
+  for (let i = from; i <= to; i++) {
     const c = reported[i];
     if (c === null) continue;
     unsure++; low = Math.min(low, c); high = Math.max(high, c);
   }
-  const kind = unsure === 0 ? 'missing' : unsure === gap.to - gap.from + 1 ? 'unsure' : 'mixed';
-  return {kind, unsure, ...(unsure ? {low: round(low), high: round(high)} : {})};
+  const kind = unsure === 0 ? 'missing' : unsure === to - from + 1 ? 'unsure' : 'mixed';
+  return {kind, unsure, ...(unsure ? {low: thousandths(low), high: thousandths(high)} : {})};
 }
 
 /** The frames of a gap that are kept, when it reaches past a cut (null when all of it is kept). */
@@ -99,7 +77,7 @@ export function fillStage(s, o, work, record) {
       const v = verdict(s, {gapSeconds: seconds, gapEdge: gap.edge}, GAP_RULES(o.maxGap), GAP_DEFAULT);
       kinds.set(key, {how: v.how, edge: gap.edge, missing, seconds, why: v.why, evidence: v.evidence, at: []});
     }
-    const kind = kinds.get(key), why = whyMissing(k.reported[joint], gap), kept = keptPart(frames, k);
+    const kind = kinds.get(key), why = whyMissing(k.reported[joint], gap, k), kept = keptPart(frames, k);
     kind.at.push({joint, frames, ...(why.unsure ? {unsure: why.unsure} : {}), ...(kept ? {kept} : {})});
     if (kind.how === 'refuse') refused.push({joint, frames, ...(kept ? {kept} : {}), edge: gap.edge, missing, seconds, ...why});
     else tracks[joint] = fillGap(tracks[joint], gap, kind.how);

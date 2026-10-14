@@ -17,6 +17,8 @@ export interface Keypoints {
   width?: number;
   height?: number;
   frames: KeypointFrame[];
+  /** Frames the video states that could not be read (a damaged file ends early): tools/pose-from-video.py writes it. */
+  unread?: number;
 }
 /** The One Euro filter's settings: minCutoff and dCutoff in Hz, beta per torso length a second. */
 export interface SmoothSettings {minCutoff: number; beta: number; dCutoff: number}
@@ -66,12 +68,6 @@ export interface Gap extends Verdict<'bridge' | 'hold' | 'refuse'> {
   missing: number; seconds: number; edge: 'inside' | 'start' | 'end' | 'whole';
   at: {joint: string; frames: [number, number]; unsure?: number; kept?: [number, number]}[];
 }
-/** A left/right pair the detector swapped: the frames traded back (video frame numbers, runs), each verdict, how many it kept. */
-export interface Swap {
-  pair: 'shoulder' | 'elbow' | 'wrist' | 'hip' | 'knee' | 'ankle';
-  frames: [number, number][]; traded: number; kept: number;
-  verdicts: ({frame: number; keepMoves: number; swapMoves: number} & Omit<Verdict<'swap'>, 'how'>)[];
-}
 /** A joint the detector was unsure of (under minConfidence), summed up: how many runs, how many frames, the lowest, the longest. */
 export interface Dropout {joint: string; runs: number; frames: number; lowest: number; longest: [number, number]}
 /** A still stretch of a foot (video frame numbers), how long, how high over the floor (torso lengths), and the verdict. */
@@ -88,9 +84,9 @@ export interface MocapRecord {
   kept: {frames: [number, number]; count: number; seconds: number};
   /** Kept frames with nobody found. */
   nobody: number;
+  /** When the keypoints say frames of the video could not be read: how many, and what that means. */
+  unread?: {frames: number; note: string};
   dropouts: Dropout[];
-  /** Left and right traded back where the detector swapped them (pairs with no candidate frame are left out). */
-  swaps: Swap[];
   gaps: Gap[];
   /** One torso length (hips to shoulders) in the video, px. */
   torso: number;

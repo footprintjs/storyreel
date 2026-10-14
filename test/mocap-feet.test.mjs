@@ -11,7 +11,7 @@ import {walkSource, TORSO_SHARE} from '../src/pose.mjs';
 import {solveKnee, KNEE_NOISE} from '../src/mocap/rig.mjs';
 import {drawFigure, figureAt} from '../src/kits/cartoon/figure.mjs';
 import {compileFilm, evenTimings, frameHashes} from '../src/index.mjs';
-import {walkStances, WALK, WAVE, NOISY_SWAPS} from './fixtures/mocap/make.mjs';
+import {walkStances, WALK, WAVE} from './fixtures/mocap/make.mjs';
 import {bestCut, CUT_SEARCH_LIMIT} from '../src/mocap/seam.mjs';
 import {loopRefusal} from '../src/mocap/verdicts.mjs';
 
@@ -57,25 +57,6 @@ test('feet: every stretch the walk was planted is found within a frame or two �
     assert.equal(record.standing.from, 'both feet planted');
   }
   assert.ok(NOISY_JSON.frames.flat().some(p => p?.[2] === .4), 'the rough detector dips to 0.4');
-});
-
-test('left and right swapped by the detector are traded back, where it happened and nowhere else, with the evidence', async () => {
-  const {record} = await fromPose(NOISY_JSON, PLACE), traded = Object.fromEntries(record.swaps.map(p => [p.pair, p.frames]));
-  assert.deepEqual(traded.ankle, NOISY_SWAPS.ankle, 'the ankles planted traded, found and traded back');
-  assert.deepEqual(traded.wrist, NOISY_SWAPS.wrist, 'the wrists too');
-  assert.ok(record.swaps.filter(p => !(p.pair in NOISY_SWAPS)).every(p => p.traded === 0 && p.frames.length === 0), `nothing else traded: ${JSON.stringify(traded)}`);
-  for (const v of record.swaps.flatMap(p => p.verdicts)) {
-    assert.match(v.why, /^traded back, it moves far less: the detector swapped left and right: swapGain [\d.]+ ≥ 0\.15 ✓, swapShare [\d.]+ ≤ 0\.5 ✓$/);
-    assert.equal(v.evidence.chosen, 'swap');
-  }
-  assert.ok(record.swaps.some(p => p.kept > 0), 'a pair crossing, as labelled, is decided too, and kept');
-  // A clean walk with its ankles traded for three frames: traded back, and its feet planted as if never swapped.
-  const traded3 = copy(WALK_JSON), [l, r] = [15, 16];
-  for (const f of [40, 41, 42]) [traded3.frames[f][l], traded3.frames[f][r]] = [traded3.frames[f][r], traded3.frames[f][l]];
-  const [clean, repaired] = [await fromPose(WALK_JSON, PLACE), await fromPose(traded3, PLACE)];
-  assert.deepEqual(repaired.record.swaps.find(p => p.pair === 'ankle').frames, [[40, 42]]);
-  assert.deepEqual(repaired.record.contacts.map(c => [c.foot, c.frames]), clean.record.contacts.map(c => [c.foot, c.frames]));
-  assert.ok(clean.record.swaps.every(p => p.traded === 0), 'a clean walk trades nothing');
 });
 
 // The clean walk, with its left ankle sliding 30 px through a stance (as a detector's foot drifts): the lock holds the

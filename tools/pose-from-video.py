@@ -24,8 +24,12 @@ Visibility. Every point is written with MediaPipe's visibility as its confidence
 limbs often read under 0.5: give fromPose a lower minConfidence for such a clip. --min-visibility V writes points
 under V as null here instead (0, the default, writes every point).
 
-Logs. MediaPipe writes INFO and WARNING lines to stderr on every run; they are held back, and every other line it
-writes (an error) is passed on. --logs shows them all.
+Logs. MediaPipe writes INFO and WARNING lines to stderr on every run; they are filtered out as they come, and every
+other line it writes (an error, a fatal one too) is passed on at once. --logs shows them all.
+
+A damaged file. A decoder stops at a damaged stretch, so the clip it gives can end early with no error. The frames read
+are held against the count the file states: frames missing are reported, and their number is written into the JSON
+("unread"), so fromPose's record says so; more than half missing is refused.
 
 It writes {"scheme": "mediapipe-33", "fps", "coordinates": "normalised", "width", "height", "frames"}: per frame the
 33 points as [x, y, confidence] (x and y shares of the width and the height), or null where nobody was found.
@@ -37,8 +41,8 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
-import tempfile
 import urllib.request
 from pathlib import Path
 
@@ -79,14 +83,24 @@ def sha256_of(path):
 def model_file(name, folder, trust):
     """The model's file: downloaded on first use, its SHA-256 checked against MODEL_SHA256 every time it is used."""
     folder = Path(folder)
-    folder.mkdir(parents=True, exist_ok=True)
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        sys.exit(f'pose-from-video: the models folder {folder} cannot be used ({e.strerror or e}): give --models a folder')
     path = folder / f'pose_landmarker_{name}.task'
     if not path.exists():
         print(f'pose-from-video: downloading the {name} pose model (first use) from {MODELS[name]} to {path}', file=sys.stderr)
         part = path.with_suffix('.part')
-        urllib.request.urlretrieve(MODELS[name], part)
+        try:
+            urllib.request.urlretrieve(MODELS[name], part)
+        except OSError as e:
+            sys.exit(f'pose-from-video: the {name} model could not be downloaded from {MODELS[name]} ({e}): check the connection, or put the file at {path}')
         part.replace(path)
-    found, recorded = sha256_of(path), MODEL_SHA256[name]
+    try:
+        found = sha256_of(path)
+    except OSError as e:
+        sys.exit(f'pose-from-video: the {name} model at {path} cannot be read ({e.strerror or e}): remove it to download it again, or give --models another folder')
+    recorded = MODEL_SHA256[name]
     if recorded is None:
         if not trust:
             sys.exit(f'pose-from-video: the {name} model\'s SHA-256 is not recorded yet ({path} is {found}): check it, then run again with '
@@ -100,29 +114,51 @@ def model_file(name, folder, trust):
 
 
 # MediaPipe's own log lines that are not errors: absl INFO and WARNING, TensorFlow Lite's INFO.
-NOISE = re.compile(r'^(I\d{4} |W\d{4} |INFO: )')
+NOISE = rb'^(I\d{4} |W\d{4} |INFO: )'
+# The relay: a process of its own, so a line written just before a native abort still reaches the screen (a thread
+# would die with the process before it read it). It reads stderr's lines as they come and passes on all but NOISE.
+RELAY = ('import re, sys\n'
+         'for line in sys.stdin.buffer:\n'
+         f'    if not re.match({NOISE!r}, line):\n'
+         '        sys.stderr.buffer.write(line)\n'
+         '        sys.stderr.buffer.flush()\n')
 
 
 @contextlib.contextmanager
 def quiet_logs(show):
-    """MediaPipe's native stderr, held while it works; then every line that is not INFO or WARNING is passed on."""
+    """MediaPipe's native stderr, filtered as it comes: every line that is not INFO or WARNING is passed on at once."""
     if show:
         yield
         return
     sys.stderr.flush()
     saved = os.dup(2)
-    with tempfile.TemporaryFile() as held:
-        os.dup2(held.fileno(), 2)
-        try:
-            yield
-        finally:
-            sys.stderr.flush()
-            os.dup2(saved, 2)
-            os.close(saved)
-            held.seek(0)
-            for line in held.read().decode('utf-8', 'replace').splitlines():
-                if not NOISE.match(line):
-                    print(line, file=sys.stderr)
+    read_end, write_end = os.pipe()
+    relay = subprocess.Popen([sys.executable, '-I', '-c', RELAY], stdin=read_end, stderr=saved)
+    os.close(read_end)
+    os.dup2(write_end, 2)
+    os.close(write_end)
+    try:
+        yield
+    finally:
+        sys.stderr.flush()
+        os.dup2(saved, 2)   # the pipe's last writer closes: the relay passes on what is left, and ends
+        relay.wait()
+        os.close(saved)
+
+
+def unread_frames(read, stated):
+    """
+    The frames read against the count the file states: (verdict, missing). 'whole' when at most two are missing (a
+    count the file only estimates can be a frame or two off), 'short' when more are (a damaged stretch ends a
+    decoder's reading early: warn, and write the count), 'refuse' when more than half are, 'unknown' when the file
+    states no count.
+    """
+    if not stated or stated <= 0:
+        return 'unknown', 0
+    missing = max(0, int(round(stated)) - read)
+    if missing <= 2:
+        return 'whole', missing
+    return ('refuse' if missing > stated / 2 else 'short'), missing
 
 
 def points_of(result, floor):
@@ -162,6 +198,17 @@ def resampled(seen, fps):
     return frames
 
 
+@contextlib.contextmanager
+def landmarker_from(vision, options, model):
+    """The pose landmarker for a model file; one MediaPipe cannot load ends in a message, not a traceback."""
+    try:
+        landmarker = vision.PoseLandmarker.create_from_options(options)
+    except (RuntimeError, ValueError, OSError) as e:
+        sys.exit(f'pose-from-video: MediaPipe could not load the model {model} ({e}): remove it to download it again')
+    with landmarker:
+        yield landmarker
+
+
 def main():
     args = read_args()
     if not args.logs:   # (builds that log through glog or TensorFlow honour these; the rest are held back by quiet_logs)
@@ -180,11 +227,11 @@ def main():
     fps = args.fps or video.get(cv2.CAP_PROP_FPS)
     if not fps or fps <= 0:
         sys.exit('pose-from-video: the video does not say its frame rate: give --fps')
-    options = vision.PoseLandmarkerOptions(
-        base_options=tasks.BaseOptions(model_asset_path=str(model_file(args.model, args.models, args.trust_download))),
-        running_mode=vision.RunningMode.VIDEO, num_poses=1)
+    stated = video.get(cv2.CAP_PROP_FRAME_COUNT)
+    model = model_file(args.model, args.models, args.trust_download)
+    options = vision.PoseLandmarkerOptions(base_options=tasks.BaseOptions(model_asset_path=str(model)), running_mode=vision.RunningMode.VIDEO, num_poses=1)
     seen, size, last_ms = [], None, -1
-    with quiet_logs(args.logs), vision.PoseLandmarker.create_from_options(options) as landmarker:
+    with quiet_logs(args.logs), landmarker_from(vision, options, model) as landmarker:
         while True:
             ok, bgr = video.read()
             if not ok:
@@ -196,13 +243,21 @@ def main():
             image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
             seen.append((ms, points_of(landmarker.detect_for_video(image, stamp), args.min_visibility)))
     video.release()
+    verdict, missing = unread_frames(len(seen), stated)
+    if verdict == 'refuse':
+        sys.exit(f'pose-from-video: {args.video} gave {len(seen)} of the {int(round(stated))} frames it states ({missing} could not be read): '
+                 f'the file is likely damaged; export or copy the video again')
+    if verdict == 'short':
+        print(f'pose-from-video: {missing} of the {int(round(stated))} frames {args.video} states could not be read (it may be damaged, '
+              f'and the clip ends early); the JSON says so ("unread")', file=sys.stderr)
     if len(seen) < 2:
         sys.exit(f'pose-from-video: {args.video} gave {len(seen)} frame: give a longer video')
     if seen[-1][0] <= seen[0][0]:   # a file whose frames carry no times: they are taken as steady at fps
         print('pose-from-video: the video\'s frames carry no times; they are taken as steady at the stated rate', file=sys.stderr)
         seen = [(i * 1000 / fps, points) for i, (_, points) in enumerate(seen)]
     frames = resampled(seen, fps)
-    doc = {'scheme': 'mediapipe-33', 'fps': fps, 'coordinates': 'normalised', 'width': size[0], 'height': size[1], 'frames': frames}
+    doc = {'scheme': 'mediapipe-33', 'fps': fps, 'coordinates': 'normalised', 'width': size[0], 'height': size[1], 'frames': frames,
+           **({'unread': missing} if verdict == 'short' else {})}
     Path(args.out).write_text(json.dumps(doc, separators=(',', ':'), allow_nan=False) + '\n')
     found = sum(f is not None for _, f in seen)
     print(f'pose-from-video: {len(seen)} frames read, a person in {found}; {len(frames)} written at a steady {fps:g} fps to {args.out}', file=sys.stderr)

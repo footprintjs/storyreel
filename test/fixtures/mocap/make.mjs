@@ -5,8 +5,7 @@
  *                         lost for the first 2 frames, a wrist for 4, a knee unsure for 3, nobody found in frame 70)
  *   walk-noisy.coco.json  the same walk as a real detector reports it (MediaPipe heavy on a drawn walk, measured and
  *                         scaled to this 100 px torso): each point off by a slow wander (up to 16 px) and a jitter
- *                         (4.5 px on the limbs, 2 px on the body); points dipping to 0.4 visibility for 1–3 frames;
- *                         and left and right traded in a few frames (NOISY_SWAPS), as a detector does
+ *                         (4.5 px on the limbs, 2 px on the body); and points dipping to 0.4 visibility for 1–3 frames
  *   wave.mediapipe.json   a child facing us waving, MediaPipe-33 normalised, a portrait phone video at 25 fps: feet
  *                         still, the right forearm swinging either side of straight up (its angle crosses ±π)
  * Deterministic: a seeded jitter stands in for the detector's noise. Write the files with
@@ -117,13 +116,6 @@ function roughFrames(seed) {
   });
 }
 
-/**
- * Where the noisy walk trades left and right (frame numbers): where the pair is well apart (ankles about 77 px, wrists
- * about 85 px). Two points closer than the detector's noise (the knees, 28–47 px apart here) traded are neither seen
- * nor harmful: no repair can tell, and none is needed.
- */
-export const NOISY_SWAPS = Object.freeze({ankle: [[17, 18], [33, 35], [65, 65]], wrist: [[33, 34], [66, 66]]});
-
 export function makeNoisyWalk() {
   const frames = roughFrames(41), rand = jitter(43);
   // Dips: now and then a joint the detector is unsure of for 1–3 frames (visibility 0.4).
@@ -131,10 +123,6 @@ export function makeNoisyWalk() {
     if (rand() >= .02) continue;
     const n = 1 + Math.floor(rand() * 3);
     for (let i = f; i < Math.min(W.frames, f + n); i++) frames[i][k][2] = .4;
-  }
-  for (const [pair, runs] of Object.entries(NOISY_SWAPS)) for (const [a, b] of runs) for (let f = a; f <= b; f++) {
-    const [l, r] = [COCO.indexOf(`left_${pair}`), COCO.indexOf(`right_${pair}`)];
-    [frames[f][l], frames[f][r]] = [frames[f][r], frames[f][l]];
   }
   return {scheme: 'coco-17', fps: W.fps, coordinates: 'pixels', width: 1280, height: 720, frames};
 }

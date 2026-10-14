@@ -32,13 +32,6 @@ export function verdict(s, facts, rules, fallback) {
   return {how: d.branch, why: because(d.evidence), evidence: d.evidence};
 }
 
-/** A pair traded back must move at most half as far as kept, and at least this much less (torso lengths): noise never trades it. */
-export const SWAP_GAIN = .15;
-export const SWAP_RULES = [
-  {when: {swapGain: {gte: SWAP_GAIN}, swapShare: {lte: .5}}, then: 'swap', label: 'traded back, it moves far less: the detector swapped left and right'},
-];
-export const SWAP_DEFAULT = {branch: 'keep', label: 'as labelled it moves about as little: kept'};
-
 export const GAP_RULES = maxGap => [
   {when: {gapSeconds: {lte: maxGap}, gapEdge: {eq: 'inside'}}, then: 'bridge', label: 'short, and seen on both sides: drawn straight across'},
   {when: {gapSeconds: {lte: maxGap}, gapEdge: {in: ['start', 'end']}}, then: 'hold', label: 'short, at an edge of the clip: held at the nearest point seen'},
@@ -80,8 +73,8 @@ function byFrames(gaps) {
   return [...groups.values()];
 }
 
-/** A gap's frames, and which of them are kept when the gap reaches past a cut. */
-const framesText = g => `frames ${g.frames[0]}–${g.frames[1]}${g.kept ? `; ${g.kept[0]}–${g.kept[1]} of them are kept` : ''}`;
+/** Which of a gap's frames are kept, when it reaches past a cut: said inside the clause's own brackets. */
+const keptText = g => (g.kept ? `, of which ${g.kept[0]}–${g.kept[1]} are kept` : '');
 
 /**
  * One group of refused gaps, as a clause. A gap is missing (the detector found nothing), unsure (it reported the
@@ -91,9 +84,10 @@ function gapClause(g, o) {
   const all = g.joints.length === RIG_JOINTS.length, are = !all && g.joints.length > 1 ? 'are' : 'is';
   const who = all ? `every joint${g.kind === 'missing' ? ' (nobody in view)' : ''}` : g.joints.join(', ');
   const unsure = `reported only under minConfidence ${o.minConfidence} (at ${g.low}–${g.high})`;
-  if (g.edge === 'whole') return g.kind === 'missing' ? `${who} ${are} never seen (${framesText(g)})` : `${who} ${are} ${g.kind === 'unsure' ? unsure : `never seen, or ${unsure}`} in every frame (${framesText(g)})`;
+  const frames = `${g.frames[0]}–${g.frames[1]}`;
+  if (g.edge === 'whole') return g.kind === 'missing' ? `${who} ${are} never seen (frames ${frames}${keptText(g)})` : `${who} ${are} ${g.kind === 'unsure' ? unsure : `never seen, or ${unsure}`} in every frame (frames ${frames}${keptText(g)})`;
   const what = g.kind === 'missing' ? 'missing' : g.kind === 'unsure' ? unsure : `missing, or ${unsure},`;
-  return `${who} ${are} ${what} in ${framesText(g)} (${g.missing} frames, ${g.seconds} s)`;
+  return `${who} ${are} ${what} in frames ${frames} (${g.missing} frames, ${g.seconds} s${keptText(g)})`;
 }
 
 /**

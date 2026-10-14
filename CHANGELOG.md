@@ -8,15 +8,14 @@
   knees). `walkSource` is the planned walk as one adapter; `motionSource` and `checkPose` check a source and a pose,
   naming every wrong key.
 - **`footprint-storyreel/mocap`**: `fromPose(keypoints, {x, size})` turns COCO-17 or MediaPipe-33 keypoints into a
-  motion source, as a footprintjs flowchart with a record. Left and right swapped by the detector are traded back.
-  Gaps are bridged, held or refused with their frames, and a refusal says whether the points were never found or
+  motion source, as a footprintjs flowchart with a record. Gaps are bridged, held or refused with their frames, and a refusal says whether the points were never found or
   reported under `minConfidence`. Smoothing is One Euro, forward and back. Feet are planted and locked so they never
   slide, and the legs are re-solved with the knees bent forward. A loop joins only where the feet meet, and otherwise
   refuses with the cut that does.
 - **`footprint-storyreel/kits/cartoon/figure`**: `drawFigure`, a cartoon figure any motion source moves.
 - **`tools/pose-from-video.py`** (optional; MediaPipe Pose, heavy by default): downloads a pinned model on first use and
-  checks it by SHA-256, resamples a phone's variable rate to a steady fps, and holds back MediaPipe's INFO and WARNING
-  log lines.
+  checks it by SHA-256, resamples a phone's variable rate to a steady fps, says how many frames a damaged file could
+  not give (and refuses past half), and filters MediaPipe's INFO and WARNING log lines while passing errors on at once.
 
 ## 0.12.0 — walks with feet that roll heel to toe; a turn that reads as a turn
 

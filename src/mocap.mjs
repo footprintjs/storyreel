@@ -10,8 +10,6 @@
  *
  *   read-keypoints  the JSON read and checked (mocap/keypoints.mjs); the clip trimmed (from, to); a point the
  *                   detector was unsure of (under minConfidence) dropped, and the dropout recorded
- *   repair-swaps    left and right traded back, frame by frame, where the detector swapped them (a pair traded back
- *                   moves far less than as labelled): decided, and the frames named
  *   fill-gaps       each run of missing frames, per joint, decided: bridged (short, seen both sides), held (short, at
  *                   an edge) or refused (longer than maxGap: the refusal names the joint and the frames)
  *   smooth          One Euro, forward and back (no lag), in torso lengths
@@ -31,7 +29,7 @@
  * the flowchart's scope; stages write small values about what they did.
  */
 import {flowChart, narrative, FlowChartExecutor} from 'footprintjs';
-import {readStage, swapStage, fillStage, smoothStage, normaliseStage, anglesStage, plantStage, loopStage, retimeStage, sourceStage} from './mocap/stages.mjs';
+import {readStage, fillStage, smoothStage, normaliseStage, anglesStage, plantStage, loopStage, retimeStage, sourceStage} from './mocap/stages.mjs';
 import {motionSource, TORSO_SHARE} from './pose.mjs';
 
 export {SCHEMES, SCHEME_NAMES, RIG_JOINTS} from './mocap/keypoints.mjs';
@@ -103,7 +101,6 @@ export async function fromPose(keypoints, options = {}) {
   const o = readMocapOptions(options), work = {}, record = {name: o.name};
   const stages = [
     ['read keypoints', 'read-keypoints', 'The keypoints read and checked; the clip trimmed; unsure points dropped', s => readStage(s, keypoints, o, work, record)],
-    ['repair swaps', 'repair-swaps', 'Left and right traded back where the detector swapped them', s => swapStage(s, o, work, record)],
     ['fill gaps', 'fill-gaps', 'Each kind of gap bridged, held or refused', s => fillStage(s, o, work, record)],
     ['smooth', 'smooth', 'One Euro, forward and back, in torso lengths', s => smoothStage(s, o, work, record)],
     ['normalise', 'normalise', 'Hips as the origin, torso lengths, y up; which way it faces', s => normaliseStage(s, o, work, record)],

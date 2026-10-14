@@ -1446,8 +1446,12 @@ python tools/pose-from-video.py wave.mp4 wave.pose.json     # --model lite|full|
 - **Visibility**: every point is written with MediaPipe's visibility as its confidence, so `fromPose` decides what is
   seen (`minConfidence`) and its gap rules decide what is filled. A side-on walker's far limbs often read under 0.5:
   give such a clip a lower `minConfidence`. `--min-visibility V` writes the points under V as `null` instead.
-- **Logs**: MediaPipe writes INFO and WARNING lines to stderr on every run; the tool holds them back and passes on
-  every other line (an error). `--logs` shows them all.
+- **Logs**: MediaPipe writes INFO and WARNING lines to stderr on every run; the tool filters them out as they come and
+  passes on every other line at once (an error, a fatal one just before a crash too). `--logs` shows them all.
+- **A damaged file**: a decoder stops at a damaged stretch, so a clip can end early with no error. The frames read are
+  held against the count the file states (two frames of slack, for a count it only estimates): frames missing are
+  reported, their number is written into the JSON (`"unread"`) and `fromPose`'s record says so (`record.unread`); more
+  than half missing is refused.
 
 Any COCO-17 detector's output fits the same JSON:
 
@@ -1467,7 +1471,6 @@ model. Every verdict carries `decide()`'s evidence (the facts, the rule, the thr
 | stage | what it does | what the record keeps |
 |---|---|---|
 | read-keypoints | reads and checks the JSON; keeps `from`–`to` (seconds of the video) and reads half a second either side as context; a point under `minConfidence` (0.5) is not seen | `kept`, `nobody`, `dropouts` (one line per joint) |
-| repair-swaps | left and right traded back where the detector swapped them: frame by frame, a pair (ankles, knees, hips, wrists, elbows, shoulders) is held against the last frame both were seen in; where trading moves it at most half as far, and 0.15 torso lengths less, it is traded back | `swaps`: per pair, the frames traded, each verdict, how many kept |
 | fill-gaps | each kind of gap (its length, where it lies) decided once — by its whole length, even where it reaches past a cut: bridged (short, seen on both sides), held (short, at an edge) or refused; a gap wholly in the context is filled, not decided | `gaps`: each verdict with `at`, every place it was used (and how many of its points were reported unsure) |
 | smooth | One Euro, forward then back (no lag: a foot lands on the frame it landed on), the ends reflected; with the context, then cut | `torso` (px), `smoothing` |
 | normalise | hips as the origin, one torso length as the unit, y up, `mirror` if asked; which way it faces (asked, travel, nose) | `facing` |
@@ -1502,17 +1505,9 @@ even where it reaches past a cut, and the refusal says which of its frames are k
 fromPose "video": 2 gaps are too long to fill: left_elbow, left_wrist are reported only under minConfidence 0.5 (at
 0.02–0.2) in every frame (frames 0–59). At most 0.2 s (maxGap) is filled in: trim the clip past them (from, to:
 seconds of the video), lower minConfidence (0.5) to use the points the detector reported, or raise maxGap
-fromPose "video": 1 gap is too long to fill: left_knee is missing in frames 40–55; 48–55 of them are kept (16 frames,
-0.533 s). …
+fromPose "video": 1 gap is too long to fill: left_knee is missing in frames 40–55 (16 frames, 0.533 s, of which 48–55
+are kept). …
 ```
-
-**Left and right traded back.** A detector sometimes swaps a person's left and right for a frame or a few (a side-on
-walker's legs cross and look alike), and a copied foot then jumps to the other foot and back. Where a pair traded back
-moves far less from the frame before than as labelled, it is traded back, and `record.swaps` names the frames, each
-with its verdict. Two points closer together than the detector's noise traded are neither seen nor harmful, and are
-left. Where a detector loses the feet altogether (both ankles pulled toward each other for several frames, as the full
-model did) that is not a trade, and nothing repairs it; inside such a stretch the frame before is wrong too, so a trade
-decided there can be wrong (on that clip, 1 of the 3 ankle trades was). Use the heavy model.
 
 **A loop joins only where the feet meet.** Looped (`loop: true`), a clip's last frame is the next repeat's first: the
 body carries on by the clip's travel, and each angle by its whole turns, so a looped walk keeps walking. The seam is
@@ -1540,10 +1535,8 @@ keypoints give the same record and the same poses every run.
 **The record's size** follows the motion, not the detector's flicker. A verdict is written once per kind of gap, with
 every place it was used (about 40 bytes each); dropouts are one line per joint (13 at most); there is one entry per
 still stretch of a foot (a few a second of walking). The narrative has a few lines per verdict: about five per contact,
-plus a few per kind of gap, plus one per frame where trading left and right would move a pair at least 0.15 torso
-lengths less (noise below that is never a verdict). Measured on a 100-second synthetic walk at 30 fps (3,000 frames):
-183 contacts, 974 narrative lines and a 303 KB record; with a detector flickering on 2,047 points (1,004 gaps), 1,074
-lines and 377 KB.
+plus a few per kind of gap. Measured on a 100-second synthetic walk at 30 fps (3,000 frames): 183 contacts, 972 narrative
+lines and a 302 KB record; with a detector flickering on 2,047 points (1,004 gaps), 988 lines and 362 KB.
 
 `node examples/mocap/strip.mjs keypoints.json [out.png]` draws eight moments of a clip and prints what was found (in a
 checkout, `test/fixtures/mocap/walk.coco.json` is the tests' synthetic walk).
@@ -1551,7 +1544,8 @@ checkout, `test/fixtures/mocap/walk.coco.json` is the tests' synthetic walk).
 What it cannot see, so film for it: one person, from a steady phone, the whole body in view, moving across the frame
 (walking toward the camera changes their size, and the floor is taken as flat and level in the picture). Depth is
 lost; `turn` is how wide the shoulders look against `frontal`. The ankle stands for the foot, so a heel rising before
-the toes leave is locked with the foot, and a foot's roll is 0.
+the toes leave is locked with the foot, and a foot's roll is 0. A lighter model can trade left and right feet; heavy is
+the default because it rarely does; there is no swap repair.
 
 ## API
 
