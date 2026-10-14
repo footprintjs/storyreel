@@ -608,6 +608,12 @@ measured, not guessed (`footprint-storyreel/slideshow`):
   shots' running time is still at all, however short each stretch: a deck swapped every 3 s holds no stretch past 3 s
   and is still 93 % of the time (its findings say so: `is still 93 % of its 10.5 s, in stretches of 3 s or less (a deck
   of slides)`); the stillest example film, hello, is still 63 % of the time.
+- **The two rules meet at a deck that changes a word.** Slides that differ by one digit or one short word fail on every
+  platform, but which rule fails them rides on the font: where the changed glyph is a different width (proportional
+  digits, as macOS's sans-serif has: "1" is 21 px wide at 60 px, "2" 32 px) the rest of the line shifts, the changes
+  cover 1.1 % of the frame, and the still cap fails it; where it is the same width (tabular digits) only the glyph
+  changes, under 0.25 %, and the shot never moves — all of it dead. The verdict is the same; the reason differs, and the
+  record says which.
 
 It is not the **stale** check, and does not repeat it: stale asks whether anything *new* comes (a scene, a beat, a
 word not on screen a moment before) while the picture moves; this asks whether the picture *moves* between the new

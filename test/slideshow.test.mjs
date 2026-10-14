@@ -10,11 +10,15 @@ import {SLIDESHOW, shotInsides, moved, shotMotion, slideshowOf, SLIDESHOW_VERDIC
 import {reviewPart, REVIEW_CHECKS} from '../src/review.mjs';
 
 // A card world: its title, and — when it moves — a dot circling; `every` turns to a new page name every that many
-// seconds; `deck` swaps the whole slide every that many seconds; `caret` blinks a text caret twice a second.
+// seconds; `deck` swaps the whole slide (a new line of words) every that many seconds, `numbered` only the slide's number
+// ("Slide 1: …", "Slide 2: …"); `caret` blinks a text caret twice a second.
+const SLIDES = ['Why the sheep come home', 'One pebble for one sheep', 'A pebble left over is a lost sheep', 'Counting began as matching', 'Then came the numbers'];
 const card = {name: 'card', story: {compile: spec => ({hang: 1, draw: (c, t) => {
   c.fillStyle = '#f3eee3'; c.fillRect(0, 0, 1600, 900);
   c.fillStyle = '#222'; c.font = '60px sans-serif'; c.textBaseline = 'middle';
-  if (spec.deck) c.fillText(`Slide ${Math.floor(t / spec.deck) + 1}: a point made in full`, 200, 300); else c.fillText(spec.title, 200, 200);
+  if (spec.deck) c.fillText(SLIDES[Math.floor(t / spec.deck) % SLIDES.length], 200, 300);
+  else if (spec.numbered) c.fillText(`Slide ${Math.floor(t / spec.numbered) + 1}: a point made in full`, 200, 300);
+  else c.fillText(spec.title, 200, 200);
   if (spec.caret && Math.floor(t * 2) % 2 === 0) c.fillRect(1000, 180, 4, 44);
   if (spec.every) c.fillText(['a first point', 'then another one', 'a third, longer point', 'and the last word'][Math.floor(t / spec.every) % 4], 200, 400);
   if (spec.moves) { c.beginPath(); c.arc(800 + 200 * Math.cos(t * 2), 500 + 200 * Math.sin(t * 2), 30, 0, 7); c.fill(); }
@@ -106,15 +110,29 @@ test('not stale: a new page every 5 s keeps stale quiet, and a picture that only
   assert.deepEqual([v.verdict, v.measured.deadShare], ['failed', .631], 'but the picture does not move between the pages');
 });
 
-test('the rule cannot be gamed: a deck swapped every 3 s, and a still card with a blinking caret, are slideshows', async () => {
+test('the rule cannot be gamed: a deck swapped every 3 s, and a still card with a blinking caret, are slideshows', async t => {
   const one = {title: 'Deck', scenes: [{id: 'one', narration: 'these are the words said while the deck is on the screen for a good long while so we can see it'}]};
   const solo = spec => compileFilm({storyboard: one, timings: evenTimings(one, {wordSeconds: .45, tail: .5}), recipe: {story: {kit: 'card', title: 'A card', ...spec}}, kits: [card]});
-  // A deck: no still stretch reaches 3 s, so none is dead — but the picture is still 93 % of the time.
+  // A deck: a new line of words every 3 s. No still stretch reaches 3 s, so none is dead — but the picture is still
+  // nearly all of the time (92.9 % here: a swap moves one step of fourteen). Each swap rewrites a whole line, so its
+  // changes cover well past the 0.25 % that makes a shot "never moving", in any font: the reason is the still cap.
   const deck = await solo({deck: 3}), d = slideshowOf(deck);
-  assert.deepEqual([d.deadShare, d.stillShare], [0, .929]);
+  assert.equal(d.deadShare, 0);
+  assert.ok(d.stillShare > SLIDESHOW.still && d.stillShare < 1, `still ${d.stillShare}`);
+  assert.ok(d.stillShots[0].cover > 4 * SLIDESHOW.cover, `the swaps cover ${d.stillShots[0].cover} of the frame: a margin, whatever the font`);
   const r = await reviewPart(deck), v = r.verdicts.find(x => x.check === 'slideshow');
   assert.deepEqual([v.verdict, v.why], ['failed', SLIDESHOW_VERDICT.rules[2].label]);
-  assert.ok(r.findings.some(f => f.kind === 'slideshow' && /is still 93 % of its [\d.]+ s, in stretches of 3 s or less \(a deck of slides\)/.test(f.what)), 'and the review says where');
+  assert.ok(r.findings.some(f => f.kind === 'slideshow' && /is still \d+ % of its [\d.]+ s, in stretches of 3 s or less \(a deck of slides\)/.test(f.what)), 'and the review says where');
+  // A deck whose slides differ by one digit ("Slide 1: …", "Slide 2: …") fails on every platform, but for a reason that
+  // rides on the font: where the digits are proportional (macOS's sans-serif: "1" is narrower than "2") a swap shifts the
+  // rest of the line and covers more than 0.25 % — the still cap; where they are tabular (as on CI's Linux) only the
+  // digit changes, under 0.25 % — the shot never moves, and all of it is dead. The verdict is the same either way.
+  const numbered = await solo({numbered: 3}), n = slideshowOf(numbered), nv = (await reviewPart(numbered)).verdicts.find(x => x.check === 'slideshow');
+  const cover = (n.stillShots[0] ?? n.deadShots[0]).cover;
+  t.diagnostic(`a one-digit deck here: cover ${(cover * 100).toFixed(3)} %, dead ${n.deadShare}, still ${n.stillShare}, failed by ${nv.why}`);
+  assert.equal(nv.verdict, 'failed');
+  assert.ok(cover < SLIDESHOW.cover ? nv.why === SLIDESHOW_VERDICT.rules[1].label && n.deadShare === 1 : nv.why === SLIDESHOW_VERDICT.rules[2].label && n.deadShare === 0,
+    'never moving below the cover threshold, the still cap above it');
   // A caret blinking on a still card: its steps move, but together they touch almost none of the frame.
   const caret = slideshowOf(await solo({caret: true}));
   assert.ok(caret.deadShots[0].cover < SLIDESHOW.cover, `${caret.deadShots[0].cover} of the frame`);

@@ -35,8 +35,11 @@ import {filmPainter} from './finished.mjs';
  *          (0.0025, a quarter of a percent): a blinking caret, a twitching dot is a still card. Measured: the example
  *          shot that moves least (worlds' code stage) covers 0.94 %; a thin blinking caret changes no cell past `level`
  *   still  a film is a slideshow, too, when MORE than this share of its shots' running time is still at all, however
- *          short each stretch (0.85): a deck swapped every 3 s holds no stretch past `hold` and is still 92 % of the
+ *          short each stretch (0.85): a deck swapped every 3 s holds no stretch past `hold` and is still 93 % of the
  *          time. Measured: the stillest example film (hello) is still 63 % of the time
+ * A deck whose slides differ by one digit or short word is caught by one rule or the other, and which rides on the
+ * font: a glyph of another width shifts the rest of the line (macOS's proportional digits: 1.1 % of the frame — the
+ * still cap); one of the same width does not (tabular digits: under `cover` — never moving, all dead). Same verdict.
  */
 export const SLIDESHOW = Object.freeze({width: 160, level: 4, area: .0002, hold: 3, most: .5, cover: .0025, still: .85});
 
