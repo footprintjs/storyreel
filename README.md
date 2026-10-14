@@ -712,7 +712,9 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
 - **An example scene** (`"example": true`) says so on screen: an "Example data" label in the top right corner (the
   emphasis corner label's look) — in a format that crops the frame (portrait, vertical), in the corner of what the crop
   shows — over the scene, and on after it while any line the scene shows is still on screen (a whiteboard keeps its
-  writing into the next scene; the label stays with it: `film.claims.labels`). `"example": "Beispieldaten"` puts the
+  writing into the next scene; the label stays with it: `film.claims.labels`), to the line's last ink: an eraser that
+  starts 0.4 s after the cut and wipes for 0.8 s keeps the label up until 1.2 s, not 0.4 s (a kit's `texts()` says
+  when a line's last ink goes as `gone`). `"example": "Beispieldaten"` puts the
   label in the film's language. Its numbers need no source while they are labelled, and the label is in the key of
   every segment that shows it. Beside a real number, a lingering label seems to cover that number too, so the review
   says so (**example data over real numbers**: `an example line lingers into scene real beside real numbers (60):
@@ -732,14 +734,36 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
 - **What is drawn.** The review also reads the numbers in every word its frames draw — the words it reads for every
   check, so no frame is drawn again: measured, 1.9 ms for the 1,495 words of the hello example's 128 samples, against
   about 4 s for its whole review. Words on one line are read with a space between them, and as one only where their
-  ink touches (a gap under 8 % of their height) or a sign or a decimal point stands at its digits ("16" then ".67 ms"
-  is 16.67; code tokens "-" then "5" are −5) — so "12" and "30" drawn 4 px apart are two numbers, never 1230. A number
-  drawn a digit at a time reads as its digits (they stand 5–22 % of their height apart, as two numbers drawn close
-  do): draw a number as one string, as every built-in kit does. A drawn number counts as example data only while the
-  label is up the whole time it is drawn. A drawn number is a
+  ink touches (a gap under 8 % of their height), a sign or a decimal point is written onto its digits ("16" then ".67
+  ms" is 16.67; code tokens "-" then "5" are −5), or a lone point stands between digits within half their height (a
+  code panel's tokens "16" "." "67" are 16.67, "$1" "," "299" "." "99" are 1,299.99; a "," joins only a thousands
+  group, so `f(4,5)` is 4 and 5) — so "12" and "30" drawn 4 px apart are two numbers, never 1230, and so are two digit
+  groups of different sizes: "$1,299" with a raised "99" is 1,299 and 99, since the picture does not say whether a
+  raised group is cents, a power (10²) or a note. A number drawn a digit at a time reads as its digits (they stand
+  5–22 % of their height apart, as two numbers drawn close do): draw a number as one string, as every built-in kit
+  does. A drawn number counts once it **holds** — the same number in the same place for two samples running — so a
+  typewriter's partials ("1", "16", "16.6" on the way to 16.67) and a counter's passing values are no claims; at the
+  review's 0.25 s, a number up for 0.5 s or more always holds (a line up long enough to read is up for 1 s). A drawn
+  number counts as example data only while the label is up the whole time it holds. A drawn number is a
   declared one when a declared line holds it and the drawn words are that line, or a word-bounded start or end of it;
   any other is a claim of its own (`path: 'drawn'`). `makeFilm`'s `check-claims` reads the declared lines only (it
   draws no frame).
+- **Decorative text.** Words a kit draws that the film does not say — a code panel's line numbers, a strip's frame
+  badges — are drawn through `decorative` (`footprint-storyreel/decorative`): the review reads them for every check
+  (under the captions, over each other, cut off, how much there is to read), and the claims check leaves them out.
+
+  ```js
+  import {decorative} from 'footprint-storyreel/decorative';
+
+  lines.forEach((line, i) => {
+    decorative(ctx, () => ctx.fillText(String(i + 1), x + 52, y + i * lh));   // the line number: read, never a claim
+    ctx.fillText(line, x + 72, y + i * lh);                                     // the code: its numbers need a source
+  });
+  ```
+
+  The mark rides on the context while the function runs (a shared symbol, so a kit with its own copy of the library
+  marks words the engine reads); a frame drawn without the review is unchanged by it. The built-in code stage draws no
+  line numbers.
 - **The verdict**: `failed` when a number outside an example scene has no source — each listed with its scene, its
   recipe entry and the fix (`"120" (scene rate, story.items[1]) has no source: add {"value": 120, "source": "…"} to
   the facts, or mark scene rate "example": true`); `not run` when the storyboard names no facts and a number shows
@@ -1567,7 +1591,7 @@ const myKit = {name: 'cartoon', story: {
       layers: [{name: 'sky', depth: 8}, {name: 'hero', depth: 1}],  // optional, back to front: what a camera's orbit,
       drawLayer(ctx, t, name, spot) { },      //   dolly-zoom and rack-focus move by depth (see Camera moves by name)
       cameraMoves: [{from: 4.2, to: 5.8}],    // optional: when the kit's own camera moves (seconds): pushes and camera moves take turns with it
-      texts() { return []; },                 // optional, for the reading check: [{text, from, to, path}]
+      texts() { return []; },                 // optional, for the reading check: [{text, from, to, gone?, path}] (gone: its last ink, an eraser's end)
       parts(t) { return {segments: {}}; },    // optional, for the geometry audit: {segments, regions, apart} (see Three verdicts)
       sounds: [{time: clock.at(['story', 'But wait']), type: 'chime'}],
     };
@@ -1906,7 +1930,8 @@ the default because it rarely does; there is no swap repair.
 | `footprint-storyreel/review` → `reviewPart(film, {part?, layout?, checks?, …})` · `REVIEW_CHECKS` · `findingsText` · `verdictsText` · `wordsAt` | a part reviewed by reading it: findings with times, and three verdicts (passed, failed, not run) with their `decide()` evidence |
 | `footprint-storyreel/slideshow` → `slideshowOf(film, {from?, to?, every?, rule?})` · `shotMotion` · `shotInsides` · `moved` · `SLIDESHOW` · `SLIDESHOW_VERDICT` | no slideshow: how much each shot moves in its middle, and whether most of the running time is dead (held still more than 3 s) |
 | `footprint-storyreel/geometry` → `geometryOf(film, {from?, to?, rule?})` · `auditParts` · `readParts` · `crosses` · `breakText` · `GEOMETRY` · `GEOMETRY_VERDICT` | a kit's drawn parts audited: mounted ends stay on, pairs kept apart never cross, a planted end stays where it was planted |
-| `footprint-storyreel/claims` → `numbersIn` · `numberValue` · `readFacts` · `sourceKind` · `exampleScenes` · `labelSpans` · `findClaims` · `drawnLines` · `drawnClaims` · `claimsCount` · `unsourcedClaims` · `claimText` · `CLAIMS_VERDICT` | every number on screen with its source: a fact the storyboard names, or an example scene (`film.claims`; the review adds what the picture draws) |
+| `footprint-storyreel/claims` → `numbersIn` · `numberValue` · `readFacts` · `sourceKind` · `exampleScenes` · `labelSpans` · `findClaims` · `drawnLines` · `DRAWN` · `drawnClaims` · `lingeringExamples` · `claimsCount` · `unsourcedClaims` · `claimText` · `CLAIMS_VERDICT` | every number on screen with its source: a fact the storyboard names, or an example scene (`film.claims`; the review adds what the picture draws) |
+| `footprint-storyreel/decorative` → `decorative` · `isDecorative` · `DECORATIVE` | text a kit draws but the film does not say (line numbers, badges): read by every review check but the claims check |
 | `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `bezier(x1, y1, x2, y2)` · `overshoots(name)` · `inOut` | the one ease table (`linear in out inOut back walk jump spring bounce outCubic outQuint outExpo outBack inOutCubic standard emphasized`), and four-number curves as CSS writes them |
 | `footprint-storyreel/moves` → `moveAt(move, t, {start, seconds?, feel?, reduced?})` · `stagger(items, gap)` · `movesBy({feel, use, kind})` · `readMove` · `applyMove` · `MOVES` | motion asked for by name: 30 moves as data, by feel and use, with the practitioners' timing rules |
 | `footprint-storyreel/principles` → `anticipate` · `squash` · `envelope` · `burst` · `arc` · `BURSTS` | anticipation, volume-keeping squash and stretch, one-shot events that add, paths that curve like a hand |
@@ -1919,7 +1944,7 @@ the default because it rarely does; there is no swap repair.
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/review`, `/slideshow`, `/geometry`, `/claims`, `/regions`, `/captions`, `/layout`, `/transitions`, `/breakdown`, `/camera`, `/kits/whiteboard`, `/kits/cartoon`, `/pose`, `/mocap`, `/kits/cartoon/figure`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/review`, `/slideshow`, `/geometry`, `/claims`, `/decorative`, `/regions`, `/captions`, `/layout`, `/transitions`, `/breakdown`, `/camera`, `/kits/whiteboard`, `/kits/cartoon`, `/pose`, `/mocap`, `/kits/cartoon/figure`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws

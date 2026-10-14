@@ -378,3 +378,10 @@ export const joined: string = drawnLines([{text: '12', box: [0, 0, 30, 24]}, {te
 export const lingers = (film: Film): string[] => lingeringExamples(film.claims, {scenes: [{from: 0, to: film.total}], examples: film.claims.examples, ids: ['a']}).filter(g => g.numbers.length).map(g => lingerText(g));
 export const lingerCheck: string = CHECKS['example-lingers'].label;
 export const sharedNumbers: ReviewCheck = {label: 'Drawn numbers', when: () => true, find: ({drawn, lingers: stretches}) => [...drawn.map(c => ({kind: 'drawn', t: c.at, what: c.number})), ...stretches.map(g => ({kind: 'lingers', t: g.from, what: g.scene ?? ''}))]};
+// Decorative text (types/sub/decorative.d.ts): drawn and read, never a claim; a line's last ink (`gone`) on a kit's texts.
+import {decorative, isDecorative, DECORATIVE} from '../types/sub/decorative.js';
+import type {Word} from '../types/sub/review.js';
+export const numbered = (ctx: {fillText(t: string, x: number, y: number): void}): number => decorative(ctx, c => { c.fillText('1', 0, 0); return 1; }) + (isDecorative(ctx) ? 1 : 0);
+export const marked = (w: Word): boolean => w.decorative === true && typeof DECORATIVE === 'symbol';
+export const joins: number = DRAWN.point + DRAWN.size + DRAWN.baseline;
+export const lastInk = (film: Film): number => film.lines.reduce((n, l) => Math.max(n, l.gone ?? l.to), 0);

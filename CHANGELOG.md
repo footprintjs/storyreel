@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **The example label stays until the example line's last ink.** An eraser wipes a line over its own time: the label
+  now holds until the wipe ends (a kit's `texts()` may say when a line's last ink goes, `gone`; the whiteboard does),
+  not only until it starts — an example number is never on screen unlabelled.
+- **A decimal drawn as code tokens is one number.** A lone "." or "," between digits joins them when it stands within
+  half their height of each (`DRAWN.point`): a code panel's "16" "." "67" is 16.67 and "$1" "," "299" "." "99" is
+  1,299.99; a "," joins only a thousands group, so `f(4,5)` stays 4 and 5, and "12 30" and "x - 5" stay as they were.
+- **Digit groups of different sizes never join.** "$1,299" with a raised "99" reads as 1,299 and 99 — not 129999 —
+  since the picture does not say whether a raised group is cents, a power or a note (`DRAWN.size`, `DRAWN.baseline`).
+- **`footprint-storyreel/decorative`: text the film does not say.** `decorative(ctx, draw)` marks the words drawn
+  inside it (a code panel's line numbers, a strip's badges): the review reads them for every check, and the claims
+  check leaves them out. Read words carry `decorative: true`.
+- **A drawn number counts once it holds** — the same number in the same place for two samples running — so a
+  typewriter's partials and a counter's passing values are no claims. At the review's 0.25 s, a number up for 0.5 s
+  or more always holds. The four example films read the same numbers as before.
+
 - **An example line beside real numbers is a finding.** An example scene's line that stays up into a real scene keeps
   its "Example data" label, which then seems to cover the real numbers beside it: the review's new
   `example-lingers` check says so while both are on screen (`an example line lingers into scene real beside real

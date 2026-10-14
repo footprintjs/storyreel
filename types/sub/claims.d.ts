@@ -12,16 +12,16 @@ export function readFacts(list: unknown, where?: string, options?: {root?: strin
 export function exampleScenes(storyboard: Storyboard): (string | null)[];
 /** The numbers shown, each with the fact that backs it or the example scene it sits in, in time order. */
 export function findClaims(shown: {text: string; line?: string; offset?: number; at: number; to: number; scene: number; path: string}[], options?: {facts?: readonly NumberFact[] | null; examples?: readonly (string | null)[]; scenes?: string[]}): Claim[];
-/** When the example label is up: over each example scene, and on while any line it shows is still on screen. */
-export function labelSpans(shown: {text: string; at: number; to: number; scene: number}[], options?: {examples?: readonly (string | null)[]; scenes?: {from: number; to: number}[]}): ExampleLabel[];
+/** When the example label is up: over each example scene, and on while any line it shows is still on screen — to its last ink (`gone`, an eraser's end). */
+export function labelSpans(shown: {text: string; at: number; to: number; gone?: number; scene: number}[], options?: {examples?: readonly (string | null)[]; scenes?: {from: number; to: number}[]}): ExampleLabel[];
 /** Whether the label is up over all of [from, to]. */
 export function labelledOver(labels: readonly ExampleLabel[], from: number, to: number): boolean;
-/** How close drawn words stand, as shares of the taller one's height: on one line within `near` (0.5), touching under `touch` (0.08), a sign or a decimal point at its digits within `mark` (0.2). */
-export const DRAWN: Readonly<{near: number; touch: number; mark: number}>;
-/** The words a frame draws, as lines: joined with a space, and without one only where the boxes touch or a sign or a decimal point meets its digits ("16" + ".67 ms" → "16.67 ms", "-" + "5" → "-5"; "12" and "30" 4 px apart → "12 30"). */
+/** How close drawn words stand, as shares of the taller one's height: on one line within `near` (0.5), touching under `touch` (0.08), a sign or a decimal point written onto its digits within `mark` (0.2), a lone point between digits within `point` (0.5) of each; digit groups of other sizes (`size` 0.7) or baselines (`baseline` 0.3) never join. */
+export const DRAWN: Readonly<{near: number; touch: number; mark: number; point: number; size: number; baseline: number}>;
+/** The words a frame draws, as lines: joined with a space, and without one only where the ink touches, a sign or a decimal point meets its digits, or a lone point stands between digits ("16" "." "67" → "16.67", "-" + "5" → "-5"; "12" and "30" 4 px apart → "12 30"; "$1,299" and a raised "99" → "$1,299 99"). */
 export function drawnLines(words: {text: string; box?: number[]}[]): string[];
-/** The numbers the picture draws that no declared claim holds, from the words the review reads off its frames (path 'drawn'); example data only while the label is up the whole time. */
-export function drawnClaims(samples: {t: number; words: {text: string; box?: number[]}[]}[], options: {claims: Claims; sceneOf(t: number): number; scenes?: string[]}): Claim[];
+/** The numbers the picture draws that no declared claim holds, from the words the review reads off its frames (path 'drawn'): decorative words left out, a number counted once it holds — the same number in the same place for two samples running; example data only while the label is up the whole time. */
+export function drawnClaims(samples: {t: number; words: {text: string; box?: number[]; decorative?: boolean}[]}[], options: {claims: Claims; sceneOf(t: number): number; scenes?: string[]}): Claim[];
 /** Each stretch where an example line's label is up in a scene that is not example data, with the real numbers on screen in it (none: nothing is covered). */
 export function lingeringExamples(claims: {labels?: readonly ExampleLabel[]; numbers?: readonly Claim[]}, options?: {scenes?: {from: number; to: number}[]; examples?: readonly (string | null)[]; ids?: string[]}): {scene: string | null; example: string | null; from: number; to: number; numbers: Claim[]}[];
 /** One lingering example line beside real numbers, in words, with the fix ("erase it before the scene"). */

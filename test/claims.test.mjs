@@ -4,12 +4,13 @@
 // decide(), so the record says why.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync} from 'node:fs';
+import {mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {compileFilm, evenTimings, makeFilm} from '../src/index.mjs';
 import {numbersIn, numberValue, readFacts, sourceKind, exampleScenes, findClaims, drawnClaims, drawnLines, DRAWN, labelSpans, lingeringExamples, claimsCount, unsourcedClaims, claimText, CLAIMS_VERDICT} from '../src/claims.mjs';
+import {decorative, isDecorative} from '../src/decorative.mjs';
 import {approveFilm, checkApproval} from '../src/approval.mjs';
 import {wordsAt, reviewPart} from '../src/review.mjs';
 import {compileLayout} from '../src/layout.mjs';
@@ -262,9 +263,9 @@ test('an example line that lingers into a real scene beside a real number is a f
   assert.deepEqual(found.map(x => [x.scene, x.what]), [['real', 'an example line lingers into scene real beside real numbers (60): erase it before the scene']]);
   assert.ok(found[0].from >= f.clock.start('real') && /example data over real numbers: an example line lingers/.test(r.text), r.text);
   assert.equal(r.verdicts.find(x => x.check === 'claims').verdict, 'passed', 'every number has its source: the finding is about what the label seems to cover, not a missing source');
-  // Erased before the scene: the label goes with the line, and the real number stands on its own.
-  const erased = await compile({erasers: {wipe: {at: ['real', 'Now a real', -0.6], dur: .5, box: [500, 220, 1100, 380]}}, items: [{...items[0], erase: 'wipe'}, items[1]]});
-  assert.ok(!wordsAt(erased, erased.clock.start('real') + 2).some(w => w.text === 'Example data'));
+  // Erased before the scene — the wipe over by the cut — the label goes with the line, and the real number stands on its own.
+  const erased = await compile({erasers: {wipe: {at: ['real', 'Now a real', -1], dur: .5, box: [500, 220, 1100, 380]}}, items: [{...items[0], erase: 'wipe'}, items[1]]});
+  assert.ok(erased.claims.labels.every(l => l.to <= erased.clock.start('real')) && !wordsAt(erased, erased.clock.start('real') + 2).some(w => w.text === 'Example data'));
   const clean = await reviewPart(erased, {every: 1});
   assert.ok(!clean.ran.includes('example-lingers') && !clean.findings.some(x => x.kind === 'example-lingers'), 'nothing lingers: the check has nothing to read');
 });
@@ -326,4 +327,102 @@ test('a source is a URL, a file in the root, or kept as unverified — "trust me
   await assert.rejects(compileFilm({storyboard: {...sb, facts: [{value: 1, source: '/etc/hosts'}]}, recipe: {story: {kit: 'whiteboard', items: []}}, timings: evenTimings(sb, {wordSeconds: .4}), root: dir}), /source "\/etc\/hosts" is a path outside the film's root/);
   const prose = await compileFilm({storyboard: {...sb, facts: [{value: 60, text: '60 Hz', source: '/r/science thread'}]}, recipe: {story: {kit: 'whiteboard', items: []}}, timings: evenTimings(sb, {wordSeconds: .4}), root: dir});
   assert.deepEqual(prose.claims.facts.map(x => x.kind), ['unverified'], 'a prose source compiles, kept as unverified');
+  rmSync(outer, {recursive: true, force: true});
+});
+
+test('the example label stays until the example line\'s last ink: an eraser wipes it over its own time', async () => {
+  // The reviewer's input: "12 cups" erased from 0.4 s after the cut, over 0.8 s.
+  const sb = {title: 'Shop', facts: [], scenes: [{id: 'shop', example: true, narration: 'Say a stall sells 12 cups in a morning, for the sake of the sum.'},
+    {id: 'real', narration: 'Now a real stall: it keeps its own count, and we read it from the record.'}]};
+  const write = {at: ['shop', 'Say a stall'], dur: .6, write: '12 cups', x: 800, y: 500, size: 50, align: 'center', erase: 'wipe'};
+  const timings = evenTimings(sb, {wordSeconds: .4, tail: 1}), probe = await compileFilm({storyboard: sb, recipe: {story: {kit: 'whiteboard', items: []}}, timings, root});
+  const cut = probe.clock.start('real'), lead = probe.clock.at(['real', 'Now a real']) - cut;
+  const f = await compileFilm({storyboard: sb, recipe: {story: {kit: 'whiteboard', erasers: {wipe: {at: ['real', 'Now a real', .4 - lead], dur: .8, box: [600, 440, 1000, 560]}}, items: [write]}}, timings, root});
+  const line = f.lines.find(l => l.text === '12 cups');
+  assert.deepEqual([+(line.to - cut).toFixed(3), +(line.gone - cut).toFixed(3)], [.4, 1.2], 'the line starts to leave as the wipe starts; its last ink goes as the wipe ends');
+  assert.deepEqual(f.claims.labels.map(l => [l.from, +(l.to - cut).toFixed(3)]), [[0, 1.2]], 'the label stays to the last ink');
+  const up = t => wordsAt(f, cut + t).some(w => w.text === 'Example data');
+  assert.ok(up(.9) && up(1.15), 'half wiped, the line keeps its label (it used to go at the wipe\'s start, 0.8 s early)');
+  assert.ok(!up(1.25), 'and goes with the last ink');
+  assert.deepEqual(labelSpans([{text: '12 cups', at: 1, to: 3, gone: 4, scene: 0}], {examples: ['Example data', null], scenes: [{from: 0, to: 2}, {from: 2, to: 9}]}).map(l => [l.from, l.to]), [[0, 4]]);
+});
+
+/** A code panel drawn as How the Browser Draws draws it (series.mjs · codePanel): each token on its own, at its advance. */
+const TOKENS = /(\s+|'[^']*'|"[^"]*"|\d+|[A-Za-z_$][\w$]*|.)/g;
+function panel(c, lines, {typed = Infinity, numbers = 'plain', size = 24} = {}) {
+  c.fillStyle = '#1d2230'; c.fillRect(0, 0, 1600, 900); let left = typed;
+  lines.forEach((line, i) => {
+    const ly = 200 + i * size * 1.55; c.textBaseline = 'middle';
+    c.font = `600 ${size * .8}px Menlo, Consolas, monospace`; c.fillStyle = '#6b7389'; c.textAlign = 'right';
+    if (numbers === 'decorative') decorative(c, () => c.fillText(String(i + 1), 152, ly)); else if (numbers === 'plain') c.fillText(String(i + 1), 152, ly);
+    c.textAlign = 'left'; c.font = `600 ${size}px Menlo, Consolas, monospace`; let cx = 172;
+    for (const tok of line.match(TOKENS)) { if (left <= 0) break; c.fillStyle = '#e6e9ef'; c.fillText(tok.slice(0, Math.max(0, left)), cx, ly); cx += c.measureText(tok).width; left -= tok.length; }
+    left -= 1;
+  });
+  c.textBaseline = 'alphabetic'; c.textAlign = 'left';
+}
+const panelFilm = async (draw, facts = []) => {
+  const sb = {title: 'Panel', facts, scenes: [{id: 'a', narration: 'a code panel drawn token by token, the way a browser series draws its code, read by the review'}]};
+  return compileFilm({storyboard: sb, recipe: {story: {kit: 'panel'}}, timings: evenTimings(sb, {wordSeconds: .4}), kits: [{name: 'panel', story: {compile: () => ({hang: 1, draw})}}]});
+};
+
+test('a decimal drawn as tokens is one number: "16" "." "67" is 16.67, "$1" "," "299" "." "99" is 1,299.99 — and f(4,5), x - 5 stay apart', async () => {
+  const code = ['const frame = 16.67;', 'let total = $1,299.99', 'f(4,5) + [1,2,3]', 'x - 5'];
+  const f = await panelFilm(c => panel(c, code, {numbers: 'none'}), [{value: 16.67, source: 'https://example.org/frames'}, {value: 1299.99, source: 'https://example.org/price'}]);
+  const lines = drawnLines(wordsAt(f, 1)), numbers = lines.flatMap(numbersIn).sort();
+  assert.ok(lines.includes('16.67 ;') && lines.includes('$1,299.99'), JSON.stringify(lines));
+  assert.deepEqual(numbers, ['1', '1,299.99', '16.67', '2', '3', '4', '5', '5'], 'f(4,5) is 4 and 5 (a "," joins only a thousands group), [1,2,3] is three numbers, x - 5 is a subtraction');
+  assert.deepEqual(drawnLines([{text: '1', box: [0, 0, 14, 20]}, {text: ',', box: [17, 14, 21, 24]}, {text: '299', box: [26, 0, 66, 20]}]), ['1,299'], 'a thousands group');
+  assert.deepEqual(drawnLines([{text: '4', box: [0, 0, 14, 20]}, {text: ',', box: [17, 14, 21, 24]}, {text: '5', box: [26, 0, 40, 20]}]), ['4 , 5'], 'not a group: two numbers');
+  assert.deepEqual(drawnLines([{text: '16', box: [0, 0, 28, 20]}, {text: '.', box: [32.5, 17, 36.5, 20]}, {text: '67', box: [42, 0, 70, 20]}]), ['16.67']);
+  assert.deepEqual(drawnLines([{text: '16', box: [0, 0, 28, 20]}, {text: '.', box: [40, 17, 44, 20]}, {text: '67', box: [56, 0, 84, 20]}]), ['16', '.', '67'], `a point more than ${DRAWN.point} of the height off its digits is not theirs`);
+  const v = (await reviewPart(f, {every: 1})).verdicts.find(x => x.check === 'claims');
+  assert.deepEqual([v.measured.sourced, v.measured.unsourcedNumbers.map(c => c.number).sort()], [2, ['1', '2', '3', '4', '5', '5']], 'the decimals are sourced as drawn');
+});
+
+test('digit groups of different sizes never join: "$1,299" and a raised "99" are 1,299 and 99, not 129999', async () => {
+  // The honest reading: the picture does not say whether a raised group is cents (.99), a power (10² is 100) or a note
+  // mark, so neither is read into the other — two numbers, each its own claim.
+  const f = await panelFilm(c => {
+    c.fillStyle = '#f3eee3'; c.fillRect(0, 0, 1600, 900); c.fillStyle = '#222'; c.font = '600 60px sans-serif'; c.fillText('$1,299', 400, 500);
+    const w = c.measureText('$1,299').width; c.font = '600 34px sans-serif'; c.fillText('99', 400 + w + 2, 476);
+  });
+  assert.deepEqual(drawnLines(wordsAt(f, 1)), ['$1,299 99']);
+  assert.deepEqual(drawnLines([{text: '10', box: [0, 0, 40, 30]}, {text: '2', box: [40.5, -8, 52, 8]}]), ['10 2'], 'a superscript touching its base: 10², not 102');
+  assert.deepEqual(drawnLines([{text: '12', box: [0, 0, 30, 24]}, {text: '30', box: [31, 0, 61, 24]}]), ['1230'], 'touching groups of one size are one number drawn in pieces');
+  const v = (await reviewPart(f, {every: 1})).verdicts.find(x => x.check === 'claims');
+  assert.deepEqual([v.verdict, v.measured.unsourcedNumbers.map(c => c.number)], ['failed', ['1,299', '99']], 'two numbers on screen, each needing its source');
+});
+
+test('decorative words are drawn and read, never claimed; a drawn number counts once it holds for two samples', async () => {
+  const code = ['const frame = 16.67;', 'let n = 0;', 'loop();', 'paint();', 'wait();'];
+  // Line numbers through decorative(): every check reads them, the claims check leaves them out.
+  const marked = await panelFilm(c => panel(c, code, {numbers: 'decorative'})), plain = await panelFilm(c => panel(c, code));
+  const words = wordsAt(marked, 1);
+  assert.deepEqual(words.filter(w => w.decorative).map(w => w.text), ['1', '2', '3', '4', '5'], 'the line numbers are read, marked decorative');
+  assert.ok(words.filter(w => !w.decorative).every(w => !('decorative' in w)), 'the other words carry no mark');
+  const drawn = async f => (await reviewPart(f, {every: 1})).verdicts.find(x => x.check === 'claims').measured.unsourcedNumbers.map(c => c.number).sort();
+  assert.deepEqual(await drawn(plain), ['0', '1', '16.67', '2', '3', '4', '5'], 'drawn plain, the line numbers are claims');
+  assert.deepEqual(await drawn(marked), ['0', '16.67'], 'drawn decorative, only the code\'s own numbers are');
+  const r = await reviewPart(marked, {every: 1});
+  assert.ok(r.ran.includes('text-density') && r.ran.includes('words-overlap'), 'the other checks still read the line numbers');
+  assert.equal(isDecorative({}), false);
+  assert.throws(() => decorative({}, null), /decorative\(ctx, draw\): draw is a function/);
+});
+
+test('a drawn number counts once it holds for two samples: a typewriter\'s partials are no claims', async () => {
+  // Typed at 6 characters a second and read every 0.25 s, "frame = 1", "frame = 16" and "frame = 16.6" each pass by
+  // for one sample; "frame = 16.67" then holds.
+  const typing = await panelFilm((c, t) => panel(c, ['frame = 16.67;'], {numbers: 'none', typed: Math.floor(t * 6 + 1e-9)}));
+  const seen = [1.5, 1.75, 2].map(t => drawnLines(wordsAt(typing, t)).join(' | '));
+  assert.deepEqual(seen, ['frame | = | 1', 'frame | = | 16', 'frame | = | 16.6'], 'the partials, as drawn');
+  const v = (await reviewPart(typing, {every: .25})).verdicts.find(x => x.check === 'claims');
+  assert.deepEqual(v.measured.unsourcedNumbers.map(c => c.number), ['16.67'], 'only the number that holds');
+  // The bound: at the review's rate, a number up for two samples' time (0.5 s at 0.25 s) always holds; one seen in a
+  // single sample is passing. Synthetic samples: a gauge drawn for one sample, then one drawn for two.
+  const at = (t, text) => ({t, words: [{text, box: [0, 0, 120, 30]}]}), none = t => ({t, words: []});
+  const claimsOf = samples => drawnClaims(samples, {claims: film.claims, sceneOf: () => 0, scenes: ['rate']}).map(c => [c.number, c.at, c.to]);
+  assert.deepEqual(claimsOf([none(0), at(.25, 'load 42 %'), none(.5)]), [], 'one sample: passing');
+  assert.deepEqual(claimsOf([none(0), at(.25, 'load 42 %'), at(.5, 'load 42 %'), none(.75)]), [['42', .25, .5]], 'two samples running: a claim, from the first');
+  assert.deepEqual(claimsOf([at(0, 'frame 16 of 60'), at(.25, 'frame 17 of 60'), at(.5, 'frame 18 of 60')]), [['60', 0, .5]], 'a counter: its passing values are no claims, the number that stays is');
 });

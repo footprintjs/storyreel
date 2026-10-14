@@ -183,6 +183,10 @@
       "types": "./types/sub/claims.d.ts",
       "default": "./src/claims.mjs"
     },
+    "./decorative": {
+      "types": "./types/sub/decorative.d.ts",
+      "default": "./src/decorative.mjs"
+    },
     "./captions": {
       "types": "./types/sub/captions.d.ts",
       "default": "./src/captions.mjs"

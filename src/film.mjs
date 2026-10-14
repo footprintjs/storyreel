@@ -912,7 +912,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   };
   // An emphasis word is up from its beat until the next word's, or its own `until` (read again on the plain clock: no beat is logged twice).
   const emphasized = attention?.record?.emphasis?.words ?? [], untilOf = i => { const u = recipe.emphasis?.words?.[i]?.until; return u === undefined ? Infinity : base.at(u); };
-  const shown = [...shownLines.filter(l => Number.isFinite(l.from) && l.from < clock.total).map(l => ({text: l.text, at: Math.max(0, l.from), to: Math.min(clock.total, l.to), scene: sceneOf(Math.max(0, l.from)), path: l.path})),
+  const shown = [...shownLines.filter(l => Number.isFinite(l.from) && l.from < clock.total).map(l => ({text: l.text, at: Math.max(0, l.from), to: Math.min(clock.total, l.to), ...(l.gone !== undefined ? {gone: Math.min(clock.total, l.gone)} : {}), scene: sceneOf(Math.max(0, l.from)), path: l.path})),
     ...emphasized.map((w, i) => ({text: w.text, at: w.t, to: Math.min(untilOf(i), emphasized[i + 1]?.t ?? Infinity, clock.total), scene: sceneOf(w.t), path: `emphasis.words[${i}]`})),
     ...storyboard.scenes.flatMap(captionsOf)];
   // The example label (exampleLabel): over each example scene, and on while any line it shows is still on screen.
@@ -932,10 +932,11 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const readProblems = reads.filter(r => r.problem);
   if (readingRule === 'refuse' && readProblems.length) throw new Error(`Reads that cannot land (the recipe says reading: "refuse"): ${readProblems.slice(0, 3).map(r => r.problem).join('; ')}${readProblems.length > 3 ? `; and ${readProblems.length - 3} more` : ''}`);
   if (readingRule === 'refuse' && reading.length) throw new Error(`Too short to read (the recipe says reading: "refuse"): ${reading.slice(0, 3).map(l => `"${l.text}" (${l.path}) is up ${l.seconds} s and needs ${l.needs} s`).join('; ')}${reading.length > 3 ? `; and ${reading.length - 3} more` : ''}`);
-  /** Every line the film shows to be read, with when it is whole on screen and when it starts to leave. */
+  /** Every line the film shows to be read, with when it is whole on screen, when it starts to leave and (gone) when its last ink does. */
   function readableLines() {
     const lines = [], leaves = i => stages[i + 1] ? arrivalOf(stages[i + 1]).from : (teaser ? teaser.at : clock.total);
-    const worldLines = (w, prefix, from, to) => { for (const l of w.instance.texts?.() ?? []) lines.push({...l, path: `${prefix}.${l.path}`, from: Math.max(l.from, from), to: Math.min(l.to, to)}); };
+    // A line's `gone` (its last ink: an eraser's end) is held to the world's time on screen too, and never before its `to`.
+    const worldLines = (w, prefix, from, to) => { for (const l of w.instance.texts?.() ?? []) lines.push({...l, path: `${prefix}.${l.path}`, from: Math.max(l.from, from), to: Math.min(l.to, to), ...(l.gone !== undefined ? {gone: Math.min(Math.max(l.gone, l.to), to)} : {})}); };
     worldLines(storyWorld, recipe.story ? 'story' : 'whiteboard', 0, push ? boardEnd + TURN * .45 : (stages[0] ? arrivalOf(stages[0]).from : clock.total));
     stages.forEach((st, i) => {
       const sp = `stages[${i}]`, whole = arrivalOf(st).to, gone = leaves(i);

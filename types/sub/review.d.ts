@@ -1,6 +1,7 @@
 import type {Claim, Film, Layout, Verdict, VerdictRules} from '../index.js';
 /** A line of text a frame draws: its box (axis-aligned) and quad (its four corners, rotation kept) in output pixels, and its alpha. */
-export interface Word {text: string; box: [number, number, number, number]; quad: [number, number][]; alpha: number}
+/** decorative: drawn inside decorative() (footprint-storyreel/decorative) — read by every check but the claims check. */
+export interface Word {text: string; box: [number, number, number, number]; quad: [number, number][]; alpha: number; decorative?: true}
 /** The words a frame draws at t, followed from each world's sheet onto the frame (through the layout when given). */
 export function wordsAt(film: Film, t: number, options?: {layout?: ReturnType<typeof import('../index.js').compileLayout> | null}): Word[];
 /**
