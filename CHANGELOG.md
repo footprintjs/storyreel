@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — the tools cost an agent fewer tokens; every refusal names its fix
+## 0.14.0 — the tools cost an agent fewer tokens; every refusal names its fix
 
 - **Token cost is a measured number, guarded in CI.** `node scripts/agent-cost.mjs` prints what an agent reads and
   writes to make the main path's farm film: the skills' descriptions (in every session), the three main-path skill
