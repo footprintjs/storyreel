@@ -294,6 +294,28 @@ export const walkNames: readonly string[] = WALK_NAMES;
 // @ts-expect-error a walk needs the figure's size
 walk({from: 0, to: 100, start: 0});
 
+// The beat map (beats.ts) and music under a film (music.ts): a map's questions, the fit's verdicts, the options.
+import {beatMap, peakOf, BEATS, type BeatMap} from '../types/sub/beats.js';
+import {fitToMusic, MUSIC, type MusicOptions, type MusicCut} from '../types/sub/music.js';
+export const mapped: Promise<BeatMap> = beatMap('song.mp3', {bpm: 120, range: [80, 160]});
+export const onTheBeat = (map: BeatMap): boolean => map.onBeat(map.nearestBeat(3) ?? 0, BEATS.onBeat) && map.nextBeat(1) !== null && map.drop !== 0;
+export const hitAt: number = peakOf('door.wav');
+export const musicOptions: MusicOptions = {file: 'song.mp3', gain: .2, snap: {tolerance: MUSIC.tolerance}, dropOn: ['story', 'came home', .5]};
+export const fitted = (storyboard: Storyboard, timings: import('../types/index.js').Timings, map: BeatMap): Promise<MusicCut[]> => fitToMusic({storyboard, timings, beats: map, snap: true}).then(f => f.cuts);
+// An unsure map cuts only on the beats every candidate shares; the fit says which grid it cut on; bad options carry a code.
+import {safeBeats, likelyTempi, beatMapText, backbeatEveryOther, type SafeBeats, type BeatOptionsError} from '../types/sub/beats.js';
+export const settleWith = (map: BeatMap): string => `${beatMapText(map, {source: 'theme.mp3'})}\n${likelyTempi(map, BEATS.likely).join(', ')} · ${map.hits.length} hits · ${safeBeats(map).unheard ?? 0} unheard`;
+export const tactus = (map: BeatMap): boolean => map.levels.some(l => l.fails.includes('backbeat slower')) || backbeatEveryOther({phase: 1, kicked: 1, steady: 1, backbeat: {phase: 1, covered: .5, alternate: 1}, fill: {2: {full: 0, low: 0}, 3: {full: 0, low: 0}, 4: {full: 0, low: 0}}});
+export const cutOnly = (map: BeatMap): readonly number[] => map.sure ? map.beats : safeBeats(map).beats;
+export const gridOf = (map: BeatMap): SafeBeats['grid'] => map.verdict === 'tempo-close' ? safeBeats(map, {tolerance: BEATS.safe.tolerance}).grid : 'every beat';
+export const fitGrid = (storyboard: Storyboard, timings: import('../types/index.js').Timings, map: BeatMap): Promise<string> => fitToMusic({storyboard, timings, beats: map, snap: true}).then(f => `${f.cutOn.grid}: ${f.cutOn.beats} of ${f.cutOn.of}`);
+export const isOptionsError = (e: unknown): e is BeatOptionsError => e instanceof Error && (e as Partial<BeatOptionsError>).code === 'BEAT_OPTIONS';
+// @ts-expect-error a verdict is one of the five
+export const badVerdict: BeatMap['verdict'] = 'tempo-maybe';
+// @ts-expect-error dropOn is a key, not a scene id
+export const badDrop: MusicOptions = {file: 'song.mp3', dropOn: 'story'};
+// @ts-expect-error soundAt is 'start' or 'peak'
+export const badAt: Parameters<typeof RenderFilm>[0]['soundAt'] = 'middle';
 // Breakdown (types/sub/breakdown.d.ts): a reference film as a spec; a beat reader is any function that answers {bpm, beats, drop?}.
 import {breakdown, BREAKDOWN} from '../types/sub/breakdown.js';
 import type {BeatReader, BreakdownSpec} from '../types/sub/breakdown.js';

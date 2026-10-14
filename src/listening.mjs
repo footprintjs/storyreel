@@ -43,5 +43,15 @@ export function effectsUnderVoice({voice, effects}, rule = LISTENING) {
   return gap >= rule.under ? null : {kind: 'effects-loud', at: 0, text: `the effects are ${gap.toFixed(1)} LU under the voice (${effects.toFixed(1)} against ${voice.toFixed(1)} LUFS); keep them at least ${rule.under} LU under, so the words stay clear`};
 }
 
+/**
+ * The music against the voice, measured apart (LUFS): a finding when the song is less than `under` LU under the voice —
+ * a bed of music as loud as the words buries them as effects do. Either may be null (no voice, no music).
+ */
+export function musicUnderVoice({voice, music}, rule = LISTENING) {
+  if (!Number.isFinite(voice) || !Number.isFinite(music) || voice <= -69 || music <= -69) return null;
+  const gap = voice - music;
+  return gap >= rule.under ? null : {kind: 'music-loud', at: 0, text: `the music is ${gap.toFixed(1)} LU under the voice (${music.toFixed(1)} against ${voice.toFixed(1)} LUFS); keep it at least ${rule.under} LU under (a lower music gain), so the words stay clear`};
+}
+
 /** One finding in words, for a refusal or a list. */
 export const listeningText = f => f.text;
