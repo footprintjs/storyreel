@@ -144,7 +144,7 @@ const result = await makeFilm({storyboard, recipe, kits: [farmKit], timings: eve
 console.log(result.out, result.makingOf);      // out/draft/: film.mp4, making-of.json, chapters.txt
 ```
 
-`node make.mjs` takes seconds. Without `width`/`height` a render is 1280×720. Give each render its own folder, and
+`node make.mjs` takes seconds. Without `width`/`height` a render is 1280×720<!-- RENDER_DEFAULTS.width RENDER_DEFAULTS.height -->. Give each render its own folder, and
 delete drafts you no longer need: films are large.
 
 ## 7. Read the record, approve, release

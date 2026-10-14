@@ -45,7 +45,7 @@ on that place; a thing that walks on is followed with `truck` or `track`.
 ## The rules, and why
 
 - **The frame stays covered.** There is nothing past the picture's edge, so a pan, a dutch or a follow scales the
-  picture up just enough (`covers` in the record), and any move that would need more than ×4 refuses.
+  picture up just enough (`covers` in the record), and any move that would need more than ×4<!-- MAX_ZOOM --> refuses.
 - **One picture.** A move stays inside one shot: one that runs across an entrance, a hand-over or a cut refuses.
   Its framing holds until the picture changes, then eases back to the whole frame, so every new shot opens wide.
 - **One camera.** Two moves cannot move the same thing at once (a pan and a dutch may share a moment; a dolly-in and

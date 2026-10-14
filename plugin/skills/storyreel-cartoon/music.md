@@ -21,7 +21,7 @@ tempo you hear: the map is then sure. A wrong option exits 2, a song it cannot r
 
 An unsure map lets a film cut only on the beats **every** candidate tempo shares, and only where the song actually
 hits: few cuts snap (about 4% in the measured corpus, against 45% for a sure map). The fix is one number: listen,
-pick the tempo you hear from the candidates (`likelyTempi(map)` lists those scoring 0.5 or more), and give it as
+pick the tempo you hear from the candidates (`likelyTempi(map)` lists those scoring 0.5<!-- BEATS.likely --> or more), and give it as
 `music.bpm`. Do not guess a tempo for the person: when nobody can listen, keep the unsure map, which cuts only where
 every candidate agrees and the song hits. The thresholds were calibrated on synthetic songs; on a real mix, read the
 verdict and the levels.
@@ -74,8 +74,8 @@ await makeFilm({storyboard, recipe, kits, narrationDir: 'voice', pacing, out: 'o
   scene, and no scene gets shorter than its last word or keyed moment. A cut with no beat near enough stays, saying why.
 - **The drop.** `dropOn` starts the song so its drop lands on that phrase; a song with no drop the map can find
   refuses with the fix (`music.drop`, the second it drops).
-- **The mix.** The song plays under the voice at `gain` (0..1), fading over the last `fadeOut` seconds (1.5); a song
-  less than 10 LU under the voice is a listening finding. `music` takes `file`, `gain`, `snap`, `dropOn`, `bpm`,
+- **The mix.** The song plays under the voice at `gain` (0..1), fading over the last `fadeOut` seconds (1.5<!-- MUSIC.fadeOut -->); a song
+  less than 10 LU<!-- LISTENING.under --> under the voice is a listening finding. `music` takes `file`, `gain`, `snap`, `dropOn`, `bpm`,
   `drop`, `fadeOut`; anything else refuses.
 - **The record.** `making-of.json` gets `music`: the beat map (tempo, verdict, the levels tried), the grid the cuts
   used, every cut's verdict, and `findings`: an unsure map that snapped says which tempi to choose from.

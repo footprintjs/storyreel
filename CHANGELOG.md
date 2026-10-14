@@ -18,6 +18,14 @@
   `render` held to renderFilm's options). The catalog tables are compared with the code: the camera moves' families,
   defaults and lengths, the review's check ids and labels, the slideshow's thresholds, the formats' sizes, the release
   targets, the feels, the moves by kind, the eases, the walk styles and evenTimings' defaults. About 3 s.
+- **The numbers the skills quote are the code's.** The review's defaults and two of its thresholds are data:
+  `footprint-storyreel/review` · `REVIEW_DEFAULTS` (`every` 0.25 s, `stillFor` 5 s, `maxWords` 35, `minSilence` 0.8 s,
+  `newEvery` 5 s, … and `hook` 3 s, `breath` 30 s), `footprint-storyreel/render` · `RENDER_DEFAULTS` (1280×720 at 30
+  fps without a layout, a part's 1.5 s handles) and `footprint-storyreel/tools` · `TOOL_DEFAULTS` (a strip's 12 frames,
+  a still's 1200 px); the code and the command line's help read them, so nothing changes. A number a page quotes is
+  marked with its constant (`35 words<!-- REVIEW_DEFAULTS.maxWords -->`, invisible where the page is shown), and the
+  truth test fails when the code or the page changes it. The `part` tool's help no longer says "half size" (it is
+  half size only when the project names a layout).
 - **`npm run test:skills:render`** (its own CI job, kept out of `npm test`) renders the main path's farm film as the
   skills write it: the small draft, the approval, the final, and the approval refusing a changed kit.
 

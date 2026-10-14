@@ -93,12 +93,14 @@ const fileOf = sub => { const e = pkg.exports[exported(sub)]; return path.join(r
  * by awaiting import(subpath) itself: a module that exports a function called `then` (regions does) is a thenable,
  * and awaiting its namespace never settles.
  */
-async function exportsOf(subs) {
+async function namespacesOf(subs) {
   const dir = tempDir('skills-exports'), list = [...subs], file = path.join(dir, 'names.mjs');
   writeFileSync(file, list.map((s, i) => `export * as s${i} from ${JSON.stringify(pathToFileURL(fileOf(s)).href)};`).join('\n'));
   const names = await import(pathToFileURL(file).href);
-  return new Map(list.map((s, i) => [s, new Set(Object.keys(names[`s${i}`]))]));
+  return new Map(list.map((s, i) => [s, names[`s${i}`]]));
 }
+const exportsOf = async subs => new Map([...(await namespacesOf(subs))].map(([s, ns]) => [s, new Set(Object.keys(ns))]));
+const SUBPATHS = Object.keys(pkg.exports).filter(k => k !== './package.json' && k !== './studio').map(k => k.replace(/^\.\/?/, ''));
 
 /** Every `import … from 'footprint-storyreel[/sub]'` in a page's code: {sub, names, defaultName, line}. */
 function importsOn(page) {
@@ -280,7 +282,7 @@ test('every option a js block hands a typed function is one its type takes (exce
     return {file, b};
   });
   const where = new Map(files.map(({file, b}) => [path.resolve(file), b]));
-  const exported = new Set([...(await exportsOf(Object.keys(pkg.exports).filter(k => k !== './package.json' && k !== './studio').map(k => k.replace(/^\.\/?/, '')))).values()].flatMap(set => [...set]));
+  const exported = new Set([...(await exportsOf(SUBPATHS)).values()].flatMap(set => [...set]));
   const wrong = unknownOptions(files.map(f => f.file), {dir, exported}).map(({file, line, key, name, known}) => {
     const b = where.get(file), at = `${rel(b.page.file)}:${b.line + line}`;
     return key === null ? `${at}: calls ${name} without importing it, so nothing it is handed can be checked` : `${at}: "${key}" is not an option there (it takes ${known.join(', ')})`;
@@ -344,4 +346,54 @@ test('the catalog tables say what the code says', async t => {
     assert.ok(pageText('storyreel-cartoon/SKILL.md').includes(`adds a ${tail} s tail to each scene`), `SKILL.md says a ${tail} s tail`);
     assert.ok(pageText('storyreel-review/SKILL.md').includes(`(a ${tail} s tail a scene)`), `storyreel-review says a ${tail} s tail`);
   });
+});
+
+// ── The numbers a page quotes from the code ─────────────────────────────────────────────────────────────────────────
+// A number a page states that the code decides (a default, a threshold) is marked right after it with the constant it
+// comes from, as an HTML comment (invisible where the page is shown):  more than 35 words<!-- REVIEW_DEFAULTS.maxWords -->
+// The marker holds the last numbers before it on its line to those constants, in order (1280×720<!-- A.width A.height -->):
+// a default changed in the code, or the number edited on the page, fails here. Each page must mark the numbers below.
+const MARKED = {
+  'storyreel-cartoon/checks.md': ['REVIEW_DEFAULTS.maxWords', 'REVIEW_DEFAULTS.stillFor', 'REVIEW_DEFAULTS.newEvery', 'REVIEW_DEFAULTS.hook', 'REVIEW_DEFAULTS.breath',
+    'REVIEW_DEFAULTS.minSilence', 'REVIEW_DEFAULTS.every', 'HOLD.step', 'SLIDESHOW.hold', 'GEOMETRY.reach', 'GEOMETRY.slide', 'WATCHING.burst.most', 'WATCHING.burst.seconds'],
+  'storyreel-cartoon/music.md': ['MUSIC.fadeOut', 'LISTENING.under', 'BEATS.likely'],
+  'storyreel-review/SKILL.md': ['TOOL_DEFAULTS.frames', 'TOOL_DEFAULTS.handles', 'RENDER_DEFAULTS.width', 'RENDER_DEFAULTS.height', 'REVIEW_DEFAULTS.stillFor',
+    'REVIEW_DEFAULTS.newEvery', 'REVIEW_DEFAULTS.hook', 'REVIEW_DEFAULTS.every', 'HOLD.step', 'SLIDESHOW.hold'],
+  'storyreel-cartoon/SKILL.md': ['RENDER_DEFAULTS.width', 'RENDER_DEFAULTS.height'],
+  'storyreel-cartoon/camera.md': ['MAX_ZOOM'],
+  'storyreel-cartoon/motion.md': ['WORD_GAP'],
+  'storyreel-cartoon/mocap.md': ['MOCAP.maxGap', 'MOCAP.minConfidence'],
+  'storyreel-cartoon/kits.md': ['TORSO_SHARE'],
+};
+/** Every marker on a page: {line, constants, numbers}: the constants it names and the numbers before it on its line. */
+function markersOn(text) {
+  const out = [];
+  text.split('\n').forEach((line, i) => {
+    for (const m of line.matchAll(/<!--\s*([A-Z][\w.]*(?:\s+[A-Z][\w.]*)*)\s*-->/g)) {
+      const constants = m[1].split(/\s+/), before = line.slice(0, m.index).replace(/<!--.*?-->/g, '');
+      out.push({line: i + 1, constants, numbers: [...before.matchAll(/\d+(?:\.\d+)?/g)].map(n => Number(n[0])).slice(-constants.length)});
+    }
+  });
+  return out;
+}
+
+test('every number a page quotes from the code is the code\'s: each marked number equals its constant', async () => {
+  const namespaces = await namespacesOf(SUBPATHS);
+  /** A constant's value, by its exported name and the keys under it (WATCHING.burst.most), from whichever entry point exports it. */
+  const valueOf = spec => {
+    const [head, ...keys] = spec.split('.'), ns = [...namespaces.values()].find(n => head in n);
+    assert.ok(ns, `${spec}: no entry point exports ${head}`);
+    return keys.reduce((v, k) => { assert.ok(v && k in v, `${spec}: ${head} has no ${k}`); return v[k]; }, ns[head]);
+  };
+  const wrong = [];
+  for (const page of pages) {
+    const name = path.relative(skills, page.file), marks = markersOn(page.text);
+    for (const {line, constants, numbers} of marks) {
+      const values = constants.map(valueOf);
+      if (numbers.length !== constants.length || numbers.some((n, i) => n !== values[i])) wrong.push(`${name}:${line}: the page says ${numbers.join(', ')}, the code says ${constants.map((c, i) => `${c} = ${values[i]}`).join(', ')}`);
+    }
+    const marked = new Set(marks.flatMap(m => m.constants));
+    for (const spec of MARKED[name] ?? []) if (!marked.has(spec)) wrong.push(`${name}: the number from ${spec} is not marked (or no longer said)`);
+  }
+  assert.deepEqual(wrong, []);
 });

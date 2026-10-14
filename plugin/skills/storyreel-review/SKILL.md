@@ -21,25 +21,25 @@ also reaches `film()`, e.g. `--ep ep1 --voice work/ep1/voice`.
    time, the phrase it waits for and the recipe entry it moves. Never guess a time: read it here.
 2. **What is wrong?** `npx storyreel review --scene <id>` (or the whole film without `--scene`, a few seconds) —
    each finding with its times on the film clock and its scene: words under the captions, words over words, words cut
-   off, no hook in the first 3 s, too much to read, no breath, the picture frozen for 5 s ("nothing changes"), nothing
-   new for 5 s while it moves, a camera freeze over the voice, example data lingering beside real numbers, and with
+   off, no hook in the first 3 s<!-- REVIEW_DEFAULTS.hook -->, too much to read, no breath, the picture frozen for 5 s<!-- REVIEW_DEFAULTS.stillFor --> ("nothing changes"), nothing
+   new for 5 s<!-- REVIEW_DEFAULTS.newEvery --> while it moves, a camera freeze over the voice, example data lingering beside real numbers, and with
    `--loop true` a loop that jumps. Under them, three **verdicts**: no slideshow, drawn parts hold together, every
    number has a source. What each means and how to fix it: [checks.md](../storyreel-cartoon/checks.md).
 3. **Fix** the one problem that matters most, in the code or data the finding points to (the recipe entry in the
    timeline names it). One fix per round, so the next review shows what that fix did.
-4. **Look again, quickly:** `npx storyreel part --scene <id>` — the scenes with 1.5 s of the film either side (so
+4. **Look again, quickly:** `npx storyreel part --scene <id>` — the scenes with 1.5 s<!-- TOOL_DEFAULTS.handles --> of the film either side (so
    both cuts are seen), the draft encode, reviewed first; seconds, not minutes. It is half size only when the config
-   names a `layout` (otherwise 1280×720), and writes `<out>/parts/<scenes>.mp4` with its `making-of.json` beside it
+   names a `layout` (otherwise 1280×720<!-- RENDER_DEFAULTS.width RENDER_DEFAULTS.height -->), and writes `<out>/parts/<scenes>.mp4` with its `making-of.json` beside it
    (the next part's replaces it). Repeat 2–4 until the review says nothing found.
 5. **Confirm the look, once:** `npx storyreel still --at <scene>+<seconds>[,…]` writes one PNG of those moments
    (`<out>/stills/`; it prints the path);
    read that image last, for what text cannot say (colour, balance, a glyph drawn as a box, motion feel). For a
-   fast move, `npx storyreel strip --at <scene>+<seconds>` shows 12 consecutive frames around it: a pop, a jump or
+   fast move, `npx storyreel strip --at <scene>+<seconds>` shows 12<!-- TOOL_DEFAULTS.frames --> consecutive frames around it: a pop, a jump or
    two things crossing shows there.
 
 ## The verdicts
 
-- **No slideshow** fails when more than half the shots' running time is held still for over 3 s, or more than 85% is
+- **No slideshow** fails when more than half the shots' running time is held still for over 3 s<!-- SLIDESHOW.hold -->, or more than 85% is
   still at all; its findings ("held still") name the shots. Fix with motion inside the shot, not more cuts.
 - **Drawn parts hold together** runs only when a kit gives `parts(t)`: a mounted end comes off, a pair crosses, or a
   planted foot slides — each named with its part and time.
@@ -54,7 +54,9 @@ also reaches `film()`, e.g. `--ep ep1 --voice work/ep1/voice`.
 ## Rules
 
 - A time comes from the timeline, never from a guess; a still is taken at a moment the timeline named.
-- The review's findings are facts about the drawing (where each word landed, when); fix them before polishing.
+- Every finding but the advice below names something to fix: most are facts about the drawing (where each word
+  landed, when); `silences` is about the voice's pauses, `claims` about sources, `hook` about the opening. Fix them
+  before polishing.
 - "Nothing changes" (frozen), "nothing new" (it moves, but nothing new comes) and "held still" are advice, not
   errors: a held title, or one picture the voice explains, can be right — say why if you keep it.
 - "A freeze over the voice": a camera `freeze` holds the picture while the voice names a drawing (it appears only when
@@ -64,7 +66,7 @@ also reaches `film()`, e.g. `--ep ep1 --voice work/ep1/voice`.
   (`strip --at <scene>+<seconds>` at the part's end) before changing it.
 - A review that stops with an error has not checked the part: its message names the check that failed. Fix it or
   report it; it is never "nothing found".
-- The command line reads the picture every 0.25 s. In code, `reviewPart(film, {every: .1})` reads it more often
-  (finer, slower); the numbers check always reads at least every 0.25 s.
+- The command line reads the picture every 0.25 s<!-- REVIEW_DEFAULTS.every -->. In code, `reviewPart(film, {every: .1})` reads it more often
+  (finer, slower); the numbers check always reads at least every 0.25 s<!-- HOLD.step -->.
 - Text drawn into a fading scratch picture, and drawings that are not text, are not read: those need the still.
 - Render the whole film only when the parts are clean.

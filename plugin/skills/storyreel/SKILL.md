@@ -28,7 +28,8 @@ needs FFmpeg on the PATH.
 7. **Read the record.** `making-of.json` beside the video says what played, when, and why.
 8. **Approve** the draft the person watched (`approveFilm`). The final render refuses when an input it hashed changed
    (the storyboard, recipe, timings, pacing, strings, data, theme, cast, facts, language, files the recipe read, the
-   voice, a song) or the files named to `codeFingerprint`; the render settings (size, format, captions) are not locked.
+   voice, a song, `reducedMotion` when the recipe has camera moves, `render.soundAt: 'peak'`) or the files named to
+   `codeFingerprint`; the other render settings (size, format, captions, quality) are not locked.
 9. **Release.** `makeRelease` makes the post for each platform: the video in its shape, captions, the post text.
 
 ## Which skill or page for each job

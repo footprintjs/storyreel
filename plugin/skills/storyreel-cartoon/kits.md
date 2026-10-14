@@ -55,7 +55,7 @@ assert.deepEqual(film.regionsAt(9).map(r => r.name).filter(Boolean), ['sun', 'sh
 | `draw(ctx, t, spot)` | the world at second `t`, on a 1600×900 sheet. Required |
 | `regionsAt(t)` | `[{box: [x0, y0, x1, y1], path, label, name?}]`: what is where, on the 1600×900 sheet. `path` says what drew it, relative to the kit's recipe entry (a click in the studio shows `story.<path>`); `label` is words for a person; a `name` is what a camera move, a push note, a focus or a `through`/`match` transition can frame |
 | `parts(t)` | `{segments, regions?, apart?}`: the numbers the drawing is made from, so the review checks they hold together ([checks.md](checks.md#drawn-parts-hold-together)) |
-| `texts()` | `[{text, from, to, gone?, path}]`: words it draws, for the reading-time check |
+| `texts()` | `[{text, from, to, gone?, path}]`: words it draws, for the reading-time check; its lines are claims too (a number in one needs a source), and `gone` (when a line's last ink goes, as an eraser ends) keeps an example scene's label up until then |
 | `sounds` | `[{time, type, gain?}]`: `tap`, `slide`, `settle`, `question`, `chime`, `door`, `step`, `click`, `whoosh`, `crumble` |
 | `layers`, `drawLayer(ctx, t, name, spot)` | depth, back to front, for orbit, dolly-zoom and rack-focus ([camera.md](camera.md#depth-layers)) |
 | `cameraMoves` | `[{from, to}]`: seconds when the kit moves its own camera, so recipe camera moves take turns with it |
@@ -66,6 +66,9 @@ assert.deepEqual(film.regionsAt(9).map(r => r.name).filter(Boolean), ['sun', 'sh
 Declare `motion: ['cameraSpeed']` beside `compile` when the kit's own camera moves follow a director's speed note,
 and `context: true` to be compiled as `compile(spec, {clock, motion, theme, root, readFile, insideRoot, …})`;
 `readFile` loads files only from inside the film's root folder.
+
+Words a kit draws that claim nothing (line numbers, a step counter) go inside `footprint-storyreel/decorative` ·
+`decorative`, and code inside `code`, so the numbers check reads them rightly ([checks.md](checks.md#every-number-has-a-source)).
 
 ## The laws a kit keeps
 
@@ -111,7 +114,7 @@ from a **pose**, standing on `floor` (its y, px), `size` px tall; `colors` overr
   moves only the eye.
 - **The points** (`figureAt(pose, {floor, size})`, px on the sheet): `hip`, `shoulder`, `head` (`{x, y, r}`), and per
   side `knees`, `feet`, `elbows`, `hands` (two each, `[j]` on `feet[j]`'s side); `near` is the side drawn in front,
-  `unit` one torso length in px (0.3 of `size`). Use them for `regionsAt`, `parts`, and anything drawn on the figure
+  `unit` one torso length in px (0.3<!-- TORSO_SHARE --> of `size`). Use them for `regionsAt`, `parts`, and anything drawn on the figure
   (a hat at `head`, a bag at `hands[near]`), from the same pose `draw` uses.
 
 ```js run

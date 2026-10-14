@@ -3,8 +3,10 @@
 ## Approve the film that was watched
 
 A "final" render should be the film someone actually watched. Every `makeFilm` render's `making-of.json` lists what
-the film was made from, hashed (`inputs`): the storyboard, the timings, the recipe, the strings, the facts, every file
-it read, the pacing, the voice's audio, and the kit's code when you pass `code`. `codeFingerprint(paths)` hashes the
+the film was made from, hashed (`inputs`): the storyboard, the timings, the recipe, the strings, the data, the theme,
+the cast, the facts, the language, every file it read, the pacing, the voice's audio, a song, `reducedMotion` (when
+the recipe has camera moves), `render.soundAt: 'peak'` (the one render setting that changes the film), and the kit's
+code when you pass `code`. `codeFingerprint(paths)` hashes the
 files and folders it is given and follows no imports: name every file that draws (or the kits' folder), or an edit to
 a helper the kit imports changes the film without the approval noticing. `approveFilm` takes the record of the
 render the person watched; `makeFilm({…, approval})` then refuses to render anything else, naming what changed.
@@ -24,7 +26,7 @@ await makeFilm({storyboard, recipe, kits: [farmKit], timings: evenTimings(storyb
 ```
 
 The hashes are of the data, not its spelling, so reformatting a file changes nothing. An approval does not lock the
-render settings (size, format, captions): the same approved film is made for every platform. An approval is of the
+other render settings (size, format, captions, quality): the same approved film is made for every platform. An approval is of the
 whole film; a part render cannot be approved. A draft rendered without `code` and a final with it differ (`code`).
 
 ## One film, every platform

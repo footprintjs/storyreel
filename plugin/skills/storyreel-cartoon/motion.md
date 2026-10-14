@@ -27,7 +27,7 @@ mask}` at `t`; `applyMove(ctx, values, {box})` puts them on the canvas for a thi
 when nothing shows (save before, restore after). `stagger(items, gap)` spaces the words of one line (`gap` in
 seconds, or a move's name for its own gap). `movesBy({feel, use, kind})` finds moves; an unknown name refuses,
 listing them. The timing rules are in the data: an exit takes half its entrance's seconds, words of a reveal are
-0.09 s apart, an entrance ends at rest. A whole shot can enter with a move too: `"enter": {"move": "soft-rise"}`.
+0.09 s<!-- WORD_GAP --> apart, an entrance ends at rest. A whole shot can enter with a move too: `"enter": {"move": "soft-rise"}`.
 
 ```js run
 import assert from 'node:assert/strict';

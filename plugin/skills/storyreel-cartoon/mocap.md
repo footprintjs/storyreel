@@ -63,9 +63,9 @@ plant feet → close loop → retime → motion source. `source.record` keeps ea
 
 A refusal names the joint, the frames and the fixes, and carries `error.record`:
 
-- **A gap too long to fill** (more than `maxGap`, 0.2 s): trim the clip past it (`from`, `to`), film again with the
+- **A gap too long to fill** (more than `maxGap`, 0.2 s<!-- MOCAP.maxGap -->): trim the clip past it (`from`, `to`), film again with the
   whole body in view, or (for points the detector saw but was unsure of, as a side-on walker's far arm) lower
-  `minConfidence` (0.5).
+  `minConfidence` (0.5<!-- MOCAP.minConfidence -->).
 - **A loop that would jump** (`loop: true`): it loops only where the feet meet; the refusal gives the `from`–`to`
   that does, or play it once (`loop: false`).
 
