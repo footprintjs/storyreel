@@ -76,7 +76,9 @@ function beatLines(b) {
   const out = ['## Cuts on the beat', ''];
   if (b.sure === false) {
     // An unsure map: a cut is judged only against the beats every candidate shares and the song hits (beats.mjs · safeBeats).
-    out.push(`${tempoText(b)}, ${plural(b.beats.length, 'beat')}. The tempo is unsure (${b.verdict ?? 'a close call'}): a cut is judged only against the ${plural(b.judged.beats, 'beat')} of ${b.judged.of} every candidate tempo shares and the song hits${b.likely?.length ? `; give the tempo (one of ${b.likely.join(', ')} BPM) to judge every cut` : ''}.`,
+    out.push(b.phase === 'unsure'
+      ? `${tempoText(b)}, ${plural(b.beats.length, 'beat')}. The tempo given (${round(b.bpm, 1)} BPM) sits between the beats heard: its phase is unsure, so no cut is judged${b.likely?.length ? `; try ${b.likely[0]} BPM` : ''}.`
+      : `${tempoText(b)}, ${plural(b.beats.length, 'beat')}. The tempo is unsure (${b.verdict ?? 'a close call'}): a cut is judged only against the ${plural(b.judged.beats, 'beat')} of ${b.judged.of} every candidate tempo shares and the song hits${b.likely?.length ? `; give the tempo (one of ${b.likely.join(', ')} BPM) to judge every cut` : ''}.`,
       `${b.onBeat} of ${b.of} cuts land on such a beat (within ${b.within} s); ${b.unjudged} cannot be judged${b.noMusic ? `; ${b.noMusic} where no music plays` : ''}.`);
   } else out.push(`${tempoText(b)}, ${plural(b.beats.length, 'beat')}. ${b.onBeat} of ${b.of} cuts land on a beat (within ${b.within} s)${b.noMusic ? `; ${b.noMusic} where no music plays` : ''}.`);
   for (const c of b.cuts) out.push(`- ${clockTenths(c.at)} ${KIND_WORDS[c.kind] ?? c.kind}: ${c.music === false ? 'no music here' : c.onBeat === null ? 'not judged (no beat every candidate shares near it)' : c.beat === null ? 'no beat' : c.onBeat ? `on the beat (${c.off >= 0 ? '+' : ''}${c.off.toFixed(2)} s)` : `off the beat by ${Math.abs(c.off).toFixed(2)} s`}`);

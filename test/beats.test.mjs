@@ -328,7 +328,7 @@ test('no steady beat, no map: a tone refuses (no code: the sound, not the call),
   await assert.rejects(beatMapOf(tone, 22050), e => /has no steady beat: its onsets are faint/.test(e.message) && e.code === undefined);
   // Noise has onsets, but none that come again a period on (speech is the same: measured with macOS voices, README).
   const noise = noiseFrom(5), hiss = Float32Array.from({length: 22050 * 8}, () => .2 * noise());
-  await assert.rejects(beatMapOf(hiss, 22050), e => /has no steady beat: its onsets keep no period \(periodicity [\d.]+, under 0\.15/.test(e.message) && e.code === undefined);
+  await assert.rejects(beatMapOf(hiss, 22050), e => /has no steady beat: its onsets keep no steady period \(periodicity [-\d.]+, under 0\.15: speech, noise, or music with a free tempo\)/.test(e.message) && e.code === undefined);
   assert.equal((await beatMapOf(tone, 22050, {bpm: 90})).verdict, 'tempo-given');
 });
 
@@ -343,6 +343,11 @@ test('likelyTempi and beatMapText: the tempi an unsure map could be, and the map
   assert.match(text, /140\.20 BPM {2}half-time, backbeat slower/);
   assert.match(text, /one of 140, 70 BPM; the map is then sure/);
   assert.match(beatMapText({...unsure, drop: 5.6}), /maybe a drop at 5\.6 s \(the map is unsure\)/);
+  // A given tempo between the beats heard: said so, and the tempo to try (twice it), never "give the tempo (one of 60)".
+  const between = {...unsure, verdict: 'tempo-given', phase: 'unsure', bpm: 60, alternatives: [{bpm: 60, score: 1, phaseDoubt: 1}]};
+  assert.deepEqual(likelyTempi(between), [120]);
+  assert.match(beatMapText(between), /tempo-given \(the tempo given sits between the beats heard — its phase unsure, so a film cuts on none; try 120 BPM\)/);
+  assert.doesNotMatch(beatMapText(between), /settle it/);
   assert.match(beatMapText({...unsure, sure: true, verdict: 'tempo-measured', drop: 5.6}), /\ndrop at 5\.6 s$/);
 });
 

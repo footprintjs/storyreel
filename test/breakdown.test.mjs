@@ -510,7 +510,7 @@ test('refusals name the fix', {skip}, async () => {
   await assert.rejects(breakdown(reference, {thresholds: {cutJmp: 10}}), /"cutJmp" is not a threshold; the thresholds are width, cutJump/);
   await assert.rejects(breakdown(reference, {thresholds: {cutJump: -1}}), /thresholds\.cutJump is a number, 0 or more/);
   await assert.rejects(breakdown(reference, {thresholds: {width: 10.5}}), /thresholds\.width is a whole number, 16 or more, not 10\.5/);
-  await assert.rejects(breakdown(reference, {beatMap: 'beats.json'}), /beatMap is a function, beatMap\(audioFile, \{ffmpeg, \.\.\.beatOptions\}\) → \{bpm, beats: \[seconds\], drop\?\}/);
+  await assert.rejects(breakdown(reference, {beatMap: 'beats.json'}), /beatMap is a function, beatMap\(videoFile, \{ffmpeg, \.\.\.beatOptions\}\) → \{bpm, beats: \[seconds\], drop\?\} that reads the video's sound itself \(through FFmpeg\)/);
   const tone = path.join(dir, 'tone.m4a');
   ffmpeg(['-f', 'lavfi', '-i', 'sine=d=1', tone]);
   await assert.rejects(breakdown(tone, {out: path.join(dir, 'tone')}), /tone\.m4a has no picture to break down \(it holds no video stream\): give a video/);

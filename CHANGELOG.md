@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### Beats in the breakdown
+
+- **`storyreel breakdown <video> --beats`** reads the video's sound with the beat map (`beats.mjs · beatMap`) and says
+  which cuts land on the beat; `--bpm n` hands it the tempo you hear, `--ffmpeg path` names the FFmpeg both run.
+  Without `--beats` nothing about the beats is read. A tempo the map refuses (`--bpm 5`, code `BEAT_OPTIONS`) refuses
+  the breakdown (exit 2); a sound it cannot read is recorded as not run.
+- **The breakdown judges cuts with `safeBeats`**, the one owner of which beats count: every beat of a sure map, only
+  the beats every candidate shares and the song hits of an unsure one. A cut near none of those is off the beat for a
+  sure map and not judged (`onBeat: null`, `unjudged`) for an unsure one; the spec gains `verdict`, `sure`, `judged`,
+  `likely` and `phase`, and an unsure map's drop is a maybe. A close call is named only at 0.9 of the best or more, and
+  never the winning tempo again.
+- **"No music here."** A beat counts only where music is playing (`beats.mjs · musicAt`: a heard hit within one beat
+  period): no beat in a silent gap, before the music starts or after it stops is one a film may cut on, so
+  `fitToMusic` never snaps onto one, and the breakdown says "no music here" (`music: false`, `noMusic`) instead of
+  "off the beat by 4.00 s". A reader that gives no `hits` gets no such check.
+- **No steady beat, no map.** `beatMap` refuses (no code) a sound whose onsets keep no steady period — speech, noise,
+  or music with a free tempo — or are faint (a held tone or pad), unless a tempo is given; the breakdown records it as
+  not run.
+- **A given tempo sets the tempo, not the phase.** When the half-beats sound as strongly as the beats the map is not
+  sure of its phase (`phase: 'unsure'`), keeps no beat to cut on, and says to try twice the tempo given.
+- **Breaking: a breakdown's beat reader is handed the video itself**, not a WAV of its sound. A reader that expected a
+  WAV must read the sound through FFmpeg (as `beatMap` does: 22050 Hz mono, streamed into one array; on a synthetic
+  hour, `breakdown --beats` peaked at 1.1 GB where it took 2.8 GB). No compatibility shim.
+- **A missing FFmpeg is a refusal, never a crash**: every streamed FFmpeg (the breakdown's frames and stills, the beat
+  map's sound) catches the start error (`spawned.mjs`) and rejects naming it.
+
 - **Full-width separators are read.** Chinese and Japanese text's full-width comma and point (，．) are a "," and a
   "." as the Arabic ٬ ٫ are, and the full-width minus (－) is a sign: `ja` "１，０００円" is 1000, "３．５kg" 3.5, "－５℃" −5,
   typed or drawn. The ideographic comma 、 stays a list separator, never a group mark.
@@ -58,8 +84,9 @@
   WAVs, FFmpeg's lists, segment files on their way to the cache) go in a hidden `.storyreel-work-…` folder beside the
   video, removed when the render ends, finished or failed (`render.mjs` · `closeRender`; `renderFilm` and `makeFilm` call
   it in a `finally`). Only the outputs stay beside the video. To keep the working files, name a folder for them:
-  `renderFilm({…, work})` (or `makeFilm({…, render: {work}})`). The system's temp folder holds only two passes' scratch
-  while they run (the stills' FFmpeg filter, a breakdown's sound for its beat map), each removed in a `finally`.
+  `renderFilm({…, work})` (or `makeFilm({…, render: {work}})`). The system's temp folder holds only one pass's scratch
+  while it runs (the stills' FFmpeg filter), removed in a `finally`; a breakdown's beat map reads the video's sound
+  itself, so no copy of it is written.
 - **A stopped render's folders are swept by the next one.** Scratch folders are named `<prefix>-<host>-<pid>-<XXXXXX>`
   (`scratch.mjs`): a render sweeps the `.storyreel-work-…` folders beside it whose process on this host is gone (Ctrl-C,
   a killed process: the library installs no signal handler), and `makeFilm` the `.narration-…` copies too; the
@@ -67,11 +94,11 @@
   runs, never by age: a live run's is never swept, however quiet. Any other folder untouched for more than a day (by the
   newest write inside it) is swept: 0.12's `.narration-<pid>`, another host's, this host under an earlier name. A fresh
   folder from another host (left for that host's own next run) and a `work` folder you named are never swept. The two
-  passes that use the system's temp folder (stills, a breakdown's sound) name theirs `storyreel-scratch-…` and sweep it
+  pass that uses the system's temp folder (the stills) names its `storyreel-scratch-…` and sweeps it
   the same way. Cleaning up never fails a run: a folder that cannot be removed is skipped and listed in
   `swept.failed: [{name, why}]`.
 - **Scratch folders are safe in a shared temp folder** (CWE-377). Every one — a render's working folder, `makeFilm`'s
-  voice copy, the stills' and a breakdown's scratch in the system's temp folder — is made by `scratch.mjs` ·
+  voice copy, the stills' scratch in the system's temp folder — is made by `scratch.mjs` ·
   `makeScratch`: `mkdtemp`, a new folder with a random suffix, created at once, that only you can open (mode 0700). A
   folder or a link another user planted at a name StoryReel might pick is never written into, and the voice is copied
   as new files only (`files.mjs` · `copyVoice` creates each exclusively). The copy gets a plain folder's mode (0777

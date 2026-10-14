@@ -107,6 +107,9 @@ export function tempoPrior(bpm, [lo, hi] = [70, 180], spread = 1 / 3) {
   return Math.exp(-.5 * (out / spread) ** 2);
 }
 
+/** Two tempi that are one: within `merge` (1%) of the larger — the one rule for "the same tempo" (tempoCandidates, the breakdown's close call). */
+export const sameTempo = (a, b, merge = .01) => Math.abs(a - b) <= merge * Math.max(a, b);
+
 /**
  * The tempo's candidates, ranked: each local peak of the onset envelope's autocorrelation (lags of 30 … 300 BPM,
  * refined between frames by a parabola), weighted by the prior (tempoPrior); a peak within `merge` (1%) of a stronger one
@@ -128,7 +131,7 @@ export function tempoCandidates(envelope, frameRate, {range = [70, 180], count =
   found.sort((p, q) => q.score - p.score);
   // One tempo is one candidate: a peak within `merge` of a stronger one (192.5 beside 192.0) is the same tempo, not another.
   const kept = [];
-  for (const c of found) if (!kept.some(k => Math.abs(k.bpm - c.bpm) <= merge * k.bpm)) kept.push(c);
+  for (const c of found) if (!kept.some(k => sameTempo(k.bpm, c.bpm, merge))) kept.push(c);
   const best = kept[0]?.score ?? 0;
   return kept.filter(c => c.score >= .05 * best).slice(0, count).map(c => ({bpm: +c.bpm.toFixed(2), period: c.period, score: +(c.score / best).toFixed(3)}));
 }
@@ -136,10 +139,13 @@ export function tempoCandidates(envelope, frameRate, {range = [70, 180], count =
 /**
  * How steady a beat the onsets keep: the envelope's autocorrelation at `period` frames (the best of a frame either side)
  * against its own energy — 1 when every onset comes again a period on, near 0 for onsets with no period (speech, noise).
+ * Measured on the envelope less its moving average over `reach` frames either side: a slow swell — a talk's loudness
+ * rising and falling, a pad fading in — correlates with itself at every short lag, and is not a beat (a recorded talk
+ * read 0.31 on the envelope as it is, against 0.03–0.08 once the swell is taken out).
  */
-export function periodicity(envelope, period) {
-  const n = envelope.length, mean = envelope.reduce((a, v) => a + v, 0) / Math.max(1, n);
-  const ac = lag => { let s = 0; for (let t = 0; t + lag < n; t++) s += (envelope[t] - mean) * (envelope[t + lag] - mean); return s / Math.max(1, n - lag); };
+export function periodicity(envelope, period, {reach = 43} = {}) {
+  const x = detrended(envelope, reach), n = x.length;
+  const ac = lag => { let s = 0; for (let t = 0; t + lag < n; t++) s += x[t] * x[t + lag]; return s / Math.max(1, n - lag); };
   const energy = ac(0);
   return energy > 0 ? Math.max(...[-1, 0, 1].map(d => ac(Math.max(1, Math.round(period) + d)))) / energy : 0;
 }

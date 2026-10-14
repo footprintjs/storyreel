@@ -35,7 +35,7 @@ import {contactSheet} from './sheet.mjs';
 import {GRID, readFootage, cutsAndFades, gradualCandidates, shotMotion, energyCurve} from './footage.mjs';
 import {eachStill, readLettering, cornerMarks, logoCandidates, lettering} from './stills.mjs';
 import {breakdownText} from './breakdown-text.mjs';
-import {safeBeats, musicAt, likelyTempi} from './beats.mjs';
+import {safeBeats, musicAt, likelyTempi, sameTempo} from './beats.mjs';
 
 export {breakdownText};
 
@@ -217,7 +217,7 @@ function readOptions(videoFile, options) {
   if (!existsSync(videoFile)) throw new Error(`breakdown: there is no file at ${videoFile}: give the path of a video (an .mp4)`);
   for (const k of Object.keys(options)) if (!OPTION_KEYS.includes(k)) throw new Error(`breakdown: "${k}" is not an option; the options are ${OPTION_KEYS.join(', ')}`);
   const {beatMap = null, ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', thresholds = {}} = options;
-  if (beatMap !== null && typeof beatMap !== 'function') throw new Error('breakdown: beatMap is a function, beatMap(audioFile, {ffmpeg, ...beatOptions}) → {bpm, beats: [seconds], drop?}, or left out');
+  if (beatMap !== null && typeof beatMap !== 'function') throw new Error('breakdown: beatMap is a function, beatMap(videoFile, {ffmpeg, ...beatOptions}) → {bpm, beats: [seconds], drop?} that reads the video\'s sound itself (through FFmpeg), or left out');
   const {beatOptions = {}} = options;
   readBeatOptions(beatOptions);
   if (typeof ffmpeg !== 'string' || !ffmpeg) throw new Error('breakdown: ffmpeg is the FFmpeg to run (a path or a name on the PATH)');
@@ -493,7 +493,7 @@ const seconds = list => Array.isArray(list) && list.every(Number.isFinite);
  */
 function readBeats(answer) {
   if (!answer || typeof answer !== 'object') throw new Error(`breakdown: ${SHAPE}, not ${answer === null ? 'null' : typeof answer}`);
-  const {bpm, beats, drop = null, confidence, alternatives = [], verdict, sure, hits} = answer;
+  const {bpm, beats, drop = null, confidence, alternatives = [], verdict, sure, hits, phase} = answer;
   if (!(Number.isFinite(bpm) && bpm > 0)) throw new Error(`breakdown: ${SHAPE}; its bpm is beats a minute, more than 0, not ${JSON.stringify(bpm)}`);
   if (!Array.isArray(beats) || !beats.every(Number.isFinite)) throw new Error(`breakdown: ${SHAPE}; its beats are a list of seconds`);
   if (drop !== null && !Number.isFinite(drop)) throw new Error(`breakdown: ${SHAPE}; its drop is seconds, or null when there is none, not ${JSON.stringify(drop)}`);
@@ -504,7 +504,7 @@ function readBeats(answer) {
   if (hits !== undefined && !seconds(hits)) throw new Error(`breakdown: ${SHAPE}; its hits are a list of seconds`);
   return {bpm, beats: [...beats].sort((a, b) => a - b), drop, ...(confidence !== undefined ? {confidence} : {}),
     alternatives: alternatives.map(a => ({bpm: a.bpm, score: a.score, ...(a.beats ? {beats: [...a.beats]} : {}), ...(a.phaseDoubt !== undefined ? {phaseDoubt: a.phaseDoubt} : {})})),
-    ...(verdict !== undefined ? {verdict} : {}), ...(sure !== undefined ? {sure} : {}), ...(hits ? {hits: [...hits]} : {})};
+    ...(verdict !== undefined ? {verdict} : {}), ...(sure !== undefined ? {sure} : {}), ...(hits ? {hits: [...hits]} : {}), ...(phase === 'unsure' ? {phase} : {})};
 }
 
 /**
@@ -557,11 +557,12 @@ function beatsReport(run) {
     nearestCut: cuts.length ? cuts.reduce((b, c) => (Math.abs(c.at - drop) < Math.abs(b.at - drop) ? c : b)) : null};
   // A close call: the next tempo scoring `closeTempo` of the best or more — and, from a map that gives its verdict, only
   // when that map is unsure (a sure map is no close call, whatever its alternatives score).
-  const runnerUp = [...alternatives].sort((a, b) => b.score - a.score).find(a => Math.abs(a.bpm - bpm) > .5), best = Math.max(1e-9, ...alternatives.map(a => a.score));
+  // The runner-up is another tempo than the winner: never the map's own tempo again (192.8 beside a grid at 192.3).
+  const runnerUp = [...alternatives].sort((a, b) => b.score - a.score).find(a => !sameTempo(a.bpm, bpm)), best = Math.max(1e-9, ...alternatives.map(a => a.score));
   const verdictGiven = run.beats.verdict !== undefined || run.beats.sure !== undefined;
   const close = (!verdictGiven || !sure) && runnerUp && runnerUp.score / best >= t.closeTempo ? {bpm: runnerUp.bpm, score: round(runnerUp.score / best, 2)} : null;
   const count = test => cuts.filter(test).length;
-  return {ran: true, bpm, ...(run.beats.verdict !== undefined ? {verdict: run.beats.verdict} : {}), sure, ...(confidence !== undefined ? {confidence} : {}),
+  return {ran: true, bpm, ...(run.beats.verdict !== undefined ? {verdict: run.beats.verdict} : {}), sure, ...(run.beats.phase ? {phase: run.beats.phase} : {}), ...(confidence !== undefined ? {confidence} : {}),
     ...(alternatives.length ? {alternatives: alternatives.map(a => ({bpm: a.bpm, score: a.score}))} : {}), ...(close ? {close} : {}),
     ...(sure ? {} : {likely: likelyTempi(run.beats)}), judged: {grid: cutOn.grid, beats: cutOn.shared, of: cutOn.of},
     beats: beats.map(b => round(b, 3)), drop: atDrop, cuts, onBeat: count(c => c.onBeat === true), ...(sure ? {} : {unjudged: count(c => c.onBeat === null && c.music !== false)}),
@@ -682,9 +683,10 @@ const recordOf = trace => JSON.parse(JSON.stringify(trace.getEntries().map(({raw
 /**
  * Break a video down into a spec to match. Returns {spec, text, record, files} — the spec (breakdown.json), the same in
  * plain words (breakdown.md), the breakdown's footprintjs record (record.json), and the files written under `out`
- * (default: <video name>-breakdown in the working folder). `beatMap(audioFile, {ffmpeg})` → {bpm, beats: [seconds],
- * drop?, confidence?, alternatives?} reads the beats of the video's sound (a WAV it is handed; beats.mjs · beatMap fits
- * as it is); without one the spec says the beats were not read. `thresholds` overrides BREAKDOWN; `probe` and `ffmpeg`
+ * (default: <video name>-breakdown in the working folder). `beatMap(videoFile, {ffmpeg})` → {bpm, beats: [seconds],
+ * drop?, confidence?, alternatives?, verdict?, sure?, hits?} reads the beats of the video's sound — it is handed the video
+ * itself and reads the sound through FFmpeg (beats.mjs · beatMap fits as it is); without one the spec says the beats were
+ * not read. A reader that gives no `hits` gets no "no music here" check (beats.mjs · musicAt asks for them). `thresholds` overrides BREAKDOWN; `probe` and `ffmpeg`
  * are the adapter that reads the file (finished.mjs · ffmpegProbe) and the FFmpeg it runs (5.1 or later). A refusal
  * names the fix; a failed stage rejects with `error.record`, the record so far.
  */

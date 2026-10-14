@@ -9,7 +9,7 @@ import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {breakdown} from '../src/breakdown.mjs';
+import {breakdown, breakdownText} from '../src/breakdown.mjs';
 import {beatMap, safeBeats} from '../src/beats.mjs';
 import {rhythm, wavFile, silenced} from './songs.mjs';
 import {tempDir} from './tmp.mjs';
@@ -119,6 +119,8 @@ test('a given tempo sets the tempo, not the phase: kicks on every half-beat of t
   const video = film(dir, 'given', {cuts: [frame(song.beats[3]), frame(song.beats[6])], seconds: song.seconds, sound: song.wav});
   const b = (await breakdown(video, {out: path.join(dir, 'given-out'), beatMap, beatOptions: {bpm: 60}})).spec.audio.beats;
   assert.equal(b.sure, false); assert.deepEqual(b.cuts.map(c => c.onBeat), [null, null], 'not judged, never "0 of 2 on the beat"');
+  assert.equal(b.phase, 'unsure'); assert.deepEqual(b.likely, [120], 'the tempo to try: the beats heard, twice the one given');
+  assert.match(breakdownText((await breakdown(video, {out: path.join(dir, 'given-text'), beatMap, beatOptions: {bpm: 60}})).spec), /The tempo given \(60 BPM\) sits between the beats heard: its phase is unsure, so no cut is judged; try 120 BPM\./);
   // Given as 120, the same kicks are sure of their phase.
   assert.equal((await beatMap(song.wav, {bpm: 120})).sure, true);
 });
@@ -139,6 +141,10 @@ test('an unsure map says "maybe" of its drop, and names a close call only at 0.9
   assert.equal(low.spec.audio.beats.close, undefined, 'a runner-up at 0.8 is no close call'); assert.doesNotMatch(low.text, /a close call/);
   const high = await breakdown(video, {out: path.join(dir, 'high'), beatMap: unsure(.95)});
   assert.deepEqual(high.spec.audio.beats.close, {bpm: 60, score: .95}); assert.match(high.text, /a close call: 60 BPM scores 0\.95 of it/);
+  // The runner-up is never the winning tempo again: 192.8 beside a grid at 192.3 is the same tempo (one 1% rule).
+  const cloud = await breakdown(video, {out: path.join(dir, 'cloud'), beatMap: () => ({bpm: 192.3, beats: song.beats, drop: null, verdict: 'tempo-close', sure: false,
+    alternatives: [{bpm: 192.8, score: 1}, {bpm: 120.9, score: .989}, {bpm: 129.7, score: .987}]})});
+  assert.deepEqual(cloud.spec.audio.beats.close, {bpm: 120.9, score: .99}); assert.doesNotMatch(cloud.text, /192\.8 BPM scores/);
   const sure = await breakdown(video, {out: path.join(dir, 'sure-drop'), beatMap: () => ({...unsure(.95)(), verdict: 'tempo-measured', sure: true})});
   assert.equal(sure.spec.audio.beats.drop.maybe, undefined); assert.match(sure.text, /The drop at 0:05\.6: shot/);
 });

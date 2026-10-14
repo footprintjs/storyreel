@@ -11,7 +11,7 @@ import path from 'node:path';
 import {flowChart, narrative, decide} from 'footprintjs';
 import {QUIET, plainNarrative} from './record.mjs';
 import {spawned, startError, ffprobeBeside} from './spawned.mjs';
-import {ANALYSIS, onsetStrength, tempoCandidates, periodicity, onsetPeak, lowPulse, backbeatPulse, levelEvidence, hitsOf, trackBeats, refineBeats, gridTempo, onsetSupport, downbeatScores, dropCandidate, peakOfSamples, firstAtOrAfter} from './dsp.mjs';
+import {ANALYSIS, onsetStrength, tempoCandidates, sameTempo, periodicity, onsetPeak, lowPulse, backbeatPulse, levelEvidence, hitsOf, trackBeats, refineBeats, gridTempo, onsetSupport, downbeatScores, dropCandidate, peakOfSamples, firstAtOrAfter} from './dsp.mjs';
 
 /**
  * The beat map's rules. range: the tempos preferred (BPM; others are weighed down, never refused). meter: beats in a bar
@@ -19,12 +19,13 @@ import {ANALYSIS, onsetStrength, tempoCandidates, periodicity, onsetPeak, lowPul
  * the window after it. window: the seconds of song either side a drop is judged over. fade, sudden: a rise that takes
  * longer than `fade` seconds to climb and makes less than `sudden` of itself at once is a fade-in, not a drop. onBeat: the
  * tolerance onBeat(t) takes by default (seconds). steady: the floors under which a sound has no steady beat to measure
- * (its onsets' periodicity at the strongest tempo; their strength, onsetPeak) — speech, noise, a held tone or pad. likely: the score a candidate tempo needs to be named as one to settle an
+ * (its onsets' periodicity at the strongest tempo, a `swell` seconds' moving average taken out first; their strength,
+ * onsetPeak) — speech, noise, music with a free tempo, a held tone or pad. likely: the score a candidate tempo needs to be named as one to settle an
  * unsure map with (likelyTempi). safe: what an unsure map lets a film cut on (safeBeats). level: the tests a level of the
  * beat passes to be certain (levelTests).
  */
 export const BEATS = Object.freeze({range: Object.freeze([70, 180]), meter: 4, downbeat: .1, drop: 3, window: 4, fade: 2, sudden: .5, onBeat: .05, likely: .5,
-  steady: Object.freeze({periodicity: .15, onsets: .6}),
+  steady: Object.freeze({periodicity: .15, onsets: .6, swell: .5}),
   safe: Object.freeze({tolerance: .035, phaseDoubt: .9, hit: .6, local: .3, near: 4, quiet: .1}),
   level: Object.freeze({pulse: 8, phase: .8, kicked: .75, low: .5, steady: .5, fill: Object.freeze({2: .55, 3: .2, 4: .2, any: .55}), halfTime: .375, margin: .3})});
 /** The levels of the beat tried against the strongest tempo: every relative, a quarter to four times it. */
@@ -210,10 +211,10 @@ async function analyse(read, source, options) {
       if (!work.candidates.length && o.bpm === null) throw new Error(`beatMap: ${source} has no repeating onsets to measure a tempo from; give options.bpm to lay a grid anyway`);
       // A steady beat, or none: onsets that come again a period on (periodicity), and onsets at all (onsetPeak). Speech has
       // onsets with no period; a held tone or pad has none to speak of. Neither has a beat to measure, unless one is given.
-      s.periodicity = work.candidates.length ? round(periodicity(work.onsets.flux.all, work.candidates[0].period), 3) : 0;
+      s.periodicity = work.candidates.length ? round(periodicity(work.onsets.flux.all, work.candidates[0].period, {reach: Math.round(BEATS.steady.swell * work.onsets.frameRate)}), 3) : 0;
       s.onsets = round(onsetPeak(work.onsets.flux.all), 3);
       if (o.bpm === null && (s.periodicity < BEATS.steady.periodicity || s.onsets < BEATS.steady.onsets)) {
-        throw new Error(`beatMap: ${source} has no steady beat: ${s.onsets < BEATS.steady.onsets ? `its onsets are faint (${s.onsets}, under ${BEATS.steady.onsets}: a held tone or pad)` : `its onsets keep no period (periodicity ${s.periodicity}, under ${BEATS.steady.periodicity}: speech, noise)`}; give options.bpm to lay a grid anyway`);
+        throw new Error(`beatMap: ${source} has no steady beat: ${s.onsets < BEATS.steady.onsets ? `its onsets are faint (${s.onsets}, under ${BEATS.steady.onsets}: a held tone or pad)` : `its onsets keep no steady period (periodicity ${s.periodicity}, under ${BEATS.steady.periodicity}: speech, noise, or music with a free tempo)`}; give options.bpm to lay a grid anyway`);
       }
       s.alternatives = work.candidates.map(({bpm, score}) => ({bpm, score}));
       s.bpmGiven = o.bpm; s.strongest = work.candidates[0]?.bpm ?? null;
@@ -364,10 +365,13 @@ export function safeBeats(map, {tolerance = BEATS.safe.tolerance, doubt = BEATS.
 
 /**
  * The tempi an unsure map could be: its candidates scoring at least `least` (BEATS.likely), strongest first, rounded to
- * a whole BPM — the ones a person picks from to settle it (give music.bpm, or beatMap's bpm). A sure map: its own.
+ * a whole BPM — the ones a person picks from to settle it (give music.bpm, or beatMap's bpm). A sure map: its own. A given
+ * tempo unsure of its phase (the half-beats as strong as the beats): twice it, the beats heard.
  */
 export function likelyTempi(map, least = BEATS.likely) {
   if (map?.sure !== false) return map?.bpm === undefined ? [] : [Math.round(map.bpm)];
+  // A given tempo whose phase is unsure sits between the beats heard: the beat is twice as fast.
+  if (map.phase === 'unsure') return [Math.round(2 * map.bpm)];
   return [...new Set((map.alternatives ?? []).filter(a => a.score >= least).map(a => Math.round(a.bpm)))];
 }
 
@@ -378,7 +382,7 @@ export function likelyTempi(map, least = BEATS.likely) {
  */
 export function beatMapText(map, {source = 'the song'} = {}) {
   const pad = (v, n) => String(v).padStart(n), likely = likelyTempi(map);
-  const how = map.sure ? 'sure: a film cuts on every beat where music plays' : map.phase === 'unsure' ? 'its phase unsure: the half-beats sound as strongly as the beats, so a film cuts on none'
+  const how = map.sure ? 'sure: a film cuts on every beat where music plays' : map.phase === 'unsure' ? `the tempo given sits between the beats heard — its phase unsure, so a film cuts on none; try ${likely[0]} BPM`
     : 'unsure: a film cuts only on the beats every candidate shares';
   const lines = [`${source} · ${map.seconds} s · ${map.verdict} (${how}) · ${map.bpm} BPM, ${map.beats.length} beats`];
   if (map.alternatives?.length) lines.push('', 'candidate tempi (score against the strongest):', ...map.alternatives.map(a => `  ${pad(a.bpm.toFixed(2), 7)} BPM  ${a.score.toFixed(2)}${a.score >= BEATS.likely ? '' : '  (unlikely)'}`));
@@ -437,4 +441,4 @@ export function peakOf(soundFile, {ffmpeg} = {}) {
   return round(peakOfSamples(decodeAudio(soundFile, {rate, ffmpeg: ffmpegOf(ffmpeg), who: 'peakOf'}), rate));
 }
 
-export {peakOfSamples};
+export {peakOfSamples, sameTempo};

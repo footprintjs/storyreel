@@ -1579,15 +1579,23 @@ peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and it
   tracker carries its grid through a silent gap, before the music starts and after it stops; `safeBeats` keeps no beat
   there, sure map or not, so `fitToMusic` never snaps a cut onto one (kicks from 0–8 s and 11–20 s: a cut at 9.3 s
   stays where it is), and the breakdown says "no music here" instead of "off the beat by 4.00 s".
-- **No steady beat, no map.** Speech, noise, a held tone or pad get no tempo: `beatMap` refuses (no code: it is the
-  sound, not the call) when the onsets keep no period — their autocorrelation at the strongest tempo, against their
-  energy, under 0.15 (`BEATS.steady.periodicity`) — or are faint: their 99th percentile under 0.6 (`BEATS.steady.onsets`).
-  Measured, both sides: every song in the corpus has periodicity 0.29 or more (0.40 or more outside the ill-posed
-  group; the lowest, a kick-only tresillo at 70) and onsets 1.15 or more (a 30 s quiet intro); 24 minute-long speeches
-  made with macOS `say` (eight voices, 140, 180 and 230 words a minute) and a 27-minute talk reach periodicity 0.065 at
-  most, pink noise 0.05; a 440 Hz tone in an MP4 (AAC) has onsets of 0.09, a held three-note pad 0.34. Confidence and
-  hit density do not tell them apart (speech reaches confidence 0.55–1, as music does). With a tempo given, the grid is
-  laid all the same. A quiet recording (its onsets near the noise floor) can fall under the floor: give `bpm`.
+- **No steady beat, no map.** Speech, noise, music with a free tempo, a held tone or pad get no tempo: `beatMap` refuses
+  (no code: it is the sound, not the call) when the onsets keep no steady period — their autocorrelation at the strongest
+  tempo, against their energy, under 0.15 (`BEATS.steady.periodicity`), measured once a half-second moving average is
+  taken out (`BEATS.steady.swell`: a talk's loudness rising and falling correlates with itself at every short lag and is
+  no beat; a recorded talk read 0.31 without it) — or are faint: their 99th percentile under 0.6
+  (`BEATS.steady.onsets`). The reason says which: "no steady period … speech, noise, or music with a free tempo", or
+  "faint … a held tone or pad". Measured, both sides: every song in the corpus has periodicity 0.40 or more (0.28 in the
+  ill-posed group) and onsets 1.15 or more; 27 talks made with macOS `say` (eight voices, 140–230 words a minute, two
+  speakers taking turns, small rooms and a hall — reverb, pink-noise room tone, mains hum, a mic's band, compression,
+  AAC, and slow swells of loudness) reach 0.08 at most; two film scores' 37 tracks split in two — 20 at 0.19 or more,
+  whose maps run (unsure, as a score with no drums is), and 17 at 0.12 or less, refused: seven were refused before
+  too, and the other ten had read with their beats on an onset 31% of the time or less. A 440 Hz tone in an MP4 (AAC) has onsets of 0.09, a held pad 0.34. Neither
+  confidence nor hit density tells speech from music (speech reaches confidence 0.55–1), and nor do the candidates'
+  ratios: two or more candidates within 2% of the best and in no simple ratio to it (2:1, 3:2, 4:3 and their inverses)
+  marked no music at all, but only one of the 27 talks — and a recorded talk's cloud (192.8, 120.9 and 129.7 BPM)
+  holds a pair 0.9% from 2:3. With a tempo given, the grid is laid all the same. A quiet recording (its onsets near the
+  noise floor) can fall under the floor: give `bpm`.
 - **A given tempo sets the tempo, not the phase.** The phase is the onsets': with `bpm` given, the grid sits where they
   are, and when the half-beats sound as strongly as the beats (120 BPM kicks given as 60: either phase is a kick) the
   map is not sure of its phase (`sure: false`, `phase: 'unsure'`) and `safeBeats` keeps no beat — a film does not cut,
@@ -1634,6 +1642,8 @@ peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and it
     on every beat of its tempo are a backbeat of the double), and the beats it shares are ON the claps — every one half
     a beat off the true beat (40 over the seven tempi), which no measure can tell. A given tempo does not move the
     beats off the claps: if you hear them as off-beats, leave `snap` out for that song.
+- **Known limits — a long ambient intro.** 30–90 s of pad before the drums come in can leave a clear song unsure (the
+  map weighs the whole song at once). Give `bpm`, or trim the intro before mapping it.
 - **Known limits — a heavy delay on the drums.** Repeats at 80% of a dotted-eighth delay on the kick and the snare
   fill every sixteenth with kick-like hits; at 70 BPM the map can then be sure of four times the tempo. The corpus's
   delay (70% on the rim and the snare) stays right or unsure at every tempo; give `bpm` for a dub mix.
@@ -1817,7 +1827,8 @@ film's runs past what one argument may hold: `-/filter:v` from FFmpeg 7, `-filte
   called on the beat against a grid the map is unsure of. A cut near none of those is off the beat for a sure map, and
   not judged (`onBeat: null`, counted in `unjudged`) for an unsure one; `likely` names the tempi to give (`--bpm`) to
   judge every cut. A cut where no music plays (no heard hit within a beat period: a silent gap, before the music or
-  after it) is "no music here" (`music: false`, counted in `noMusic`), never off the beat. An unsure map's drop is a
+  after it) is "no music here" (`music: false`, counted in `noMusic`), never off the beat — asked of the reader's `hits`:
+  a reader that gives none gets no such check, and every cut is judged against its beats. An unsure map's drop is a
   maybe (`drop.maybe`: "Maybe a drop at 0:05.6"), and a close call is named only when the next tempo scores 0.9 of the
   best or more. breakdown.md says the same in words. The beat map is handed the video itself and reads its sound at
   22050 Hz mono, streamed into one array (an hour: 318 MB of samples); no full-rate copy of the sound is written. Without a beat map, without sound, or when the beat map
@@ -2266,7 +2277,7 @@ the default because it rarely does; there is no swap repair.
 | `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?, claims?})` | compile + render as a footprintjs pipeline, with `making-of.json` (a segmented render: one subflow per segment; the claims verdict, `check-claims`) |
 | `approveFilm({record, by, note?})` · `checkApproval(approval, inputs)` | the approval lock: approve a watched render from its making-of.json, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
 | `checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})` · `FINISHED_CHECK_NAMES` | checks on the finished file: lengths, blank runs, flash frames, hand-overs and joins, the voice, captions (`footprint-storyreel/finished` adds `ffmpegProbe`, `FINISHED_CHECKS`, `FINISHED`) |
-| `footprint-storyreel/breakdown` → `breakdown(videoFile, {out?, beatMap?, beatOptions?, thresholds?, ffmpeg?, probe?})` · `breakdownText(spec)` · `BREAKDOWN` | a reference film as a spec to match: cuts, fades and dissolves, shots, pacing, motion, lettering (a heuristic), cuts on the beat (`beatMap(wav, {ffmpeg})`; `storyreel breakdown --beats`), judged by `safeBeats`; every verdict with its evidence |
+| `footprint-storyreel/breakdown` → `breakdown(videoFile, {out?, beatMap?, beatOptions?, thresholds?, ffmpeg?, probe?})` · `breakdownText(spec)` · `BREAKDOWN` | a reference film as a spec to match: cuts, fades and dissolves, shots, pacing, motion, lettering (a heuristic), cuts on the beat (`beatMap(video, {ffmpeg})`: the reader reads the video's sound itself; `storyreel breakdown --beats`), judged by `safeBeats`; every verdict with its evidence |
 | `segmentedVideo({store, recipe, code?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir)` · `ffmpegJoin()` · `planSegments(film, {fps})` · `segmentKey(…)` · `codeFingerprint(paths)` | re-render only what changed: the picture in cached segments, joined (`renderFilm({…, video})`) |
 | `footprint-storyreel/release` → `makeRelease({targets, post, out, …})` · `loadTarget` · `checkAdapter` · `planProblems` · `TARGET_NAMES` | the post for each platform: the video in its shape, captions, thumbnail, the text to paste, checked against the platform's limits and audience |
 | `readCast(cast)` · `castText(text, cast)` · `withCast(value, cast)` | the cast: `{{role}}` in any text becomes the role's name; kits read the rest from `context.cast` |
