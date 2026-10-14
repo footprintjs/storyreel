@@ -18,9 +18,28 @@ footprintjs's version) but needs a new approval.
 static imports, transitively, and literal `import('…')` and `require('…')`; JavaScript and TypeScript (`.ts`, `.mts`,
 `.cts`, `.tsx`, `.jsx`; `./x.js` finds `x.ts`); assets loaded by a literal `new URL('…', import.meta.url)`; a linked or
 workspace package's code, followed as the film's own; each installed package as `name@version`. What it cannot follow it
-lists in the record (`code.missing`, `code.unfollowed`, `code.unparsed`, [record.md](record.md)). A kit that loads
-files another way (`readFile` with a path, an asset path built at run time) names that folder in `codeFingerprint([…])`,
-or an edit there changes the film without the approval noticing.
+lists in the record (`code.missing`, `code.unfollowed`, `code.unparsed`, [record.md](record.md)).
+
+A kit that loads files another way (`readFile` with a path, an asset path built at run time) names their folder in
+`codeFingerprint([…])` — and from a folder only code, JSON, fonts and images are hashed (`footprint-storyreel/segments` ·
+`CODE_EXTENSIONS`). For any other file (an audio sample, `.txt`, `.csv`, a shader) pass `extensions`:
+`codeFingerprint(['kits'], {extensions: [...CODE_EXTENSIONS, '.wav']})`. Without it, an edit to such a file changes the
+film and the approval does not notice. A literal `new URL('./x.wav', import.meta.url)` is hashed whatever its extension.
+
+```js run
+import assert from 'node:assert/strict';
+import {mkdirSync, writeFileSync} from 'node:fs';
+import {codeFingerprint, CODE_EXTENSIONS} from 'footprint-storyreel/segments';
+
+mkdirSync('kits/samples', {recursive: true});
+writeFileSync('kits/bells.mjs', "export const bell = file => new URL(`./samples/${file}`, import.meta.url);   // a path built at run time\n");
+writeFileSync('kits/samples/bell.wav', 'RIFF one');
+const plain = () => codeFingerprint(['kits']), withWav = () => codeFingerprint(['kits'], {extensions: [...CODE_EXTENSIONS, '.wav']});
+const before = [plain(), withWav()];
+writeFileSync('kits/samples/bell.wav', 'RIFF two');          // the sample changes
+assert.equal(plain(), before[0]);                             // missed: a .wav in a folder is not hashed by default
+assert.notEqual(withWav(), before[1]);                        // caught: .wav is in the extensions
+```
 
 ```js file=approve.mjs
 import {readFileSync, writeFileSync} from 'node:fs';

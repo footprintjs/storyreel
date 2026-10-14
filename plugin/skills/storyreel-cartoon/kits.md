@@ -72,8 +72,9 @@ Declare `motion: ['cameraSpeed']` beside `compile` when the kit's own camera mov
 and `context: true` to be compiled as `compile(spec, {clock, motion, theme, root, readFile, insideRoot, …})`;
 `readFile` loads files only from inside the film's root folder. An approval locks a kit's code through
 `codeFingerprint`, which follows its imports and its `new URL('…', import.meta.url)` assets; a kit that loads files
-another way (`readFile`, a path built at run time) should have that folder named in `codeFingerprint([…])` too
-([release.md](release.md#approve-the-film-that-was-watched)).
+another way (`readFile`, a path built at run time) should have that folder named in `codeFingerprint([…])` too, with
+`extensions` for files that are not code, JSON, fonts or images (an audio sample, a `.txt`, a shader): a folder hashes
+only those by default ([release.md](release.md#approve-the-film-that-was-watched)).
 
 Words a kit draws that claim nothing (line numbers, a step counter) go inside `footprint-storyreel/decorative` ·
 `decorative`, and code inside `code`, so the numbers check reads them rightly ([checks.md](checks.md#every-number-has-a-source)).
