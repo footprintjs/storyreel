@@ -1175,9 +1175,11 @@ JSON. It is optional, and nothing in the package installs or runs it:
 ```sh
 pip install mediapipe                                       # once, in a virtual environment of your own (it brings
                                                             # OpenCV; do not add opencv-python beside it)
-python tools/pose-from-video.py wave.mp4 wave.pose.json     # --model lite|full|heavy (default full), --fps 30
+python tools/pose-from-video.py wave.mp4 wave.pose.json     # --model lite|full|heavy (default heavy), --fps 30
 ```
 
+- **Heavy, by default**: on a clean side-on walk, the full model traded the left and right ankles in 15 of 78 frames
+  and the copied feet slid 45–135 px while planted; heavy traded them in 1 and slid at most 19.5 px.
 - **It downloads a model on first use**: MediaPipe's pose landmarker (lite about 6 MB, full about 9 MB, heavy about
   30 MB), at a pinned version, from Google's model storage into `~/.cache/storyreel` (`--models DIR`), and reuses it
   after that. It checks the file's SHA-256 against `MODEL_SHA256` in the script (all three are recorded) and removes
@@ -1188,6 +1190,8 @@ python tools/pose-from-video.py wave.mp4 wave.pose.json     # --model lite|full|
 - **Visibility**: every point is written with MediaPipe's visibility as its confidence, so `fromPose` decides what is
   seen (`minConfidence`) and its gap rules decide what is filled. A side-on walker's far limbs often read under 0.5:
   give such a clip a lower `minConfidence`. `--min-visibility V` writes the points under V as `null` instead.
+- **Logs**: MediaPipe writes INFO and WARNING lines to stderr on every run; the tool holds them back and passes on
+  every other line (an error). `--logs` shows them all.
 
 Any COCO-17 detector's output fits the same JSON:
 
@@ -1207,7 +1211,8 @@ model. Every verdict carries `decide()`'s evidence (the facts, the rule, the thr
 | stage | what it does | what the record keeps |
 |---|---|---|
 | read-keypoints | reads and checks the JSON; keeps `from`–`to` (seconds of the video) and reads half a second either side as context; a point under `minConfidence` (0.5) is not seen | `kept`, `nobody`, `dropouts` (one line per joint) |
-| fill-gaps | each kind of gap (its length, where it lies) decided once: bridged (short, seen on both sides), held (short, at an edge) or refused; a gap wholly in the context is filled, not decided | `gaps`: each verdict with `at`, every place it was used |
+| repair-swaps | left and right traded back where the detector swapped them: frame by frame, a pair (ankles, knees, hips, wrists, elbows, shoulders) is held against the last frame both were seen in; where trading moves it at most half as far, and 0.15 torso lengths less, it is traded back | `swaps`: per pair, the frames traded, each verdict, how many kept |
+| fill-gaps | each kind of gap (its length, where it lies) decided once — by its whole length, even where it reaches past a cut: bridged (short, seen on both sides), held (short, at an edge) or refused; a gap wholly in the context is filled, not decided | `gaps`: each verdict with `at`, every place it was used (and how many of its points were reported unsure) |
 | smooth | One Euro, forward then back (no lag: a foot lands on the frame it landed on), the ends reflected; with the context, then cut | `torso` (px), `smoothing` |
 | normalise | hips as the origin, one torso length as the unit, y up, `mirror` if asked; which way it faces (asked, travel, nose) | `facing` |
 | joint-angles | torso, neck, shoulders, elbows, hips, knees; each track continuous (an arm passing overhead never jumps a turn) | `angles` |
@@ -1232,12 +1237,35 @@ fromPose "video": 1 gap is too long to fill: left_knee is missing in frames 30�
 body in view, or raise maxGap
 ```
 
+A gap is made of points the detector never found, or found but reported under `minConfidence`, and the fix differs:
+a point never found wants the whole body in view; a point reported unsure (a side-on walker's far arm, at visibility
+0.02–0.2 in every frame) wants a lower `minConfidence`. The refusal says which. A gap is decided by its whole length,
+even where it reaches past a cut, and the refusal says which of its frames are kept:
+
+```
+fromPose "video": 2 gaps are too long to fill: left_elbow, left_wrist are reported only under minConfidence 0.5 (at
+0.02–0.2) in every frame (frames 0–59). At most 0.2 s (maxGap) is filled in: trim the clip past them (from, to:
+seconds of the video), lower minConfidence (0.5) to use the points the detector reported, or raise maxGap
+fromPose "video": 1 gap is too long to fill: left_knee is missing in frames 40–55; 48–55 of them are kept (16 frames,
+0.533 s). …
+```
+
+**Left and right traded back.** A detector sometimes swaps a person's left and right for a frame or a few (a side-on
+walker's legs cross and look alike), and a copied foot then jumps to the other foot and back. Where a pair traded back
+moves far less from the frame before than as labelled, it is traded back, and `record.swaps` names the frames, each
+with its verdict. Two points closer together than the detector's noise traded are neither seen nor harmful, and are
+left. Where a detector loses the feet altogether (both ankles pulled toward each other for several frames, as the full
+model did) that is not a trade, and nothing repairs it; inside such a stretch the frame before is wrong too, so a trade
+decided there can be wrong (on that clip, 1 of the 3 ankle trades was). Use the heavy model.
+
 **A loop joins only where the feet meet.** Looped (`loop: true`), a clip's last frame is the next repeat's first: the
 body carries on by the clip's travel, and each angle by its whole turns, so a looped walk keeps walking. The seam is
 measured with the feet, in the room: where each foot is at the last frame against where it was at the first. Within
 `seam` (0.05 torso lengths) it loops, and a foot planted across the seam is one contact on one spot, so it does not
 move there either. A clip planted through its whole length (a wave) loops in place. Past `seam`, it refuses with the
-slide and the cut where the feet do meet (`record.loop.cut`):
+slide and the cut where the feet do meet (`record.loop.cut`). A clip of up to 3,600 frames (two minutes at 30 fps) is
+searched, every pair of frames (measured: about 0.4 s for 3,600); a longer one is not, and the refusal says the clip
+was too long to search rather than that no cut exists:
 
 ```
 fromPose "video": looped, its left foot is 29.8 px (0.248 torso lengths) from where it starts at the seam (frame 95
@@ -1256,8 +1284,10 @@ keypoints give the same record and the same poses every run.
 **The record's size** follows the motion, not the detector's flicker. A verdict is written once per kind of gap, with
 every place it was used (about 40 bytes each); dropouts are one line per joint (13 at most); there is one entry per
 still stretch of a foot (a few a second of walking). The narrative has a few lines per verdict: about five per contact,
-plus a few per kind of gap. Measured on a 100-second synthetic walk at 30 fps (3,000 frames): 183 contacts, 972
-narrative lines and a 302 KB record; with a detector flickering on 2,047 points (1,004 gaps), 988 lines and 351 KB.
+plus a few per kind of gap, plus one per frame where trading left and right would move a pair at least 0.15 torso
+lengths less (noise below that is never a verdict). Measured on a 100-second synthetic walk at 30 fps (3,000 frames):
+183 contacts, 974 narrative lines and a 303 KB record; with a detector flickering on 2,047 points (1,004 gaps), 1,074
+lines and 377 KB.
 
 `node examples/mocap/strip.mjs keypoints.json [out.png]` draws eight moments of a clip and prints what was found (in a
 checkout, `test/fixtures/mocap/walk.coco.json` is the tests' synthetic walk).

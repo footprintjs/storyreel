@@ -57,10 +57,20 @@ export const RIG_JOINTS: readonly string[];
 
 /** A verdict: what was decided, a sentence that says why, and decide()'s own evidence. */
 export interface Verdict<How extends string> {how: How; why: string; evidence: DecisionEvidence}
-/** One kind of gap (its length and where it lies decide it), decided once, and every place it was (video frame numbers). */
+/**
+ * One kind of gap (its length and where it lies decide it — its whole length, cut or not), decided once, and every
+ * place it was (video frame numbers): `unsure` counts the points there the detector reported under minConfidence (the
+ * rest it never found); `kept` is the part of a gap that reaches past a cut.
+ */
 export interface Gap extends Verdict<'bridge' | 'hold' | 'refuse'> {
   missing: number; seconds: number; edge: 'inside' | 'start' | 'end' | 'whole';
-  at: {joint: string; frames: [number, number]}[];
+  at: {joint: string; frames: [number, number]; unsure?: number; kept?: [number, number]}[];
+}
+/** A left/right pair the detector swapped: the frames traded back (video frame numbers, runs), each verdict, how many it kept. */
+export interface Swap {
+  pair: 'shoulder' | 'elbow' | 'wrist' | 'hip' | 'knee' | 'ankle';
+  frames: [number, number][]; traded: number; kept: number;
+  verdicts: ({frame: number; keepMoves: number; swapMoves: number} & Omit<Verdict<'swap'>, 'how'>)[];
 }
 /** A joint the detector was unsure of (under minConfidence), summed up: how many runs, how many frames, the lowest, the longest. */
 export interface Dropout {joint: string; runs: number; frames: number; lowest: number; longest: [number, number]}
@@ -79,6 +89,8 @@ export interface MocapRecord {
   /** Kept frames with nobody found. */
   nobody: number;
   dropouts: Dropout[];
+  /** Left and right traded back where the detector swapped them (pairs with no candidate frame are left out). */
+  swaps: Swap[];
   gaps: Gap[];
   /** One torso length (hips to shoulders) in the video, px. */
   torso: number;
@@ -93,15 +105,17 @@ export interface MocapRecord {
   notPlanted: Stillness<'aloft' | 'passing'>[];
   standing: {height: number; from: string; frames: number};
   /** Frames where a planted foot was out of the leg's reach (by more than a hundredth of a torso), and by how much at most (torso lengths). */
-  reach: {frames: number; most: number};
+  reach: {frames: number; most: number; at: {foot: 'left' | 'right'; frames: [number, number]}[]};
   /** Each leg's bones (torso lengths, medians over the clip): [left, right]. */
   legs: [{thigh: number; shin: number}, {thigh: number; shin: number}];
   /** Played once, or looped: the seam measured with the feet (torso lengths, px), and what it leaves to the eye. */
   loop: Verdict<'once' | 'loop' | 'refuse'> & {
     foot?: 'left' | 'right'; slide?: number; px?: number; frames?: [number, number]; travel?: number; held?: string;
     pose?: {angle: number; lift: number; x: number};
-    /** Refused: where the feet do meet (null when no two frames do). */
+    /** Refused: where the feet do meet (null when no two frames do, or the clip was not searched). */
     cut?: {from: number; to: number; frames: [number, number]; px: number} | null;
+    /** Refused: whether the clip was searched for a cut (one longer than `limit` frames is not). */
+    searched?: {done: boolean; frames: number; limit: number};
   };
   timing: {start: number; speed: number; pass: number; end: number | null; period?: number};
   source: {name: string; start: number; end: number | null; frames: number; unit: number};

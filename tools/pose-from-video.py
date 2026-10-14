@@ -4,10 +4,12 @@ pose-from-video.py: write StoryReel's keypoint JSON from a video, with MediaPipe
 
     pip install mediapipe                        # once, in a virtual environment of your own (it brings OpenCV;
                                                  # do not add opencv-python beside it: two cv2 packages break each other)
-    python tools/pose-from-video.py walk.mp4 walk.pose.json [--model full] [--fps 30] [--min-visibility 0]
+    python tools/pose-from-video.py walk.mp4 walk.pose.json [--model heavy] [--fps 30] [--min-visibility 0] [--logs]
 
-The model. On first use it downloads MediaPipe's pose landmarker model (lite about 6 MB, full about 9 MB, heavy
-about 30 MB) from Google's model storage, at a pinned version (MODELS), into ~/.cache/storyreel (or --models DIR),
+The model. Heavy, unless you ask for another: on a clean side-on walk, full traded the left and right ankles in 15
+of 78 frames and the copied feet slid 45–135 px while planted; heavy traded them in 1 and slid at most 19.5 px. On
+first use it downloads MediaPipe's pose landmarker model (lite about 6 MB, full about 9 MB, heavy about 30 MB) from
+Google's model storage, at a pinned version (MODELS), into ~/.cache/storyreel (or --models DIR),
 and checks its SHA-256 against MODEL_SHA256 before using it. A model whose hash is not recorded yet is refused
 unless you pass --trust-download: then its hash is printed, for you to record in MODEL_SHA256 so every later
 download is checked. The video itself never leaves the machine.
@@ -22,14 +24,21 @@ Visibility. Every point is written with MediaPipe's visibility as its confidence
 limbs often read under 0.5: give fromPose a lower minConfidence for such a clip. --min-visibility V writes points
 under V as null here instead (0, the default, writes every point).
 
+Logs. MediaPipe writes INFO and WARNING lines to stderr on every run; they are held back, and every other line it
+writes (an error) is passed on. --logs shows them all.
+
 It writes {"scheme": "mediapipe-33", "fps", "coordinates": "normalised", "width", "height", "frames"}: per frame the
 33 points as [x, y, confidence] (x and y shares of the width and the height), or null where nobody was found.
 One person: the landmarker gives one pose a frame. Film from a steady phone, across the frame, the whole body in view.
 """
 import argparse
+import contextlib
 import hashlib
 import json
+import os
+import re
 import sys
+import tempfile
 import urllib.request
 from pathlib import Path
 
@@ -50,10 +59,11 @@ def read_args():
     p = argparse.ArgumentParser(description="Write StoryReel's keypoint JSON (mediapipe-33) from a video.")
     p.add_argument('video', help='the video to read (mp4, mov, ...)')
     p.add_argument('out', help='the JSON to write')
-    p.add_argument('--model', choices=sorted(MODELS), default='full', help='lite is fastest, heavy is surest (default: full)')
+    p.add_argument('--model', choices=sorted(MODELS), default='heavy', help='lite is fastest, heavy is surest (default: heavy)')
     p.add_argument('--models', default=str(Path.home() / '.cache' / 'storyreel'), help='where the downloaded model is kept')
     p.add_argument('--fps', type=float, default=None, help='the steady rate to write (default: the video\'s own, as the file states it)')
     p.add_argument('--min-visibility', type=float, default=0.0, help='write points under this visibility as null (default 0: every point)')
+    p.add_argument('--logs', action='store_true', help='show all of MediaPipe\'s log lines (INFO and WARNING are held back)')
     p.add_argument('--trust-download', action='store_true', help='use a model whose SHA-256 is not recorded yet, and print it to record')
     return p.parse_args()
 
@@ -87,6 +97,32 @@ def model_file(name, folder, trust):
         sys.exit(f'pose-from-video: the {name} model downloaded is not the one recorded (SHA-256 {found}, not {recorded}); it was removed: '
                  f'check MODELS and MODEL_SHA256, then run again')
     return path
+
+
+# MediaPipe's own log lines that are not errors: absl INFO and WARNING, TensorFlow Lite's INFO.
+NOISE = re.compile(r'^(I\d{4} |W\d{4} |INFO: )')
+
+
+@contextlib.contextmanager
+def quiet_logs(show):
+    """MediaPipe's native stderr, held while it works; then every line that is not INFO or WARNING is passed on."""
+    if show:
+        yield
+        return
+    sys.stderr.flush()
+    saved = os.dup(2)
+    with tempfile.TemporaryFile() as held:
+        os.dup2(held.fileno(), 2)
+        try:
+            yield
+        finally:
+            sys.stderr.flush()
+            os.dup2(saved, 2)
+            os.close(saved)
+            held.seek(0)
+            for line in held.read().decode('utf-8', 'replace').splitlines():
+                if not NOISE.match(line):
+                    print(line, file=sys.stderr)
 
 
 def points_of(result, floor):
@@ -128,6 +164,9 @@ def resampled(seen, fps):
 
 def main():
     args = read_args()
+    if not args.logs:   # (builds that log through glog or TensorFlow honour these; the rest are held back by quiet_logs)
+        os.environ.setdefault('GLOG_minloglevel', '2')
+        os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
     try:
         import cv2
         import mediapipe as mp
@@ -145,7 +184,7 @@ def main():
         base_options=tasks.BaseOptions(model_asset_path=str(model_file(args.model, args.models, args.trust_download))),
         running_mode=vision.RunningMode.VIDEO, num_poses=1)
     seen, size, last_ms = [], None, -1
-    with vision.PoseLandmarker.create_from_options(options) as landmarker:
+    with quiet_logs(args.logs), vision.PoseLandmarker.create_from_options(options) as landmarker:
         while True:
             ok, bgr = video.read()
             if not ok:

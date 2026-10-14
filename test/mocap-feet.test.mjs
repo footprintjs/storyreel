@@ -11,7 +11,9 @@ import {walkSource, TORSO_SHARE} from '../src/pose.mjs';
 import {solveKnee, KNEE_NOISE} from '../src/mocap/rig.mjs';
 import {drawFigure, figureAt} from '../src/kits/cartoon/figure.mjs';
 import {compileFilm, evenTimings, frameHashes} from '../src/index.mjs';
-import {walkStances, WALK, WAVE} from './fixtures/mocap/make.mjs';
+import {walkStances, WALK, WAVE, NOISY_SWAPS} from './fixtures/mocap/make.mjs';
+import {bestCut, CUT_SEARCH_LIMIT} from '../src/mocap/seam.mjs';
+import {loopRefusal} from '../src/mocap/verdicts.mjs';
 
 const fixture = name => JSON.parse(readFileSync(new URL(`./fixtures/mocap/${name}`, import.meta.url), 'utf8'));
 const WALK_JSON = fixture('walk.coco.json'), NOISY_JSON = fixture('walk-noisy.coco.json'), WAVE_JSON = fixture('wave.mediapipe.json');
@@ -37,31 +39,64 @@ function plantedDrift(source) {
   return {moved, lifted};
 }
 
-test('feet: every stretch the walk was planted is found within a frame or two — from a clean detector and a noisy one', async () => {
-  for (const keypoints of [WALK_JSON, NOISY_JSON]) {
+test('feet: every stretch the walk was planted is found within a frame or two — from a clean detector and one as rough as a real one', async () => {
+  for (const [keypoints, rough] of [[WALK_JSON, false], [NOISY_JSON, true]]) {
     const {record} = await fromPose(keypoints, PLACE);
     for (const j of [0, 1]) {
-      const truth = walkStances(j), found = record.contacts.filter(c => footOf(c) === j).map(c => c.frames);
-      assert.equal(found.length, truth.length, `${j ? 'right' : 'left'} foot: ${JSON.stringify(found)} against ${JSON.stringify(truth)}`);
-      found.forEach(([a, b], i) => assert.ok(Math.abs(a - truth[i][0]) <= 2 && Math.abs(b - truth[i][1]) <= 2, `contact ${a}–${b} against ${truth[i]}`));
+      const found = record.contacts.filter(c => footOf(c) === j).map(c => c.frames);
+      for (const [a, b] of walkStances(j)) {
+        // A stance the clip cuts short (it touches the clip's first or last frame) is partial: a rough detector may
+        // read its few frames as passing. Every stance inside the clip must be found.
+        const partial = a === 0 || b === WALK.frames - 1, match = found.find(([p, q]) => Math.abs(p - a) <= 2 && Math.abs(q - b) <= 2);
+        if (!partial || !rough) assert.ok(match, `${j ? 'right' : 'left'} stance ${a}–${b} found within 2 frames: ${JSON.stringify(found)}`);
+      }
+      assert.ok(found.every(([p, q]) => walkStances(j).some(([a, b]) => p <= b && q >= a)), `no contact while a foot is carried: ${JSON.stringify(found)}`);
     }
     for (const c of record.contacts) assert.match(c.why, /^still long enough, on the floor: planted: stillSeconds [\d.]+ ≥ 0\.1 ✓, overFloor -?[\d.]+ ≤ 0\.15 ✓$/);
-    assert.deepEqual([record.notPlanted, record.reach], [[], {frames: 0, most: 0}], 'no stillness that is not a step; every planted foot within reach');
+    if (!rough) assert.deepEqual([record.notPlanted, record.reach], [[], {frames: 0, most: 0, at: []}], 'no stillness that is not a step; every planted foot within reach');
     assert.equal(record.standing.from, 'both feet planted');
   }
-  assert.ok(fixture('walk-noisy.coco.json').frames.flat().some(p => p?.[2] === .4), 'the noisy detector dips to 0.4');
+  assert.ok(NOISY_JSON.frames.flat().some(p => p?.[2] === .4), 'the rough detector dips to 0.4');
 });
 
+test('left and right swapped by the detector are traded back, where it happened and nowhere else, with the evidence', async () => {
+  const {record} = await fromPose(NOISY_JSON, PLACE), traded = Object.fromEntries(record.swaps.map(p => [p.pair, p.frames]));
+  assert.deepEqual(traded.ankle, NOISY_SWAPS.ankle, 'the ankles planted traded, found and traded back');
+  assert.deepEqual(traded.wrist, NOISY_SWAPS.wrist, 'the wrists too');
+  assert.ok(record.swaps.filter(p => !(p.pair in NOISY_SWAPS)).every(p => p.traded === 0 && p.frames.length === 0), `nothing else traded: ${JSON.stringify(traded)}`);
+  for (const v of record.swaps.flatMap(p => p.verdicts)) {
+    assert.match(v.why, /^traded back, it moves far less: the detector swapped left and right: swapGain [\d.]+ ≥ 0\.15 ✓, swapShare [\d.]+ ≤ 0\.5 ✓$/);
+    assert.equal(v.evidence.chosen, 'swap');
+  }
+  assert.ok(record.swaps.some(p => p.kept > 0), 'a pair crossing, as labelled, is decided too, and kept');
+  // A clean walk with its ankles traded for three frames: traded back, and its feet planted as if never swapped.
+  const traded3 = copy(WALK_JSON), [l, r] = [15, 16];
+  for (const f of [40, 41, 42]) [traded3.frames[f][l], traded3.frames[f][r]] = [traded3.frames[f][r], traded3.frames[f][l]];
+  const [clean, repaired] = [await fromPose(WALK_JSON, PLACE), await fromPose(traded3, PLACE)];
+  assert.deepEqual(repaired.record.swaps.find(p => p.pair === 'ankle').frames, [[40, 42]]);
+  assert.deepEqual(repaired.record.contacts.map(c => [c.foot, c.frames]), clean.record.contacts.map(c => [c.foot, c.frames]));
+  assert.ok(clean.record.swaps.every(p => p.traded === 0), 'a clean walk trades nothing');
+});
+
+// The clean walk, with its left ankle sliding 30 px through a stance (as a detector's foot drifts): the lock holds the
+// foot on one spot, up to 15 px from where the video had it, so a leg not re-solved to the spot misses it. From the
+// hip centre: the walk's two hips are 6 px apart, so the leg must end within a twentieth of a torso of its foot. (A
+// rough detector moves each hip on its own, by more than that: the check would not tell a miss from noise.)
 test('the legs reach the feet they were locked to: forward kinematics from the pose\'s angles and the record\'s bones lands on the planted foot', async () => {
-  for (const keypoints of [WALK_JSON, NOISY_JSON]) {
-    const source = await fromPose(keypoints, PLACE), {legs, standing} = source.record;
+  const sliding = copy(WALK_JSON);
+  for (let f = 33; f <= 52; f++) if (sliding.frames[f]) sliding.frames[f][15][0] += 30 * (f - 33) / 19 - 15;
+  for (const keypoints of [WALK_JSON, sliding]) {
+    const source = await fromPose(keypoints, PLACE), {legs, standing, reach} = source.record;
+    // Where the record says a foot was out of its leg's reach, the leg reaches toward it by at most that much less.
+    const short = (foot, f) => reach.at.some(r => r.foot === foot && f >= r.frames[0] && f <= r.frames[1]);
     for (const c of source.record.contacts) for (const f of times(c.frames[0], c.frames[1], 1)) {
       const p = source.poseAt(f / WALK.fps), j = footOf(c), F = p.facing;
       // From the hip centre (torso lengths, y up): the thigh's angle from straight down is hip − torso, the shin's adds the knee.
       const thigh = p.joints.legs[j].hip - p.joints.torso, shin = thigh + p.joints.legs[j].knee;
       const ankle = {x: F * (Math.sin(thigh) * legs[j].thigh + Math.sin(shin) * legs[j].shin), y: -(Math.cos(thigh) * legs[j].thigh + Math.cos(shin) * legs[j].shin)};
       const foot = {x: (p.feet[j].x - p.x) / UNIT, y: (p.feet[j].lift - p.lift) / UNIT - standing.height};
-      assert.ok(dist(ankle, foot) < .05, `frame ${f}, ${c.foot} leg ends ${dist(ankle, foot).toFixed(3)} torso lengths from its planted foot`);
+      const allowed = short(c.foot, f) ? reach.most + .05 : .05;
+      assert.ok(dist(ankle, foot) < allowed, `frame ${f}, ${c.foot} leg ends ${dist(ankle, foot).toFixed(3)} torso lengths from its planted foot (allowed ${allowed})`);
       assert.ok(p.joints.legs[j].knee < .02, `frame ${f}: the planted ${c.foot} knee bends forward, never back (${p.joints.legs[j].knee})`);
     }
   }
@@ -130,6 +165,24 @@ test('across a loop\'s seam a planted foot does not move, the body walks on, and
     const j = footOf(c), at = looped.poseAt(c.film[0] + period + .001).feet[j];
     for (const t of times(c.film[0] + period + .001, c.film[1] + period - .001, .001)) assert.ok(Math.abs(looped.poseAt(t).feet[j].x - at.x) < 1e-6, `the second seam at ${t}`);
   }
+});
+
+test('a clip too long to search for a cut is said to be too long, never to have no cut', async () => {
+  const n = 40, feet = [0, 1].map(j => Array.from({length: n}, (_, i) => ({x: i * .1 + j, y: i * .1}))), root = feet[0].map(() => ({x: 0, y: 0}));
+  assert.deepEqual(bestCut(feet, root, {tolerance: .05, limit: 30}), {cut: null, searched: {done: false, frames: 40, limit: 30}});
+  assert.deepEqual(bestCut(feet, root, {tolerance: .05, limit: 40}), {cut: null, searched: {done: true, frames: 40, limit: 40}}, 'searched, and nothing meets');
+  const o = {name: 'video', seam: .05}, base = {foot: 'left', slide: .3, px: 36, frames: [0, 39], cut: null};
+  assert.match(loopRefusal({...base, searched: {done: false, frames: 4000, limit: 3600}}, o).message, /To loop it, the clip is too long to search for a cut \(4000 frames, more than 3600\): trim it to whole cycles yourself \(from, to\); or play it once/);
+  assert.match(loopRefusal({...base, searched: {done: true, frames: 40, limit: 3600}}, o).message, /To loop it, no two frames of this clip meet: film a few whole cycles of the motion/);
+  assert.equal(CUT_SEARCH_LIMIT, 3600, 'two minutes at 30 fps');
+  // Through fromPose: a walk tiled past the limit, looped.
+  const long = copy(WALK_JSON), step = 140 * WALK.frames / WALK.fps;
+  long.frames = Array.from({length: Math.ceil((CUT_SEARCH_LIMIT + 1) / WALK.frames)}, (_, k) => WALK_JSON.frames.map(f => f && f.map(p => p && [p[0] + k * step, p[1], p[2]]))).flat();
+  long.width = 1e6;
+  const error = await fromPose(long, {...PLACE, loop: true, maxGap: 1}).then(() => null, e => e);
+  assert.ok(error, 'refused');
+  assert.match(error.message, /the clip is too long to search for a cut \(\d+ frames, more than 3600\)/);
+  assert.equal(error.record.loop.searched.done, false);
 });
 
 test('a clip planted through its whole length loops in place: its feet never leave their spots, the seam measured', async () => {

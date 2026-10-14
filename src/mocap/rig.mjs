@@ -12,9 +12,17 @@ const mid = (a, b) => ({x: (a.x + b.x) / 2, y: (a.y + b.y) / 2});
 const sub = (a, b) => ({x: a.x - b.x, y: a.y - b.y});
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
-/** The torso's length in px: over the clip, the median distance from the hips' centre to the shoulders' centre. */
+/**
+ * The torso's length in px: over the clip, the median distance from the hips' centre to the shoulders' centre, in the
+ * frames where all four are seen (NaN when none is).
+ */
 export function torsoLength(tracks) {
-  return median(tracks.left_hip.map((_, f) => dist(mid(tracks.left_hip[f], tracks.right_hip[f]), mid(tracks.left_shoulder[f], tracks.right_shoulder[f]))));
+  const four = ['left_hip', 'right_hip', 'left_shoulder', 'right_shoulder'], lengths = [];
+  tracks.left_hip.forEach((_, f) => {
+    if (four.some(j => !tracks[j][f])) return;
+    lengths.push(dist(mid(tracks.left_hip[f], tracks.right_hip[f]), mid(tracks.left_shoulder[f], tracks.right_shoulder[f])));
+  });
+  return lengths.length ? median(lengths) : NaN;
 }
 
 /** A joint's name in a mirror: left and right swap (a mirrored person raises the other hand). */

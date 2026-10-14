@@ -3,8 +3,10 @@
  *   walk.coco.json        a walk seen from the side, COCO-17 in pixels, 30 fps: each foot planted 60% of a 1.1 s
  *                         stride, then carried on an arc to its next spot; with the gaps a detector leaves (the nose
  *                         lost for the first 2 frames, a wrist for 4, a knee unsure for 3, nobody found in frame 70)
- *   walk-noisy.coco.json  the same walk as a cheaper detector sees it: every point off by up to 3 px, and points
- *                         dipping to 0.4 visibility for 1–3 frames (dropouts, under fromPose's minConfidence 0.5)
+ *   walk-noisy.coco.json  the same walk as a real detector reports it (MediaPipe heavy on a drawn walk, measured and
+ *                         scaled to this 100 px torso): each point off by a slow wander (up to 16 px) and a jitter
+ *                         (4.5 px on the limbs, 2 px on the body); points dipping to 0.4 visibility for 1–3 frames;
+ *                         and left and right traded in a few frames (NOISY_SWAPS), as a detector does
  *   wave.mediapipe.json   a child facing us waving, MediaPipe-33 normalised, a portrait phone video at 25 fps: feet
  *                         still, the right forearm swinging either side of straight up (its angle crosses ±π)
  * Deterministic: a seeded jitter stands in for the detector's noise. Write the files with
@@ -94,13 +96,45 @@ export function makeWalk() {
   return {scheme: 'coco-17', fps: W.fps, coordinates: 'pixels', width: 1280, height: 720, frames};
 }
 
+/** A seeded normal draw (Box–Muller). */
+const normalOf = rand => () => Math.sqrt(-2 * Math.log(1 - rand())) * Math.cos(2 * Math.PI * rand());
+const LIMBS = /elbow|wrist|knee|ankle/;
+
+/**
+ * The walk as a real detector reports it: each point off by a slow wander (each axis a sine of up to 16 px, a tenth
+ * to two fifths of a hertz) and a frame-to-frame jitter (normal, 4.5 px on the limbs, 2 px on the body), with a confidence of
+ * .8–.99. (MediaPipe heavy on a drawn walk: jitter 0.03–0.056 torso lengths on the limbs, 0.015–0.02 on the body.)
+ */
+function roughFrames(seed) {
+  const rand = jitter(seed), normal = normalOf(rand), r2 = v => Math.round(v * 100) / 100;
+  const wander = COCO.map(() => [0, 1].map(() => ({a: 16 * rand(), hz: .1 + .3 * rand(), phase: 2 * Math.PI * rand()})));
+  return Array.from({length: W.frames}, (_, f) => {
+    const p = walkBody(f / W.fps), t = f / W.fps;
+    return COCO.map((name, k) => {
+      const sd = LIMBS.test(name) ? 4.5 : 2, [wx, wy] = wander[k].map(w => w.a * Math.sin(2 * Math.PI * w.hz * t + w.phase));
+      return [r2(p[name].x + wx + sd * normal()), r2(p[name].y + wy + sd * normal()), r2(.8 + .19 * rand())];
+    });
+  });
+}
+
+/**
+ * Where the noisy walk trades left and right (frame numbers): where the pair is well apart (ankles about 77 px, wrists
+ * about 85 px). Two points closer than the detector's noise (the knees, 28–47 px apart here) traded are neither seen
+ * nor harmful: no repair can tell, and none is needed.
+ */
+export const NOISY_SWAPS = Object.freeze({ankle: [[17, 18], [33, 35], [65, 65]], wrist: [[33, 34], [66, 66]]});
+
 export function makeNoisyWalk() {
-  const frames = walkFrames(41, 3), rand = jitter(43);
+  const frames = roughFrames(41), rand = jitter(43);
   // Dips: now and then a joint the detector is unsure of for 1–3 frames (visibility 0.4).
   for (let f = 0; f < W.frames; f++) for (let k = 5; k < COCO.length; k++) {
     if (rand() >= .02) continue;
     const n = 1 + Math.floor(rand() * 3);
     for (let i = f; i < Math.min(W.frames, f + n); i++) frames[i][k][2] = .4;
+  }
+  for (const [pair, runs] of Object.entries(NOISY_SWAPS)) for (const [a, b] of runs) for (let f = a; f <= b; f++) {
+    const [l, r] = [COCO.indexOf(`left_${pair}`), COCO.indexOf(`right_${pair}`)];
+    [frames[f][l], frames[f][r]] = [frames[f][r], frames[f][l]];
   }
   return {scheme: 'coco-17', fps: W.fps, coordinates: 'pixels', width: 1280, height: 720, frames};
 }

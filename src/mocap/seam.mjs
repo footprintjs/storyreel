@@ -28,15 +28,21 @@ function mismatch(feet, root, a, b) {
 }
 
 /**
+ * The longest clip searched for a cut (frames): every pair of frames is tried. Measured where no two frames meet:
+ * 1,800 frames took about 0.1 s, 3,600 (2 minutes at 30 fps) about 0.4 s, 5,400 about 0.85 s.
+ */
+export const CUT_SEARCH_LIMIT = 3600;
+
+/**
  * Where to cut a clip so it loops: frames a < b, at least `least` apart, whose feet meet within `tolerance` — where
  * each foot is, and how far it moves in a frame, the body carried on by its travel between them. Of those, the
  * closest of the longest: any stretch within `slack` frames of the longest that meets (a stretch a frame longer that
- * meets less well is no better). Returns {a, b, slide} (frame indices), or null when no two frames meet, or the clip
- * is longer than `limit` frames (the search is over every pair).
+ * meets less well is no better). Returns {cut: {a, b, slide} | null, searched: {done, frames, limit}}: a clip longer
+ * than `limit` frames is not searched (done: false), so "no cut" is said only of a clip that was.
  */
-export function bestCut(feet, root, {tolerance, least = 2, slack = 2, limit = 1800}) {
-  const n = root.length;
-  if (n > limit) return null;
+export function bestCut(feet, root, {tolerance, least = 2, slack = 2, limit = CUT_SEARCH_LIMIT}) {
+  const n = root.length, searched = {done: n <= limit, frames: n, limit};
+  if (!searched.done) return {cut: null, searched};
   let near = [], longest = -1;   // the stretches that meet, within slack of the longest so far
   for (let a = 0; a + least < n; a++) {
     for (let b = n - 1; b >= a + least && b - a >= longest - slack; b--) {
@@ -46,5 +52,5 @@ export function bestCut(feet, root, {tolerance, least = 2, slack = 2, limit = 18
       near.push({a, b, slide});
     }
   }
-  return near.reduce((best, c) => (!best || c.slide < best.slide ? c : best), null);
+  return {cut: near.reduce((best, c) => (!best || c.slide < best.slide ? c : best), null), searched};
 }

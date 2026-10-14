@@ -113,18 +113,21 @@ function dropoutsOf(joint, points, low, first) {
  *   lo…hi       the frames read: the kept ones and up to `context` frames either side, where the video has them —
  *               the motion around a cut, so the cut's own frames are smoothed as they would be uncut
  *   tracks      {joint: [{x, y} | null]} in px, one entry per frame read (lo…hi); a point under minConfidence is null
+ *   reported    {joint: [confidence | null]}: what the detector said of each point read (null: not reported), so a
+ *               gap can tell a point it never found from one it found but was unsure of
  *   dropouts    one line per joint the detector was unsure of in the kept frames (dropoutsOf), in video frame numbers
  *   empty       how many kept frames found nobody
  */
 export function readKeypoints(doc, {from = null, to = null, minConfidence = .5, context = 0} = {}) {
   const h = readHeader(doc), frames = doc.frames.map((f, k) => readFrame(f, k, h));
   const {first, last} = keptFrames(frames.length, h.fps, from, to), lo = Math.max(0, first - context), hi = Math.min(frames.length - 1, last + context);
-  const read = frames.slice(lo, hi + 1), kept = frames.slice(first, last + 1), tracks = {}, dropouts = [];
+  const read = frames.slice(lo, hi + 1), kept = frames.slice(first, last + 1), tracks = {}, reported = {}, dropouts = [];
   for (const joint of RIG_JOINTS) {
     const points = read.map(f => f?.[joint] ?? null), low = points.map(p => p !== null && p.c < minConfidence);
     tracks[joint] = points.map((p, i) => (p === null || low[i] ? null : {x: p.x, y: p.y}));
+    reported[joint] = points.map(p => (p === null ? null : p.c));
     const summed = dropoutsOf(joint, points.slice(first - lo, last - lo + 1), low.slice(first - lo, last - lo + 1), first);
     if (summed) dropouts.push(summed);
   }
-  return {scheme: h.scheme, fps: h.fps, normalised: h.normalised, width: h.width, height: h.height, first, last, count: kept.length, lo, hi, tracks, dropouts, empty: kept.filter(f => f === null).length};
+  return {scheme: h.scheme, fps: h.fps, normalised: h.normalised, width: h.width, height: h.height, first, last, count: kept.length, lo, hi, tracks, reported, dropouts, empty: kept.filter(f => f === null).length};
 }

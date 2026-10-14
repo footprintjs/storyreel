@@ -56,7 +56,7 @@ test('the record says what was found and decided: dropouts per joint, each kind 
   assert.deepEqual([record.loop.how, record.loop.why], ['once', 'played once: it holds its last frame: loop false = false ✓']);
   assert.deepEqual(structuredClone(record), JSON.parse(JSON.stringify(record)), 'plain data: it survives structuredClone and JSON');
   const stages = record.narrative.filter(e => e.type === 'stage').map(e => e.stageId);
-  assert.deepEqual(stages, ['read-keypoints', 'fill-gaps', 'smooth', 'normalise', 'joint-angles', 'plant-feet', 'close-loop', 'retime', 'motion-source']);
+  assert.deepEqual(stages, ['read-keypoints', 'repair-swaps', 'fill-gaps', 'smooth', 'normalise', 'joint-angles', 'plant-feet', 'close-loop', 'retime', 'motion-source']);
 });
 
 test('a flickering detector grows the record by places, not verdicts: its narrative stays the clean run\'s size', async () => {
@@ -112,7 +112,7 @@ test('a gap too long to guess refuses, naming the joint, its frames and the fixe
   assert.equal(error.message, 'fromPose "video": 1 gap is too long to fill: left_knee is missing in frames 30–45 (16 frames, 0.533 s). At most 0.2 s (maxGap) is filled in: trim the clip past it (from, to: seconds of the video), film it again with the whole body in view, or raise maxGap');
   assert.deepEqual(error.record.refused.map(g => [g.how, g.missing, g.at]), [['refuse', 16, [{joint: 'left_knee', frames: [30, 45]}]]]);
   assert.equal(error.record.refused[0].why, 'longer than maxGap, or never seen: too long to guess (gapSeconds 0.533 ≤ 0.2 ✗)');
-  assert.deepEqual(error.record.narrative.filter(e => e.type === 'stage' || e.type === 'error').map(e => `${e.type} ${e.stageId}`), ['stage read-keypoints', 'error fill-gaps'], 'the record stops where it refused');
+  assert.deepEqual(error.record.narrative.filter(e => e.type === 'stage' || e.type === 'error').map(e => `${e.type} ${e.stageId}`), ['stage read-keypoints', 'stage repair-swaps', 'error fill-gaps'], 'the record stops where it refused');
   const trimmed = await fromPose(lost, {...PLACE, from: 1.6});
   assert.deepEqual(trimmed.record.kept.frames, [48, 95]);
   assert.ok(trimmed.record.contacts.every(c => c.frames[0] >= 48), 'frame numbers stay the video\'s');
@@ -128,9 +128,30 @@ test('a gap too long to guess refuses, naming the joint, its frames and the fixe
   const away = copy(WALK_JSON);
   for (let f = 40; f <= 60; f++) away.frames[f] = null;
   await assert.rejects(fromPose(away, PLACE), /13 gaps are too long to fill: every joint \(nobody in view\) is missing in frames 40–60 \(21 frames, 0\.7 s\)/);
+  // A gap that reaches past a cut is decided by its whole length, and the refusal says which of its frames are kept.
+  const straddling = copy(WALK_JSON);
+  for (let f = 40; f <= 55; f++) straddling.frames[f][13] = null;
+  await assert.rejects(fromPose(straddling, {...PLACE, from: 1.6}), /1 gap is too long to fill: left_knee is missing in frames 40–55; 48–55 of them are kept \(16 frames, 0\.533 s\)/);
   const scattered = copy(WALK_JSON);
   [7, 8, 9, 10, 13, 14, 15, 16].forEach((k, i) => { for (let f = 5 + i; f <= 25 + i; f++) scattered.frames[f][k] = null; });
   await assert.rejects(fromPose(scattered, PLACE), /8 gaps are too long to fill: left_elbow is missing in frames 5–25 .*; left_knee is missing in frames 9–29 .*; and 2 more\./);
+});
+
+test('a gap of points the detector reported, only unsure of them, says so and names minConfidence — filming again is no fix', async () => {
+  // As a real side-on clip: the far arm reported in every frame, at visibility 0.02–0.2.
+  const far = copy(WAVE_JSON), names = SCHEMES['mediapipe-33'];
+  far.frames.forEach((frame, f) => { for (const joint of ['left_elbow', 'left_wrist']) frame[names.indexOf(joint)][2] = .02 + .18 * ((f * 7) % 10) / 9; });
+  const error = await fromPose(far, PLACE).then(() => null, e => e);
+  assert.ok(error, 'refused');
+  assert.equal(error.message, 'fromPose "video": 2 gaps are too long to fill: left_elbow, left_wrist are reported only under minConfidence 0.5 (at 0.02–0.2) in every frame (frames 0–59). At most 0.2 s (maxGap) is filled in: trim the clip past them (from, to: seconds of the video), lower minConfidence (0.5) to use the points the detector reported, or raise maxGap');
+  assert.doesNotMatch(error.message, /film it again/);
+  assert.deepEqual(error.record.refused[0].at.map(p => [p.joint, p.unsure]), [['left_elbow', 60], ['left_wrist', 60]], 'the record counts the points reported, unsure');
+  const lowered = await fromPose(far, {...PLACE, minConfidence: .01});
+  assert.deepEqual(lowered.record.gaps, [], 'with minConfidence under them, the points are seen');
+  // Some frames never found and some reported unsure: both fixes.
+  const mixed = copy(WALK_JSON);
+  for (let f = 30; f <= 45; f++) if (f < 38) mixed.frames[f][13] = null; else mixed.frames[f][13][2] = .3;
+  await assert.rejects(fromPose(mixed, PLACE), /left_knee is missing, or reported only under minConfidence 0\.5 \(at 0\.3–0\.3\), in frames 30–45 \(16 frames, 0\.533 s\)\. At most 0\.2 s \(maxGap\) is filled in: trim the clip past it \(from, to: seconds of the video\), film it again with the whole body in view, lower minConfidence \(0\.5\) to use the points the detector reported, or raise maxGap/);
 });
 
 test('retimed: start and speed put the video\'s frames on the film\'s clock; played once, it holds its last frame', async () => {
