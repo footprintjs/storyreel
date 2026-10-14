@@ -2,19 +2,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {existsSync, mkdtempSync, writeFileSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {existsSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {loadProject, timeline, review, still, TOOLS, strip} from '../src/tools.mjs';
 import {pictureIn} from '../src/mcp.mjs';
+import {tempDir} from './tmp.mjs';
 
 const project = fileURLToPath(new URL('./fixtures/tools/', import.meta.url)), cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url));
 const run = (args, cwd = project) => spawnSync(process.execPath, [cli, ...args], {cwd, encoding: 'utf8'});
 const has = cmd => !spawnSync(cmd, ['-version']).error;
 
 test('the tools read the project\'s film: its timeline and its review as text, a still as one picture', async () => {
-  const out = mkdtempSync(path.join(tmpdir(), 'storyreel-tools-')), p = await loadProject({cwd: project, out});
+  const out = tempDir('tools'), p = await loadProject({cwd: project, out});
   assert.match(await timeline(p, {scene: 'two', handles: 0}), /^two: [\d.]+–[\d.]+ s of [\d.]+ s \(times from its start\)\n0\.00  ── two$/m);
   assert.match(await review(p), /review \(under-captions, words-overlap, cut-off, hook, text-density, stale, still\):\n0:02\.0–0:03\.8 one · words over words: "Alpha" and "Beta"/);
   const s = await still(p, {at: 'one+2.5,two+0'});
@@ -37,20 +37,20 @@ test('the command line: each tool by name, its flags to the film too; refusals n
   assert.equal(help.status, 0); assert.match(help.stdout, /Read first, look last: timeline → review → fix → part → still\./);
   const r = run(['review', '--scene', 'one']);
   assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /words over words: "Alpha" and "Beta"/);
-  const none = run(['review'], tmpdir());
+  const none = run(['review'], tempDir('empty'));   // a folder with no project in it (its own, not the shared temp folder)
   assert.equal(none.status, 1); assert.match(none.stderr, /no storyreel\.config\.mjs in .*: a project names its film there/);
   assert.equal(run(['draw']).status, 2, 'an unknown tool is a usage error');
 });
 
 test('part: the scenes with their handles, rendered quickly, reviewed first', {skip: has('ffmpeg') ? false : 'needs ffmpeg'}, () => {
-  const out = mkdtempSync(path.join(tmpdir(), 'storyreel-part-')), r = run(['part', '--scene', 'two', '--out', out]);
+  const out = tempDir('part'), r = run(['part', '--scene', 'two', '--out', out]);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /two: [\d.]+–[\d.]+ s .* — review/);
   assert.match(r.stdout, new RegExp(`${out.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/parts/two\\.mp4 · [\\d.]+ s · made in [\\d.]+ s · checks`));
 });
 
 test('the picture a tool printed is on the last line that starts with its path, and only when the file is there', () => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'storyreel-picture-')), png = path.join(dir, 'one two.png');
+  const dir = tempDir('picture'), png = path.join(dir, 'one two.png');
   writeFileSync(png, 'png');
   assert.equal(pictureIn(`${png} · 1 frame: one+2.5 (2.50 s)`), png, 'its path, then " · ", a space in it too');
   assert.equal(pictureIn(`TREE PIPELINE: executeNodeChildren - Error for id: loop {\n  error: no frame\n}\n${png} · 1 frame`), png, 'a logger\'s lines printed before it');
@@ -62,7 +62,7 @@ test('the picture a tool printed is on the last line that starts with its path, 
 });
 
 test('the same tools over MCP (stdio): the handshake, the list with each tool\'s arguments, a call as text, a still as the picture, an error as an error', async () => {
-  const out = mkdtempSync(path.join(tmpdir(), 'storyreel-mcp-')), {spawn} = await import('node:child_process');
+  const out = tempDir('mcp'), {spawn} = await import('node:child_process');
   const server = spawn(process.execPath, [cli, 'mcp', '--out', out], {cwd: project}), replies = new Map();
   let buffered = '';
   server.stdout.on('data', d => { buffered += d; let i; while ((i = buffered.indexOf('\n')) >= 0) { const m = JSON.parse(buffered.slice(0, i)); buffered = buffered.slice(i + 1); replies.set(m.id, m); } });

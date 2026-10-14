@@ -329,7 +329,7 @@ export function segmentedVideo({store, recipe, code = null, joiner = null, force
       await slot();
       try {
         stopIfFailed(seg);
-        const tmp = path.join(job.dir, `segment-${seg.index}-${seg.key}-${process.pid}-${++made}.mp4`);
+        const tmp = path.join(job.work, `segment-${seg.index}-${seg.key}-${process.pid}-${++made}.mp4`);   // in the render's work folder until the store takes it
         await job.encodeFrames({f0: seg.f0, f1: seg.f1, file: tmp, posterFirst: seg.index === 0});
         const file = store.put(seg.key, tmp, {v: MANIFEST, key: seg.key, index: seg.index, from: round(seg.from), frames: seg.f1 - seg.f0, scenes: seg.scenes,
           samples: samples ? hashesAt(sampleOffsets(seg, samples, job.fps)) : {}, made: new Date().toISOString()});
@@ -341,7 +341,7 @@ export function segmentedVideo({store, recipe, code = null, joiner = null, force
     },
     /** Join the segments, in order, into the film's picture. */
     join(job, done) {
-      const file = path.join(job.dir, 'film-video.mp4');
+      const file = path.join(job.work, 'film-video.mp4');   // the joined picture: a working file (render.mjs · closeRender removes it)
       (joiner ?? ffmpegJoin({ffmpeg: job.ffmpeg})).join(done.map(d => d.file), file);
       const segments = done.map(({file: _f, ...d}) => d);
       return {file, report: {strategy: 'segments', store: store.dir ?? store.name, reused: segments.filter(s => s.status === 'reused').length, rendered: segments.filter(s => s.status === 'rendered').length,

@@ -975,6 +975,28 @@ ctx.fillStyle = `rgb(${Math.round(180 + 75 * Math.min(1, glow))}, 80, 60)`;
 ctx.beginPath(); ctx.arc(0, -40, 40, 0, Math.PI * 2); ctx.fill(); ctx.restore();
 ```
 
+## Where StoryReel writes, and what it cleans
+
+A render writes only where you point it, and leaves only what you asked for. Nothing goes to the system's temp folder.
+
+| where | what | kept? |
+|---|---|---|
+| beside `out` | the video, `poster.jpg`, `chapters.txt`, the caption files; with `makeFilm`, `making-of.json` and (with a voice) `narration/`, the paced copy the render read | yes: the outputs |
+| `.storyreel-work-…` beside `out` | the working files: the picture without its sound, the voice and the effects as WAVs, the lists FFmpeg joins, segment files on their way to the cache | removed when the render ends, finished or failed |
+| `work` (a folder you name: `renderFilm({…, work})`, `makeFilm({…, render: {work}})`) | the same working files, when you want to look at them | yes: you chose the place |
+| `folderStore(dir)` | the segment cache (Re-render only what changed) | yes: you chose the place |
+| `makeRelease({out})` | each target's post in `<out>/<target>/`, the render and its making-of in `<out>/work/<target>/` | yes |
+
+```js
+await renderFilm({film, storyboard, timings, out: 'renders/film.mp4'});                          // renders/: film.mp4, chapters.txt (and poster.jpg)
+await renderFilm({film, storyboard, timings, out: 'renders/film.mp4', work: 'renders/work'});   // the working files kept in renders/work/
+```
+
+`renderFilm` and `makeFilm` remove the working files in a `finally`. A picture strategy of your own that prepares a
+render itself (`prepareRender`) writes its working files to `job.work` and ends with `closeRender(job)`. The tests
+make their folders through one helper (`test/tmp.mjs` · `tempDir`), each removed when its test or file ends;
+`npm run test:temp` runs the whole suite with a temp folder of its own and fails if anything is left.
+
 ## Re-render only what changed
 
 A film is edited many times. Fixing one word, one beat or one drawing should not mean drawing all

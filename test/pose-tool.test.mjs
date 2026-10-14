@@ -5,10 +5,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {mkdtempSync, writeFileSync, mkdirSync, chmodSync, rmSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {writeFileSync, mkdirSync, chmodSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {tempDir} from './tmp.mjs';
 
 const TOOL = fileURLToPath(new URL('../tools/pose-from-video.py', import.meta.url));
 const PYTHON = process.env.PYTHON ?? 'python3';
@@ -120,7 +120,7 @@ with tool.quiet_logs(False):
 });
 
 test('a bad models folder ends in a message, not a traceback, and nothing is downloaded', {skip}, () => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'storyreel-tool-')), file = path.join(dir, 'a-file');
+  const dir = tempDir('tool'), file = path.join(dir, 'a-file');   // removed after the file, even if an assertion fails
   writeFileSync(file, 'not a folder');
   const unreadable = path.join(dir, 'unreadable'), model = path.join(unreadable, 'pose_landmarker_heavy.task');
   mkdirSync(unreadable); writeFileSync(model, 'model bytes'); chmodSync(model, 0o000);
@@ -138,5 +138,4 @@ except SystemExit as e:
     assert.doesNotMatch(r.stderr, /Traceback|downloading/);
   }
   chmodSync(model, 0o644);
-  rmSync(dir, {recursive: true, force: true});
 });

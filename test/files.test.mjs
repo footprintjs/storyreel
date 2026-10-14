@@ -1,14 +1,14 @@
 import test, {after} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, mkdirSync, writeFileSync, symlinkSync, readFileSync, realpathSync, rmSync, lstatSync, readdirSync, existsSync, chmodSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {mkdirSync, writeFileSync, symlinkSync, readFileSync, realpathSync, rmSync, lstatSync, readdirSync, existsSync, chmodSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {insideRoot, copyVoice, requireVoiceApart} from '../src/files.mjs';
 import {compileFilm, evenTimings} from '../src/index.mjs';
+import {tempDir} from './tmp.mjs';
 
 // A film folder beside a private one whose name begins the same way: /…/film and /…/film-private.
-const top = mkdtempSync(path.join(tmpdir(), 'storyreel-root-')), root = path.join(top, 'film'), secret = path.join(top, 'film-private');
+const top = tempDir('root'), root = path.join(top, 'film'), secret = path.join(top, 'film-private');
 mkdirSync(path.join(root, 'code'), {recursive: true}); mkdirSync(path.join(root, '..notes')); mkdirSync(secret);
 const block = '// --- on-screen code\nconst x = 1;\n// --- end on-screen code ---\n';
 writeFileSync(path.join(root, 'code', 'rule.ts'), block); writeFileSync(path.join(root, '..notes', 'a.ts'), block); writeFileSync(path.join(secret, 'x.ts'), block);
@@ -56,7 +56,7 @@ test('compileFilm loads a code excerpt only from inside root', async () => {
   assert.ok(film.total > 0);
 });
 
-const made = name => mkdtempSync(path.join(tmpdir(), `storyreel-${name}-`));
+const made = name => tempDir(name);
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** Everything in a folder, at every depth, never following a link: each path and what it is. */
 const contents = (dir, at = '') => readdirSync(path.join(dir, at)).sort().flatMap(name => {

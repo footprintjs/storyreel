@@ -16,7 +16,7 @@ import {flowChart, narrative} from 'footprintjs';
 import {applyPacing, validatePacing, paceTimings} from './pacing.mjs';
 import {withDirections} from './clock.mjs';
 import {compileFilm} from './film.mjs';
-import {prepareRender, finishRender, wholeVideo, checkVideoStrategy} from './render.mjs';
+import {prepareRender, finishRender, closeRender, wholeVideo, checkVideoStrategy} from './render.mjs';
 import {readApproval, requireApproval, voiceHash, unlocked} from './approval.mjs';
 import {hashOf} from './hash.mjs';
 import {checkVideo, ffmpegProbe} from './finished.mjs';
@@ -112,6 +112,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   // narration folder, so the two must not overlap (files.mjs · requireVoiceApart).
   if (narrationDir) requireVoiceApart(narrationDir, dir);
   mkdirSync(dir, {recursive: true});
+  // Where the voice is paced (a copy of it): it becomes <out dir>/narration once the film is allowed, or is removed.
+  const copy = path.join(dir, `.narration-${process.pid}`);
   let film, paced, result, job, plan, inputs, finished = null, voice = null;
   const video = checkVideoStrategy(render.video ?? wholeVideo()), done = [];
   const stages = {
@@ -128,7 +130,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
         // (an approval refused leaves the approved render's narration as it was). The copy holds exactly what the
         // render reads — timings.json and each scene's audio — as new files (files.mjs · copyVoice): pacing rewrites
         // them, and a voice given through links, or read-only, is never paced in place. Nothing else is copied.
-        const copy = path.join(dir, `.narration-${process.pid}`); rmSync(copy, {recursive: true, force: true});
+        rmSync(copy, {recursive: true, force: true});
         const raw = copyVoice(narrationDir, copy);
         // A voice knows only the spoken scenes: a silent scene it left out gets its directions' timing (clock.mjs · withDirections).
         paced = pacing ? await applyPacing({runDir: copy, board: storyboard, timings: raw, pacing}) : withDirections(storyboard, raw);
@@ -203,7 +205,10 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     .addParallelForEach('render-picture', 'render-picture', {items: scope => scope.parts ?? [], branch: part, maxBranches: MAX_PARTS, into: 'partsDone', failFast: true})
     .addFunction('render-film', stages['render-film'], 'render-film')
     .addFunction('check-finished', stages['check-finished'], 'check-finished');
-  const run = await chart.build().recorder(trace).run();
+  // Finished or failed, what the run made to work with goes: the render's working files (render.mjs · closeRender:
+  // kept only in a `work` folder the caller named) and a paced copy of the voice that never became <out dir>/narration.
+  let run;
+  try { run = await chart.build().recorder(trace).run(); } finally { closeRender(job); rmSync(copy, {recursive: true, force: true}); }
   const record = {
     schemaVersion: 1, made: new Date().toISOString(), out: result.out, seconds: result.seconds, chapters: result.chapters,
     // What part of the film this render shows (an approval is of a render of the whole film).

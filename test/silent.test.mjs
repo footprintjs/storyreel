@@ -4,20 +4,20 @@
 // render.mjs · joinVoice); the studio marks its words as not spoken.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync, writeFileSync, mkdtempSync, mkdirSync, existsSync, copyFileSync, symlinkSync, readdirSync, lstatSync, readlinkSync, chmodSync} from 'node:fs';
+import {readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync, symlinkSync, readdirSync, lstatSync, readlinkSync, chmodSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
-import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {compileFilm, evenTimings, paceTimings, applyPacing, validatePacing, makeClock, makeFilm, renderFilm, directionTimings, withDirections, sceneText} from '../src/index.mjs';
 import {planHolds} from '../src/pacing.mjs';
 import {checkScene} from '../src/clock.mjs';
 import {startStudio} from '../src/studio/server.mjs';
+import {tempDir} from './tmp.mjs';
 
 const hello = fileURLToPath(new URL('../examples/hello/', import.meta.url));
 const read = f => JSON.parse(readFileSync(hello + f, 'utf8'));
 const ffmpeg = spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-version']).status === 0;
-const tmp = () => mkdtempSync(path.join(tmpdir(), 'storyreel-silent-'));
+const tmp = () => tempDir('silent');
 const small = {width: 160, height: 90, fps: 4};
 
 // The hello film with a silent opening: the gate creaks, then the shepherd walks out (4 s, never spoken).
@@ -172,10 +172,15 @@ test('a voiced cut with a silent opening renders: paced (generated silence in th
   assert.equal(result.loudness.type, 'linear', 'the voice is measured and set; the silent opening stays quiet');
   // No pacing: the voice's timings lack the opening, and the render joins generated silence before the voice.
   const unpaced = voiceFolder(), timings = withDirections(storyboard, JSON.parse(readFileSync(path.join(unpaced, 'timings.json'), 'utf8')));
-  const film = await compileFilm({storyboard, timings, recipe, root: hello}), dir = tmp();
-  const rendered = await renderFilm({film, storyboard, timings, narrationDir: unpaced, out: path.join(dir, 'unpaced.mp4'), ...small, from: 0, to: 6});
+  const film = await compileFilm({storyboard, timings, recipe, root: hello}), dir = tmp(), work = path.join(dir, 'work');
+  const rendered = await renderFilm({film, storyboard, timings, narrationDir: unpaced, out: path.join(dir, 'unpaced.mp4'), ...small, from: 0, to: 6, work});
   assert.equal(rendered.seconds, 6);
-  assert.ok(existsSync(path.join(dir, 'film-voice-0.wav')), 'the opening\'s silence is generated in the render folder');
+  assert.ok(existsSync(path.join(work, 'film-voice-0.wav')), 'the opening\'s silence is generated with the working files (here in the work folder the caller named, so kept)');
+  assert.deepEqual(readdirSync(dir).sort(), ['chapters.txt', 'unpaced.mp4', 'work'], 'beside the video, only the outputs (and the work folder it was given)');
+  // Without a work folder the working files go in a hidden one beside the video, removed when the render ends.
+  const plain = tmp();
+  await renderFilm({film, storyboard, timings, narrationDir: unpaced, out: path.join(plain, 'unpaced.mp4'), ...small, from: 0, to: 6});
+  assert.deepEqual(readdirSync(plain).sort(), ['chapters.txt', 'unpaced.mp4'], 'only the outputs: the working files are gone');
   assert.ok(!existsSync(path.join(unpaced, 'silent-open.wav')), 'the render never writes into the voice folder');
   // A spoken scene with no audio is not silence: it refuses.
   const missing = {...timings, scenes: timings.scenes.map((s, i) => i === 1 ? {...s, audio: undefined} : s)};

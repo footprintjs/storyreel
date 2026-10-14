@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **A render cleans up after itself.** Its working files (the picture without its sound, the voice and the effects as
+  WAVs, FFmpeg's lists, segment files on their way to the cache) go in a hidden `.storyreel-work-…` folder beside the
+  video, removed when the render ends, finished or failed (`render.mjs` · `closeRender`; `renderFilm` and `makeFilm` call
+  it in a `finally`). Only the outputs stay beside the video. To keep the working files, name a folder for them:
+  `renderFilm({…, work})` (or `makeFilm({…, render: {work}})`). A paced copy of the voice that never became
+  `<out dir>/narration` is removed too. StoryReel writes nothing to the system's temp folder.
+- **The tests clean up after themselves.** Every test folder comes from one helper (`test/tmp.mjs` · `tempDir`), named
+  `storyreel-…` and removed when its test or its file ends. `npm run test:temp` runs the suite with a temp folder of its
+  own and fails if anything is left; CI runs it. A full run used to leave 87 folders behind; it now leaves none.
+
 - **The review's `frozen-voice` names only what a freeze holds.** An emphasis word, a focus key or a guess card is drawn
   on the voice's clock, so its beat under a freeze is no longer reported as "appears when the freeze ends".
 - **A camera move that starts while another runs aims from where that one is going.** A dolly beside a pan takes the

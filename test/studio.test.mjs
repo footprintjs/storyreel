@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import {readFileSync, writeFileSync, copyFileSync, mkdtempSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {readFileSync, writeFileSync, copyFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {compileFilm, evenTimings} from '../src/index.mjs';
 import {startStudio} from '../src/studio/server.mjs';
 import {jsonLines, valueAt} from '../src/studio/lines.mjs';
 import {clockTenths} from '../src/clock.mjs';
+import {tempDir} from './tmp.mjs';
 
 const hello = fileURLToPath(new URL('../examples/hello/', import.meta.url));
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -29,7 +29,7 @@ test('jsonLines: every entry of a recipe file, by the path a film names it with'
 
 test('the studio: frames, the film, what drew a spot; loopback only, read only; compiled again on a change', async () => {
   // A copy of the hello film to edit while the studio runs.
-  const dir = mkdtempSync(path.join(tmpdir(), 'studio-')), file = path.join(dir, 'recipe.json');
+  const dir = tempDir('studio'), file = path.join(dir, 'recipe.json');
   copyFileSync(hello + 'recipe.json', file); copyFileSync(hello + 'rule.ts', path.join(dir, 'rule.ts'));
   const storyboard = JSON.parse(readFileSync(hello + 'storyboard.json', 'utf8'));
   const load = async () => {

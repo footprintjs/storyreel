@@ -2,14 +2,14 @@
 // pure silence is left as it is; the making-of record keeps the type and flags anything not 'linear'.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync, mkdtempSync} from 'node:fs';
+import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
-import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {compileFilm, evenTimings, makeFilm, renderFilm} from '../src/index.mjs';
 import {parseLoudnormReport, measuredLoudness, linearLoudnorm, effectiveTarget, unusableReason, checkLoudnessTarget} from '../src/render.mjs';
 import {loudnessRecord} from '../src/pipeline.mjs';
+import {tempDir} from './tmp.mjs';
 
 const hello = fileURLToPath(new URL('../examples/hello/', import.meta.url));
 const storyboard = JSON.parse(readFileSync(hello + 'storyboard.json', 'utf8'));
@@ -18,7 +18,7 @@ const timings = evenTimings(storyboard, {tail: 4});
 const small = {width: 160, height: 90, fps: 4};
 const ffmpegBin = process.env.FFMPEG_BIN || 'ffmpeg';
 const ffmpeg = spawnSync(ffmpegBin, ['-version']).status === 0;
-const tmp = () => mkdtempSync(path.join(tmpdir(), 'storyreel-loud-'));
+const tmp = () => tempDir('loud');
 
 const REPORT = (i, type) => `[Parsed_loudnorm_1 @ 0x1] \n{\n\t"input_i" : "${i}",\n\t"input_tp" : "-3.10",\n\t"input_lra" : "4.20",\n\t"input_thresh" : "-30.50",\n\t"output_i" : "-16.00",\n\t"normalization_type" : "${type}",\n\t"target_offset" : "0.40"\n}\n`;
 
