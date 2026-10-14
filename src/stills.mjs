@@ -33,13 +33,14 @@ export function filterFromFile(ffmpeg) {
 
 /**
  * What FFmpeg is run with to read the stills: every decoded frame passed through (no frame dropped or repeated, as
- * finished.mjs · onSlots counts them), the frames wanted selected by number (`frames`: decoded frames, footage.mjs ·
- * readFootage's source), scaled. The filter goes in a file, `script`, since a long film's selection runs past what one
+ * finished.mjs · onSlots counts them), the frames wanted selected by their running count in the whole stream (`frames`:
+ * decoded frames, footage.mjs · readFootage's source), scaled. The filter chain is never rebuilt (-reinit_filter 0), so
+ * select's `n` runs on through a picture that changes size mid-stream instead of starting again at 0. The filter goes in a file, `script`, since a long film's selection runs past what one
  * argument may hold (131,072 bytes on Linux). Returns {args, filter}.
  */
 export function stillsArgs({ffmpeg, file, frames, width, height, script}) {
   const filter = `select='${selectFrames(frames)}',scale=${width}:${height}:flags=area`;
-  return {filter, args: ['-v', 'error', '-i', file, filterFromFile(ffmpeg), script, '-fps_mode', 'passthrough', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1']};
+  return {filter, args: ['-v', 'error', '-reinit_filter', '0', '-i', file, filterFromFile(ffmpeg), script, '-fps_mode', 'passthrough', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1']};
 }
 
 /**
@@ -155,19 +156,15 @@ function shapesOf(blocks, across) {
 
 /**
  * The film's candidate logos: the marks that stay put in a corner of a shot (cornerMarks), joined across shots into
- * shapes, each with what a rule reads — in how many shots it stays (`shots`), what share of the film's shots that is
- * (`share`), and whether it spans the film (`spans`: 1 when its shots are in both the first and the last third of the
- * film's time, a shot counting in the third its middle lies in — a caption that comes back after a cutaway, in shots 1
- * and 3 of 4, does not). `shots` are the shots' {start, end}.
+ * shapes, each with what the one rule reads (breakdown.mjs · LOGO): in how many shots it stays (`shots`) and what share of
+ * the film's shots that is (`share`). `shots` are the shots' {start}.
  */
 export function logoCandidates(marksByShot, shots, across) {
   if (!across) return [];
-  const end = Math.max(0, ...shots.map(x => x.end)), all = [...new Set(marksByShot.flatMap(m => [...m]))];
+  const all = [...new Set(marksByShot.flatMap(m => [...m]))];
   return shapesOf(all, across).map(blocks => {
     const inShots = marksByShot.flatMap((marks, i) => (blocks.some(b => marks.has(b)) ? [i] : []));
-    const middle = i => (shots[i].start + shots[i].end) / 2, thirds = inShots.some(i => middle(i) < end / 3) && inShots.some(i => middle(i) > 2 * end / 3);
-    return {kind: 'logo', at: shots[inShots[0]].start, blocks, shotsWith: inShots.map(i => i + 1),
-      measures: {shots: inShots.length, share: inShots.length / shots.length, spans: thirds ? 1 : 0}};
+    return {kind: 'logo', at: shots[inShots[0]].start, blocks, shotsWith: inShots.map(i => i + 1), measures: {shots: inShots.length, share: inShots.length / shots.length}};
   }).filter(c => c.measures.shots > 0);
 }
 

@@ -12,7 +12,7 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {createCanvas, GlobalFonts} from '@napi-rs/canvas';
 import {breakdown, breakdownText, BREAKDOWN} from '../src/breakdown.mjs';
-import {selectFrames, stillsArgs, filterFromFile} from '../src/stills.mjs';
+import {selectFrames, stillsArgs, filterFromFile, eachStill} from '../src/stills.mjs';
 import {ffmpegProbe, showinfoReader, onSlots} from '../src/finished.mjs';
 
 const has = cmd => !spawnSync(cmd, ['-version']).error;
@@ -268,21 +268,6 @@ test('a picture that dims a little and cuts to black is cut, not faded: shot, bl
   assert.equal(spec.shots[1].blank, true, 'the black is a slug of its own');
 });
 
-test('a logo in a corner of every shot is left out; a name in a corner of one shot is lettering', {skip}, async () => {
-  const logo = drawn(path.join(dir, 'brand.png'), {width: 320, height: 180, lines: [['STORYREEL', 16, 282, 16]]});
-  // A lower third inside the bottom-left corner quarter, for the middle shot only: two lines of a name.
-  const name = drawn(path.join(dir, 'name.png'), {width: 320, height: 180, lines: [['Ada Lovelace', 14, 41, 147], ['mathematician', 14, 41, 165]]});
-  const file = path.join(dir, 'branded.mp4');
-  ffmpeg(['-loop', '1', '-framerate', '25', '-t', '4.5', '-i', logo, '-loop', '1', '-framerate', '25', '-t', '4.5', '-i', name, '-filter_complex', [
-    `color=c=0x2b2d33:s=320x180:r=25:d=1.5[a]`, `color=c=0x4a6fa5:s=320x180:r=25:d=1.5[b]`, `color=c=0x2d6a4f:s=320x180:r=25:d=1.5[c]`, '[a][b][c]concat=n=3:v=1:a=0[bg]',
-    '[bg][1:v]overlay=enable=\'between(t\\,1.5\\,2.99)\'[named]', `[named][0:v]overlay,${V}[v]`].join(';'), '-map', '[v]', '-t', '4.5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
-  const {spec} = await breakdown(file, {out: path.join(dir, 'branded')});
-  assert.equal(spec.shots.length, 3);
-  assert.deepEqual(spec.shots.map(x => x.text.verdict), ['no-text', 'text', 'no-text'], JSON.stringify(spec.shots.map(x => x.text)));
-  assert.ok(spec.shots.every(x => x.text.mark > 0), 'the logo is seen in every shot, and left out');
-  assert.deepEqual(spec.text.shots, [2]);
-});
-
 test('read faster than the file\'s average rate, a repeated frame takes no part: a one-frame flash is one flash, not two cuts', {skip}, async () => {
   const file = path.join(dir, 'flash.mp4');
   ffmpeg(['-f', 'lavfi', '-i', `nullsrc=s=320x180:r=25:d=2,geq=lum='if(eq(N\\,20)\\,235\\,90)+20*sin(X/7)':cb=128:cr=128`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
@@ -377,18 +362,6 @@ test('an eased (cos²) fade whose last frames sit just under one colour is one f
   assert.match(end, /^endSpread 1\.47\d* < 1\.5 ✓$/, 'the check shows the value it compared');
 });
 
-test('a caption in a corner of two neighbouring shots is lettering, not the film\'s logo', {skip}, async () => {
-  const caption = drawn(path.join(dir, 'caption.png'), {width: 320, height: 180, lines: [['Paris', 15, 285, 148], ['1889', 15, 285, 165]]});
-  const file = path.join(dir, 'paris.mp4');
-  ffmpeg(['-loop', '1', '-framerate', '25', '-t', '6', '-i', caption, '-filter_complex', [
-    'color=c=0x2b2d33:s=320x180:r=25:d=1.5[a]', 'color=c=0x4a6fa5:s=320x180:r=25:d=1.5[b]', 'color=c=0x2d6a4f:s=320x180:r=25:d=1.5[c]', 'color=c=0x8a5a44:s=320x180:r=25:d=1.5[e]',
-    '[a][b][c][e]concat=n=4:v=1:a=0[bg]', `[bg][0:v]overlay=enable='lt(t\\,2.99)',${V}[v]`].join(';'), '-map', '[v]', '-t', '6', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
-  const {spec, record} = await breakdown(file, {out: path.join(dir, 'paris')});
-  assert.equal(spec.shots.length, 4);
-  assert.deepEqual(spec.shots.map(x => x.text.verdict), ['text', 'text', 'no-text', 'no-text'], JSON.stringify(spec.shots.map(x => x.text)));
-  assert.ok(record.some(e => e.type === 'condition' && /corner mark \d+ at 0 s: it stays in a corner of too few shots, or not from the film's first third to its last/.test(e.text)), 'the logo decision says why not');
-});
-
 test('beat options are the reader\'s own: handed on untouched; only an error the reader codes BEAT_OPTIONS refuses', {skip}, async () => {
   const seen = [];
   const reader = code => (file, options) => {
@@ -429,23 +402,105 @@ test('showinfo\'s times are read from its integer pts and time base: exact past 
 test('showinfo\'s integer form is exact in any time base: 1/90000 and 1001/30000', () => {
   const read = showinfoReader();
   assert.equal(read('[Parsed_showinfo_0 @ 0x2] config in time_base: 1/90000, frame_rate: 30000/1001'), null);
-  assert.deepEqual(read('[Parsed_showinfo_0 @ 0x2] n:100000 pts:300300000 pts_time:3336.67 duration:3003'), {n: 100000, time: 300300000 / 90000});
+  assert.deepEqual(read('[Parsed_showinfo_0 @ 0x2] n:100000 pts:300300000 pts_time:3336.67 duration:3003'), {n: 0, time: 300300000 / 90000}, 'the reader\'s own count, from 0');
   assert.equal(read('[Parsed_showinfo_0 @ 0x2] config in time_base: 1001/30000, frame_rate: 30000/1001'), null);
-  assert.deepEqual(read('[Parsed_showinfo_0 @ 0x2] n:400000 pts: 400000 pts_time:13346.7 duration:1'), {n: 400000, time: 400000 * 1001 / 30000});
+  assert.deepEqual(read('[Parsed_showinfo_0 @ 0x2] n:400000 pts: 400000 pts_time:13346.7 duration:1'), {n: 1, time: 400000 * 1001 / 30000});
   assert.ok(Number.isNaN(read('[Parsed_showinfo_0 @ 0x2] n:400001 pts:NOPTS pts_time:NOPTS duration:1').time), 'a frame without a timestamp has no time');
   assert.equal(read('[h264 @ 0x3] n: 5 pts: 10 pts_time:1'), null, 'only showinfo\'s lines');
 });
 
-test('a caption that comes back after a cutaway (shots 1 and 3 of 4) is lettering, not the film\'s logo', {skip}, async () => {
-  const caption = drawn(path.join(dir, 'caption-aba.png'), {width: 320, height: 180, lines: [['Paris', 15, 285, 148], ['1889', 15, 285, 165]]});
-  const file = path.join(dir, 'paris-aba.mp4');
-  ffmpeg(['-loop', '1', '-framerate', '25', '-t', '6', '-i', caption, '-filter_complex', [
-    'color=c=0x2b2d33:s=320x180:r=25:d=1.5[a]', 'color=c=0x4a6fa5:s=320x180:r=25:d=1.5[b]', 'color=c=0x2d6a4f:s=320x180:r=25:d=1.5[c]', 'color=c=0x8a5a44:s=320x180:r=25:d=1.5[e]',
-    '[a][b][c][e]concat=n=4:v=1:a=0[bg]', `[bg][0:v]overlay=enable='lt(t\\,1.49)+between(t\\,3\\,4.49)',${V}[v]`].join(';'), '-map', '[v]', '-t', '6', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
-  const {spec, record} = await breakdown(file, {out: path.join(dir, 'paris-aba')});
-  assert.equal(spec.shots.length, 4);
-  assert.deepEqual(spec.shots.map(x => x.text.verdict), ['text', 'no-text', 'text', 'no-text'], JSON.stringify(spec.shots.map(x => x.text)));
-  assert.ok(record.some(e => e.type === 'condition' && /corner mark \d+ at 0 s: it stays in a corner of too few shots, or not from the film's first third to its last/.test(e.text)));
+/**
+ * A film of plain shots (`seconds` each, the greys far enough apart to cut) with corner marks over the shots named (from 1):
+ * `bug` a channel's mark at the top right, `caption` two lines at the bottom right, `name` a name at the bottom left.
+ */
+function cornerFilm(label, {seconds, bug = [], caption = [], name = []}) {
+  const marks = {bug: [['STORYREEL', 16, 282, 16]], caption: [['Paris', 15, 285, 148], ['1889', 15, 285, 165]], name: [['Ada Lovelace', 14, 41, 147], ['mathematician', 14, 41, 165]]};
+  const total = seconds.reduce((a, b) => a + b, 0), starts = seconds.map((_, i) => seconds.slice(0, i).reduce((a, b) => a + b, 0));
+  const greys = ['0x282828', '0x6e6e6e', '0x464646', '0x8c8c8c', '0x323232', '0x787878', '0x505050', '0x969696', '0x3c3c3c', '0x828282'];
+  const during = shots => shots.map(i => `between(t\\,${starts[i - 1]}\\,${starts[i - 1] + seconds[i - 1] - .02})`).join('+') || '0';
+  const inputs = [], overlays = [];
+  for (const [kind, shots] of Object.entries({bug, caption, name})) {
+    if (!shots.length) continue;
+    inputs.push('-loop', '1', '-framerate', '25', '-t', String(total), '-i', drawn(path.join(dir, `${label}-${kind}.png`), {width: 320, height: 180, lines: marks[kind]}));
+    overlays.push(during(shots));
+  }
+  const backs = seconds.map((d, i) => `color=c=${greys[i % greys.length]}:s=320x180:r=25:d=${d}[s${i}]`), file = path.join(dir, `${label}.mp4`);
+  let last = 'bg';
+  const layers = overlays.map((when, k) => { const out = `l${k}`, line = `[${last}][${k}:v]overlay=enable='${when}'[${out}]`; last = out; return line; });
+  ffmpeg([...inputs, '-filter_complex', [...backs, `${seconds.map((_, i) => `[s${i}]`).join('')}concat=n=${seconds.length}:v=1:a=0[bg]`, ...layers, `[${last}]${V}[v]`].join(';'),
+    '-map', '[v]', '-t', String(total), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
+  return file;
+}
+
+/** A film's corner marks as decided: [verdict, shots it stays in] for each, and each shot's lettering. */
+async function cornerVerdicts(label, film) {
+  const {spec, record} = await breakdown(cornerFilm(label, film), {out: path.join(dir, label)});
+  const marks = record.filter(e => e.type === 'condition' && /corner mark \d+ at /.test(e.text)).map(e => (/chose logos\/each~\d+\/logo\.$/.test(e.text) ? 'logo' : 'not-logo'));
+  return {shots: spec.shots.length, text: spec.shots.map(x => x.text.verdict), marks, record};
+}
+
+test('a corner mark is the film\'s logo when it stays put in 3 shots or more and three quarters of them — the one rule', {skip}, async () => {
+  const cases = [
+    ['aba', {seconds: [1.5, 1.5, 1.5], caption: [1, 3]}, ['text', 'no-text', 'text'], 'a caption that comes back after a cutaway (2 of 3) is lettering'],
+    ['bug3', {seconds: [1.5, 1.5, 1.5], bug: [1, 2, 3], name: [2]}, ['no-text', 'text', 'no-text'], 'a bug in all 3 shots is the logo; a name in one is lettering'],
+    ['bug124', {seconds: [1.5, 1.5, 1.5, 1.5], bug: [1, 2, 4]}, ['no-text', 'no-text', 'no-text', 'no-text'], 'a bug in shots 1, 2 and 4 of 4 is the logo'],
+    ['caption12', {seconds: [1.5, 1.5, 1.5, 1.5], caption: [1, 2]}, ['text', 'text', 'no-text', 'no-text'], 'a caption over shots 1–2 of 4 is lettering'],
+    ['bug8of10', {seconds: Array(10).fill(1), bug: [2, 3, 4, 5, 6, 7, 8, 9]}, Array(10).fill('no-text'), 'a bug missing from the title and the credits (8 of 10) is the logo'],
+    ['station', {seconds: [7, 1.5, 1.5], bug: [1, 2, 3]}, ['no-text', 'no-text', 'no-text'], 'a station bug over shots of 7, 1.5 and 1.5 s is the logo'],
+  ];
+  for (const [label, film, text, what] of cases) {
+    const got = await cornerVerdicts(label, film);
+    assert.equal(got.shots, film.seconds.length, `${what}: the shots`);
+    assert.deepEqual(got.text, text, what);
+    const bugs = film.bug?.length ? got.marks.filter(m => m === 'logo').length : 0;
+    assert.equal(bugs > 0, Boolean(film.bug?.length), `${what}: ${JSON.stringify(got.marks)}`);
+  }
+});
+
+test('the logo rule\'s known miss: a name shown in 3 shots of 4 reads as the film\'s logo, and the record says so', {skip}, async () => {
+  const got = await cornerVerdicts('lower-third', {seconds: [1.5, 1.5, 1.5, 1.5], caption: [1, 2, 3]});
+  assert.deepEqual(got.text, ['no-text', 'no-text', 'no-text', 'no-text'], 'left out as a logo (the known miss)');
+  assert.ok(got.record.some(e => e.type === 'condition' && /corner mark \d+ at 0 s: it stays put in a corner of most of the film's shots: the film's logo": shots 3 gte 3 ✓, share 0\.75 gte 0\.75 ✓/.test(e.text)), 'the decision, with its evidence');
+});
+
+test('a film of two shots has no logo by the rule: its corner marks are lettering', {skip}, async () => {
+  const got = await cornerVerdicts('two', {seconds: [1.5, 1.5], caption: [1, 2]});   // a mark in both shots
+  assert.deepEqual(got.text, ['text', 'text']);
+  assert.ok(got.marks.length > 0 && got.marks.every(m => m === 'not-logo'), JSON.stringify(got.marks));
+});
+
+test('a picture that changes size mid-stream is read on one count: two transport streams joined, and a WebM', {skip}, async () => {
+  // 2 s at 320×180 (dark), then 6 s at 640×360 (bright), joined as cat joins them; and the same as a WebM, 2 s and 2 s.
+  const small = path.join(dir, 'small.ts'), large = path.join(dir, 'large.ts'), joined = path.join(dir, 'joined.ts');
+  ffmpeg(['-f', 'lavfi', '-i', 'nullsrc=s=320x180:r=25:d=2,geq=lum=\'80+20*sin(X/7)\':cb=128:cr=128', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-f', 'mpegts', small]);
+  ffmpeg(['-f', 'lavfi', '-i', 'nullsrc=s=640x360:r=25:d=6,geq=lum=\'200+20*sin(X/14)\':cb=128:cr=128', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-f', 'mpegts', large]);
+  writeFileSync(joined, Buffer.concat([readFileSync(small), readFileSync(large)]));
+  const {spec} = await breakdown(joined, {out: path.join(dir, 'joined')});
+  near(spec.video.frames, 200, 2, 'every frame, once');
+  assert.deepEqual(spec.transitions.map(t => t.kind), ['cut']); near(spec.transitions[0].at, 2, FRAME, 'the change of picture');
+  assert.equal(spec.shots.length, 2); near(spec.shots[1].end, 8, 2 * FRAME, 'the second shot ends with the file');
+  // The stills are selected by the same running count: frame 10 is the small dark picture, frame 150 the large bright one.
+  const means = new Map();
+  await eachStill('ffmpeg', joined, [10, 150], {width: 48, height: 27}, (k, {rgb}) => { means.set(k, rgb.reduce((a, v) => a + v, 0) / rgb.length); });
+  assert.ok(means.get(10) < 110 && means.get(150) > 170, `the stills come from both sizes: ${JSON.stringify([...means])}`);
+  // A WebM whose size changes mid-stream: FFmpeg rebuilds its filter chain there, and showinfo's own count starts again.
+  const [a, b, list, webm] = ['a.webm', 'b.webm', 'webm.txt', 'joined.webm'].map(x => path.join(dir, x));
+  ffmpeg(['-f', 'lavfi', '-i', 'color=c=0x303030:s=320x180:r=25:d=2', '-c:v', 'libvpx', '-b:v', '200k', a]);
+  ffmpeg(['-f', 'lavfi', '-i', 'color=c=0xd0d0d0:s=640x360:r=25:d=2', '-c:v', 'libvpx', '-b:v', '200k', b]);
+  writeFileSync(list, `file '${a}'\nfile '${b}'\n`);
+  ffmpeg(['-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', webm]);
+  const second = await breakdown(webm, {out: path.join(dir, 'joined-webm')});
+  near(second.spec.video.frames, 100, 2, 'the WebM: every frame, once');
+  assert.deepEqual(second.spec.transitions.map(t => t.kind), ['cut']); near(second.spec.transitions[0].at, 2, FRAME, 'the WebM: the change of picture');
+});
+
+test('showinfo\'s frames are counted by the reader, through a rebuilt filter chain: n starts again at 0, the count runs on', () => {
+  const read = showinfoReader(), lines = [
+    '[Parsed_showinfo_2 @ 0x1] config in time_base: 1/90000, frame_rate: 25/1',
+    '[Parsed_showinfo_2 @ 0x1] n:   0 pts:      0 pts_time:0', '[Parsed_showinfo_2 @ 0x1] n:   1 pts:   3600 pts_time:0.04',
+    '[Parsed_showinfo_2 @ 0x2] config in time_base: 1/1000, frame_rate: 25/1',
+    '[Parsed_showinfo_2 @ 0x2] n:   0 pts:     80 pts_time:0.08', '[Parsed_showinfo_2 @ 0x2] n:   1 pts:    120 pts_time:0.12'];
+  assert.deepEqual(lines.map(read).filter(Boolean), [{n: 0, time: 0}, {n: 1, time: .04}, {n: 2, time: .08}, {n: 3, time: .12}]);
 });
 
 test('refusals name the fix', {skip}, async () => {

@@ -1186,7 +1186,9 @@ film's runs past what one argument may hold: `-/filter:v` from FFmpeg 7, `-filte
   transport stream's and an offset MP4's too) and laid on a constant clock (`finished.mjs · onSlots`): slot k is the frame
   a player shows at k / rate (each time exact: showinfo's integer `pts` in its time base, never its `pts_time`, which
   FFmpeg before 7 rounds to six digits — 10 ms past 1,000 s), so a variable-rate file — a phone's, a screen recording — keeps its cuts on the frame shown
-  then, and so does a picture that starts after its sound. A slot no new frame reached repeats the one before, and a
+  then, and so does a picture that starts after its sound. A picture that changes size mid-stream (two streams joined, a
+  WebM) is read on one running count of frames: FFmpeg's filter chain is never rebuilt (`-reinit_filter 0`, the scale
+  takes the new size), and showinfo's lines are counted by the reader, never by their own `n`. A slot no new frame reached repeats the one before, and a
   repeat takes no part in finding cuts (a one-frame flash read twice is one flash); a new frame that looks the same as
   the one before — a still screen — is a frame, and counts. The rate is decided, with its evidence in `read.why`: the
   nominal rate, unless it is past 120 a second or more than twice the average. When the two differ the spec says so under
@@ -1214,11 +1216,12 @@ film's runs past what one argument may hold: `-/filter:v` from FFmpeg 7, `-filte
   film's motion every 0.5 s is in `spec.motion.curve`.
 - **Lettering is a heuristic, and says so:** rows of sharp strokes that form lines (at least twice as wide as tall, so
   an icon or a face is left out), covering 0.8% of a still or more. The film's logo is left out (`text.mark` says how
-  much): each mark that stays put in a corner of every still of a shot is a candidate, decided — a logo when it stays in
-  at least two shots and a quarter of them, and spans the film: it is in shots in both its first and its last third of
-  time (a shot counts in the third its middle lies in). A name in a corner of one shot (a lower third), a caption over
-  two neighbouring shots, or one that comes back after a cutaway (shots 1 and 3 of 4) is lettering. It never reads the
-  words (no OCR).
+  much): each mark that stays put in a corner of every still of a shot is a candidate, decided by one rule — a logo when
+  it stays put in at least 3 shots and at least three quarters of them. A bug in every shot, in shots 1, 2 and 4 of 4, or
+  missing only from the title and the credits (8 of 10) is the logo; a name in a corner of one shot, a caption over
+  shots 1–2 of 4, or one that comes back after a cutaway (2 of 3) is lettering; a film of two shots has no logo. Its known
+  miss: a name shown in 3 shots of 4 reads as a logo — the record shows that decision with its evidence. It never reads
+  the words (no OCR).
 - **Beats.** `beatMap(audioFile, {...beatOptions, ffmpeg})` → `{bpm, beats: [seconds], drop?, confidence?, alternatives?:
   [{bpm, score}]}` is handed the video's sound as a WAV (in a folder removed after), the beat map's own options
   (`beatOptions`) and this run's FFmpeg, so a beat map such as beats.mjs's fits as it is (`{beatMap}`, or

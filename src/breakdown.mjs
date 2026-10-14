@@ -62,7 +62,8 @@ export const BREAKDOWN = Object.freeze({
   explained: .5,       // … that shift explains this share of the change …
   share: .6,           // … and this share of the frame changes at once (things moving inside it change a part)
   textArea: .008,      // a shot is lettered when rows of sharp strokes cover this share of a still (a heuristic, not OCR)
-  logoShare: .25,      // a corner mark is the film's logo when it stays in two shots or more, this share of them, across the film
+  logoShots: 3,        // a corner mark is the film's logo when it stays put in this many shots or more …
+  logoShare: .75,      // … and in this share of them, or more (a film of two shots has no logo: its marks are lettering)
   onBeat: .05,         // seconds: a cut this close to a beat lands on it (beats.mjs · BEATS.onBeat)
   closeTempo: .9,      // a tempo whose next alternative scores this much of it or more is a close call
   stillWidth: 480,     // colour stills, for the sheets and the lettering, are read this wide
@@ -92,10 +93,13 @@ const MOTION = t => ({key: 'motion', noun: 'shot', rules: [
   {when: {pan: {gte: t.minPan}, explained: {gte: t.explained}, share: {gte: t.share}}, then: 'camera', label: 'the whole picture shifts together: the camera moves'}],
 fallback: {branch: 'inside', label: 'parts of the picture change while the frame holds: things move inside it'}});
 
-/** Whether a mark that stays in a corner is the film's logo (left out of the lettering). */
+/**
+ * Whether a mark that stays in a corner is the film's logo (left out of the lettering): the one rule, at least
+ * `logoShots` shots and `logoShare` of them. Its known miss: a name shown in three shots of four reads as a logo.
+ */
 const LOGO = t => ({key: 'verdict', noun: 'corner mark', rules: [
-  {when: {shots: {gte: 2}, share: {gte: t.logoShare}, spans: {eq: 1}}, then: 'logo', label: 'it stays in a corner across the film: the film\'s logo'}],
-fallback: {branch: 'not-logo', label: 'it stays in a corner of too few shots, or not from the film\'s first third to its last: lettering, not a logo'}});
+  {when: {shots: {gte: t.logoShots}, share: {gte: t.logoShare}}, then: 'logo', label: 'it stays put in a corner of most of the film\'s shots: the film\'s logo'}],
+fallback: {branch: 'not-logo', label: 'it stays in a corner of too few of the film\'s shots: lettering, not a logo'}});
 
 /** Whether a shot shows lettering. */
 const TEXT = t => ({key: 'text', noun: 'shot', rules: [
@@ -185,7 +189,7 @@ const decided = (s, into, keys) => decidedOf(s.$getValue(into) ?? [], keys);
 
 const OPTION_KEYS = ['out', 'beatMap', 'beatOptions', 'ffmpeg', 'probe', 'thresholds'];
 /** Thresholds that count pixels, frames or candidates: whole numbers (a width at least 16 pixels). */
-const WHOLE = {width: 16, stillWidth: 16, gradualFrames: 1, maxCandidates: 1};
+const WHOLE = {width: 16, stillWidth: 16, gradualFrames: 1, maxCandidates: 1, logoShots: 1};
 
 /** The thresholds, checked: each a known name and a number, 0 or more (a count, a whole number). */
 function readThresholds(thresholds) {

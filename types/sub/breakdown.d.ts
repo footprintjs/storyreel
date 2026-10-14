@@ -4,7 +4,7 @@ import type {VideoProbe} from '../index.js';
 export interface BreakdownThresholds {
   width: number; cutJump: number; cutRatio: number; flashLasting: number; blank: number; minFade: number; maxFade: number; maxHold: number;
   gradualFloor: number; gradualFrames: number; minChange: number; coherence: number; mix: number; moved: number; maxGradual: number;
-  stillCell: number; minPan: number; explained: number; share: number; textArea: number; logoShare: number; onBeat: number; closeTempo: number; stillWidth: number; maxCandidates: number;
+  stillCell: number; minPan: number; explained: number; share: number; textArea: number; logoShots: number; logoShare: number; onBeat: number; closeTempo: number; stillWidth: number; maxCandidates: number;
 }
 export const BREAKDOWN: Readonly<BreakdownThresholds>;
 

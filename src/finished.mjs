@@ -111,21 +111,23 @@ export function onSlots(fps, each) {
 }
 
 /**
- * A reader of showinfo's lines: the time base it is configured with ("config in time_base: N/D") and, for each frame, its
- * number and its time — exact, from its integer pts in that base. Its `pts_time` is read only before any time base is
- * seen: FFmpeg before 7 prints it to six significant digits, so a time past 1,000 s comes rounded to 10 ms (past
- * 10,000 s, to 100 ms). Returns line → {n, time} for a frame's line (time NaN when the frame has no timestamp), else null.
+ * A reader of showinfo's lines: for each frame, its number in the whole stream and its time — exact, from its integer pts
+ * in the time base of the most recent "config in time_base: N/D" line. The number is the reader's own running count:
+ * showinfo prints in output order, and its own `n` starts again at 0 whenever FFmpeg rebuilds the filter chain (a picture
+ * that changes size mid-stream), so it is never used. Its `pts_time` is read only before any time base is seen: FFmpeg
+ * before 7 prints it to six significant digits, so a time past 1,000 s comes rounded to 10 ms (past 10,000 s, to 100 ms).
+ * Returns line → {n, time} for a frame's line (time NaN when the frame has no timestamp), else null.
  */
 export function showinfoReader() {
-  let base = null;
+  let base = null, count = 0;
   return line => {
     if (!/Parsed_showinfo/.test(line)) return null;
     const config = /config in time_base:\s*(\d+)\/(\d+)/.exec(line);
     if (config) { base = [Number(config[1]), Number(config[2])]; return null; }
-    const m = /\bn:\s*(\d+)\s+pts:\s*(\S+)\s+pts_time:(\S+)/.exec(line);
+    const m = /\bn:\s*\d+\s+pts:\s*(\S+)\s+pts_time:(\S+)/.exec(line);
     if (!m) return null;
-    const pts = Number(m[2]);
-    return {n: Number(m[1]), time: base && base[1] && Number.isFinite(pts) ? pts * base[0] / base[1] : Number(m[3])};
+    const pts = Number(m[1]);
+    return {n: count++, time: base && base[1] && Number.isFinite(pts) ? pts * base[0] / base[1] : Number(m[2])};
   };
 }
 
@@ -136,7 +138,8 @@ export function showinfoReader() {
  */
 async function slotFrames(ffmpeg, file, {width, height, fps}, each) {
   const size = width * height, vf = `scale=${width}:${height}:flags=area,format=gray,showinfo`;
-  const ff = spawn(ffmpeg, ['-hide_banner', '-nostats', '-v', 'info', '-i', file, '-vf', vf, '-fps_mode', 'passthrough', '-f', 'rawvideo', 'pipe:1'], {stdio: ['ignore', 'pipe', 'pipe']});
+  // -reinit_filter 0: a picture that changes size mid-stream is scaled on (the scale takes it), not given a rebuilt chain.
+  const ff = spawn(ffmpeg, ['-hide_banner', '-nostats', '-v', 'info', '-reinit_filter', '0', '-i', file, '-vf', vf, '-fps_mode', 'passthrough', '-f', 'rawvideo', 'pipe:1'], {stdio: ['ignore', 'pipe', 'pipe']});
   const times = [], waiting = [], slots = onSlots(fps, each), read = showinfoReader();
   let tail = '', said = '', decoded = 0, lastTime = -1 / fps;
   const release = (all = false) => {
