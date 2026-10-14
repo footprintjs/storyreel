@@ -10,22 +10,41 @@ import {existsSync} from 'node:fs';
 import path from 'node:path';
 import {flowChart, narrative, decide} from 'footprintjs';
 import {QUIET, plainNarrative} from './record.mjs';
-import {ANALYSIS, onsetStrength, tempoCandidates, metricalRelatives, betweenSupport, trackBeats, refineBeats, gridTempo, onsetSupport, downbeatScores, dropCandidate, peakOfSamples, firstAtOrAfter} from './dsp.mjs';
+import {ANALYSIS, onsetStrength, tempoCandidates, lowPulse, levelEvidence, trackBeats, refineBeats, gridTempo, onsetSupport, downbeatScores, dropCandidate, peakOfSamples, firstAtOrAfter} from './dsp.mjs';
 
 /**
- * The beat map's rules. range: the tempos preferred (BPM; others are weighed down, never refused). clear: how far the
- * strongest tempo must stand above the next (1 − the next one's share of it; its slower echoes, ½ and ⅓, aside) to
- * count as measured, not close. octave: within this of the strongest, the same beat at another level (2×, 3×, or a
- * slower echo ½, ⅓: dsp.mjs · metricalRelatives) is a question of level, which the onsets in between settle. between:
- * how full the beats in between must be (their onsets against the beats', dsp.mjs · betweenSupport) for the faster of
- * two levels to be the beat — high, because hats on the eighths read 0.6 and a wrong level claimed as certain is the
- * one failure that matters; under it the answer is tempo-close. Calibrated on synthetic songs only: `bpm` settles a
- * real mix. meter: beats in a bar (a 4/4 guess). downbeat: the margin for the beat that starts a bar. drop: the dB a drop's rise must hold, both halves of the window after it.
- * window: the seconds of song either side a drop is judged over. fade, sudden: a rise that takes longer than `fade`
- * seconds to climb and makes less than `sudden` of itself at once is a fade-in, not a drop. onBeat: the tolerance
- * onBeat(t) takes by default (seconds).
+ * The beat map's rules. range: the tempos preferred (BPM; others are weighed down, never refused). meter: beats in a bar
+ * (a 4/4 guess). downbeat: the margin for the beat that starts a bar. drop: the dB a drop's rise must hold, both halves of
+ * the window after it. window: the seconds of song either side a drop is judged over. fade, sudden: a rise that takes
+ * longer than `fade` seconds to climb and makes less than `sudden` of itself at once is a fade-in, not a drop. onBeat: the
+ * tolerance onBeat(t) takes by default (seconds). level: the tests a level of the beat passes to be certain (levelTests).
  */
-export const BEATS = Object.freeze({range: Object.freeze([70, 180]), clear: .1, octave: .3, between: .85, meter: 4, downbeat: .1, drop: 3, window: 4, fade: 2, sudden: .5, onBeat: .05});
+export const BEATS = Object.freeze({range: Object.freeze([70, 180]), meter: 4, downbeat: .1, drop: 3, window: 4, fade: 2, sudden: .5, onBeat: .05,
+  level: Object.freeze({phase: .8, kicked: .75, low: .5, steady: .5, fill: Object.freeze({2: .55, 3: .2, 4: .2}), margin: .3})});
+/** The levels of the beat tried against the strongest tempo: every relative, a quarter to four times it. */
+const LEVELS = Object.freeze([1 / 4, 1 / 3, 1 / 2, 1, 2, 3, 4]);
+
+/**
+ * The tests one level of the beat must pass to be certain — two pieces of evidence that must agree. When the song has a
+ * low-band (kick) pulse: the kicks land on the level's beats (phase) and on nearly every one of them (kicked: the kicks
+ * themselves fill the half-beats of the level below), and no kick falls between them (low fill, at halves, thirds and
+ * quarters). Whatever the song: the beats carry its body evenly (steady), and no subdivision is filled — the half-beats
+ * not as strong as the beats (hats on the eighths may sound there), the thirds and quarters not at all (a level whose
+ * every quarter-beat sounds is too slow). With no low-band pulse, the level's own score must stand `margin` over every
+ * other level tried. Returns the names of the tests it fails; none, and it passes.
+ */
+export function levelTests(level, all, rules = BEATS.level) {
+  const fails = [], e = level.evidence, pulse = e.phase !== null;
+  if (pulse) {
+    if (!(e.phase >= rules.phase)) fails.push('phase');
+    if (!(e.kicked >= rules.kicked)) fails.push('kicked');
+    for (const k of [2, 3, 4]) if (e.fill[k].low >= rules.low) fails.push(`kick between (${k})`);
+  }
+  if (!(e.steady >= rules.steady)) fails.push('steady');
+  for (const k of [2, 3, 4]) if (e.fill[k].full >= rules.fill[k]) fails.push(`filled (${k})`);
+  if (!pulse && all.some(other => other !== level && other.score > level.score - rules.margin)) fails.push('margin');
+  return fails;
+}
 const OPTION_KEYS = ['bpm', 'drop', 'range', 'ffmpeg'];
 const ffmpegOf = given => given ?? process.env.FFMPEG_BIN ?? 'ffmpeg';
 
@@ -61,12 +80,14 @@ const argmax = list => list.reduce((best, v, i) => (v > list[best] ? i : best), 
  */
 async function analyse(read, source, options) {
   const o = readOptions(options), work = {};
+  // Certain only when exactly one level of the beat passes every test (levelTests): the kick pulse and the in-betweens
+  // agree on it. Anything else is tempo-close, the strongest taken, the alternatives listed.
+  const one = s => s.passing.length === 1;
   const tempoRules = [
     {when: s => s.bpmGiven !== null, then: 'tempo-given', label: 'The tempo was given (options.bpm)'},
-    {when: s => s.faster !== null && s.between >= BEATS.between,
-      then: 'tempo-faster', label: `A faster level (twice or three times) comes within ${BEATS.octave}, and onsets fill the beats in between: the beat is the faster level`},
-    {when: s => s.strongest !== null && (s.next === null || s.clarity >= BEATS.clear) && s.faster === null && (s.echo === null || s.echoBetween >= BEATS.between),
-      then: 'tempo-measured', label: `The strongest period stands clear of the next, no faster level comes within ${BEATS.octave}, and a slower echo that does has its beats in between filled`},
+    {when: s => one(s) && s.passing[0] === s.strongest, then: 'tempo-measured', label: 'One level of the beat passes both tests — the kick pulse and the in-betweens agree — and it is the strongest'},
+    {when: s => one(s) && s.passing[0] > s.strongest, then: 'tempo-faster', label: 'One level of the beat passes both tests — the kick pulse and the in-betweens agree — and it is faster than the strongest'},
+    {when: s => one(s) && s.passing[0] < s.strongest, then: 'tempo-slower', label: 'One level of the beat passes both tests — the kick pulse and the in-betweens agree — and it is slower than the strongest'},
   ];
   const barRules = [{when: s => s.barClarity >= BEATS.downbeat, then: 'bars-measured', label: `Low-band onsets mark one beat in ${BEATS.meter}: the bars start there`}];
   const dropRules = [
@@ -86,31 +107,26 @@ async function analyse(read, source, options) {
   }, 'decode', 'The song read as mono samples')
     .addFunction('onsets', s => {
       work.onsets = onsetStrength(work.samples, work.rate);
+      work.pulse = lowPulse(work.onsets.power, work.onsets.frameRate);
       s.frames = work.onsets.frames; s.frameRate = round(work.onsets.frameRate, 3);
     }, 'onsets', 'Onset strength: spectral flux, log-compressed, in three bands')
     .addDeciderFunction('choose-tempo', s => {
-      work.candidates = tempoCandidates(work.onsets.flux.all, work.onsets.frameRate, {range: o.range});
+      work.candidates = tempoCandidates(work.onsets.flux.all, work.onsets.frameRate, {range: o.range, count: 8});
       if (!work.candidates.length && o.bpm === null) throw new Error(`beatMap: ${source} has no repeating onsets to measure a tempo from; give options.bpm to lay a grid anyway`);
       s.alternatives = work.candidates.map(({bpm, score}) => ({bpm, score}));
-      const [strongest, ...others] = work.candidates;
-      s.bpmGiven = o.bpm; s.strongest = strongest?.bpm ?? null;
-      // A slower relative (½, ⅓) is the echo of any steady pulse, not a doubt: the margin is against the best of the rest.
-      const echoes = new Set(strongest ? metricalRelatives(strongest.bpm, others, {faster: false}) : []), next = others.find(c => !echoes.has(c)) ?? null;
-      s.next = next?.bpm ?? null; s.clarity = next ? round(1 - next.score, 3) : 1;
-      // The same beat at another level, within `octave` of the strongest, is a question of level: a faster relative
-      // (2×, 3×) may be the beat itself heard at half (a third) speed, and a slower echo (½, ⅓) may be the beat with
-      // the strongest its hats. The onsets at the beats in between settle it (dsp.mjs · betweenSupport): full, the
-      // faster level is the beat; anything less is tempo-close.
-      const near = c => c && 1 - c.score < BEATS.octave ? c : null;
-      work.faster = strongest ? near(metricalRelatives(strongest.bpm, others)[0]) : null;
-      const echo = strongest ? near(metricalRelatives(strongest.bpm, others, {faster: false})[0]) : null;
-      s.faster = work.faster?.bpm ?? null; s.between = work.faster ? levelSupport(work, strongest, work.faster) : null;
-      s.echo = echo?.bpm ?? null; s.echoBetween = echo ? levelSupport(work, echo, strongest) : null;
-      return decide(s, tempoRules, {branch: 'tempo-close', label: 'Another period is nearly as strong, or another level of the beat is and the onsets in between do not settle which: the strongest is taken, and the alternatives say what else it could be'});
-    }, 'choose-tempo', 'The tempo: the onsets\' autocorrelation, weighed by the preferred range')
+      s.bpmGiven = o.bpm; s.strongest = work.candidates[0]?.bpm ?? null;
+      // Every level of the beat, a quarter to four times the strongest, tried against both pieces of evidence.
+      work.levels = work.candidates.length ? levelsOf(work) : [];
+      s.pulse = work.pulse.length;
+      // Each level and the tests it fails, as words the record can show.
+      s.levels = work.levels.map(l => `${l.bpm}: ${l.fails.length ? l.fails.join(', ') : 'passes'}`).join(' · ');
+      s.passing = work.levels.filter(l => !l.fails.length).map(l => l.bpm);
+      return decide(s, tempoRules, {branch: 'tempo-close', label: 'No level of the beat, or more than one, passes both tests: the strongest is taken, and the alternatives say what else it could be'});
+    }, 'choose-tempo', 'The tempo: the onsets\' autocorrelation, weighed by the preferred range, every level of the beat tried against the kick pulse and the in-betweens')
     .addFunctionBranch('tempo-given', 'tempo-given', s => useTempo(s, o.bpm), 'the given tempo')
-    .addFunctionBranch('tempo-faster', 'tempo-faster', s => useTempo(s, work.faster.bpm), 'the faster level, its beats filled')
-    .addFunctionBranch('tempo-measured', 'tempo-measured', s => useTempo(s, work.candidates[0].bpm), 'the measured tempo')
+    .addFunctionBranch('tempo-measured', 'tempo-measured', s => useTempo(s, s.passing[0]), 'the measured tempo')
+    .addFunctionBranch('tempo-faster', 'tempo-faster', s => useTempo(s, s.passing[0]), 'a faster level, the evidence agreeing')
+    .addFunctionBranch('tempo-slower', 'tempo-slower', s => useTempo(s, s.passing[0]), 'a slower level, the evidence agreeing')
     .addFunctionBranch('tempo-close', 'tempo-close', s => useTempo(s, work.candidates[0].bpm), 'the strongest tempo, the others close')
     .end()
     .addFunction('track-beats', s => {
@@ -152,14 +168,23 @@ async function analyse(read, source, options) {
     .end();
   const trace = narrative();
   await chart.setLogger(QUIET).build().recorder(trace).run();
-  return {bpm: work.bpm, beats: work.beats, bars: work.bars, drop: work.drop, confidence: work.confidence,
+  return {bpm: work.bpm, beats: work.beats, bars: work.bars, drop: work.drop, confidence: work.confidence, levels: work.levels.map(({bpm, score, fails}) => ({bpm, score, fails})),
     alternatives: work.candidates.map(({bpm, score}) => ({bpm, score})), seconds: round(work.samples.length / work.rate, 3), record: plainNarrative(trace)};
 }
 
-/** How full the beats in between are when `slow` is tracked and `fast` (twice or three times it) is the other level. */
-function levelSupport(work, slow, fast) {
-  const fr = work.onsets.frameRate, beats = trackBeats(work.onsets.flux.all, slow.period, {frameRate: fr}).map(f => f / fr);
-  return round(betweenSupport(work.onsets.flux.all, fr, beats, Math.round(fast.bpm / slow.bpm)), 3);
+/**
+ * Every level of the beat a quarter to four times the strongest tempo (30–300 BPM), each tracked on its own, with its
+ * evidence (dsp.mjs · levelEvidence), its score among the candidates (0 when it is none) and the tests it fails.
+ */
+function levelsOf(work) {
+  const fr = work.onsets.frameRate, {low, mid} = work.onsets.flux, strongest = work.candidates[0].bpm;
+  const bands = {all: work.onsets.flux.all, low, body: Float32Array.from(low, (v, i) => v + mid[i])};
+  const levels = LEVELS.map(k => strongest * k).filter(bpm => bpm >= 30 && bpm <= 300).map(bpm => {
+    const beats = trackBeats(bands.all, 60 * fr / bpm, {frameRate: fr}).map(f => f / fr);
+    const score = work.candidates.find(c => Math.abs(c.bpm - bpm) <= .02 * bpm)?.score ?? 0;
+    return {bpm: round(bpm, 2), score, evidence: levelEvidence(bands, fr, beats, work.pulse)};
+  });
+  return levels.map(l => ({...l, fails: levelTests(l, levels)}));
 }
 
 /** The beat nearest t in an ascending list (the earlier one on a tie), or null for none. */
@@ -175,6 +200,7 @@ function nearestOf(beats, t) {
 function makeMap(values) {
   const beats = Object.freeze([...values.beats]);
   return Object.freeze({...values, beats, bars: Object.freeze([...values.bars]), alternatives: Object.freeze(values.alternatives.map(a => Object.freeze(a))),
+    levels: Object.freeze(values.levels.map(l => Object.freeze({...l, fails: Object.freeze([...l.fails])}))),
     nearestBeat: t => nearestOf(beats, t),
     nextBeat: t => beats[firstAtOrAfter(beats, t + 1e-6)] ?? null,
     onBeat: (t, tolerance = BEATS.onBeat) => { const n = nearestOf(beats, t); return n !== null && Math.abs(n - t) <= tolerance; }});

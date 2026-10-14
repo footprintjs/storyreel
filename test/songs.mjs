@@ -42,24 +42,101 @@ export function wavFile(file, samples, rate) {
   return file;
 }
 
+/** The drum kit, each voice a function of seconds since its hit (22050 Hz or any rate), at full level before `level`. */
+const kitVoices = noise => ({
+  kick: a => .7 * Math.exp(-a * 18) * Math.sin(2 * Math.PI * (55 + 60 * Math.exp(-a * 40)) * a),
+  sub: a => .6 * Math.exp(-a * 4) * Math.sin(2 * Math.PI * (48 + 40 * Math.exp(-a * 30)) * a),
+  snare: a => Math.exp(-a * 25) * (.35 * noise() + .25 * Math.sin(2 * Math.PI * 190 * a)),
+  clap: a => (a < .03 ? Math.exp(-((a * 1000) % 10) * .4) : Math.exp(-(a - .03) * 30)) * .3 * noise(),
+  rim: a => .3 * Math.exp(-a * 60) * Math.sin(2 * Math.PI * 1250 * a),
+  ride: a => .08 * Math.exp(-a * 6) * (Math.sin(2 * Math.PI * 3100 * a) + Math.sin(2 * Math.PI * 4700 * a) + .5 * noise()),
+});
+/** A high-passed noise burst (a hat): `decay` per second. */
+const hatVoice = (noise, decay) => { let hp = 0, last = 0; return a => { const n = noise(); hp = .9 * (hp + n - last); last = n; return Math.exp(-a * decay) * hp; }; };
+
 /**
- * A drum pattern, the truth its quarter-note beats. kick 'backbeat': a kick on beats one and three and a snare on two
- * and four — the pattern whose kick alone repeats at half the tempo; 'four': a kick on every beat (four on the floor),
- * no snare. hats: 'eighths', 'sixteenths', or 'offbeats' (only on the "and" between beats), at `hatLevel` (0.12; a loud
- * hat is 0.35, as loud as the snare).
+ * Rhythms by family, on a grid (`grid` steps a beat: 4 sixteenths, or 3 triplet eighths) over `steps` steps (one bar
+ * of four beats, or two for a clave). Each voice lists its steps, or [step, level]; `level` scales the voice. The
+ * tempo corpus (test/tempo-corpus.test.mjs) plays each at seven tempi; the truth is always the quarter-note beat.
  */
-export function groove({bpm, count = 48, lead = .25, tail = 1, rate = 22050, kick = 'backbeat', hats = 'eighths', hatLevel = .12}) {
-  const beat = 60 / bpm, x = new Float32Array(Math.round((lead + count * beat + tail) * rate)), noise = noiseFrom(11);
-  const add = (t0, seconds, f) => { const a = Math.round(t0 * rate); for (let i = 0; i < seconds * rate && a + i < x.length; i++) x[a + i] += f(i / rate); };
-  const thump = a => .7 * Math.exp(-a * 18) * Math.sin(2 * Math.PI * (55 + 60 * Math.exp(-a * 40)) * a), snare = a => Math.exp(-a * 25) * (.35 * noise() + .25 * Math.sin(2 * Math.PI * 190 * a));
-  const at = {eighths: [0, .5], sixteenths: [0, .25, .5, .75], offbeats: [.5]}[hats], beats = [];
-  for (let k = 0; k < count; k++) {
-    const t = lead + k * beat;
-    beats.push(t);
-    if (kick === 'four' || k % 2 === 0) add(t, .25, thump);
-    if (kick === 'backbeat' && k % 2 === 1) add(t, .18, snare);
-    for (const part of at) { let hp = 0, last = 0; add(t + part * beat, .04, a => { const n = noise(); hp = .9 * (hp + n - last); last = n; return hatLevel * Math.exp(-a * 120) * hp; }); }
+const range = (n, every = 1, from = 0) => Array.from({length: Math.ceil((n - from) / every)}, (_, i) => from + i * every);
+export const RHYTHMS = Object.freeze({
+  // The reviewer's drum patterns (the fifty-six: eight patterns at seven tempi).
+  'backbeat, eighth hats': {grid: 4, steps: 16, kick: [0, 8], snare: [4, 12], hat: range(16, 2)},
+  'backbeat, sixteenth hats': {grid: 4, steps: 16, kick: [0, 8], snare: [4, 12], hat: range(16)},
+  'four on the floor, off-beat hats': {grid: 4, steps: 16, kick: [0, 4, 8, 12], open: [2, 6, 10, 14]},
+  'backbeat, loud hats': {grid: 4, steps: 16, kick: [0, 8], snare: [4, 12], hat: range(16, 2), level: {hat: 3}},
+  'four on the floor, eighth hats': {grid: 4, steps: 16, kick: [0, 4, 8, 12], hat: range(16, 2)},
+  'backbeat, ghost notes': {grid: 4, steps: 16, kick: [0, 8], snare: [4, 12, [7, .25], [9, .25], [15, .25]], hat: range(16, 2)},
+  'kick and snare only': {grid: 4, steps: 16, kick: [0, 8], snare: [4, 12]},
+  'backbeat, ride on the beat': {grid: 4, steps: 16, kick: [0, 8], snare: [4, 12], ride: range(16, 4)},
+  // The nine families of the recheck.
+  dembow: {grid: 4, steps: 16, kick: [0, 4, 8, 12], snare: [3, 6, 11, 14], hat: range(16, 2)},
+  'son clave with kick': {grid: 4, steps: 32, kick: range(32, 4), rim: [0, 6, 12, 20, 24], hat: range(32, 2), level: {hat: .5}},
+  'half-time shuffle': {grid: 3, steps: 12, kick: [0, 5], snare: [6, [1, .2], [4, .2], [7, .2], [10, .2]], hat: [0, 2, 3, 5, 6, 8, 9, 11]},
+  'trap: rolling hats, half-time snare': {grid: 4, steps: 16, sub: [0, 7, 10], clap: [8], hat: range(16)},
+  'four on the floor, club': {grid: 4, steps: 16, kick: [0, 4, 8, 12], clap: [4, 12], open: [2, 6, 10, 14], hat: range(16), level: {hat: .5}},
+  breakbeat: {grid: 4, steps: 16, kick: [0, 2, 10], snare: [4, 12, [7, .3], [9, .3], [15, .3]], ride: range(16, 2)},
+  'sixteenths, kick on one only': {grid: 4, steps: 16, kick: [0], hat: range(16), level: {hat: 3}},
+  'bossa nova': {grid: 4, steps: 32, kick: [0, 6, 8, 14, 16, 22, 24, 30], rim: [0, 6, 12, 20, 26], hat: range(32, 2), level: {hat: .6}},
+  funk: {grid: 4, steps: 16, kick: [0, 3, 10], snare: [4, 12, [7, .25], [9, .25], [14, .25]], hat: range(16), level: {hat: .8}},
+});
+export const DRUM_PATTERNS = Object.freeze(Object.keys(RHYTHMS).slice(0, 8));
+export const RHYTHM_FAMILIES = Object.freeze(Object.keys(RHYTHMS).slice(8));
+
+/** A rhythm from RHYTHMS at `bpm`, `bars` long; returns {samples, rate, beats} with the quarter-note beats as truth. */
+export function rhythm({bpm, family, bars = 12, lead = .25, tail = 1, rate = 22050}) {
+  const spec = RHYTHMS[family];
+  if (!spec) throw new Error(`no rhythm "${family}"`);
+  const beat = 60 / bpm, step = beat / spec.grid, noise = noiseFrom(17), voices = kitVoices(noise);
+  const patternBeats = spec.steps / spec.grid, repeats = Math.ceil(bars * 4 / patternBeats);
+  const x = new Float32Array(Math.round((lead + repeats * patternBeats * beat + tail) * rate));
+  const add = (t0, seconds, f, gain) => { const a = Math.round(t0 * rate); for (let i = 0; i < seconds * rate && a + i < x.length; i++) x[a + i] += gain * f(i / rate); };
+  const sounds = {kick: [voices.kick, .3], sub: [voices.sub, .8], snare: [voices.snare, .2], clap: [voices.clap, .12], rim: [voices.rim, .08], ride: [voices.ride, .5],
+    hat: [null, .04, 120, .12], open: [null, .15, 15, .1]};
+  for (let r = 0; r < repeats; r++) for (const [voice, hits] of Object.entries(spec)) {
+    if (!sounds[voice]) continue;
+    const [f, seconds, decay, base] = sounds[voice], scale = (spec.level?.[voice] ?? 1) * (base ?? 1);
+    for (const hit of hits) {
+      const [at, level] = Array.isArray(hit) ? hit : [hit, 1];
+      add(lead + (r * spec.steps + at) * step, seconds, f ?? hatVoice(noise, decay), scale * level);
+    }
   }
   for (let i = 0; i < x.length; i++) x[i] += .004 * noise();
-  return {samples: x, rate, beats};
+  return {samples: x, rate, beats: Array.from({length: repeats * patternBeats}, (_, k) => lead + k * beat)};
 }
+
+/** The tempi every rhythm is played at. */
+export const CORPUS_TEMPI = Object.freeze([70, 85, 95, 110, 128, 150, 172]);
+/** A level that fades in over 6 s from a quiet start at 6 s; one that dips for a quiet bridge; one that fades out. */
+const fadeIn = t => (t < 6 ? .05 : t < 12 ? .05 + .95 * (t - 6) / 6 : 1), bridge = t => (t > 8 && t < 12 ? .15 : 1), fadeOut = end => t => (t > end - 6 ? Math.max(.02, (end - t) / 6) : 1);
+
+/**
+ * The tempo corpus: every song the beat map's certainty is checked against (test/tempo-corpus.test.mjs), each with
+ * its true tempo (the quarter-note beat), made on demand. Three groups:
+ * - 'drum patterns': the eight DRUM_PATTERNS at seven tempi (56);
+ * - 'rhythm families': the nine RHYTHM_FAMILIES — dembow, son clave with a kick, half-time shuffle, trap hats over a
+ *   half-time snare, four on the floor, breakbeat, sixteenths with the kick on one only, bossa nova, funk — at seven
+ *   tempi (63);
+ * - 'songs': click tracks (plain, and with a kick every fourth click), builds and drops, pads, first clicks 0–50 ms
+ *   in, quiet intros, fade-ins, a quiet bridge, a fade-out (66).
+ */
+export function tempoCorpus() {
+  const list = [], add = (group, name, bpm, make) => list.push({group, name, bpm, make});
+  for (const family of Object.keys(RHYTHMS)) for (const bpm of CORPUS_TEMPI) add(DRUM_PATTERNS.includes(family) ? 'drum patterns' : 'rhythm families', `${family} at ${bpm}`, bpm, () => rhythm({bpm, family}));
+  const click = (name, bpm, o) => add('songs', `${name} at ${bpm}`, bpm, () => song({bpm, count: 40, rate: 22050, one: 9, ...o}));
+  for (const bpm of [92, 100, 110, 123, 128, 140, 150, 160, 175, 190, 210]) { click('click track', bpm); click('click track, a kick every fourth click', bpm, {one: 1}); }
+  for (const bpm of [92, 110, 123, 140, 160]) click('build and drop', bpm, {one: 1, dropAt: 16});
+  for (const bpm of [150, 175]) click('build and drop, plain', bpm, {dropAt: 16});
+  for (const pad of [.1, .2, .3]) for (const bpm of [92, 120, 140]) click(`clicks over a ${pad} pad`, bpm, {pad});
+  for (const lead of [.008, .02, .04, .05]) for (const bpm of [92, 120, 140]) click(`first click ${lead * 1000} ms in`, bpm, {lead});
+  for (const [lead, pad, bpm] of [[.02, .3, 120], [.024, .1, 92], [.03, .2, 140], [.034, .3, 120]]) click(`first click ${lead * 1000} ms in over a ${pad} pad`, bpm, {lead, pad});
+  for (const intro of [12, 20, 30]) click(`a ${intro} s quiet intro`, 120, {lead: intro, count: 20});
+  for (const bpm of [100, 128]) click('a fade-in', bpm, {one: 1, lead: 0, envelope: fadeIn});
+  click('a quiet bridge', 120, {one: 1, envelope: bridge});
+  click('a fade-out', 110, {one: 1, envelope: fadeOut(.3 + 40 * 60 / 110)});
+  for (const bpm of [100, 150]) click('clicks with a kick every fourth, over a pad', bpm, {one: 1, pad: .15});
+  for (const bpm of [92, 120, 140]) click('click track, a kick on the first click', bpm, {one: 0});
+  return list;
+}
+

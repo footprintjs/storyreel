@@ -1129,6 +1129,7 @@ map.bars;           // every bar's first beat (a 4/4 guess; the downbeat from lo
 map.drop;           // 8.105 — the largest sustained rise in low and mid energy after a quieter build, on its beat (null: none)
 map.confidence;     // 0..1: the share of beats that sit on a measured onset
 map.alternatives;   // [{bpm: 123.02, score: 1}, {bpm: 61.51, score: 0.82}, …] — the tempos the onsets also fit
+map.levels;         // [{bpm: 61.51, score: 0.82, fails: ['kicked']}, …] — every level of the beat tried, and why it is not sure
 map.nearestBeat(12.4); map.nextBeat(12.4); map.onBeat(12.4, .05);
 peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and its thud lands on the event
 ```
@@ -1136,30 +1137,39 @@ peakOf('sfx/door.wav');   // 0.322: start the door at eventTime − 0.322 and it
 - **How it measures** (plain functions, `src/dsp.mjs`): the song read through FFmpeg as mono samples; onset strength as
   spectral flux on a radix-2 FFT, log-compressed and split into low (< 200 Hz), mid and high bands (a hit in the song's
   first milliseconds is a beat; a pad or a noise floor already sounding at its first sample is not, and neither is
-  its end; a first beat after an encoder's delay, 40–50 ms in, is found where it is); the tempo by autocorrelation of the
+  its end; a first click anywhere in the first 60 ms — an encoder's delay — is found where it is, over a pad too); the tempo by autocorrelation of the
   onsets, weighed by a prior that prefers 70–180 BPM (`range`), with the ranked alternatives; the beats by dynamic
   programming (Ellis 2007), each moved onto the transient it sits on (an attack heard over a held note: the energy of
   the samples' first difference), the beats the chain carried through a quiet intro or a fading end left out (each
   must stand out from what surrounds it); the bars from low-band onsets; the drop where low
   and mid energy rise most and hold, and arrive at once.
 - **The map is a flowchart, and its record explains it.** decode → onsets → choose-tempo → track-beats → find-bars →
-  measure-rise → find-drop, each verdict `decide()` evidence in `map.record`:
-  `It examined "The strongest period stands clear of the next, no faster level comes within 0.3, and a slower echo
-  that does has its beats in between filled": strongest=92.1, next=null, faster=null, echo=null, and chose
-  tempo-measured.`
-- **The level of the beat, and when it is not sure.** A steady pulse also repeats every two and every three beats, and
-  hats on the eighths repeat twice a beat, so the same beat often scores well at another level — half, double, a
-  third, triple. When such a level comes within 0.3 of the strongest (`BEATS.octave`), the onsets at the beats in
-  between decide (`BEATS.between`): only when they are nearly as strong as the beats (0.85 of them) is the faster
-  level the beat (`tempo-faster`, or `tempo-measured` when the strongest is already the faster one). Anything less is
-  `tempo-close`: the strongest is taken, and `alternatives` lists the others. A wrong level claimed as certain is the
-  one failure that matters, so the bar is high: hats on the eighths read about 0.6, and a click track with a kick on
-  every fourth click reads about 0.7 — it comes out right, but said to be close. Over 24 drum patterns (70–140 BPM;
-  eighth or sixteenth hats, four on the floor with off-beat hats, loud hats) the map is never wrong and certain: 19 are
-  right and certain, 5 right and close. **These thresholds are calibrated on synthetic songs only** (`test/songs.mjs`);
-  for a real mix, read the verdict and the alternatives, and give `bpm` to settle it. Two pulses at once (120 and
-  160) are close too. No beat in four standing out is `bars-guessed`; no rise that holds is `drop-none`; a rise that
-  climbs for more than 2 s with no hit at its start is `drop-fade` — a fade-in, not a drop (`drop: null` both ways).
+  measure-rise → find-drop, each verdict `decide()` evidence in `map.record`: `It examined "One level of the beat passes
+  both tests — the kick pulse and the in-betweens agree — and it is the strongest": passing=(1 item), strongest=92.12,
+  and chose tempo-measured.` `map.levels` lists every level tried and the tests each failed.
+- **One rule for being sure: two pieces of evidence must agree.** The same beat scores well at other levels — a steady
+  pulse also repeats every two and three beats, hats on the eighths twice a beat, a syncopated snare between them — so
+  the map tries every level from a quarter to four times the strongest tempo (`map.levels`), and a level is certain
+  only when it passes both tests (`levelTests`, `BEATS.level`):
+  - *the kick pulse* (when the song has one: the low band's strongest rises, read in power, leading the mix): the kicks
+    land on the level's beats (in phase), on nearly every one of them, and never between them;
+  - *the in-betweens*: the beats carry the song's body evenly, and no subdivision is filled — the half-beats may sound
+    (hats on the eighths) but not as strongly as the beats, the thirds and quarters not at all (a level whose every
+    quarter-beat sounds is too slow). With no kick pulse, the level's own score must also stand 0.3 over every other.
+
+  When exactly one level passes, the verdict is certain: `tempo-measured` (the strongest), `tempo-faster` or
+  `tempo-slower`. Otherwise — none passes, or more than one — it is `tempo-close`: the strongest is taken and
+  `alternatives` lists eight. A wrong tempo claimed as certain is the one failure that matters, so many songs come out
+  close: a backbeat (the kick on one and three is not a kick on every beat), a click track with a kick every fourth
+  click, a dembow, a breakbeat; give `bpm` to settle them. The rule is checked against a corpus of 185 songs made
+  sample by sample (`test/songs.mjs · tempoCorpus`, `test/tempo-corpus.test.mjs`: 56 drum patterns, nine rhythm families
+  — dembow, son clave, half-time shuffle, trap, four on the floor, breakbeat, sixteenths with the kick on one, bossa
+  nova, funk — at seven tempi, and 66 songs): none is wrong and certain; 49 are right and certain, 72 right but close,
+  64 wrong but close, each of those with the right tempo among its alternatives. **The thresholds are calibrated on
+  these synthetic songs only**, with room to spare (loosening every one of them together still claims nothing wrong);
+  for a real mix, read the verdict and `map.levels`, and give `bpm` to settle it.
+- No beat in four standing out is `bars-guessed`; no rise that holds is `drop-none`; a rise that climbs for more than
+  2 s with no hit at its start is `drop-fade` — a fade-in, not a drop (`drop: null` both ways).
 - **Override what it got wrong**: `beatMap(file, {bpm: 128, drop: 42.5})` — the record then says the tempo and the drop
   were given (a drop past the song's end refuses). `beatMapOf(samples, 22050)` maps samples already in hand.
 
