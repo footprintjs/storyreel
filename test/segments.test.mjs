@@ -4,13 +4,13 @@
 // makeFilm runs each segment as its own subflow.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, readFileSync, writeFileSync, readdirSync, cpSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {readFileSync, writeFileSync, readdirSync, cpSync} from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {compileFilm, evenTimings, paceTimings, renderFilm, makeFilm, wholeVideo, cartoonKit} from '../src/index.mjs';
 import {planSegments, segmentKey, segmentedVideo, folderStore, codeFingerprint, sampleOffsets, sourceCode} from '../src/segments.mjs';
+import {tempDir} from './tmp.mjs';
 
 const dir = fileURLToPath(new URL('../examples/worlds/', import.meta.url)), read = f => JSON.parse(readFileSync(dir + f, 'utf8'));
 /** The worlds example (four rows: the story, then three worlds by fade, wipe and iris), its first scene `longer` seconds longer. */
@@ -59,7 +59,7 @@ test('a segment keeps its key when only an earlier scene grows, and changes when
 });
 
 test('code per segment: editing one shot\'s module changes only the keys of the segments that show it (its imports followed)', async () => {
-  const a = await worlds(), top = mkdtempSync(path.join(tmpdir(), 'storyreel-src-'));
+  const a = await worlds(), top = tempDir('src');
   writeFileSync(path.join(top, 'shared.mjs'), 'export const ink = "#222";\n');
   const files = a.recipe.stages.map((_, i) => { const f = path.join(top, `stage${i}.mjs`); writeFileSync(f, `import {ink} from './shared.mjs';\nexport const n = ${i};\n`); return f; });
   const fileOf = new Map(a.recipe.stages.map((s, i) => [s, files[i]]));
@@ -90,13 +90,13 @@ test('segmentedVideo refuses what it cannot cache, naming the fix', async () => 
   assert.throws(() => segmentedVideo({recipe: {}}), /give a store/);
   assert.throws(() => segmentedVideo({store: folderStore('x')}), /give the recipe/);
   assert.throws(() => segmentedVideo({store: folderStore('x'), recipe: {}, parallel: 0}), /parallel is how many segments/);
-  const {film, storyboard, timings, recipe} = await worlds(), out = path.join(mkdtempSync(path.join(tmpdir(), 'storyreel-seg-')), 'part.mp4');
+  const {film, storyboard, timings, recipe} = await worlds(), out = path.join(tempDir('seg'), 'part.mp4');
   await assert.rejects(renderFilm({film, storyboard, timings, out, width: 320, height: 180, fps: 10, from: 2, to: 8, video: segmentedVideo({store: folderStore(path.join(path.dirname(out), 'cache')), recipe})}), /segments cover the whole film/);
   await assert.rejects(renderFilm({film, storyboard, timings, out, width: 320, height: 180, fps: 10, video: {render() {}}}), /video must be a picture strategy/);
 });
 
 test('segments: drawn once, reused next time, drawn again when forced or when the spot check fails; joined they match one pass', {skip: has('ffmpeg') && has('ffprobe') ? false : 'needs ffmpeg and ffprobe'}, async () => {
-  const {film, storyboard, timings, recipe} = await worlds(), top = mkdtempSync(path.join(tmpdir(), 'storyreel-seg-')), store = folderStore(path.join(top, 'cache'));
+  const {film, storyboard, timings, recipe} = await worlds(), top = tempDir('seg'), store = folderStore(path.join(top, 'cache'));
   const render = (name, options = {}) => renderFilm({film, storyboard, timings, out: path.join(top, name, 'film.mp4'), width: 320, height: 180, fps: 10, video: segmentedVideo({store, recipe, code: 'kits', ...options})});
   const first = await render('a');
   assert.deepEqual([first.video.rendered, first.video.reused], [4, 0], 'every segment drawn the first time');
@@ -118,7 +118,7 @@ test('segments: drawn once, reused next time, drawn again when forced or when th
 });
 
 test('makeFilm runs each segment as its own subflow and records which were drawn and which reused', {skip: has('ffmpeg') ? false : 'needs ffmpeg'}, async () => {
-  const {film: _f, storyboard, timings, recipe} = await worlds(), top = mkdtempSync(path.join(tmpdir(), 'storyreel-seg-')), store = folderStore(path.join(top, 'cache'));
+  const {film: _f, storyboard, timings, recipe} = await worlds(), top = tempDir('seg'), store = folderStore(path.join(top, 'cache'));
   const make = name => makeFilm({storyboard, recipe, kits: [cartoonKit], root: dir, strings: read('strings/en.json'), timings, out: path.join(top, name, 'film.mp4'),
     render: {width: 320, height: 180, fps: 10, video: segmentedVideo({store, recipe, code: 'kits'})}});
   await make('a');
@@ -154,7 +154,7 @@ test('a key holds what reaches its frames: the guess card over it, the strings i
   const cast = async look => compileFilm({storyboard, timings, recipe: a.recipe, kits: [cartoonKit], root: dir, strings: read('strings/en.json'), cast: {hero: {name: 'Mia', look}}});
   const [k1, k2] = [keysOf({film: await cast('red'), recipe: a.recipe, storyboard}), keysOf({film: await cast('blue'), recipe: a.recipe, storyboard})];
   assert.ok(k1.every((k, i) => k !== k2[i]), 'the cast reaches every frame: a changed look is in every key');
-  const copy = mkdtempSync(path.join(tmpdir(), 'storyreel-files-')); cpSync(dir, copy, {recursive: true});
+  const copy = tempDir('files'); cpSync(dir, copy, {recursive: true});
   writeFileSync(path.join(copy, 'count.ts'), readFileSync(path.join(copy, 'count.ts'), 'utf8') + '\n// one more line\n');
   const edited = await compileFilm({storyboard, timings, recipe: a.recipe, kits: [cartoonKit], root: copy, strings: read('strings/en.json')});
   assert.deepEqual(Object.keys(edited.inputs.files), ['count.ts']);
@@ -162,13 +162,14 @@ test('a key holds what reaches its frames: the guess card over it, the strings i
 });
 
 test('the default joiner runs the render\'s own FFmpeg, and an FFmpeg that cannot start is a refusal, not a crash', async () => {
-  const {film, storyboard, timings, recipe} = await worlds(), top = mkdtempSync(path.join(tmpdir(), 'storyreel-seg-'));
-  assert.throws(() => segmentedVideo({store: folderStore(top), recipe}).join({dir: top, ffmpeg: 'no-such-ffmpeg-here'}, [{file: 'a.mp4'}]), /no-such-ffmpeg-here/);
+  const {film, storyboard, timings, recipe} = await worlds(), top = tempDir('seg');
+  assert.throws(() => segmentedVideo({store: folderStore(top), recipe}).join({dir: top, work: top, ffmpeg: 'no-such-ffmpeg-here'}, [{file: 'a.mp4'}]), /no-such-ffmpeg-here/);
   await assert.rejects(renderFilm({film, storyboard, timings, out: path.join(top, 'x', 'film.mp4'), width: 160, height: 90, fps: 5, ffmpeg: '/no/such/ffmpeg'}), /could not encode film-video.mp4/);
+  assert.deepEqual(readdirSync(path.join(top, 'x')), [], 'a render that failed leaves no working files behind (render.mjs · closeRender)');
 });
 
 test('segments: a moved segment is reused only when its frames did not move with the clock; a file cut short is drawn again', {skip: has('ffmpeg') && has('ffprobe') ? false : 'needs ffmpeg and ffprobe'}, async () => {
-  const top = mkdtempSync(path.join(tmpdir(), 'storyreel-seg-')), store = folderStore(path.join(top, 'cache'));
+  const top = tempDir('seg'), store = folderStore(path.join(top, 'cache'));
   const render = async (name, made) => renderFilm({film: made.film, storyboard: made.storyboard, timings: made.timings, out: path.join(top, name, 'film.mp4'), width: 320, height: 180, fps: 10, video: segmentedVideo({store, recipe: made.recipe, code: 'kits'})});
   await render('a', await worlds());
   // The first scene one second longer (ten whole frames): every later segment moves.

@@ -18,6 +18,7 @@ jobs:
           node-version: 22
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npm ci
-      - run: npm test
+      # The whole suite with a temp folder of its own; nothing may be left in it (scripts/temp-hygiene.mjs).
+      - run: npm run test:temp
       - run: npx publint
       - run: npx @arethetypeswrong/cli --pack --profile esm-only --entrypoints . clock pacing ease pins sheet render segments pipeline approval film strings theme reading shots regions review slideshow geometry claims decorative tools motion attention captions layout transitions camera moves principles breakdown acting finished listening release kits/whiteboard kits/cartoon studio  # the typed entry points (README: the drawing internals are untyped)

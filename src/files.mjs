@@ -10,7 +10,7 @@
  * files, and requireVoiceApart refuses a render whose out folder and voice folder overlap.
  */
 import path from 'node:path';
-import {existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync} from 'node:fs';
+import {existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync, chmodSync} from 'node:fs';
 
 /**
  * The real path of `file` (relative to `root`, or absolute), or a refusal when it is outside `root`.
@@ -48,9 +48,10 @@ function within(base, p) {
 /**
  * Copy a voice for pacing: exactly what the render reads — the voice's timings.json and each scene's audio, plus the
  * .unpaced.wav pacing leaves beside an audio file when the voice has one (so pacing.mjs · applyPacing still refuses a
- * voice paced before). Each is written as a NEW regular file at the same path inside `to` (a folder made here, so it
- * must not exist yet), its bytes read through any link: pacing rewrites the copy, and that never changes the voice,
- * and a read-only voice gives a writable copy. Nothing else in the voice folder is copied, or even listed: a folder of
+ * voice paced before). Each is written as a NEW regular file at the same path inside `to` — a new, empty folder the
+ * caller made (scratch.mjs · makeScratch) — created exclusively, so nothing already there is written over or through
+ * (a file, a link: EEXIST); its bytes are read through any link: pacing rewrites the copy, and that never changes the
+ * voice, and a read-only voice gives a writable copy. Nothing else in the voice folder is copied, or even listed: a folder of
  * takes linked beside the voice is never walked.
  *
  * A scene's audio is named by a path inside the voice folder: one that leads out of it (../takes/a.wav, an absolute
@@ -73,14 +74,37 @@ export function copyVoice(voice, to) {
     const file = path.join(base, rel);
     for (const f of [file, file.replace(/\.wav$/, '.unpaced.wav')]) if (existsSync(f)) files.add(path.relative(base, f));
   }
-  mkdirSync(to);
-  writeFileSync(path.join(to, 'timings.json'), bytes);
+  writeFileSync(path.join(to, 'timings.json'), bytes, {flag: 'wx'});
   for (const f of files) {
     const target = path.join(to, f);
     mkdirSync(path.dirname(target), {recursive: true});
-    writeFileSync(target, readFileSync(path.join(base, f)));
+    writeFileSync(target, readFileSync(path.join(base, f)), {flag: 'wx'});
   }
   return timings;
+}
+
+/** The mode a plain mkdir gives a folder: 0777 less the process's umask. */
+export const plainFolderMode = () => 0o777 & ~process.umask();
+
+/**
+ * Put a paced copy of the voice in place as <out folder>/narration. First the copy — made for this user only
+ * (scratch.mjs · makeScratch: 0700) — gets the mode a plain mkdir would give it (plainFolderMode), while it is still
+ * ours and unnamed: never after the rename (a chmod follows links, and the name is then in a shared folder), and never
+ * taken from the out folder (a sticky 1777 folder such as /tmp would make it writable by everyone). Then what is there
+ * goes, and the copy takes its name. Another run placing its own voice at the same moment can slip a folder in between
+ * the two (ENOTEMPTY, EEXIST): then once more — the film is made by then, and its record must still be written. Returns
+ * the code it tried again on, or null. `fs` replaces any of {rmSync, renameSync, chmodSync} (a test hands in its own
+ * to make the race happen on cue, or to see the order of the steps).
+ */
+export function placeVoice(copy, final, fs = {}) {
+  const ops = {rmSync, renameSync, chmodSync, ...fs};
+  ops.chmodSync(copy, plainFolderMode());
+  const place = () => { ops.rmSync(final, {recursive: true, force: true}); ops.renameSync(copy, final); };
+  try { place(); return null; } catch (e) {
+    if (e?.code !== 'ENOTEMPTY' && e?.code !== 'EEXIST') throw e;
+    place();
+    return e.code;
+  }
 }
 
 /**

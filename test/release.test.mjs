@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, existsSync, readFileSync, readdirSync} from 'node:fs';
+import {existsSync, readFileSync, readdirSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
-import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {loadImage} from '@napi-rs/canvas';
 import {evenTimings} from '../src/index.mjs';
@@ -13,6 +12,7 @@ import {youtubeChapters as chaptersOf} from 'footprint-narration';
 /** YouTube's chapter lines for [[seconds, name]] (the adapter's input) over a video of `length` s. */
 const youtubeChapters = (pairs, length) => chaptersOf(pairs.map(([at, title]) => ({at, title})), {length}).lines;
 import {sceneChapters} from '../src/render.mjs';
+import {tempDir} from './tmp.mjs';
 
 const storyboard = {title: 'Release Test', scenes: [
   {id: 'one', title: 'The start', narration: 'A short film about pebbles and sheep, made for a test.'},
@@ -127,7 +127,7 @@ test('X takes a video of at most 1920×1200 (1200×1900 tall): a larger render i
   assert.deepEqual(x.limits.frame, [{width: 1920, height: 1200}, {width: 1200, height: 1900}]);
   assert.deepEqual([planProblems(x, readPost(p)), planProblems(x, readPost(p), {scale: 1.1})], [[], []], '1080×1080 and 1188×1188 fit');
   assert.deepEqual(planProblems(x, readPost(p), {scale: 2}), [{problem: '2160×2160 is larger than X takes, at most 1920×1200 or 1200×1900', fix: "release it at scale 1: {target: 'x'} makes 1080×1080"}]);
-  const out = mkdtempSync(path.join(tmpdir(), 'release-'));
+  const out = tempDir('release');
   await assert.rejects(makeRelease({...film, out, targets: [{target: 'x', scale: 2}], post: p}), /release to X: 2160×2160 is larger than X takes, at most 1920×1200 or 1200×1900 \(release it at scale 1/);
   assert.equal(existsSync(path.join(out, 'x')), false, 'nothing rendered');
   for (const name of TARGET_NAMES.filter(n => n !== 'x')) assert.equal((await loadTarget(name)).adapter.limits.frame, undefined, `${name} declares no largest frame`);
@@ -147,7 +147,7 @@ test('chapters: a titled scene starts one and an untitled one goes on with it; w
 });
 
 test('refused before a frame is drawn: a poster thumbnail for a film with no poster, a scale the format cannot take; synthetic is a list of words', async () => {
-  const out = mkdtempSync(path.join(tmpdir(), 'release-'));
+  const out = tempDir('release');
   await assert.rejects(makeRelease({...film, recipe: {story: {kit: 'slide'}}, out, targets: ['youtube'], post: {...kids, thumbnail: 'poster'}}), /the thumbnail is to be the film's poster, and the film has none \(name the poster in the recipe/);
   await assert.rejects(makeRelease({...film, out, targets: [{target: 'youtube', scale: 3}], post: kids}), /layout\.scale must be 0\.5–2/);
   assert.equal(existsSync(path.join(out, 'youtube')), false, 'nothing rendered');
@@ -158,7 +158,7 @@ test('refused before a frame is drawn: a poster thumbnail for a film with no pos
 });
 
 test('a release: each target its own folder — the video in its shape, captions, thumbnail, the text to paste; a refusal renders nothing', async () => {
-  const out = mkdtempSync(path.join(tmpdir(), 'release-'));
+  const out = tempDir('release');
   await assert.rejects(makeRelease({...film, out: path.join(out, 'no'), targets: ['youtube', 'tiktok'], post: kids}), /TikTok is for people aged 13/);
   assert.equal(existsSync(path.join(out, 'no')), false, 'refused before anything rendered, even the YouTube version');
   const done = await makeRelease({...film, render: {quality: 'high'}, out, targets: ['youtube', {target: 'youtube-shorts', name: 'short', to: 6}], post: {...kids, thumbnail: 'poster', synthetic: ['voice'], credits: ['Sheep drawn by hand']}});

@@ -230,7 +230,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "test:temp": "node scripts/temp-hygiene.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.9",

@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync, existsSync, mkdtempSync, writeFileSync} from 'node:fs';
+import {readFileSync, existsSync, writeFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
-import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createCanvas} from '@napi-rs/canvas';
 import {compileFilm, evenTimings, paceTimings, makeClock, makeFilm, withStrings, cartoonKit} from '../src/index.mjs';
 import {compileExample} from './golden.mjs';
+import {tempDir} from './tmp.mjs';
 
 // Three short scenes and plain colour worlds, so a pixel says which world is on screen.
 const storyboard = {title: 'Worlds', scenes: [
@@ -156,7 +156,7 @@ test('the worlds example: pure in time, and every frame restores the canvas', as
 const ffmpeg = spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-version']).status === 0;
 test('makeFilm: a silent cut is paced like a voiced one, and the making-of names the language and its strings', {skip: ffmpeg ? false : 'ffmpeg not on PATH'}, async () => {
   const read = f => JSON.parse(readFileSync(root + f, 'utf8')), sb = read('storyboard.json');
-  const out = path.join(mkdtempSync(path.join(tmpdir(), 'storyreel-worlds-')), 'worlds.mp4');
+  const out = path.join(tempDir('worlds'), 'worlds.mp4');
   const result = await makeFilm({storyboard: sb, recipe: read('recipe.json'), kits: [cartoonKit], root, timings: evenTimings(sb), pacing: read('pacing.json'),
     strings: read('strings/en.json'), lang: 'en', out, render: {width: 320, height: 180, fps: 4}});
   assert.ok(existsSync(result.out));
@@ -191,7 +191,7 @@ test('review fixes: a guess answers inside its own scene; entrances and places a
 
 test('review fixes: elide works on an indented block, which is then dedented', async () => {
   const {excerpt} = await import('../src/kits/paper/code.mjs');
-  const dir = mkdtempSync(path.join(tmpdir(), 'excerpt-')), file = path.join(dir, 'tool.ts');
+  const dir = tempDir('excerpt'), file = path.join(dir, 'tool.ts');
   writeFileSync(file, "const t = defineTool({\n  // --- on-screen code\n  name: 'x',\n  description: 'long words',\n  inputSchema: {},\n  execute: () => 1,\n  // --- end on-screen code ---\n});\n");
   assert.equal(excerpt(file, {elide: ['description', 'inputSchema']}), "name: 'x',\n// description, inputSchema …\nexecute: () => 1,");
 });

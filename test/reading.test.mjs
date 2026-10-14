@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync, existsSync, mkdtempSync} from 'node:fs';
+import {readFileSync, existsSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
-import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {loadImage} from '@napi-rs/canvas';
@@ -10,6 +9,7 @@ import {compileFilm, evenTimings, renderFilm} from '../src/index.mjs';
 import {tooShortToRead, secondsToRead} from '../src/reading.mjs';
 import {contactSheet} from '../src/sheet.mjs';
 import {compileExample} from './golden.mjs';
+import {tempDir} from './tmp.mjs';
 
 const hello = fileURLToPath(new URL('../examples/hello/', import.meta.url)), read = f => JSON.parse(readFileSync(hello + f, 'utf8'));
 const board = read('storyboard.json'), recipe = read('recipe.json'), timings = evenTimings(board, {tail: 4});
@@ -50,7 +50,7 @@ const ffmpeg = spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-version']).statu
 test('a poster: the recipe names its frame; it is written beside the video and is the video\'s first frame', {skip: ffmpeg ? false : 'ffmpeg not on PATH'}, async () => {
   const film = await helloWith({poster: ['rule', 'That is the idea', 1]});
   assert.equal(film.beats.find(b => b.path === 'poster').t, film.posterAt);
-  const out = path.join(mkdtempSync(path.join(tmpdir(), 'poster-')), 'hello.mp4');
+  const out = path.join(tempDir('poster'), 'hello.mp4');
   const result = await renderFilm({film, storyboard: board, timings, out, width: 320, height: 180, fps: 6});
   assert.ok(existsSync(result.poster));
   const first = path.join(path.dirname(out), 'first.png');

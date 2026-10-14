@@ -4,8 +4,7 @@
 // decide(), so the record says why.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync, rmSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync} from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {compileFilm, evenTimings, makeFilm} from '../src/index.mjs';
@@ -16,8 +15,9 @@ import {approveFilm, checkApproval} from '../src/approval.mjs';
 import {wordsAt, reviewPart} from '../src/review.mjs';
 import {compileLayout} from '../src/layout.mjs';
 import {planSegments, segmentMaterial} from '../src/segments.mjs';
+import {tempDir} from './tmp.mjs';
 
-const root = mkdtempSync(path.join(tmpdir(), 'storyreel-claims-'));
+const root = tempDir('claims');
 const facts = [{value: 60, text: '60 Hz', source: 'https://example.org/display-rates'}, {value: 16.67, source: 'docs/frames.md'}];
 writeFileSync(path.join(root, 'facts.json'), JSON.stringify(facts));
 const storyboard = {title: 'Claims', facts: 'facts.json', scenes: [
@@ -136,7 +136,7 @@ test('an example scene says so on screen, in the top right corner, from its firs
 });
 
 test('the facts draw nothing: a corrected source leaves every segment\'s key alone, and an approval still locks it', async () => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'storyreel-facts-')), write = list => writeFileSync(path.join(dir, 'facts.json'), JSON.stringify(list));
+  const dir = tempDir('facts'), write = list => writeFileSync(path.join(dir, 'facts.json'), JSON.stringify(list));
   const of = async () => compileFilm({storyboard, recipe, timings, root: dir}), materials = f => planSegments(f).map(seg => segmentMaterial(f, seg, {recipe, storyboard, pixels: {}}));
   write(facts); const before = await of();
   write([{...facts[0], source: 'https://example.org/display-rates-2026'}, facts[1]]); const after = await of();
@@ -220,7 +220,7 @@ test('makeFilm: claims "refuse" refuses a number with no source before anything 
 
 const ffmpeg = !spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-version']).error;
 test('a claims refusal with a voice leaves the voice and the last render\'s narration as they were', {skip: ffmpeg ? false : 'needs ffmpeg'}, async () => {
-  const top = mkdtempSync(path.join(tmpdir(), 'storyreel-claims-voice-')), voice = path.join(top, 'voice'), even = evenTimings(storyboard, {tail: 1});
+  const top = tempDir('claims-voice'), voice = path.join(top, 'voice'), even = evenTimings(storyboard, {tail: 1});
   spawnSync('mkdir', ['-p', voice]);
   const scenes = even.scenes.map(sc => { const audio = `${sc.id}.wav`; spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'anullsrc=r=24000:cl=mono', '-t', String(sc.duration), '-c:a', 'pcm_s16le', path.join(voice, audio)]); return {...sc, audio}; });
   writeFileSync(path.join(voice, 'timings.json'), JSON.stringify({...even, scenes}));
@@ -316,8 +316,8 @@ test('two numbers drawn close stay two: only touching ink, or a sign or a decima
   assert.deepEqual([v.verdict, v.measured.numbers, v.measured.sourced], ['passed', 2, 2], 'two numbers, each with its source: not one 1230 with none');
 });
 
-test('a source is a URL, a file in the root, or kept as unverified — "trust me" passes, and is counted', async () => {
-  const outer = mkdtempSync(path.join(tmpdir(), 'storyreel-sources-')), dir = path.join(outer, 'film');
+test('a source is a URL, a file in the root, or kept as unverified — "trust me" passes, and is counted', async t => {
+  const outer = tempDir('sources', t), dir = path.join(outer, 'film');
   mkdirSync(dir); writeFileSync(path.join(dir, 'run.json'), '{"steps": []}'); writeFileSync(path.join(outer, 'elsewhere.md'), '# outside the film');
   assert.equal(sourceKind('https://example.org/x', {root: dir}), 'url');
   assert.equal(sourceKind('run.json#steps[2]', {root: dir}), 'file', 'a record with a pointer into it');
@@ -338,7 +338,6 @@ test('a source is a URL, a file in the root, or kept as unverified — "trust me
   await assert.rejects(compileFilm({storyboard: {...sb, facts: [{value: 1, source: '/etc/hosts'}]}, recipe: {story: {kit: 'whiteboard', items: []}}, timings: evenTimings(sb, {wordSeconds: .4}), root: dir}), /source "\/etc\/hosts" is a path outside the film's root/);
   const prose = await compileFilm({storyboard: {...sb, facts: [{value: 60, text: '60 Hz', source: '/r/science thread'}]}, recipe: {story: {kit: 'whiteboard', items: []}}, timings: evenTimings(sb, {wordSeconds: .4}), root: dir});
   assert.deepEqual(prose.claims.facts.map(x => x.kind), ['unverified'], 'a prose source compiles, kept as unverified');
-  rmSync(outer, {recursive: true, force: true});
 });
 
 test('the example label stays until the example line\'s last ink: an eraser wipes it over its own time', async () => {
