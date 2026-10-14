@@ -1197,6 +1197,26 @@ writeFileSync('camera.png', await contactSheet(film, {moments: [1, 2.5, 4.5, 6.5
 // reducedMotion: true → each move a cut on its first moment: film.camera.motion === 'cuts'
 ```
 
+## Perspective: a room with depth
+
+`footprint-storyreel/perspective` is the layout artist's grid: one horizon and one vanishing point for a scene, and
+every thing placed by where it stands on the floor (across, and how far back). It answers where that lands on the
+frame and how small it looks, so flat drawings sit in a room with depth, angled things line up with it, and things
+drawn back to front always overlap the right way.
+
+```js
+import {perspective} from 'footprint-storyreel/perspective';
+const room = perspective({horizon: 430, vanish: 860, front: 900, focal: 900});
+room.at(1150, 300, 280)                 // {x, y, scale}: 300 px back, 280 px off the floor
+room.along({x: 1150, depth: 0, height: 300}, {x: 1150, depth: 700, height: 300}, 10)   // a rail into the room
+room.backToFront(items)                 // the furthest first (painter's order)
+room.toward(200)                        // a floor board running to the vanishing point
+room.parallax(depth, shift)             // far things move less when the camera pans
+```
+
+One-point perspective, the cartoon room's: a wall that faces us stays flat; what runs into the room meets at the
+vanishing point. The `storyreel-cartoon` skill's perspective page has the rules and a worked example.
+
 ## Moves: motion asked for by name
 
 A designer asks for "a soft rise" or "a pop", not for a curve and two numbers — and a film that asks by name

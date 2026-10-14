@@ -153,5 +153,5 @@ Delete drafts you no longer need: films are large.
 `making-of.json` says what played and why (`beats`, `camera`, `claims`, `finished`, each stage's narrative): read it
 before guessing ([record.md](record.md)). When the person signs off the draft they watched, `approveFilm` locks what it
 was made from; `makeRelease` makes each platform's version and post ([release.md](release.md)). More: [kits.md](kits.md)
-· [motion.md](motion.md) · [camera.md](camera.md) · [voice.md](voice.md) · [music.md](music.md) · [mocap.md](mocap.md)
+· [perspective.md](perspective.md) · [motion.md](motion.md) · [camera.md](camera.md) · [voice.md](voice.md) · [music.md](music.md) · [mocap.md](mocap.md)
 · [breakdown.md](breakdown.md).
