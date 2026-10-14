@@ -41,7 +41,7 @@ export function treeMemory(psText, root) {
   const walk = pid => {
     const p = procs.get(pid);
     if (!p) return;
-    const file = /(test\/[\w.-]+\.test\.mjs)/.exec(p.args.split(path.sep).join('/'))?.[1];
+    const file = /(test\/[\w.-]+\.mjs)/.exec(p.args.split(path.sep).join('/'))?.[1];   // test/x.test.mjs, test/skills-render.mjs
     if (file && !/\s--test(\s|$)/.test(` ${p.args} `)) { files.push([file, sum(pid)]); return; }
     p.kids.forEach(walk);
   };
