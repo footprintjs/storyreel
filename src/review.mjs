@@ -50,8 +50,27 @@ import {isDecorative, isCode} from './decorative.mjs';
  * this frame is painted (it paints synchronously), then put back.
  */
 export function wordsAt(film, t, {layout = null} = {}) {
-  const canvas = createCanvas(layout?.width ?? 1600, layout?.height ?? 900), ctx = canvas.getContext('2d');
+  const canvas = readingCanvas(layout?.width ?? 1600, layout?.height ?? 900), ctx = canvas.getContext('2d');
   return readWords(canvas, () => { if (layout) layout.picture(ctx, t); else film.frame(ctx, t); });
+}
+
+/**
+ * The canvas a review reads a frame on: one per size, kept, and reset before each frame (ctx.reset: cleared, its state
+ * and save stack as a new canvas's), so a frame is read exactly as on a new canvas. A new canvas per frame cost a
+ * native picture (5.8 MB at 1600×900, 8.3 MB at 1080p) — and a transition's blur scratch kept per canvas — that only a
+ * garbage collection and a turn of the event loop give back: a review reads hundreds of moments in one go, so every one
+ * was held until it ended (6 GB for a test film; the CI runner was shut down). A few sizes at most are kept.
+ */
+const readers = new Map();
+function readingCanvas(width, height) {
+  const key = `${width}x${height}`;
+  if (!readers.has(key)) {
+    if (readers.size >= 4) readers.delete(readers.keys().next().value);
+    readers.set(key, createCanvas(width, height));
+  }
+  const canvas = readers.get(key);
+  canvas.getContext('2d').reset();
+  return canvas;
 }
 
 // A word's place is its quad (its box's four corners through every transform, so a rotated stamp stays a
@@ -130,7 +149,7 @@ const justBefore = t => t - Math.abs(t) * Number.EPSILON;
  * redrawn a few pixels off along its edges where nothing moved; the average loses that and keeps a jump.
  */
 function cellsAt(film, t) {
-  const c = createCanvas(1600, 900); film.frame(c.getContext('2d'), t);
+  const c = readingCanvas(1600, 900); film.frame(c.getContext('2d'), t);
   const px = c.data(), cells = new Float32Array(400 * 225 * 3);
   for (let y = 0; y < 900; y++) for (let x = 0; x < 1600; x++) { const i = (y * 1600 + x) * 4, o = ((y >> 2) * 400 + (x >> 2)) * 3; cells[o] += px[i]; cells[o + 1] += px[i + 1]; cells[o + 2] += px[i + 2]; }
   return cells.map(v => v / 16);

@@ -272,9 +272,12 @@ test('a move entrance shows the old picture only where the move\'s own start sho
     // The edges the start opens: the side its offset leaves bare; every side when it starts smaller, turned or masked.
     const opening = new Set(s.scale < 1 || s.rotate !== 0 || s.clip < 1 ? Object.keys(EDGES) : [...(s.x > 0 ? ['left'] : s.x < 0 ? ['right'] : []), ...(s.y > 0 ? ['top'] : s.y < 0 ? ['bottom'] : [])]);
     const covered = coversAt(name, feel);
+    // One canvas and one ghost painter for the move's steps, as a film keeps them, the canvas reset to new before each
+    // step (ctx.reset): a new canvas per step held 2,900 native pictures (2.6 GB) until the test ended.
+    const c = createCanvas(400, 225), ctx = c.getContext('2d'), ghost = ghostPainter();
     for (let i = 0; i <= 80; i++) {
-      const e = i / 80, c = createCanvas(400, 225), ctx = c.getContext('2d'), ghost = ghostPainter(), inPlace = e > covered, open = inPlace ? new Set() : opening;
-      ctx.scale(.25, .25);
+      const e = i / 80, inPlace = e > covered, open = inPlace ? new Set() : opening;
+      ctx.reset(); ctx.scale(.25, .25);
       en.draw(ctx, {e, from: solid(SENTINEL), to: solid(NEW), p: en.p, ghost: (alpha, paint) => ghost(ctx, alpha, paint), theme: null, boxes: {from: {}, to: {}}});
       const px = (x, y) => [...ctx.getImageData(x, y, 1, 1).data], centre = px(200, 112);
       for (const [edge, points] of Object.entries(EDGES)) if (!open.has(edge)) for (const [x, y] of points) {

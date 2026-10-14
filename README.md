@@ -1377,9 +1377,9 @@ folder each read their own copy of the voice; `narration/` is the one made last 
 in between; the record says `narration: {placedAgain}`). The tests
 make their folders through one helper (`test/tmp.mjs` · `tempDir`), each removed when its test or file ends;
 `npm run test:temp` runs the whole suite with a temp folder of its own and fails if anything is left (stopped,
-it stops the suite and removes that folder too). It runs the three heaviest test files (claims, review, slideshow:
-each 5 to 6 GB) one at a time, after the rest, and the rest as many at once as the machine has cores (less one) and
-4 GB of memory each (`STORYREEL_TEST_CONCURRENCY` sets it), so a CI runner (4 cores, 16 GB) never runs out. CI and
+it stops the suite and removes that folder too). It runs as many test files at once as the machine has cores (less
+one) and 4 GB of memory each (`STORYREEL_TEST_CONCURRENCY` sets it), and ends with the suite's peak memory and its
+heaviest files (`memory: peak 3.0 GB …`, on the run's page in GitHub Actions too). CI and
 the publish run the same gates — `test:temp`, publint, attw on every typed entry point
 (`scripts/typed-entrypoints.mjs`, read from `package.json`'s exports), and the skills' renders.
 
