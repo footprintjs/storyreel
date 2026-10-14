@@ -69,7 +69,7 @@ function readMocapOptions(options = {}) {
   const {smooth} = options;
   if (!(smooth === undefined || smooth === null || (typeof smooth === 'object' && !Array.isArray(smooth)))) throw new Error(`fromPose: smooth is {minCutoff?, beta?, dCutoff?} (One Euro; the rest as MOCAP.smooth) or null (not smoothed), not ${shown(smooth)}`);
   const o = {...MOCAP, ...options, smooth: options.smooth === null ? null : {...MOCAP.smooth, ...(options.smooth ?? {})}};
-  const need = (ok, what) => { if (!ok) throw new Error(`fromPose: ${what}`); };
+  const need = (ok, what) => { if (!ok) throw new Error(`fromPose: ${what}`); };   // refusal: each need() says the fix
   need(isNumber(o.x), `x is where the figure stands on the floor at the clip's first frame (px), not ${shown(o.x)}`);
   need(isNumber(o.size) && o.size > 0, `size is the figure's standing height (px, above 0; one torso length is ${TORSO_SHARE} of it), not ${shown(o.size)}`);
   need(typeof o.name === 'string' && o.name.trim() !== '', `name is a word for the source (the record and the refusals use it), not ${shown(o.name)}`);

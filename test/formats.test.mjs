@@ -196,7 +196,7 @@ test('renderFilm in the vertical format writes a 1080×1920 video, and its capti
   assert.equal(readFileSync(result.captions.vtt, 'utf8'), `WEBVTT\n\n1\n00:00:01.${String(ms - 1000).padStart(3, '0')} --> 00:00:02.000\nTwo searches.\n`);
   assert.equal(readFileSync(result.captions.srt, 'utf8'), `1\n00:00:01,${String(ms - 1000).padStart(3, '0')} --> 00:00:02,000\nTwo searches.\n`);
   await assert.rejects(renderFilm({film, storyboard, timings: film.timings, out, layout: {format: 'square'}, intro: {seconds: 1, draw: () => {}}}), /takes none/);
-  await assert.rejects(renderFilm({film, storyboard, timings: film.timings, out, layout: {format: 'square'}, width: 720}), /the square layout is 1080×1080; leave width and height out/);
+  await assert.rejects(renderFilm({film, storyboard, timings: film.timings, out, layout: {format: 'square'}, width: 720}), /the square layout is 1080×1080; leave width and height out .*layout.scale: 2\/3 makes 720×720/);
 });
 
 test('makeFilm records the version it made: the format, the motion blur, the caption files', {skip: ffmpeg ? false : 'ffmpeg not on PATH'}, async () => {

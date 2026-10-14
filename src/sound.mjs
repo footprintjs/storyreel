@@ -72,12 +72,12 @@ export function soundsByScene(sounds,offsets,durations){
 
 /** Inverse of the renderer's piecewise linear speech-progress mapping. */
 export function progressToSpeechTime(cues,progress,duration){
- if(!Number.isFinite(progress)||progress<0||progress>1||!Number.isFinite(duration)||duration<=0)throw Error('Invalid motion sound progress or scene duration.');
+ if(!Number.isFinite(progress)||progress<0||progress>1||!Number.isFinite(duration)||duration<=0)throw Error('Invalid motion sound progress or scene duration.');   // refusal: internal (the renderer's own clock)
  const anchors=cues?.anchors;
- if(!Array.isArray(anchors)||anchors.length<2)throw Error('Motion sound requires the scene speech anchors.');
+ if(!Array.isArray(anchors)||anchors.length<2)throw Error('Motion sound requires the scene speech anchors.');   // refusal: internal (the renderer's own clock)
  for(let i=0;i<anchors.length;i++){
   const a=anchors[i],previous=anchors[i-1];
-  if(!Number.isFinite(a.time)||!Number.isFinite(a.progress)||a.time<0||a.time>duration+.000001||a.progress<0||a.progress>1||previous&&(a.time<previous.time||a.progress<previous.progress))throw Error('Invalid motion sound speech anchors.');
+  if(!Number.isFinite(a.time)||!Number.isFinite(a.progress)||a.time<0||a.time>duration+.000001||a.progress<0||a.progress>1||previous&&(a.time<previous.time||a.progress<previous.progress))throw Error('Invalid motion sound speech anchors.');   // refusal: internal (the renderer's own clock)
  }
  if(anchors[0].progress!==0||anchors.at(-1).progress!==1)throw Error('Motion sound anchors must cover progress zero through one.');
  if(progress<=anchors[0].progress)return anchors[0].time;

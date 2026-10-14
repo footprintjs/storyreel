@@ -37,7 +37,8 @@ import {clockTenths} from './clock.mjs';
 import {verdictChart, verdictsText, readVerdict} from './verdict.mjs';
 import {slideshowOf, SLIDESHOW, SLIDESHOW_VERDICT} from './slideshow.mjs';
 import {geometryOf, breakText, GEOMETRY_VERDICT} from './geometry.mjs';
-import {claimsCount, unsourcedClaims, claimText, drawnClaims, lingeringExamples, lingerText, HOLD, CLAIMS_VERDICT} from './claims.mjs';
+import {claimsCount, unsourcedClaims, claimText, drawnClaims, drawnLines, lingeringExamples, lingerText, HOLD, CLAIMS_VERDICT} from './claims.mjs';
+import {wordsIn} from './reading.mjs';
 import {isDecorative, isCode} from './decorative.mjs';
 
 /**
@@ -207,6 +208,38 @@ const pct = share => `${Math.round(share * 100)} %`;
  */
 export const REVIEW_DEFAULTS = Object.freeze({every: .25, stillFor: 5, lasting: 1, minAlpha: .5, minHeight: .011, maxWords: 35, minSilence: .8, newEvery: 5, hook: 3, breath: 30});
 
+/**
+ * The words a reader counts in a sample (the too-much-to-read check): the draws joined into lines as the claims check
+ * joins them (claims.mjs · drawnLines: a word drawn token by token, as syntax colouring draws code, is one word), then
+ * every run with a letter or a digit in it (reading.mjs · wordsIn: "=" is no word). Captions count: they are words on
+ * screen. Code drawn inside `code()` (decorative.mjs) does not: it is studied, not read at once — the reading-time check
+ * leaves it out too.
+ */
+export function wordsOnScreen(words) {
+  const lines = drawnLines(words.filter(w => !w.code));
+  return {lines, count: lines.reduce((n, l) => n + wordsIn(l), 0)};
+}
+/** The longest a too-much-to-read finding quotes what it counted, in characters. */
+const QUOTE = 90;
+/**
+ * The runs of samples with more than `maxWords` words on screen, each said once — its peak's count and the words it
+ * counted, quoted up to QUOTE characters — so every sample of a run is the same finding.
+ */
+function denseRuns(samples, maxWords) {
+  const runs = [];
+  samples.forEach(({t, words}, i) => {
+    const seen = wordsOnScreen(words);
+    if (seen.count <= maxWords) return;
+    const run = runs.at(-1)?.last === i - 1 ? runs.at(-1) : (runs.push({times: [], peak: seen}), runs.at(-1));
+    run.times.push(t); run.last = i;
+    if (seen.count > run.peak.count) run.peak = seen;
+  });
+  return runs.map(({times, peak}) => {
+    const said = peak.lines.map(l => l.replace(/\s+/g, ' ').trim()).join(' / ');
+    return {times, what: `${peak.count} words on screen, more than ${maxWords} (captions count, code does not): "${said.length > QUOTE ? `${said.slice(0, QUOTE)}…` : said}"; cut words, or show them in turn`};
+  });
+}
+
 export const REVIEW_CHECKS = Object.freeze({
   'under-captions': {label: 'Words under the captions', why: 'the layout shows captions', when: s => s.facts.captions,
     find: ({samples, layout}) => samples.flatMap(({t, words}) => !layout.captionAt(t) ? [] : words.filter(w => meet(w.quad, band(layout.boxes.captions)) > .05 * area(w.quad)).map(w => ({kind: 'under-captions', t, what: `"${w.text}"`})))},
@@ -220,7 +253,7 @@ export const REVIEW_CHECKS = Object.freeze({
       return first.length > 1 && first.every(x => hashes[x.t] === hashes[first[0].t]) ? first.map(x => ({kind: 'hook', t: x.t, what: `nothing moves in the first ${REVIEW_DEFAULTS.hook} s`})) : [];
     }},
   'text-density': {label: 'Too much to read at once', why: 'the part draws words', when: s => s.facts.words > 0,
-    find: ({samples, maxWords}) => samples.flatMap(({t, words}) => words.reduce((n, w) => n + w.text.split(/\s+/).filter(Boolean).length, 0) > maxWords ? [{kind: 'text-density', t, what: `more than ${maxWords} words on screen`}] : [])},
+    find: ({samples, maxWords}) => denseRuns(samples, maxWords).flatMap(run => run.times.map(t => ({kind: 'text-density', t, what: run.what})))},
   silences: {label: 'Real silences', why: 'the part is spoken and long enough to need a breath', when: s => s.facts.spoken && s.facts.seconds >= REVIEW_DEFAULTS.breath,
     find: ({film, window, samples, minSilence}) => {
       // The pauses between spoken words (scene tails included) with no effect sound in them.
@@ -356,6 +389,28 @@ const MACHINERY = new Set(['hits', 'failed', 'measured', 'verdict', 'why', 'summ
 /** The findings as lines: "1:21.5–1:23.0 chapters · under the captions: \"requests in\"". */
 export {verdictsText};
 export const findingsText = findings => findings.map(f => `${clockTenths(f.from)}–${clockTenths(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}`).join('\n');
+
+/** The findings that are advice, not errors (a held title can be right): listed after the rest in a summary. */
+const ADVICE = new Set(['still', 'stale', 'slideshow', 'hook']);
+/** How many findings a summary lists in full (the rest are counted). */
+export const SUMMARY_TOP = 5;
+/**
+ * A review said short, for a reader who pays for every word (an agent): the counts first, then the verdicts that did not
+ * pass with why (a verdict passed is named only), then the first SUMMARY_TOP findings — errors before advice — each
+ * with its fix. Nothing is hidden that changes what to do: the rest of the findings are counted, and `more` says how to
+ * list them all. r: what reviewPart returns.
+ */
+export function reviewSummary(r, {more = 'the full review lists every one'} = {}) {
+  const n = r.findings.length, byLabel = new Map();
+  for (const f of r.findings) byLabel.set(LABEL[f.kind] ?? f.kind, (byLabel.get(LABEL[f.kind] ?? f.kind) ?? 0) + 1);
+  const counts = n ? `${n} finding${n === 1 ? '' : 's'}: ${[...byLabel].map(([label, k]) => `${k} ${label}`).join(', ')}` : 'nothing found';
+  const other = (r.verdicts ?? []).filter(v => v.verdict !== 'passed');
+  const tally = ['passed', 'failed', 'not run'].map(v => [v, (r.verdicts ?? []).filter(x => x.verdict === v).length]).filter(([, k]) => k);
+  const verdicts = tally.length ? `verdicts: ${tally.map(([v, k]) => `${k} ${v}`).join(', ')}` : '';
+  const top = [...r.findings].sort((a, b) => ADVICE.has(a.kind) - ADVICE.has(b.kind) || a.from - b.from).slice(0, SUMMARY_TOP);
+  return [`${counts}${verdicts ? ` · ${verdicts}` : ''}`, ...(other.length ? [verdictsText(other)] : []), ...(top.length ? [findingsText(top)] : []),
+    ...(n > top.length ? [`… ${n - top.length} more finding${n - top.length === 1 ? '' : 's'}: ${more}`] : [])].join('\n');
+}
 
 /**
  * What a check found, as plain {kind, t, what}: all the review's record can copy and its report reads. Anything else

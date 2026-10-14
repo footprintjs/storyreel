@@ -102,7 +102,7 @@ const ffmpegOf = given => given ?? process.env.FFMPEG_BIN ?? 'ffmpeg';
 /** The file given, checked: a path to something there (any file FFmpeg reads). */
 function requireSoundFile(file, who) {
   if (typeof file !== 'string' || !file.trim()) throw new Error(`${who}: give the sound as a file path (any audio FFmpeg reads), not ${JSON.stringify(file)}`);
-  if (!existsSync(file)) throw new Error(`${who}: there is no file at ${file}`);
+  if (!existsSync(file)) throw new Error(`${who}: there is no file at ${file}: give the path of a sound file (relative to the folder the command runs in)`);
 }
 const decodeArgs = (file, rate) => ['-v', 'error', '-nostdin', '-i', file, '-vn', '-ac', '1', '-ar', String(rate), '-f', 'f32le', '-'];
 const cannotRun = (who, ffmpeg, error) => new Error(`${who}: FFmpeg (${ffmpeg}) could not run: ${startError(ffmpeg, error)}; install FFmpeg, or name it with the ffmpeg option or FFMPEG_BIN`);
@@ -197,7 +197,7 @@ async function analyse(read, source, options) {
   const useBars = (s, phase) => { work.bars = work.beats.filter((_, i) => i >= phase && (i - phase) % BEATS.meter === 0); s.barStart = phase; s.bars = work.bars.length; };
   const chart = flowChart('decode', async s => {
     work.samples = await read(); work.rate = ANALYSIS.rate;
-    if (!work.samples.length) throw new Error(`beatMap: ${source} has no sound to measure`);
+    if (!work.samples.length) throw new Error(`beatMap: ${source} has no sound to measure: give a file with an audio track`);
     work.seconds = round(work.samples.length / work.rate, 3); s.source = source; s.seconds = work.seconds; s.rate = work.rate;
     if (o.drop !== null && o.drop > s.seconds) throw optionsError(`beatMap: drop ${o.drop} s is past the end of ${source} (${s.seconds} s): give the second the song drops, inside it`);
   }, 'decode', 'The song read as mono samples')
@@ -423,7 +423,7 @@ function makeMap(values) {
  */
 export async function beatMap(audioFile, options = {}) {
   const o = readOptions(options);
-  if (typeof audioFile === 'string' && audioFile.trim() && !existsSync(audioFile)) throw new Error(`beatMap: there is no file at ${audioFile}`);
+  if (typeof audioFile === 'string' && audioFile.trim() && !existsSync(audioFile)) throw new Error(`beatMap: there is no file at ${audioFile}: give the path of a sound file`);
   return makeMap(await analyse(() => streamAudio(audioFile, {rate: ANALYSIS.rate, ffmpeg: o.ffmpeg, who: 'beatMap'}), path.basename(String(audioFile)), options));
 }
 

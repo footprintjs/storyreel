@@ -276,14 +276,14 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const stages = [];
   for (const spec of recipe.stages ?? []) {
     const impl = stageKits[spec.type], where = `stage ${spec.scene}`;
-    if (!BUILT_IN_STAGES.has(spec.type) && !impl) throw new Error(`${where} has type "${spec.type}", which no kit provides`);
+    if (!BUILT_IN_STAGES.has(spec.type) && !impl) throw new Error(`${where} has type "${spec.type}", which no kit provides: pass the kit that adds it (kits: [myKit]), or use a built-in type (${[...BUILT_IN_STAGES].join(', ')})`);
     const allowed = spec.type === 'world' ? WORLD_KEYS : impl?.keys ? new Set([...COMMON_KEYS, ...KIT_STAGE_ENGINE_KEYS, ...impl.keys]) : STAGE_KEYS;
     // Which keys the engine itself reads on this stage (a kit's declared keys are never among them).
     const own = new Set(impl?.keys ?? []), reads = key => !own.has(key) && (!impl || !impl.keys || KIT_STAGE_ENGINE_KEYS.has(key));
-    for (const key of Object.keys(spec)) if (!allowed.has(key)) throw new Error(`${where} has unsupported key ${key}`);
-    if (push && spec.enter !== undefined) throw new Error(`${where} has enter, and a film with a pushIn hands its stages over on one page (enter is for films without one)`);
+    for (const key of Object.keys(spec)) if (!allowed.has(key)) throw new Error(`${where} has unsupported key ${key} (it takes ${[...allowed].join(', ')})`);
+    if (push && spec.enter !== undefined) throw new Error(`${where} has enter, and a film with a pushIn hands its stages over on one page (enter is for films without one): leave enter out`);
     if (push && spec.type === 'world') throw new Error(`${where} is a world, and a film with a pushIn keeps one page (worlds are for films without one)`);
-    if (!push && ((spec.glows && reads('glows')) || (spec.columns && reads('columns')))) throw new Error(`${where} glows card rows, and the film has no card (pushIn)`);
+    if (!push && ((spec.glows && reads('glows')) || (spec.columns && reads('columns')))) throw new Error(`${where} glows card rows, and the film has no card (pushIn): leave glows and columns out, or give the film a pushIn`);
     if (spec.chrome !== undefined && typeof spec.chrome !== 'boolean') throw new Error(`${where}: chrome must be true or false`);
     if (spec.card !== undefined && spec.card !== false) throw new Error(`${where}: card may only be false (the stage takes the whole page)`);
     const st = {...spec, start: clock.start(spec.scene)};
@@ -297,14 +297,14 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
       st.lines = await tokenize(source, spec.code.emphasis ?? {});
       st.reveal = (spec.reveal ?? []).map(([line, ref]) => [line, clock.at(ref)]);
       if (spec.code.allAt) { const at = clock.at(spec.code.allAt); st.reveal = st.lines.map((_, i) => [i, at + .2 + i * .12]); }
-      for (const [line] of st.reveal) if (!(line >= 0 && line < st.lines.length)) throw new Error(`${where} reveals line ${line}, the code has ${st.lines.length}`);
+      for (const [line] of st.reveal) if (!(line >= 0 && line < st.lines.length)) throw new Error(`${where} reveals line ${line}, the code has ${st.lines.length}: lines count from 0, the last is ${st.lines.length - 1}`);
     }
     st.focusAt = (reads('focus') ? spec.focus ?? [] : []).map(f => ({from: f.lines[0], to: f.lines[1], tone: f.tone, a: clock.at(f.from), b: clock.at(f.to)}));
     st.glowAt = (reads('glows') ? spec.glows ?? [] : []).map(g => ({row: g.row, lines: g.lines, a: clock.at(g.from), b: clock.at(g.to)}));
     // Signs beside code lines, from a phrase to the end of the stage (or `to`); a card column ringed while named.
     st.marksAt = (reads('marks') ? spec.marks ?? [] : []).map(m => {
       if (!icons[m.icon]) throw new Error(`${where} marks line ${m.line} with "${m.icon}"; the signs are ${Object.keys(icons).join(', ')}`);
-      if (!(m.line >= 0 && m.line < (st.lines?.length ?? 0))) throw new Error(`${where} marks line ${m.line}, the code has ${st.lines?.length ?? 0}`);
+      if (!(m.line >= 0 && m.line < (st.lines?.length ?? 0))) throw new Error(`${where} marks line ${m.line}, the code has ${st.lines?.length ?? 0}: lines count from 0, the last is ${(st.lines?.length ?? 0) - 1}`);
       return {line: m.line, icon: m.icon, a: clock.at(m.from), b: m.to ? clock.at(m.to) : Infinity};
     });
     st.columnsAt = (reads('columns') ? spec.columns ?? [] : []).map(k => ({key: k.key, a: clock.at(k.from), b: clock.at(k.to)}));
@@ -370,7 +370,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
 
   // Pause and guess: a question over any scene while the narration holds a pause after it.
   const guesses = (recipe.guesses ?? []).map((g, n) => {
-    for (const key of Object.keys(g)) if (!GUESS_KEYS.has(key)) throw new Error(`guess ${n} has unsupported key ${key}`);
+    for (const key of Object.keys(g)) if (!GUESS_KEYS.has(key)) throw new Error(`guess ${n} has unsupported key ${key} (a guess takes ${[...GUESS_KEYS].join(', ')})`);
     if (typeof g.question !== 'string' || !g.question.trim()) throw new Error(`guess ${n} needs a question`);
     if (g.answer !== undefined && (typeof g.answer !== 'string' || !g.answer.trim())) throw new Error(`guess ${n}: answer must be words`);
     const place = g.place ?? 'top';
@@ -1121,6 +1121,6 @@ function recipePaths(recipe) {
 function valueFrom(data, value) {
   if (typeof value === 'string') return value;
   const got = value.path.split('.').reduce((o, k) => o?.[k], data);
-  if (got === undefined) throw new Error(`The data has no ${value.path}`);
+  if (got === undefined) throw new Error(`The data has no ${value.path}: give it in the film's data (compileFilm({…, data})), or name a path it has`);
   return value.format.replace('{}', Array.isArray(got) ? `['${got.join("', '")}']` : String(got));
 }

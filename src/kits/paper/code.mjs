@@ -46,7 +46,7 @@ export function excerpt(file, {elide = []} = {}) {
   const src = readFileSync(file, 'utf8');
   // The end marker may be indented (a block inside an object literal); the block is dedented to its first line.
   const block = src.split('// --- on-screen code')[1]?.split(/\n[ \t]*\/\/ --- end on-screen code ---/)[0];
-  if (block === undefined) throw new Error(`${file} has no on-screen code block`);
+  if (block === undefined) throw new Error(`${file} has no on-screen code block: mark it with the lines // --- on-screen code and // --- end on-screen code ---`);
   const lines = block.split('\n').slice(1), out = [];
   let folded = false;
   // Elide on the lines as written (a property is an indented `key:`), then dedent to the first line.

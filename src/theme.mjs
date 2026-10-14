@@ -11,8 +11,8 @@ const NEEDS = {palette: ['bg', 'glow', 'panel', 'edge', 'ink', 'dim', 'available
 export function validateTheme(theme) {
   if (!theme || typeof theme !== 'object') throw new TypeError('A theme must be an object');
   for (const [section, keys] of Object.entries(NEEDS)) {
-    if (!theme[section] || typeof theme[section] !== 'object') throw new TypeError(`theme.${section} is missing`);
-    for (const key of keys) if (!(key in theme[section])) throw new TypeError(`theme.${section}.${key} is missing`);
+    if (!theme[section] || typeof theme[section] !== 'object') throw new TypeError(`theme.${section} is missing: give it {${keys.join(', ')}}`);
+    for (const key of keys) if (!(key in theme[section])) throw new TypeError(`theme.${section}.${key} is missing: give it (theme.${section} needs ${keys.join(', ')})`);
   }
   for (const [key, value] of Object.entries(theme.palette)) if (!HEX.test(value)) throw new TypeError(`theme.palette.${key} must be a hex colour`);
   if (theme.canvas.width !== 1600 || theme.canvas.height !== 900) throw new RangeError('Films draw on a 1600×900 logical canvas');

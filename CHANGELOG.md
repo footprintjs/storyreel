@@ -1,5 +1,46 @@
 # Changelog
 
+## Unreleased — the tools cost an agent fewer tokens; every refusal names its fix
+
+- **Token cost is a measured number, guarded in CI.** `node scripts/agent-cost.mjs` prints what an agent reads and
+  writes to make the main path's farm film: the skills' descriptions (in every session), the three main-path skill
+  pages, the default output of `timeline`, `review`, `part --scene farm` and `still --at farm+12`, and the storyboard
+  and recipe it writes — bytes, and tokens as characters / 4. `test/agent-cost.test.mjs` fails when a number grows
+  more than 10 % over `test/agent-cost.baseline.json`. **Baseline set in this release** (a deliberate act: say so here
+  each time it moves): 288 tokens in every session, 4862 read, 147 written — from 324, 5811 and 147 on 0.13.1:
+
+  | what | 0.13.1 | now |
+  |---|---|---|
+  | the skills' descriptions | 1299 B | 1156 B |
+  | `storyreel/SKILL.md` | 5414 B | 3821 B |
+  | `storyreel-cartoon/SKILL.md` | 10027 B | 9833 B (and four gaps documented) |
+  | `storyreel-review/SKILL.md` | 6436 B | 5123 B |
+  | `storyreel review` | 491 B | 140 B |
+  | `storyreel part --scene farm` | 561 B | 210 B |
+- **Short by default, `--full` for everything.** `review` and `part` print the counts, the verdicts that did not pass
+  with why, and the first 5 findings (errors before advice), the rest counted (`footprint-storyreel/review` ·
+  `reviewSummary`); `--full` (MCP: `full: "true"`) prints every finding and every verdict's why, as before.
+- **Every command has `--help`** (`still`, `part`, `review`, `timeline`, `strip`, `beats`, `mcp`; `breakdown` had it),
+  and `storyreel help <command>` too.
+- **Every refusal names its fix.** A scan of the 697 throws in `src/` (`test/refusals.mjs`) fails on a message that says
+  only what is wrong; 52 were rewritten — an unknown scene, shape, ink, eraser or icon now lists the ones there are, an
+  unsupported key lists the keys taken, a missing file says what to give — and 11 lines are exempt, each saying why on
+  the line (`// refusal: …`: 5 internal invariants, 6 whose fix another message gives, such as FFmpeg's own error). `pacing` without `sceneTail` said "sceneTail must be between 0.3 and 3": it now says the key
+  is missing and gives an example (likewise `holds`). A render with a `layout` and `width`/`height` names
+  `layout.scale` (`2/3` makes 1280×720, a draft).
+- **A film with no voice is paced from its config.** The CLI (and MCP) tools ignored `pacing` unless a voice folder
+  was named; they now pace the even timings with it, as `makeFilm` paces the timings it is given.
+- **"Too much to read" counts as a reader does.** It counted every separate text draw as a word, so code coloured
+  token by token, "=" and "(" included, counted several times over. It now joins the draws into lines as the claims
+  check does (`drawnLines`), counts only runs with a letter or a digit, leaves out code drawn in `code()` (studied, not
+  read at once — the reading-time check leaves it out too), counts the captions, says so, and quotes the words it
+  counted (truncated).
+- **A fact's source may be a URL followed by notes** (`"https://x.org/t table 2"`): the leading URL is the source. It
+  was read as unverified.
+- **The skills document** where a shot's `intent` goes (on the stage beside `world`, one sentence of at most 140
+  characters), the offset form `[scene, phrase, seconds]`, a world's `overlay` held layer (kits.md), the draft size
+  of a captioned render (`layout.scale: 2/3`), `--full` and `--help`.
+
 ## 0.13.1 — a review no longer holds every frame it reads
 
 - **A review no longer holds every frame it reads.** `review` read each moment on a new canvas: a native picture

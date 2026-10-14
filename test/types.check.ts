@@ -372,7 +372,7 @@ envelope(.1, 'boom');
 import {slideshowOf, SLIDESHOW, SLIDESHOW_VERDICT} from '../types/sub/slideshow.js';
 import {geometryOf, auditParts, readParts, crosses, GEOMETRY} from '../types/sub/geometry.js';
 import {numbersIn, readFacts, exampleScenes, claimsCount, unsourcedClaims, claimText, type Claim} from '../types/sub/claims.js';
-import {reviewPart as review, verdictsText, type VerdictCheck, type ReviewVerdict} from '../types/sub/review.js';
+import {reviewPart as review, verdictsText, reviewSummary, wordsOnScreen, type VerdictCheck, type ReviewVerdict} from '../types/sub/review.js';
 import type {Parts, NumberFact, Verdict} from '../types/index.js';
 export const deadShare = (film: Film): number => slideshowOf(film, {every: .25, rule: {...SLIDESHOW, hold: 4, most: .7}}).deadShare;
 export const slideRules: readonly unknown[] = SLIDESHOW_VERDICT.rules;
@@ -427,3 +427,8 @@ import {compose, view as regionView} from '../types/sub/regions.js';
 import {codeCover} from '../types/sub/segments.js';
 export const composed = compose(regionView(2), regionView(1, 5, 5)).z;
 export const covered = (fp: string): number => (codeCover(fp)?.files.length ?? 0) + (codeCover(fp)?.packages.length ?? 0);
+
+// A review said short, and the words a reader counts.
+const short: string = reviewSummary({findings: [{kind: "still", from: 0, to: 5, scene: "a", what: "x"}]}, {more: "--full lists every one"});
+const onScreen: number = wordsOnScreen([{text: "a b", box: [0, 0, 9, 9]}]).count;
+void short; void onScreen;

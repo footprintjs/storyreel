@@ -61,7 +61,7 @@ export function compileLayout(film, spec) {
   for (const key of Object.keys(spec)) if (!KEYS.includes(key)) throw new Error(`layout has unsupported key ${key} (the keys are ${KEYS.join(', ')})`);
   const f = formatOf(spec.format), k = formatScale(spec.format, spec.scale);
   const header = readHeader(spec.header, f, spec.format), captions = readCaptions(spec.captions, f);
-  if (spec.crop !== undefined && !f.crop) throw new Error(`layout.crop: the ${spec.format} format shows the whole frame; a crop applies to portrait and vertical`);
+  if (spec.crop !== undefined && !f.crop) throw new Error(`layout.crop: the ${spec.format} format shows the whole frame; a crop applies to portrait and vertical: leave crop out, or use one of those formats`);
   for (const key of ['background', 'ink']) if (spec[key] !== undefined && !(typeof spec[key] === 'string' && spec[key].trim())) throw new Error(`layout.${key} must be a colour (e.g. "#f3eee3")`);
   const crop = f.crop ? cropKeys(film, spec.crop ?? [], f.crop) : null;
   const chunks = captions ? captionChunks(spokenTracks(film), {maxWords: captions.maxWords}) : null;
@@ -105,6 +105,9 @@ export function formatScale(format, scale) {
     throw new Error(`layout.scale must be 0.5–2 and keep the ${format} size whole and even (${f.width}×${f.height} at 1; 2 makes ${f.width * 2}×${f.height * 2}${format === 'landscape' ? ', 4K' : ''})`);
   return scale;
 }
+
+/** The size a draft's scale (2/3) makes of a format: "1280×720" for landscape — what a refusal of width/height beside a layout names. */
+export const draftSize = format => { const f = formatOf(format); return `${f.width * 2 / 3}×${f.height * 2 / 3}`; };
 
 /** The title band: {title, sub?, box?}, only where the format has one; false or left out for none. */
 function readHeader(h, f, format) {

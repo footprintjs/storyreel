@@ -336,7 +336,7 @@ const BY_KEYS = {feel: MOVE_FEEL_NAMES, use: MOVE_USES, kind: MOVE_KINDS};
 export function movesBy(filter = {}) {
   if (!filter || typeof filter !== 'object' || Array.isArray(filter)) throw new Error('movesBy: the filter is {feel?, use?, kind?}');
   for (const [key, value] of Object.entries(filter)) {
-    if (!Object.hasOwn(BY_KEYS, key)) throw new Error(`movesBy: no filter ${key} (moves are found by ${Object.keys(BY_KEYS).join(', ')})`);
+    if (!Object.hasOwn(BY_KEYS, key)) throw new Error(`movesBy: no filter ${key} (the filters are ${Object.keys(BY_KEYS).join(', ')})`);
     if (!BY_KEYS[key].includes(value)) throw new Error(`movesBy: ${key} is ${BY_KEYS[key].join(', ')}, not ${shown(value)}`);
   }
   const {feel, use, kind} = filter;

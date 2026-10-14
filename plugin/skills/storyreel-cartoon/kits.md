@@ -9,7 +9,10 @@ the world look like at second `t`".
 - **The story** (`recipe.story`, `{"kit": "<name>", …}`): one continuous world for the scenes before the first stage.
 - **A world shot** (a stage `{"type": "world", "scene": "<id>", "enter": …, "world": {"kit": "<name>", …}}`): a kit
   drawn full screen for its scene, entering by a transition (`fade` when left out; `cut`, `wipe`, `iris`, `push`,
-  `whip`, `zoom`, `page`, `through`, `match` …, or a move: `{"move": "soft-rise"}`). Every recipe has a `story`, the
+  `whip`, `zoom`, `page`, `through`, `match` …, or a move: `{"move": "soft-rise"}`). What the shot is FOR,
+  `"intent": "Show the gate left open."`, goes on the stage beside `world` (or on `story`), never inside `world` (the
+  kit's own spec): ONE sentence of at most 140 characters, so a second sentence refuses (give it a shot of its own).
+  `continuity` and `reads` sit there too (package README, "Planning the shots"). Every recipe has a `story`, the
   film's first shot: a recipe with none, `"story": null`, `"story": "whiteboard"` or a whiteboard with no `items` is
   refused, and the message names the fix, `"story": {"kit": "whiteboard", "items": []}` for an empty board (when the
   first scene is already a stage).
@@ -52,7 +55,8 @@ await assert.rejects(compileFilm({storyboard, recipe: {stages: recipe.stages}, k
 ## What a story kit's compile returns
 
 `compile(spec, clock, motion)` runs once per film: `spec` is the recipe entry (its keys besides `kit` are yours),
-`clock.at([scene, phrase, plus?])` turns a phrase into seconds (an unknown phrase refuses, naming it). It returns:
+`clock.at([scene, phrase, seconds?])` turns a phrase into seconds, plus that many after it starts (an unknown phrase
+refuses, naming it); a recipe names a moment the same way: `["field", "a sheep went out", 1.5]`. It returns:
 
 | key | what it is for |
 |---|---|
@@ -64,6 +68,7 @@ await assert.rejects(compileFilm({storyboard, recipe: {stages: recipe.stages}, k
 | `sounds` | `[{time, type, gain?}]`: `tap`, `slide`, `settle`, `question`, `chime`, `door`, `step`, `click`, `whoosh`, `crumble` |
 | `layers`, `drawLayer(ctx, t, name, spot)` | depth, back to front, for orbit, dolly-zoom and rack-focus ([camera.md](camera.md#depth-layers)) |
 | `cameraMoves` | `[{from, to}]`: seconds when the kit moves its own camera, so recipe camera moves take turns with it |
+| `overlay(ctx, t)` | a **held layer** (a world shot's): drawn on the frame over the picture, outside its camera, so a transition or a push never moves it (a presenter in the corner, a title band); through a change of picture the same layer in both shots stays itself |
 | `spotAt(t)` | a spotlight `{cx, cy, r, zoom, w}`, or null |
 | `mouthsAt(t)` | `[{who, open}]`: mouths on screen, for the lip-sync check |
 | `ready` | a Promise that settles once it can draw (images decoded) |

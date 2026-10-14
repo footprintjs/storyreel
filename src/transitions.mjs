@@ -436,7 +436,7 @@ function readParams(params, e, where) {
     if (spec.oneOf && !spec.oneOf.includes(v)) throw bad(spec.oneOf.join(', '));
     if (spec.point && !(Array.isArray(v) && v.length === 2 && v.every(Number.isFinite))) throw bad('[x, y]');
     if (spec.color && !isColor(v)) throw bad('a hex colour such as "#000000"');
-    if (spec.number && !(typeof v === 'number' && v >= spec.number[0] && v <= spec.number[1])) throw bad(`a number ${spec.number[0]}–${spec.number[1]}`);
+    if (spec.number && !(typeof v === 'number' && v >= spec.number[0] && v <= spec.number[1])) throw bad(`a number ${spec.number[0]}–${spec.number[1]}`);   // refusal: bad() says "must be" it
     out[name] = Array.isArray(v) ? Object.freeze([...v]) : v;
   }
   return Object.freeze(out);
@@ -455,7 +455,7 @@ export function transitionCatalog(kits = []) {
     for (const [name, def] of Object.entries(kit.transitions)) {
       const who = `the kit "${kit.name}"'s transition "${name}"`;
       if (Object.hasOwn(TRANSITIONS, name)) throw new Error(`${who} has a built-in transition's name; name it something else (the built-in ones are ${TRANSITION_NAMES.join(', ')})`);
-      if (owner[name]) throw new Error(`${who}: the kit "${owner[name]}" already has a transition named "${name}"`);
+      if (owner[name]) throw new Error(`${who}: the kit "${owner[name]}" already has a transition named "${name}": give yours another name`);
       if (!/^[a-z][a-zA-Z0-9]*$/.test(name)) throw new Error(`${who}: a transition's name is one word in camelCase (e.g. "swirl", "inkBleed")`);
       catalog[name] = checkTransition(def, who); owner[name] = kit.name;
     }

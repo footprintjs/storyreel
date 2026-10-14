@@ -73,7 +73,7 @@ function filesUnder(paths, extensions) {
   if (!Array.isArray(paths) || !paths.length) throw new Error('codeFingerprint: give the folders or files that hold the drawing code (e.g. the film\'s kits folder)');
   const files = [];
   const walk = p => {
-    if (!existsSync(p)) throw new Error(`codeFingerprint: ${p} does not exist`);
+    if (!existsSync(p)) throw new Error(`codeFingerprint: ${p} does not exist: name the kit's files as they are (relative to the folder the command runs in)`);
     if (statSync(p).isDirectory()) { for (const name of readdirSync(p).sort()) if (!name.startsWith('.') && name !== 'node_modules') walk(path.join(p, name)); }
     else if (extensions.includes(path.extname(p).toLowerCase())) files.push(p);
   };

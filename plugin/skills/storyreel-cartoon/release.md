@@ -106,7 +106,9 @@ band and a caption band where the shape leaves room. `render: {layout: {format, 
   `captions.vtt` and `captions.srt` beside the video, whatever the layout burns in.
 - **A crop follows the action** in portrait and vertical: `crop: [{at: [scene, phrase], x}]` eases the crop's centre
   (an x on the 1600-wide frame) to `x` at each phrase; it is centred until the first.
-- `scale: .5` is a half-size draft of a format; `scale: 2` with `quality: 'high'` is 4K for YouTube.
+- **Size** comes from the format: a render with a `layout` refuses `width`/`height` and names the fix. `scale: 2/3` is
+  a draft of any format (1280×720 landscape); `scale: .5` only where half the size stays even (not portrait);
+  `scale: 2` with `quality: 'high'` is 4K for YouTube.
 - **The poster** (`"poster": [scene, phrase, seconds]` in the recipe) is written as `poster.jpg` and made the first
   frame; `post.thumbnail: 'poster'` draws it at a platform's thumbnail size (a film with no poster is refused).
 - Give each version its own folder: a render writes `poster.jpg` and `chapters.txt` beside its video.

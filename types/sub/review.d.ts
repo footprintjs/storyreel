@@ -50,6 +50,15 @@ export function verdictsText(verdicts: ReviewVerdict[]): string;
 /** A finding: a span on the film clock, the scene it starts in. */
 export interface Finding {kind: string; from: number; to: number; scene: string | null; what: string}
 export function findingsText(findings: Finding[]): string;
+/** How many findings a summary lists in full (the rest are counted). */
+export const SUMMARY_TOP: number;
+/**
+ * A review said short (what `storyreel review` prints by default): the counts, the verdicts that did not pass with why,
+ * the first SUMMARY_TOP findings (errors before advice), and how many more — `more` says how to list them all.
+ */
+export function reviewSummary(review: {findings: Finding[]; verdicts?: ReviewVerdict[]}, options?: {more?: string}): string;
+/** The words a reader counts on screen (the too-much-to-read check): draws joined into lines, captions in, code() out. */
+export function wordsOnScreen(words: {text: string; box?: number[]; code?: boolean}[]): {lines: string[]; count: number};
 /**
  * Review a part (or the film) by reading it: a footprintjs flowchart that leaves its own record. from/to past the film's
  * ends are held to the film; a check that throws rejects the review, naming every check that failed and why.

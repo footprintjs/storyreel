@@ -10,7 +10,7 @@ import {once} from 'node:events';
 import {createHash} from 'node:crypto';
 import {createCanvas} from '@napi-rs/canvas';
 import {createMotionSound, soundsByScene, SOUND_AT} from './sound.mjs';
-import {compileLayout} from './layout.mjs';
+import {compileLayout, draftSize} from './layout.mjs';
 import {captionChunks, captionFile, FILE_CHUNKS, clockText} from 'footprint-narration';
 import {spokenTracks} from './captions.mjs';
 import {effectsUnderVoice, musicUnderVoice} from './listening.mjs';
@@ -91,7 +91,7 @@ export function integratedLoudness(ffmpeg, wav) {
 /** Pass 1: measure the mixed film's loudness (render.mjs · measuredLoudness), and why it is unusable, if it is. */
 function measureFilm(ffmpeg, wav, target) {
   const report = parseLoudnormReport(runReporting(ffmpeg, ['-i', wav, '-af', `${LOUDNESS_FORMAT},loudnorm=${loudnormTarget(target)}:print_format=json`, '-f', 'null', '-']));
-  if (!report) throw new Error('ffmpeg loudnorm printed no measurement (print_format=json); is this FFmpeg built with loudnorm?');
+  if (!report) throw new Error('ffmpeg loudnorm printed no measurement (print_format=json): use an FFmpeg built with loudnorm (ffmpeg -filters lists it)');
   const measured = measuredLoudness(report);
   return {measured, reason: unusableReason(measured)};
 }
@@ -383,7 +383,7 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   const blur = readMotionBlur(motionBlur), captionKinds = readCaptionFiles(captionFiles);
   const framed = layout ? compileLayout(film, layout) : null;
   // A layout's format sets the size; a size given beside it would be silently ignored, so it refuses.
-  if (framed && (givenWidth !== undefined || givenHeight !== undefined)) throw new Error(`renderFilm: the ${framed.format} layout is ${framed.width}×${framed.height}; leave width and height out (they size a render without a layout)`);
+  if (framed && (givenWidth !== undefined || givenHeight !== undefined)) throw new Error(`renderFilm: the ${framed.format} layout is ${framed.width}×${framed.height}; leave width and height out (they size a render without a layout) and size it with layout.scale: 2/3 makes ${draftSize(framed.format)}, a draft (0.5–2)`);
   const width = framed?.width ?? givenWidth ?? RENDER_DEFAULTS.width, height = framed?.height ?? givenHeight ?? RENDER_DEFAULTS.height;
   if (framed && intro && framed.format !== 'landscape') throw new Error(`renderFilm: an intro is drawn for the landscape frame; the ${framed.format} layout takes none (leave intro out)`);
   // First, the out folder and a `work` named elsewhere: their REAL paths, with no folder on the way another user could
@@ -436,7 +436,7 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
     ff.stdin.end();
     const [code] = await closed;
     if (failed) throw new Error(`ffmpeg (${ffmpeg}) could not encode ${path.basename(file)}: ${failed.message}`);
-    if (code !== 0) throw new Error(`ffmpeg failed encoding frames ${f0}–${f1} into ${path.basename(file)} (exit ${code})`);
+    if (code !== 0) throw new Error(`ffmpeg failed encoding frames ${f0}–${f1} into ${path.basename(file)} (exit ${code}): FFmpeg's own error is printed above it`);   // refusal: FFmpeg's stderr says why
     return file;
   };
   /**
@@ -496,7 +496,7 @@ export async function finishRender(job, video) {
   const {film, storyboard, timings, narrationDir, dir, work, intro, withIntro, start, to, peakCeilingDBFS, loudness, framed, captionKinds, ffmpeg, song, soundAt} = job;
   const posterFile = await writePoster(job);
   // Audio: narration end to end (or silence), the accents on the same clock, the intro's sound first.
-  const run = args => { const r = spawnSync(ffmpeg, ['-y', '-loglevel', 'error', ...args], {stdio: 'inherit'}); if (r.status) throw new Error(`ffmpeg failed: ${args.join(' ').slice(0, 200)}`); };
+  const run = args => { const r = spawnSync(ffmpeg, ['-y', '-loglevel', 'error', ...args], {stdio: 'inherit'}); if (r.status) throw new Error(`ffmpeg failed: ${args.join(' ').slice(0, 200)}`); };   // refusal: FFmpeg's own error is printed above it
   const voice = path.join(work, 'film-voice.wav');   // the working files in the work folder; the outputs beside the video
   if (narrationDir) joinVoice(run, {dir: work, storyboard, timings, narrationDir, voice});
   else run(['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', String(film.total), voice]);

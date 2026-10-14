@@ -59,7 +59,7 @@ export function readParts(parts, where) {
     if (s.ends === 'mounted' && s.mount === undefined) throw new Error(`${it}: ends 'mounted' needs a mount (the part both ends land on)`);
     if (s.contact !== undefined && typeof s.contact !== 'boolean' && s.contact !== 'a' && s.contact !== 'b') throw new Error(`${it}: contact names the end that rests on the ground ('a', 'b', or true for both), or is false while it is in the air, not ${JSON.stringify(s.contact)}`);
     if (s.mount !== undefined) {
-      if (s.mount === name) throw new Error(`${it} is mounted on itself`);
+      if (s.mount === name) throw new Error(`${it} is mounted on itself: mount it on another segment, or leave mount out`);
       if (!Object.hasOwn(segments, s.mount) && !Object.hasOwn(regions, s.mount)) throw new Error(`${it} is mounted on "${s.mount}", which is not among its parts (segments: ${Object.keys(segments).join(', ') || 'none'}; regions: ${Object.keys(regions).join(', ') || 'none'})`);
     }
   }

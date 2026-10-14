@@ -16,8 +16,11 @@ const has = cmd => !spawnSync(cmd, ['-version']).error;
 test('the tools read the project\'s film: its timeline and its review as text, a still as one picture', async () => {
   const out = tempDir('tools'), p = await loadProject({cwd: project, out});
   assert.match(await timeline(p, {scene: 'two', handles: 0}), /^two: [\d.]+–[\d.]+ s of [\d.]+ s \(times from its start\)\n0\.00  ── two$/m);
-  const read = await review(p);
+  const read = await review(p, {full: 'true'});
   assert.match(read, /review \(under-captions, words-overlap, cut-off, hook, text-density, stale, still, slideshow, claims\):\n[\s\S]*0:02\.0–0:03\.8 one · words over words: "Alpha" and "Beta"/);
+  const short = await review(p);
+  assert.match(short, /review \(.*\):\n1 finding: 1 words over words · verdicts: 2 passed, 1 not run\nDrawn parts hold together · not run: no kit on screen gives its parts \(parts\(t\)\)\n0:02\.0–0:03\.8 one · words over words: "Alpha" and "Beta"$/, 'by default: the counts, what did not pass, the findings');
+  assert.ok(short.length < read.length);
   assert.match(read, /\nverdicts:\nNo slideshow · passed: the shots move inside themselves: most of their running time is never held still for more than 3 s \(0 % of [\d.]+ s dead, \d+ % still\)\nDrawn parts hold together · not run: no kit on screen gives its parts \(parts\(t\)\)\nEvery number has a source · passed: the film shows no number/, 'the verdicts follow the findings, each with why');
   const s = await still(p, {at: 'one+2.5,two+0'});
   assert.ok(existsSync(s.file) && s.file.endsWith('.png'), s.text);
@@ -34,6 +37,15 @@ test('the tools read the project\'s film: its timeline and its review as text, a
   assert.match(await review(p, {loop: 'true'}), /review \(.*loop.*\):[\s\S]*the loop jumps: the end is not the start/);
 });
 
+test('a film with no voice is paced from its config: the even timings take its holds and tails, as makeFilm takes them', async () => {
+  const plain = await loadProject({cwd: project}), paced = await loadProject({cwd: project, paced: 'true'});
+  // A 2 s hold after "a few words", and each scene's 0.8 s tail made 1.5 s (counted from its last word's end, as a voice's is).
+  const grew = paced.film.total - plain.film.total;
+  assert.ok(Math.abs(grew - (2 + 2 * (1.5 - .8))) < .1, `the paced film is ${grew.toFixed(3)} s longer`);
+  assert.match(await timeline(paced, {scene: 'two', handles: 0}), /^two: /);
+  await assert.rejects(loadProject({cwd: project, paced: 'notail'}), /pacing\.sceneTail is missing: give the settle after each scene's last word, 0\.3–3 seconds \(e\.g\. "sceneTail": 0\.8\)/);
+});
+
 test('the command line: each tool by name, its flags to the film too; refusals name the fix', () => {
   const help = run(['help']);
   assert.equal(help.status, 0); assert.match(help.stdout, /Read first, look last: timeline → review → fix → part → still\./);
@@ -42,6 +54,12 @@ test('the command line: each tool by name, its flags to the film too; refusals n
   const none = run(['review'], tempDir('empty'));   // a folder with no project in it (its own, not the shared temp folder)
   assert.equal(none.status, 1); assert.match(none.stderr, /no storyreel\.config\.mjs in .*: a project names its film there/);
   assert.equal(run(['draw']).status, 2, 'an unknown tool is a usage error');
+  for (const command of ['timeline', 'review', 'part', 'still', 'strip', 'beats', 'breakdown', 'mcp']) {
+    const h = run([command, '--help']);
+    assert.equal(h.status, 0, `${command} --help: ${h.stderr}`); assert.match(h.stdout, new RegExp(`^storyreel ${command} `), `${command} --help gives its own usage`);
+  }
+  assert.match(run(['still', '--help']).stdout, /--at {2}moments: scene\+seconds/);
+  assert.match(run(['review', '--help']).stdout, /--full {2}true for every finding/);
 });
 
 test('part: the scenes with their handles, rendered quickly, reviewed first', {skip: has('ffmpeg') ? false : 'needs ffmpeg'}, () => {

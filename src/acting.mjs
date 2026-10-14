@@ -64,7 +64,7 @@ function readKeys(keys, o) {
     if (k.take !== undefined && !(k.take >= 0 && k.take <= 1)) throw new Error(`moodAt: key ${i}'s take is 0..1 (how big the reaction is)`);
     const last = moods.at(-1);
     if (last && k.mood === last.mood) return;
-    if (last && k.at === last.at) throw new Error(`moodAt: "${last.mood}" and "${k.mood}" are both at ${k.at} s; a character has one mood at a time`);
+    if (last && k.at === last.at) throw new Error(`moodAt: "${last.mood}" and "${k.mood}" are both at ${k.at} s; a character has one mood at a time: give one of them another second`);
     const change = moods.length >= 2 && moods.at(-1);
     if (change && k.at - change.at < spacing - 1e-9) throw new Error(`moodAt: the change to "${k.mood}" at ${k.at} s comes ${(k.at - change.at).toFixed(2)} s after the change to "${change.mood}"; a change takes ${spacing} s to settle, so space changes at least that far apart (or make fade and settle shorter)`);
     moods.push(k);

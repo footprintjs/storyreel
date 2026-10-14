@@ -27,7 +27,7 @@ claims)`); a check runs only when the part has what it reads (no caption band, n
 | `words-overlap` | words over words | two words overlap | move one, or let the first leave first |
 | `cut-off` | cut off at the edge | a word runs off the frame (a camera move can push it off) | move it in, or end the move sooner |
 | `hook` | no hook | nothing moves in the first 3 s<!-- REVIEW_DEFAULTS.hook --> of the film | start something moving at once |
-| `text-density` | too much to read | more than 35 words<!-- REVIEW_DEFAULTS.maxWords --> on screen at once | fewer words, or in turns |
+| `text-density` | too much to read | more than 35 words<!-- REVIEW_DEFAULTS.maxWords --> on screen at once: draws joined into words as a reader sees them (a word drawn in coloured pieces is one; "=" or "(" is none), captions included, code drawn in `code()` left out; the finding quotes the words it counted | fewer words, or in turns |
 | `silences` | no breath | a spoken part of 30 s<!-- REVIEW_DEFAULTS.breath --> or more with under two real silences (0.8 s<!-- REVIEW_DEFAULTS.minSilence -->, no sound) | a pacing hold before the peak |
 | `stale` | nothing new | no scene, no beat, no new word for 5 s<!-- REVIEW_DEFAULTS.newEvery --> (the picture may still move) | a beat: a phrase the kit or the recipe acts on |
 | `still` | nothing changes | the picture is frozen for 5 s<!-- REVIEW_DEFAULTS.stillFor --> or more | something alive in the shot (a cloud, a blink) |
@@ -103,8 +103,8 @@ assert.equal((await verdictOf({facts: [], scenes: [{...scene, example: true}]}))
 
 - **A fact** is `{value, text?, source}`. `value` is the number as shown (`16.67`, `-5`, `1000000` for
   "1,000,000"; as written when it is not one value: `"3:15"`). `text` is the words it must be shown with ("12 cups",
-  so 12 sheep is not sourced by it). `source` is a URL, a file inside the film's root (`run.json#steps[2]`), or words,
-  which pass as **unverified**. `facts` is the list, or a JSON file inside the root.
+  so 12 sheep is not sourced by it). `source` is a URL (notes may follow it after a space: `"https://x.org/t table 2"`),
+  a file inside the film's root (`run.json#steps[2]`), or words, which pass as **unverified**. `facts` is the list, or a JSON file inside the root.
 - **An example scene** (`"example": true`, or the label in the film's language: `"example": "Beispieldaten"`)
   shows an "Example data" label while its lines are up; its numbers need no source.
 - **The film's language** reads its numbers: `compileFilm({…, lang: 'de'})` reads "2,5 kg" as 2.5. Without `lang`, a

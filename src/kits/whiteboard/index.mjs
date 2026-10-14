@@ -26,20 +26,20 @@ const SHAPES = {
   flashlight: (x, y, s = 1, dir = 1) => icons.flashlight(x, y, s, dir),
 };
 const ITEM_KEYS = new Set(['at', 'dur', 'draw', 'write', 'x', 'y', 'size', 'align', 'color', 'erase', 'seed', 'eureka', 'name']);
-const color = name => { if (name === undefined) return INK.black; if (!(name in INK)) throw new Error(`Unknown ink colour ${name}`); return INK[name]; };
+const color = name => { if (name === undefined) return INK.black; if (!(name in INK)) throw new Error(`Unknown ink colour ${name} (the inks are ${Object.keys(INK).join(', ')})`); return INK[name]; };
 
 export function compileWhiteboard(spec, clock, motion = {cameraSpeed: 1}) {
   const erasers = Object.fromEntries(Object.entries(spec.erasers ?? {}).map(([name, e]) => [name, {at: clock.at(e.at) + (e.plus ?? 0), dur: e.dur, box: e.box}]));
   const eraseOf = item => {
     const name = 'erase' in item ? item.erase : spec.defaultErase;
     if (name === null || name === undefined) return undefined;
-    if (!erasers[name]) throw new Error(`Unknown eraser ${name}`);
+    if (!erasers[name]) throw new Error(`Unknown eraser ${name} (the erasers are ${Object.keys(erasers).join(', ')})`);
     return erasers[name];
   };
   if (!Array.isArray(spec.items)) throw new Error(`whiteboard: items is the list of what the board draws ([] for an empty board), not ${JSON.stringify(spec.items)}`);
   const items = [], dings = [], places = [];
   spec.items.forEach((item, n) => {
-    for (const key of Object.keys(item)) if (!ITEM_KEYS.has(key)) throw new Error(`whiteboard item ${n} has unsupported key ${key}`);
+    for (const key of Object.keys(item)) if (!ITEM_KEYS.has(key)) throw new Error(`whiteboard item ${n} has unsupported key ${key} (an item takes ${[...ITEM_KEYS].join(', ')})`);
     // A name makes the item a thing a push can frame and a transition can go through (regionsAt → name).
     if (item.name !== undefined && !(typeof item.name === 'string' && /^[a-z][a-zA-Z0-9-]*$/.test(item.name))) throw new Error(`whiteboard item ${n}: name is one word for the thing it draws (e.g. "pebble"), not ${JSON.stringify(item.name)}`);
     const at = clock.at(item.at), erase = eraseOf(item);
@@ -53,15 +53,15 @@ export function compileWhiteboard(spec, clock, motion = {cameraSpeed: 1}) {
       dings.push(at + .05);
       return;
     }
-    if (!(item.dur > 0)) throw new Error(`whiteboard item ${n} needs a duration`);
+    if (!(item.dur > 0)) throw new Error(`whiteboard item ${n} needs a duration: dur, its seconds of drawing (e.g. "dur": 1.2)`);
     const ink = color(item.color);
     if (typeof item.write === 'string') {
       const opts = {size: item.size ?? 48, align: item.align ?? 'left', color: ink};
       items.push({at, dur: item.dur, color: ink, draw: (ctx, f) => drawWriting(ctx, item.write, item.x, item.y, f, opts), erase});
       return;
     }
-    if (!Array.isArray(item.draw)) throw new Error(`whiteboard item ${n} draws nothing`);
-    const strokes = item.draw.flatMap(([kind, ...args]) => { if (!SHAPES[kind]) throw new Error(`Unknown shape ${kind}`); return SHAPES[kind](...args); });
+    if (!Array.isArray(item.draw)) throw new Error(`whiteboard item ${n} draws nothing: give it write: "words", or draw: [[shape, …args], …] (the shapes are ${Object.keys(SHAPES).join(', ')})`);
+    const strokes = item.draw.flatMap(([kind, ...args]) => { if (!SHAPES[kind]) throw new Error(`Unknown shape ${kind} (the shapes are ${Object.keys(SHAPES).join(', ')})`); return SHAPES[kind](...args); });
     const opts = {color: ink, size: item.size ?? 6, seed: item.seed ?? n + 1};
     items.push({at, dur: item.dur, color: ink, draw: (ctx, f) => drawStrokes(ctx, strokes, f, opts), erase});
   });

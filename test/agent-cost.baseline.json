@@ -1,0 +1,42 @@
+{
+  "the skills' descriptions": {
+    "bytes": 1156,
+    "tokens": 288
+  },
+  "storyreel/SKILL.md": {
+    "bytes": 3821,
+    "tokens": 952
+  },
+  "storyreel-cartoon/SKILL.md": {
+    "bytes": 9833,
+    "tokens": 2456
+  },
+  "storyreel-review/SKILL.md": {
+    "bytes": 5123,
+    "tokens": 1278
+  },
+  "storyreel timeline": {
+    "bytes": 308,
+    "tokens": 73
+  },
+  "storyreel review": {
+    "bytes": 140,
+    "tokens": 34
+  },
+  "storyreel part --scene farm": {
+    "bytes": 210,
+    "tokens": 51
+  },
+  "storyreel still --at farm+12": {
+    "bytes": 71,
+    "tokens": 18
+  },
+  "storyboard.json": {
+    "bytes": 278,
+    "tokens": 70
+  },
+  "recipe.json": {
+    "bytes": 306,
+    "tokens": 77
+  }
+}

@@ -127,7 +127,7 @@ test('movesBy: the moves matching every filter, in the table\'s order; an unknow
   assert.ok(bouncyLogos.length && bouncyLogos.every(m => m.feel === 'bouncy' && m.uses.includes('logo')));
   assert.deepEqual(movesBy({kind: 'ambient'}).map(m => m.name), ['marquee', 'pulse', 'float']);
   assert.deepEqual(movesBy({feel: 'heavy', kind: 'entrance'}).map(m => m.name), ['drop-in', 'slam']);
-  assert.throws(() => movesBy({mood: 'happy'}), /movesBy: no filter mood \(moves are found by feel, use, kind\)/);
+  assert.throws(() => movesBy({mood: 'happy'}), /movesBy: no filter mood \(the filters are feel, use, kind\)/);
   assert.throws(() => movesBy({use: 'video'}), /movesBy: use is ui, text, logo, character, 3d, not "video"/);
   assert.throws(() => movesBy({feel: 'snappy'}), /movesBy: feel is smooth, crisp, soft, heavy, bouncy, not "snappy"/);
 });

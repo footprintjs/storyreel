@@ -61,6 +61,18 @@ async function breakdownCommand(args) {
 
 const [command, ...given] = process.argv.slice(2), flags = {};
 if (command === 'breakdown') { await breakdownCommand(given); process.exit(0); }
+// `<command> --help` (or `help <command>`): that command's usage alone, on stdout, exit 0 — every command has one.
+const asked = given.includes('--help') ? command : command === 'help' && given[0] ? given[0] : null;
+if (asked) {
+  const tool = TOOLS[asked];
+  const usage = tool ? `storyreel ${asked} [--flag value …]   ${tool.about}\n${Object.entries(tool.args).map(([a, d]) => `  --${a}  ${d}`).join('\n')}\n  --config  the project file (default ./${CONFIG}); any other flag reaches the config's film(flags)`
+    : asked === 'beats' ? `storyreel beats <song> [--bpm n] [--ffmpeg path]\n${BEATS_HELP}`
+    : asked === 'breakdown' ? BREAKDOWN_USAGE
+    : asked === 'mcp' ? `storyreel mcp [--flag value …]   serves ${Object.keys(TOOLS).join(', ')} over MCP (stdio); the flags are every call's defaults (e.g. --out work/out)`
+    : null;
+  if (usage) { console.log(usage); process.exit(0); }
+  console.error(`storyreel: "${asked}" is not a command; the commands are ${[...Object.keys(TOOLS), 'beats', 'breakdown', 'mcp'].join(', ')} (storyreel help lists them all)`); process.exit(2);
+}
 // beats takes the song first: a path, not a flag.
 const song = command === 'beats' && given[0] !== undefined && !given[0].startsWith('--') ? given[0] : null, rest = song === null ? given : given.slice(1);
 for (let i = 0; i < rest.length; i++) {

@@ -228,7 +228,7 @@ export function moduleReader(who) {
   const known = new Map();
   return file => {
     if (known.has(file)) return known.get(file);
-    if (!existsSync(file)) throw new Error(`${who}: ${file} does not exist`);
+    if (!existsSync(file)) throw new Error(`${who}: ${file} does not exist: name a file that is there (relative to the folder the command runs in)`);
     const bytes = readFileSync(file), files = [], packages = [], missing = [], unfollowed = []; let unparsed = null;
     const take = f => { if (!f.split(path.sep).includes('node_modules')) files.push(f); };
     if (PARSED.test(file)) {
