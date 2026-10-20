@@ -37,7 +37,8 @@ export interface Released {target: string; dir: string; video: string; captions:
 /** The folder inside a release's `out` that holds each target's working files and record. */
 export const WORK: 'work';
 /** CREDITS.txt's text: StoryReel and the tools its record lists, what the maker brought (post.credits), the synthetic voice. */
-export function creditsText(post: ReleasePost, tools: {name: string; version?: string; license: string; detail?: string}[]): string;
+/** CREDITS.txt: StoryReel and its tools, the found sounds' attribution lines (from the making-of record's foundSounds), the maker's credits. */
+export function creditsText(post: ReleasePost, tools: {name: string; version?: string; license: string; detail?: string}[], sounds?: {attribution: string; license: string}[]): string;
 
 export const TARGETS: Readonly<Record<TargetName, () => Promise<{default: ReleaseAdapter}>>>;
 export const TARGET_NAMES: readonly TargetName[];

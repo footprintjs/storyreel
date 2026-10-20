@@ -48,7 +48,7 @@
  */
 import {createCanvas} from '@napi-rs/canvas';
 import {easeNamed, overshoots, EASES} from './ease.mjs';
-import {SOUND_NAMES} from './sound.mjs';
+import {SOUND_NAMES, readSoundChoice} from './sound.mjs';
 import {readMove, moveAt, applyMove, MOVES, MOVE_NAMES, REST} from './moves.mjs';
 import {PAPER_TRANSITIONS as PAPER} from './transitions/paper/index.mjs';
 import {W, H, clamp, smooth, farthest} from './frame.mjs';
@@ -299,11 +299,22 @@ export function readEntrance(enter, where, catalog = TRANSITIONS) {
   if (!(typeof seconds === 'number' && seconds >= .2 && seconds <= 3)) throw new Error(`${where}: enter.seconds must be between 0.2 and 3`);
   const easeName = e.ease ?? tr.ease, ease = easeNamed(easeName, `${where}: enter.ease`);
   if (overshoots(easeName) && !tr.overshoot) throw new Error(`${where}: a ${e.type} cannot take the ease "${easeName}" (it goes past the end, and the frame's edge would show); ${Object.entries(catalog).filter(([, t]) => t.overshoot).map(([n]) => n).join(', ')} can`);
-  const sound = e.sound === false ? null : e.sound ?? tr.sound;
-  if (sound !== null && !SOUND_NAMES.includes(sound)) throw new Error(`${where}: enter.sound must be false or a sound: ${SOUND_NAMES.join(', ')} (not ${JSON.stringify(sound)})`);
+  const sound = entranceSound(e.sound, tr.sound, where);
   const p = readParams(params, e, where);
   // Most of the change happens in the silence before the scene's first word.
   return {type: e.type, seconds, lead: seconds * .75, ease, sound, p, draw: tr.draw, regions: tr.regions ?? null, names: Object.keys(params).filter(k => params[k]?.name), at: p.at ?? [800, 450]};
+}
+
+/**
+ * An entrance's sound: false (none), left out (the transition's own), a sound's name, or a found sound
+ * {"type": "found", "name", "gain"?} (sound.mjs · readSoundChoice; found.mjs keeps the recording).
+ */
+function entranceSound(given, fallback, where) {
+  if (given === false) return null;
+  if (given === undefined) return fallback;
+  const sound = readSoundChoice(given);
+  if (sound === null) throw new Error(`${where}: enter.sound must be false or a sound: ${SOUND_NAMES.join(', ')} (not ${JSON.stringify(given)}), or a found sound: {"type": "found", "name": "page-turn", "gain"?: 0–1} (npx storyreel sounds add)`);
+  return sound;
 }
 
 /** What a whole picture can do as it arrives: be seen through, move, turn, grow, blur and be uncovered (not count, draw or split: those need the thing itself). */
@@ -325,8 +336,7 @@ function readMoveEntrance(e, where) {
   const seconds = e.seconds ?? move.seconds;
   if (!(typeof seconds === 'number' && seconds >= .2 && seconds <= 3)) throw new Error(`${where}: enter.seconds must be between 0.2 and 3 (the move "${move.name}" takes ${move.seconds} on its own)`);
   if (e.feel !== undefined) { try { moveAt(move, 0, {feel: e.feel}); } catch (err) { throw new Error(`${where}: enter.feel: ${err.message.replace(/^moveAt: /, '')}`, {cause: err}); } }
-  const sound = e.sound === false ? null : e.sound ?? null;
-  if (sound !== null && !SOUND_NAMES.includes(sound)) throw new Error(`${where}: enter.sound must be false or a sound: ${SOUND_NAMES.join(', ')} (not ${JSON.stringify(sound)})`);
+  const sound = entranceSound(e.sound, null, where);
   const feel = e.feel ?? null;
   const p = Object.freeze({move, seconds, feel, start: Object.freeze(moveAt(move, 0)), restAt: restMoments(move, seconds, feel)});
   return {type: 'move', move: move.name, seconds, lead: seconds * .75, ease: EASES.linear, sound, p, draw: drawMove, regions: null, names: [], at: [800, 450]};

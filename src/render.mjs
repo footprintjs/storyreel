@@ -9,7 +9,8 @@ import {spawn, spawnSync} from 'node:child_process';
 import {once} from 'node:events';
 import {createHash} from 'node:crypto';
 import {createCanvas} from '@napi-rs/canvas';
-import {createMotionSound, soundsByScene, SOUND_AT} from './sound.mjs';
+import {createMotionSound, soundsByScene, SOUND_AT, FOUND} from './sound.mjs';
+import {checkFoundFile} from './found.mjs';
 import {compileLayout, draftSize} from './layout.mjs';
 import {captionChunks, captionFile, FILE_CHUNKS, clockText} from 'footprint-narration';
 import {spokenTracks} from './captions.mjs';
@@ -500,8 +501,10 @@ export async function finishRender(job, video) {
   const voice = path.join(work, 'film-voice.wav');   // the working files in the work folder; the outputs beside the video
   if (narrationDir) joinVoice(run, {dir: work, storyboard, timings, narrationDir, voice});
   else run(['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', String(film.total), voice]);
-  // Each scene's sounds on its own clock (sound.mjs · soundsByScene, the rule compileFilm counted them by).
-  const byScene = soundsByScene(film.sounds, film.clock.offsets, timings.scenes.map(s => s.duration));
+  // Each scene's synthesized sounds on its own clock (sound.mjs · soundsByScene, the rule compileFilm counted them by);
+  // the found ones (recordings: found.mjs) are mixed from their files after (mixFound).
+  const found = film.sounds.filter(s => s.type === FOUND);
+  const byScene = soundsByScene(film.sounds.filter(s => s.type !== FOUND), film.clock.offsets, timings.scenes.map(s => s.duration));
   const sfxParts = timings.scenes.map((s, i) => {
     const file = path.join(work, `film-sfx-${i}.wav`);
     writeFileSync(file, createMotionSound({duration: s.duration, events: byScene[i], peakCeilingDBFS, soundAt}).wav);
@@ -509,11 +512,12 @@ export async function finishRender(job, video) {
   });
   writeFileSync(path.join(work, 'film-sfx.txt'), concatList(sfxParts));
   run(['-f', 'concat', '-safe', '0', '-i', path.join(work, 'film-sfx.txt'), '-ar', '48000', '-ac', '1', path.join(work, 'film-sfx.wav')]);
-  // Each role measured apart (listening.mjs): the effects stay well under the voice, so the words stay clear.
+  const effects = found.length ? mixFound(run, {ffmpeg, events: found, sounds: film.foundSounds ?? [], dir: work, sfx: path.join(work, 'film-sfx.wav'), ceiling: peakCeilingDBFS}) : path.join(work, 'film-sfx.wav');
+  // Each role measured apart (listening.mjs): the effects — found sounds and all — stay well under the voice, so the words stay clear.
   const integrated = wav => integratedLoudness(ffmpeg, wav);
-  const roles = {voice: narrationDir ? integrated(voice) : null, effects: film.sounds.length ? integrated(path.join(work, 'film-sfx.wav')) : null};
+  const roles = {voice: narrationDir ? integrated(voice) : null, effects: film.sounds.length ? integrated(effects) : null};
   const tooLoud = effectsUnderVoice(roles), lesson = path.join(work, 'film-lesson.wav');
-  run(['-i', voice, '-i', path.join(work, 'film-sfx.wav'), '-filter_complex', '[0:a]aresample=48000[a];[1:a]aresample=48000[b];[a][b]amix=inputs=2:normalize=0:duration=first', '-ac', '1', song ? path.join(work, 'film-dry.wav') : lesson]);
+  run(['-i', voice, '-i', effects, '-filter_complex', '[0:a]aresample=48000[a];[1:a]aresample=48000[b];[a][b]amix=inputs=2:normalize=0:duration=first', '-ac', '1', song ? path.join(work, 'film-dry.wav') : lesson]);
   // The song, when there is one, under the voice and the effects: placed on the film clock, measured as its own role
   // (its working files with the others, in the work folder).
   const musicLoud = song ? mixSong(run, {song, total: film.total, dir: work, lesson, roles, integrated}) : null;
@@ -567,6 +571,36 @@ function mixSong(run, {song, total, dir, lesson, roles, integrated}) {
   roles.music = integrated(placed);
   run(['-i', path.join(dir, 'film-dry.wav'), '-i', placed, '-filter_complex', '[0:a][1:a]amix=inputs=2:normalize=0:duration=first', '-ac', '1', lesson]);
   return musicUnderVoice(roles);
+}
+
+/** A sound file's loudest sample in dBFS, as FFmpeg's volumedetect measures it mono at 48 kHz (null when it says none). */
+function peakDB(ffmpeg, file) {
+  const r = spawnSync(ffmpeg, ['-hide_banner', '-nostdin', '-i', file, '-af', 'aresample=48000,aformat=channel_layouts=mono,volumedetect', '-f', 'null', '-'], {encoding: 'utf8'});
+  const m = /max_volume:\s*(-?\d+(?:\.\d+)?) dB/.exec(String(r.stderr ?? ''));
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * The found sounds (found.mjs) mixed onto the synthesized accents, the way the song is mixed (mixSong): each file checked
+ * against its record once more, just before it is read (found.mjs · checkFoundFile: a render never fetches, and refuses a
+ * file that changed), decoded by FFmpeg as its own program, mono at 48 kHz, turned DOWN when its peak is over the effects'
+ * ceiling (never up: the synthesized accents' rule), at its event's gain (default 1), and placed at its second on the
+ * film clock. Returns the effects track (film-effects.wav, the length of the accents': the film's), which the listening
+ * check measures against the voice.
+ */
+function mixFound(run, {ffmpeg, events, sounds, dir, sfx, ceiling}) {
+  const byName = new Map(sounds.map(f => [f.name, f])), peaks = new Map(), inputs = [], filters = [];
+  events.forEach((event, i) => {
+    const f = byName.get(event.name);
+    if (!f) throw new Error(`the found sound "${event.name}" was not checked when the film was built: render a film compileFilm made (it checks every found sound it plays)`);   // refusal: a film object not from compileFilm
+    if (!peaks.has(f.name)) { checkFoundFile(f.file, f.record); peaks.set(f.name, peakDB(ffmpeg, f.file)); }
+    const peak = peaks.get(f.name), level = (event.gain ?? 1) * Math.min(1, peak === null ? 1 : 10 ** ((ceiling - peak) / 20));
+    inputs.push('-i', f.file);
+    filters.push(`[${i + 1}:a]aresample=48000,aformat=channel_layouts=mono,volume=${level.toFixed(6)},adelay=delays=${Math.round(event.time * 48000)}S:all=1[f${i}]`);
+  });
+  const out = path.join(dir, 'film-effects.wav'), mix = `${filters.join(';')};[0:a]${events.map((_, i) => `[f${i}]`).join('')}amix=inputs=${events.length + 1}:normalize=0:duration=first[fx]`;
+  run(['-i', sfx, ...inputs, '-filter_complex', mix, '-map', '[fx]', '-ac', '1', '-ar', '48000', out]);
+  return out;
 }
 
 /** The captionFiles option: false, true (both kinds) or a list of 'vtt' / 'srt'. */

@@ -367,6 +367,9 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     // The camera's moves as played (camerawork.mjs): moves, or cuts for reduced motion, and why; each move placed.
     ...(film.camera ? {camera: {motion: film.camera.motion, decision: film.camera.decision, moves: film.camera.moves}} : {}),
     sounds: film.sounds.length,
+    // The found sounds it plays (found.mjs): each one's record — source, id, licence, attribution, sha256 — for the credits
+    // (release.mjs · creditsText reads them from here) and for anyone asking where a sound came from.
+    ...(film.foundSounds?.length ? {foundSounds: film.foundSounds.map(f => f.record)} : {}),
     // What the sound asks of the ear (listening.mjs): the film's changes of picture and the effects against the voice.
     ...(film.listening.length || result.listening.length ? {listening: [...film.listening, ...result.listening]} : {}),
     loudness: loudnessRecord(result.loudness),
