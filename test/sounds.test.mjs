@@ -104,7 +104,9 @@ test('download: https only, every redirect checked, no address on this machine, 
   assert.ok(pulls <= 1, 'refused from its Content-Length, before the body is read');
   const endless = () => new Response(new ReadableStream({pull(c) { c.enqueue(new Uint8Array(4096)); }}));   // no Content-Length, no end
   await assert.rejects(download('https://a.example/x', {maxBytes: 300000, fetch: stubFetch([['https://a.example/', endless]]).fetch}), /the sound file is more than 0\.3 MB, over the 0\.3 MB it may be: pick a shorter sound/);
-  const never = async (url, {signal}) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason)));
+  // A host that never answers. AbortSignal.timeout's timer does not hold the event loop open (a real request's socket
+  // does), so the stub holds it open itself until the download gives up.
+  const never = async (url, {signal}) => new Promise((_, reject) => { const hold = setInterval(() => {}, 1000); signal.addEventListener('abort', () => { clearInterval(hold); reject(signal.reason); }); });
   await assert.rejects(download('https://a.example/x', {timeoutMs: 50, fetch: never}), /did not arrive within 0\.05 s: try again later/);
   await assert.rejects(download('https://a.example/x', {fetch: stubFetch([['https://a.example/', () => new Response(new Uint8Array(0))]]).fetch}), /came back empty/);
   // The API's answer is capped the same way: a page of results is small, an endless one refused.
