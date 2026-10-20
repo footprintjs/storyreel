@@ -2,7 +2,8 @@
  * The paper transitions: eight changes of picture drawn as things done to paper and ink — torn, eraser, inkBleed,
  * ringIris, glassSheet, curl, fold, morph — one module each beside this one. They are built-in entries of the one
  * collection (transitions.mjs · TRANSITIONS, which places each in its family) and draw through its one contract,
- * draw(ctx, {e, from, to, p, ghost, theme, boxes}). What each one means, and when to use it, is the README's table
+ * draw(ctx, {e, from, to, p, ghost, theme, boxes}). Each module exports its catalog entry only: its raw draw is wrapped
+ * here, by landed, which restores the canvas. What each one means, and when to use it, is the README's table
  * (README · Transitions), held to the catalog by test/paper-transitions.test.mjs.
  *
  * Three laws every one keeps (pinned by test/paper-transitions.test.mjs):

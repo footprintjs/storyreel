@@ -16,6 +16,8 @@
   default is `null` (the draw picks it). `node examples/transitions.mjs --names torn,inkBleed` draws a sheet of just
   the ones named. A kit that brought its own transition under one of these names must drop it (a kit may not reuse a
   built-in name).
+- **One hex parser** (`src/colour.mjs`): `pen.mjs · rgba` and `mixColor` read `#rgb` too, and the `dim` focus veils in a
+  theme's 8-digit `bg` (it fell back to the paper theme's).
 
 - **A failed render keeps its making-of record.** `makeFilm` used to write `making-of.json` only after a run
   finished, so the run most worth reading left nothing behind. A run that fails now writes the record it got to as

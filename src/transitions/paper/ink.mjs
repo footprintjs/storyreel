@@ -24,7 +24,7 @@ function blotPath(ctx, {rim, drops}, [cx, cy], r) {
   for (const d of drops) { const x = cx + Math.cos(d.angle) * r * d.out, y = cy + Math.sin(d.angle) * r * d.out; ctx.moveTo(x + r * d.size, y); ctx.arc(x, y, r * d.size, 0, TAU); }
 }
 
-export function inkBleed(ctx, {e, from, to, p, theme}) {
+function inkBleed(ctx, {e, from, to, p, theme}) {
   const ink = p.color ?? paperTokens(theme).ink, inkShape = blotShape(p.seed), riseShape = blotShape(p.seed + 1);
   // The radius at which a blot's ragged rim clears the farthest corner, with a little to spare.
   const cover = shape => farthest(p.at) / shape.least * 1.04, spread = clamp01(e * 1.35), rise = clamp01((e - .3) / .7);

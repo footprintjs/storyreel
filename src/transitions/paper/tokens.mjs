@@ -14,5 +14,3 @@ export function paperTokens(theme) {
   return {paper: p.card ?? p.panel, back: p.panel ?? p.card, fold: p.well ?? p.edge, ground: p.bg, ink: p.ink, accent: p.accent, second: p.available};
 }
 
-/** How many device pixels a frame unit is on ctx (a shadow's blur and offset ignore the transform, so they are scaled by hand). */
-export const pixelScale = ctx => { const m = ctx.getTransform(); return Math.hypot(m.a, m.b) || 1; };

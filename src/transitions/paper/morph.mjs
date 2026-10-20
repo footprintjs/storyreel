@@ -15,7 +15,7 @@ function morphBoxes(p, boxes) {
   return [p.region ? boxes.from[p.region] ?? p.fromBox : p.fromBox, into ? boxes.to[into] ?? p.toBox : p.toBox];
 }
 
-export function morph(ctx, {e, from, to, p, ghost, theme, boxes}) {
+function morph(ctx, {e, from, to, p, ghost, theme, boxes}) {
   const t = paperTokens(theme), [a, b] = morphBoxes(p, boxes);
   ctx.fillStyle = t.ground; ctx.fillRect(0, 0, W, H);
   if (e < .55) ghost(1 - clamp01(e / .55), from);

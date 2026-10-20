@@ -3,15 +3,15 @@
  * lifted sheet of glass from `from`, tilted, and settles flat; the glass (its sheen, its tinted edge, a lit rim) fades
  * as it lands. The sheet starts past the frame's edge, its tilt and its shadow.
  */
-import {W, H} from '../../frame.mjs';
+import {W, H, pixelScale} from '../../frame.mjs';
 import {rgba, mixColor} from '../../colour.mjs';
-import {paperTokens, pixelScale} from './tokens.mjs';
+import {paperTokens} from './tokens.mjs';
 
 const SIDES = Object.freeze({left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1]});
 /** How far off the frame the sheet starts: past its tilt and its shadow. */
 const REACH = 200;
 
-export function glassSheet(ctx, {e, from, to, p, theme}) {
+function glassSheet(ctx, {e, from, to, p, theme}) {
   const t = paperTokens(theme), lift = 1 - e, [sx, sy] = SIDES[p.from], back = 1 - .08 * e, px = pixelScale(ctx);
   ctx.save(); ctx.fillStyle = t.ground; ctx.fillRect(0, 0, W, H);
   ctx.translate(W / 2, H / 2); ctx.scale(back, back); ctx.translate(-W / 2, -H / 2); from(ctx);

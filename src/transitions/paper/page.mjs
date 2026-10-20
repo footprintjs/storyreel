@@ -14,7 +14,7 @@ const DIAGONAL = Math.hypot(W, H), FAR = 6000;
  * page lifted, its back off the frame). Beyond the fold the new picture is uncovered; the lifted part lies folded back
  * over the old page, darker at the crease.
  */
-export function curl(ctx, {e, from, to, p, theme}) {
+function curl(ctx, {e, from, to, p, theme}) {
   const t = paperTokens(theme), corner = CORNERS[p.corner];
   const towardCorner = [(2 * corner[0] - W) / DIAGONAL, (2 * corner[1] - H) / DIAGONAL], alongFold = [-towardCorner[1], towardCorner[0]];
   const travelled = DIAGONAL * 1.05 * e, foldPoint = [corner[0] - towardCorner[0] * travelled, corner[1] - towardCorner[1] * travelled];
@@ -41,7 +41,7 @@ export function curl(ctx, {e, from, to, p, theme}) {
 /** Closing: the halves turn edge-on (cos); opening: they spring back open a little early, the pop (1.06 sin, held at 1). */
 const openness = e => (e < .5 ? Math.cos(e / .5 * Math.PI / 2) : Math.min(1, 1.06 * Math.sin((e - .5) / .5 * Math.PI / 2)));
 
-export function fold(ctx, {e, from, to, p, theme}) {
+function fold(ctx, {e, from, to, p, theme}) {
   const t = paperTokens(theme), vertical = p.line === 'vertical', crease = (vertical ? W : H) / 2, open = openness(e), paint = e < .5 ? from : to;
   ctx.fillStyle = t.ground; ctx.fillRect(0, 0, W, H);
   for (const first of [true, false]) {

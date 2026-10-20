@@ -8,7 +8,7 @@ import {paperTokens} from './tokens.mjs';
 
 const TAU = 2 * Math.PI;
 
-export function ringIris(ctx, {e, from, to, p, ghost, theme}) {
+function ringIris(ctx, {e, from, to, p, ghost, theme}) {
   const t = paperTokens(theme), [cx, cy] = p.at, end = farthest(p.at) + p.width + 12, r = Math.max(.5, lerp(p.radius, end, e));
   from(ctx);
   const inside = c => { c.save(); c.beginPath(); c.arc(cx, cy, r, 0, TAU); c.clip(); to(c); c.restore(); };

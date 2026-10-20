@@ -52,6 +52,7 @@ import {SOUND_NAMES} from './sound.mjs';
 import {readMove, moveAt, applyMove, MOVES, MOVE_NAMES, REST} from './moves.mjs';
 import {PAPER_TRANSITIONS as PAPER} from './transitions/paper/index.mjs';
 import {W, H, clamp, smooth, farthest} from './frame.mjs';
+import {isHex as isColor} from './colour.mjs';
 
 const DIRECTIONS = Object.freeze(['left', 'right', 'top', 'bottom']);
 /** Where a picture that comes FROM a side starts, as a unit offset. */
@@ -239,7 +240,7 @@ function matchCut(ctx, {e, from, to, p, ghost, boxes}) {
 const side = fallback => ({oneOf: DIRECTIONS, default: fallback});
 const centre = {point: true, default: [800, 450]};
 
-/** The built-in collection, in the order a browser shows it: by family, the paper ones (paper-transitions.mjs) in theirs. */
+/** The built-in collection, in the order a browser shows it: by family, the paper ones (transitions/paper/index.mjs) in theirs. */
 export const TRANSITIONS = deepFreeze({
   cut: {family: 'cut', seconds: 0, ease: 'jump', sound: null, params: {}, draw: null},
   fade: {family: 'dissolve', seconds: .8, ease: 'inOut', sound: null, params: {}, draw: fade},
@@ -455,7 +456,6 @@ function readParams(params, e, where) {
   }
   return Object.freeze(out);
 }
-const isColor = v => typeof v === 'string' && /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v);
 const isBox = v => Array.isArray(v) && v.length === 4 && v.every(Number.isFinite) && v[0] < v[2] && v[1] < v[3];
 
 /**

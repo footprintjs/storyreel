@@ -17,7 +17,7 @@ function eraserBlock(ctx, x, y, {body, felt, shade}) {
   ctx.fillStyle = felt; ctx.fillRect(x - w / 2, y + h / 2 - BLOCK.felt, w, BLOCK.felt);
 }
 
-export function eraser(ctx, {e, from, to, p, theme}) {
+function eraser(ctx, {e, from, to, p, theme}) {
   const t = paperTokens(theme), fromRight = p.from === 'right';
   const x = fromRight ? lerp(W + REACH, -REACH, e) : lerp(-REACH, W + REACH, e);
   to(ctx);

@@ -9,9 +9,9 @@
  * u = front + SLANT · (v − middle) + its seeded raggedness (tearShape); the torn piece is the sheet on the edge's side of
  * it, the rest of the sheet lies in place beyond it.
  */
-import {W, H, clamp, clamp01, lerp, smooth} from '../../frame.mjs';
+import {W, H, clamp, clamp01, lerp, smooth, pixelScale} from '../../frame.mjs';
 import {rgba} from '../../colour.mjs';
-import {paperTokens, pixelScale} from './tokens.mjs';
+import {paperTokens} from './tokens.mjs';
 import {seeded} from './seeded.mjs';
 
 const ROWS = 48, SLANT = .25, RAGGED = 26, LIP = 9;
@@ -30,7 +30,7 @@ const AXES = Object.freeze({
   top: {drag: [0, -1], point: (u, v) => [v, u], spanU: H, spanV: W, turn: 1},
   bottom: {drag: [0, 1], point: (u, v) => [v, H - u], spanU: H, spanV: W, turn: -1},
 });
-export const TORN_DIRECTIONS = Object.freeze(Object.keys(AXES));
+const TORN_DIRECTIONS = Object.freeze(Object.keys(AXES));
 
 /** The tear's shape from the seed, a row each: its raggedness (a slow wander and fibre teeth) and how wide each side's white lip is. */
 function tearShape(seed) {
@@ -44,7 +44,7 @@ function tearShape(seed) {
 /** How far the piece must be dragged to be off the frame at the end: tilted, lifted, with its lip and its shadow. */
 const dragReach = ax => (1 + LIFT) * (ax.spanU * Math.cos(TILT_DRAG) + ax.spanV * Math.sin(TILT_DRAG)) + LIP + 1.5 * SHADOW.blur + SHADOW.offset + 40;
 
-/** Trace the torn piece (from = 'piece': the sheet on the edge's side of the tear) or the rest, each row's u moved by `lip`. */
+/** Trace the torn piece (side 'piece': the sheet on the edge's side of the tear) or the rest (side 'rest'), each row's u moved by `lip`. */
 function outline(ctx, ax, line, side, lip) {
   const edge = side === 'piece' ? 0 : ax.spanU, at = (u, v) => ctx.lineTo(...ax.point(u, v));
   ctx.beginPath(); ctx.moveTo(...ax.point(edge, 0));
@@ -60,7 +60,7 @@ function tornAt(e, p, ax) {
     tilt: ax.turn * (TILT_TEAR * lifted + (TILT_DRAG - TILT_TEAR) * drag), scale: 1 + LIFT * drag};
 }
 
-export function torn(ctx, {e, from, to, p, theme}) {
+function torn(ctx, {e, from, to, p, theme}) {
   const t = paperTokens(theme), ax = AXES[p.direction], at = tornAt(e, p, ax), px = pixelScale(ctx);
   const line = tearShape(p.seed).map((shape, i) => { const v = i / ROWS * ax.spanV; return {u: at.front + (v - ax.spanV / 2) * SLANT + shape.ragged, v, shape}; });
   to(ctx);
