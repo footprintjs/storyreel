@@ -29,19 +29,15 @@
 import {FRAMINGS} from './notes.mjs';
 import {track, pop, readFeel, settleTime} from './motion.mjs';
 import {inOut as ease} from './ease.mjs';
+import {rgba, isHex} from './colour.mjs';
 
 const W = 1600, H = 900;
 const FOCUS_KEYS = ['strategy', 'feel', 'keys', 'safe'], KEY_KEYS = ['at', 'on', 'size'];
 const EMPHASIS_KEYS = ['strategy', 'feel', 'words'], WORD_KEYS = ['at', 'text', 'until'];
 const clamp01 = v => Math.max(0, Math.min(1, v));
 
-/** A colour as given ('#rrggbb' or 'rgb…') at an alpha, for a veil. */
-function withAlphaOf(color, a) {
-  const m = /^#([0-9a-f]{6})$/i.exec(color ?? '');
-  if (!m) return `rgba(243, 238, 227, ${a})`;
-  const n = parseInt(m[1], 16);
-  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
-}
+/** A hex colour at an alpha, for a veil (colour.mjs · rgba); anything else, the paper theme's bg. */
+const withAlphaOf = (color, a) => rgba(isHex(color) ? color : '#f3eee3', a);
 /** Everything but the named thing (with a margin), under a colour, as strong as the view is focused. */
 function veil(ctx, v, color) {
   if (!(v.w > .01)) return;

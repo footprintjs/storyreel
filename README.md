@@ -281,7 +281,7 @@ recipe names:
 | wipe | `wipe` | an edge crosses the frame | the next item in a list | `from`: `left` · `right` · `top` · `bottom` (`left`) | 0.8 s | slide |
 | | `split` | doors open from the middle | a reveal: what was behind the doors | `line`: `vertical` · `horizontal` (`vertical`) | 0.8 s | slide |
 | | `clock` | a clock hand sweeps from twelve | time passing, by the clock | – | 0.9 s | slide |
-| | `torn` | the old page is torn away along a ragged edge, its fibres showing, the new picture under it | leaving the old page behind: a recap handing over to a new episode, a plan thrown out | `from`: `right` · `left` (`right`: where the tear starts), `seed` (`5`: the edge's shape) | 1.1 s | slide |
+| | `torn` | a ragged tear runs across the old picture, the new one showing along it; then the torn sheet is dragged off, tilted and lifted, carrying the old picture with it | leaving the old page behind: a recap torn away to reveal the new episode's title, a plan thrown out | `direction`: `left` · `right` · `top` · `bottom` (`left`: the edge the sheet is dragged toward), `tear` (`0.5`: the share of the change the tear takes; the drag takes the rest), `seed` (`5`: the edge's shape) | 1.4 s | slide |
 | | `eraser` | a board eraser wipes the old picture off; the new one is underneath | a clean slate: the same lesson started again, a wrong answer rubbed out | `from`: `left` · `right` (`left`), `color` (`#3b4a63`: the eraser's) | 1.1 s | slide |
 | iris | `iris` | a circle opens from a point | one spot the new scene grows out of | `at`: `[x, y]` (the centre) | 0.8 s | slide |
 | | `inkBleed` | ink spreads across the old picture from a point; the new picture comes up through the ink | a new chapter seeping in; a story told in ink; a change of mood | `at` (`[220, 760]`), `color` (null: the theme's ink), `seed` (`7`: the blot's shape) | 1.3 s | whoosh |
@@ -307,18 +307,21 @@ recipe names:
 "enter": {"type": "whip", "sound": false}                     no sound
 "enter": {"type": "slide", "ease": "spring"}                  slides in, overshoots a little and settles
 "enter": "torn"                                               a recap's page torn away: the new episode under it
+"enter": {"type": "torn", "direction": "top", "tear": 0.35}   a quick tear, then a long drag up and away
 "enter": {"type": "inkBleed", "at": [1400, 200], "seed": 3}   ink from the top right, another blot
 "enter": {"type": "ringIris", "at": [1060, 400], "radius": 120}  opens through a ring drawn there in the old picture
 "enter": {"type": "morph", "region": "card", "into": "page"}  the old picture's card becomes the new one's page
 ```
 
 **Paper transitions.** `torn`, `eraser`, `inkBleed`, `ringIris`, `glassSheet`, `curl`, `fold` and `morph` are drawn
-as things done to paper and ink (`footprint-storyreel/transitions`; they live in `src/paper-transitions.mjs`). Their
+as things done to paper and ink (`footprint-storyreel/transitions`; they live in `src/transitions/paper/`). Their
 paper and ink are the film's theme's — its card, its well, its bg and its ink — so a storybook film tears storybook
 paper; a colour one adds (the ring, the morph's outline, the ink) is a setting whose default, null, is the theme's
 own, and a recipe may name another. A ragged edge (the tear, the ink blot) is a seeded shape, never chance: the same
 seed is the same edge on every frame and every machine, and `seed` picks another. Each starts on the old picture and
-ends on the new one exactly, so nothing jumps when the shot takes over. `morph` goes from box to box: the things
+ends on the new one exactly, so nothing jumps when the shot takes over. `torn` moves the paper, never fades it: the torn
+sheet carries the old picture off the frame whole, so a title card under it is uncovered first along the tear, then
+all at once as the sheet is dragged away. `morph` goes from box to box: the things
 `region` and `into` name (found as `match` finds them), or, left out, `fromBox` and `toBox` (`[x0, y0, x1, y1]`).
 
 Every entrance also takes `seconds` (0.2–3), `ease` (a name from the ease table, or a four-number curve as CSS

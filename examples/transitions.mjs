@@ -19,6 +19,10 @@ if (unknown.length) {
   console.error(`--names: ${unknown.join(', ')} ${unknown.length > 1 ? 'are not transitions' : 'is not a transition'}; the transitions are ${TRANSITION_NAMES.join(', ')}`);
   process.exit(2);
 }
+if (names && !names.some(n => n !== 'cut')) {
+  console.error(`--names: no transition to draw (a cut draws nothing); name one of ${TRANSITION_NAMES.filter(n => n !== 'cut').join(', ')}`);
+  process.exit(2);
+}
 const catalog = names ? Object.fromEntries(names.map(n => [n, TRANSITIONS[n]])) : TRANSITIONS;
 writeFileSync(out, await transitionSheet({catalog, width: 1000}));
 console.log(`wrote ${out}`);

@@ -218,9 +218,10 @@ export type TransitionName = 'cut' | 'fade' | 'dip' | 'wipe' | 'split' | 'clock'
 /**
  * A shot's entrance: a transition's name (a kit's own too), or its name with settings — `seconds` (0.2–3),
  * `ease`, `sound` (a sound, or false for none) and the transition's own: `from` (push, slide, whip, wipe,
- * glassSheet: left | right | top | bottom; torn, eraser: left | right), `line` (split: vertical | horizontal; fold:
+ * glassSheet: left | right | top | bottom; eraser: left | right), `direction` (torn: the edge the torn sheet is dragged
+ * toward, left | right | top | bottom), `tear` (torn: the share of the change the tear takes, 0.2–0.8), `line` (split: vertical | horizontal; fold:
  * the crease, horizontal | vertical), `at` (iris, zoom, inkBleed, ringIris: [x, y]), `color` (dip, eraser, and the
- * ink, ring or outline of inkBleed, ringIris, morph: a hex colour; null there is the theme's), `accent` (ringIris:
+ * ink, ring or outline of inkBleed, ringIris, morph: a hex colour; null is the transition's default, the theme's for those three), `accent` (ringIris:
  * its other half), `tint` (glassSheet), `seed` (torn, inkBleed: the ragged edge's shape, 0–10000), `radius` and
  * `width` (ringIris: its size at the start, its thickness), `corner` (curl), `region` (through, match: the name of a
  * thing in the picture it leaves — required; morph: optional), `into` (match, morph: the thing's name in the new
@@ -233,6 +234,7 @@ export type Enter = TransitionName | (string & {}) | ({type: TransitionName | (s
   from?: 'left' | 'right' | 'top' | 'bottom'; line?: 'vertical' | 'horizontal'; at?: [number, number]; color?: string | null;
   region?: string; into?: string; shape?: 'box' | 'round'; seed?: number; radius?: number; width?: number; accent?: string | null;
   tint?: string; corner?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'; fromBox?: FrameBox; toBox?: FrameBox;
+  direction?: 'left' | 'right' | 'top' | 'bottom'; tear?: number;
   move?: never; [setting: string]: unknown})
   | {move: MoveName | (string & {}) | Move; seconds?: number; feel?: MoveFeelName | FeelName | Feel; sound?: SoundType | false; type?: never};
 /**

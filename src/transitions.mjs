@@ -21,7 +21,8 @@
  *                                  it folds shut and the new one pops open
  *   match      through · match     through a thing in the old picture (a window, a screen) into the new one;
  *              morph               a thing in the old picture becomes the same thing in the new one; a box becomes a box
- * The paper ones (torn, eraser, inkBleed, ringIris, glassSheet, curl, fold, morph) live in paper-transitions.mjs.
+ * The paper ones (torn, eraser, inkBleed, ringIris, glassSheet, curl, fold, morph) live in transitions/paper/; what each
+ * one means is the README's table (README · Transitions).
  *
  * A kit adds its own, as Final Cut takes Motion templates and Premiere takes .mogrt files:
  * `{name, transitions: {swirl: {family, seconds, ease, sound, params, regions?, draw}}}`. Every transition
@@ -49,9 +50,9 @@ import {createCanvas} from '@napi-rs/canvas';
 import {easeNamed, overshoots, EASES} from './ease.mjs';
 import {SOUND_NAMES} from './sound.mjs';
 import {readMove, moveAt, applyMove, MOVES, MOVE_NAMES, REST} from './moves.mjs';
-import {PAPER_TRANSITIONS as PAPER} from './paper-transitions.mjs';
+import {PAPER_TRANSITIONS as PAPER} from './transitions/paper/index.mjs';
+import {W, H, clamp, smooth, farthest} from './frame.mjs';
 
-const W = 1600, H = 900;
 const DIRECTIONS = Object.freeze(['left', 'right', 'top', 'bottom']);
 /** Where a picture that comes FROM a side starts, as a unit offset. */
 const FROM = {left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1]};
@@ -73,12 +74,8 @@ function edgeShade(ctx, at, toward, alongY, depth = 40, from = SHADE) {
   if (alongY) ctx.fillRect(0, Math.min(at, at + toward * depth), W, depth); else ctx.fillRect(Math.min(at, at + toward * depth), 0, depth, H);
   ctx.restore();
 }
-const irisRadius = ([cx, cy]) => Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy));
-const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
-const smooth = (a, b, x) => { const u = clamp((x - a) / (b - a), 0, 1); return u * u * (3 - 2 * u); };
 const centreOf = ([x0, y0, x1, y1]) => [(x0 + x1) / 2, (y0 + y1) / 2];
 const sizeOf = ([x0, y0, x1, y1]) => Math.sqrt((x1 - x0) * (y1 - y0));
-const lerp = (a, b, u) => a + (b - a) * u;
 
 function fade(ctx, {e, from, to, ghost}) { from(ctx); ghost(e, to); }
 
@@ -118,7 +115,7 @@ function clockWipe(ctx, {e, from, to}) {
 
 function iris(ctx, {e, from, to, p}) {
   from(ctx);
-  const [cx, cy] = p.at, r = e * irisRadius(p.at);
+  const [cx, cy] = p.at, r = e * farthest(p.at);
   ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip(); to(ctx); ctx.restore();
   // The moving edge, softly shaded so the eye follows it.
   ctx.save(); ctx.strokeStyle = EDGE; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
@@ -271,6 +268,8 @@ export const TRANSITION_NAMES = Object.freeze(Object.keys(TRANSITIONS));
 const COMMON = ['type', 'seconds', 'ease', 'sound'];
 /** The names no setting may take: every entrance's own keys, and `move` (an entrance with a move is a move entrance). */
 const RESERVED = [...COMMON, 'move'];
+/** The setting kinds written as a flag ({point: true}); the others carry their choices or range. */
+const FLAGS = ['point', 'color', 'box', 'name'];
 const DEF_KEYS = ['family', 'seconds', 'ease', 'sound', 'overshoot', 'params', 'regions', 'draw'];
 
 /** A hard cut: the new shot is there, whole, on the scene's first frame. */
@@ -496,7 +495,7 @@ function checkTransition(def, who) {
   for (const [name, spec] of Object.entries(params)) {
     if (RESERVED.includes(name)) throw new Error(`${who}: a setting may not be called "${name}" (${name === 'move' ? 'an entrance that names a move is a move entrance' : 'every entrance has it'})`);
     const kinds = ['oneOf', 'point', 'color', 'number', 'box', 'name'].filter(k => spec?.[k] !== undefined);
-    if (kinds.length !== 1 || !(spec.name === true || 'default' in spec)) throw new Error(`${who}: the setting "${name}" must be one of {oneOf: [...]}, {point: true}, {color: true}, {number: [min, max]}, {box: true}, with a default (a colour's may be null: your draw picks one, e.g. the theme's); or {name: true} (a thing in the picture; default: null when it may be left out)`);
+    if (kinds.length !== 1 || (FLAGS.includes(kinds[0]) && spec[kinds[0]] !== true) || !(spec.name === true || 'default' in spec)) throw new Error(`${who}: the setting "${name}" must be one of {oneOf: [...]}, {point: true}, {color: true}, {number: [min, max]}, {box: true}, with a default (a colour's may be null: your draw picks one, e.g. the theme's); or {name: true} (a thing in the picture; default: null when it may be left out)`);
     if (spec.oneOf && !(Array.isArray(spec.oneOf) && spec.oneOf.length && spec.oneOf.every(v => typeof v === 'string'))) throw new Error(`${who}: the setting "${name}" lists its choices as words`);
     if (spec.number && !(Array.isArray(spec.number) && spec.number.length === 2 && spec.number.every(Number.isFinite) && spec.number[0] < spec.number[1])) throw new Error(`${who}: the setting "${name}" gives number as [min, max]`);
     if (!(spec.name && spec.default === undefined)) readParams({[name]: spec}, {type: 'transition'}, who);   // the default must pass its own check
