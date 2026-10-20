@@ -7,7 +7,7 @@ import {mkdirSync, writeFileSync, readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {compileFilm, evenTimings, renderFilm, makeFilm} from '../src/index.mjs';
-import {LICENCES, usableLicences, licenceVerdict, plainText, foundRecord, readLibrary, useFound, libraryText, sha256Of, creditLines, shown} from '../src/found.mjs';
+import {LICENCES, usableLicences, licenceVerdict, plainText, foundRecord, readLibrary, useFound, libraryText, sha256Of, creditLines, shown} from '../src/found/index.mjs';
 import {checkSound, createMotionSound, readSoundChoice} from '../src/sound.mjs';
 import {readEntrance} from '../src/transitions.mjs';
 import {creditsText} from '../src/release.mjs';
@@ -17,18 +17,37 @@ const WAV = createMotionSound({duration: .5, events: [{type: 'door', time: 0}]})
 const ffmpeg = spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-version']).status === 0;
 const ID = 'ec2e245c-465b-4ba7-9ea4-620f3555b291';
 
-/** A film folder with found sounds in its library: {name: {license, bytes?}} → each kept as <name>.wav. */
+/** A film folder with found sounds in its library: {name: {license, bytes?, …}} → each kept as <name>.wav. */
 function filmWith(sounds, t) {
-  const root = tempDir('found-film', t), dir = path.join(root, 'sounds'), library = {};
-  mkdirSync(dir);
-  for (const [name, {license = 'by', version = '4.0', bytes = WAV, title = `A ${name}`, attribution}] of Object.entries(sounds)) {
-    writeFileSync(path.join(dir, `${name}.wav`), bytes);
-    library[name] = foundRecord({name, file: `${name}.wav`, from: 'openverse', id: ID, title, creator: 'a-maker', license, licenseVersion: version, attribution,
-      source: 'freesound', url: 'https://cdn.example.org/x.wav', seconds: .5, sha256: sha256Of(bytes), bytes: bytes.length});
-  }
-  writeFileSync(path.join(dir, 'sounds.json'), libraryText(library));
+  const root = tempDir('found-film', t);
+  mkdirSync(path.join(root, 'sounds'));
+  for (const [name, spec] of Object.entries(sounds)) addTo(root, name, spec);
   return root;
 }
+/** Put one sound into a film's library (as sounds add would): its file and its record. */
+function addTo(root, name, {license = 'by', version = '4.0', bytes = WAV, title = `A ${name}`, attribution, landing} = {}) {
+  const dir = path.join(root, 'sounds'), file = path.join(dir, 'sounds.json'), library = readLibrary(root);
+  writeFileSync(path.join(dir, `${name}.wav`), bytes);
+  const record = foundRecord({name, file: `${name}.wav`, from: 'openverse', id: ID, title, creator: 'a-maker', license, licenseVersion: version, attribution, landing,
+    source: 'freesound', url: 'https://cdn.example.org/x.wav', seconds: .5, sha256: sha256Of(bytes), bytes: bytes.length});
+  writeFileSync(file, libraryText({...library, [name]: record}));
+}
+/** A mono 48 kHz PCM16 WAV of a sine at `amplitude` (0..1) for `seconds`. */
+function sine(amplitude, seconds = .3) {
+  const n = Math.round(48000 * seconds), pcm = Buffer.alloc(n * 2), head = Buffer.alloc(44);
+  for (let i = 0; i < n; i++) pcm.writeInt16LE(Math.round(amplitude * 32767 * Math.sin(2 * Math.PI * 440 * i / 48000)), i * 2);
+  head.write('RIFF', 0, 'ascii'); head.writeUInt32LE(36 + pcm.length, 4); head.write('WAVEfmt ', 8, 'ascii'); head.writeUInt32LE(16, 16); head.writeUInt16LE(1, 20); head.writeUInt16LE(1, 22);
+  head.writeUInt32LE(48000, 24); head.writeUInt32LE(96000, 28); head.writeUInt16LE(2, 32); head.writeUInt16LE(16, 34); head.write('data', 36, 'ascii'); head.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([head, pcm]);
+}
+/** A PCM16 WAV's samples, -1..1 (its data chunk found by name: FFmpeg writes a LIST chunk before it). */
+function samplesOf(wav) {
+  let at = 12;
+  while (at + 8 <= wav.length && wav.toString('ascii', at, at + 4) !== 'data') at += 8 + wav.readUInt32LE(at + 4);
+  const data = wav.subarray(at + 8, at + 8 + wav.readUInt32LE(at + 4));
+  return Float32Array.from({length: data.length / 2}, (_, i) => data.readInt16LE(i * 2) / 32768);
+}
+const peakIn = (samples, from, to) => { let p = 0; for (let i = Math.floor(from * 48000); i < Math.min(samples.length, Math.ceil(to * 48000)); i++) p = Math.max(p, Math.abs(samples[i])); return p; };
 const editLibrary = (root, edit) => { const file = path.join(root, 'sounds', 'sounds.json'), data = JSON.parse(readFileSync(file, 'utf8')); edit(data.sounds); writeFileSync(file, JSON.stringify(data)); };
 
 test('the licence gate is one table: CC0 and CC BY used, CC BY-SA only by opting in, NC, ND and the unknown refused saying why', () => {
@@ -40,6 +59,7 @@ test('the licence gate is one table: CC0 and CC BY used, CC BY-SA only by opting
   assert.match(outcome('by-nd'), /ND allows no changes, and mixing a sound into a film changes it/);
   assert.match(outcome('by-nc-nd'), /NC allows no commercial use and ND no changes/);
   assert.match(outcome('pdm'), /Public Domain Mark .* grants nothing/);
+  assert.throws(() => licenceVerdict('by-sa', {allowShareAlike: true, version: '1.0'}), /is CC BY-SA 1\.0, which lets a film that uses it be shared only under 1\.0 itself/, 'no later version for the film');
   for (const code of ['', 'CC-BY', 'gpl', undefined, 'constructor', '__proto__']) assert.match(outcome(code), /which StoryReel does not know: a film uses CC0 and CC BY sounds/, String(code));
   assert.deepEqual(usableLicences(), ['cc0', 'by']); assert.deepEqual(usableLicences({allowShareAlike: true}), ['cc0', 'by', 'by-sa']);
   assert.equal(Object.values(LICENCES).filter(l => l.use === 'no').every(l => l.why), true, 'every refusal has its why');
@@ -115,7 +135,14 @@ test('a film names found sounds: each checked when it is built, its record kept,
 test('credits come from the records, made plain; a CC BY-SA sound says what it means for the film', t => {
   const root = filmWith({knock: {attribution: '"Knock" by a-maker\r\n\u001b[2J is licensed under CC BY 4.0.'}, rustle: {license: 'by-sa'}}, t), library = readLibrary(root);
   const text = creditsText({title: 'T', credits: []}, [], Object.values(library));
-  assert.match(text, /\nSounds\n- "Knock" by a-maker \[2J is licensed under CC BY 4\.0\.\n- "A rustle" by a-maker, CC BY-SA 4\.0 \(https:\/\/creativecommons\.org\/licenses\/by-sa\/4\.0\/\)\n\nBecause it uses sounds under CC BY-SA, this film is shared under CC BY-SA too/);
+  // The attribution, the licence (its deed added when the attribution lacks it), and — a sound mixed into a film is
+  // adapted (CC 4.0 §1(a)) — that it was changed (§3(a)(1)(B)).
+  assert.match(text, /\nSounds\n- "Knock" by a-maker \[2J is licensed under CC BY 4\.0\. \(https:\/\/creativecommons\.org\/licenses\/by\/4\.0\/\) — adapted: mixed into this film\n- "A rustle" by a-maker, CC BY-SA 4\.0 \(https:\/\/creativecommons\.org\/licenses\/by-sa\/4\.0\/\) — adapted: mixed into this film\n\nBecause it uses sounds under CC BY-SA, this film is shared under CC BY-SA 4\.0 too/);
+  addTo(root, 'chime', {license: 'cc0', version: '1.0', landing: 'https://sounds.example.org/sounds/1'});
+  addTo(root, 'bell', {landing: 'https://sounds.example.org/sounds/2'});
+  const more = creditsText({title: 'T'}, [], Object.values(readLibrary(root)));
+  assert.match(more, /- "A chime" by a-maker, CC0 1\.0 \(https:\/\/creativecommons\.org\/publicdomain\/zero\/1\.0\/\)\n/, 'CC0: no change to say');
+  assert.match(more, /- "A bell" .* — adapted: mixed into this film \(the work: https:\/\/sounds\.example\.org\/sounds\/2\)/, 'a link to the work where one is known');
   assert.ok(shown(text.replace(/\n/g, ' ')), 'nothing unshown reaches CREDITS.txt');
   assert.deepEqual(creditLines([]), []);
   assert.doesNotMatch(creditsText({title: 'T'}, []), /Sounds/, 'no found sounds: no Sounds section');
@@ -131,6 +158,37 @@ test('a render mixes found sounds from their files, offline, measured with the e
   } finally { globalThis.fetch = fetch; }
   writeFileSync(path.join(root, 'sounds', 'tear.wav'), WAV.subarray(0, WAV.length - 2));
   await assert.rejects(renderFilm({film: f, storyboard, timings, out, width: 160, height: 90, fps: 4}), /the found sound "tear"'s file sounds\/tear\.wav is not the one its record names .*: add it again with npx storyreel sounds add/);
+});
+
+test('a render checks each found sound in full again: a licence changed, or a sound added again, since the film was built refuses', {skip: ffmpeg ? false : 'needs ffmpeg'}, async t => {
+  const out = path.join(tempDir('found-again', t), 'film.mp4');
+  const relicensed = filmWith({knock: {}, tear: {}}, t), f = await film(relicensed);
+  editLibrary(relicensed, s => { s.knock.license = 'by-nc'; });
+  await assert.rejects(renderFilm({film: f, storyboard, timings, out, width: 160, height: 90, fps: 4}), /the found sound "knock" is CC BY-NC, which a film cannot use/);
+  const readded = filmWith({knock: {}, tear: {}}, t), g = await film(readded);
+  addTo(readded, 'tear', {bytes: sine(.3)});
+  await assert.rejects(renderFilm({film: g, storyboard, timings, out, width: 160, height: 90, fps: 4}), /the found sound "tear" was added again after the film was built: build the film again/);
+  assert.notDeepEqual((await film(readded)).inputs.sounds, g.inputs.sounds, 'built again, its inputs name the new sound (an approval of the old one no longer holds)');
+});
+
+test('the mix: each found sound at its second, turned down to the effects\' ceiling when loud, never up when quiet', {skip: ffmpeg ? false : 'needs ffmpeg'}, async t => {
+  const root = filmWith({loud: {bytes: sine(.9)}, quiet: {bytes: sine(.01)}}, t), work = tempDir('found-mix', t);
+  const placedKits = [world('red', '#ff0000', [{time: 1, type: 'found', name: 'loud'}, {time: 2.5, type: 'found', name: 'quiet'}]), world('blue', '#0000ff')];
+  const f = await compileFilm({storyboard, timings, kits: placedKits, root, recipe: {story: {kit: 'red'}, stages: [{type: 'world', scene: 'b', enter: 'cut', world: {kit: 'blue'}}]}});
+  await renderFilm({film: f, storyboard, timings, out: path.join(tempDir('found-mix-out', t), 'film.mp4'), width: 160, height: 90, fps: 4, work});
+  const fx = samplesOf(readFileSync(path.join(work, 'film-effects.wav'))), ceiling = 10 ** (-20 / 20);
+  assert.equal(peakIn(fx, 0, .99), 0, 'nothing before the first sound\'s second');
+  const loud = peakIn(fx, 1, 1.3), quiet = peakIn(fx, 2.5, 2.8);
+  assert.ok(loud <= ceiling * 1.02 && loud >= ceiling * .9, `the loud one turned down to the -20 dBFS ceiling (peak ${loud.toFixed(4)})`);
+  assert.ok(Math.abs(quiet - .01) < .002, `the quiet one left as it is, never boosted (peak ${quiet.toFixed(4)})`);
+  assert.equal(peakIn(fx, 1.35, 2.49), 0, 'and silence between them');
+});
+
+test('the same found sound on two changes in a row is the same cue twice, as the listening check says of any sound', async t => {
+  const three = {title: 'T', scenes: [...storyboard.scenes, {id: 'c', narration: 'And a third world comes after it.'}]};
+  const tear = {type: 'found', name: 'tear'}, f = await compileFilm({storyboard: three, timings: evenTimings(three), kits: [...kits, world('green', '#00ff00')], root: filmWith({knock: {}, tear: {}}, t),
+    recipe: {story: {kit: 'red'}, stages: [{type: 'world', scene: 'b', enter: {type: 'fade', sound: tear}, world: {kit: 'blue'}}, {type: 'world', scene: 'c', enter: {type: 'wipe', sound: tear}, world: {kit: 'green'}}]}});
+  assert.deepEqual(f.listening.map(l => l.text), ['stage b and stage c both enter with a found sound "tear", one after the other: give the second another sound, or none']);
 });
 
 test('makeFilm keeps each found sound\'s record in the making-of, for the release\'s credits', {skip: ffmpeg ? false : 'needs ffmpeg'}, async t => {

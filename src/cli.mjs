@@ -71,6 +71,7 @@ if (asked) {
   const usage = tool ? `storyreel ${asked} [--flag value …]   ${tool.about}\n${Object.entries(tool.args).map(([a, d]) => `  --${a}  ${d}`).join('\n')}\n  --config  the project file (default ./${CONFIG}); any other flag reaches the config's film(flags)`
     : asked === 'beats' ? `storyreel beats <song> [--bpm n] [--ffmpeg path]\n${BEATS_HELP}`
     : asked === 'breakdown' ? BREAKDOWN_USAGE
+    : asked === 'sounds' ? SOUNDS_HELP
     : asked === 'mcp' ? `storyreel mcp [--flag value …]   serves ${Object.keys(TOOLS).join(', ')} over MCP (stdio); the flags are every call's defaults (e.g. --out work/out)`
     : null;
   if (usage) { console.log(usage); process.exit(0); }

@@ -10,7 +10,7 @@ import {once} from 'node:events';
 import {createHash} from 'node:crypto';
 import {createCanvas} from '@napi-rs/canvas';
 import {createMotionSound, soundsByScene, SOUND_AT, FOUND} from './sound.mjs';
-import {checkFoundFile} from './found.mjs';
+import {useFound, AUDIO_ONLY} from './found/index.mjs';
 import {compileLayout, draftSize} from './layout.mjs';
 import {captionChunks, captionFile, FILE_CHUNKS, clockText} from 'footprint-narration';
 import {spokenTracks} from './captions.mjs';
@@ -502,7 +502,7 @@ export async function finishRender(job, video) {
   if (narrationDir) joinVoice(run, {dir: work, storyboard, timings, narrationDir, voice});
   else run(['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', String(film.total), voice]);
   // Each scene's synthesized sounds on its own clock (sound.mjs · soundsByScene, the rule compileFilm counted them by);
-  // the found ones (recordings: found.mjs) are mixed from their files after (mixFound).
+  // the found ones (recordings: found/) are mixed from their files after (mixFound).
   const found = film.sounds.filter(s => s.type === FOUND);
   const byScene = soundsByScene(film.sounds.filter(s => s.type !== FOUND), film.clock.offsets, timings.scenes.map(s => s.duration));
   const sfxParts = timings.scenes.map((s, i) => {
@@ -573,32 +573,39 @@ function mixSong(run, {song, total, dir, lesson, roles, integrated}) {
   return musicUnderVoice(roles);
 }
 
-/** A sound file's loudest sample in dBFS, as FFmpeg's volumedetect measures it mono at 48 kHz (null when it says none). */
-function peakDB(ffmpeg, file) {
-  const r = spawnSync(ffmpeg, ['-hide_banner', '-nostdin', '-i', file, '-af', 'aresample=48000,aformat=channel_layouts=mono,volumedetect', '-f', 'null', '-'], {encoding: 'utf8'});
-  const m = /max_volume:\s*(-?\d+(?:\.\d+)?) dB/.exec(String(r.stderr ?? ''));
-  return m ? Number(m[1]) : null;
+/** A found sound's loudest sample in dBFS, as FFmpeg's volumedetect measures it mono at 48 kHz; a file it cannot read refuses. */
+function peakDB(ffmpeg, {file, record}) {
+  const r = spawnSync(ffmpeg, ['-hide_banner', '-nostdin', ...AUDIO_ONLY, '-i', file, '-af', 'aresample=48000,aformat=channel_layouts=mono,volumedetect', '-f', 'null', '-'], {encoding: 'utf8', timeout: 60000});
+  const m = r.status === 0 ? /max_volume:\s*(-?\d+(?:\.\d+)?|-inf) dB/.exec(String(r.stderr ?? '')) : null;
+  if (!m) throw new Error(`FFmpeg could not read the found sound "${record.name}" (sounds/${record.file}): add it again with npx storyreel sounds add ${record.id} --as ${record.name}`);
+  return m[1] === '-inf' ? -Infinity : Number(m[1]);
 }
 
 /**
- * The found sounds (found.mjs) mixed onto the synthesized accents, the way the song is mixed (mixSong): each file checked
- * against its record once more, just before it is read (found.mjs · checkFoundFile: a render never fetches, and refuses a
- * file that changed), decoded by FFmpeg as its own program, mono at 48 kHz, turned DOWN when its peak is over the effects'
- * ceiling (never up: the synthesized accents' rule), at its event's gain (default 1), and placed at its second on the
- * film clock. Returns the effects track (film-effects.wav, the length of the accents': the film's), which the listening
- * check measures against the voice.
+ * The found sounds (found/) mixed onto the synthesized accents, the way the song is mixed (mixSong). Each sound is
+ * checked in full once more, just before it is read: its stored record through the licence gate and its file the
+ * record's (found/library.mjs · useFound — a render never fetches), and the record still the one the film was built
+ * with. Then FFmpeg, as its own program, reads each file once (AUDIO_ONLY: a local file, an audio format), mono at 48
+ * kHz, turned DOWN when its peak is over the effects' ceiling (never up: the synthesized accents' rule), split into
+ * one copy per event, each at its gain (default 1) and placed at its second on the film clock. Returns the effects
+ * track (film-effects.wav, the length of the accents': the film's), which the listening check measures against the voice.
  */
 function mixFound(run, {ffmpeg, events, sounds, dir, sfx, ceiling}) {
-  const byName = new Map(sounds.map(f => [f.name, f])), peaks = new Map(), inputs = [], filters = [];
-  events.forEach((event, i) => {
-    const f = byName.get(event.name);
-    if (!f) throw new Error(`the found sound "${event.name}" was not checked when the film was built: render a film compileFilm made (it checks every found sound it plays)`);   // refusal: a film object not from compileFilm
-    if (!peaks.has(f.name)) { checkFoundFile(f.file, f.record); peaks.set(f.name, peakDB(ffmpeg, f.file)); }
-    const peak = peaks.get(f.name), level = (event.gain ?? 1) * Math.min(1, peak === null ? 1 : 10 ** ((ceiling - peak) / 20));
-    inputs.push('-i', f.file);
-    filters.push(`[${i + 1}:a]aresample=48000,aformat=channel_layouts=mono,volume=${level.toFixed(6)},adelay=delays=${Math.round(event.time * 48000)}S:all=1[f${i}]`);
+  const byName = new Map(sounds.map(f => [f.name, f])), names = [...new Set(events.map(e => e.name))], inputs = [], filters = [], placed = [];
+  names.forEach((name, k) => {
+    const f = byName.get(name);
+    if (!f) throw new Error(`the found sound "${name}" was not checked when the film was built: render a film compileFilm made (it checks every found sound it plays)`);   // refusal: a film object not from compileFilm
+    const now = useFound(path.dirname(path.dirname(f.file)), name, {allowShareAlike: f.allowShareAlike});
+    if (now.record.sha256 !== f.record.sha256) throw new Error(`the found sound "${name}" was added again after the film was built: build the film again (compileFilm), so its record and its approval name the sound it plays`);
+    const mine = events.filter(e => e.name === name), down = Math.min(1, 10 ** ((ceiling - peakDB(ffmpeg, now)) / 20));
+    inputs.push(...AUDIO_ONLY, '-i', now.file);
+    filters.push(`[${k + 1}:a]aresample=48000,aformat=channel_layouts=mono,volume=${down.toFixed(6)},asplit=${mine.length}${mine.map((_, j) => `[s${k}_${j}]`).join('')}`);
+    mine.forEach((event, j) => {
+      filters.push(`[s${k}_${j}]volume=${(event.gain ?? 1).toFixed(6)},adelay=delays=${Math.round(event.time * 48000)}S:all=1[f${placed.length}]`);
+      placed.push(`[f${placed.length}]`);
+    });
   });
-  const out = path.join(dir, 'film-effects.wav'), mix = `${filters.join(';')};[0:a]${events.map((_, i) => `[f${i}]`).join('')}amix=inputs=${events.length + 1}:normalize=0:duration=first[fx]`;
+  const out = path.join(dir, 'film-effects.wav'), mix = `${filters.join(';')};[0:a]${placed.join('')}amix=inputs=${placed.length + 1}:normalize=0:duration=first[fx]`;
   run(['-i', sfx, ...inputs, '-filter_complex', mix, '-map', '[fx]', '-ac', '1', '-ar', '48000', out]);
   return out;
 }

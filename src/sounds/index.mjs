@@ -6,7 +6,7 @@
  *    limits?: its rate limits in words, as its last answer reported them}
  *   a candidate: {id, title, creator, license, licenseVersion, seconds, source, attribution, url, landing, bytes}
  *
- * searchSounds asks for the licences the gate lets through (found.mjs · usableLicences). addSound fetches a sound ONCE
+ * searchSounds asks for the licences the gate lets through (found/licences.mjs · usableLicences). addSound fetches a sound ONCE
  * into the film's sounds/ folder: the gate first (before a byte is fetched), the file into a private scratch folder
  * (scratch.mjs · makeScratch), probed by ffprobe as a separate program (probeAudio: audio, one of AUDIO_EXTENSIONS, at
  * most FOUND_LIMITS.seconds), hashed, renamed onto <name>.<ext> (files.mjs · writeOutput), and its record written into
@@ -15,12 +15,12 @@
  */
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {readFileSync, rmSync} from 'node:fs';
+import {readFileSync, rmSync, existsSync, statSync} from 'node:fs';
 import {securePath, outputFolder, writeOutput} from '../files.mjs';
 import {makeScratch} from '../scratch.mjs';
 import {ffprobeBeside} from '../spawned.mjs';
-import {SOUNDS_FOLDER, LIBRARY_FILE, FOUND_LIMITS, AUDIO_EXTENSIONS, LICENCES, checkFoundName, licenceVerdict, usableLicences,
-  foundRecord, readLibrary, libraryText, sha256Of, useFound, plainText, shown} from '../found.mjs';
+import {SOUNDS_FOLDER, LIBRARY_FILE, FOUND_LIMITS, AUDIO_EXTENSIONS, AUDIO_ONLY, licenceName, checkFoundName, licenceVerdict, usableLicences,
+  foundRecord, readLibrary, libraryText, sha256Of, useFound, plainText, shown} from '../found/index.mjs';
 
 /** A sound source checked: {name, search, candidate, fetch}. */
 export function checkSoundSource(source) {
@@ -48,18 +48,23 @@ export async function searchSounds(source, words, {limit = 5, allowShareAlike = 
   return (await source.search(checkWords(words), {licences, limit})).filter(c => licences.includes(c?.license)).slice(0, limit);
 }
 
-/** A licence in words: "CC BY 4.0", or the code made plain when the gate does not know it. */
-const licenceText = (licence, version) => `${Object.hasOwn(LICENCES, licence) ? LICENCES[licence].name : plainText(licence, 20)}${version ? ` ${version}` : ''}`;
+/** The film's folder, as given (--film): its real path, a folder that exists. */
+function filmFolder(film) {
+  const root = securePath(film);
+  if (!existsSync(root) || !statSync(root).isDirectory()) throw new Error(`the film's folder ${plainText(film, 120)} is not a folder: give --film the folder the film is in (where its sounds/ goes), or make it first`);
+  return root;
+}
 const secondsText = s => (Number.isFinite(s) ? `${s.toFixed(s < 10 ? 2 : 1)} s` : '? s');
 /** One candidate on one line: id · title · licence · seconds · source. */
-export const candidateLine = c => [c.id, plainText(c.title, 60) || 'untitled', licenceText(c.license, c.licenseVersion), secondsText(c.seconds), plainText(c.source, 30) || '?'].join(' · ');
+export const candidateLine = c => [plainText(c.id, 64), plainText(c.title, 60) || 'untitled', licenceName(c.license, c.licenseVersion), secondsText(c.seconds), plainText(c.source, 30) || '?'].join(' · ');
 
 /**
  * What ffprobe, run as its own program, says of a file: {ext, seconds} when it is audio StoryReel keeps, else a refusal.
  * Audio means at least one sound stream and no picture (a cover image attached to an MP3 is allowed).
  */
 export function probeAudio(file, {ffprobe = process.env.FFPROBE_BIN || ffprobeBeside(process.env.FFMPEG_BIN || 'ffmpeg')} = {}) {
-  const r = spawnSync(ffprobe, ['-v', 'error', '-show_entries', 'stream=codec_type:stream_disposition=attached_pic:format=format_name,duration', '-of', 'json', file], {encoding: 'utf8', maxBuffer: 1 << 20, timeout: 30000});
+  // Only the file itself (no protocol but file: a playlist inside cannot make it fetch) and only the audio formats kept.
+  const r = spawnSync(ffprobe, ['-v', 'error', ...AUDIO_ONLY, '-show_entries', 'stream=codec_type:stream_disposition=attached_pic:format=format_name,duration', '-of', 'json', file], {encoding: 'utf8', maxBuffer: 1 << 20, timeout: 30000});
   if (r.error?.code === 'ENOENT') throw new Error(`there is no ffprobe at ${ffprobe}: install FFmpeg (it brings ffprobe), or name one with FFPROBE_BIN`);
   let info = null;
   try { info = r.status === 0 ? JSON.parse(r.stdout) : null; } catch { /* said below */ }
@@ -78,14 +83,15 @@ export function probeAudio(file, {ffprobe = process.env.FFPROBE_BIN || ffprobeBe
  */
 export async function addSound({source, id, as, film = '.', allowShareAlike = false, probe = probeAudio}) {
   checkSoundSource(source);
-  const name = checkFoundName(as, 'sounds add --as'), root = securePath(film);
+  const name = checkFoundName(as, 'sounds add --as'), root = filmFolder(film);
   const library = readLibrary(root), had = Object.hasOwn(library, name) ? library[name] : null;
   if (had && (had.from !== source.name || had.id !== id)) throw new Error(`${SOUNDS_FOLDER}/${LIBRARY_FILE} already has "${name}" (${had.from} ${had.id}, "${had.title}"): give this one another --as, or remove "${name}" from ${LIBRARY_FILE} first`);
   if (had) {
-    try { return {name, record: useFound(root, name, {library, allowShareAlike}).record, fetched: false, file: path.join(root, SOUNDS_FOLDER, had.file)}; } catch { /* missing or changed: fetched again below */ }
+    licenceVerdict(had.license, {allowShareAlike, who: `the found sound "${name}"`, version: had.licenseVersion});   // a licence refusal is said, not fetched past
+    try { return {name, record: useFound(root, name, {library, allowShareAlike}).record, fetched: false, file: path.join(root, SOUNDS_FOLDER, had.file)}; } catch { /* its file missing or changed: fetched again below */ }
   }
   const who = `${source.name} sound ${plainText(id, 64)}`, candidate = await source.candidate(id);
-  licenceVerdict(candidate.license, {allowShareAlike, who});   // before a byte of it is fetched
+  licenceVerdict(candidate.license, {allowShareAlike, who, version: candidate.licenseVersion});   // before a byte of it is fetched
   const folder = outputFolder(root, SOUNDS_FOLDER), scratch = makeScratch(folder, '.storyreel-sound');
   try {
     const got = await source.fetch(candidate, {into: scratch, maxBytes: FOUND_LIMITS.bytes});
@@ -93,7 +99,7 @@ export async function addSound({source, id, as, film = '.', allowShareAlike = fa
     const {ext, seconds} = probe(got.file), bytes = readFileSync(got.file);
     if (bytes.length > FOUND_LIMITS.bytes) throw new Error(`the fetched sound is over ${FOUND_LIMITS.bytes / 1024 / 1024} MB: pick a shorter sound`);
     const record = foundRecord({...candidate, ...got.record, name, file: `${name}.${ext}`, from: source.name, id: candidate.id, seconds, sha256: sha256Of(bytes), bytes: bytes.length});
-    licenceVerdict(record.license, {allowShareAlike, who});   // the record's own licence, as it will be read at every use
+    licenceVerdict(record.license, {allowShareAlike, who, version: record.licenseVersion});   // the record's own licence, as it will be read at every use
     writeOutput(path.join(folder, record.file), {move: got.file});
     if (had?.file && had.file !== record.file) rmSync(path.join(folder, had.file), {force: true});   // the old file of this same sound under another extension (foundRecord: only ever <name>.<ext>)
     writeOutput(path.join(folder, LIBRARY_FILE), libraryText({...library, [name]: record}));
@@ -103,14 +109,14 @@ export async function addSound({source, id, as, film = '.', allowShareAlike = fa
 
 /** The film's found sounds, each with its state: 'ok', or what is wrong and the command that fixes it (read offline). */
 export function listSounds(film = '.', {allowShareAlike = false} = {}) {
-  const root = securePath(film), library = readLibrary(root);
+  const root = filmFolder(film), library = readLibrary(root);
   return Object.values(library).map(record => {
     try { useFound(root, record.name, {library, allowShareAlike}); return {record, state: 'ok'}; } catch (e) { return {record, state: e.message}; }
   });
 }
 
 /** What sounds add did, in one line. */
-export const addedText = ({name, record, fetched}) => `${name}: ${SOUNDS_FOLDER}/${record.file} · ${licenceText(record.license, record.licenseVersion)} · ${secondsText(record.seconds)} · "${plainText(record.title, 60)}" by ${plainText(record.creator, 40)}${fetched ? '' : ' (already there, file checked: nothing fetched)'}`;
+export const addedText = ({name, record, fetched}) => `${name}: ${SOUNDS_FOLDER}/${record.file} · ${licenceName(record.license, record.licenseVersion)} · ${secondsText(record.seconds)} · "${plainText(record.title, 60)}" by ${plainText(record.creator, 40)}${fetched ? '' : ' (already there, file checked: nothing fetched)'}`;
 /** A listed sound in one line: name · licence · seconds · its state. */
-export const listedText = ({record, state}) => `${record.name} · ${licenceText(record.license, record.licenseVersion)} · ${secondsText(record.seconds)} · ${state === 'ok' ? 'ok' : state.replace(/^the found sound "[^"]*"\s*/, '')}`;
-export {LICENCES, usableLicences, licenceVerdict, plainText, readLibrary, useFound} from '../found.mjs';
+export const listedText = ({record, state}) => `${record.name} · ${licenceName(record.license, record.licenseVersion)} · ${secondsText(record.seconds)} · ${state === 'ok' ? 'ok' : state.replace(/^the found sound "[^"]*"(?:'s)?\s*/, '')}`;
+export {LICENCES, usableLicences, licenceVerdict, plainText, readLibrary, useFound} from '../found/index.mjs';

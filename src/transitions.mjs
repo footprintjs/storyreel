@@ -307,7 +307,7 @@ export function readEntrance(enter, where, catalog = TRANSITIONS) {
 
 /**
  * An entrance's sound: false (none), left out (the transition's own), a sound's name, or a found sound
- * {"type": "found", "name", "gain"?} (sound.mjs · readSoundChoice; found.mjs keeps the recording).
+ * {"type": "found", "name", "gain"?} (sound.mjs · readSoundChoice; found/ keeps the recording).
  */
 function entranceSound(given, fallback, where) {
   if (given === false) return null;

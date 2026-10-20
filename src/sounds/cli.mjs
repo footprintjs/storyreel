@@ -4,7 +4,7 @@
  * soundsCommand returns the exit code: 0 done, 1 refused (the line says why and what to do), 2 not understood.
  */
 import {searchSounds, addSound, listSounds, candidateLine, addedText, listedText} from './index.mjs';
-import {usableLicences, LICENCES} from '../found.mjs';
+import {usableLicences, LICENCES} from '../found/index.mjs';
 
 /** The usage, as `storyreel --help` lists it (test/skills.test.mjs reads its command and flag lines). */
 export const SOUNDS_HELP = `  sounds   search "<words>" | add <id> --as <name> | list — recorded sound effects from Openverse, fetched once into the

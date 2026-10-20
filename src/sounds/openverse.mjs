@@ -13,7 +13,7 @@
  * its own. Search by words: Openverse's `category` is usually empty, so it is not asked.
  */
 import path from 'node:path';
-import {plainText} from '../found.mjs';
+import {plainText} from '../found/index.mjs';
 import {writeOutput} from '../files.mjs';
 import {download, readCapped, DOWNLOAD} from './download.mjs';
 

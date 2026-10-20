@@ -20,7 +20,8 @@ export interface SoundSource {
 }
 /** A found sound's record in sounds/sounds.json: every text made plain, the licence URL built from the code and version. */
 export interface FoundRecord {
-  name: string; file: string; from: string; id: string; title: string; creator: string;
+  /** <name>.<ext>, or null for a record that named anything else (an edited one). */
+  name: string; file: string | null; from: string; id: string; title: string; creator: string;
   license: string; licenseVersion: string | null; licenseUrl: string | null; attribution: string;
   source: string; url: string | null; landing: string | null; seconds: number | null; sha256: string | null; bytes: number | null;
 }
@@ -29,13 +30,13 @@ export const LICENCES: Readonly<Record<string, {name: string; use: 'yes' | 'shar
 /** The licence codes a film may use (CC BY-SA too with allowShareAlike). */
 export function usableLicences(options?: {allowShareAlike?: boolean}): string[];
 /** The gate: the licence, or a refusal that says why and what to do. */
-export function licenceVerdict(licence: string, options?: {allowShareAlike?: boolean; who?: string}): {licence: string; name: string; shareAlike: boolean};
+export function licenceVerdict(licence: string, options?: {allowShareAlike?: boolean; who?: string; version?: string | null}): {licence: string; name: string; shareAlike: boolean};
 /** Text from a source made plain: control and bidi characters removed, one line, at most `max` characters. */
 export function plainText(value: unknown, max: number): string;
 /** A film's library, {name: record}, from <root>/sounds/sounds.json (empty when there is none). */
 export function readLibrary(root: string): Readonly<Record<string, Readonly<FoundRecord>>>;
 /** A found sound checked for use: in the library, through the gate, its file inside the root with the record's size and sha256. */
-export function useFound(root: string, name: string, options?: {allowShareAlike?: boolean}): Readonly<{name: string; file: string; record: FoundRecord}>;
+export function useFound(root: string, name: string, options?: {allowShareAlike?: boolean; library?: Readonly<Record<string, Readonly<FoundRecord>>>}): Readonly<{name: string; file: string; record: FoundRecord}>;
 /** A source checked to be {name, search, candidate, fetch}. */
 export function checkSoundSource<S extends SoundSource>(source: S): S;
 /** Up to `limit` (1–20, 5) candidates for the words, under the licences a film may use. */

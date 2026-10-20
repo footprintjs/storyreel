@@ -2,8 +2,9 @@
  * Downloading a found sound's file, the one way a source does it. The file's address came from a server's JSON, so it is
  * untrusted and may point at any host:
  *   - https only, every redirect too (at most DOWNLOAD.redirects of them, each checked again);
- *   - never an address on this machine or its network written as such: localhost, a loopback, private, link-local or
- *     carrier-grade IP literal (a name that resolves to one is not caught here: the https certificate is the guard);
+ *   - never an address on this machine or its network written as such: localhost (with or without its trailing dot), a
+ *     loopback, private, link-local, site-local, carrier-grade or NAT64 IP literal, v4 or v6 (a name that resolves to
+ *     one is not caught here: the https certificate is the guard);
  *   - at most `maxBytes`, refused from the Content-Length before reading and counted while reading;
  *   - within `timeoutMs` for the whole of it;
  *   - handed back as bytes, never written under a name the server gives: the source writes them into the folder it
@@ -12,7 +13,7 @@
  * No credentials go with it: the source's key, if any, is for the source's own API, never for the file's host.
  */
 import {isIP} from 'node:net';
-import {plainText, FOUND_LIMITS} from '../found.mjs';
+import {plainText, FOUND_LIMITS} from '../found/index.mjs';
 
 export const DOWNLOAD = Object.freeze({maxBytes: FOUND_LIMITS.bytes, timeoutMs: 30000, redirects: 3});
 
@@ -24,15 +25,17 @@ function localAddress(ip) {
     const [a, b] = v4.split('.').map(Number);
     return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b < 128) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b < 32) || (a === 192 && b === 168) || a >= 224;
   }
+  // Unspecified, loopback and every address under ::/96 (v4-compatible), NAT64 (64:ff9b::/96, a v4 address behind a
+  // translator), unique-local, link-local, site-local and multicast.
   const v6 = ip.toLowerCase();
-  return v6 === '::' || v6 === '::1' || /^f[cd]/.test(v6) || /^fe[89ab]/.test(v6) || /^ff/.test(v6);
+  return v6.startsWith('::') || v6.startsWith('64:ff9b:') || /^f[cd]/.test(v6) || /^fe[89a-f]/.test(v6) || /^ff/.test(v6);
 }
 
 /** A file address checked: an https URL to a public host. `what` names it in a refusal. */
 export function checkFileUrl(href, what = 'the sound file') {
   let url;
   try { url = new URL(href); } catch { throw new Error(`${what}'s address is not a URL (${JSON.stringify(plainText(href, 80))}): pick another sound`); }
-  const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  const host = url.hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();   // "localhost." is localhost
   if (url.protocol !== 'https:') throw new Error(`${what} is at ${url.protocol}// — StoryReel fetches only over https: pick another sound`);
   if (url.username || url.password) throw new Error(`${what}'s address carries a user name or password: StoryReel never sends one — pick another sound`);
   if (host === 'localhost' || host.endsWith('.localhost') || (isIP(host) && localAddress(host))) throw new Error(`${what} is at ${host}, an address on this machine or its network: StoryReel fetches sounds only from public hosts — pick another sound`);

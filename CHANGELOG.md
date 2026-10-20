@@ -13,14 +13,15 @@
     licences are refused, saying why. The gate reads each sound's own record at every use.
   - A missing or changed file refuses, naming the `sounds add` command that fixes it. The found sounds' hashes are
     part of the film's inputs, so an approval locks them.
-  - Each sound's attribution goes into CREDITS.txt by itself.
+  - Each sound's attribution goes into CREDITS.txt by itself, with its licence's deed and, for CC BY and CC BY-SA,
+    "adapted: mixed into this film" plus a link to the work.
   - Hardening against what Openverse sends:
     - every text is made plain and capped;
     - https only, with redirects re-checked;
     - no local or private addresses;
     - a 20 MB cap and a 30 s timeout;
     - the stored file is always `<name>.<ext>`;
-    - ffprobe must find audio;
+    - ffprobe must find audio, and FFmpeg and ffprobe read a found sound only as a local audio file;
     - a 429 stops, saying when to retry.
   - The Openverse adapter sits behind its own subpath (`footprint-storyreel/sounds/openverse`), so nothing that draws
     or renders a film imports network code. `OPENVERSE_TOKEN`, when set, goes to Openverse only.

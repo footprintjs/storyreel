@@ -10,7 +10,7 @@ import {openverse, limitsOf} from '../src/sounds/openverse.mjs';
 import {download, checkFileUrl} from '../src/sounds/download.mjs';
 import {searchSounds, addSound, listSounds, candidateLine, checkSoundSource, probeAudio} from '../src/sounds/index.mjs';
 import {soundsCommand} from '../src/sounds/cli.mjs';
-import {readLibrary, sha256Of} from '../src/found.mjs';
+import {readLibrary, sha256Of} from '../src/found/index.mjs';
 import {createMotionSound} from '../src/sound.mjs';
 import {tempDir} from './tmp.mjs';
 
@@ -86,7 +86,9 @@ test('an id is checked before it is asked for; the key goes to Openverse only, n
 test('download: https only, every redirect checked, no address on this machine, a byte cap and a timeout', async () => {
   for (const [href, re] of [['http://cdn.example.org/a.wav', /only over https/], ['file:///etc/passwd', /only over https/], ['https://user:pw@cdn.example.org/a.wav', /user name or password/],
     ['https://localhost/a.wav', /on this machine or its network/], ['https://127.0.0.1/a.wav', /on this machine/], ['https://[::1]/a.wav', /on this machine/], ['https://10.1.2.3/a.wav', /on this machine/],
-    ['https://169.254.169.254/latest', /on this machine/], ['https://192.168.0.9/a', /on this machine/], ['https://[::ffff:127.0.0.1]/a', /on this machine/], ['not a url', /not a URL/]]) {
+    ['https://169.254.169.254/latest', /on this machine/], ['https://192.168.0.9/a', /on this machine/], ['https://[::ffff:127.0.0.1]/a', /on this machine/], ['not a url', /not a URL/],
+    ['https://localhost./a', /on this machine/], ['https://foo.localhost./a', /on this machine/], ['https://[::7f00:1]/a', /on this machine/], ['https://[64:ff9b::7f00:1]/a', /on this machine/],
+    ['https://[fec0::1]/a', /on this machine/], ['https://100.64.0.1/a', /on this machine/]]) {
     assert.throws(() => checkFileUrl(href), re, href);
   }
   assert.equal(checkFileUrl('https://cdn.example.org/a.wav').hostname, 'cdn.example.org');
@@ -138,6 +140,11 @@ test('sounds add: the licence before a byte, the file probed and hashed, kept as
   assert.equal(readLibrary(film)['page-turn'].file, null);
   assert.equal((await addSound({source, id: BY, as: 'page-turn', film})).fetched, true, 'the broken record is repaired by fetching again');
   assert.equal(readFileSync(victim, 'utf8'), 'keep me', 'and nothing outside sounds/ was touched');
+  // A sound kept under a licence the film has not opted into is refused as such, without asking the source again.
+  const asked = calls.length;
+  await assert.rejects(addSound({source, id: SA, as: 'rustle', film}), /the found sound "rustle" is CC BY-SA: using it puts the whole film under CC BY-SA too/);
+  assert.equal(calls.length, asked, 'no request for a refusal the record already answers');
+  await assert.rejects(addSound({source, id: BY, as: 'x', film: path.join(film, 'no-such-folder')}), /the film's folder .*no-such-folder is not a folder: give --film the folder the film is in/);
   // A name is a slug: no way out of sounds/.
   for (const as of ['../evil', 'Page', 'a/b', '', 'x'.repeat(41)]) await assert.rejects(addSound({source, id: BY, as, film}), /a found sound's name is lower case/, as);
   assert.ok(!existsSync(path.join(film, 'evil.wav')) && !existsSync(path.join(path.dirname(film), 'evil.wav')));
@@ -155,16 +162,27 @@ test('sounds add refuses a file that is not a sound, and a source that writes ou
   assert.throws(() => probeAudio(path.join(film, 'nothing.wav')), /not a sound/);
 });
 
-test('ffprobe names the file\'s kind (the kept extension), whatever the server called it: wav, mp3, flac; a video refuses', {skip: ffprobe ? false : 'no ffprobe'}, t => {
-  const dir = tempDir('found-probe', t), wav = path.join(dir, 'a'), encode = (args, out) => spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-v', 'error', '-y', '-i', wav, ...args, out]).status === 0;
+const ffmpegBin = process.env.FFMPEG_BIN || 'ffmpeg', encoders = spawnSync(ffmpegBin, ['-hide_banner', '-encoders'], {encoding: 'utf8'}).stdout ?? '';
+test('ffprobe names the file\'s kind (the kept extension), whatever the server called it: wav, mp3, flac; a video or a playlist refuses', {skip: ffprobe ? false : 'no ffprobe'}, async t => {
+  const dir = tempDir('found-probe', t), wav = path.join(dir, 'a'), encode = (args, out) => assert.equal(spawnSync(ffmpegBin, ['-v', 'error', '-y', ...args, out]).status, 0);
   writeFileSync(wav, WAV);
   assert.equal(probeAudio(wav).ext, 'wav');
-  for (const [codec, ext] of [[['-c:a', 'libmp3lame', '-f', 'mp3'], 'mp3'], [['-c:a', 'flac', '-f', 'flac'], 'flac']]) {
-    const out = path.join(dir, `b-${ext}.bin`);   // a name that says nothing: the kind comes from the bytes
-    if (encode(codec, out)) assert.equal(probeAudio(out).ext, ext);
+  for (const [encoder, ext] of [['libmp3lame', 'mp3'], ['flac', 'flac']]) {
+    await t.test(ext, {skip: encoders.includes(encoder) ? false : `no ${encoder} encoder`}, () => {
+      const out = path.join(dir, `b-${ext}.bin`);   // a name that says nothing: the kind comes from the bytes
+      encode(['-i', wav, '-c:a', encoder, '-f', ext], out);
+      assert.equal(probeAudio(out).ext, ext);
+    });
   }
-  const video = path.join(dir, 'v.bin');
-  if (spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=red:s=32x32:d=0.5', '-f', 'mp4', video]).status === 0) assert.throws(() => probeAudio(video), /not a sound/);
+  await t.test('a video', {skip: encoders.includes('mpeg4') || encoders.includes('libx264') ? false : 'no video encoder'}, () => {
+    const video = path.join(dir, 'v.bin');
+    encode(['-f', 'lavfi', '-i', 'color=c=red:s=32x32:d=0.5', '-f', 'mp4'], video);
+    assert.throws(() => probeAudio(video), /not a sound|not one of mp3, wav, ogg, flac/);
+  });
+  // A playlist is text that names other files, here over the network: ffprobe may read the file only, as an audio format.
+  const playlist = path.join(dir, 'p.bin');
+  writeFileSync(playlist, '#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\nhttps://127.0.0.1:9/a.ts\n#EXT-X-ENDLIST\n');
+  assert.throws(() => probeAudio(playlist), /the fetched file is not a sound/);
 });
 
 test('the CLI: compact lines, exit 0 done, 1 refused, 2 not understood; list reads offline and names the fix', {skip: ffprobe ? false : 'no ffprobe'}, async () => {
@@ -178,8 +196,14 @@ test('the CLI: compact lines, exit 0 done, 1 refused, 2 not understood; list rea
   assert.deepEqual(await run(['list', '--film', film]), {code: 0, text: 'page-turn · CC BY 4.0 · 0.40 s · ok'});
   writeFileSync(path.join(film, 'sounds', 'page-turn.wav'), 'swapped');
   const listed = await run(['list', '--film', film]);
-  assert.equal(listed.code, 1); assert.match(listed.text, /page-turn · CC BY 4\.0 · 0\.40 s · 's file sounds\/page-turn\.wav is not the one its record names .*: add it again with npx storyreel sounds add ec2e245c-465b-4ba7-9ea4-620f3555b291 --as page-turn/);
+  assert.equal(listed.code, 1); assert.match(listed.text, /^page-turn · CC BY 4\.0 · 0\.40 s · file sounds\/page-turn\.wav is not the one its record names .*: add it again with npx storyreel sounds add ec2e245c-465b-4ba7-9ea4-620f3555b291 --as page-turn$/);
   assert.equal((await run(['add', NC, '--as', 'book', '--film', film])).code, 1);
   for (const args of [['fetch'], ['add', BY], ['search'], ['search', 'a', '--film', 'x'], ['list', 'extra'], ['search', 'a', '--limit', 'many']]) assert.equal((await run(args)).code, 2, args.join(' '));
   assert.equal(listSounds(tempDir('found-none')).length, 0);
+  // `storyreel help sounds` and `storyreel sounds --help` say the same usage.
+  const cli = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'src', 'cli.mjs');
+  for (const args of [['help', 'sounds'], ['sounds', '--help']]) {
+    const r = spawnSync(process.execPath, [cli, ...args], {encoding: 'utf8'});
+    assert.equal(r.status, 0, args.join(' ')); assert.match(r.stdout, /sounds {3}search "<words>" \| add <id> --as <name> \| list/);
+  }
 });

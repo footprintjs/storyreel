@@ -1632,16 +1632,24 @@ The effects-vs-voice check then measures it with the other effects.
 
 - CC0 and CC BY are used.
 - CC BY-SA is used only when the recipe says `"foundSounds": {"allowShareAlike": true}` (and `sounds add
-  --allow-share-alike`), because it puts the whole film under CC BY-SA.
+  --allow-share-alike`), because it puts the whole film under CC BY-SA. Version 1.0 is refused even then: it lets
+  the film be shared only under 1.0 itself.
 - NC, ND, the Public Domain Mark and any licence the table does not know are refused, saying why.
 
-The gate reads each sound's own record when the sound is added, when the film is built and at every render. The
-film also refuses a sound whose file is missing or whose size or sha256 differs from its record, naming the `sounds
-add` command that fixes it. The found sounds' hashes are part of the film's inputs, so an approval locks them.
+The gate reads each sound's own stored record when the sound is added, when the film is built, and again at every
+render, just before the file is mixed. Each time, it also refuses a sound whose file is missing or whose size or
+sha256 differs from its record, naming the `sounds add` command that fixes it. A sound added again after the film was
+built refuses until the film is built again. The found sounds' hashes are part of the film's inputs, so an approval
+locks them.
 
 **Credits are written for you.** Each found sound a film plays goes into its making-of record (`foundSounds`), and
-`makeRelease` puts each one's attribution line under **Sounds** in CREDITS.txt. When a CC BY-SA sound is used, a line
-says the film is shared under CC BY-SA.
+`makeRelease` puts each one's attribution line under **Sounds** in CREDITS.txt. The line also carries:
+
+- its licence's deed, when the attribution lacks it;
+- for CC BY and CC BY-SA, "adapted: mixed into this film", because a sound set to a picture is an adaptation under
+  those licences, with a link to the work where one is known.
+
+When a CC BY-SA sound is used, a line says the film is shared under CC BY-SA 4.0.
 
 **What it trusts.** Everything a source sends is treated as untrusted:
 
@@ -1649,11 +1657,12 @@ says the film is shared under CC BY-SA.
   control, bidi or line-break characters) and capped in length.
 - **The file's address**:
   - https only, every redirect checked, at most 3 redirects;
-  - never a localhost or private address written as one;
+  - never a localhost (trailing dot or not) or loopback, private, link-local or NAT64 address written as one;
   - 20 MB at most, 30 seconds at most.
 - **The file name** is never the server's. It is `<name>.<ext>`: the name is a strict slug (`--as`), and the extension
-  is the one ffprobe finds (mp3, wav, ogg, flac). ffprobe runs as its own program and refuses anything that is not a
-  sound.
+  is the one ffprobe finds (mp3, wav, ogg, flac). ffprobe and FFmpeg run as their own programs. They may read a
+  found sound only as a local file in one of those formats (`-protocol_whitelist file -format_whitelist …`), so a
+  playlist hidden in a download cannot make them fetch anything. Anything that is not a sound is refused.
 - **Rate limits**: Openverse's limits are read from each answer and shown after a search. A 429 stops, saying when to
   try again; StoryReel never retries on its own.
 - **Your key**: `OPENVERSE_TOKEN`, when set, goes to Openverse's API only, never to a file's host or into a message.

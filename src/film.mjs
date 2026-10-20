@@ -40,7 +40,7 @@ import {view, compose, about, through, back} from './regions.mjs';
 import {tooShortToRead, readingMode, readingPace} from './reading.mjs';
 import {readIntent, readContinuity, checkContinuity, tooMuchTooFast, distinctMoments, watchingMode, watchingText, WATCHING, readReads, checkReads} from './shots.mjs';
 import {checkSound, soundsByScene, MAX_SOUNDS_PER_SCENE, FOUND} from './sound.mjs';
-import {readLibrary, useFound} from './found.mjs';
+import {readLibrary, useFound} from './found/index.mjs';
 import {listeningMode, changeSounds, listeningText} from './listening.mjs';
 import {step, drainSteps, recordSteps} from './record.mjs';
 import {readEntrance, transitionCatalog, ghostPainter, layerCrossfader, CUT} from './transitions.mjs';
@@ -132,12 +132,13 @@ function readFoundSounds(spec) {
   }
   return {allowShareAlike: spec.allowShareAlike === true};
 }
-/** The found sounds a film's sounds name, each checked for use (found.mjs · useFound), in name order: [{name, file, record}]. */
+/** The found sounds a film's sounds name, each checked for use (found/library.mjs · useFound), in name order: [{name, file, record, allowShareAlike}]. */
 function foundSoundsUsed(sounds, spec, root) {
   const {allowShareAlike} = readFoundSounds(spec), names = [...new Set(sounds.filter(s => s.type === FOUND).map(s => s.name))].sort();
   if (!names.length) return Object.freeze([]);
   const library = readLibrary(root);
-  return Object.freeze(names.map(name => useFound(root, name, {library, allowShareAlike})));
+  // Each keeps the rule it was checked by, so the render checks it again the same way (render.mjs · mixFound).
+  return Object.freeze(names.map(name => Object.freeze({...useFound(root, name, {library, allowShareAlike}), allowShareAlike})));
 }
 /** A change's sound for the listening check: its name, or "found sound "<name>"" (listening.mjs compares and says them). */
 const soundLabel = s => (s && typeof s === 'object' ? `found sound "${s.name}"` : s);
@@ -985,7 +986,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   // Sound design: quiet accents on the actions, a chime on the eurekas and the answer. A kit's sounds are
   // checked by name and gain here (sound.mjs · checkSound), and keep their gain.
   const sounds = [];
-  // A found sound (found.mjs) keeps its name: {time, type: 'found', name, gain?}.
+  // A found sound (found/) keeps its name: {time, type: 'found', name, gain?}.
   const add = (time, type, gain, name) => { if (Number.isFinite(time) && time >= 0 && time < clock.total) sounds.push({time, type, ...(gain === undefined ? {} : {gain}), ...(type === FOUND ? {name} : {})}); };
   const addKitSounds = (list, who) => { for (const s of list ?? []) { checkSound(s, who); add(s.time, s.type, s.gain, s.name); } };
   addKitSounds(story.sounds, `the story kit "${storySpec.kit}"`);
@@ -1008,7 +1009,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   for (const g of guesses) { add(g.start, 'question'); if (g.answer) add(g.end, 'chime'); }
   sounds.sort((a, b) => a.time - b.time);
   checkSoundCounts(sounds, clock, storyboard, timings);
-  // Found sounds (found.mjs): each one used is checked once, here — in the library at <root>/sounds/sounds.json, its
+  // Found sounds (found/): each one used is checked once, here — in the library at <root>/sounds/sounds.json, its
   // record's own licence through the gate (CC BY-SA only with recipe.foundSounds.allowShareAlike), its file the record's
   // (size and sha256) — so a film that cannot be rendered offline refuses when it is built, naming the sounds add fix.
   const foundUsed = foundSoundsUsed(sounds, recipe.foundSounds, root);

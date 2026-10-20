@@ -333,7 +333,7 @@ export interface FoundSoundEvent { time: number; type: 'found'; name: string; ga
 /** An entrance's found sound: the same as a found sound event, without its time (the change of picture is its time). */
 export type FoundSoundChoice = { type: 'found'; name: string; gain?: number };
 /** A found sound a film plays, checked when it was built (its record, its file inside the root): see footprint-storyreel/sounds. */
-export interface UsedFoundSound { name: string; file: string; record: import('./sub/sounds.js').FoundRecord }
+export interface UsedFoundSound { name: string; file: string; record: import('./sub/sounds.js').FoundRecord; allowShareAlike: boolean }
 
 export interface Film {
   /** Seconds. */

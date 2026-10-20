@@ -36,7 +36,7 @@ import {readCaptionFiles} from './render.mjs';
 import path from 'node:path';
 import {makeFilm} from './pipeline.mjs';
 import {FORMAT_NAMES, formatOf, formatScale} from './layout.mjs';
-import {creditLines} from './found.mjs';
+import {creditLines} from './found/index.mjs';
 
 /** The built-in adapters, each loaded on first use. */
 export const TARGETS = Object.freeze({
@@ -164,7 +164,7 @@ async function checkThumbnail(adapter, file) {
 /**
  * What the film was made with, for the post (CREDITS.txt): StoryReel and every tool its record lists (name, version,
  * licence, what for), the found sounds it plays (their attribution lines, as their record keeps them, made plain:
- * found.mjs · creditLines — never typed by hand), then what the maker brought (post.credits), and the synthetic voice
+ * found/credits.mjs · creditLines — never typed by hand), then what the maker brought (post.credits), and the synthetic voice
  * when the post declares one.
  */
 export function creditsText(post, tools, sounds = []) {

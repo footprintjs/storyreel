@@ -1,10 +1,10 @@
 /**
  * Original quiet motion accents; deterministic synthesis, no samples or network. A sound event may instead name a FOUND
- * sound — {time, type: 'found', name, gain?}, a recording kept in the film's sounds/ folder (found.mjs) — which this
+ * sound — {time, type: 'found', name, gain?}, a recording kept in the film's sounds/ folder (found/) — which this
  * module only checks by shape: the render mixes it from its file (render.mjs · mixFound), never synthesizes it.
  */
 import {peakOfSamples} from './dsp.mjs';
-import {isFoundName} from './found.mjs';
+import {FOUND, isFoundName} from './found/name.mjs';
 const TAU=Math.PI*2;
 /**
  * Every sound by name: how long it lasts (seconds) and its default gain (0..1, the share of its own full
@@ -50,9 +50,11 @@ const VOICES={
  crumble:(age,phase,low,high)=>.045*Math.exp(-age*3.5)*Math.max(0,Math.sin(TAU*23*age+.7)*Math.sin(TAU*41*age))**3*((high-low)+.5*low),
 };
 
+/** A sound gain: a number from 0 to 1. */
+const isGain=gain=>typeof gain==='number'&&gain>=0&&gain<=1;
 /** Refuse a sound gain that is not a number from 0 to 1. */
 function checkGain(gain,who){
- if(gain!==undefined&&!(typeof gain==='number'&&gain>=0&&gain<=1))throw Error(`${who}: a sound's gain must be a number from 0 to 1 (it is ${JSON.stringify(gain)})`);
+ if(gain!==undefined&&!isGain(gain))throw Error(`${who}: a sound's gain must be a number from 0 to 1 (it is ${JSON.stringify(gain)})`);
 }
 /**
  * Refuse a sound whose name is not a sound, or whose gain is not 0..1 — naming who made it (`who`, e.g.
@@ -64,8 +66,8 @@ export function checkSound(event,who){
  if(!Object.hasOwn(SOUNDS,event.type))throw Error(`${who} makes a sound "${event.type}"; the sounds are ${SOUND_NAMES.join(', ')}, or a found sound {type: 'found', name}`);
  checkGain(event.gain,who);
 }
-/** The type of a sound event that names a found sound (found.mjs): {type: 'found', name, gain?}. */
-export const FOUND='found';
+/** The type of a sound event that names a found sound (found/name.mjs): {type: 'found', name, gain?}. */
+export {FOUND};
 /** Refuse a found-sound event whose name is not a found sound's name, or whose gain is not 0..1. */
 function checkFound(event,who){
  if(!isFoundName(event.name))throw Error(`${who} makes a found sound whose name is not one (a found sound's name is lower case with dashes, e.g. "page-turn", as sounds add --as gave it), not ${JSON.stringify(String(event.name)).slice(0,60)}`);
@@ -79,7 +81,7 @@ export function readSoundChoice(value){
  if(typeof value==='string')return SOUND_NAMES.includes(value)?value:null;
  if(!value||typeof value!=='object'||Array.isArray(value)||value.type!==FOUND||!isFoundName(value.name))return null;
  if(Object.keys(value).some(k=>!['type','name','gain'].includes(k)))return null;
- if(value.gain!==undefined&&!(typeof value.gain==='number'&&value.gain>=0&&value.gain<=1))return null;
+ if(value.gain!==undefined&&!isGain(value.gain))return null;
  return Object.freeze({type:FOUND,name:value.name,...(value.gain!==undefined?{gain:value.gain}:{})});
 }
 /**
