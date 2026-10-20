@@ -97,7 +97,8 @@ export function foundRecord(r) {
   const title = plainText(r.title, TEXT.title) || 'untitled', creator = plainText(r.creator, TEXT.creator) || 'unknown', entry = Object.hasOwn(LICENCES, licence) ? LICENCES[licence] : null;
   const named = entry ? `${entry.name}${version ? ` ${version}` : ''}` : plainText(licence, 30);
   return {
-    name: r.name, file: r.file, from: plainText(r.from, TEXT.source), id: plainText(r.id, TEXT.id), title, creator,
+    // The file is <name>.<ext> or nothing: a record never names a path (an edited one could name ../anything).
+    name: r.name, file: typeof r.file === 'string' && AUDIO_EXTENSIONS.some(x => r.file === `${r.name}.${x}`) && isFoundName(r.name) ? r.file : null, from: plainText(r.from, TEXT.source), id: plainText(r.id, TEXT.id), title, creator,
     license: licence, licenseVersion: version, licenseUrl: entry ? licenceUrl(licence, version) : null,
     attribution: plainText(r.attribution, TEXT.attribution) || `"${title}" by ${creator}, ${named}${entry ? ` (${licenceUrl(licence, version)})` : ''}`,
     source: plainText(r.source, TEXT.source), url: https(r.url), landing: https(r.landing),

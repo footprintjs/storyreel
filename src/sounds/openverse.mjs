@@ -14,7 +14,8 @@
  */
 import path from 'node:path';
 import {plainText} from '../found.mjs';
-import {download, DOWNLOAD} from './download.mjs';
+import {writeOutput} from '../files.mjs';
+import {download, readCapped, DOWNLOAD} from './download.mjs';
 
 const API = 'https://api.openverse.org/v1/audio/';
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -72,8 +73,7 @@ export function openverse({token = process.env.OPENVERSE_TOKEN || null, fetch = 
     }
     if (res.status === 404) { await res.body?.cancel?.(); throw new Error(`Openverse has no ${what}: check the id (npx storyreel sounds search "<words>" lists them)`); }
     if (!res.ok) { await res.body?.cancel?.(); throw new Error(`Openverse answered the ${what} with ${res.status}: try again later`); }
-    const text = await res.text();
-    if (text.length > MAX_ANSWER) throw new Error(`Openverse's answer to the ${what} is over ${MAX_ANSWER / 1024 / 1024} MB: try again with fewer results`);
+    const text = (await readCapped(res, MAX_ANSWER, `Openverse's answer to the ${what}`)).toString('utf8');
     try { return JSON.parse(text); } catch (e) { throw new Error(`Openverse's answer to the ${what} is not JSON: try again later`, {cause: e}); }
   }
   return Object.freeze({
@@ -93,8 +93,9 @@ export function openverse({token = process.env.OPENVERSE_TOKEN || null, fetch = 
     },
     async fetch(candidate, {into, maxBytes = DOWNLOAD.maxBytes}) {
       if (!candidate?.url) throw new Error(`Openverse gives no file for ${candidate?.id ?? 'this sound'}: pick another sound`);
-      const got = await download(candidate.url, path.join(into, 'download'), {fetch, maxBytes, timeoutMs});
-      return {file: got.file, bytes: got.bytes, record: {...candidate, url: got.url}};
+      const got = await download(candidate.url, {fetch, maxBytes, timeoutMs});
+      // Written into the folder addSound made for it, under a name of StoryReel's (files.mjs · writeOutput).
+      return {file: writeOutput(path.join(into, 'download'), got.bytes), bytes: got.bytes.length, record: {...candidate, url: got.url}};
     },
   });
 }

@@ -95,7 +95,7 @@ export async function addSound({source, id, as, film = '.', allowShareAlike = fa
     const record = foundRecord({...candidate, ...got.record, name, file: `${name}.${ext}`, from: source.name, id: candidate.id, seconds, sha256: sha256Of(bytes), bytes: bytes.length});
     licenceVerdict(record.license, {allowShareAlike, who});   // the record's own licence, as it will be read at every use
     writeOutput(path.join(folder, record.file), {move: got.file});
-    if (had && had.file !== record.file) rmSync(path.join(folder, had.file), {force: true});   // the old file of this same sound, kept under another extension
+    if (had?.file && had.file !== record.file) rmSync(path.join(folder, had.file), {force: true});   // the old file of this same sound under another extension (foundRecord: only ever <name>.<ext>)
     writeOutput(path.join(folder, LIBRARY_FILE), libraryText({...library, [name]: record}));
     return {name, record, fetched: true, file: path.join(folder, record.file)};
   } finally { rmSync(scratch, {recursive: true, force: true}); }

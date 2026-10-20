@@ -516,6 +516,8 @@ const RUNS = [
   ['finished.mjs', "spawnSync(ffmpeg, ['-v', 'error', '-i', file, '-vn', '-ac', '1'", 'FFmpeg sound to a pipe'],
   ['finished.mjs', "spawned(ffmpeg, ['-hide_banner', '-nostats', '-v', 'info', '-reinit_filter'", 'FFmpeg frames to a pipe'],
   ['segments.mjs', "spawnSync(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'concat'", 'FFmpeg joining into the work folder'],
+  ['render.mjs', "spawnSync(ffmpeg, ['-hide_banner', '-nostdin', '-i', file, '-af'", 'FFmpeg measuring a found sound\'s peak (volumedetect), to null'],
+  ['sounds/index.mjs', "spawnSync(ffprobe, ['-v', 'error', '-show_entries'", 'ffprobe reading a fetched sound (probeAudio), to stdout'],
 ];
 const MODULE = String.raw`(?:node:)?(?:fs(?:/promises)?|child_process)`, QUOTED = String.raw`[\x60'"]${MODULE}[\x60'"]`;
 const isFs = spec => /^(?:node:)?fs(?:\/promises)?$/.test(spec), isCp = spec => /^(?:node:)?child_process$/.test(spec);

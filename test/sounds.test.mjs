@@ -84,7 +84,6 @@ test('an id is checked before it is asked for; the key goes to Openverse only, n
 });
 
 test('download: https only, every redirect checked, no address on this machine, a byte cap and a timeout', async () => {
-  const dir = tempDir('found-dl'), file = n => path.join(dir, `f${n}`);
   for (const [href, re] of [['http://cdn.example.org/a.wav', /only over https/], ['file:///etc/passwd', /only over https/], ['https://user:pw@cdn.example.org/a.wav', /user name or password/],
     ['https://localhost/a.wav', /on this machine or its network/], ['https://127.0.0.1/a.wav', /on this machine/], ['https://[::1]/a.wav', /on this machine/], ['https://10.1.2.3/a.wav', /on this machine/],
     ['https://169.254.169.254/latest', /on this machine/], ['https://192.168.0.9/a', /on this machine/], ['https://[::ffff:127.0.0.1]/a', /on this machine/], ['not a url', /not a URL/]]) {
@@ -92,19 +91,23 @@ test('download: https only, every redirect checked, no address on this machine, 
   }
   assert.equal(checkFileUrl('https://cdn.example.org/a.wav').hostname, 'cdn.example.org');
   const redirect = to => () => new Response(null, {status: 302, headers: {location: to}});
-  await assert.rejects(download('https://a.example/x', file(1), {fetch: stubFetch([['https://a.example/', redirect('http://b.example/x')]]).fetch}), /a redirect of the sound file is at http:\/\/ — StoryReel fetches only over https/);
-  await assert.rejects(download('https://a.example/x', file(2), {fetch: stubFetch([['https://a.example/', redirect('https://192.168.1.1/x')]]).fetch}), /a redirect of the sound file is at 192\.168\.1\.1/);
-  await assert.rejects(download('https://a.example/x', file(3), {fetch: stubFetch([['https://a.example/', redirect('https://a.example/y')]]).fetch}), /redirects more than 3 times/);
-  const followed = await download('https://a.example/x', file(4), {fetch: stubFetch([['https://a.example/x', redirect('/y')], ['https://a.example/y', () => new Response(WAV)]]).fetch});
-  assert.deepEqual([followed.bytes, followed.url, readFileSync(file(4)).equals(WAV)], [WAV.length, 'https://a.example/y', true]);
-  const huge = () => new Response(new ReadableStream({pull(c) { c.enqueue(new Uint8Array(1024)); }}), {headers: {'content-length': String(30 * 1024 * 1024)}});
-  await assert.rejects(download('https://a.example/x', file(5), {fetch: stubFetch([['https://a.example/', huge]]).fetch}), /30\.0 MB, over the 20 MB a found sound may be/);
-  assert.equal(existsSync(file(5)), false, 'refused from its Content-Length, before a file is opened');
-  await assert.rejects(download('https://a.example/x', file(6), {maxBytes: 1000, fetch: stubFetch([['https://a.example/', () => new Response(new Uint8Array(5000))]]).fetch}), /over the 0 MB a found sound may be/);
+  await assert.rejects(download('https://a.example/x', {fetch: stubFetch([['https://a.example/', redirect('http://b.example/x')]]).fetch}), /a redirect of the sound file is at http:\/\/ — StoryReel fetches only over https/);
+  await assert.rejects(download('https://a.example/x', {fetch: stubFetch([['https://a.example/', redirect('https://192.168.1.1/x')]]).fetch}), /a redirect of the sound file is at 192\.168\.1\.1/);
+  await assert.rejects(download('https://a.example/x', {fetch: stubFetch([['https://a.example/', redirect('https://a.example/y')]]).fetch}), /redirects more than 3 times/);
+  const followed = await download('https://a.example/x', {fetch: stubFetch([['https://a.example/x', redirect('/y')], ['https://a.example/y', () => new Response(WAV)]]).fetch});
+  assert.deepEqual([followed.bytes.equals(WAV), followed.url], [true, 'https://a.example/y']);
+  let pulls = 0;
+  const huge = () => new Response(new ReadableStream({pull(c) { pulls++; c.enqueue(new Uint8Array(1024)); }}), {headers: {'content-length': String(30 * 1024 * 1024)}});
+  await assert.rejects(download('https://a.example/x', {fetch: stubFetch([['https://a.example/', huge]]).fetch}), /the sound file is 30\.0 MB, over the 20 MB it may be: pick a shorter sound/);
+  assert.ok(pulls <= 1, 'refused from its Content-Length, before the body is read');
+  const endless = () => new Response(new ReadableStream({pull(c) { c.enqueue(new Uint8Array(4096)); }}));   // no Content-Length, no end
+  await assert.rejects(download('https://a.example/x', {maxBytes: 300000, fetch: stubFetch([['https://a.example/', endless]]).fetch}), /the sound file is more than 0\.3 MB, over the 0\.3 MB it may be: pick a shorter sound/);
   const never = async (url, {signal}) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason)));
-  await assert.rejects(download('https://a.example/x', file(7), {timeoutMs: 50, fetch: never}), /did not arrive within 0\.05 s: try again later/);
-  writeFileSync(file(8), 'already here');
-  await assert.rejects(download('https://a.example/x', file(8), {fetch: stubFetch([['https://a.example/', () => new Response(WAV)]]).fetch}), /EEXIST/, 'never written over a file already there');
+  await assert.rejects(download('https://a.example/x', {timeoutMs: 50, fetch: never}), /did not arrive within 0\.05 s: try again later/);
+  await assert.rejects(download('https://a.example/x', {fetch: stubFetch([['https://a.example/', () => new Response(new Uint8Array(0))]]).fetch}), /came back empty/);
+  // The API's answer is capped the same way: a page of results is small, an endless one refused.
+  const flood = stubFetch([[API, () => new Response(new ReadableStream({pull(c) { c.enqueue(new Uint8Array(65536)); }}), {headers: LIMITS})]]);
+  await assert.rejects(searchSounds(openverse({fetch: flood.fetch, token: null}), 'page'), /Openverse's answer to the search is more than 2 MB, over the 2 MB it may be: try again with fewer results/);
 });
 
 test('sounds add: the licence before a byte, the file probed and hashed, kept as <name>.<ext>, recorded once', {skip: ffprobe ? false : 'no ffprobe'}, async () => {
@@ -127,6 +130,14 @@ test('sounds add: the licence before a byte, the file probed and hashed, kept as
   await assert.rejects(addSound({source, id: SA, as: 'rustle', film}), /is CC BY-SA: using it puts the whole film under CC BY-SA too — to accept that/);
   assert.equal(fileCalls(), 2, 'no file fetched for a refused licence');
   assert.equal((await addSound({source, id: SA, as: 'rustle', film, allowShareAlike: true})).record.license, 'by-sa');
+  // A record never names a path: an edited sounds.json that points a sound's file outside sounds/ cannot make a repair
+  // delete it (the record keeps only <name>.<ext>).
+  const victim = path.join(film, 'victim.txt'), library = path.join(film, 'sounds', 'sounds.json');
+  writeFileSync(victim, 'keep me');
+  const data = JSON.parse(readFileSync(library, 'utf8')); data.sounds['page-turn'].file = '../victim.txt'; writeFileSync(library, JSON.stringify(data));
+  assert.equal(readLibrary(film)['page-turn'].file, null);
+  assert.equal((await addSound({source, id: BY, as: 'page-turn', film})).fetched, true, 'the broken record is repaired by fetching again');
+  assert.equal(readFileSync(victim, 'utf8'), 'keep me', 'and nothing outside sounds/ was touched');
   // A name is a slug: no way out of sounds/.
   for (const as of ['../evil', 'Page', 'a/b', '', 'x'.repeat(41)]) await assert.rejects(addSound({source, id: BY, as, film}), /a found sound's name is lower case/, as);
   assert.ok(!existsSync(path.join(film, 'evil.wav')) && !existsSync(path.join(path.dirname(film), 'evil.wav')));
@@ -142,6 +153,18 @@ test('sounds add refuses a file that is not a sound, and a source that writes ou
   await assert.rejects(addSound({source: sneaky, id: 'x1', as: 'fake', film}), /wrote its file outside the folder it was given/);
   assert.throws(() => checkSoundSource({name: 'x', search() {}}), /this one has no candidate, fetch/);
   assert.throws(() => probeAudio(path.join(film, 'nothing.wav')), /not a sound/);
+});
+
+test('ffprobe names the file\'s kind (the kept extension), whatever the server called it: wav, mp3, flac; a video refuses', {skip: ffprobe ? false : 'no ffprobe'}, t => {
+  const dir = tempDir('found-probe', t), wav = path.join(dir, 'a'), encode = (args, out) => spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-v', 'error', '-y', '-i', wav, ...args, out]).status === 0;
+  writeFileSync(wav, WAV);
+  assert.equal(probeAudio(wav).ext, 'wav');
+  for (const [codec, ext] of [[['-c:a', 'libmp3lame', '-f', 'mp3'], 'mp3'], [['-c:a', 'flac', '-f', 'flac'], 'flac']]) {
+    const out = path.join(dir, `b-${ext}.bin`);   // a name that says nothing: the kind comes from the bytes
+    if (encode(codec, out)) assert.equal(probeAudio(out).ext, ext);
+  }
+  const video = path.join(dir, 'v.bin');
+  if (spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=red:s=32x32:d=0.5', '-f', 'mp4', video]).status === 0) assert.throws(() => probeAudio(video), /not a sound/);
 });
 
 test('the CLI: compact lines, exit 0 done, 1 refused, 2 not understood; list reads offline and names the fix', {skip: ffprobe ? false : 'no ffprobe'}, async () => {

@@ -6,11 +6,11 @@
  *     carrier-grade IP literal (a name that resolves to one is not caught here: the https certificate is the guard);
  *   - at most `maxBytes`, refused from the Content-Length before reading and counted while reading;
  *   - within `timeoutMs` for the whole of it;
- *   - written to the file the caller names (in a folder of its own: sounds/index.mjs · addSound), created exclusively,
- *     never under a name the server gives.
+ *   - handed back as bytes, never written under a name the server gives: the source writes them into the folder it
+ *     was given (files.mjs · writeOutput), and addSound names the kept file itself.
+ * readCapped reads any answer the same way, counting as it reads (the API's JSON too).
  * No credentials go with it: the source's key, if any, is for the source's own API, never for the file's host.
  */
-import {open} from 'node:fs/promises';
 import {isIP} from 'node:net';
 import {plainText, FOUND_LIMITS} from '../found.mjs';
 
@@ -42,11 +42,31 @@ export function checkFileUrl(href, what = 'the sound file') {
 const REDIRECT = new Set([301, 302, 303, 307, 308]);
 
 /**
- * Fetch `href` into `file`: {file, bytes, url (where it came from, after redirects)}. `fetch` is the WHATWG fetch (a
- * test hands in its own). Refuses, saying what happened and what to do; the caller removes a partial file.
+ * An answer's body, at most `maxBytes`: refused from its Content-Length before a byte is read, and counted while
+ * reading (a server may not say, or may lie). `what` names it in a refusal ('the sound file').
  */
-export async function download(href, file, {fetch = globalThis.fetch, maxBytes = DOWNLOAD.maxBytes, timeoutMs = DOWNLOAD.timeoutMs} = {}) {
-  const signal = AbortSignal.timeout(timeoutMs), mb = (maxBytes / 1024 / 1024).toFixed(0);
+export async function readCapped(res, maxBytes, what) {
+  const mb = (maxBytes / 1024 / 1024).toFixed(maxBytes < 1024 * 1024 ? 1 : 0), length = Number(res.headers.get('content-length'));
+  const over = size => new Error(`${what} is ${size}, over the ${mb} MB it may be: ${what === 'the sound file' ? 'pick a shorter sound' : 'try again with fewer results'}`);
+  if (Number.isFinite(length) && length > maxBytes) { await res.body?.cancel?.(); throw over(`${(length / 1024 / 1024).toFixed(1)} MB`); }   // refusal: over() names the fix
+  const chunks = [];
+  let bytes = 0;
+  if (res.body) {
+    for await (const chunk of res.body) {
+      bytes += chunk.byteLength;
+      if (bytes > maxBytes) { await res.body.cancel?.().catch(() => {}); throw over(`more than ${mb} MB`); }   // refusal: over() names the fix
+      chunks.push(chunk);
+    }
+  }
+  return Buffer.concat(chunks.map(c => Buffer.from(c.buffer, c.byteOffset, c.byteLength)), bytes);
+}
+
+/**
+ * Fetch `href`: {bytes, url (where it came from, after redirects)}. `fetch` is the WHATWG fetch (a test hands in its
+ * own). Refuses, saying what happened and what to do.
+ */
+export async function download(href, {fetch = globalThis.fetch, maxBytes = DOWNLOAD.maxBytes, timeoutMs = DOWNLOAD.timeoutMs} = {}) {
+  const signal = AbortSignal.timeout(timeoutMs);
   let url = checkFileUrl(href);
   for (let hop = 0; ; hop++) {
     let res;
@@ -60,20 +80,10 @@ export async function download(href, file, {fetch = globalThis.fetch, maxBytes =
       continue;
     }
     if (!res.ok) { await res.body?.cancel?.(); throw new Error(`the sound file's host answered ${res.status}: try again later, or pick another sound`); }
-    const length = Number(res.headers.get('content-length'));
-    if (Number.isFinite(length) && length > maxBytes) { await res.body?.cancel?.(); throw new Error(`the sound file is ${(length / 1024 / 1024).toFixed(1)} MB, over the ${mb} MB a found sound may be: pick a shorter sound`); }
-    if (!res.body) throw new Error('the sound file came back empty: pick another sound');
-    const handle = await open(file, 'wx', 0o600);
-    let bytes = 0;
-    try {
-      for await (const chunk of res.body) {
-        bytes += chunk.byteLength;
-        if (bytes > maxBytes) throw new Error(`the sound file is over the ${mb} MB a found sound may be: pick a shorter sound`);
-        await handle.write(chunk);
-      }
-    } catch (e) { throw e?.message?.startsWith('the sound file') ? e : failed(e, timeoutMs); } finally { await handle.close(); }
-    if (!bytes) throw new Error('the sound file came back empty: pick another sound');
-    return {file, bytes, url: url.href};
+    let bytes;
+    try { bytes = await readCapped(res, maxBytes, 'the sound file'); } catch (e) { throw e?.message?.startsWith('the sound file') ? e : failed(e, timeoutMs); }
+    if (!bytes.length) throw new Error('the sound file came back empty: pick another sound');
+    return {bytes, url: url.href};
   }
 }
 

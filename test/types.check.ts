@@ -440,3 +440,16 @@ export const covered = (fp: string): number => (codeCover(fp)?.files.length ?? 0
 const short: string = reviewSummary({findings: [{kind: "still", from: 0, to: 5, scene: "a", what: "x"}]}, {more: "--full lists every one"});
 const onScreen: number = wordsOnScreen([{text: "a b", box: [0, 0, 9, 9]}]).count;
 void short; void onScreen;
+
+// Found sounds: an event and an entrance name one; a recipe may opt into CC BY-SA; the sounds subpath and its Openverse source.
+import type {SoundEvent} from '../types/index.js';
+import type {searchSounds, addSound, licenceVerdict as gate, SoundSource} from '../types/sub/sounds.js';
+import type {openverse as ov} from '../types/sub/openverse.js';
+export const knock: SoundEvent = {time: 1, type: 'found', name: 'knock', gain: .5};
+export const tearIn: Enter = {type: 'torn', sound: {type: 'found', name: 'paper-tear', gain: .7}};
+export const optIn: Recipe = {story: {kit: 'whiteboard', items: []}, foundSounds: {allowShareAlike: true}};
+export const fetchOnce = (add: typeof addSound, source: SoundSource) => add({source, id: 'ec2e245c-465b-4ba7-9ea4-620f3555b291', as: 'page-turn', film: 'films/ep2'});
+export const lookFor = async (search: typeof searchSounds, make: typeof ov) => (await search(make({token: null}), 'page turn', {limit: 5})).map(c => c.id);
+export const shareAlike = (verdict: typeof gate): boolean => verdict('by-sa', {allowShareAlike: true}).shareAlike;
+// @ts-expect-error a found sound event names its sound
+export const nameless: SoundEvent = {time: 1, type: 'found'};

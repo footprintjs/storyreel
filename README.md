@@ -1599,6 +1599,65 @@ start to bury the words. `"listening": "refuse"` refuses the film's own findings
 "stages": [{"scene": "loop", "enter": {"type": "zoom", "sound": "whoosh"}}, {"scene": "frame", "enter": {"type": "push", "sound": false}}]
 ```
 
+## Found sounds: recorded effects, fetched once
+
+The built-in sounds are synthesized: quiet, original and always there, but a page turning or paper tearing sounds best
+when it is the real thing. A **found sound** is a recording with an open licence, from
+[Openverse](https://openverse.org) (no key needed). It is fetched **once** into the film's `sounds/` folder and
+recorded in `sounds/sounds.json` with its source, id, creator, licence, attribution line, sha256 and size. From then on
+the film plays it from that file: a render never touches the network.
+
+```sh
+npx storyreel sounds search "page turn"            # the top 5: id · title · licence · seconds · source
+npx storyreel sounds add ec2e245c-465b-4ba7-9ea4-620f3555b291 --as page-turn --film films/ep2
+npx storyreel sounds list --film films/ep2         # each sound: ok, or what is wrong and the command that fixes it
+```
+
+A sound event names it as `{time, type: 'found', name, gain?}`, from a kit's `sounds` like any other. An entrance can
+name it as its `sound`, for example to tear the recap away with a real tear:
+
+```json
+"enter": {"type": "torn", "sound": {"type": "found", "name": "paper-tear", "gain": 0.7}}
+```
+
+It is mixed the way the music is (`render.mjs · mixFound`):
+
+- decoded from its file;
+- turned down if it peaks over the effects' ceiling (never up);
+- set at its `gain` (default 1) and placed at its second.
+
+The effects-vs-voice check then measures it with the other effects.
+
+**The licence gate** has one table (`footprint-storyreel/sounds` · `LICENCES`):
+
+- CC0 and CC BY are used.
+- CC BY-SA is used only when the recipe says `"foundSounds": {"allowShareAlike": true}` (and `sounds add
+  --allow-share-alike`), because it puts the whole film under CC BY-SA.
+- NC, ND, the Public Domain Mark and any licence the table does not know are refused, saying why.
+
+The gate reads each sound's own record when the sound is added, when the film is built and at every render. The
+film also refuses a sound whose file is missing or whose size or sha256 differs from its record, naming the `sounds
+add` command that fixes it. The found sounds' hashes are part of the film's inputs, so an approval locks them.
+
+**Credits are written for you.** Each found sound a film plays goes into its making-of record (`foundSounds`), and
+`makeRelease` puts each one's attribution line under **Sounds** in CREDITS.txt. When a CC BY-SA sound is used, a line
+says the film is shared under CC BY-SA.
+
+**What it trusts.** Everything a source sends is treated as untrusted:
+
+- **Text**: titles, creators and attributions are made plain before a terminal or CREDITS.txt sees them (no
+  control, bidi or line-break characters) and capped in length.
+- **The file's address**:
+  - https only, every redirect checked, at most 3 redirects;
+  - never a localhost or private address written as one;
+  - 20 MB at most, 30 seconds at most.
+- **The file name** is never the server's. It is `<name>.<ext>`: the name is a strict slug (`--as`), and the extension
+  is the one ffprobe finds (mp3, wav, ogg, flac). ffprobe runs as its own program and refuses anything that is not a
+  sound.
+- **Rate limits**: Openverse's limits are read from each answer and shown after a search. A 429 stops, saying when to
+  try again; StoryReel never retries on its own.
+- **Your key**: `OPENVERSE_TOKEN`, when set, goes to Openverse's API only, never to a file's host or into a message.
+
 ## Music: cut on the beat
 
 A cut that lands just off the beat feels late even when nobody can say why, so an editor cuts on the beat — and does
@@ -2214,7 +2273,8 @@ eye(ctx, x, headY, act.mood === 'surprised' ? 4.5 + 1.5 * act.u : 4.5, shut);
 ```
 
 **Sounds.** `tap`, `slide`, `settle`, `question`, `chime`, `door`, `step`, `click`, `whoosh`, `crumble`:
-short, quiet and made by procedural synthesis (no samples). A kit's sound is `{time, type, gain?}`:
+short, quiet and made by procedural synthesis (no samples). A kit's sound is `{time, type, gain?}`, or a recording
+the film keeps, `{time, type: 'found', name, gain?}` (see *Found sounds*):
 
 - `gain` (0..1) overrides the sound's default (1 for the first five; `door` .8, `step` .7, `click` .8,
   `whoosh` .8, `crumble` .7). **A gain is relative to its scene**: each scene's sounds are scaled by one
@@ -2401,6 +2461,8 @@ the default because it rarely does; there is no swap repair.
 | `renderFilm({film, storyboard, timings, narrationDir?, out, width?, height?, fps?, intro?, stamp?, from?, to?, poster?, loudness?, layout?, motionBlur?, captionFiles?, quality?, video?})` | the MP4 (FFmpeg), its chapters (one per titled scene), its poster, its loudness (two passes); a version for a platform, motion blur, caption files; the picture in one pass or in cached segments |
 | `compileLayout(film, layout)` · `FORMAT_NAMES` | a format's picture and bands, drawn at any t (`footprint-storyreel/layout` adds `formatOf`, `cropWindow`) |
 | `spokenTracks(film)` | the film's speech as tracks: chunk them with footprint-narration's `captionChunks`, write files with its `captionFile` (`footprint-storyreel/captions` adds `drawCaption`) |
+| `footprint-storyreel/sounds`: `searchSounds` · `addSound` · `listSounds` · `LICENCES` · `licenceVerdict` · `readLibrary` · `useFound` | found sounds: search a source, fetch one once into the film's sounds/ folder, check what is there; the licence gate's one table |
+| `footprint-storyreel/sounds/openverse`: `openverse({token?, fetch?})` | the Openverse sound source (the only module that talks to Openverse; nothing that draws or renders imports it) |
 | `TRANSITIONS` · `TRANSITION_NAMES` · `transitionCatalog(kits)` · `transitionSheet({catalog?, moments?, width?})` | the transitions a shot can enter with, a kit's own added, on one PNG (`footprint-storyreel/transitions` adds `readEntrance`, `ghostPainter`) |
 | `CAMERA_MOVES` · `CAMERA_MOVE_NAMES` | the camera moves a recipe's `camera` names (`footprint-storyreel/camera` adds `readCameraMove`, `coverZoom`, `covered`, `viewOf`, `aimAt`, `speedRamp`, `handheldAt`, `layersAt`, `REST`, `MAX_ZOOM`) |
 | `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?, claims?})` | compile + render as a footprintjs pipeline, with `making-of.json` (a segmented render: one subflow per segment; the claims verdict, `check-claims`) |
@@ -2433,7 +2495,7 @@ the default because it rarely does; there is no swap repair.
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/review`, `/slideshow`, `/geometry`, `/claims`, `/decorative`, `/regions`, `/captions`, `/layout`, `/transitions`, `/breakdown`, `/camera`, `/beats`, `/music`, `/kits/whiteboard`, `/kits/cartoon`, `/pose`, `/mocap`, `/kits/cartoon/figure`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/review`, `/slideshow`, `/geometry`, `/claims`, `/decorative`, `/regions`, `/captions`, `/layout`, `/transitions`, `/breakdown`, `/sounds`, `/sounds/openverse`, `/camera`, `/beats`, `/music`, `/kits/whiteboard`, `/kits/cartoon`, `/pose`, `/mocap`, `/kits/cartoon/figure`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws
