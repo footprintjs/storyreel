@@ -213,24 +213,36 @@ export interface WorldLayer { name: string; depth: number }
 export type Watching = {kind: 'burst'; path: string; where: string; at: number; moments: number; seconds: number};
 
 /** The built-in transitions (transitions.mjs · TRANSITIONS). */
-export type TransitionName = 'cut' | 'fade' | 'dip' | 'wipe' | 'split' | 'clock' | 'iris' | 'push' | 'slide' | 'whip' | 'zoom' | 'page' | 'through' | 'match';
+export type TransitionName = 'cut' | 'fade' | 'dip' | 'wipe' | 'split' | 'clock' | 'torn' | 'eraser' | 'iris' | 'inkBleed' | 'ringIris'
+  | 'push' | 'slide' | 'whip' | 'glassSheet' | 'zoom' | 'page' | 'curl' | 'fold' | 'through' | 'match' | 'morph';
 /**
  * A shot's entrance: a transition's name (a kit's own too), or its name with settings — `seconds` (0.2–3),
- * `ease`, `sound` (a sound, or false for none) and the transition's own: `from` (push, slide, whip, wipe:
- * left | right | top | bottom), `line` (split: vertical | horizontal), `at` (iris, zoom: [x, y]), `color`
- * (dip: a hex colour), `region` (through, match: the name of a thing in the picture it leaves — required),
- * `into` (match: the thing's name in the new picture, when it differs), `shape` (through: box | round).
+ * `ease`, `sound` (a sound, or false for none) and the transition's own: `from` (push, slide, whip, wipe,
+ * glassSheet: left | right | top | bottom; torn, eraser: left | right), `line` (split: vertical | horizontal; fold:
+ * the crease, horizontal | vertical), `at` (iris, zoom, inkBleed, ringIris: [x, y]), `color` (dip, eraser, and the
+ * ink, ring or outline of inkBleed, ringIris, morph: a hex colour; null there is the theme's), `accent` (ringIris:
+ * its other half), `tint` (glassSheet), `seed` (torn, inkBleed: the ragged edge's shape, 0–10000), `radius` and
+ * `width` (ringIris: its size at the start, its thickness), `corner` (curl), `region` (through, match: the name of a
+ * thing in the picture it leaves — required; morph: optional), `into` (match, morph: the thing's name in the new
+ * picture, when it differs), `fromBox` / `toBox` (morph, without names: [x0, y0, x1, y1]), `shape` (through: box | round).
  * Left out: a fade. Or a move from the vocabulary (`footprint-storyreel/moves`) that a whole picture can make —
  * {move: 'soft-rise', seconds?, feel?, sound?}: the new picture moves in over the old one on the move's own curve
  * (or its `feel`'s: a move feel, a spring feel, or {k, d}); silent unless it names a sound.
  */
 export type Enter = TransitionName | (string & {}) | ({type: TransitionName | (string & {}); seconds?: number; ease?: EaseSpec; sound?: SoundType | false;
-  from?: 'left' | 'right' | 'top' | 'bottom'; line?: 'vertical' | 'horizontal'; at?: [number, number]; color?: string;
-  region?: string; into?: string; shape?: 'box' | 'round'; move?: never; [setting: string]: unknown})
+  from?: 'left' | 'right' | 'top' | 'bottom'; line?: 'vertical' | 'horizontal'; at?: [number, number]; color?: string | null;
+  region?: string; into?: string; shape?: 'box' | 'round'; seed?: number; radius?: number; width?: number; accent?: string | null;
+  tint?: string; corner?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'; fromBox?: FrameBox; toBox?: FrameBox;
+  move?: never; [setting: string]: unknown})
   | {move: MoveName | (string & {}) | Move; seconds?: number; feel?: MoveFeelName | FeelName | Feel; sound?: SoundType | false; type?: never};
-/** A transition's setting: one of some words, a point, a colour or a number, each with its default; or the name of a thing in the picture (no default: the recipe must give it; default null: it may be left out). */
+/**
+ * A transition's setting: one of some words, a point, a colour, a number or a box, each with its default (a colour's
+ * may be null: the draw picks it, e.g. the theme's); or the name of a thing in the picture (no default: the recipe
+ * must give it; default null: it may be left out).
+ */
 export type TransitionSetting = {oneOf: readonly string[]; default: string} | {point: true; default: readonly [number, number]}
-  | {color: true; default: string} | {number: readonly [number, number]; default: number} | {name: true; default?: string | null};
+  | {color: true; default: string | null} | {number: readonly [number, number]; default: number} | {box: true; default: FrameBox}
+  | {name: true; default?: string | null};
 /** A box on the 1600×900 frame: [x0, y0, x1, y1]. */
 export type FrameBox = readonly [number, number, number, number];
 /** What a transition's draw is given (transitions.mjs): how far (eased), the two pictures, its settings, a scratch picture, the theme. */
@@ -251,7 +263,7 @@ export interface TransitionDraw {
 }
 /** A transition a kit adds (kit.transitions): drawn through the same contract as the built-in ones; it must cover the whole frame at every e. */
 export interface Transition {
-  /** What a browser groups it under (the built-in families: cut, dissolve, wipe, iris, motion, zoom, page). */
+  /** What a browser groups it under (the built-in families: cut, dissolve, wipe, iris, motion, zoom, page, match). */
   family: string;
   /** Its default length, 0.2–3 s. */
   seconds: number;

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Eight paper transitions, built in.** `torn`, `eraser`, `inkBleed`, `ringIris`, `glassSheet`, `curl`, `fold` and
+  `morph` join the collection (`footprint-storyreel/transitions` · `TRANSITIONS`), each in its family, named in a
+  recipe like any other: `"enter": "torn"` leaves the old page behind (a recap handing over to a new episode). They
+  draw paper and ink in the film's theme's colours; a colour they add (the ring, the outline, the ink) defaults to the
+  theme's and a recipe may name another. A torn edge or an ink blot is a seeded shape (`seed`), never chance, so the
+  same frame is the same pixels; each starts on the old picture and ends on the new one exactly. The README's table
+  gains a "use it for" column: what each transition means, for every transition, held to the catalog by a test.
+  Settings gain two kinds, for a kit's transitions too: `{box: true, default: [x0, y0, x1, y1]}` and a colour whose
+  default is `null` (the draw picks it). `node examples/transitions.mjs --names torn,inkBleed` draws a sheet of just
+  the ones named. A kit that brought its own transition under one of these names must drop it (a kit may not reuse a
+  built-in name).
+
 - **A failed render keeps its making-of record.** `makeFilm` used to write `making-of.json` only after a run
   finished, so the run most worth reading left nothing behind. A run that fails now writes the record it got to as
   `making-of.failed.json` — marked `failed: {error}` with the error's text, beside what was known (the inputs once

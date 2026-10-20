@@ -273,22 +273,30 @@ recipe names:
 
 ![Every transition, a row each: picture A becoming picture B at a fifth, two fifths, three fifths and four fifths of the change](https://raw.githubusercontent.com/footprintjs/storyreel/main/docs/transitions.png)
 
-| family | transition | what it does | settings (default) | length | sound |
-|---|---|---|---|---|---|
-| cut | `cut` | the new shot, whole, on the scene's first frame | – | 0 | – |
-| dissolve | `fade` | a cross-fade (the default entrance) | – | 0.8 s | – |
-| | `dip` | out to a colour, then in from it: the two pictures never show at once | `color` (`#000000`) | 1 s | – |
-| wipe | `wipe` | an edge crosses the frame | `from`: `left` · `right` · `top` · `bottom` (`left`) | 0.8 s | slide |
-| | `split` | doors open from the middle | `line`: `vertical` · `horizontal` (`vertical`) | 0.8 s | slide |
-| | `clock` | a clock hand sweeps from twelve | – | 0.9 s | slide |
-| iris | `iris` | a circle opens from a point | `at`: `[x, y]` (the centre) | 0.8 s | slide |
-| motion | `push` | the new picture pushes the old one out | `from` (`right`) | 0.7 s | slide |
-| | `slide` | the new picture slides over the old one, which stays | `from` (`right`) | 0.7 s | slide |
-| | `whip` | a fast push that streaks, as a camera turned quickly blurs | `from` (`right`) | 0.4 s | whoosh |
-| zoom | `zoom` | the old picture rushes forward and fades while the new one settles | `at` (the centre) | 0.6 s | whoosh |
-| page | `page` | the old picture is a page that lifts from its right edge and turns over | – | 1.1 s | slide |
-| match | `through` | the camera goes through a thing in the old picture (a window, a screen) and the new picture is what was inside it | `region` (required), `shape`: `box` · `round` (`box`) | 1.2 s | whoosh |
-| | `match` | a thing in the old picture becomes the same thing in the new one: they meet, same place, same size, at a dissolve | `region` (required), `into` (the same name) | 1 s | – |
+| family | transition | what it does | use it for | settings (default) | length | sound |
+|---|---|---|---|---|---|---|
+| cut | `cut` | the new shot, whole, on the scene's first frame | a jump the viewer should feel: a new place, a punchline, a contrast | – | 0 | – |
+| dissolve | `fade` | a cross-fade (the default entrance) | time passing; a gentle change of subject | – | 0.8 s | – |
+| | `dip` | out to a colour, then in from it: the two pictures never show at once | the end of a part: a chapter break, a breath before something new | `color` (`#000000`) | 1 s | – |
+| wipe | `wipe` | an edge crosses the frame | the next item in a list | `from`: `left` · `right` · `top` · `bottom` (`left`) | 0.8 s | slide |
+| | `split` | doors open from the middle | a reveal: what was behind the doors | `line`: `vertical` · `horizontal` (`vertical`) | 0.8 s | slide |
+| | `clock` | a clock hand sweeps from twelve | time passing, by the clock | – | 0.9 s | slide |
+| | `torn` | the old page is torn away along a ragged edge, its fibres showing, the new picture under it | leaving the old page behind: a recap handing over to a new episode, a plan thrown out | `from`: `right` · `left` (`right`: where the tear starts), `seed` (`5`: the edge's shape) | 1.1 s | slide |
+| | `eraser` | a board eraser wipes the old picture off; the new one is underneath | a clean slate: the same lesson started again, a wrong answer rubbed out | `from`: `left` · `right` (`left`), `color` (`#3b4a63`: the eraser's) | 1.1 s | slide |
+| iris | `iris` | a circle opens from a point | one spot the new scene grows out of | `at`: `[x, y]` (the centre) | 0.8 s | slide |
+| | `inkBleed` | ink spreads across the old picture from a point; the new picture comes up through the ink | a new chapter seeping in; a story told in ink; a change of mood | `at` (`[220, 760]`), `color` (null: the theme's ink), `seed` (`7`: the blot's shape) | 1.3 s | whoosh |
+| | `ringIris` | a ring opens from a point onto the new picture, its two coloured halves turning and a dot running round it | through a loop or a cycle: once more, round again | `at` (the centre), `radius` (`0`: its size at the start, e.g. a ring drawn in the old picture), `width` (`26`), `color`, `accent` (null: the theme's accent and available colours) | 1.2 s | slide |
+| motion | `push` | the new picture pushes the old one out | the next step of a sequence, side by side | `from` (`right`) | 0.7 s | slide |
+| | `slide` | the new picture slides over the old one, which stays | a detail laid over what we were looking at | `from` (`right`) | 0.7 s | slide |
+| | `whip` | a fast push that streaks, as a camera turned quickly blurs | energy: a quick jump somewhere else | `from` (`right`) | 0.4 s | whoosh |
+| | `glassSheet` | the new picture arrives on a lifted sheet of glass that slides in, tilts flat and settles | one layer laid over the last: a stack, an overlay, a lens | `from`: `right` · `left` · `top` · `bottom` (`right`), `tint` (`#b2d0f0`: the glass) | 1.1 s | slide |
+| zoom | `zoom` | the old picture rushes forward and fades while the new one settles | going closer: into the detail of the same thing | `at` (the centre) | 0.6 s | whoosh |
+| page | `page` | the old picture is a page that lifts from its right edge and turns over | the next page of a book or a report | – | 1.1 s | slide |
+| | `curl` | the old page's corner curls over, its back showing; the new page is beneath | turning a page as a reader does, from its corner: a notebook, a flip book | `corner`: `bottom-right` · `bottom-left` · `top-right` · `top-left` (`bottom-right`) | 1.2 s | slide |
+| | `fold` | the old picture folds shut along its middle; the new one pops open from the crease | close one thing, open the next: a card, a map, a letter | `line`: `horizontal` · `vertical` (`horizontal`: the crease) | 1.2 s | slide |
+| match | `through` | the camera goes through a thing in the old picture (a window, a screen) and the new picture is what was inside it | going inside: into a screen, through a window | `region` (required), `shape`: `box` · `round` (`box`) | 1.2 s | whoosh |
+| | `match` | a thing in the old picture becomes the same thing in the new one: they meet, same place, same size, at a dissolve | the same thing in a new place: a ring becomes a loop | `region` (required), `into` (the same name) | 1 s | – |
+| | `morph` | a box in the old picture travels and reshapes into a box in the new one, the pictures crossing through the paper | this thing becomes that thing: a card becomes a page, a step becomes the whole picture | `region`, `into` (things in the pictures; left out, the boxes), `fromBox` (`[600, 320, 1000, 580]`), `toBox` (`[160, 90, 1440, 810]`), `color` (null: the theme's accent) | 1.2 s | – |
 
 ```json
 "enter": "push"
@@ -298,7 +306,20 @@ recipe names:
 "enter": {"type": "dip", "color": "#ffffff"}                  a dip to white
 "enter": {"type": "whip", "sound": false}                     no sound
 "enter": {"type": "slide", "ease": "spring"}                  slides in, overshoots a little and settles
+"enter": "torn"                                               a recap's page torn away: the new episode under it
+"enter": {"type": "inkBleed", "at": [1400, 200], "seed": 3}   ink from the top right, another blot
+"enter": {"type": "ringIris", "at": [1060, 400], "radius": 120}  opens through a ring drawn there in the old picture
+"enter": {"type": "morph", "region": "card", "into": "page"}  the old picture's card becomes the new one's page
 ```
+
+**Paper transitions.** `torn`, `eraser`, `inkBleed`, `ringIris`, `glassSheet`, `curl`, `fold` and `morph` are drawn
+as things done to paper and ink (`footprint-storyreel/transitions`; they live in `src/paper-transitions.mjs`). Their
+paper and ink are the film's theme's — its card, its well, its bg and its ink — so a storybook film tears storybook
+paper; a colour one adds (the ring, the morph's outline, the ink) is a setting whose default, null, is the theme's
+own, and a recipe may name another. A ragged edge (the tear, the ink blot) is a seeded shape, never chance: the same
+seed is the same edge on every frame and every machine, and `seed` picks another. Each starts on the old picture and
+ends on the new one exactly, so nothing jumps when the shot takes over. `morph` goes from box to box: the things
+`region` and `into` name (found as `match` finds them), or, left out, `fromBox` and `toBox` (`[x0, y0, x1, y1]`).
 
 Every entrance also takes `seconds` (0.2–3), `ease` (a name from the ease table, or a four-number curve as CSS
 writes it, `"cubic-bezier(0.16, 1, 0.3, 1)"`) and `sound` (a sound's name, or `false`). An ease that goes past
@@ -354,7 +375,7 @@ names it like a built-in one. Every transition — built in or not — draws thr
 ```js
 const stageKit = {name: 'stage', transitions: {curtain: {
   family: 'theatre', seconds: 1.2, ease: 'inOut', sound: 'whoosh',
-  params: {color: {color: true, default: '#7a1020'}},          // settings: {oneOf}, {point}, {color} or {number: [min, max]}, each with a default; or {name: true}
+  params: {color: {color: true, default: '#7a1020'}},          // settings: {oneOf}, {point}, {color}, {number: [min, max]} or {box}, each with a default; or {name: true}
   draw(ctx, {e, from, to, p, ghost, theme, boxes}) {          // e: 0..1, eased; from(c) / to(c) draw the two pictures
     (e < .5 ? from : to)(ctx);                                // cover the whole frame at every e
     const closed = 1 - Math.abs(1 - 2 * e);
@@ -373,7 +394,9 @@ shot has fades out or in with the change).
 see-through picture must be drawn whole: canvas alpha on its parts shows the seams). A transition that goes
 through things says which with `regions: p => ({from: [p.region], to: [p.into]})` and reads where they are in
 `boxes.from[name]` / `boxes.to[name]` (`[x0, y0, x1, y1]` on the frame); a `{name: true}` setting is the
-recipe's name for one (no default: the recipe must give it). A kit's transition
+recipe's name for one (no default: the recipe must give it). A `{box: true}` setting is a box the recipe gives
+(`[x0, y0, x1, y1]`, x0 < x1 and y0 < y1), and a `{color: true}` setting may default to null: the draw picks the
+colour then, the theme's say (`theme.palette.ink`), as the paper transitions do. A kit's transition
 may not take a built-in name or another kit's. `transitionSheet({catalog})` draws any collection on one
 PNG (`node examples/transitions.mjs` wrote the picture above), and the studio shows it under
 **Transitions**.

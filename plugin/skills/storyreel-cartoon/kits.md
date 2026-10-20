@@ -9,7 +9,8 @@ the world look like at second `t`".
 - **The story** (`recipe.story`, `{"kit": "<name>", …}`): one continuous world for the scenes before the first stage.
 - **A world shot** (a stage `{"type": "world", "scene": "<id>", "enter": …, "world": {"kit": "<name>", …}}`): a kit
   drawn full screen for its scene, entering by a transition (`fade` when left out; `cut`, `wipe`, `iris`, `push`,
-  `whip`, `zoom`, `page`, `through`, `match` …, or a move: `{"move": "soft-rise"}`). What the shot is FOR,
+  `whip`, `zoom`, `page`, `through`, `match`, `torn`, `inkBleed` …: the README's Transitions table says what each
+  means), or a move (`{"move": "soft-rise"}`). What the shot is FOR,
   `"intent": "Show the gate left open."`, goes on the stage beside `world` (or on `story`), never inside `world` (the
   kit's own spec): ONE sentence of at most 140 characters, so a second sentence refuses (give it a shot of its own).
   `continuity` and `reads` sit there too (package README, "Planning the shots"). Every recipe has a `story`, the

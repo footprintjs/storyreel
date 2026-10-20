@@ -145,6 +145,14 @@ export const north: Enter = {type: 'push', from: 'north'};
 export const wobble: Transition = {...curtain, ease: 'wobble'};
 // @ts-expect-error a transition draws
 export const noDraw: Transition = {family: 'x', seconds: 1, ease: 'inOut', sound: null};
+// The paper transitions: names, a seed for a ragged edge, a ring's size, a morph's boxes, a colour that is the theme's.
+export const paperEntrances: Enter[] = ['torn', {type: 'torn', from: 'left', seed: 3}, {type: 'inkBleed', at: [1400, 200], color: null}, {type: 'ringIris', at: [1060, 400], radius: 120, width: 20, accent: '#1e7a4c'},
+  {type: 'glassSheet', from: 'bottom', tint: '#c8e0ff'}, {type: 'curl', corner: 'top-left'}, {type: 'fold', line: 'vertical'}, {type: 'eraser', color: '#334455'}, {type: 'morph', fromBox: [0, 0, 400, 300], toBox: [0, 0, 1600, 900]}];
+export const boxed: Transition = {...curtain, params: {frame: {box: true, default: [0, 0, 100, 100]}, ink: {color: true, default: null}}};
+// @ts-expect-error a curl lifts from a corner
+export const curlNorth: Enter = {type: 'curl', corner: 'north'};
+// @ts-expect-error a box is four numbers
+export const shortBox: Enter = {type: 'morph', fromBox: [0, 0, 400]};
 
 // The shot plan: what each shot is for, and the facts it starts and ends with; framing by name; gaze.
 export const planned: Recipe = {

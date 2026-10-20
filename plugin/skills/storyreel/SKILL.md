@@ -27,6 +27,7 @@ made from changed) → `makeRelease` for each platform. The `storyreel-cartoon` 
 | write a kit: what it returns, the built-in cartoon and whiteboard kits | [kits.md](../storyreel-cartoon/kits.md) |
 | motion by name: moves, eases, walks, acting, the animator's principles | [motion.md](../storyreel-cartoon/motion.md) |
 | camera moves by name: dolly, pan, orbit, rack focus; one camera at a time | [camera.md](../storyreel-cartoon/camera.md) |
+| cut between shots: a transition by name and what each one means (`torn`: leave the old page behind) | the package README, section Transitions: the catalog, `footprint-storyreel/transitions` · `TRANSITION_NAMES` |
 | music: cut on the beat, settle an unsure tempo | [music.md](../storyreel-cartoon/music.md) |
 | motion copied from a phone video onto a figure | [mocap.md](../storyreel-cartoon/mocap.md) |
 | the checks: slideshow, drawn parts, numbers with a source, reading time | [checks.md](../storyreel-cartoon/checks.md) |
