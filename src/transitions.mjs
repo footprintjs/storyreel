@@ -10,13 +10,19 @@
  *   family     transitions
  *   cut        cut                 the new picture, whole, on the scene's first frame
  *   dissolve   fade · dip          a cross-fade; a dip through a colour (black by default)
- *   wipe       wipe · split · clock an edge crosses the frame; doors open from the middle; a clock hand sweeps
- *   iris       iris                a circle opens from a point
- *   motion     push · slide · whip the new picture pushes the old out; slides over it; a fast push that streaks
+ *   wipe       wipe · split · clock an edge crosses the frame; doors open from the middle; a clock hand sweeps;
+ *              torn · eraser       the old page torn away; a board eraser wiping it off
+ *   iris       iris                a circle opens from a point;
+ *              inkBleed · ringIris ink spreading from a point; a ring opening, a dot running round it
+ *   motion     push · slide · whip the new picture pushes the old out; slides over it; a fast push that streaks;
+ *              glassSheet          arrives on a lifted sheet of glass
  *   zoom       zoom                the old picture rushes forward and fades while the new one settles
- *   page       page                the old picture is a page that lifts and turns over
+ *   page       page · curl · fold  the old picture is a page that lifts and turns over; its corner curls over;
+ *                                  it folds shut and the new one pops open
  *   match      through · match     through a thing in the old picture (a window, a screen) into the new one;
- *                                  a thing in the old picture becomes the same thing in the new one
+ *              morph               a thing in the old picture becomes the same thing in the new one; a box becomes a box
+ * The paper ones (torn, eraser, inkBleed, ringIris, glassSheet, curl, fold, morph) live in transitions/paper/; what each
+ * one means is the README's table (README · Transitions).
  *
  * A kit adds its own, as Final Cut takes Motion templates and Premiere takes .mogrt files:
  * `{name, transitions: {swirl: {family, seconds, ease, sound, params, regions?, draw}}}`. Every transition
@@ -44,8 +50,10 @@ import {createCanvas} from '@napi-rs/canvas';
 import {easeNamed, overshoots, EASES} from './ease.mjs';
 import {SOUND_NAMES} from './sound.mjs';
 import {readMove, moveAt, applyMove, MOVES, MOVE_NAMES, REST} from './moves.mjs';
+import {PAPER_TRANSITIONS as PAPER} from './transitions/paper/index.mjs';
+import {W, H, clamp, smooth, farthest} from './frame.mjs';
+import {isHex as isColor} from './colour.mjs';
 
-const W = 1600, H = 900;
 const DIRECTIONS = Object.freeze(['left', 'right', 'top', 'bottom']);
 /** Where a picture that comes FROM a side starts, as a unit offset. */
 const FROM = {left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1]};
@@ -67,12 +75,8 @@ function edgeShade(ctx, at, toward, alongY, depth = 40, from = SHADE) {
   if (alongY) ctx.fillRect(0, Math.min(at, at + toward * depth), W, depth); else ctx.fillRect(Math.min(at, at + toward * depth), 0, depth, H);
   ctx.restore();
 }
-const irisRadius = ([cx, cy]) => Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy));
-const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
-const smooth = (a, b, x) => { const u = clamp((x - a) / (b - a), 0, 1); return u * u * (3 - 2 * u); };
 const centreOf = ([x0, y0, x1, y1]) => [(x0 + x1) / 2, (y0 + y1) / 2];
 const sizeOf = ([x0, y0, x1, y1]) => Math.sqrt((x1 - x0) * (y1 - y0));
-const lerp = (a, b, u) => a + (b - a) * u;
 
 function fade(ctx, {e, from, to, ghost}) { from(ctx); ghost(e, to); }
 
@@ -112,7 +116,7 @@ function clockWipe(ctx, {e, from, to}) {
 
 function iris(ctx, {e, from, to, p}) {
   from(ctx);
-  const [cx, cy] = p.at, r = e * irisRadius(p.at);
+  const [cx, cy] = p.at, r = e * farthest(p.at);
   ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip(); to(ctx); ctx.restore();
   // The moving edge, softly shaded so the eye follows it.
   ctx.save(); ctx.strokeStyle = EDGE; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
@@ -236,7 +240,7 @@ function matchCut(ctx, {e, from, to, p, ghost, boxes}) {
 const side = fallback => ({oneOf: DIRECTIONS, default: fallback});
 const centre = {point: true, default: [800, 450]};
 
-/** The built-in collection, in the order a browser shows it. */
+/** The built-in collection, in the order a browser shows it: by family, the paper ones (transitions/paper/index.mjs) in theirs. */
 export const TRANSITIONS = deepFreeze({
   cut: {family: 'cut', seconds: 0, ease: 'jump', sound: null, params: {}, draw: null},
   fade: {family: 'dissolve', seconds: .8, ease: 'inOut', sound: null, params: {}, draw: fade},
@@ -244,19 +248,29 @@ export const TRANSITIONS = deepFreeze({
   wipe: {family: 'wipe', seconds: .8, ease: 'inOut', sound: 'slide', params: {from: side('left')}, draw: wipe},
   split: {family: 'wipe', seconds: .8, ease: 'inOut', sound: 'slide', params: {line: {oneOf: ['vertical', 'horizontal'], default: 'vertical'}}, draw: split},
   clock: {family: 'wipe', seconds: .9, ease: 'inOut', sound: 'slide', params: {}, draw: clockWipe},
+  torn: PAPER.torn,
+  eraser: PAPER.eraser,
   iris: {family: 'iris', seconds: .8, ease: 'inOut', sound: 'slide', params: {at: centre}, draw: iris},
+  inkBleed: PAPER.inkBleed,
+  ringIris: PAPER.ringIris,
   push: {family: 'motion', seconds: .7, ease: 'inOut', sound: 'slide', params: {from: side('right')}, draw: push},
   slide: {family: 'motion', seconds: .7, ease: 'out', sound: 'slide', overshoot: true, params: {from: side('right')}, draw: slide},
   whip: {family: 'motion', seconds: .4, ease: 'inOut', sound: 'whoosh', params: {from: side('right')}, draw: whip},
+  glassSheet: PAPER.glassSheet,
   zoom: {family: 'zoom', seconds: .6, ease: 'inOut', sound: 'whoosh', params: {at: centre}, draw: zoom},
   page: {family: 'page', seconds: 1.1, ease: 'inOut', sound: 'slide', params: {}, draw: page},
+  curl: PAPER.curl,
+  fold: PAPER.fold,
   through: {family: 'match', seconds: 1.2, ease: 'inOut', sound: 'whoosh', params: {region: {name: true}, shape: {oneOf: ['box', 'round'], default: 'box'}}, regions: p => ({from: [p.region]}), draw: goThrough},
   match: {family: 'match', seconds: 1, ease: 'inOut', sound: null, params: {region: {name: true}, into: {name: true, default: null}}, regions: p => ({from: [p.region], to: [p.into ?? p.region]}), draw: matchCut},
+  morph: PAPER.morph,
 });
 export const TRANSITION_NAMES = Object.freeze(Object.keys(TRANSITIONS));
 const COMMON = ['type', 'seconds', 'ease', 'sound'];
 /** The names no setting may take: every entrance's own keys, and `move` (an entrance with a move is a move entrance). */
 const RESERVED = [...COMMON, 'move'];
+/** The setting kinds written as a flag ({point: true}); the others carry their choices or range. */
+const FLAGS = ['point', 'color', 'box', 'name'];
 const DEF_KEYS = ['family', 'seconds', 'ease', 'sound', 'overshoot', 'params', 'regions', 'draw'];
 
 /** A hard cut: the new shot is there, whole, on the scene's first frame. */
@@ -435,13 +449,14 @@ function readParams(params, e, where) {
     if (spec.name && v !== null && !(typeof v === 'string' && v.trim())) throw bad('the name of a thing in the picture');
     if (spec.oneOf && !spec.oneOf.includes(v)) throw bad(spec.oneOf.join(', '));
     if (spec.point && !(Array.isArray(v) && v.length === 2 && v.every(Number.isFinite))) throw bad('[x, y]');
-    if (spec.color && !isColor(v)) throw bad('a hex colour such as "#000000"');
+    if (spec.color && !(v === null && spec.default === null) && !isColor(v)) throw bad('a hex colour such as "#000000"');
+    if (spec.box && !isBox(v)) throw bad('a box [x0, y0, x1, y1] on the 1600×900 frame, with x0 < x1 and y0 < y1');
     if (spec.number && !(typeof v === 'number' && v >= spec.number[0] && v <= spec.number[1])) throw bad(`a number ${spec.number[0]}–${spec.number[1]}`);   // refusal: bad() says "must be" it
     out[name] = Array.isArray(v) ? Object.freeze([...v]) : v;
   }
   return Object.freeze(out);
 }
-const isColor = v => typeof v === 'string' && /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v);
+const isBox = v => Array.isArray(v) && v.length === 4 && v.every(Number.isFinite) && v[0] < v[2] && v[1] < v[3];
 
 /**
  * The film's collection: the built-in transitions and every kit's own (kit.transitions), each checked.
@@ -476,11 +491,11 @@ function checkTransition(def, who) {
   if (def.regions !== undefined && typeof def.regions !== 'function') throw new Error(`${who}: regions must be p => ({from?: [names], to?: [names]}): the things it looks for in the picture it leaves and the one it arrives at`);
   if (def.regions === undefined && Object.values(def.params ?? {}).some(spec => spec?.name)) throw new Error(`${who} has a setting that names a thing in the picture, and no regions(p) to look it up: add regions: p => ({from: [p.yourSetting]}) (or to: …)`);
   const params = def.params ?? {};
-  if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error(`${who}: params must be {name: {oneOf | point | color | number, default}}`);
+  if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error(`${who}: params must be {name: {oneOf | point | color | number | box, default}}`);
   for (const [name, spec] of Object.entries(params)) {
     if (RESERVED.includes(name)) throw new Error(`${who}: a setting may not be called "${name}" (${name === 'move' ? 'an entrance that names a move is a move entrance' : 'every entrance has it'})`);
-    const kinds = ['oneOf', 'point', 'color', 'number', 'name'].filter(k => spec?.[k] !== undefined);
-    if (kinds.length !== 1 || !(spec.name === true || 'default' in spec)) throw new Error(`${who}: the setting "${name}" must be one of {oneOf: [...]}, {point: true}, {color: true}, {number: [min, max]}, with a default; or {name: true} (a thing in the picture; default: null when it may be left out)`);
+    const kinds = ['oneOf', 'point', 'color', 'number', 'box', 'name'].filter(k => spec?.[k] !== undefined);
+    if (kinds.length !== 1 || (FLAGS.includes(kinds[0]) && spec[kinds[0]] !== true) || !(spec.name === true || 'default' in spec)) throw new Error(`${who}: the setting "${name}" must be one of {oneOf: [...]}, {point: true}, {color: true}, {number: [min, max]}, {box: true}, with a default (a colour's may be null: your draw picks one, e.g. the theme's); or {name: true} (a thing in the picture; default: null when it may be left out)`);
     if (spec.oneOf && !(Array.isArray(spec.oneOf) && spec.oneOf.length && spec.oneOf.every(v => typeof v === 'string'))) throw new Error(`${who}: the setting "${name}" lists its choices as words`);
     if (spec.number && !(Array.isArray(spec.number) && spec.number.length === 2 && spec.number.every(Number.isFinite) && spec.number[0] < spec.number[1])) throw new Error(`${who}: the setting "${name}" gives number as [min, max]`);
     if (!(spec.name && spec.default === undefined)) readParams({[name]: spec}, {type: 'transition'}, who);   // the default must pass its own check

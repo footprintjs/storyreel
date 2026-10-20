@@ -6,6 +6,7 @@
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import rough from 'roughjs';
+import {rgba} from './colour.mjs';
 
 const clamp01 = n => Math.max(0, Math.min(1, n));
 // The board's handwriting (Caveat, SIL OFL 1.1), registered once for every canvas in this process.
@@ -15,16 +16,8 @@ const ROUGH = rough.generator();
 /** A stable seed per shape: the same box is drawn the same way on every frame (no jitter). */
 const seedOf = (...n) => { let h = 2166136261; for (const v of n) { h ^= Math.round(v * 10); h = Math.imul(h, 16777619); } return (h >>> 0) % 2147483646 + 1; };
 
-/** Parse #rrggbb[aa] and return an rgba() string with alpha multiplied. */
-export function rgba(hex, alpha = 1) {
-  const h = hex.slice(1), a = h.length === 8 ? parseInt(h.slice(6), 16) / 255 : 1;
-  return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${(a * clamp01(alpha)).toFixed(3)})`;
-}
-export function mixColor(a, b, t) {
-  const p = x => [1, 3, 5].map(i => parseInt(x.slice(i, i + 2), 16));
-  const [r, g, bl] = p(a).map((v, i) => Math.round(v + (p(b)[i] - v) * clamp01(t)));
-  return `#${[r, g, bl].map(v => v.toString(16).padStart(2, '0')).join('')}`;
-}
+/** rgba(hex, alpha): a hex colour at an alpha; mixColor(a, b, t): two mixed (colour.mjs, the one hex parser). */
+export {rgba, mixColor} from './colour.mjs';
 
 /**
  * @param ctx 2-D context already scaled so 1600×900 logical units fill the frame

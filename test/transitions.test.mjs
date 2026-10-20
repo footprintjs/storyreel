@@ -26,7 +26,7 @@ function drawn(enter, e, {scale = 1, boxes} = {}) {
 }
 
 test('the collection: every family a video editor groups by, each transition with its default length, ease and sound', () => {
-  assert.deepEqual(TRANSITION_NAMES, ['cut', 'fade', 'dip', 'wipe', 'split', 'clock', 'iris', 'push', 'slide', 'whip', 'zoom', 'page', 'through', 'match']);
+  assert.deepEqual(TRANSITION_NAMES, ['cut', 'fade', 'dip', 'wipe', 'split', 'clock', 'torn', 'eraser', 'iris', 'inkBleed', 'ringIris', 'push', 'slide', 'whip', 'glassSheet', 'zoom', 'page', 'curl', 'fold', 'through', 'match', 'morph']);
   assert.deepEqual([...new Set(Object.values(TRANSITIONS).map(t => t.family))], ['cut', 'dissolve', 'wipe', 'iris', 'motion', 'zoom', 'page', 'match']);
   // The five that shipped first keep their lengths and sounds (the pixel pins hold their pictures).
   for (const [name, seconds, sound] of [['fade', .8, null], ['wipe', .8, 'slide'], ['iris', .8, 'slide'], ['page', 1.1, 'slide']]) {
@@ -90,7 +90,7 @@ test('the shapes: each transition shows the new picture where it should, half wa
 });
 
 test('settings and refusals: each refusal names what the transition takes', () => {
-  assert.throws(() => readEntrance('dissolve', 'stage b'), /stage b: enter must be a transition: cut, fade, dip, wipe, split, clock, iris, push, slide, whip, zoom, page, through, match \(not "dissolve"\)/);
+  assert.throws(() => readEntrance('dissolve', 'stage b'), /stage b: enter must be a transition: cut, fade, dip, wipe, split, clock, torn, eraser, iris, inkBleed, ringIris, push, slide, whip, glassSheet, zoom, page, curl, fold, through, match, morph \(not "dissolve"\)/);
   assert.throws(() => readEntrance({type: 'push', at: [1, 2]}, 'stage b'), /enter has unsupported key at \(a push takes seconds, ease, sound, from\)/);
   assert.throws(() => readEntrance({type: 'fade', at: [800, 450]}, 'stage b'), /enter has unsupported key at \(a fade takes seconds, ease, sound\)/);
   assert.throws(() => readEntrance({type: 'push', from: 'north'}, 'stage b'), /enter.from must be left, right, top, bottom/);
@@ -170,7 +170,7 @@ test('in a film: a kit\'s transition is named like a built-in one', async () => 
   assert.deepEqual(pixel(f, b - .75 + .5, 100, 450), [0x7a, 0x10, 0x20], 'the curtain closed half way through');
   assert.deepEqual(pixel(f, b + .3, 800, 450), BLUE);
   assert.ok(f.sounds.some(s => s.type === 'whoosh' && Math.abs(s.time - (b - .75)) < 1e-9));
-  await assert.rejects(film('curtain'), /stage b: enter must be a transition: cut, fade, dip, wipe, split, clock, iris, push, slide, whip, zoom, page, through, match \(not "curtain"\)/);
+  await assert.rejects(film('curtain'), /stage b: enter must be a transition: cut, fade, dip, wipe, split, clock, torn, eraser, iris, inkBleed, ringIris, push, slide, whip, glassSheet, zoom, page, curl, fold, through, match, morph \(not "curtain"\)/);
 });
 
 test('the transitions sheet: a row per transition, a still per moment, as a PNG', async () => {
