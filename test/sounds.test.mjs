@@ -88,7 +88,7 @@ test('download: https only, every redirect checked, no address on this machine, 
     ['https://localhost/a.wav', /on this machine or its network/], ['https://127.0.0.1/a.wav', /on this machine/], ['https://[::1]/a.wav', /on this machine/], ['https://10.1.2.3/a.wav', /on this machine/],
     ['https://169.254.169.254/latest', /on this machine/], ['https://192.168.0.9/a', /on this machine/], ['https://[::ffff:127.0.0.1]/a', /on this machine/], ['not a url', /not a URL/],
     ['https://localhost./a', /on this machine/], ['https://foo.localhost./a', /on this machine/], ['https://[::7f00:1]/a', /on this machine/], ['https://[64:ff9b::7f00:1]/a', /on this machine/],
-    ['https://[fec0::1]/a', /on this machine/], ['https://100.64.0.1/a', /on this machine/]]) {
+    ['https://[fec0::1]/a', /on this machine/], ['https://100.64.0.1/a', /on this machine/], ['https://localhost../a', /on this machine/]]) {
     assert.throws(() => checkFileUrl(href), re, href);
   }
   assert.equal(checkFileUrl('https://cdn.example.org/a.wav').hostname, 'cdn.example.org');
@@ -179,10 +179,15 @@ test('ffprobe names the file\'s kind (the kept extension), whatever the server c
     encode(['-f', 'lavfi', '-i', 'color=c=red:s=32x32:d=0.5', '-f', 'mp4'], video);
     assert.throws(() => probeAudio(video), /not a sound|not one of mp3, wav, ogg, flac/);
   });
-  // A playlist is text that names other files, here over the network: ffprobe may read the file only, as an audio format.
-  const playlist = path.join(dir, 'p.bin');
-  writeFileSync(playlist, '#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\nhttps://127.0.0.1:9/a.ts\n#EXT-X-ENDLIST\n');
-  assert.throws(() => probeAudio(playlist), /the fetched file is not a sound/);
+  // A playlist names other files (a download could name anything, over the network too). ffprobe reads one fine without
+  // the whitelist ("the fetched file is hls, not one of …"); with it (AUDIO_ONLY) the format is refused outright. The
+  // segment here is local, so nothing goes over the network either way.
+  await t.test('a playlist', {skip: encoders.includes(' aac ') ? false : 'no aac encoder'}, () => {
+    encode(['-i', wav, '-c:a', 'aac', '-f', 'mpegts'], path.join(dir, 'seg.ts'));
+    const playlist = path.join(dir, 'q.m3u8');
+    writeFileSync(playlist, '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:1\n#EXTINF:0.4,\nseg.ts\n#EXT-X-ENDLIST\n');
+    assert.throws(() => probeAudio(playlist), /the fetched file is not a sound \(ffprobe finds no audio, or a picture\)/);
+  });
 });
 
 test('the CLI: compact lines, exit 0 done, 1 refused, 2 not understood; list reads offline and names the fix', {skip: ffprobe ? false : 'no ffprobe'}, async () => {

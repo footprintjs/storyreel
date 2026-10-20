@@ -1,9 +1,9 @@
-// Found sounds offline (src/found.mjs, film.mjs, render.mjs, release.mjs): the licence gate's one table, a library a
+// Found sounds offline (src/found/, film.mjs, render.mjs, release.mjs): the licence gate's one table, a library a
 // film can trust only as far as its sha256s, a film that names a found sound (checked when it is built, locked by an
 // approval), a render that mixes it from its file without the network, and credits written from the records.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdirSync, writeFileSync, readFileSync} from 'node:fs';
+import {mkdirSync, writeFileSync, readFileSync, renameSync, symlinkSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {compileFilm, evenTimings, renderFilm, makeFilm} from '../src/index.mjs';
@@ -169,6 +169,17 @@ test('a render checks each found sound in full again: a licence changed, or a so
   addTo(readded, 'tear', {bytes: sine(.3)});
   await assert.rejects(renderFilm({film: g, storyboard, timings, out, width: 160, height: 90, fps: 4}), /the found sound "tear" was added again after the film was built: build the film again/);
   assert.notDeepEqual((await film(readded)).inputs.sounds, g.inputs.sounds, 'built again, its inputs name the new sound (an approval of the old one no longer holds)');
+});
+
+test('a film whose sounds/ folder is a link inside it renders: the render checks through the film\'s root, not a folder guessed from the file', {skip: ffmpeg ? false : 'needs ffmpeg'}, async t => {
+  const root = filmWith({knock: {}, tear: {}}, t);
+  mkdirSync(path.join(root, 'assets'));
+  renameSync(path.join(root, 'sounds'), path.join(root, 'assets', 'sfx'));
+  symlinkSync(path.join('assets', 'sfx'), path.join(root, 'sounds'));
+  const f = await film(root);
+  assert.match(f.foundSounds[0].file, /assets\/sfx\/knock\.wav$/, 'the file at its real path');
+  const made = await renderFilm({film: f, storyboard, timings, out: path.join(tempDir('found-linked', t), 'film.mp4'), width: 160, height: 90, fps: 4});
+  assert.ok(Number.isFinite(made.loudness.roles.effects));
 });
 
 test('the mix: each found sound at its second, turned down to the effects\' ceiling when loud, never up when quiet', {skip: ffmpeg ? false : 'needs ffmpeg'}, async t => {

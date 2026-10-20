@@ -35,7 +35,7 @@ function localAddress(ip) {
 export function checkFileUrl(href, what = 'the sound file') {
   let url;
   try { url = new URL(href); } catch { throw new Error(`${what}'s address is not a URL (${JSON.stringify(plainText(href, 80))}): pick another sound`); }
-  const host = url.hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();   // "localhost." is localhost
+  const host = url.hostname.replace(/^\[|\]$/g, '').replace(/\.+$/, '').toLowerCase();   // "localhost." is localhost
   if (url.protocol !== 'https:') throw new Error(`${what} is at ${url.protocol}// — StoryReel fetches only over https: pick another sound`);
   if (url.username || url.password) throw new Error(`${what}'s address carries a user name or password: StoryReel never sends one — pick another sound`);
   if (host === 'localhost' || host.endsWith('.localhost') || (isIP(host) && localAddress(host))) throw new Error(`${what} is at ${host}, an address on this machine or its network: StoryReel fetches sounds only from public hosts — pick another sound`);

@@ -132,13 +132,15 @@ function readFoundSounds(spec) {
   }
   return {allowShareAlike: spec.allowShareAlike === true};
 }
-/** The found sounds a film's sounds name, each checked for use (found/library.mjs · useFound), in name order: [{name, file, record, allowShareAlike}]. */
+/** The found sounds a film's sounds name, each checked for use (found/library.mjs · useFound), in name order: [{name, file, record, root, allowShareAlike}]. */
 function foundSoundsUsed(sounds, spec, root) {
   const {allowShareAlike} = readFoundSounds(spec), names = [...new Set(sounds.filter(s => s.type === FOUND).map(s => s.name))].sort();
   if (!names.length) return Object.freeze([]);
   const library = readLibrary(root);
-  // Each keeps the rule it was checked by, so the render checks it again the same way (render.mjs · mixFound).
-  return Object.freeze(names.map(name => Object.freeze({...useFound(root, name, {library, allowShareAlike}), allowShareAlike})));
+  // Each keeps the film's root and the rule it was checked by, so the render checks it again the same way (render.mjs ·
+  // mixFound) — through the root, never a folder guessed from the file's real path (sounds/ may be a link inside it).
+  const at = path.resolve(root);
+  return Object.freeze(names.map(name => Object.freeze({...useFound(at, name, {library, allowShareAlike}), root: at, allowShareAlike})));
 }
 /** A change's sound for the listening check: its name, or "found sound "<name>"" (listening.mjs compares and says them). */
 const soundLabel = s => (s && typeof s === 'object' ? `found sound "${s.name}"` : s);

@@ -10,7 +10,7 @@ import {once} from 'node:events';
 import {createHash} from 'node:crypto';
 import {createCanvas} from '@napi-rs/canvas';
 import {createMotionSound, soundsByScene, SOUND_AT, FOUND} from './sound.mjs';
-import {useFound, AUDIO_ONLY} from './found/index.mjs';
+import {useFound, addCommand, AUDIO_ONLY} from './found/index.mjs';
 import {compileLayout, draftSize} from './layout.mjs';
 import {captionChunks, captionFile, FILE_CHUNKS, clockText} from 'footprint-narration';
 import {spokenTracks} from './captions.mjs';
@@ -577,7 +577,7 @@ function mixSong(run, {song, total, dir, lesson, roles, integrated}) {
 function peakDB(ffmpeg, {file, record}) {
   const r = spawnSync(ffmpeg, ['-hide_banner', '-nostdin', ...AUDIO_ONLY, '-i', file, '-af', 'aresample=48000,aformat=channel_layouts=mono,volumedetect', '-f', 'null', '-'], {encoding: 'utf8', timeout: 60000});
   const m = r.status === 0 ? /max_volume:\s*(-?\d+(?:\.\d+)?|-inf) dB/.exec(String(r.stderr ?? '')) : null;
-  if (!m) throw new Error(`FFmpeg could not read the found sound "${record.name}" (sounds/${record.file}): add it again with npx storyreel sounds add ${record.id} --as ${record.name}`);
+  if (!m) throw new Error(`FFmpeg could not read the found sound "${record.name}" (sounds/${record.file}): add it again with ${addCommand(record)}`);
   return m[1] === '-inf' ? -Infinity : Number(m[1]);
 }
 
@@ -595,7 +595,7 @@ function mixFound(run, {ffmpeg, events, sounds, dir, sfx, ceiling}) {
   names.forEach((name, k) => {
     const f = byName.get(name);
     if (!f) throw new Error(`the found sound "${name}" was not checked when the film was built: render a film compileFilm made (it checks every found sound it plays)`);   // refusal: a film object not from compileFilm
-    const now = useFound(path.dirname(path.dirname(f.file)), name, {allowShareAlike: f.allowShareAlike});
+    const now = useFound(f.root, name, {allowShareAlike: f.allowShareAlike});
     if (now.record.sha256 !== f.record.sha256) throw new Error(`the found sound "${name}" was added again after the film was built: build the film again (compileFilm), so its record and its approval name the sound it plays`);
     const mine = events.filter(e => e.name === name), down = Math.min(1, 10 ** ((ceiling - peakDB(ffmpeg, now)) / 20));
     inputs.push(...AUDIO_ONLY, '-i', now.file);
