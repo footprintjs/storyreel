@@ -201,7 +201,7 @@ A phrase that is not in the narration refuses the recipe.
   from `data`), `recap` (the film's own frames on a story strip, then an optional `teaser`),
   `summary` (cards), `world` (below). Any stage takes `chrome: false` to drop its chip and title.
 - **The top level is checked.** A recipe takes `story` (or the older `whiteboard`), `pushIn`, `card`,
-  `stages`, `guesses`, `notes`, `recalls`, `poster`, `reading`, `watching` and `paperStyle`; any other key refuses,
+  `stages`, `guesses`, `stepsTrack`, `notes`, `recalls`, `poster`, `reading`, `watching` and `paperStyle`; any other key refuses,
   so a misspelling (`"stage"`) is never silently ignored. An application that keeps its own data in the
   recipe names those keys in `hostKeys`: they are allowed, and the engine never reads them.
   `compileFilm({…, recipe: {story, stages, terms}})` refuses `"terms"` with the fix;
@@ -421,6 +421,42 @@ narrator keeps talking. `place`: `top` (default), `center` or `bottom`, so the p
 question is about stays in view; `until` (a phrase) sets when the answer leaves (default: 2.6 s,
 and before its scene hands over). The answer is given in the question's own scene: a pause that
 ends less than 1.9 s before its scene does refuses the recipe (say the answer after the pause).
+
+### A steps track
+
+Use it for **a process walked backward, then played forward**: one finished picture taken apart need by need, then
+built again in order. A slim band over every shot holds a row of stations; the playhead hops to each one as the voice
+names it. The current station is lit, the ones behind are ticked, and the NEXT one is a "?" until it is reached, so
+the viewer sees where the walk is and that another step is coming. Walking `back`, the mark is ⏪ and the playhead
+runs right to left, toward it. A `flip` turns the finished rewind into play: the ⏪ turns over into ▶, the walk back
+is ticked through, and the track plays forward, left to right, through its own station list, which may name more
+steps than the walk back did. `rewind` is the cue as the track enters: for `seconds` (1.5 unless given, 0.5–4) the
+picture plays back to `to` under the teaser's rewind look (a tint, rolling scanlines, a red REWIND badge).
+
+```json
+"stepsTrack": {"place": "bottom", "direction": "back", "from": ["picture", "Let's walk backwards"],
+  "rewind": {"to": ["picture", "Here is a picture"]},
+  "stations": [{"label": "picture", "at": ["picture", "need by need"]}, {"label": "x, y", "at": ["place", "an x across"]},
+    {"label": "layout", "at": ["layout", "That's layout"]}, {"label": "HTML", "at": ["source", "a written page: HTML"]}],
+  "flip": {"at": ["forward", "Now play everything forward"], "stations": [{"label": "HTML + CSS", "at": ["forward", "the HTML becomes the DOM"]},
+    {"label": "layout", "at": ["forward", "Layout walks the render tree"]}, {"label": "picture", "at": ["forward", "plus the loop's first turn"]}]}}
+```
+
+- **Labels are the film's own words.** Each is one line of 1 to 18 characters, the word the narration says there; an
+  empty, longer or broken label refuses, naming the fix. A station may carry a tiny `glyph` (`tag`, `clock`,
+  `flashlight`). A walk holds 1 to 8 stations, at least 0.6 s apart (the playhead's hop is 0.5 s and lands as the
+  voice names the station).
+- **It keeps off the scene's words.** The band has no backdrop: its labels on their own small pills, a dotted path,
+  the playhead's glow and one round mark at its start. The review reads its labels like every other word (words over
+  words, under the captions, cut off), so a label laid over a scene's words is found. `bottom` (the default) sits under the landscape caption band; `top` leaves the corner label room.
+  It enters at `from` (default: 0.6 s before its first station) and leaves 2.5 s after its last station, or at `until`.
+- **A rewind replays its own shot.** `rewind.to` must fall inside the shot the rewind plays in, after its entrance,
+  and the rewind must end before the next shot arrives, so what a segment draws stays inside the segment.
+- **The same moment draws the same pixels.** It is a pure function of time in the theme's colours: ⏪ in its
+  `reject` red, ▶ in its `available` green, the lit station in its `accent`. `footprint-storyreel/kits/paper/steps-track`
+  draws it outside a film: `readStepsTrack(spec)` (moments in seconds), `stepsTrackAt(track, t)` (each station's
+  state, the mark, the playhead), `drawStepsTrack(ctx, pen, track, t)`; `footprint-storyreel/kits/paper` ·
+  `drawRewind(ctx, pen, u)` and `rewindAt(k, from, to)` are the rewind it enters with.
 
 ### Director notes
 
@@ -2504,7 +2540,7 @@ the default because it rarely does; there is no swap repair.
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/review`, `/slideshow`, `/geometry`, `/claims`, `/decorative`, `/regions`, `/captions`, `/layout`, `/transitions`, `/breakdown`, `/sounds`, `/sounds/openverse`, `/camera`, `/beats`, `/music`, `/kits/whiteboard`, `/kits/cartoon`, `/pose`, `/mocap`, `/kits/cartoon/figure`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/review`, `/slideshow`, `/geometry`, `/claims`, `/decorative`, `/regions`, `/captions`, `/layout`, `/transitions`, `/breakdown`, `/sounds`, `/sounds/openverse`, `/camera`, `/beats`, `/music`, `/kits/whiteboard`, `/kits/cartoon`, `/kits/paper/steps-track`, `/pose`, `/mocap`, `/kits/cartoon/figure`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws

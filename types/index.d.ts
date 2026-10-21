@@ -3,6 +3,7 @@ import type {CombinedNarrativeEntry, RuntimeSnapshot, DecisionEvidence} from 'fo
 import type {EaseSpec} from './sub/ease.js';
 import type {MoveName, Move, MoveFeelName} from './sub/moves.js';
 import type {FeelName, Feel} from './sub/motion.js';
+import type {StepsTrackSpec} from './sub/steps-track.js';
 
 /** A spoken phrase: [scene, phrase] or [scene, phrase, plus seconds], or the object form. */
 export type Beat = [scene: string, phrase: string] | [scene: string, phrase: string, plus: number]
@@ -125,6 +126,8 @@ export interface Recipe {
   /** A world stage's `intent` and `continuity` sit on the stage, beside `world` (inside `world` they refuse). */
   stages?: ({type: string; scene: string; enter?: Enter; [key: string]: unknown} & ShotPlan)[];
   guesses?: {after: Beat; question: string; answer?: string; place?: 'top' | 'center' | 'bottom'; until?: Beat}[];
+  /** A steps track over every shot (footprint-storyreel/kits/paper/steps-track): every moment a beat. */
+  stepsTrack?: StepsTrackSpec<Beat>;
   notes?: DirectorNote[];
   recalls?: Record<string, Beat>;
   poster?: Beat;
@@ -374,7 +377,7 @@ export interface Film {
    * first row). A film with a pushIn is one row (`pushIn: true`).
    */
   rows: FilmRow[];
-  /** What is drawn over every shot for a while: the guess cards ({path: 'guesses[n]', from, to}). */
+  /** What is drawn over every shot for a while: the guess cards ({path: 'guesses[n]', from, to}) and a steps track ({path: 'stepsTrack', from, to}). */
   overlays: readonly {path: string; from: number; to: number}[];
   /** What the film was made from, hashed: its storyboard, timings, recipe, strings, data, theme and every file it read through its root. */
   inputs: FilmInputs;
