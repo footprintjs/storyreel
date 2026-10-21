@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.19.0 — the chat edit loop: see only what changed
 
 - **The chat edit loop: see an edit before the full render.** `storyreel changes` plans the full render's pieces and
   compares each key with the cache that render keeps, drawing nothing: one line per changed stretch with the reason a
@@ -37,6 +37,11 @@
   a subpath is keyed by the StoryReel modules it reaches, read by content through StoryReel's exports (and the packages
   they import that draw, by version), no longer by StoryReel's version; another package is still keyed by its version.
   The first render after upgrading to this release redraws once, because the key changes from version to content.
+- **Breaking:** an MCP tool call can no longer pass `config` or `cwd` (they are fixed when the server starts, by
+  `storyreel mcp --config … --cwd …`); `storyreel changes` compares with the full render the project's config names,
+  so a project's render script should be `makeFilm(fullRender(await loadInputs(flags)))`; and the first render after
+  upgrading redraws once, because a kit that imports StoryReel is now keyed by the content of the code it reaches, not
+  by StoryReel's version.
 
 ### Security
 
