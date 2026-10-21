@@ -41,7 +41,9 @@ export function treeMemory(psText, root) {
   const walk = pid => {
     const p = procs.get(pid);
     if (!p) return;
-    const file = /(test\/[\w.-]+\.mjs)/.exec(p.args.split(path.sep).join('/'))?.[1];   // test/x.test.mjs, test/skills-render.mjs
+    // test/x.test.mjs, test/skills-render.mjs: the last one named (the file a process runs comes after its flags, and
+    // --import ./test/fonts.mjs names a test/ module first).
+    const file = [...p.args.split(path.sep).join('/').matchAll(/(test\/[\w.-]+\.mjs)/g)].at(-1)?.[1];
     if (file && !/\s--test(\s|$)/.test(` ${p.args} `)) { files.push([file, sum(pid)]); return; }
     p.kids.forEach(walk);
   };
@@ -77,6 +79,7 @@ function main() {
   // The suite is a run of its own: run from inside a test runner, the runner's NODE_TEST_CONTEXT would make it a child of that run.
   const {NODE_TEST_CONTEXT: _runner, ...env} = process.env;
   const at = concurrency({given: process.env.STORYREEL_TEST_CONCURRENCY}), memory = watchMemory(process.pid);
+  // Every test file's process loads test/fonts.mjs first (the generic font families pinned, where DejaVu Sans is installed).
   const suite = spawn(process.execPath, ['--import', './test/fonts.mjs', '--test', `--test-concurrency=${at}`, ...files], {cwd: repo, env: {...env, TMPDIR: tmp, TMP: tmp, TEMP: tmp}, stdio: 'inherit'});
   let stopped = null;
   for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]]) {
