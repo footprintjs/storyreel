@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.17.0 — a convincing tear, trimmed sounds, a steps track
 
 - **`torn` is a slow peel, rebuilt** (it was a quick tear, then a drag). A rip runs across the old picture at a seeded,
   uneven pace: slow to start, catching in small stutters. Behind it the torn flap peels up, still showing the old
