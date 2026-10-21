@@ -45,6 +45,7 @@ import {readLibrary, useFound, trimOf, foundFields} from './found/index.mjs';
 import {listeningMode, changeSounds, listeningText} from './listening.mjs';
 import {step, drainSteps, recordSteps} from './record.mjs';
 import {readEntrance, transitionCatalog, ghostPainter, layerCrossfader, CUT} from './transitions.mjs';
+import {readThought, drawThought, thoughtCamera} from './thought.mjs';
 
 /** The recipe's own top-level keys: anything else refuses, unless the host application names it in `hostKeys`. */
 const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'stepsTrack', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle', 'focus', 'emphasis', 'camera', 'foundSounds'];
@@ -59,7 +60,7 @@ const COMMON_KEYS = ['type', 'scene', 'chip', 'chipDark', 'title', 'enter', 'chr
  * declares is the kit's own, and the engine never reads it (a kit's `marks` may mean tally marks).
  */
 const KIT_STAGE_ENGINE_KEYS = new Set(['footer']);
-const WORLD_KEYS = new Set(['type', 'scene', 'world', 'enter', ...PLAN_KEYS]);
+const WORLD_KEYS = new Set(['type', 'scene', 'world', 'enter', 'frame', ...PLAN_KEYS]);
 const BUILT_IN_STAGES = new Set(['code', 'api', 'recap', 'summary', 'world']);
 const GUESS_KEYS = new Set(['after', 'question', 'answer', 'place', 'until']);
 
@@ -282,19 +283,26 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     readies.push(readyOf(instance, spec.kit, where));
     return instance;
   };
-  /** A world on its sheet: hung on the paper at scale S (1 = full frame). */
-  const hung = (instance, hang) => { const S = hang ?? instance.hang ?? .9; return {instance, S, BX: 1600 * (1 - S) / 2, BY: 900 * (1 - S) / 2 + 7.5 * (S < 1 ? 1 : 0)}; };
+  /**
+   * A world on its sheet: hung on the paper at scale S (1 = full frame) — or, with a frame (thought.mjs · readThought),
+   * in a thought cloud: the sheet at the cloud's scale and place, its entrance timed from `at` (the shot's start).
+   */
+  const hung = (instance, hang, frame = null, at = 0) => {
+    if (frame) { const {S, place: [BX, BY]} = frame.cloud; return {instance, S, BX, BY, frame, frameAt: at}; }
+    const S = hang ?? instance.hang ?? .9; return {instance, S, BX: 1600 * (1 - S) / 2, BY: 900 * (1 - S) / 2 + 7.5 * (S < 1 ? 1 : 0)};
+  };
   yield step('read-inputs', () => inputsSummary({recipe, storyboard, clock: base, notes, strings: strings ? [...used] : null}));
 
   // The story: its kit draws the opening world on a sheet (1600×900) that hangs on the paper.
-  const {intent: storyIntent, continuity: storyContinuity, reads: storyReads, ...storySpec} = recipe.story ?? {kit: 'whiteboard', ...recipe.whiteboard};
+  const {intent: storyIntent, continuity: storyContinuity, reads: storyReads, frame: storyFrame, ...storySpec} = recipe.story ?? {kit: 'whiteboard', ...recipe.whiteboard};
   const story = compileWorld(storySpec, 'the story');
   // A film may be story only (no push-in, no card, no paper stages).
   const push = recipe.pushIn ?? null;
+  if (push && storyFrame !== undefined) throw new Error('the story: a frame is for a film without a pushIn (the camera pushes into the story\'s page, which hangs on the paper): leave frame out, or the pushIn');
   if (recipe.card && !push) throw new Error('The recipe has a card and no pushIn: the card is the story prop the camera pushes into');
   const card = recipe.card ?? {prop: [700, 350, 900, 550], rows: [], template: {}, aside: {at: [800, 450], scale: 1}};
   const boardEnd = push ? clock.spokenEnd(push.after) + push.rest : Infinity, TURN = (push?.turn ?? 1) / notes.speed;
-  const storyWorld = {...hung(story, push?.hang), kit: storySpec.kit}, {S, BX, BY} = storyWorld, ZOOM = push?.zoom ?? 1;
+  const storyWorld = {...hung(story, push?.hang, readThought(storyFrame, 'the story'), 0), kit: storySpec.kit}, {S, BX, BY} = storyWorld, ZOOM = push?.zoom ?? 1;
   // Geometry in 1600×900 units: the sheet hangs on the paper at scale S; the camera pushes into the prop.
   const onPage = (bx, by) => [BX + bx * S, BY + by * S];
   const propCentre = onPage((card.prop[0] + card.prop[2]) / 2, (card.prop[1] + card.prop[3]) / 2);
@@ -308,6 +316,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     const allowed = spec.type === 'world' ? WORLD_KEYS : impl?.keys ? new Set([...COMMON_KEYS, ...KIT_STAGE_ENGINE_KEYS, ...impl.keys]) : STAGE_KEYS;
     // Which keys the engine itself reads on this stage (a kit's declared keys are never among them).
     const own = new Set(impl?.keys ?? []), reads = key => !own.has(key) && (!impl || !impl.keys || KIT_STAGE_ENGINE_KEYS.has(key));
+    if (spec.frame !== undefined && !allowed.has('frame')) throw new Error(`${where} has a frame, and a frame is for a world (the story, or a stage of "type": "world"): a ${spec.type} stage has the page to itself`);
     for (const key of Object.keys(spec)) if (!allowed.has(key)) throw new Error(`${where} has unsupported key ${key} (it takes ${[...allowed].join(', ')})`);
     if (push && spec.enter !== undefined) throw new Error(`${where} has enter, and a film with a pushIn hands its stages over on one page (enter is for films without one): leave enter out`);
     if (push && spec.type === 'world') throw new Error(`${where} is a world, and a film with a pushIn keeps one page (worlds are for films without one)`);
@@ -318,7 +327,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (!push) st.entrance = readEntrance(spec.enter, where, transitions);
     if (spec.type === 'world') {
       for (const key of PLAN_KEYS) if (spec.world && Object.hasOwn(spec.world, key)) throw new Error(`${where}: ${key} belongs on the stage, beside world (the engine reads it there), not inside world (the kit's own spec)`);
-      st.world = {...hung(compileWorld(spec.world, where)), kit: spec.world.kit};
+      st.world = {...hung(compileWorld(spec.world, where), undefined, readThought(spec.frame, where), st.start), kit: spec.world.kit};
     }
     if (reads('code') && spec.code) {
       const source = excerpt(within(spec.code.file), {elide: spec.code.elide ?? []});
@@ -550,7 +559,8 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (spot) aim(ctx, spotCamera(w, spot));
     if (camera) aim(ctx, camera);
     ctx.drawImage(blank, 0, 0);
-    if (w.S < 1) { ctx.save(); ctx.shadowColor = 'rgba(60,50,35,.22)'; ctx.shadowBlur = 26; ctx.shadowOffsetY = 8; ctx.drawImage(sheet, w.BX, w.BY, 1600 * w.S, 900 * w.S); ctx.restore(); }
+    if (w.frame) drawThought(ctx, w.frame.cloud, c => c.drawImage(sheet, w.BX, w.BY, 1600 * w.S, 900 * w.S), {age: t - w.frameAt, color: w.frame.color, ink: w.frame.ink, theme: paper});
+    else if (w.S < 1) { ctx.save(); ctx.shadowColor = 'rgba(60,50,35,.22)'; ctx.shadowBlur = 26; ctx.shadowOffsetY = 8; ctx.drawImage(sheet, w.BX, w.BY, 1600 * w.S, 900 * w.S); ctx.restore(); }
     else ctx.drawImage(sheet, 0, 0);
     ctx.restore();
   }
@@ -754,9 +764,10 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   // What is drawn where, for the preview studio (regions.mjs): each box names the recipe entry that drew it.
   const storyPath = recipe.story ? 'story' : 'whiteboard', stagePath = st => `stages[${stages.indexOf(st)}]`;
   const measure = makePen(createCanvas(8, 8).getContext('2d'), paper, {baseScale: 1});
-  /** A world's view on the frame: its sheet hung on the paper, then the push-in's and the spotlight's cameras. */
-  function worldView(w, spot, camera = null) {
+  /** A world's view on the frame at t: its sheet hung on the paper (or in its cloud, as it opens), then the push-in's and the spotlight's cameras. */
+  function worldView(w, t, spot, camera = null) {
     let v = view(w.S, w.BX, w.BY);
+    if (w.frame) v = compose(about(thoughtCamera(w.frame.cloud, t - w.frameAt)), v);
     if (camera) v = compose(about(camera), v);
     if (spot) v = compose(about(spotCamera(w, spot)), v);
     return v;
@@ -765,14 +776,14 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   function worldOnScreen(t) {
     if (push) {
       if (t >= boardEnd && ease((t - boardEnd - TURN * .45) / (TURN * .45)) >= .5) return null;
-      return {w: storyWorld, path: storyPath, until: boardEnd, view: worldView(storyWorld, t < boardEnd ? spotOf(storyWorld, t) : null, t >= boardEnd ? pushInCamera(t) : null)};
+      return {w: storyWorld, path: storyPath, until: boardEnd, view: worldView(storyWorld, t, t < boardEnd ? spotOf(storyWorld, t) : null, t >= boardEnd ? pushInCamera(t) : null)};
     }
     return shotWorld(shots[shotAt(t)], t);
   }
   /** A shot's world at t (the part of the recipe that draws it, and its view), or null for a shot on paper. */
   function shotWorld(shot, t) {
     const st = shot.world && stages.find(s => s.world === shot.world);
-    return shot.world ? {w: shot.world, path: st ? `${stagePath(st)}.world` : storyPath, until: Infinity, view: worldView(shot.world, spotOf(shot.world, t))} : null;
+    return shot.world ? {w: shot.world, path: st ? `${stagePath(st)}.world` : storyPath, until: Infinity, view: worldView(shot.world, t, spotOf(shot.world, t))} : null;
   }
   /** Which reveal made a code line appear: its recipe entry. */
   const lineEntry = (st, i) => st.code?.allAt ? `${stagePath(st)}.code.allAt` : (k => k >= 0 ? `${stagePath(st)}.reveal[${k}]` : `${stagePath(st)}.code`)((st.reveal ?? []).findIndex(([n]) => n === i));
@@ -1028,11 +1039,13 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     sounds.push(sound); if (type === FOUND && who) askedBy.set(sound, who);
   };
   const addKitSounds = (list, who) => { for (const s of list ?? []) { checkSound(s, who); add(s.time, s.type, s.gain, s, who); } };
+  /** When a shot's entrance sounds: from the change's first moment, or later where its own moment is (transitions.mjs · soundAt: cloudBurst's pop). */
+  const soundTime = shot => shot.start - shot.enter.lead + (shot.enter.soundAt ?? 0) * shot.enter.seconds;
   addKitSounds(story.sounds, `the story kit "${storySpec.kit}"`);
   if (push) { add(boardEnd, 'slide'); add(MOVE0, 'slide'); }
   for (const shot of shots.slice(1)) {
     const s = shot.enter.sound;   // a sound's name, or a found sound {type: 'found', name, gain?} (transitions.mjs · entranceSound)
-    if (s) add(shot.start - shot.enter.lead, s.type ?? s, s.gain, s, `stage ${(shot.stages[0] ?? stages.find(st => st.world === shot.world)).scene}'s entrance`);
+    if (s) add(soundTime(shot), s.type ?? s, s.gain, s, `stage ${(shot.stages[0] ?? stages.find(st => st.world === shot.world)).scene}'s entrance`);
   }
   for (const st of stages) {
     if (st.world) addKitSounds(st.world.instance.sounds, `the story kit "${st.world.kit}" (stage ${st.scene})`);
@@ -1054,7 +1067,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const foundUsed = foundSoundsUsed(sounds, recipe.foundSounds, root, askedBy);
   // Listening (listening.mjs): about half the changes of picture silent, never the same cue twice running.
   const listeningRule = listeningMode(recipe.listening);
-  const listening = push ? [] : changeSounds(shots.slice(1).map(shot => ({at: shot.start - shot.enter.lead, where: `stage ${(shot.stages[0] ?? stages.find(st => st.world === shot.world)).scene}`, sound: soundLabel(shot.enter.sound)})));
+  const listening = push ? [] : changeSounds(shots.slice(1).map(shot => ({at: soundTime(shot), where: `stage ${(shot.stages[0] ?? stages.find(st => st.world === shot.world)).scene}`, sound: soundLabel(shot.enter.sound)})));
   if (listeningRule === 'refuse' && listening.length) throw new Error(`The sound asks too much of the ear (the recipe says listening: "refuse"): ${listening.slice(0, 3).map(listeningText).join('; ')}${listening.length > 3 ? `; and ${listening.length - 3} more` : ''}`);
 
   /**

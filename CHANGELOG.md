@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- **A thought cloud: a world shown as a memory or a daydream.** `"frame": "thought"` on the story or on a world stage
+  draws the world inside a cartoon thought cloud: scalloped, inked in the theme's ink on its card, with a soft shadow,
+  and a trail of three little circles toward a corner (no thinker: remembering is the cloud). The world is drawn at the
+  cloud's scale (`size`, 0.5–0.9, 0.8 by default), so the cloud is a window onto all of it but its corners. As the shot
+  starts, the trail pops up from the corner, one circle after another with a small overshoot, and the cloud puffs open
+  out of it. `corner`, `size`, `seed` (the scallops), `color` and `ink` set it, and a bad one refuses, naming the fix.
+  A paper stage, and the story of a film with a `pushIn`, refuse a frame. The world's regions follow it into the cloud.
+- **`cloudBurst`: back to now.** A new transition in the dissolve family: the cloud swells a little and the memory pales
+  into the cloud's paper, then it pops into puffs that drift out and fade over the next shot. Given the same `corner`,
+  `size` and `seed`, it pops the very cloud the frame drew; over a plain shot it cuts that cloud from the picture. The
+  pop keeps `principles.mjs`'s `BURSTS.pop` timing, and the cloud and its puffs are seeded. 1 s, sound `whoosh`.
+- **A transition's sound can land on its moment.** `soundAt` (a share of the change, 0 to below 1) moves a transition's
+  sound from the change's first moment to its moment: `cloudBurst`'s pop, three tenths of the way in. A kit's
+  transition may say it too; it is 0 by default, so every other transition sounds where it did.
+
 ## 0.17.0 — a convincing tear, trimmed sounds, a steps track
 
 - **`torn` is a slow peel, rebuilt** (it was a quick tear, then a drag). A rip runs across the old picture at a seeded,

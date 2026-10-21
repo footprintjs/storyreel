@@ -153,6 +153,15 @@ export const boxed: Transition = {...curtain, params: {frame: {box: true, defaul
 export const curlNorth: Enter = {type: 'curl', corner: 'north'};
 // @ts-expect-error a box is four numbers
 export const shortBox: Enter = {type: 'morph', fromBox: [0, 0, 400]};
+// A thought: a world in a thought cloud, and the burst that ends it; a kit's transition says where its sound lands.
+export const remembered: Recipe = {story: {kit: 'draws', frame: 'thought'}, stages: [
+  {type: 'world', scene: 'dream', frame: {type: 'thought', corner: 'bottom-right', size: .75, seed: 9, color: null, ink: '#1b1f27'}, world: {kit: 'draws'}},
+  {type: 'world', scene: 'now', enter: {type: 'cloudBurst', corner: 'bottom-right', size: .75, seed: 9, sound: {type: 'found', name: 'bubble-pop'}}, world: {kit: 'draws'}}]};
+export const popping: Transition = {...curtain, soundAt: .3};
+// @ts-expect-error the trail points to a corner
+export const northCloud: Recipe = {story: {kit: 'draws', frame: {type: 'thought', corner: 'north'}}};
+// @ts-expect-error a thought cloud is the one frame there is
+export const dreamFrame: Recipe = {story: {kit: 'draws', frame: 'dream'}};
 
 // The shot plan: what each shot is for, and the facts it starts and ends with; framing by name; gaze.
 export const planned: Recipe = {

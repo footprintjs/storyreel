@@ -115,16 +115,16 @@ export interface Read { what: string; at: Beat; min?: number; region?: string }
  * host application names it in compileFilm's `hostKeys` (keys it reads itself; the engine ignores them).
  */
 export interface Recipe {
-  /** The opening world; its `intent` and `continuity` are the engine's (read, then left out of what the kit gets). */
-  story?: {kit: string; [key: string]: unknown} & ShotPlan;
+  /** The opening world; its `intent`, `continuity` and `frame` are the engine's (read, then left out of what the kit gets). */
+  story?: {kit: string; frame?: Frame; [key: string]: unknown} & ShotPlan;
   /** The older spelling of a whiteboard story: {items, erasers, spots…} without `kit`. */
   whiteboard?: Record<string, unknown>;
   /** The built-in theme's name when compileFilm gets no `theme`. */
   paperStyle?: string;
   pushIn?: {after: string; rest: number; turn?: number; zoom?: number; hang?: number; caption: string};
   card?: Record<string, unknown>;
-  /** A world stage's `intent` and `continuity` sit on the stage, beside `world` (inside `world` they refuse). */
-  stages?: ({type: string; scene: string; enter?: Enter; [key: string]: unknown} & ShotPlan)[];
+  /** A world stage's `intent` and `continuity` sit on the stage, beside `world` (inside `world` they refuse); so does its `frame` (worlds only). */
+  stages?: ({type: string; scene: string; enter?: Enter; frame?: Frame; [key: string]: unknown} & ShotPlan)[];
   guesses?: {after: Beat; question: string; answer?: string; place?: 'top' | 'center' | 'bottom'; until?: Beat}[];
   /** A steps track over every shot (footprint-storyreel/kits/paper/steps-track): every moment a beat. */
   stepsTrack?: StepsTrackSpec<Beat>;
@@ -217,8 +217,17 @@ export interface WorldLayer { name: string; depth: number }
 /** One finding of the watching check (shots.mjs · tooMuchTooFast). */
 export type Watching = {kind: 'burst'; path: string; where: string; at: number; moments: number; seconds: number};
 
+/**
+ * A world's frame (thought.mjs): the world drawn inside a cartoon thought cloud, a trail of three little circles toward
+ * `corner` (the cloud leans away from it). `size` is the cloud's share of the frame (0.5–0.9, 0.8), and the world is
+ * drawn at it; `seed` picks the scallops (0–10000, 3); `color` and `ink` are its paper and outline (null: the theme's
+ * card and ink). As the shot starts, the trail pops up from the corner, then the cloud opens. cloudBurst, given the
+ * same corner, size and seed, pops the same cloud.
+ */
+export type Frame = 'thought' | {type: 'thought'; corner?: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right'; size?: number; seed?: number; color?: string | null; ink?: string | null};
+
 /** The built-in transitions (transitions.mjs · TRANSITIONS). */
-export type TransitionName = 'cut' | 'fade' | 'dip' | 'wipe' | 'split' | 'clock' | 'torn' | 'eraser' | 'iris' | 'inkBleed' | 'ringIris'
+export type TransitionName = 'cut' | 'fade' | 'dip' | 'cloudBurst' | 'wipe' | 'split' | 'clock' | 'torn' | 'eraser' | 'iris' | 'inkBleed' | 'ringIris'
   | 'push' | 'slide' | 'whip' | 'glassSheet' | 'zoom' | 'page' | 'curl' | 'fold' | 'through' | 'match' | 'morph';
 /**
  * A shot's entrance: a transition's name (a kit's own too), or its name with settings — `seconds` (0.2–4),
@@ -227,8 +236,10 @@ export type TransitionName = 'cut' | 'fade' | 'dip' | 'wipe' | 'split' | 'clock'
  * bottom | top), `drift` (torn: px the new picture comes along with the tear, 0–200), `line` (split: vertical | horizontal; fold:
  * the crease, horizontal | vertical), `at` (iris, zoom, inkBleed, ringIris: [x, y]), `color` (dip, eraser, and the
  * ink, ring or outline of inkBleed, ringIris, morph: a hex colour; null is the transition's default, the theme's for those three), `accent` (ringIris:
- * its other half), `tint` (glassSheet), `seed` (torn, inkBleed: the ragged edge's shape, 0–10000), `radius` and
- * `width` (ringIris: its size at the start, its thickness), `corner` (curl), `region` (through, match: the name of a
+ * its other half), `tint` (glassSheet), `seed` (torn, inkBleed: the ragged edge's shape, 0–10000; cloudBurst: the
+ * cloud's scallops), `radius` and `width` (ringIris: its size at the start, its thickness), `corner` (curl; cloudBurst:
+ * where the thought's trail points), `size` (cloudBurst: the cloud's share of the frame, 0.5–0.9), `ink` (cloudBurst:
+ * the cloud's outline; with `color`, its paper; null: the theme's), `region` (through, match: the name of a
  * thing in the picture it leaves — required; morph: optional), `into` (match, morph: the thing's name in the new
  * picture, when it differs), `fromBox` / `toBox` (morph, without names: [x0, y0, x1, y1]), `shape` (through: box | round).
  * Left out: a fade. Or a move from the vocabulary (`footprint-storyreel/moves`) that a whole picture can make —
@@ -238,7 +249,7 @@ export type TransitionName = 'cut' | 'fade' | 'dip' | 'wipe' | 'split' | 'clock'
 export type Enter = TransitionName | (string & {}) | ({type: TransitionName | (string & {}); seconds?: number; ease?: EaseSpec; sound?: SoundType | FoundSoundChoice | false;
   from?: 'left' | 'right' | 'top' | 'bottom'; line?: 'vertical' | 'horizontal'; at?: [number, number]; color?: string | null;
   region?: string; into?: string; shape?: 'box' | 'round'; seed?: number; radius?: number; width?: number; accent?: string | null;
-  tint?: string; corner?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'; fromBox?: FrameBox; toBox?: FrameBox;
+  tint?: string; corner?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'; fromBox?: FrameBox; toBox?: FrameBox; size?: number; ink?: string | null;
   direction?: 'left' | 'right' | 'top' | 'bottom'; drift?: number;
   move?: never; [setting: string]: unknown})
   | {move: MoveName | (string & {}) | Move; seconds?: number; feel?: MoveFeelName | FeelName | Feel; sound?: SoundType | FoundSoundChoice | false; type?: never};
@@ -276,6 +287,8 @@ export interface Transition {
   seconds: number;
   ease: EaseSpec;
   sound: SoundType | null;
+  /** Where in the change its sound lands, a share of it from 0 (its first moment, the default) to below 1: 0.3 for a pop three tenths of the way in. */
+  soundAt?: number;
   /** true when an overshooting ease (back, outBack, spring, a four-number curve past 0..1) may drive it. */
   overshoot?: boolean;
   params?: Record<string, TransitionSetting>;

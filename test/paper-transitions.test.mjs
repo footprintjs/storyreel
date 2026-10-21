@@ -1,4 +1,4 @@
-// The paper transitions (src/paper-transitions.mjs): eight built-in entries of the one collection. Each starts on the
+// The paper transitions (src/transitions/paper/): nine built-in entries of the one collection. Each starts on the
 // leaving picture and ends on the arriving one exactly, is the same pixels for the same moment (seeded, never
 // Math.random), refuses a bad setting naming what it takes, draws its paper and ink in the theme's colours, and is
 // listed in the catalog and in the README's table with what it means.
@@ -10,6 +10,9 @@ import {compileFilm, evenTimings, loadTheme, validateTheme} from '../src/index.m
 import {TRANSITIONS, TRANSITION_NAMES, readEntrance, transitionCatalog, ghostPainter} from '../src/transitions.mjs';
 import {PAPER_TRANSITIONS, seeded, paperTokens} from '../src/transitions/paper/index.mjs';
 import {tornAt, tearPace} from '../src/transitions/paper/torn.mjs';
+import {pushed, puffsOf} from '../src/transitions/paper/burst.mjs';
+import {thoughtCloud, cloudPath} from '../src/thought.mjs';
+import {BURSTS} from '../src/principles.mjs';
 
 const PAPER = Object.keys(PAPER_TRANSITIONS);
 const RED = [255, 0, 0], BLUE = [0, 0, 255];
@@ -30,8 +33,8 @@ const share = (data, rgb, tol = 10) => { let n = 0; for (let i = 0; i < data.len
 const near = (got, want, tol = 12) => want.every((v, i) => Math.abs(got[i] - v) <= tol);
 const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 
-test('the eight are in the catalog, each in its family, with the defaults a recipe gets by name', () => {
-  assert.deepEqual(PAPER, ['torn', 'eraser', 'inkBleed', 'ringIris', 'glassSheet', 'curl', 'fold', 'morph']);
+test('the nine are in the catalog, each in its family, with the defaults a recipe gets by name', () => {
+  assert.deepEqual(PAPER, ['cloudBurst', 'torn', 'eraser', 'inkBleed', 'ringIris', 'glassSheet', 'curl', 'fold', 'morph']);
   const catalog = transitionCatalog([]);
   for (const name of PAPER) {
     assert.ok(TRANSITION_NAMES.includes(name) && Object.hasOwn(catalog, name), `${name} is a built-in transition`);
@@ -41,7 +44,8 @@ test('the eight are in the catalog, each in its family, with the defaults a reci
     assert.equal(en.type, name); assert.equal(en.seconds, TRANSITIONS[name].seconds); assert.equal(en.lead, en.seconds * .75);
   }
   assert.deepEqual(Object.fromEntries(PAPER.map(n => [n, TRANSITIONS[n].family])),
-    {torn: 'wipe', eraser: 'wipe', inkBleed: 'iris', ringIris: 'iris', glassSheet: 'motion', curl: 'page', fold: 'page', morph: 'match'});
+    {cloudBurst: 'dissolve', torn: 'wipe', eraser: 'wipe', inkBleed: 'iris', ringIris: 'iris', glassSheet: 'motion', curl: 'page', fold: 'page', morph: 'match'});
+  assert.deepEqual(readEntrance('cloudBurst', 'x').p, {corner: 'bottom-left', size: .8, seed: 3, color: null, ink: null}, 'the thought frame\'s own five settings, at its defaults');
   assert.deepEqual(readEntrance('torn', 'x').p, {direction: 'right', drift: 0, seed: 5});
   assert.deepEqual(readEntrance('inkBleed', 'x').p, {at: [220, 760], color: null, seed: 7}, 'a colour left at null is the theme\'s');
   assert.deepEqual(readEntrance({type: 'ringIris', at: [1060, 400], radius: 120, color: '#c26a12'}, 'x').p, {at: [1060, 400], radius: 120, width: 26, color: '#c26a12', accent: null});
@@ -52,7 +56,7 @@ test('each starts on the leaving picture and ends on the arriving one, exactly, 
   const plainOf = color => { const c = createCanvas(1600 * S, 900 * S), x = c.getContext('2d'); x.scale(S, S); solid(color)(x); return x.getImageData(0, 0, c.width, c.height).data; };
   const red = plainOf(RED), blue = plainOf(BLUE);
   // Every transition at its defaults, and again with each setting that changes where it goes.
-  const entrances = [...PAPER, {type: 'torn', direction: 'left'}, {type: 'torn', direction: 'top', drift: 100}, {type: 'torn', direction: 'bottom', seed: 9},
+  const entrances = [...PAPER, {type: 'cloudBurst', corner: 'top-right', size: .6, seed: 9}, {type: 'cloudBurst', corner: 'bottom-right', size: .9}, {type: 'torn', direction: 'left'}, {type: 'torn', direction: 'top', drift: 100}, {type: 'torn', direction: 'bottom', seed: 9},
     {type: 'eraser', from: 'right'}, {type: 'inkBleed', at: [1500, 100]}, {type: 'ringIris', at: [1400, 200], radius: 120, width: 80},
     {type: 'glassSheet', from: 'top'}, {type: 'glassSheet', from: 'bottom'}, {type: 'glassSheet', from: 'left'},
     ...['bottom-left', 'top-right', 'top-left'].map(corner => ({type: 'curl', corner})), {type: 'fold', line: 'vertical'}, {type: 'morph', fromBox: [0, 0, 1600, 900], toBox: [700, 400, 900, 500]}];
@@ -76,7 +80,7 @@ test('a frame is a pure function of the moment: the same pixels twice, nothing f
     for (const name of PAPER) for (const e of [.3, .62]) assert.deepEqual(drawn(name, e).data, drawn(name, e).data, `${name} at ${e}: the same frame, the same pixels`);
   } finally { Math.random = random; }
   // The torn edge and the ink blot are shapes from their seed: another seed, another edge; the same seed, the same one.
-  for (const name of ['torn', 'inkBleed']) {   // (mid-tear for torn: once torn through, its edge is off the sheet)
+  for (const name of ['torn', 'inkBleed', 'cloudBurst']) {   // (mid-tear for torn: once torn through, its edge is off the sheet)
     assert.notDeepEqual(drawn({type: name, seed: 1}, .25).data, drawn({type: name, seed: 2}, .25).data, `${name}: the seed shapes the edge`);
     assert.deepEqual(drawn({type: name, seed: 41}, .25).data, drawn({type: name, seed: 41}, .25).data);
   }
@@ -185,6 +189,10 @@ test('paper and ink are the theme\'s; a colour setting at null is the theme\'s o
   assert.ok(share(drawn('inkBleed', .5, {theme: green}).data, [255, 0, 255], 2) > .05, 'the ink is the theme\'s ink');
   assert.ok(share(drawn({type: 'inkBleed', color: '#ffff00'}, .5, {theme: green}).data, [255, 255, 0], 2) > .05, 'unless the recipe names a colour');
   assert.ok(share(drawn('ringIris', .4, {theme: green}).data, [0, 255, 255], 2) > 0, 'the ring in the theme\'s accent');
+  const yellowCard = validateTheme({...structuredClone(paper), palette: {...paper.palette, card: '#ffff00'}}), [cx, cy] = thoughtCloud({}).centre;
+  assert.ok(near(drawn('cloudBurst', .29, {theme: yellowCard}).px(cx, cy), [255, 255, 0], 6), 'the cloud is the theme\'s card');
+  assert.ok(near(drawn({type: 'cloudBurst', color: '#00ffff'}, .29, {theme: yellowCard}).px(cx, cy), [0, 255, 255], 6), 'unless the recipe names a colour');
+  assert.ok(share(drawn('cloudBurst', .28, {theme: green}).data, [255, 0, 255], 40) > .002, 'its outline in the theme\'s ink');
   assert.equal(paperTokens(undefined).ink, paper.palette.ink, 'no theme given: the built-in paper theme\'s');
   assert.equal(paperTokens({palette: {bg: '#000000', panel: '#111111', edge: '#222222', ink: '#ffffff', accent: '#333333', available: '#444444'}}).paper, '#111111', 'a theme without a card: its panel');
 });
@@ -207,6 +215,11 @@ test('bad settings refuse, naming what each one takes', () => {
   refuses({type: 'morph', toBox: [0, 0, 1]}, /enter.toBox must be a box/);
   refuses({type: 'torn', at: [1, 2]}, /enter has unsupported key at \(a torn takes seconds, ease, sound, direction, drift, seed\)/);
   refuses({type: 'glassSheet', ease: 'spring'}, /a glassSheet cannot take the ease "spring"/);
+  refuses({type: 'cloudBurst', corner: 'north'}, /enter.corner must be bottom-left, bottom-right, top-left, top-right/);
+  refuses({type: 'cloudBurst', size: 1.2}, /enter.size must be a number 0.5–0.9/);
+  refuses({type: 'cloudBurst', seed: -1}, /enter.seed must be a number 0–10000/);
+  refuses({type: 'cloudBurst', ink: 'black'}, /enter.ink must be a hex colour such as "#000000"/);
+  refuses({type: 'cloudBurst', at: [1, 2]}, /enter has unsupported key at \(a cloudBurst takes seconds, ease, sound, corner, size, seed, color, ink\)/);
   // A kit's own transition may take the new kinds of setting too: a box, and a colour that is the theme's.
   const kit = {name: 'k', transitions: {frame: {family: 'x', seconds: 1, ease: 'linear', sound: null, params: {box: {box: true, default: [0, 0, 10, 10]}, ink: {color: true, default: null}}, draw: (c, {from}) => from(c)}}};
   assert.deepEqual(readEntrance('frame', 'x', transitionCatalog([kit])).p, {box: [0, 0, 10, 10], ink: null});
@@ -222,6 +235,40 @@ test('morph: a box becomes a box, from boxes it is given or from the things it n
   const boxes = {from: {window: [1000, 300, 1200, 500]}, to: {tree: [1000, 300, 1200, 500]}};
   assert.ok(near(drawn({type: 'morph', region: 'window', into: 'tree'}, .5, {boxes}).px(1000, 400), hex(paper.palette.accent), 30));
 });
+
+test('cloudBurst: the cloud swells and pales, pops on principles.mjs\'s pop, and its puffs clear the middle first', () => {
+  const cloud = thoughtCloud({}), [cx, cy] = cloud.centre, card = hex(paperTokens(paper).paper);
+  // Before the pop: outside the cloud the new picture has all but arrived; inside, the memory has paled into the paper.
+  const late = drawn('cloudBurst', .29);
+  assert.ok(near(late.px(30, 30), BLUE, 4), `outside the cloud, the new picture (${late.px(30, 30)})`);
+  assert.ok(near(late.px(cx, cy), card, 6), `inside, the cloud's paper (${late.px(cx, cy)})`);
+  const early = drawn('cloudBurst', .1);
+  assert.deepEqual(early.px(cx, cy), RED, 'early on, the old picture inside the cloud, untouched');
+  assert.ok(early.px(30, 30)[0] > 100 && early.px(30, 30)[2] > 40, `and outside, the two pictures crossing (${early.px(30, 30)})`);
+  // The swell: a point just past the cloud's edge at rest is inside it as it swells to the pop.
+  const [ex, ey] = cloud.anchor, past = [cx + (ex - cx) * 1.03, cy + (ey - cy) * 1.03];
+  assert.ok(late.px(...past)[0] > 200, `swollen, the cloud covers ${past.map(Math.round)}: its paper, not the new picture (${late.px(...past)})`);
+  // After the pop the middle clears first: the new picture in the middle while puffs still drift at the edges.
+  assert.deepEqual(drawn('cloudBurst', .62).px(cx, cy), BLUE, 'the middle, cleared');
+  assert.ok(share(drawn('cloudBurst', .45).data, card, 8) > .02, 'puffs of the cloud\'s paper still on screen');
+  assert.equal(share(drawn('cloudBurst', .93).data, BLUE, 0), 1, 'the puffs gone before the end');
+  // The pop's push is principles.mjs's pop envelope, added up: 0 at the pop, all of it by the end.
+  const {attack, decay} = BURSTS.pop, total = attack / 2 + decay;
+  assert.equal(pushed(0), 0); assert.ok(Math.abs(pushed(attack) - attack / 2 / total) < 1e-12);
+  for (const age of [.03, .1, .25, .5]) {
+    let sum = 0; const n = 4000;
+    for (let i = 0; i < n; i++) sum += envelopeAt((i + .5) / n * age) * age / n;
+    assert.ok(Math.abs(pushed(age) - sum / total) < 2e-3, `at ${age} s after the pop: ${pushed(age).toFixed(4)} pushed, the envelope says ${(sum / total).toFixed(4)}`);
+  }
+  // At the pop, the puffs ARE the cloud: its scallops, and discs inside its outline.
+  const puffs = puffsOf(cloud), c = createCanvas(16, 16).getContext('2d');
+  cloudPath(c, cloud);
+  assert.equal(puffs.filter(p => p.rim).length, cloud.lobes.length, 'one rim puff per scallop');
+  assert.ok(puffs.filter(p => !p.rim).length > 10, 'and discs that fill it');
+  for (const p of puffs) assert.ok(c.isPointInPath(p.x, p.y), `a puff at (${p.x.toFixed(0)}, ${p.y.toFixed(0)}) starts inside the cloud`);
+  assert.ok(puffs.filter(p => !p.rim).every(p => p.life < Math.min(...puffs.filter(q => q.rim).map(q => q.life))), 'the inside clears before the scallops');
+});
+const envelopeAt = age => (age <= 0 ? 0 : age < BURSTS.pop.attack ? (u => u * u * (3 - 2 * u))(age / BURSTS.pop.attack) : Math.exp(-(age - BURSTS.pop.attack) / BURSTS.pop.decay));
 
 // A film: a red world, then a blue one entering by a paper transition, then a green one.
 const storyboard = {title: 'T', scenes: [
@@ -243,6 +290,12 @@ test('in a film: a recipe names a paper transition like any other, on the film c
   const ink = await film({type: 'inkBleed', at: [800, 450], sound: false});
   assert.ok(!ink.sounds.some(s => s.type === 'whoosh'), 'sound: false');
   await assert.rejects(film({type: 'morph', region: 'door'}), /stage b: the morph looks for "door" in the picture it leaves, and nothing in the picture is called "door"/);
+  // A cloudBurst's sound lands on its pop, three tenths of the way in, however long the change takes.
+  for (const seconds of [1, 2]) {
+    const burst = await film({type: 'cloudBurst', seconds}), start = burst.clock.start('b') - .75 * seconds;
+    assert.ok(burst.sounds.some(s => s.type === 'whoosh' && Math.abs(s.time - (start + .3 * seconds)) < 1e-9), `${seconds} s: heard on the pop, at ${(start + .3 * seconds).toFixed(2)} s`);
+    assert.ok(!burst.sounds.some(s => s.type === 'whoosh' && Math.abs(s.time - start) < 1e-9), 'not at the change\'s first moment');
+  }
 });
 
 test('the README\'s table is the catalog: every transition, in order, with its family, length, sound, settings and meaning', () => {
