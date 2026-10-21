@@ -14,3 +14,7 @@ export const smooth = (a, b, x) => { const u = clamp01((x - a) / (b - a)); retur
 export const pixelScale = ctx => { const m = ctx.getTransform(); return Math.hypot(m.a, m.b) || 1; };
 /** How far the frame's farthest corner is from (cx, cy): the radius a circle there needs to cover the frame. */
 export const farthest = ([cx, cy]) => Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy));
+/** ctx scaled by s about the point (x, y) of the frame: what is drawn after grows or shrinks about it. */
+export const scaleAbout = (ctx, [x, y], s) => { ctx.translate(x, y); ctx.scale(s, s); ctx.translate(-x, -y); };
+/** The soft shadow a sheet casts on the paper it hangs on (film.mjs · drawWorld, a thought cloud): its colour. */
+export const SHEET_SHADOW = 'rgba(60,50,35,.22)';

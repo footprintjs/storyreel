@@ -1,6 +1,6 @@
 /**
- * The paper transitions: eight changes of picture drawn as things done to paper and ink — torn, eraser, inkBleed,
- * ringIris, glassSheet, curl, fold, morph — one module each beside this one. They are built-in entries of the one
+ * The paper transitions: nine changes of picture drawn as things done to paper and ink — cloudBurst, torn, eraser,
+ * inkBleed, ringIris, glassSheet, curl, fold, morph — one module each beside this one. They are built-in entries of the one
  * collection (transitions.mjs · TRANSITIONS, which places each in its family) and draw through its one contract,
  * draw(ctx, {e, from, to, p, ghost, theme, boxes}). Each module exports its catalog entry only: its raw draw is wrapped
  * here, by landed, which restores the canvas. What each one means, and when to use it, is the README's table
@@ -9,12 +9,13 @@
  * Three laws every one keeps (pinned by test/paper-transitions.test.mjs):
  *   - e = 0 is the leaving picture and e = 1 the arriving one, exactly (landed): the shapes start and end off the
  *     frame, and the two ends are drawn as the pictures themselves, so nothing jumps when the shot takes over;
- *   - a frame is a pure function of e and the settings: a torn edge or an ink blot is a seeded shape (seeded.mjs ·
+ *   - a frame is a pure function of e and the settings: a torn edge or an ink blot is a seeded shape (src/seeded.mjs ·
  *     seeded, the `seed` setting), never Math.random, so the same frame index gives the same pixels;
- *   - paper and ink are the film's theme's (tokens.mjs · paperTokens). A colour a transition adds to the picture (the
+ *   - paper and ink are the film's theme's (src/paper-tokens.mjs · paperTokens). A colour a transition adds to the picture (the
  *     ring, the morph's outline, the ink) is a setting whose default, null, is the theme's own.
  */
 import {W, H} from '../../frame.mjs';
+import {CLOUD_BURST} from './burst.mjs';
 import {TORN} from './torn.mjs';
 import {ERASER} from './eraser.mjs';
 import {INK_BLEED} from './ink.mjs';
@@ -32,10 +33,10 @@ const landed = draw => function drawLanded(ctx, args) {
 };
 const entry = def => ({...def, draw: landed(def.draw)});
 
-/** The eight, by family; TRANSITIONS freezes them with the rest. */
+/** The nine, by family; TRANSITIONS freezes them with the rest. */
 export const PAPER_TRANSITIONS = Object.freeze({
-  torn: entry(TORN), eraser: entry(ERASER), inkBleed: entry(INK_BLEED), ringIris: entry(RING_IRIS),
+  cloudBurst: entry(CLOUD_BURST), torn: entry(TORN), eraser: entry(ERASER), inkBleed: entry(INK_BLEED), ringIris: entry(RING_IRIS),
   glassSheet: entry(GLASS_SHEET), curl: entry(CURL), fold: entry(FOLD), morph: entry(MORPH),
 });
-export {paperTokens} from './tokens.mjs';
-export {seeded} from './seeded.mjs';
+export {paperTokens} from '../../paper-tokens.mjs';
+export {seeded} from '../../seeded.mjs';

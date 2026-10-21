@@ -3,8 +3,8 @@
  * it. The blot's ragged rim and its splashed drops are a seeded shape (blotShape), the same on every frame.
  */
 import {clamp01, farthest} from '../../frame.mjs';
-import {paperTokens} from './tokens.mjs';
-import {seeded} from './seeded.mjs';
+import {paperTokens} from '../../paper-tokens.mjs';
+import {seeded} from '../../seeded.mjs';
 
 const POINTS = 96, DROPS = 9, TAU = 2 * Math.PI;
 

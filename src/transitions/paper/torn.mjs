@@ -19,8 +19,8 @@
  */
 import {W, H, clamp01, lerp, smooth} from '../../frame.mjs';
 import {rgba, mixColor} from '../../colour.mjs';
-import {paperTokens} from './tokens.mjs';
-import {seeded} from './seeded.mjs';
+import {paperTokens} from '../../paper-tokens.mjs';
+import {seeded} from '../../seeded.mjs';
 
 const ROWS = 150, SLANT = .18, RAGGED = 14;
 /** The curl's radius as it grows from a lip to a roll, how far the lifting strip reaches, how much it is foreshortened. */

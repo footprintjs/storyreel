@@ -5,7 +5,7 @@
  */
 import {W, H, pixelScale} from '../../frame.mjs';
 import {rgba, mixColor} from '../../colour.mjs';
-import {paperTokens} from './tokens.mjs';
+import {paperTokens} from '../../paper-tokens.mjs';
 
 const SIDES = Object.freeze({left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1]});
 /** How far off the frame the sheet starts: past its tilt and its shadow. */

@@ -1,8 +1,9 @@
 /**
- * The paper and ink a paper transition draws with: the film's theme's palette (theme.mjs), or the built-in paper theme's
- * when the caller passes none. One owner, so every paper transition tears, folds and inks the same paper.
+ * The paper and ink a paper transition (transitions/paper/) and a thought cloud (thought/) draw with: the film's theme's
+ * palette (theme.mjs), or the built-in paper theme's when the caller passes none. One owner, so every paper transition
+ * tears, folds and inks the same paper, and a thought cloud is cut from it too.
  */
-import {loadTheme} from '../../theme.mjs';
+import {loadTheme} from './theme.mjs';
 
 let paperTheme = null;
 /**

@@ -4,7 +4,7 @@
  * twice. It draws itself in over the first frames, so the change starts on the old picture exactly.
  */
 import {lerp, smooth, farthest} from '../../frame.mjs';
-import {paperTokens} from './tokens.mjs';
+import {paperTokens} from '../../paper-tokens.mjs';
 
 const TAU = 2 * Math.PI;
 
