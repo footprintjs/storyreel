@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.18.0 — quick edits by default, a thought cloud
+## Unreleased
 
 - **The chat edit loop: see an edit before the full render.** `storyreel changes` plans the full render's pieces and
   compares each key with the cache that render keeps, drawing nothing: one line per changed stretch with the reason a
@@ -28,6 +28,8 @@
 - `bench/changes.mjs` measures the loop on a three-minute film; the benches' film moved to `bench/counting-film.mjs`.
   The agent-cost baseline grows by the review skill's chat edit loop (5123 → 5942 bytes) and takes the cartoon skill's
   current size (9869 bytes).
+
+## 0.18.0 — quick edits by default, a thought cloud
 
 - **A thought cloud: a world shown as a memory or a daydream.** `"frame": "thought"` on the story or on a world stage
   draws the world inside a cartoon thought cloud: scalloped, inked in the theme's ink on its card, with a soft shadow,
