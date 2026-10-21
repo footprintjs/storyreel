@@ -7,7 +7,9 @@
  * code of the entries it draws: each entry's files and everything they import (followed: codegraph.mjs), the kit's
  * shared files as they are (a kit's index imports every shot, so its imports are not followed), and the files of a
  * kit's transition it plays. Editing one shot then redraws only the pieces that show it. `spec` is what the kit
- * compiles: the story's spec, a world stage's `world`, a kit stage's own spec.
+ * compiles: the story's spec, a world stage's `world`, a kit stage's own spec. What a shot imports from StoryReel
+ * (`footprint-storyreel` or a subpath) is keyed by the StoryReel modules it reaches, never by StoryReel's version, so a
+ * release that changes none of them keeps the kit's pieces (codegraph.mjs · STORYREEL).
  *
  * A kit that says nothing is keyed by `fallback` — a fingerprint of all the kits' code (makeFilm's `code`:
  * codeFingerprint([kitsFolder])) — in every piece it draws, or, without one, by nothing: then only the spot check sees
@@ -53,9 +55,12 @@ export function kitCode(film, {fallback = null} = {}) {
   const kits = film.kits ?? {}, drawnBy = film.drawnBy ?? {}, read = moduleReader('kit sources'), declared = new Map();
   // What the reading saw: the newest change to a file read (a render whose code changed after it started keeps nothing),
   // and the imports chosen at run time, which no key can follow (the report names them, so they can be named in sources).
+  // An installed StoryReel's own are not the kit's to name: the themes it loads by name are in every key (the drawing
+  // fingerprint), and its other run-time loads draw nothing.
   let newest = 0; const runtime = new Set();
   const seen = (f, e) => {
     try { newest = Math.max(newest, statSync(f).mtimeMs); } catch { newest = Infinity; }
+    if (e.storyreel) return;
     for (const code of e.unfollowed ?? []) runtime.add(`${path.basename(f)}: ${code}`);
     for (const spec of e.missing ?? []) runtime.add(`${path.basename(f)}: ${spec} (not there)`);
   };

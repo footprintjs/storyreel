@@ -104,10 +104,59 @@ test('installed from npm (inside node_modules), the drawing fingerprint and a bu
   assert.deepEqual(names(src, there.core.files), names(SRC, here.core.files), 'the same modules as in the checkout: its own imports are its code');
   assert.deepEqual(names(src, there.catalog.torn.files), names(SRC, here.catalog.torn.files));
   assert.ok(moduleReader('t')(path.join(src, 'kits/cartoon/index.mjs')).files.some(f => f.endsWith(`${path.sep}acting.mjs`)), 'the cartoon kit\'s sources follow its imports there too');
-  // A package a kit imports by name stays a version, never followed (a user's kit keeps the old rule).
-  const kit = path.join(top, 'app', 'kit.mjs'); writeFileSync(kit, "import {paperTokens} from 'footprint-storyreel/transitions';\nimport './node_modules/footprint-storyreel/src/ease.mjs';\n");
+  // From a user's kit, StoryReel — by name, through its exports, or by path — is its code, read by content; another
+  // package stays its version, and a file of another package (by path) is not followed from outside it.
+  const other = path.join(top, 'app', 'node_modules', 'other-ink'); mkdirSync(other);
+  writeFileSync(path.join(other, 'package.json'), '{"name": "other-ink", "version": "1.0.0"}'); writeFileSync(path.join(other, 'index.mjs'), 'export const ink = 1;\n');
+  const kit = path.join(realpathSync(path.join(top, 'app')), 'kit.mjs');
+  writeFileSync(kit, "import {paperTokens} from 'footprint-storyreel/transitions';\nimport './node_modules/footprint-storyreel/src/ease.mjs';\nimport {ink} from 'other-ink';\nimport './node_modules/other-ink/index.mjs';\n");
   const read = moduleReader('t')(kit);
-  assert.deepEqual(read.files, [], 'a file of another package (by path) is not followed from outside it');
+  assert.deepEqual(names(src, read.files), ['ease.mjs', 'transitions.mjs'], 'StoryReel by name and by path: its modules');
+  assert.deepEqual(read.packages, ['other-ink@1.0.0'], 'another package by its version — StoryReel never');
+});
+
+test('a kit that imports StoryReel is keyed by the StoryReel code it reaches, never by its version: a release that changes none of it keeps every piece', async t => {
+  // An app with StoryReel installed (a copy, as npm installs it) and another package; a kit whose shots import them.
+  const app = path.join(realpathSync(tempDir('kitreel', t)), 'app'), pkg = path.join(app, 'node_modules', 'footprint-storyreel'), other = path.join(app, 'node_modules', 'other-ink');
+  for (const dir of ['src', 'fonts', 'themes']) cpSync(fileURLToPath(new URL(`../${dir}/`, import.meta.url)), path.join(pkg, dir), {recursive: true});
+  const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const install = (dir, json) => { mkdirSync(dir, {recursive: true}); writeFileSync(path.join(dir, 'package.json'), JSON.stringify(json, null, 2)); };
+  install(pkg, manifest); install(other, {name: 'other-ink', version: '1.0.0', exports: './index.mjs'}); writeFileSync(path.join(other, 'index.mjs'), 'export const ink = "#222";\n');
+  // left: a subpath (acting.mjs, which imports ease.mjs) and the other package; right: StoryReel's root, the whole engine.
+  const shot = name => path.join(app, 'kit', 'shots', `${name}.mjs`); mkdirSync(path.dirname(shot('left')), {recursive: true});
+  writeFileSync(shot('left'), "import {mouthAt} from 'footprint-storyreel/acting';\nimport {ink} from 'other-ink';\nexport const left = {mouthAt, ink};\n");
+  writeFileSync(shot('right'), "import {loadTheme} from 'footprint-storyreel';\nexport const right = {loadTheme};\n");
+  const read = moduleReader('t');
+  assert.deepEqual(read(shot('left')).files, [path.join(pkg, 'src', 'acting.mjs')], 'the subpath, through StoryReel\'s exports');
+  assert.deepEqual(read(shot('left')).packages, ['other-ink@1.0.0'], 'another package by its version — StoryReel never');
+  assert.ok(read(path.join(pkg, 'src', 'acting.mjs')).files.includes(path.join(pkg, 'src', 'ease.mjs')), 'and what that module imports');
+  // The kit draws in place; its sources name each shot's module, as a film's kit does, so a piece's key reads what it imports.
+  const kit = {name: 'local', sources: {entry: spec => [shot(spec.shot)]},
+    story: {compile: spec => ({hang: 1, draw: c => { c.fillStyle = spec.shot === 'left' ? '#c0392b' : '#1f4f9c'; c.fillRect(0, 0, 1600, 900); }})}};
+  const film = await threeFilm({kits: [kit], specs: [{kit: 'local', shot: 'left'}, {kit: 'local', shot: 'right'}, {kit: 'local', shot: 'left'}]});
+  const plan = planPieces(film, {fps: 10, chunkSeconds: 2}), {kitCode, codeFingerprint} = await import('../src/segments.mjs');
+  const keyed = () => { const code = kitCode(film); return {keys: plan.map(seg => pieceKey(film, seg, {recipe: film.recipe, pixels, code, fps: 10}).key), runtime: code.runtime}; };
+  const drawn = (...paths) => plan.map(p => [...p.paths, ...(p.before ?? [])].some(x => paths.includes(x)));
+  const showsLeft = drawn('story', 'stages[1]'), showsRight = drawn('stages[0]');
+  assert.ok(showsRight.some(Boolean) && !showsRight.every(Boolean));
+  const before = keyed(), kitsBefore = codeFingerprint([path.join(app, 'kit')]);
+  assert.deepEqual(before.runtime, [], 'StoryReel\'s own run-time loads (its themes, by name) are not the kit\'s to name');
+  // A release that changes no code the kit uses: only the installed version string.
+  install(pkg, {...manifest, version: '99.0.0'});
+  const bumped = keyed();
+  assert.deepEqual(bumped.keys, before.keys, 'only StoryReel\'s version changed: every piece is kept');
+  assert.equal(codeFingerprint([path.join(app, 'kit')]), kitsBefore, 'and the kits\' fingerprint (the key of a kit with no sources) with them');
+  // An edit to a StoryReel module a shot reaches: the pieces that show that shot.
+  const edit = file => writeFileSync(path.join(pkg, 'src', file), readFileSync(path.join(pkg, 'src', file), 'utf8') + '\nexport const edited = 1;\n');
+  edit('theme.mjs');
+  const themed = keyed();
+  assert.deepEqual(changed(bumped.keys, themed.keys), showsRight, 'a module only the root import reaches: only the pieces that show its shot');
+  edit('ease.mjs');
+  const eased = keyed();
+  assert.ok(showsLeft.every((shows, i) => !shows || eased.keys[i] !== themed.keys[i]), 'a module the subpath\'s module imports: every piece that shows its shot');
+  // Another package is still keyed by its version.
+  install(other, {name: 'other-ink', version: '1.0.1', exports: './index.mjs'});
+  assert.deepEqual(changed(eased.keys, keyed().keys), showsLeft, 'another package\'s new version: the pieces whose shot imports it');
 });
 
 test('the thought cloud and cloudBurst are catalog pieces: an edit to them redraws only the pieces a framed world or the burst is in', async t => {

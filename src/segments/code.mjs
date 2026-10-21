@@ -19,10 +19,10 @@ export const CODE_EXTENSIONS = Object.freeze(['.mjs', '.js', '.cjs', '.ts', '.mt
  * (codegraph.mjs): relative imports, resolved and read, transitively (a helper two folders up that a kit imports is the
  * kit's code too), TypeScript as well as JavaScript; the files a package linked or in a workspace holds; an asset a
  * module loads by `new URL('…', import.meta.url)` — never inside node_modules — and each package in node_modules by its
- * installed version (`pkg@1.2.3`), so an approval misses no change the kit draws with. A cycle is read once. What it
- * cannot follow it lists, never throws on: a relative import that leads nowhere (`missing`) and an import chosen at run
- * time (`unfollowed`) — name a kit's asset folder in `paths` when it loads files another way. codeCover(fingerprint)
- * gives it all back (the making-of record lists it).
+ * installed version (`pkg@1.2.3`) but StoryReel, read by its content (codegraph.mjs · STORYREEL), so an approval misses
+ * no change the kit draws with. A cycle is read once. What it cannot follow it lists, never throws on: a relative import
+ * that leads nowhere (`missing`) and an import chosen at run time (`unfollowed`) — name a kit's asset folder in `paths`
+ * when it loads files another way. codeCover(fingerprint) gives it all back (the making-of record lists it).
  */
 export function codeFingerprint(paths, {extensions = CODE_EXTENSIONS} = {}) {
   const given = filesUnder(paths, extensions), read = moduleReader('codeFingerprint'), files = new Set(), packages = new Set(), missing = [], unfollowed = [], unparsed = [];
@@ -66,10 +66,10 @@ export const codeCover = fingerprint => COVERS.get(fingerprint) ?? null;
 /**
  * Code per segment, for a kit that draws many shots: `sources(entry)` names the files that draw a recipe entry (its
  * shot's module, say), and a segment's code is the fingerprint of the files its own entries name, everything they
- * import (relative imports followed; a package by its installed version) and the `shared` files (hashed as they
- * are, their imports not followed: a kit's index imports every shot). Editing one shot then draws again only the
- * segments that show it; the rest are reused. Give the result to segmentedVideo as `code`. (A kit can declare the same
- * itself, `sources: {entry, shared}`, and the default cache uses it with no wiring: segments/kitcode.mjs.)
+ * import (relative imports and StoryReel followed; another package by its installed version) and the `shared` files
+ * (hashed as they are, their imports not followed: a kit's index imports every shot). Editing one shot then draws again
+ * only the segments that show it; the rest are reused. Give the result to segmentedVideo as `code`. (A kit can declare
+ * the same itself, `sources: {entry, shared}`, and the default cache uses it with no wiring: segments/kitcode.mjs.)
  */
 export function sourceCode(sources, {shared = []} = {}) {
   if (typeof sources !== 'function') throw new Error("sourceCode: sources(entry) names the files that draw a recipe entry (e.g. its shot's module)");
@@ -95,9 +95,9 @@ export function asFile(f, who) {
 }
 
 /**
- * The hash of a set of code files: `followed` with everything they import (relative imports and linked packages; a
- * package in node_modules by its installed version), `shared` as they are. Each file is named by its folder and name,
- * so the same kit in two checkouts hashes the same.
+ * The hash of a set of code files: `followed` with everything they import (relative imports, linked packages and
+ * StoryReel itself; another package in node_modules by its installed version), `shared` as they are. Each file is named
+ * by its folder and name, so the same kit in two checkouts hashes the same.
  */
 export function fileSetHash(read, followed, shared = [], {seen = null} = {}) {
   const files = new Map(), packages = new Set(), name = f => `${path.basename(path.dirname(f))}/${path.basename(f)}`;
