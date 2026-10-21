@@ -51,6 +51,18 @@ test('the cloud: a seeded shape inside the box the picture fills, leaning away f
   assert.notDeepEqual(a.lobes.map(l => l.r), b.lobes.map(l => l.r), 'another seed, other scallops');
 });
 
+test('at its default size the cloud keeps a margin from the frame\'s edges: at rest, opening past its size, swollen to burst', () => {
+  for (const corner of THOUGHT_CORNERS) {
+    const cloud = thoughtCloud({corner}), pts = cloud.lobes.flatMap(arcPoints);
+    const margin = ps => Math.min(...ps.map(([x, y]) => Math.min(x, 1600 - x, y, 900 - y))), about = ([ax, ay], k) => pts.map(([x, y]) => [ax + (x - ax) * k, ay + (y - ay) * k]);
+    let open = 0;
+    for (let t = 0; t < THOUGHT_ENTRANCE.settled; t += 1 / 240) open = Math.max(open, thoughtAt(cloud, t).open);
+    assert.ok(margin(pts) >= 50, `${corner}: at rest, ${margin(pts).toFixed(1)} px from the nearest edge`);
+    assert.ok(margin(about(cloud.anchor, open)) >= 36, `${corner}: opening (${open.toFixed(3)} of its size), ${margin(about(cloud.anchor, open)).toFixed(1)} px`);
+    assert.ok(margin(about(cloud.centre, 1.05)) >= 36, `${corner}: swollen to burst (cloudBurst swells it by 5 %), ${margin(about(cloud.centre, 1.05)).toFixed(1)} px`);
+  }
+});
+
 test('the entrance: the trail pops one circle after another from the corner, then the cloud opens; at rest by 1.6 s', () => {
   const cloud = thoughtCloud({}), at = age => thoughtAt(cloud, age);
   assert.deepEqual({...at(0), bulge: null}, {trail: [0, 0, 0], open: 0, bulge: null}, 'nothing before the shot');
@@ -62,7 +74,7 @@ test('the entrance: the trail pops one circle after another from the corner, the
   const most = f => Math.max(...Array.from({length: 480}, (_, i) => f(at(i / 240))));
   for (const i of [0, 1, 2]) { const m = most(s => s.trail[i]); assert.ok(m > 1.02 && m < 1.12, `circle ${i} overshoots a little (${m.toFixed(3)})`); }
   const open = most(s => s.open);
-  assert.ok(open > 1.01 && open < 1.06, `the cloud overshoots a little (${open.toFixed(3)})`);
+  assert.ok(open > 1.01 && open < 1.04, `the cloud overshoots a little (${open.toFixed(3)})`);
   assert.deepEqual(at(THOUGHT_ENTRANCE.settled), {trail: [1, 1, 1], open: 1, bulge: null}, 'at rest: exactly the cloud');
   assert.ok(Math.abs(at(THOUGHT_ENTRANCE.settled - 1e-3).open - 1) < 1e-3, 'and no jump onto it');
   // In pixels: early on only the corner's circle is drawn (paper at its middle); the rest of the frame is untouched.
@@ -127,10 +139,19 @@ test('in a film: a world stage takes a frame, its entrance timed from its own sc
   const settled = frameAt(f, b + 2);
   assert.ok(blue(settled.px(cloud.centre)), 'then the blue world, in it');
   assert.ok(!blue(settled.px([30, 870])), 'and the page round it (the trail is toward the top right)');
-  // The burst, a hair before its pop: the trail and the page have given way to the green world; the cloud has paled.
-  const start = c - .75, pop = frameAt(f, start + .29);
-  for (const {c: at} of cloud.trail) assert.ok(pop.px(at)[1] > 200 && pop.px(at)[0] < 60, `the trail at ${at.map(Math.round)} has gone with the outside`);
+  // The burst: until its pop, nothing of the green world shows; the thought's own paper and trail stay round the cloud
+  // as the memory pales. After it, the green world fades up round the cloud and is uncovered in it.
+  const start = c - .75, isGreen = ([r, g, bl]) => g > 150 && r < 100 && bl < 100;
+  for (const e of [.05, .15, .29]) {
+    const before = frameAt(f, start + e); let green = 0;
+    for (let i = 0; i < before.data.length; i += 4) if (isGreen([before.data[i], before.data[i + 1], before.data[i + 2]])) green++;
+    assert.equal(green, 0, `at ${e} of the burst, before its pop, no pixel of the next world`);
+  }
+  const pop = frameAt(f, start + .29);
+  for (const {c: at} of cloud.trail) assert.ok(!isGreen(pop.px(at)) && pop.px(at).every(v => v > 200), `the trail at ${at.map(Math.round)} is still the thought's (${pop.px(at)})`);
   assert.ok(pop.px(cloud.centre).every(v => v > 230), `the memory has paled into the cloud's paper (${pop.px(cloud.centre)})`);
+  const after = frameAt(f, start + .8);
+  for (const {c: at} of cloud.trail) assert.ok(isGreen(after.px(at)), `after the pop the trail at ${at.map(Math.round)} has gone with the burst (${after.px(at)})`);
   assert.ok(f.sounds.some(s => s.type === 'tap' && Math.abs(s.time - (start + .3)) < 1e-9), 'its sound on the pop');
   assert.ok(frameAt(f, c + .5).px(cloud.centre)[1] > 200, 'after it, the green world');
 });

@@ -238,17 +238,21 @@ test('morph: a box becomes a box, from boxes it is given or from the things it n
 
 test('cloudBurst: the cloud swells and pales, pops on principles.mjs\'s pop, and its puffs clear the middle first', () => {
   const cloud = thoughtCloud({}), [cx, cy] = cloud.centre, card = hex(paperTokens(paper).paper);
-  // Before the pop: outside the cloud the new picture has all but arrived; inside, the memory has paled into the paper.
+  // Until the pop the new picture is nowhere, on a plain shot as after a thought: round the cloud the old picture stays
+  // whole, and in the cloud the memory pales into the paper (the paper and the ink have no more blue than green).
+  const incoming = data => { let n = 0; for (let i = 0; i < data.length; i += 4) if (data[i + 2] > data[i + 1] + 30) n++; return n; };
+  for (const e of [.02, .1, .2, .29]) assert.equal(incoming(drawn('cloudBurst', e).data), 0, `at ${e}, before the pop, no pixel of the new picture`);
+  for (const e of [.1, .29]) assert.deepEqual(drawn('cloudBurst', e).px(30, 30), RED, `at ${e}, round the cloud: the old picture, untouched`);
   const late = drawn('cloudBurst', .29);
-  assert.ok(near(late.px(30, 30), BLUE, 4), `outside the cloud, the new picture (${late.px(30, 30)})`);
-  assert.ok(near(late.px(cx, cy), card, 6), `inside, the cloud's paper (${late.px(cx, cy)})`);
-  const early = drawn('cloudBurst', .1);
-  assert.deepEqual(early.px(cx, cy), RED, 'early on, the old picture inside the cloud, untouched');
-  assert.ok(early.px(30, 30)[0] > 100 && early.px(30, 30)[2] > 40, `and outside, the two pictures crossing (${early.px(30, 30)})`);
-  // The swell: a point just past the cloud's edge at rest is inside it as it swells to the pop.
+  assert.ok(near(late.px(cx, cy), card, 6), `just before the pop, in the cloud: its paper (${late.px(cx, cy)})`);
+  assert.deepEqual(drawn('cloudBurst', .1).px(cx, cy), RED, 'early on, the old picture in the cloud too');
+  // The swell: a point just past the cloud's edge at rest is inside it as it swells to the pop (its paper, not the old picture).
   const [ex, ey] = cloud.anchor, past = [cx + (ex - cx) * 1.03, cy + (ey - cy) * 1.03];
-  assert.ok(late.px(...past)[0] > 200, `swollen, the cloud covers ${past.map(Math.round)}: its paper, not the new picture (${late.px(...past)})`);
-  // After the pop the middle clears first: the new picture in the middle while puffs still drift at the edges.
+  assert.ok(late.px(...past)[1] > 200, `swollen, the cloud covers ${past.map(Math.round)} (${late.px(...past)})`);
+  // After the pop, round the cloud the new picture fades up with the burst; the middle clears first.
+  const round = drawn('cloudBurst', .42).px(30, 30);
+  assert.ok(round[0] > 40 && round[2] > 40, `round the cloud, the two crossing after the pop (${round})`);
+  assert.deepEqual(drawn('cloudBurst', .7).px(30, 30), BLUE, 'and the new picture there once the burst has gone by');
   assert.deepEqual(drawn('cloudBurst', .62).px(cx, cy), BLUE, 'the middle, cleared');
   assert.ok(share(drawn('cloudBurst', .45).data, card, 8) > .02, 'puffs of the cloud\'s paper still on screen');
   assert.equal(share(drawn('cloudBurst', .93).data, BLUE, 0), 1, 'the puffs gone before the end');

@@ -1,11 +1,12 @@
 /**
  * Cloud burst: a thought cloud pops, and the next shot is there. The cloud is thought.mjs's: the one a "frame":
  * "thought" shot is drawn in or, over a plain shot, the same cloud cut from its picture. The same corner, size and seed
- * give the same cloud. It swells a little while everything outside it gives way to the new picture and the memory inside
- * fades into the cloud's paper. Then it pops: the cloud breaks into puffs (its own scallops, and the discs that filled
- * it), which fly out, grow and fade, leaving the new picture. The pop keeps principles.mjs's one-shot timing
- * (BURSTS.pop: a 60 ms rise, then a fall to a third every 180 ms). The puffs travel as far as the pop has pushed them,
- * fast at first, then drifting. Its sound lands on the pop (soundAt).
+ * give the same cloud. Until it pops, the new shot is nowhere: the old one stays whole round the cloud (a thought shot's
+ * own paper and trail), while the cloud swells a little and the memory in it fades into the cloud's paper. Then it pops:
+ * the cloud breaks into puffs (its own scallops, and the discs that filled it) which drift out and shrink away, and the
+ * new shot is uncovered where they part, while round the cloud it fades up with the burst. The pop keeps principles.mjs's
+ * one-shot timing (BURSTS.pop: a 60 ms rise, then a fall to a third every 180 ms): the puffs travel as far as the pop has
+ * pushed them, fast at first, then drifting. Its sound lands on the pop (soundAt).
  */
 import {W, H, smooth} from '../../frame.mjs';
 import {rgba} from '../../colour.mjs';
@@ -15,8 +16,11 @@ import {paperTokens} from './tokens.mjs';
 import {seeded} from './seeded.mjs';
 
 const TAU = 2 * Math.PI;
-/** Where in the change the cloud pops, and how much it has swelled by then; when the memory fades into the cloud's paper; when the puffs fade out. */
-const POP = .3, SWELL = .05, PALE = Object.freeze([.14, .3]), FADE = Object.freeze([.6, .92]);
+/**
+ * Where in the change the cloud pops, and how much it has swelled by then; when the memory fades into the cloud's paper;
+ * how long after the pop the new shot takes to fade up round the cloud; when the last puffs fade out.
+ */
+const POP = .3, SWELL = .05, PALE = Object.freeze([.14, .3]), AROUND = .35, FADE = Object.freeze([.6, .92]);
 /** The change's clock at its default length, 1 s: the pop's timing runs on it, so a longer change stretches the pop with it. */
 const SECONDS = 1;
 /** The cloud's ink line (thought.mjs draws it 4.5 wide). */
@@ -83,15 +87,23 @@ function edgeDistance([x, y], poly) {
 /** ctx scaled by s about a point. */
 const scaledAbout = (ctx, [x, y], s) => { ctx.translate(x, y); ctx.scale(s, s); ctx.translate(-x, -y); };
 
-/** Before the pop: the cloud swells; outside it the old picture gives way to the new; inside, the memory fades into the cloud's paper. */
-function swelling(ctx, {from, ghost}, cloud, e, paper, ink) {
-  const outside = smooth(0, POP, e), s = 1 + SWELL * (e / POP) ** 2, pale = smooth(PALE[0], PALE[1], e);
-  if (outside < 1) ghost(1 - outside, from);
+/**
+ * Before the pop: the old shot, whole, and over it the cloud cut from it, swelling, the memory in it paling into the
+ * cloud's paper. The new shot is not seen anywhere yet.
+ */
+function swelling(ctx, from, cloud, e, paper, ink) {
+  const s = 1 + SWELL * (e / POP) ** 2, pale = smooth(PALE[0], PALE[1], e);
+  from(ctx);
   ctx.save(); scaledAbout(ctx, cloud.centre, s); cloudPath(ctx, cloud); ctx.clip(); from(ctx);
   if (pale > 0) { ctx.fillStyle = rgba(paper, pale); ctx.fillRect(0, 0, W, H); }
   ctx.restore();
-  // The outline, drawn in as the outside goes (a thought shot's own outline is under it already).
-  ctx.save(); scaledAbout(ctx, cloud.centre, s); ctx.lineWidth = LINE; ctx.lineJoin = 'round'; ctx.strokeStyle = rgba(ink, outside); cloudPath(ctx, cloud); ctx.stroke(); ctx.restore();
+  // The outline, drawn in as the cloud swells (over a plain shot it appears; a thought shot's own is under it already).
+  ctx.save(); scaledAbout(ctx, cloud.centre, s); ctx.lineWidth = LINE; ctx.lineJoin = 'round'; ctx.strokeStyle = rgba(ink, smooth(0, POP, e)); cloudPath(ctx, cloud); ctx.stroke(); ctx.restore();
+}
+/** ctx clipped to everything round the cloud (swollen by s about its middle): the frame with the cloud cut out. */
+function aroundCloud(c, cloud, s) {
+  c.save(); scaledAbout(c, cloud.centre, s); cloudPath(c, cloud); c.restore();   // (the path outlives restore: only the transform is put back)
+  c.rect(0, 0, W, H); c.clip('evenodd');
 }
 
 /**
@@ -109,11 +121,16 @@ function drawPuffs(c, cloud, e, paper, ink) {
   for (const p of shown) { c.beginPath(); c.arc(p.x, p.y, p.r, 0, TAU); c.fill(); }
 }
 
+/**
+ * The new shot under everything; round the cloud the old one, fading as the burst goes (AROUND); in the cloud's place
+ * the puffs, which uncover the new shot as they part.
+ */
 function cloudBurst(ctx, {e, from, to, p, ghost, theme}) {
   const t = paperTokens(theme), paper = p.color ?? t.paper, ink = p.ink ?? t.ink, cloud = thoughtCloud(p);
+  if (e < POP) { swelling(ctx, from, cloud, e, paper, ink); return; }
   to(ctx);
-  if (e < POP) { swelling(ctx, {from, ghost}, cloud, e, paper, ink); return; }
-  const alpha = 1 - smooth(FADE[0], FADE[1], e);
+  const old = 1 - smooth(POP, POP + AROUND, e), alpha = 1 - smooth(FADE[0], FADE[1], e);
+  if (old > 0) ghost(old, c => { c.save(); aroundCloud(c, cloud, 1 + SWELL); from(c); c.restore(); });
   if (alpha > 0) ghost(alpha, c => drawPuffs(c, cloud, e, paper, ink));
 }
 

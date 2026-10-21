@@ -42,9 +42,13 @@ export const THOUGHT_SETTINGS = Object.freeze({
 
 // ── The cloud's shape ──────────────────────────────────────────────────────────────────────────────────────────
 
-/** The frame's corners, and the most the cloud leans away from the trail's (px across, px down). */
+/**
+ * The frame's corners, and the most the cloud leans away from the trail's (px across, px down): enough to leave the trail
+ * room, little enough that at the default size the cloud keeps a margin from the far edge even as it overshoots opening
+ * and swells before a burst.
+ */
 const CORNER_AT = Object.freeze({'bottom-left': [0, H], 'bottom-right': [W, H], 'top-left': [0, 0], 'top-right': [W, 0]});
-const LEAN = Object.freeze([80, 45]);
+const LEAN = Object.freeze([80, 28]);
 /** The scallops: how many, the curve their valleys sit on (a superellipse: 2 is an ellipse, higher is squarer), how deep each bulges (a share of its width). */
 const LOBES = 22, SQUARENESS = 2.8, DEPTH = Object.freeze([.26, .4]), SAMPLES = 720;
 /** The trail, from the corner out: each circle's radius, and how far along it sits from the cloud's edge toward the corner. */
@@ -135,8 +139,8 @@ function trailOf(edge, [kx, ky], away) {
 
 /** The entrance, in seconds from the shot's start: each trail circle's pop (from the corner out), the cloud's opening, the step between its scallops, and when all of it has settled. */
 export const THOUGHT_ENTRANCE = Object.freeze({trail: Object.freeze([0, .14, .28]), cloud: .38, scallops: .02, settled: 1.6});
-/** The circles pop with a small overshoot (about 8 %); the cloud opens a little softer (about 4 %). */
-const POP = Object.freeze({k: 260, d: 20}), OPEN = Object.freeze({k: 190, d: 20});
+/** The circles pop with a small overshoot (about 8 %); the cloud opens a little softer (about 2.5 %). */
+const POP = Object.freeze({k: 260, d: 20}), OPEN = Object.freeze({k: 190, d: 21});
 
 /**
  * The cloud `age` seconds into its shot: {trail: [three circles' sizes, from the corner out], open (the cloud's size

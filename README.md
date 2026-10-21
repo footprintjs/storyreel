@@ -276,9 +276,10 @@ with a trail of three little circles toward a corner (no one is thinking it: rem
 
 `"frame"` goes on the story or on a `"type": "world"` stage, beside `world`. A paper stage has the page to itself, and a
 film with a `pushIn` keeps its page, so both refuse one. The world is drawn at the cloud's scale, so the cloud is a
-window onto all of it but its corners: keep its words a little in from its edges. As the shot starts, the trail's
-circles pop up one after another from the corner, each with a small overshoot, and then the cloud puffs open out of the
-trail (about 1.4 s). `{"type": "thought", …}` takes:
+window onto all of it but its corners: keep its words a little in from its edges. At the default size the cloud keeps
+a margin from the frame's edges, even as it opens and as it swells to burst; at 0.9 it all but fills the frame. As the
+shot starts, the trail's circles pop up one after another from the corner, each with a small overshoot, and then the
+cloud puffs open out of the trail (about 1.4 s). `{"type": "thought", …}` takes:
 
 | setting | what it is | default |
 |---|---|---|
@@ -287,8 +288,10 @@ trail (about 1.4 s). `{"type": "thought", …}` takes:
 | `seed` | the scallops, 0–10000: the same seed is the same cloud on every frame | `3` |
 | `color`, `ink` | the cloud's paper and its outline | the theme's card and ink |
 
-`cloudBurst` ends the thought: the cloud swells, pales and pops into puffs over the next shot. Given the same `corner`,
-`size` and `seed`, it pops the very cloud the frame drew. A bad setting refuses, naming what it takes:
+`cloudBurst` ends the thought: the cloud swells, pales and pops into puffs. Until it pops, nothing of the next shot
+shows: the thought's own paper and trail stay round the cloud. After the pop, the next shot is uncovered where the puffs
+part and fades up round the cloud. Given the same `corner`, `size` and `seed`, it pops the very cloud the frame drew. A
+bad setting refuses, naming what it takes:
 `stage dream: frame.corner is where the trail of little circles points: bottom-left, bottom-right, top-left, top-right, not "north"`.
 
 ### Transitions
@@ -305,7 +308,7 @@ recipe names:
 | cut | `cut` | the new shot, whole, on the scene's first frame | a jump the viewer should feel: a new place, a punchline, a contrast | – | 0 | – |
 | dissolve | `fade` | a cross-fade (the default entrance) | time passing; a gentle change of subject | – | 0.8 s | – |
 | | `dip` | out to a colour, then in from it: the two pictures never show at once | the end of a part: a chapter break, a breath before something new | `color` (`#000000`) | 1 s | – |
-| | `cloudBurst` | the old picture, in a thought cloud, swells a little and pales into the cloud's paper, then pops: the cloud breaks into puffs that drift out and fade over the new picture (a plain picture gets the same cloud cut from it) | leave a memory or a daydream: back to now (after a `"frame": "thought"` shot) | `corner` (`bottom-left`), `size` (`0.8`), `seed` (`3`): the cloud a thought frame with the same three draws; `color`, `ink` (null: the theme's card and ink) | 1 s | whoosh |
+| | `cloudBurst` | the old picture, in a thought cloud, swells a little and pales into the cloud's paper, then pops: the cloud breaks into puffs that drift out and shrink away, uncovering the new picture, which fades up round the cloud with the burst (none of it shows before the pop; a plain picture gets the same cloud cut from it) | leave a memory or a daydream: back to now (after a `"frame": "thought"` shot) | `corner` (`bottom-left`), `size` (`0.8`), `seed` (`3`): the cloud a thought frame with the same three draws; `color`, `ink` (null: the theme's card and ink) | 1 s | whoosh |
 | wipe | `wipe` | an edge crosses the frame | the next item in a list | `from`: `left` · `right` · `top` · `bottom` (`left`) | 0.8 s | slide |
 | | `split` | doors open from the middle | a reveal: what was behind the doors | `line`: `vertical` · `horizontal` (`vertical`) | 0.8 s | slide |
 | | `clock` | a clock hand sweeps from twelve | time passing, by the clock | – | 0.9 s | slide |
