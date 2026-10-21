@@ -29,13 +29,14 @@ const VIGNETTE = .5;
  */
 export function readBackdrop(value, where) {
   if (value === undefined || value === null) return null;
-  const fix = `a hex colour such as "#111111" (flat), or {"color": "#2b2622", "vignette": 0.5} (lighter near the cloud, darker at the frame's edges; vignette 0–1), or null (the shot's own ground)`;
+  const refuse = () => new Error(`${where}: frame.backdrop is the ground round the cloud: a hex colour such as "#111111" (flat), or {"color": "#2b2622", "vignette": 0.5} (lighter near the cloud, darker at the frame's edges; vignette 0–1), or null (the shot's own ground), not ${shown(value)}`);
   if (typeof value === 'string') {
-    if (!isHex(value)) throw new Error(`${where}: frame.backdrop is the ground round the cloud: ${fix}, not ${shown(value)}`);
+    if (!isHex(value)) throw refuse();
     return Object.freeze({color: value, vignette: 0});
   }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${where}: frame.backdrop is the ground round the cloud: ${fix}, not ${shown(value)}`);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw refuse();
   for (const key of Object.keys(value)) if (key !== 'color' && key !== 'vignette') throw new Error(`${where}: frame.backdrop has unsupported key ${key} (a backdrop takes color and vignette)`);
+  if (value.color === undefined) throw new Error(`${where}: frame.backdrop needs color: a hex colour such as "#2b2622" (and vignette, 0–1, if it should be lighter near the cloud)`);
   if (!isHex(value.color)) throw new Error(`${where}: frame.backdrop.color must be a hex colour such as "#2b2622", not ${shown(value.color)}`);
   const vignette = value.vignette ?? VIGNETTE;
   if (!(typeof vignette === 'number' && vignette >= 0 && vignette <= 1)) throw new Error(`${where}: frame.backdrop.vignette is how much lighter near the cloud and darker at the edges: a number 0–1 (0 is flat; ${VIGNETTE} by default), not ${shown(vignette)}`);

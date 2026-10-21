@@ -227,7 +227,7 @@ export type Watching = {kind: 'burst'; path: string; where: string; at: number; 
  * of picture). On the story or a "type": "world" stage only (another stage refuses it). A cloudBurst out of it pops the
  * same cloud: the settings it leaves out are the frame's.
  */
-export type WorldFrame = 'thought' | {type: 'thought'; corner?: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right'; size?: number; seed?: number; color?: string | null; ink?: string | null; backdrop?: string | {color: string; vignette?: number} | null};
+export type WorldFrame = 'thought' | {type: 'thought'; corner?: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right'; size?: number; seed?: number; color?: string | null; ink?: string | null; backdrop?: string | {color: string; vignette?: number | null} | null};
 
 /** The built-in transitions (transitions.mjs · TRANSITIONS). */
 export type TransitionName = 'cut' | 'fade' | 'dip' | 'cloudBurst' | 'wipe' | 'split' | 'clock' | 'torn' | 'eraser' | 'iris' | 'inkBleed' | 'ringIris'

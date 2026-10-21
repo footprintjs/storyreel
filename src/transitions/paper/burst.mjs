@@ -24,6 +24,8 @@ const TAU = 2 * Math.PI;
  * when the last puffs fade out.
  */
 const POP = .3, SWELL = .05, PALE = Object.freeze([.14, .3]), AROUND = .3, FADE = Object.freeze([.6, .92]);
+/** How much of the old shot is left round the cloud at e: all of it until the pop, then falling away over AROUND, eased out (fast as the puffs fly, then soft). */
+const fallAway = e => (e < POP ? 1 : (1 - Math.min(1, (e - POP) / AROUND)) ** 2);
 /** Its default length, seconds: the change's clock the pop's timing runs on (a recipe's longer change stretches it). */
 const LENGTH = 1;
 
@@ -121,7 +123,7 @@ function cloudBurst(ctx, {e, from, to, p, ghost, theme}) {
   const t = paperTokens(theme), paper = p.color ?? t.paper, ink = p.ink ?? t.ink, cloud = thoughtCloud(p);
   if (e < POP) { swelling(ctx, from, cloud, e, paper, ink); return; }
   to(ctx);
-  const old = (1 - Math.min(1, (e - POP) / AROUND)) ** 2, alpha = 1 - smooth(FADE[0], FADE[1], e);
+  const old = fallAway(e), alpha = 1 - smooth(FADE[0], FADE[1], e);
   if (old > 0) ghost(old, c => { c.save(); aroundCloud(c, cloud, 1 + SWELL); from(c); c.restore(); });
   if (alpha > 0) ghost(alpha, c => drawPuffs(c, cloud, e, paper, ink));
 }

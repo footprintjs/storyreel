@@ -211,6 +211,7 @@ test('a backdrop: the ground round the cloud — dark in with the entrance, only
   refuses(7, /frame.backdrop is the ground round the cloud: .*, not 7/);
   refuses({colour: '#111111'}, /frame.backdrop has unsupported key colour \(a backdrop takes color and vignette\)/);
   refuses({color: 'dark'}, /frame.backdrop.color must be a hex colour such as "#2b2622", not "dark"/);
+  refuses({}, /the story: frame.backdrop needs color: a hex colour such as "#2b2622"/);
   refuses({color: '#111111', vignette: 2}, /frame.backdrop.vignette is how much lighter near the cloud and darker at the edges: a number 0–1 \(0 is flat; 0.5 by default\), not 2/);
   // In a film: the dark darkens in as the trail rises, is drawn only round the cloud, and the burst takes it away on its pop.
   const f = await film({story: {kit: 'red', frame: {type: 'thought', backdrop: '#111111'}}, stages: [{type: 'world', scene: 'b', enter: 'cloudBurst', world: {kit: 'blue'}}]});
@@ -219,6 +220,7 @@ test('a backdrop: the ground round the cloud — dark in with the entrance, only
   const darkening = [.05, .4, 1].map(t => lum(frameAt(f, t).px(corner)));
   assert.ok(darkening[0] > darkening[1] && darkening[1] > darkening[2], `it darkens in with the entrance (${darkening})`);
   assert.ok(darkening[0] > 600, `not a hard cut: at 0.05 s the page still shows (${darkening[0]})`);
+  assert.ok(frameAt(f, .76).px(corner).every(v => Math.abs(v - 0x11) <= 2), `dark by 0.75 s, as the cloud opens (${frameAt(f, .76).px(corner)})`);
   const rest = frameAt(f, 2);
   for (let y = 4; y < 900; y += 22) for (let x = 4; x < 1600; x += 22) {
     if (away([x, y])) assert.ok(rest.px([x, y]).every(v => Math.abs(v - 0x11) <= 2), `round the cloud at (${x}, ${y}): the backdrop (${rest.px([x, y])})`);
@@ -228,6 +230,9 @@ test('a backdrop: the ground round the cloud — dark in with the entrance, only
   // The burst: before its pop the dark is still there; after it, nothing of it is left on the next shot.
   const start = f.clock.start('b') - .75, blueish = ([r, g, b]) => b > 200 && r < 40 && g < 40;
   assert.ok(frameAt(f, start + .29).px(corner).every(v => Math.abs(v - 0x11) <= 2), 'just before the pop, still the backdrop');
+  // Mid-fall, 0.15 s after the pop, the old shot round the cloud is a quarter left (eased out: fast as the puffs fly).
+  const mid = frameAt(f, start + .45).px(corner), left = (255 - mid[2]) / (255 - 0x11);
+  assert.ok(left > .15 && left < .35, `mid-fall, ${left.toFixed(2)} of the dark left round the cloud`);
   const after = frameAt(f, start + .62); let dark = 0;
   for (let i = 0; i < after.data.length; i += 4) if (after.data[i] + after.data[i + 1] + after.data[i + 2] < 120) dark++;
   assert.equal(dark, 0, '0.32 s after the pop no dark is left anywhere');
@@ -236,6 +241,13 @@ test('a backdrop: the ground round the cloud — dark in with the entrance, only
   const soft = await film({story: {kit: 'red', frame: {type: 'thought', backdrop: {color: '#2b2622', vignette: .8}}}, stages: []}), lit = frameAt(soft, 2);
   const near = [1100, cloud.box[3] + 44], edge = [1594, 894];   // just under the cloud (past its shadow), and the far corner
   assert.ok(lum(lit.px(near)) > lum(lit.px(edge)) + 20, `lighter by the cloud (${lit.px(near)}) than at the edge (${lit.px(edge)})`);
+  // A colour with its own alpha keeps it, flat or vignetted: half-black over white is grey, never black.
+  for (const backdrop of [{color: '#00000080', vignette: 0}, {color: '#00000080', vignette: .2}]) {
+    const c = createCanvas(160, 90), x = c.getContext('2d'); x.scale(.1, .1); x.fillStyle = '#ffffff'; x.fillRect(0, 0, 1600, 900);
+    drawThought(x, cloud, () => {}, {backdrop});
+    const [r] = x.getImageData(158, 1, 1, 1).data;
+    assert.ok(r > 80 && r < 170, `${JSON.stringify(backdrop)}: the far corner half dark (${r})`);
+  }
 });
 
 test('the README\'s thought table is the settings: each one, with its default', () => {

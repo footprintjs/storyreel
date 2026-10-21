@@ -5,6 +5,7 @@
  * THOUGHT_ENTRANCE.settled on: exactly the cloud, so its regions are exact and nothing creeps.
  */
 import {spring} from '../motion.mjs';
+import {smooth} from '../frame.mjs';
 
 /**
  * The entrance, in seconds from the shot's start: each trail circle's pop (from the corner out), the cloud's opening, the
@@ -12,7 +13,6 @@ import {spring} from '../motion.mjs';
  * when all of it has settled.
  */
 export const THOUGHT_ENTRANCE = Object.freeze({trail: Object.freeze([0, .14, .28]), cloud: .38, scallops: .02, backdrop: Object.freeze([0, .75]), settled: 1.6});
-const smoothstep = u => { const x = Math.max(0, Math.min(1, u)); return x * x * (3 - 2 * x); };
 /** The circles pop with a small overshoot (about 8 %); the cloud opens a little softer (about 2.5 %). */
 const POP = Object.freeze({k: 260, d: 20}), OPEN = Object.freeze({k: 190, d: 21});
 
@@ -27,7 +27,7 @@ export function thoughtAt(cloud, age) {
   if (age >= THOUGHT_ENTRANCE.settled) return {trail: [1, 1, 1], open: 1, bulge: null, backdrop: 1};
   const {trail, cloud: opens, scallops, backdrop: [from, to]} = THOUGHT_ENTRANCE;
   return {trail: trail.map(at => spring(age - at, POP)), open: spring(age - opens, OPEN),
-    bulge: cloud.rank.map(k => .4 + .6 * spring(age - opens - scallops * k, POP)), backdrop: smoothstep((age - from) / (to - from))};
+    bulge: cloud.rank.map(k => .4 + .6 * spring(age - opens - scallops * k, POP)), backdrop: smooth(from, to, age)};
 }
 
 /** The cloud's growth at `age` as a camera about its anchor ({sx, sy, z, tx, ty}: regions.mjs · about): what is drawn in it is seen through it. */

@@ -23,7 +23,7 @@
  * The parts, each its own module: recipe.mjs (the frame as written, its settings), shape.mjs (the cloud as numbers),
  * entrance.mjs (its entrance, a pure function of time) and draw.mjs (on a canvas).
  */
-export {THOUGHT_CORNERS, THOUGHT_SETTINGS, readThought, readBackdrop} from './recipe.mjs';
+export {THOUGHT_CORNERS, THOUGHT_SETTINGS, readThought} from './recipe.mjs';
 export {thoughtCloud} from './shape.mjs';
 export {THOUGHT_ENTRANCE, thoughtAt, thoughtCamera} from './entrance.mjs';
 export {cloudPath, drawThought, CLOUD_LINE} from './draw.mjs';

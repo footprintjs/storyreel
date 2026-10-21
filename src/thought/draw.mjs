@@ -4,7 +4,7 @@
  * into the paper at the edge, the ink outline.
  */
 import {W, H, pixelScale, scaleAbout, SHEET_SHADOW} from '../frame.mjs';
-import {rgba, mixColor} from '../colour.mjs';
+import {rgba, mixColor, channels} from '../colour.mjs';
 import {paperTokens} from '../paper-tokens.mjs';
 import {circleOf} from './shape.mjs';
 import {thoughtAt} from './entrance.mjs';
@@ -29,8 +29,8 @@ function shade(ctx, k) {
   ctx.shadowColor = SHEET_SHADOW; ctx.shadowBlur = 26 * k * px; ctx.shadowOffsetY = 8 * k * px;
 }
 
-/** How much lighter the backdrop is round the cloud, and darker at the frame's edges, at full vignette. */
-const VIGNETTE_LIGHT = .22, VIGNETTE_DARK = .45;
+/** How much lighter the backdrop is round the cloud, and darker at the frame's edges, at full vignette; how far past the frame its fill reaches (any camera zooms in, never out). */
+const VIGNETTE_LIGHT = .22, VIGNETTE_DARK = .45, BLEED = W;
 
 /**
  * The cloud on ctx at `age` seconds into its shot (entrance.mjs · thoughtAt): the backdrop round it, if it has one
@@ -54,15 +54,22 @@ export function drawThought(ctx, cloud, paint, {age = Infinity, color = null, in
  */
 function drawBackdrop(ctx, cloud, {color, vignette}, alpha) {
   ctx.save(); ctx.globalAlpha *= alpha;
-  if (vignette > 0) {
-    const [cx, cy] = cloud.centre, [x0, y0, x1, y1] = cloud.box, k = (y1 - y0) / (x1 - x0);
-    const far = Math.max(...[[0, 0], [W, 0], [0, H], [W, H]].map(([x, y]) => Math.hypot(x - cx, (y - cy) / k)));
-    ctx.translate(cx, cy); ctx.scale(1, k);
-    const g = ctx.createRadialGradient(0, 0, (x1 - x0) / 2 * .9, 0, 0, far);
-    g.addColorStop(0, mixColor(color, '#ffffff', VIGNETTE_LIGHT * vignette)); g.addColorStop(1, mixColor(color, '#000000', VIGNETTE_DARK * vignette));
-    ctx.fillStyle = g; ctx.fillRect(-2 * far, -2 * far / k, 4 * far, 4 * far / k);
-  } else { ctx.fillStyle = color; ctx.fillRect(-W, -H, 3 * W, 3 * H); }
+  if (vignette > 0) fillVignette(ctx, cloud, color, vignette);
+  else { ctx.fillStyle = color; ctx.fillRect(-BLEED, -BLEED, W + 2 * BLEED, H + 2 * BLEED); }
   ctx.restore();
+}
+/**
+ * The vignette: a radial gradient from the colour a little lighter at the cloud's valleys to a little darker at the
+ * farthest corner, keeping the colour's own alpha, on an ellipse the frame's (and the cloud's) shape. A gradient is laid
+ * out in the space it is filled in, so the fill happens with y squashed by H/W: a circle there is that ellipse here.
+ */
+function fillVignette(ctx, cloud, color, vignette) {
+  const k = H / W, [cx, cy] = [cloud.centre[0], cloud.centre[1] / k], half = (cloud.box[2] - cloud.box[0]) / 2, a = channels(color)[3];
+  const far = Math.max(...[[0, 0], [W, 0], [0, H], [W, H]].map(([x, y]) => Math.hypot(x - cx, y / k - cy)));
+  ctx.scale(1, k);
+  const g = ctx.createRadialGradient(cx, cy, half * .9, cx, cy, far);
+  g.addColorStop(0, rgba(mixColor(color, '#ffffff', VIGNETTE_LIGHT * vignette), a)); g.addColorStop(1, rgba(mixColor(color, '#000000', VIGNETTE_DARK * vignette), a));
+  ctx.fillStyle = g; ctx.fillRect(-BLEED, -BLEED / k, W + 2 * BLEED, (H + 2 * BLEED) / k);
 }
 function trailCircle(ctx, {c, r}, k, paper, line) {
   ctx.save(); scaleAbout(ctx, c, k);
