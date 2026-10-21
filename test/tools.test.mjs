@@ -158,7 +158,7 @@ test('over MCP a still\'s picture is the one it made, sent on a pipe of its own:
     'import {writeSync} from \'node:fs\';',
     `import project from ${JSON.stringify(pathToFileURL(path.join(project, 'storyreel.config.mjs')).href)};`,
     'process.on(\'message\', () => {});',
-    `if (process.argv[2] === 'still') writeSync(3, ${JSON.stringify(`not json\n{"picture": 5}\n{"picture": "relative.png"}\n`)});`,
+    `if (process.argv[2] === 'still') writeSync(3, ${JSON.stringify(`not json\n{"picture": 5}\n{"picture": "relative.png"}`)});   // no line end: the picture's line still stands alone`,
     `process.on('exit', () => writeSync(1, ${JSON.stringify(`${decoy}\n`)}));`,
     'export default project;', ''].join('\n'));
   const {replies, code} = await mcpSession(['--out', out], [call(1, 'still', {at: 'one+2'}), call(2, 'timeline', {scene: 'two', handles: 0})], {cwd: decoyProject});

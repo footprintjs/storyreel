@@ -79,7 +79,8 @@ delete process.env[PICTURE_FD];
 /** The command line's half (cli.mjs, after a still or a strip): the picture's path, as one line on fd 3 when the server opened it. */
 export function sendPicture(file) {
   if (pictureFd === null || typeof file !== 'string') return;
-  try { writeSync(pictureFd, `${JSON.stringify({picture: file})}\n`); } catch { /* the server is gone: the path is in the text */ }
+  // A line of its own, even after a stray write that did not end one.
+  try { writeSync(pictureFd, `\n${JSON.stringify({picture: file})}\n`); } catch { /* the server is gone: the path is in the text */ }
 }
 
 /** The server's half: the last line on fd 3 that is {"picture": an absolute .png path}, or null; anything else there is ignored. */
