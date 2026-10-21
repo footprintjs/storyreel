@@ -33,7 +33,8 @@ Without `timings` the tools time the film from the voice folder's `timings.json`
    path printed): read it last, for what text cannot say (colour, balance, a glyph drawn as a box, motion feel). For a
    fast move, `npx storyreel strip --at <scene>+<seconds>`: 12<!-- TOOL_DEFAULTS.frames --> frames around it, where a pop or a jump shows.
 
-`npx storyreel <command> --help` gives a command's flags.
+`npx storyreel <command> --help` gives a command's flags. Over MCP (`storyreel mcp`) the project is fixed when the server
+starts (`--config`, `--cwd`, the film's own flags): a call that passes one is refused.
 
 ## The chat edit loop
 

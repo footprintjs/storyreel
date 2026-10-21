@@ -1,12 +1,11 @@
 // The review tools (tools.mjs) and the command line (cli.mjs): read first (timeline, review), look last (part, still).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {spawnSync} from 'node:child_process';
-import {existsSync, writeFileSync} from 'node:fs';
+import {spawn, spawnSync} from 'node:child_process';
+import {existsSync, readdirSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath, pathToFileURL} from 'node:url';
 import {loadProject, timeline, review, still, TOOLS, strip} from '../src/tools.mjs';
-import {pictureIn} from '../src/mcp.mjs';
 import {tempDir} from './tmp.mjs';
 
 const project = fileURLToPath(new URL('./fixtures/tools/', import.meta.url)), cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url));
@@ -34,6 +33,12 @@ test('the tools read the project\'s film: its timeline and its review as text, a
   await assert.rejects(strip(p, {at: 'three+1'}), /^Error: strip: "three\+1" is not a moment \(scene\+seconds, or seconds; the scenes are one, two\)$/);
   await assert.rejects(still(p, {}), /^Error: still: name the moments \(at: "scene\+seconds,…"\)$/);
   await assert.rejects(strip(p, {at: 'one+2', frames: 1}), /frames must be a whole number 2–30/);
+  // A moment is exactly scene+seconds: its words are printed as its label, so nothing may ride after them.
+  await assert.rejects(still(p, {at: 'one+2+/elsewhere/secret.png'}), /^Error: still: "one\+2\+\/elsewhere\/secret\.png" is not a moment/);
+  await assert.rejects(strip(p, {at: 'one+\n2'}), /^Error: strip: "one\+\\n2" is not a moment/, 'a control character');
+  await assert.rejects(still(p, {at: 'one+1', width: 60000}), /^Error: still: width must be a whole number of pixels 100–4000, not 60000$/);
+  await assert.rejects(strip(p, {at: 'one+1', width: '12.5'}), /^Error: strip: width must be a whole number of pixels 100–4000, not "12\.5"$/);
+  await assert.rejects(still(p, {at: Array(31).fill('one+1').join(',')}), /^Error: still: at most 30 moments in one picture, not 31$/);
   assert.match(await review(p, {loop: 'true'}), /review \(.*loop.*\):[\s\S]*the loop jumps: the end is not the start/);
 });
 
@@ -69,31 +74,30 @@ test('part: the scenes with their handles, rendered quickly, reviewed first', {s
   assert.match(r.stdout, new RegExp(`${out.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/parts/two\\.mp4 · [\\d.]+ s · made in [\\d.]+ s · checks`));
 });
 
-test('the picture a tool printed is on the last line that starts with its path, and only when the file is there', () => {
-  const dir = tempDir('picture'), png = path.join(dir, 'one two.png');
-  writeFileSync(png, 'png');
-  assert.equal(pictureIn(`${png} · 1 frame: one+2.5 (2.50 s)`), png, 'its path, then " · ", a space in it too');
-  assert.equal(pictureIn(`TREE PIPELINE: executeNodeChildren - Error for id: loop {\n  error: no frame\n}\n${png} · 1 frame`), png, 'a logger\'s lines printed before it');
-  assert.equal(pictureIn(`/nowhere/frame.png · noise\n${png}`), png, 'the last such line, the path alone on it');
-  assert.equal(pictureIn(`${png} · 1 frame\nwrote ${path.join(dir, 'other.png')}`), png, 'a line that does not start with a path names no picture');
-  assert.equal(pictureIn(`${png} · 1 frame\n/nowhere/frame.png · noise`), null, 'the last one is not there: no picture (its path is still in the text)');
-  assert.equal(pictureIn('one two.png · 1 frame'), null, 'a path is absolute, as the tools print it');
-  assert.equal(pictureIn('review: nothing found'), null);
-});
+/**
+ * An MCP server started with `flags` in `cwd`: each message written (an object as JSON-RPC, a string as the line itself),
+ * its input closed, and once it has answered and ended, its replies by id (and all of them, in order), its exit code and
+ * what it said on stderr.
+ */
+async function mcpSession(flags, messages, {cwd = project} = {}) {
+  const server = spawn(process.execPath, [cli, 'mcp', ...flags], {cwd}), replies = new Map(), all = [];
+  let buffered = '', stderr = '';
+  server.stdout.on('data', d => { buffered += d; let i; while ((i = buffered.indexOf('\n')) >= 0) { const m = JSON.parse(buffered.slice(0, i)); buffered = buffered.slice(i + 1); replies.set(m.id, m); all.push(m); } });
+  server.stderr.on('data', d => { stderr += d; });
+  for (const m of messages) server.stdin.write(`${typeof m === 'string' ? m : JSON.stringify({jsonrpc: '2.0', ...m})}\n`);
+  server.stdin.end();
+  const code = await new Promise(r => server.on('close', r));
+  return {replies, all, code, stderr};
+}
+const ask = (id, method, params) => ({id, method, params});
+const call = (id, name, args) => ask(id, 'tools/call', {name, arguments: args});
 
 test('the same tools over MCP (stdio): the handshake, the list with each tool\'s arguments, a call as text, a still as the picture, an error as an error', async () => {
-  const out = tempDir('mcp'), {spawn} = await import('node:child_process');
-  const server = spawn(process.execPath, [cli, 'mcp', '--out', out], {cwd: project}), replies = new Map();
-  let buffered = '';
-  server.stdout.on('data', d => { buffered += d; let i; while ((i = buffered.indexOf('\n')) >= 0) { const m = JSON.parse(buffered.slice(0, i)); buffered = buffered.slice(i + 1); replies.set(m.id, m); } });
-  const ask = (id, method, params) => server.stdin.write(`${JSON.stringify({jsonrpc: '2.0', id, method, params})}\n`);
-  ask(1, 'initialize', {protocolVersion: '2025-06-18', capabilities: {}, clientInfo: {name: 'test', version: '0'}});
-  server.stdin.write(`${JSON.stringify({jsonrpc: '2.0', method: 'notifications/initialized'})}\n`);
-  ask(2, 'tools/list', {}); ask(3, 'tools/call', {name: 'review', arguments: {scene: 'one'}}); ask(4, 'tools/call', {name: 'still', arguments: {at: 'one+2.5'}});
-  ask(5, 'tools/call', {name: 'still', arguments: {at: 'nowhere+1'}}); ask(6, 'resources/list', {}); ask(7, 'tools/call', {name: 'strip', arguments: {at: 'one+2', frames: '4'}});
-  ask(8, 'tools/call', {name: 'still', arguments: {at: 'two+0', config: 'noisy.config.mjs'}});
-  server.stdin.end();
-  await new Promise(r => server.on('close', r));
+  const out = tempDir('mcp');
+  const {replies} = await mcpSession(['--out', out], [
+    ask(1, 'initialize', {protocolVersion: '2025-06-18', capabilities: {}, clientInfo: {name: 'test', version: '0'}}), {method: 'notifications/initialized'},
+    ask(2, 'tools/list', {}), call(3, 'review', {scene: 'one'}), call(4, 'still', {at: 'one+2.5'}),
+    call(5, 'still', {at: 'nowhere+1'}), ask(6, 'resources/list', {}), call(7, 'strip', {at: 'one+2', frames: '4'})]);
   assert.equal(replies.get(1).result.serverInfo.name, 'storyreel'); assert.ok(replies.get(1).result.capabilities.tools);
   const tools = replies.get(2).result.tools;
   assert.deepEqual(tools.map(t => t.name), ['timeline', 'review', 'part', 'changes', 'still', 'strip']);
@@ -102,6 +106,7 @@ test('the same tools over MCP (stdio): the handshake, the list with each tool\'s
   assert.deepEqual(Object.keys(tools.find(t => t.name === 'changes').inputSchema.properties), ['render', 'handles']);
   assert.deepEqual(tools.find(t => t.name === 'strip').inputSchema.required, ['at']);
   assert.deepEqual(tools.find(t => t.name === 'still').inputSchema.required, ['at']);
+  assert.ok(tools.every(t => t.inputSchema.additionalProperties === false), 'a tool takes its own arguments and no others');
   assert.match(replies.get(3).result.content[0].text, /words over words: "Alpha" and "Beta"/);
   const [text, image] = replies.get(4).result.content;
   assert.match(text.text, /stills\/one\+2\.5\.png · 1 frame/); assert.equal(image.type, 'image'); assert.equal(image.mimeType, 'image/png');
@@ -109,7 +114,68 @@ test('the same tools over MCP (stdio): the handshake, the list with each tool\'s
   assert.equal(replies.get(6).error.code, -32601);
   const [stripText, stripImage] = replies.get(7).result.content;
   assert.match(stripText.text, /strip-one\+2\.png · 4 frames/); assert.equal(stripImage.type, 'image', 'a strip comes back as the picture too');
-  const [noisyText, noisyImage] = replies.get(8).result.content;
+  // Another config is named when the server starts, never by a call.
+  const noisy = await mcpSession(['--config', 'noisy.config.mjs', '--out', out], [call(8, 'still', {at: 'two+0'})]);
+  const [noisyText, noisyImage] = noisy.replies.get(8).result.content;
   assert.match(noisyText.text, /^TREE PIPELINE: [\s\S]*\n\/.*stills\/two\+0\.png · 1 frame/, 'the project printed first; the picture\'s line came last');
   assert.equal(noisyImage?.type, 'image', 'and the picture still comes back');
+});
+
+test('over MCP the project is fixed at start: a call that names config or cwd, another argument, or a value read as a flag is refused, runs nothing, and the server answers the next call', async t => {
+  const out = tempDir('mcp-fixed', t), elsewhere = tempDir('mcp-elsewhere', t), ran = path.join(elsewhere, 'ran.txt'), secret = path.join(elsewhere, 'secret.png');
+  // A config that leaves a mark when it is imported: what a call naming it would run. And a picture outside the project.
+  writeFileSync(path.join(elsewhere, 'storyreel.config.mjs'), `import {writeFileSync} from 'node:fs';\nwriteFileSync(${JSON.stringify(ran)}, 'ran');\nexport default {film: () => ({})};\n`);
+  writeFileSync(secret, 'not yours to see');
+  const {replies, all, code} = await mcpSession(['--out', out], [
+    call(1, 'review', {config: path.join(elsewhere, 'storyreel.config.mjs')}), call(2, 'review', {scene: 'one', cwd: elsewhere}),
+    call(3, 'still', {at: 'one+1', out: elsewhere}), call(4, 'timeline', {scene: '--config'}), call(5, 'constructor', {}),
+    call(6, 'timeline', {scene: 'one\u0000'}), ask(7, 'tools/call', null), 'null', call(9, 'still', {at: `one+2+\n${secret}\nx`}),
+    call(10, ['timeline'], {}), `{"jsonrpc":"2.0","method":"ping","id":${'['.repeat(9000)}${']'.repeat(9000)}}`, call(12, 'review', {scene: 'one'})]);
+  const said = id => { assert.ok(replies.has(id), `no answer to call ${id}: the server stopped (exit ${code})`); return replies.get(id).result; };
+  const rule = 'config and cwd are fixed when the MCP server starts; restart it with --config (or --cwd) to use another';
+  for (const id of [1, 2]) assert.deepEqual(said(id), {isError: true, content: [{type: 'text', text: rule}]});
+  assert.equal(said(3).content[0].text, 'still takes no "out" (it takes at, width): the rest — the config, the folder, the film\'s own flags — is fixed when the MCP server starts');
+  assert.equal(said(4).content[0].text, 'timeline: scene "--config" would be read as a flag: a value never starts with --');
+  assert.match(said(5).content[0].text, /^no tool called "constructor"/, 'a name every object inherits is not a tool');
+  assert.equal(said(6).isError, true, 'a value the command line cannot be given (a NUL byte) is an error, not the server\'s end');
+  assert.equal(said(7).isError, true);
+  assert.deepEqual(said(9).content.map(c => c.type), ['text'], 'a moment with a line naming another picture is refused, and no picture comes back');
+  assert.match(said(9).content[0].text, /is not a moment/);
+  assert.match(said(10).content[0].text, /^a tool is named by text/);
+  assert.equal(all.filter(m => m.id === null && m.error?.code === -32600).length, 2, 'a message that is not an object, and an id that is neither a string nor a number');
+  assert.match(said(12).content[0].text, /words over words: "Alpha" and "Beta"/, 'and the server answers the next call');
+  assert.equal(code, 0);
+  assert.equal(existsSync(ran), false, 'the config a call named never ran');
+  assert.deepEqual(readdirSync(elsewhere).sort(), ['secret.png', 'storyreel.config.mjs'], 'and nothing was written in the folder a call named');
+});
+
+test('over MCP a still\'s picture is the one it made, sent on a pipe of its own: a path printed after it, or whatever else the project does, is never taken for it', {timeout: 60_000}, async t => {
+  const out = tempDir('mcp-picture', t), decoyProject = tempDir('mcp-decoy', t), decoy = path.join(decoyProject, 'decoy.png');
+  writeFileSync(decoy, 'a picture the still did not make');
+  // A project that listens for messages (a channel it held open would never let a call end), writes junk on fd 3 (only a
+  // still's command line has the pipe there) and prints another picture's path as the very last line, as it exits.
+  writeFileSync(path.join(decoyProject, 'storyreel.config.mjs'), [
+    'import {writeSync} from \'node:fs\';',
+    `import project from ${JSON.stringify(pathToFileURL(path.join(project, 'storyreel.config.mjs')).href)};`,
+    'process.on(\'message\', () => {});',
+    `if (process.argv[2] === 'still') writeSync(3, ${JSON.stringify(`not json\n{"picture": 5}\n{"picture": "relative.png"}`)});   // no line end: the picture's line still stands alone`,
+    `process.on('exit', () => writeSync(1, ${JSON.stringify(`${decoy}\n`)}));`,
+    'export default project;', ''].join('\n'));
+  const {replies, code} = await mcpSession(['--out', out], [call(1, 'still', {at: 'one+2'}), call(2, 'timeline', {scene: 'two', handles: 0})], {cwd: decoyProject});
+  const [text, image] = replies.get(1).result.content;
+  assert.match(text.text, new RegExp(`\\n${decoy.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), 'the decoy\'s path is the last line of the text');
+  assert.equal(image?.data, readFileSync(path.join(realpathSync(out), 'stills', 'one+2.png')).toString('base64'), 'and the picture is the still\'s own');
+  assert.match(replies.get(2)?.result.content[0].text ?? '', /^two: /, 'a call with no picture is answered too');
+  assert.equal(code, 0);
+});
+
+test('over MCP the project is chosen at start: --cwd is the folder every call runs in, and one that is not a folder refuses to start', async t => {
+  const out = tempDir('mcp-cwd', t), from = tempDir('mcp-from', t), folder = tempDir('mcp-project', t);
+  // A config that reads its storyboard by a path relative to the folder the command line runs in.
+  writeFileSync(path.join(folder, 'storyboard.json'), JSON.stringify({title: 'Near', scenes: [{id: 'near', narration: 'A scene read from beside the config.'}]}));
+  writeFileSync(path.join(folder, 'storyreel.config.mjs'), `import {readFileSync} from 'node:fs';\nimport project from ${JSON.stringify(pathToFileURL(path.join(project, 'storyreel.config.mjs')).href)};\nexport default {film: flags => ({...project.film(flags), storyboard: JSON.parse(readFileSync('storyboard.json', 'utf8'))})};\n`);
+  const {replies} = await mcpSession(['--cwd', folder, '--out', out], [call(1, 'timeline', {})], {cwd: from});
+  assert.match(replies.get(1).result.content?.[0].text ?? JSON.stringify(replies.get(1)), /^the whole film: [\d.]+–[\d.]+ s of [\d.]+ s \(times from its start\)\n0\.00 {2}── near$/m);
+  const none = spawnSync(process.execPath, [cli, 'mcp', '--cwd', 'nowhere'], {cwd: from, encoding: 'utf8', input: ''});
+  assert.equal(none.status, 2); assert.equal(none.stderr.trim(), 'storyreel mcp: --cwd nowhere is not a folder: start the server on the project\'s folder');
 });

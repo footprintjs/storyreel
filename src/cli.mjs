@@ -8,6 +8,8 @@
 import path from 'node:path';
 import {TOOLS, CONFIG, loadProject, loadInputs} from './tools.mjs';
 import {SOUNDS_HELP} from './sounds/cli.mjs';
+// Loaded first, so the picture's channel is taken from the environment before any project code runs (mcp.mjs · sendPicture).
+import {serveMcp, startOf, sendPicture} from './mcp.mjs';
 
 const BEATS_HELP = `  beats    <song> — the song's tempo as the beat map hears it (no project needed): the verdict, the candidate tempi with
            their scores, and why each level of the beat is unsure; an unsure tempo is settled by giving music.bpm
@@ -72,7 +74,7 @@ if (asked) {
     : asked === 'beats' ? `storyreel beats <song> [--bpm n] [--ffmpeg path]\n${BEATS_HELP}`
     : asked === 'breakdown' ? BREAKDOWN_USAGE
     : asked === 'sounds' ? SOUNDS_HELP
-    : asked === 'mcp' ? `storyreel mcp [--flag value …]   serves ${Object.keys(TOOLS).join(', ')} over MCP (stdio); the flags are every call's defaults (e.g. --out work/out)`
+    : asked === 'mcp' ? `storyreel mcp [--flag value …]   serves ${Object.keys(TOOLS).join(', ')} over MCP (stdio); the project (--config, --cwd) and the film's own flags (e.g. --out work/out) are fixed here for every call, and a call passes only its tool's arguments`
     : null;
   if (usage) { console.log(usage); process.exit(0); }
   console.error(`storyreel: "${asked}" is not a command; the commands are ${[...Object.keys(TOOLS), 'beats', 'sounds', 'breakdown', 'mcp'].join(', ')} (storyreel help lists them all)`); process.exit(2);
@@ -84,7 +86,11 @@ for (let i = 0; i < rest.length; i++) {
   const next = rest[i + 1];
   flags[rest[i].slice(2)] = next === undefined || next.startsWith('--') ? 'true' : (i++, next);
 }
-if (command === 'mcp') { const {serveMcp} = await import('./mcp.mjs'); await serveMcp({defaults: flags}); process.exit(0); }
+if (command === 'mcp') {
+  // The project is fixed here, at start (mcp.mjs · startOf): a call can never name another config or folder.
+  let start; try { start = startOf(flags); } catch (e) { console.error(`storyreel mcp: ${e.message}`); process.exit(2); }
+  await serveMcp(start); process.exit(0);
+}
 if (command === 'beats') {
   if (song === null) { console.error(`storyreel beats: name the song (storyreel beats music/theme.mp3)\n\n${BEATS_HELP}`); process.exit(2); }
   const unknown = Object.keys(flags).filter(f => f !== 'bpm' && f !== 'ffmpeg');
@@ -100,13 +106,14 @@ if (command === 'beats') {
 }
 if (!command || command === 'help' || command === '--help' || !TOOLS[command]) {
   const lines = [...Object.entries(TOOLS).map(([name, t]) => `  ${name.padEnd(9)}${t.about}\n${Object.entries(t.args).map(([a, d]) => `             --${a}  ${d}`).join('\n')}`), BEATS_HELP, SOUNDS_HELP];
-  (TOOLS[command] || !command || command === 'help' || command === '--help' ? console.log : console.error)(`storyreel <tool> [--flag value …]   (the film is named in ./${CONFIG}; --config another file)\n\n${lines.join('\n')}\n\nRead first, look last: timeline → review → fix → part → still.\nAfter an edit: changes (what it redraws) → changes --render (only those pieces, and a short clip of them).\nstoryreel mcp [--flag value …] serves the same tools over MCP (stdio); the flags are every call's defaults.\n${BREAKDOWN_USAGE}`);
+  (TOOLS[command] || !command || command === 'help' || command === '--help' ? console.log : console.error)(`storyreel <tool> [--flag value …]   (the film is named in ./${CONFIG}; --config another file)\n\n${lines.join('\n')}\n\nRead first, look last: timeline → review → fix → part → still.\nAfter an edit: changes (what it redraws) → changes --render (only those pieces, and a short clip of them).\nstoryreel mcp [--flag value …] serves the same tools over MCP (stdio); the project (--config, --cwd) and the film's own flags are fixed when it starts.\n${BREAKDOWN_USAGE}`);
   process.exit(command && command !== 'help' && command !== '--help' && !TOOLS[command] ? 2 : 0);
 }
 try {
   // A tool that prepares the film itself (changes: as the full render does) reads the config without compiling it first.
   const project = await (TOOLS[command].compile === false ? loadInputs : loadProject)(flags), out = await TOOLS[command].run(project, flags);
   console.log(typeof out === 'string' ? out : out.text);
+  sendPicture(out?.file);   // run by the MCP server for a still or a strip: the picture's path on its own pipe, never read out of the text
 } catch (e) {
   console.error(`storyreel ${command}: ${e.message}`); process.exit(1);
 }
