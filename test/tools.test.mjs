@@ -1,8 +1,8 @@
 // The review tools (tools.mjs) and the command line (cli.mjs): read first (timeline, review), look last (part, still).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {spawnSync} from 'node:child_process';
-import {existsSync, writeFileSync} from 'node:fs';
+import {spawn, spawnSync} from 'node:child_process';
+import {existsSync, readdirSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {loadProject, timeline, review, still, TOOLS, strip} from '../src/tools.mjs';
@@ -81,19 +81,29 @@ test('the picture a tool printed is on the last line that starts with its path, 
   assert.equal(pictureIn('review: nothing found'), null);
 });
 
-test('the same tools over MCP (stdio): the handshake, the list with each tool\'s arguments, a call as text, a still as the picture, an error as an error', async () => {
-  const out = tempDir('mcp'), {spawn} = await import('node:child_process');
-  const server = spawn(process.execPath, [cli, 'mcp', '--out', out], {cwd: project}), replies = new Map();
-  let buffered = '';
+/**
+ * An MCP server started with `flags` in `cwd`: each message written (an object as JSON-RPC, a string as the line itself),
+ * its input closed, and once it has answered and ended, its replies by id, its exit code and what it said on stderr.
+ */
+async function mcpSession(flags, messages, {cwd = project} = {}) {
+  const server = spawn(process.execPath, [cli, 'mcp', ...flags], {cwd}), replies = new Map();
+  let buffered = '', stderr = '';
   server.stdout.on('data', d => { buffered += d; let i; while ((i = buffered.indexOf('\n')) >= 0) { const m = JSON.parse(buffered.slice(0, i)); buffered = buffered.slice(i + 1); replies.set(m.id, m); } });
-  const ask = (id, method, params) => server.stdin.write(`${JSON.stringify({jsonrpc: '2.0', id, method, params})}\n`);
-  ask(1, 'initialize', {protocolVersion: '2025-06-18', capabilities: {}, clientInfo: {name: 'test', version: '0'}});
-  server.stdin.write(`${JSON.stringify({jsonrpc: '2.0', method: 'notifications/initialized'})}\n`);
-  ask(2, 'tools/list', {}); ask(3, 'tools/call', {name: 'review', arguments: {scene: 'one'}}); ask(4, 'tools/call', {name: 'still', arguments: {at: 'one+2.5'}});
-  ask(5, 'tools/call', {name: 'still', arguments: {at: 'nowhere+1'}}); ask(6, 'resources/list', {}); ask(7, 'tools/call', {name: 'strip', arguments: {at: 'one+2', frames: '4'}});
-  ask(8, 'tools/call', {name: 'still', arguments: {at: 'two+0', config: 'noisy.config.mjs'}});
+  server.stderr.on('data', d => { stderr += d; });
+  for (const m of messages) server.stdin.write(`${typeof m === 'string' ? m : JSON.stringify({jsonrpc: '2.0', ...m})}\n`);
   server.stdin.end();
-  await new Promise(r => server.on('close', r));
+  const code = await new Promise(r => server.on('close', r));
+  return {replies, code, stderr};
+}
+const ask = (id, method, params) => ({id, method, params});
+const call = (id, name, args) => ask(id, 'tools/call', {name, arguments: args});
+
+test('the same tools over MCP (stdio): the handshake, the list with each tool\'s arguments, a call as text, a still as the picture, an error as an error', async () => {
+  const out = tempDir('mcp');
+  const {replies} = await mcpSession(['--out', out], [
+    ask(1, 'initialize', {protocolVersion: '2025-06-18', capabilities: {}, clientInfo: {name: 'test', version: '0'}}), {method: 'notifications/initialized'},
+    ask(2, 'tools/list', {}), call(3, 'review', {scene: 'one'}), call(4, 'still', {at: 'one+2.5'}),
+    call(5, 'still', {at: 'nowhere+1'}), ask(6, 'resources/list', {}), call(7, 'strip', {at: 'one+2', frames: '4'})]);
   assert.equal(replies.get(1).result.serverInfo.name, 'storyreel'); assert.ok(replies.get(1).result.capabilities.tools);
   const tools = replies.get(2).result.tools;
   assert.deepEqual(tools.map(t => t.name), ['timeline', 'review', 'part', 'changes', 'still', 'strip']);
@@ -102,6 +112,7 @@ test('the same tools over MCP (stdio): the handshake, the list with each tool\'s
   assert.deepEqual(Object.keys(tools.find(t => t.name === 'changes').inputSchema.properties), ['render', 'handles']);
   assert.deepEqual(tools.find(t => t.name === 'strip').inputSchema.required, ['at']);
   assert.deepEqual(tools.find(t => t.name === 'still').inputSchema.required, ['at']);
+  assert.ok(tools.every(t => t.inputSchema.additionalProperties === false), 'a tool takes its own arguments and no others');
   assert.match(replies.get(3).result.content[0].text, /words over words: "Alpha" and "Beta"/);
   const [text, image] = replies.get(4).result.content;
   assert.match(text.text, /stills\/one\+2\.5\.png · 1 frame/); assert.equal(image.type, 'image'); assert.equal(image.mimeType, 'image/png');
@@ -109,7 +120,39 @@ test('the same tools over MCP (stdio): the handshake, the list with each tool\'s
   assert.equal(replies.get(6).error.code, -32601);
   const [stripText, stripImage] = replies.get(7).result.content;
   assert.match(stripText.text, /strip-one\+2\.png · 4 frames/); assert.equal(stripImage.type, 'image', 'a strip comes back as the picture too');
-  const [noisyText, noisyImage] = replies.get(8).result.content;
+  // Another config is named when the server starts, never by a call.
+  const noisy = await mcpSession(['--config', 'noisy.config.mjs', '--out', out], [call(8, 'still', {at: 'two+0'})]);
+  const [noisyText, noisyImage] = noisy.replies.get(8).result.content;
   assert.match(noisyText.text, /^TREE PIPELINE: [\s\S]*\n\/.*stills\/two\+0\.png · 1 frame/, 'the project printed first; the picture\'s line came last');
   assert.equal(noisyImage?.type, 'image', 'and the picture still comes back');
+});
+
+test('over MCP the project is fixed at start: a call that names config or cwd, another argument, or a value read as a flag is refused, runs nothing, and the server answers the next call', async t => {
+  const out = tempDir('mcp-fixed', t), elsewhere = tempDir('mcp-elsewhere', t), ran = path.join(elsewhere, 'ran.txt');
+  // A config that leaves a mark when it is imported: what a call naming it would run.
+  writeFileSync(path.join(elsewhere, 'storyreel.config.mjs'), `import {writeFileSync} from 'node:fs';\nwriteFileSync(${JSON.stringify(ran)}, 'ran');\nexport default {film: () => ({})};\n`);
+  const {replies, code} = await mcpSession(['--out', out], [
+    call(1, 'review', {config: path.join(elsewhere, 'storyreel.config.mjs')}), call(2, 'review', {scene: 'one', cwd: elsewhere}),
+    call(3, 'still', {at: 'one+1', out: elsewhere}), call(4, 'timeline', {scene: '--config'}), call(5, 'constructor', {}),
+    call(6, 'timeline', {scene: 'one\u0000'}), ask(7, 'tools/call', null), 'null', call(9, 'review', {scene: 'one'})]);
+  const said = id => { assert.ok(replies.has(id), `no answer to call ${id}: the server stopped (exit ${code})`); return replies.get(id).result; };
+  const rule = 'config and cwd are fixed when the MCP server starts; restart it with --config (or --cwd) to use another';
+  for (const id of [1, 2]) assert.deepEqual(said(id), {isError: true, content: [{type: 'text', text: rule}]});
+  assert.equal(said(3).content[0].text, 'still takes no "out" (it takes at, width): the rest — the config, the folder, the film\'s own flags — is fixed when the MCP server starts');
+  assert.equal(said(4).content[0].text, 'timeline: scene "--config" would be read as a flag: a value never starts with --');
+  assert.match(said(5).content[0].text, /^no tool called "constructor"/, 'a name every object inherits is not a tool');
+  assert.equal(said(6).isError, true, 'a value the command line cannot be given (a NUL byte) is an error, not the server\'s end');
+  assert.equal(said(7).isError, true); assert.equal(replies.get(null).error.code, -32600, 'a message that is not an object');
+  assert.match(said(9).content[0].text, /words over words: "Alpha" and "Beta"/, 'and the server answers the next call');
+  assert.equal(code, 0);
+  assert.equal(existsSync(ran), false, 'the config a call named never ran');
+  assert.deepEqual(readdirSync(elsewhere), ['storyreel.config.mjs'], 'and nothing was written in the folder a call named');
+});
+
+test('over MCP the project is chosen at start: --cwd is the folder every call runs in, and one that is not a folder refuses to start', async t => {
+  const out = tempDir('mcp-cwd', t), from = tempDir('mcp-from', t);
+  const {replies} = await mcpSession(['--cwd', project, '--out', out], [call(1, 'timeline', {scene: 'two', handles: 0})], {cwd: from});
+  assert.match(replies.get(1).result.content[0].text, /^two: [\d.]+–[\d.]+ s of [\d.]+ s \(times from its start\)/);
+  const none = spawnSync(process.execPath, [cli, 'mcp', '--cwd', 'nowhere'], {cwd: from, encoding: 'utf8', input: ''});
+  assert.equal(none.status, 2); assert.equal(none.stderr.trim(), 'storyreel mcp: --cwd nowhere is not a folder: start the server on the project\'s folder');
 });

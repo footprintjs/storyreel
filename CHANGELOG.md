@@ -38,6 +38,14 @@
   they import that draw, by version), no longer by StoryReel's version; another package is still keyed by its version.
   The first render after upgrading to this release redraws once, because the key changes from version to content.
 
+### Security
+
+- **The MCP server's project is fixed when it starts.** A tool call could name a config (a module the server imports
+  and runs) or a folder to work in. Now `config`, `cwd` (the folder each call runs in) and the film's own flags are set
+  only by `storyreel mcp --config … --cwd …`; a call that passes one, an argument its tool does not take, or a value
+  starting with `--` is refused before anything runs. A malformed message, or a value the command line cannot take (a
+  NUL byte), is answered as an error and no longer stops the server.
+
 ## 0.18.0 — quick edits by default, a thought cloud
 
 - **A thought cloud: a world shown as a memory or a daydream.** `"frame": "thought"` on the story or on a world stage
