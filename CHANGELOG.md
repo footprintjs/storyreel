@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.16.0 — 2026-10-20
 
 - **Found sounds: recorded effects, fetched once.** `npx storyreel sounds search "page turn"` lists Openverse's
   openly licensed sounds, one line each (id · title · licence · seconds · source). `npx storyreel sounds add <id> --as
