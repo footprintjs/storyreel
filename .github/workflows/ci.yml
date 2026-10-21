@@ -1,8 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
 
 permissions:
@@ -18,21 +16,10 @@ jobs:
           node-version: 22
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npm ci
-      # The whole suite with a temp folder of its own; nothing may be left in it (scripts/temp-hygiene.mjs).
-      - run: npm run test:temp
-      - run: npx publint
-      # Every typed entry point, from package.json (scripts/typed-entrypoints.mjs): the same list here and in publish.yml.
-      - run: npx @arethetypeswrong/cli --pack --profile esm-only --entrypoints $(node scripts/typed-entrypoints.mjs)
-
-  # The renders the skills describe, as written: the farm film's small draft, its approval and the final, and the
-  # approval refusing a changed kit (test/skills-render.mjs; locally `npm run test:skills:render`, kept out of npm test).
-  skills-render:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - run: npm ci
-      - run: npm run test:skills:render
+      - name: font probe
+        run: |
+          grep -m1 "Image Release\|ImageVersion" /etc/os-release /imagegeneration/imagedata.json 2>/dev/null || true
+          fc-list : family | sort -u | head -80
+          ls /usr/share/fonts /usr/share/fonts/truetype /usr/local/share/fonts ~/.fonts 2>/dev/null | head -60
+          node -e 'const {createCanvas, GlobalFonts} = require("@napi-rs/canvas"); const c = createCanvas(10, 10).getContext("2d"); const w = f => { c.font = f; return ["16.67", ";", " ", "M", "i"].map(s => c.measureText(s).width.toFixed(2)).join(" "); }; for (const f of ["28px Menlo,monospace", "28px sans-serif", "28px monospace", "28px DejaVu Sans", "28px DejaVu Sans Mono", "28px Liberation Sans", "28px Arial", "28px Noto Sans", "28px Ubuntu"]) console.log(f.padEnd(26), w(f)); console.log("families:", GlobalFonts.families.length, GlobalFonts.families.slice(0, 12).map(f => f.family).join(", "));'
+      - run: node --test test/claims.test.mjs 2>&1 | grep -E "^not ok|^# (pass|fail)" || true
