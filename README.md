@@ -1533,6 +1533,36 @@ console.log(result.video.line);
 // picture: 3 of 41 pieces drawn (title: shot code changed; forward 12–18 s: words changed), 38 reused
 ```
 
+### The chat edit loop
+
+An edit asked for in chat is seen in seconds, and only the frames it touched are drawn:
+
+1. Edit the recipe (or a shot's code).
+2. `npx storyreel changes`: one line per changed stretch and why (`0:12–0:18 left · its recipe entries changed`), then the count (`3 of 41 pieces changed (0:16 of 4:17)`); nothing is drawn.
+3. `npx storyreel changes --render`: only those pieces drawn, into the cache; `<out>/changes/review.mp4` plays them back to back with 1 s of the film either side (`--handles`), each labelled with its time, the film's voice under it.
+4. Show that clip; frames of your own choosing: `npx storyreel part --from 0:12 --to 0:18`.
+5. The full render at the end only joins and mixes: it draws nothing the preview drew.
+
+`changes` compares with the full render's cache, so the project's config names that render — makeFilm's own `render`
+and `code`, its video in `out` — and the render script makes it from the same config:
+
+```js
+// storyreel.config.mjs
+export default {film: flags => ({storyboard, recipe, kits, narrationDir, out: 'out/ep1',
+  render: {quality: 'draft', stamp: 'DRAFT', layout: {format: 'landscape', captions: true}}})};
+
+// render.mjs: the full render (its video is out/ep1/film.mp4)
+import {makeFilm} from 'footprint-storyreel';
+import {loadInputs, fullRender} from 'footprint-storyreel/tools';
+await makeFilm(fullRender(await loadInputs({ep: 'ep1'})));
+```
+
+In code, `previewChanges(film, {render})` takes makeFilm's own options and returns the lines (`text`), each piece and
+why it would be drawn, the changed ranges and, with `render: true`, the clip. It paces and compiles the film as makeFilm
+does, so its keys are the full render's; it draws nothing but the changed pieces (a neighbour shown either side is the
+cache's, spot-checked), and the 0.18 cache laws hold for what it keeps. A film fitted to a song (`music`) is refused: the
+fit moves its scenes, and a preview does not run it.
+
 - **The cache** is `<out folder>/.storyreel/segments/<format>-<W>x<H>-<quality>` (one per format, size and quality), a folder
   of its own: a link there is refused, never followed. It is held to 4 GB (`segments: {cap}` in bytes): after each
   render the pieces used longest ago go first, never one that render used. `segments: {dir}` keeps it elsewhere.
@@ -1599,7 +1629,8 @@ console.log(result.video.line);
   picked. Three checks answer with a verdict — no slideshow, drawn parts that hold together, every number with a
   source (`r.verdicts`, `r.verdictText`; [below](#three-verdicts-no-slideshow-parts-that-hold-numbers-with-a-source)).
 - **The same, from the command line — and as a skill for agents.** `npx storyreel timeline | review | part | still |
-  strip --scene <id>` (`strip --at <scene>+<seconds>`: a fast move frame by frame — 12 consecutive frames around
+  strip --scene <id>` (`part --from 0:12 --to 0:18`: a window of the film clock instead of scenes, with the same handles;
+  `changes`: [the chat edit loop](#the-chat-edit-loop)) (`strip --at <scene>+<seconds>`: a fast move frame by frame — 12 consecutive frames around
   the moment, side by side — to catch a pop, a jump or two things crossing) (the film named in the project's `storyreel.config.mjs`: `export default {film: flags =>
   ({storyboard, recipe, kits, root, narrationDir?, pacing?, layout?})}`; every flag also reaches `film()`). The
   package ships the skill that teaches the order — timeline, review, fix, part, one still last — `storyreel-review`,
@@ -1611,7 +1642,7 @@ console.log(result.video.line);
   command takes `--help` (`npx storyreel still --help`). A config's `pacing` paces a film with no voice too (its even
   timings), as `makeFilm` paces the timings it is given.
 - **And as an MCP server,** for any assistant that speaks MCP: `storyreel mcp [--flag value …]` serves the same
-  five tools over stdio (the flags are every call's defaults; a still or a strip comes back as the picture). Each call runs in
+  six tools over stdio, `changes` among them (the flags are every call's defaults; a still or a strip comes back as the picture). Each call runs in
   a fresh process, so an edit to a kit between two calls is always seen:
 
   ```bash
@@ -2583,6 +2614,7 @@ the default because it rarely does; there is no swap repair.
 | `approveFilm({record, by, note?})` · `checkApproval(approval, inputs)` | the approval lock: approve a watched render from its making-of.json, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
 | `checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})` · `FINISHED_CHECK_NAMES` | checks on the finished file: lengths, blank runs, flash frames, hand-overs and joins, the voice, captions (`footprint-storyreel/finished` adds `ffmpegProbe`, `FINISHED_CHECKS`, `FINISHED`) |
 | `footprint-storyreel/breakdown` → `breakdown(videoFile, {out?, beatMap?, beatOptions?, thresholds?, ffmpeg?, probe?, hints?})` · `breakdownText(spec)` · `BREAKDOWN` | a reference film as a spec to match: cuts, fades and dissolves, shots, pacing, motion, lettering (a heuristic), cuts on the beat (`beatMap(video, {ffmpeg})`: the reader reads the video's sound itself; `storyreel breakdown --beats`), judged by `safeBeats`; every verdict with its evidence |
+| `previewChanges(makeFilmOptions, {render?, handles?, clip?})` | what an edit changed before the full render: the changed pieces as ranges and why (`text`); `render: true` draws only those into the cache and writes a review clip ([The chat edit loop](#the-chat-edit-loop)) |
 | `segmentedVideo({store, recipe?, code?, kitsCode?, chunkSeconds?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir, {cap})` · `ffmpegJoin()` · `planSegments(film, {fps})` · `planPieces(film, {fps, chunkSeconds})` · `segmentKey(…)` · `pictureLine(report)` · `codeFingerprint(paths)` · `codeCover(fingerprint)` | re-render only what changed: every render's picture in cached pieces, joined (the default; `renderFilm({…, segments, whole, video})`) |
 | `footprint-storyreel/release` → `makeRelease({targets, post, out, …})` · `loadTarget` · `checkAdapter` · `planProblems` · `TARGET_NAMES` | the post for each platform: the video in its shape, captions, thumbnail, the text to paste, checked against the platform's limits and audience |
 | `readCast(cast)` · `castText(text, cast)` · `withCast(value, cast)` | the cast: `{{role}}` in any text becomes the role's name; kits read the rest from `context.cast` |

@@ -684,6 +684,10 @@ export function renderFilm(options: {
 /** A way to make the picture (segments.mjs): plan the parts, make each one, join them; render runs the three in order. */
 export interface VideoStrategy {
   name: string;
+  /** A segmented strategy: where its pieces are kept; why one() would draw a piece (null: the store keeps it), read before anything is drawn; what weakens its keys. */
+  cache?: string | null;
+  why?(job: unknown, part: unknown): string | null;
+  notes?(job: unknown): string[];
   plan(job: unknown): unknown[];
   one(job: unknown, part: unknown): Promise<unknown>;
   join(job: unknown, done: unknown[]): {file: string; report?: unknown} | Promise<{file: string; report?: unknown}>;
@@ -716,6 +720,8 @@ export interface SegmentOptions {
 export interface SegmentStore { name: string; dir?: string;
   /** A kept piece that passes every check, or null; `into`: a file in the render's working folder that takes the piece first (the bytes checked are the ones joined). */
   get(key: string, options?: {into?: string | null}): {file: string; manifest: Record<string, unknown>} | null; put(key: string, file: string, manifest: Record<string, unknown>): string;
+  /** The manifest of the piece kept under `key`, from the manifest and its size (its bytes are hashed only when it is taken), or null. Without it, get() answers. */
+  kept?(key: string): Record<string, unknown> | null;
   /** The newest manifest of each group `group` names (what each slot was last drawn from: the reasons a piece was drawn again). */
   newest?(group: (manifest: Record<string, unknown>) => string | null | undefined): Map<string, Record<string, unknown>>;
   /** Evict the pieces used longest ago until the store fits its cap, never one in `keep`. */
@@ -826,6 +832,21 @@ export interface MakeFilmOptions<K = Kit | ContextKit> {
   /** Every number on screen has a source (a verdict, with its decide() evidence in the record): 'report' (the default: the record's `claims` lists the numbers with no source) or 'refuse' (one refuses the film before it is drawn, and so does a film whose numbers cannot be checked). */
   claims?: 'report' | 'refuse';
 }
+/** What an edit changed (previewChanges): each planned piece and why the full render would draw it (null: kept), the runs of changed ones on the film clock, and the lines to read. */
+export interface ChangesPreview {
+  text: string; cache: string | null; total: number; seconds: number;
+  pieces: {index: number; f0: number; f1: number; from: number; to: number; frames: number; scenes: string[]; key: string; label: string; why: string | null}[];
+  ranges: {first: number; last: number; f0: number; f1: number; from: number; to: number; scenes: string[]; why: string[]}[];
+  /** With render: the review clip, the pieces drawn (the changed ones; a neighbour only when its kept copy failed its check), and whether all were kept. */
+  clip?: {file: string; seconds: number}; drawn?: {index: number; frames: number; why?: string}[]; kept?: boolean;
+}
+/**
+ * What an edit changed, before the full render: `film` is makeFilm's options for it (out, render and code too), cast,
+ * paced, compiled and planned as makeFilm does, and each piece's key compared with the cache beside its out. `render`:
+ * only the changed pieces drawn and kept (the full render then only joins), and a clip of them back to back with
+ * `handles` (1) seconds of the film either side, each labelled with its time, the voice under it (<out folder>/changes/review.mp4, or `clip`).
+ */
+export function previewChanges(film: MakeFilmOptions<Kit | ContextKit>, options?: {render?: boolean; handles?: number; clip?: string | null}): Promise<ChangesPreview>;
 export function makeFilm(options: MakeFilmOptions<Kit>): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;
 export function makeFilm(options: MakeFilmOptions<Kit | ContextKit>): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; loudness: Loudness; makingOf: string}>;
 

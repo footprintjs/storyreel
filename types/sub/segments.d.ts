@@ -31,3 +31,11 @@ export const CODE_EXTENSIONS: readonly string[];
 /** What draws a piece, part by part, on its own clock (what pieceKey hashes): times near it exact, the rest only the side they are on. */
 export function segmentMaterial(film: import('../index.js').Film, segment: import('../index.js').Segment, options: {recipe: import('../index.js').Recipe; storyboard?: import('../index.js').Storyboard | null; pixels: Record<string, unknown>; code?: string | import('../index.js').SegmentCode | null; fps?: number; margin?: number;
   captions?: {start: number; end: number; text: string; words: {text: string; start: number; end: number}[]}[] | null; extra?: {poster?: unknown; recalls?: unknown}; drawing?: {core: string; catalog(name: string): string | null}}): Record<string, unknown>;
+/** The changed pieces (why not null) merged into runs on the film clock: their scenes and reasons once each. */
+export function changedRanges(pieces: {index: number; f0: number; f1: number; from: number; to: number; scenes: readonly string[]; why: string | null}[]): import('../index.js').ChangesPreview['ranges'];
+/** The lines to read: one per range (at most `lines`, 10), then the count; when no piece of the film is kept, where the cache is. */
+export function changesText(preview: {pieces: {from: number; to: number; why: string | null}[]; ranges: import('../index.js').ChangesPreview['ranges']; total: number; cache?: string | null}, options?: {lines?: number}): string;
+/** Seconds on the film clock as m:ss: rounded down (floor), up (ceil), to the nearest second, or as given to the hundredth (exact). */
+export function clockOf(seconds: number, round?: 'floor' | 'ceil' | 'nearest' | 'exact'): string;
+/** The preview's defaults: at most `lines` ranges said; `handles` seconds of the film either side of a change in its clip. */
+export const CHANGES_DEFAULTS: Readonly<{lines: number; handles: number}>;

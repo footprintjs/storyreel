@@ -480,3 +480,15 @@ export const lookFor = async (search: typeof searchSounds, make: typeof ov) => (
 export const shareAlike = (verdict: typeof gate): boolean => verdict('by-sa', {allowShareAlike: true}).shareAlike;
 // @ts-expect-error a found sound event names its sound
 export const nameless: SoundEvent = {time: 1, type: 'found'};
+
+// The chat edit loop: what an edit changed, on the full render's own options (the config's fullRender), and a clip of it.
+import type {previewChanges} from '../types/index.js';
+import type {loadInputs, fullRender, clockSeconds} from '../types/sub/tools.js';
+import type {changesText, changedRanges} from '../types/sub/segments.js';
+export const previewed = async (preview: typeof previewChanges, load: typeof loadInputs, full: typeof fullRender, clock: typeof clockSeconds) => {
+  const r = await preview(full(await load({ep: 'ep1'})), {render: true, handles: 1});
+  return r.ranges.length + (r.clip?.seconds ?? 0) + clock('0:12') + r.pieces.filter(p => p.why === null).length;
+};
+export const relined = (text: typeof changesText, ranges: typeof changedRanges) => text({pieces: [], ranges: ranges([]), total: 0}, {lines: 3});
+// @ts-expect-error render is true or false
+export const badPreview = (preview: typeof previewChanges, film: Parameters<typeof previewChanges>[0]) => preview(film, {render: 'yes'});

@@ -106,6 +106,37 @@ function musicRecord(song, beats, fit) {
 const MAX_PARTS = MAX_PIECES;
 
 /**
+ * The cast's names put into the text before anything reads it (cast.mjs): the storyboard, the recipe and the strings a
+ * render reads (the one way: makeFilm, changes.mjs).
+ */
+export function castFilm({storyboard, recipe, strings = null, cast = null}) {
+  if (!cast) return {storyboard, recipe, strings};
+  const c = readCast(cast);
+  return {storyboard: withCast(storyboard, c, 'storyboard'), recipe: withCast(recipe, c, 'recipe'), strings: strings ? withCast(strings, c, 'strings') : strings};
+}
+
+/**
+ * The film's timings as a render paces them (the one way: makeFilm, changes.mjs): a voice's, copied into `copy` (a new
+ * folder of the run's own, files.mjs · copyVoice) and paced there — its audio rewritten, its timings.json the paced one
+ * — or a silent film's word times, paced. A voice knows only the spoken scenes: a silent scene it left out gets its
+ * directions' timing (clock.mjs · withDirections).
+ */
+export async function pacedTimings({storyboard, narrationDir = null, timings = null, pacing = null, copy = null}) {
+  if (narrationDir) {
+    const raw = copyVoice(narrationDir, copy);
+    const paced = pacing ? await applyPacing({runDir: copy, board: storyboard, timings: raw, pacing}) : withDirections(storyboard, raw);
+    writeFileSync(path.join(copy, 'timings.json'), JSON.stringify(paced, null, 2));
+    return paced;
+  }
+  if (!timings) throw new Error('A silent film needs timings (word times per scene)');
+  return pacing ? paceTimings(storyboard, timings, pacing) : withDirections(storyboard, timings);
+}
+
+/** The film a render draws, compiled from its inputs (makeFilm's, with its defaults) and its paced timings, recorded (the one way: makeFilm, changes.mjs). */
+export const compileForRender = ({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], strings = null, lang = null, cast = null, strategies = null, reducedMotion = false}, timings) =>
+  compileFilm({storyboard, timings, recipe, data, kits, theme, root, strings, lang, hostKeys, cast, strategies, reducedMotion, record: true});
+
+/**
  * @param storyboard, recipe, data, kits, theme, root, hostKeys — as compileFilm
  * @param narrationDir a folder with the UNPACED timings.json and the scene audio (or null → silent;
  *                     then pass `timings` with word times, e.g. evenTimings(storyboard)). It is only ever read: the
@@ -149,7 +180,7 @@ const MAX_PARTS = MAX_PIECES;
  */
 export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report', code = null, check = null, expect = {}, cast = null, strategies = null, music = null, reducedMotion = false, claims = 'report'}) {
   // The cast's names into the text before anything reads it: the pacing, the voice check, the chapters (cast.mjs).
-  if (cast) { const c = readCast(cast); storyboard = withCast(storyboard, c, 'storyboard'); recipe = withCast(recipe, c, 'recipe'); if (strings) strings = withCast(strings, c, 'strings'); }
+  ({storyboard, recipe, strings} = castFilm({storyboard, recipe, strings, cast}));
   if (check !== null && check !== 'report' && check !== 'refuse') throw new Error(`check is 'report' (the record lists what the checks on the finished file found), 'refuse' (a problem refuses the film) or left out, not ${JSON.stringify(check)}`);
   if (voiceCheck !== 'report' && voiceCheck !== 'refuse') throw new Error(`voiceCheck is 'report' (the record lists words the voice check did not hear) or 'refuse' (the film refuses them), not ${JSON.stringify(voiceCheck)}`);
   if (claims !== 'report' && claims !== 'refuse') throw new Error(`claims is 'report' (the record lists the numbers on screen with no source) or 'refuse' (one refuses the film), not ${JSON.stringify(claims)}`);
@@ -195,10 +226,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
         // audio — as new files (files.mjs · copyVoice): pacing rewrites them, and a voice given through links, or
         // read-only, is never paced in place. Nothing else is copied.
         copy = makeScratch(dir, '.narration');
-        const raw = copyVoice(narrationDir, copy);
-        // A voice knows only the spoken scenes: a silent scene it left out gets its directions' timing (clock.mjs · withDirections).
-        paced = pacing ? await applyPacing({runDir: copy, board: storyboard, timings: raw, pacing}) : withDirections(storyboard, raw);
-        writeFileSync(path.join(copy, 'timings.json'), JSON.stringify(paced, null, 2));
+        paced = await pacedTimings({storyboard, narrationDir, pacing, copy});
         scope.narration = copy;
         voice = readVoiceCheck(narrationDir);
         if (voiceCheck === 'refuse') {
@@ -208,8 +236,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
           if (voice.notHeard.length) throw new Error(`The voice check did not hear ${voice.notHeard.map(w => `"${w.word}" (${w.scene})`).join(', ')}: choose another take (voice_takes.py), reword the line, or write a number as a say slot`);
         }
       } else {
-        if (!timings) throw new Error('A silent film needs timings (word times per scene)');
-        paced = pacing ? paceTimings(storyboard, timings, pacing) : withDirections(storyboard, timings); scope.narration = null;
+        paced = await pacedTimings({storyboard, timings, pacing}); scope.narration = null;
       }
       scope.seconds = +paced.scenes.reduce((n, s) => n + s.duration, 0).toFixed(3);
       scope.pacing = paced.pacing ?? null;
@@ -229,7 +256,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       scope.seconds = +paced.scenes.reduce((n, s) => n + s.duration, 0).toFixed(3);
     },
     'compile-film': async scope => {
-      film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings, lang, hostKeys, cast, strategies, reducedMotion, record: true});
+      film = await compileForRender({storyboard, recipe, data, kits, theme, root, strings, lang, hostKeys, cast, strategies, reducedMotion}, paced);
       scope.beats = film.beats.length; scope.sounds = film.sounds.length; scope.total = +film.total.toFixed(3);
       // What the film is made from (film.inputs, and the pacing, the voice, the kits' code): an approval locks all of it.
       // Sounds placed by their peaks change what is heard, so an approval locks that too — only when it is asked for.

@@ -1,6 +1,6 @@
 /**
  * The review tools as an MCP server (stdio), so any assistant that speaks the Model Context Protocol — Claude Code,
- * Claude Desktop, VS Code's Copilot, Cursor — calls timeline, review, part, still and strip directly. An adapter over
+ * Claude Desktop, VS Code's Copilot, Cursor — calls timeline, review, part, changes, still and strip directly. An adapter over
  * the same core as the command line (tools.mjs): each call runs the command line in a fresh process in the project's
  * folder, so an edit to a kit between two calls is always seen (a long-lived process would keep the old module).
  * A still or a strip comes back as the picture itself (and its path); everything else as text.
@@ -17,7 +17,7 @@ import {TOOLS} from './tools.mjs';
 
 const CLI = fileURLToPath(new URL('./cli.mjs', import.meta.url));
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
-const REQUIRED = {part: ['scene'], still: ['at'], strip: ['at']};
+const REQUIRED = {still: ['at'], strip: ['at']};   // part takes its scenes or a window (from, to): it says which it lacks
 
 /** The tools as MCP lists them: name, what it does, its arguments (strings) and which are required. */
 export const mcpTools = () => Object.entries(TOOLS).map(([name, t]) => ({name, description: t.about,
@@ -59,7 +59,7 @@ export function serveMcp({defaults = {}, cwd = process.cwd(), input = process.st
     let msg; try { msg = JSON.parse(line); } catch { return send({id: null, error: {code: -32700, message: 'Parse error'}}); }
     const {id, method, params = {}} = msg; if (id === undefined) return;   // a notification (initialized, cancelled): nothing to answer
     if (method === 'initialize') return send({id, result: {protocolVersion: params.protocolVersion ?? '2025-06-18', capabilities: {tools: {}}, serverInfo: {name: 'storyreel', version: VERSION},
-      instructions: 'Read first, look last: timeline (when each beat lands) → review (what is wrong, as text) → fix → part (a quick render of the scenes) → one still to confirm the look.'}});
+      instructions: 'Read first, look last: timeline (when each beat lands) → review (what is wrong, as text) → fix → part (a quick render of the scenes) → one still to confirm the look. After an edit: changes (what it redraws, and why) → changes with render (only those pieces drawn, and a short clip of them to show); the full render then only joins.'}});
     if (method === 'ping') return send({id, result: {}});
     if (method === 'tools/list') return send({id, result: {tools: mcpTools()}});
     if (method === 'tools/call') return send({id, result: await callTool(params.name, params.arguments ?? {}, {defaults, cwd})});

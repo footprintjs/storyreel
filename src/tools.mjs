@@ -5,14 +5,18 @@
  * returns the picture's file too. Read first, look last: the timeline and the review are text, a still is the one picture.
  *
  * A project names its film in storyreel.config.mjs:
- *   export default {film: flags => ({storyboard, recipe, kits, root, narrationDir?, pacing?, layout?, out?, …})}
- * film() gets the command's flags (--ep ep1 --voice work/ep1/voice), so one config serves every episode.
+ *   export default {film: flags => ({storyboard, recipe, kits, root, narrationDir?, pacing?, layout?, out?, render?, code?, …})}
+ * film() gets the command's flags (--ep ep1 --voice work/ep1/voice), so one config serves every episode. `render` and
+ * `code` are the full render's (makeFilm's own): it writes its video into `out`, and `changes` compares with its cache
+ * (fullRender).
  */
 import path from 'node:path';
 import {existsSync, readFileSync} from 'node:fs';
 import {writeOutput, outputFolder} from './files.mjs';
 import {pathToFileURL} from 'node:url';
 import {compileFilm, evenTimings, paceTimings, makeFilm} from './index.mjs';
+import {previewChanges} from './changes.mjs';
+import {CHANGES_DEFAULTS, clockOf} from './segments/changed.mjs';
 import {contactSheet} from './sheet.mjs';
 import {partWindow, partTimeline, timelineText, RENDER_DEFAULTS} from './render.mjs';
 import {formatScale} from './layout.mjs';
@@ -22,8 +26,11 @@ export const CONFIG = 'storyreel.config.mjs';
 const FILM_KEYS = ['storyboard', 'timings', 'recipe', 'kits', 'root', 'strings', 'data', 'theme', 'cast', 'lang', 'hostKeys'];
 const pick = (o, keys) => Object.fromEntries(keys.filter(k => o[k] !== undefined).map(k => [k, o[k]]));
 
-/** The project: its config's film, compiled once (paced from the voice folder's timings.json when it names one). */
-export async function loadProject({config = CONFIG, cwd = process.cwd(), ...flags} = {}) {
+/**
+ * The project's inputs: its config's film(flags), timed — paced from the voice folder's timings.json when it names one,
+ * else evenly — and not compiled (what a tool that prepares the film itself reads: changes).
+ */
+export async function loadInputs({config = CONFIG, cwd = process.cwd(), ...flags} = {}) {
   const file = path.resolve(cwd, config);
   if (!existsSync(file)) throw new Error(`no ${config} in ${cwd}: a project names its film there — export default {film: flags => ({storyboard, recipe, kits, root, narrationDir?, pacing?, layout?, out?})}`);
   const made = (await import(pathToFileURL(file).href)).default;
@@ -34,8 +41,29 @@ export async function loadProject({config = CONFIG, cwd = process.cwd(), ...flag
   // A film with no voice is timed evenly — and paced, when the config names a pacing, as makeFilm paces given timings.
   const even = () => (inputs.pacing ? paceTimings(inputs.storyboard, evenTimings(inputs.storyboard), {voiceSpeed: 1, ...inputs.pacing}) : evenTimings(inputs.storyboard));
   const timings = inputs.timings ?? (voiced ? paceTimings(inputs.storyboard, JSON.parse(readFileSync(path.join(inputs.narrationDir, 'timings.json'), 'utf8')), {voiceSpeed: 1, ...(inputs.pacing ?? {})}) : even());
-  const film = await compileFilm({...pick(inputs, FILM_KEYS), timings, root: inputs.root ?? cwd});
-  return {film, inputs: {...inputs, timings, voiced}, cwd};
+  return {inputs: {...inputs, timings, voiced}, cwd};
+}
+
+/** The project: its config's film, compiled once (paced from the voice folder's timings.json when it names one). */
+export async function loadProject(options = {}) {
+  const {inputs, cwd} = await loadInputs(options);
+  return {film: await compileFilm({...pick(inputs, FILM_KEYS), timings: inputs.timings, root: inputs.root ?? cwd}), inputs, cwd};
+}
+
+/** The film's inputs as makeFilm takes them: a voiced film's voice and pacing (the voice paced as a render paces it), a silent one's timings. */
+const filmOf = ({inputs, cwd}) => ({...pick(inputs, FILM_KEYS.filter(k => k !== 'timings')), root: inputs.root ?? cwd,
+  ...(inputs.voiced ? {narrationDir: inputs.narrationDir, pacing: {voiceSpeed: 1, ...(inputs.pacing ?? {})}} : {timings: inputs.timings})});
+
+/**
+ * The project's full render, as makeFilm's options: the film, its video in the project's out folder (film.mp4: the cache
+ * beside it is what `changes` compares with), the config's `render` (its layout, by default, the config's) and `code`.
+ * A project's own render script makes the film the tools preview with makeFilm(fullRender(await loadInputs(flags))).
+ */
+export function fullRender(project) {
+  const {inputs, cwd} = project, render = inputs.render ?? {};
+  if (!render || typeof render !== 'object' || Array.isArray(render)) throw new Error(`${CONFIG}: render is the full render's options (makeFilm's render: quality, stamp, layout, …), not ${JSON.stringify(render)}`);
+  return {...filmOf(project), out: path.join(path.resolve(cwd, inputs.out ?? 'out'), 'film.mp4'),
+    render: {...(inputs.layout ? {layout: inputs.layout} : {}), ...render}, ...(inputs.code ? {code: inputs.code} : {})};
 }
 
 /** The tools' defaults, as data: a part's handles (seconds either side, a render's), a strip's frames and their rate, a still's width (px). */
@@ -46,12 +74,42 @@ const yes = v => v === true || v === 'true';
 /** What a summary says to list the rest: the review's own flag. */
 const FULL_HINT = '--full lists every one';
 const scenesOf = v => (typeof v === 'string' ? v.split(',') : Array.isArray(v) ? v : []).map(s => String(s).trim()).filter(Boolean);
-const partOf = ({scene, scenes, handles} = {}) => { const list = scenesOf(scenes ?? scene); return list.length ? {scenes: list, handles: handles === undefined ? TOOL_DEFAULTS.handles : +handles} : null; };
-const head = (film, part, w) => `${part ? part.scenes.join(' + ') : 'the whole film'}: ${w.from.toFixed(2)}–${w.to.toFixed(2)} s of ${film.total.toFixed(2)} s`;
+
+/**
+ * A time on the film clock as a command takes it: seconds (12, 12.5) or m:ss (0:12, 1:02.5; h:mm:ss past an hour). Read
+ * from short text only, each field a few digits (minutes and seconds after the first under 60): anything else refuses.
+ */
+export function clockSeconds(value, name = 'time') {
+  const text = String(value ?? '').trim(), fields = text.length <= 20 ? text.split(':') : [];
+  const fine = fields.length >= 1 && fields.length <= 3 && fields.every((f, i) => (i === fields.length - 1 ? /^\d{1,6}(?:\.\d{1,3})?$/ : /^\d{1,4}$/).test(f)) && fields.slice(1).every(f => Number(f) < 60);
+  if (!fine) throw new Error(`${name} is a time on the film clock: seconds (12.5) or m:ss (0:12), not ${JSON.stringify(text.slice(0, 24))}`);
+  return fields.reduce((t, f) => t * 60 + Number(f), 0);
+}
+
+/** A part: its scenes (scene: "a,b"), or a window on the film clock (from and to), with the seconds shown either side. */
+const partOf = ({scene, scenes, handles, from, to} = {}) => {
+  const list = scenesOf(scenes ?? scene), timed = from !== undefined || to !== undefined, h = handles === undefined ? TOOL_DEFAULTS.handles : +handles;
+  if (list.length && timed) throw new Error('name the scenes (scene) or a window (from, to), not both');
+  if (!timed) return list.length ? {scenes: list, handles: h} : null;
+  if (from === undefined || to === undefined) throw new Error('a window needs both from and to (seconds, or m:ss)');
+  const window = {from: clockSeconds(from, 'from'), to: clockSeconds(to, 'to')};
+  if (!(window.to > window.from)) throw new Error(`to must come after from (${clockOf(window.from, 'exact')} to ${clockOf(window.to, 'exact')})`);
+  return {window, handles: h};
+};
+/** Where a part lies on the film clock with its handles: its scenes' (render.mjs · partWindow), or its window's, held to the film. */
+const spanOf = (film, part) => {
+  if (!part.window) return partWindow(film, part);
+  if (!(typeof part.handles === 'number' && part.handles >= 0 && part.handles <= 10)) throw new Error('handles is the seconds shown before and after the part, 0–10 (1.5 by default)');
+  if (part.window.from >= film.total) throw new Error(`from (${clockOf(part.window.from, 'exact')}) is past the film's end (${clockOf(film.total, 'exact')})`);
+  return {from: Math.max(0, +(part.window.from - part.handles).toFixed(3)), to: Math.min(film.total, +(part.window.to + part.handles).toFixed(3))};
+};
+/** A part as it is said: its scenes, or its window on the film clock. */
+const nameOf = part => (part.window ? `${clockOf(part.window.from, 'exact')}–${clockOf(part.window.to, 'exact')}` : part.scenes.join(' + '));
+const head = (film, part, w) => `${part ? nameOf(part) : 'the whole film'}: ${w.from.toFixed(2)}–${w.to.toFixed(2)} s of ${film.total.toFixed(2)} s`;
 
 /** When each scene starts and each beat lands (times from the part's start). */
 export async function timeline(project, args = {}) {
-  const part = partOf(args), w = part ? partWindow(project.film, part) : {from: 0, to: project.film.total};
+  const part = partOf(args), w = part ? spanOf(project.film, part) : {from: 0, to: project.film.total};
   return `${head(project.film, part, w)} (times from its start)\n${timelineText(partTimeline(project.film, w))}`;
 }
 
@@ -62,21 +120,20 @@ export async function timeline(project, args = {}) {
  */
 export async function review(project, args = {}) {
   const part = partOf(args), loop = yes(args.loop);
-  const r = await reviewPart(project.film, {...(part ? {part} : {}), layout: project.inputs.layout ?? null, loop});
+  const r = await reviewPart(project.film, {...(part?.window ? spanOf(project.film, part) : part ? {part} : {}), layout: project.inputs.layout ?? null, loop});
   const said = yes(args.full) ? `${r.text || 'nothing found'}${r.verdicts?.length ? `\nverdicts:\n${r.verdictText}` : ''}` : reviewSummary(r, {more: FULL_HINT});
   return `${head(project.film, part, r.window)} — review (${r.ran.join(', ') || 'no check fits'}):\n${said}`;
 }
 
-/** A quick look: the scenes with their handles, half size where the format allows, the draft encode; reviewed first. */
+/** A quick look: the scenes (or a window: from, to) with their handles, half size where the format allows, the draft encode; reviewed first. */
 export async function part(project, args = {}) {
-  const p = partOf(args); if (!p) throw new Error('part: name the scenes (scene: "a,b")');
+  const p = partOf(args); if (!p) throw new Error('part: name the scenes (scene: "a,b") or a window on the film clock (from, to: seconds or m:ss)');
   const read = await review(project, args), layout = project.inputs.layout ?? null;
   const half = layout && (() => { try { return formatScale(layout.format, .5); } catch { return 1; } })();
-  const out = path.resolve(project.cwd, project.inputs.out ?? 'out', 'parts', `${p.scenes.join('+')}.mp4`), started = Date.now();
-  const {inputs} = project;
-  const result = await makeFilm({...pick(inputs, FILM_KEYS.filter(k => k !== 'timings')), root: inputs.root ?? project.cwd, out, check: 'report',
-    ...(inputs.voiced ? {narrationDir: inputs.narrationDir, pacing: {voiceSpeed: 1, ...(inputs.pacing ?? {})}} : {timings: inputs.timings}),
-    render: {part: p, quality: 'draft', stamp: `PART · ${p.scenes.join(' + ')}`, ...(layout ? {layout: {...layout, scale: half}} : {})}});
+  const name = p.window ? `window-${p.window.from}-${p.window.to}` : p.scenes.join('+');
+  const out = path.resolve(project.cwd, project.inputs.out ?? 'out', 'parts', `${name}.mp4`), started = Date.now();
+  const result = await makeFilm({...filmOf(project), out, check: 'report',
+    render: {...(p.window ? spanOf(project.film, p) : {part: p}), quality: 'draft', stamp: `PART · ${nameOf(p)}`, ...(layout ? {layout: {...layout, scale: half}} : {})}});
   const finished = JSON.parse(readFileSync(result.makingOf, 'utf8')).finished ?? {};
   const found = finished.findings ?? [], shown = yes(args.full) ? found : found.slice(0, SUMMARY_TOP);
   return `${read}\n${result.out} · ${result.seconds.toFixed(1)} s · made in ${((Date.now() - started) / 1000).toFixed(1)} s · checks ${finished.ok ? 'clean' : finished.ok === false ? 'problems found' : 'not run'}${shown.map(f => `\n  ${f.text ?? JSON.stringify(f)}`).join('')}${found.length > shown.length ? `\n  … ${found.length - shown.length} more: ${FULL_HINT}` : ''}`;
@@ -121,6 +178,16 @@ export async function strip(project, args = {}) {
   return {text: `${file} · ${moments.length} frames at ${fps} fps around ${moment.label} (${moment.t.toFixed(2)} s): frame 0 is the moment`, file};
 }
 
+/**
+ * What an edit changed, before the full render (changes.mjs · previewChanges, on the project's fullRender): one line per
+ * changed stretch with why, then the count; render: 'true' draws only those pieces (kept: the full render only joins
+ * them) and writes a short clip of them, <out>/changes/review.mp4.
+ */
+export async function changes(project, args = {}) {
+  const handles = args.handles === undefined ? CHANGES_DEFAULTS.handles : Number(args.handles);
+  return (await previewChanges(fullRender(project), {render: yes(args.render), handles})).text;
+}
+
 /** The full flag: by default a review says the counts, the verdicts that did not pass and the first findings (review.mjs · reviewSummary). */
 const FULL_ARG = `true for every finding and every verdict's why (default: the counts, what did not pass, the first ${SUMMARY_TOP} findings)`;
 /** The tools, as the command line and an MCP server list them: what each does and what it takes. */
@@ -129,8 +196,10 @@ export const TOOLS = Object.freeze({
     args: {scene: 'scene ids, comma-separated (default: the whole film)', handles: `seconds of the film shown either side of the scenes (${TOOL_DEFAULTS.handles})`}},
   review: {run: review, about: `What is wrong, read from the picture as text: words under the captions, over each other, cut off at the edge, the picture frozen for ${REVIEW_DEFAULTS.stillFor} s, nothing new for ${REVIEW_DEFAULTS.newEvery} s while it moves. Times on the film clock. Then three verdicts (passed, failed, or not run): no slideshow, drawn parts hold together, every number on screen has a source.`,
     args: {scene: 'scene ids, comma-separated (default: the whole film)', handles: `seconds either side (${TOOL_DEFAULTS.handles})`, loop: 'true when the part is made to loop: the end of its scenes (not the handles) must come round to their start', full: FULL_ARG}},
-  part: {run: part, about: `A quick look at scenes: rendered with ${TOOL_DEFAULTS.handles} s of the film either side (both cuts seen), the draft encode (half size when the config names a layout); reviewed first. Prints the video's path.`,
-    args: {scene: 'scene ids, comma-separated (required)', handles: `seconds either side (${TOOL_DEFAULTS.handles})`, full: FULL_ARG}},
+  part: {run: part, about: `A quick look at scenes, or at a window of the film (from, to): rendered with ${TOOL_DEFAULTS.handles} s of the film either side (both cuts seen), the draft encode (half size when the config names a layout); reviewed first. Prints the video's path.`,
+    args: {scene: 'scene ids, comma-separated (or a window: from and to)', from: 'the window\'s start on the film clock: seconds or m:ss (0:12)', to: 'the window\'s end: seconds or m:ss', handles: `seconds either side (${TOOL_DEFAULTS.handles})`, full: FULL_ARG}},
+  changes: {run: changes, compile: false, about: 'What an edit changed, before the full render: each changed stretch of the picture and why ("0:12–0:18 left · its recipe entries changed"), then the count. With render: only those pieces drawn (kept, so the full render only joins them) and a short clip of them back to back, labelled with their times, the film either side and its voice under them. Compares with the cache of the config\'s full render (render, code) into out.',
+    args: {render: 'true to draw the changed pieces and write the clip, <out>/changes/review.mp4', handles: `seconds of the film either side of each change in the clip (${CHANGES_DEFAULTS.handles})`}},
   still: {run: still, picture: true, about: 'One picture to confirm the look: frames at the moments given, side by side, as a PNG. Look at it last, after the timeline and the review.',
     args: {at: 'moments: scene+seconds (or seconds), comma-separated (required)', width: `the picture's width in pixels (${TOOL_DEFAULTS.width})`}},
   strip: {run: strip, picture: true, about: 'A fast move frame by frame: consecutive frames around one moment, side by side, as a PNG — to catch a pop, a jump or two things crossing.',

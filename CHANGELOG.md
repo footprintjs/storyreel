@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+- **The chat edit loop: see an edit before the full render.** `storyreel changes` plans the full render's pieces and
+  compares each key with the cache that render keeps, drawing nothing: one line per changed stretch with the reason a
+  render's report gives, then the count —
+  `2:37–3:08 left + right · its recipe entries changed, beats moved` / `7 of 41 pieces changed (0:30 of 3:08)` — in
+  under a second for a three-minute film. `storyreel changes --render` draws only those pieces, into the cache (the 0.18
+  store and spot-check laws unchanged), and writes `<out>/changes/review.mp4`: the changed stretches back to back, each
+  with 1 s of the film either side (`--handles`, from the cache), labelled with its time, the film's voice under it. The
+  full render that follows draws nothing they drew: it only joins and mixes. A piece kept where an earlier scene's growth
+  moved it is spot-checked by the preview, as the render checks it, so a kit that animates on the film's clock is listed
+  ("it moved, and its frames moved with the film's clock"); what weakens the keys (a kit with no `sources`) closes the
+  count after `note:`, as a render's line ends. The MCP server serves `changes` too.
+- **`previewChanges(film, {render, handles, clip})`** is the same in code, on makeFilm's own options. It casts, paces and
+  compiles the film as makeFilm does — `castFilm`, `pacedTimings` and `compileForRender` (`footprint-storyreel/pipeline`)
+  are now the one way both do it — so its keys are the full render's. A film fitted to a song (`music`) is refused: the
+  fit moves its scenes, and a preview does not run it.
+- **A project's config names its full render:** `render` and `code`, makeFilm's own, its video in `out` (`film.mp4`).
+  `fullRender(project)` (`footprint-storyreel/tools`) is that render's makeFilm options, so a project's render script is
+  `makeFilm(fullRender(await loadInputs(flags)))`; `loadInputs` reads the config without compiling the film.
+- **`storyreel part --from 0:12 --to 0:18`**: a window of the film clock (seconds or m:ss) instead of scenes, with the
+  same handles — "frames N–M".
+- The segment cache: `folderStore` gains `kept(key)` (a kept piece's manifest from its shape and size, its video unread),
+  and `segmentedVideo` gains `why(job, piece)` (why `one` would draw it, read before anything is drawn), `notes(job)`
+  and `cache`; `one` and `why` share one spot check.
+- `bench/changes.mjs` measures the loop on a three-minute film; the benches' film moved to `bench/counting-film.mjs`.
+  The agent-cost baseline grows by the review skill's chat edit loop (5123 → 5942 bytes) and takes the cartoon skill's
+  current size (9869 bytes).
+
 - **A thought cloud: a world shown as a memory or a daydream.** `"frame": "thought"` on the story or on a world stage
   draws the world inside a cartoon thought cloud: scalloped, inked in the theme's ink on its card, with a soft shadow,
   and a trail of three little circles toward a corner (no thinker: remembering is the cloud). The world is drawn at the

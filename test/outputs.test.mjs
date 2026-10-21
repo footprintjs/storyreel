@@ -497,6 +497,7 @@ const OWN = [
   ['segments/join.mjs', 'writeFileSync(list, concatList(files))', 'ffmpegJoin: beside its out, the joined picture in the work folder'],
   ['segments/join.mjs', "spawnSync(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'concat'", 'ffmpegJoin: the same'],
   ['segments/store.mjs', 'utimesSync(json, now, now)', 'folderStore: a reused piece\'s manifest, its times set to now (a piece it checked, in the store it was given)'],
+  ['segments/clip.mjs', "spawnSync(ffmpeg, ['-y', '-loglevel', 'error', ...inputs", 'writeClip: the review clip, into the render\'s work folder (changes.mjs moves it onto its output with writeOutput)'],
   ['stills.mjs', 'writeFileSync(script, filter)', 'the stills pass\'s tempScratch folder'],
 ];
 const RUNS = [
@@ -519,6 +520,7 @@ const RUNS = [
   ['finished.mjs', "spawnSync(ffmpeg, ['-v', 'error', '-i', file, '-vn', '-ac', '1'", 'FFmpeg sound to a pipe'],
   ['finished.mjs', "spawned(ffmpeg, ['-hide_banner', '-nostats', '-v', 'info', '-reinit_filter'", 'FFmpeg frames to a pipe'],
   ['segments/join.mjs', "spawnSync(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'concat'", 'FFmpeg joining into the work folder (the stamp, when there is one, burned over it)'],
+  ['segments/clip.mjs', "spawnSync(ffmpeg, ['-y', '-loglevel', 'error', ...inputs", 'FFmpeg writing a review clip into the work folder (storyreel changes --render)'],
   ['render.mjs', "spawnSync(ffmpeg, ['-hide_banner', '-nostdin', ...AUDIO_ONLY", 'FFmpeg measuring a found sound\'s peak (volumedetect), to null'],
   ['sounds/index.mjs', "spawnSync(ffprobe, ['-v', 'error', ...AUDIO_ONLY", 'ffprobe reading a fetched sound (probeAudio), to stdout'],
 ];
