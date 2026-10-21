@@ -264,6 +264,40 @@ before the scene's first word.
    {"type": "world", "scene": "again", "enter": {"type": "iris", "at": [800, 420]}, "world": {"kit": "whiteboard", "items": [ … ]}}]}
 ```
 
+### A thought cloud
+
+A memory, last episode's recap, a daydream: a world can be shown as a thought, drawn inside a cartoon thought cloud
+with a trail of three little circles toward a corner (no one is thinking it: remembering is the cloud).
+
+```json
+{"story": {"kit": "draws", "shot": "recap", "frame": "thought"},
+ "stages": [{"type": "world", "scene": "title", "enter": "cloudBurst", "world": {"kit": "draws", "shot": "title"}}]}
+```
+
+`"frame"` goes on the story or on a `"type": "world"` stage, beside `world` (inside `world` it refuses, as `intent`
+does). A paper stage has the page to itself, and a film with a `pushIn` keeps its page, so both refuse one. The world
+is drawn at the cloud's scale, so the cloud is a window onto all of it but its corners: keep its words a little in from
+its edges. At the default size the cloud keeps a margin from the frame's edges, even as it opens and as it swells to
+burst; at 0.9 it all but fills the frame. As the shot starts, the trail's circles pop up one after another from the
+corner, each with a small overshoot, and then the cloud puffs open out of the trail (1.6 s in all). The opening is a
+change of picture: a push or a camera move takes turns with it, the world is not on screen (no regions) until the
+cloud starts to open, and a `match`, `through` or `morph` cannot go to a named thing in a world in a cloud, because
+none of it is on the frame when the change ends. `{"type": "thought", …}` takes:
+
+| setting | what it is | default |
+|---|---|---|
+| `corner` | where the trail points: `bottom-left` · `bottom-right` · `top-left` · `top-right`; the cloud leans away from it | `bottom-left` |
+| `size` | the cloud's share of the frame, 0.5–0.9 | `0.8` |
+| `seed` | the scallops, 0–10000: the same seed is the same cloud on every frame | `3` |
+| `color`, `ink` | the cloud's paper and its outline | the theme's card and ink |
+| `backdrop` | the ground round the cloud, to make the thought stand out: a hex colour (`"#111111"`, flat), or `{"color": "#2b2622", "vignette": 0.5}` (lighter near the cloud, darker at the frame's edges; `vignette` 0–1, 0.5 when left out). It darkens in as the trail rises, is drawn only round the cloud, and `cloudBurst` clears it on its pop, so nothing dark lingers on the next shot | the shot's own ground |
+
+`cloudBurst` ends the thought: the cloud swells, pales and pops into puffs. Until it pops, nothing of the next shot
+shows: the thought's own paper and trail stay round the cloud. After the pop, the next shot is uncovered where the puffs
+part and fades up round the cloud. Out of a thought it pops that very cloud: each setting the recipe leaves out is the
+frame's (`"enter": "cloudBurst"` is enough), and one it gives must be the frame's too. A bad setting refuses in the words
+a bad entrance setting gets: `stage dream: frame.corner must be bottom-left, bottom-right, top-left, top-right`.
+
 ### Transitions
 
 A video editor keeps a collection of transitions — Premiere's *Video Transitions*, Final Cut's
@@ -278,6 +312,7 @@ recipe names:
 | cut | `cut` | the new shot, whole, on the scene's first frame | a jump the viewer should feel: a new place, a punchline, a contrast | – | 0 | – |
 | dissolve | `fade` | a cross-fade (the default entrance) | time passing; a gentle change of subject | – | 0.8 s | – |
 | | `dip` | out to a colour, then in from it: the two pictures never show at once | the end of a part: a chapter break, a breath before something new | `color` (`#000000`) | 1 s | – |
+| | `cloudBurst` | the old picture, in a thought cloud, swells a little and pales into the cloud's paper, then pops: the cloud breaks into puffs that drift out and shrink away, uncovering the new picture, which fades up round the cloud with the burst (none of it shows before the pop; a plain picture gets the same cloud cut from it) | leave a memory or a daydream: back to now (after a `"frame": "thought"` shot) | `corner` (`bottom-left`), `size` (`0.8`), `seed` (`3`): the cloud a thought frame with the same three draws; `color`, `ink` (null: the theme's card and ink) | 1 s | whoosh |
 | wipe | `wipe` | an edge crosses the frame | the next item in a list | `from`: `left` · `right` · `top` · `bottom` (`left`) | 0.8 s | slide |
 | | `split` | doors open from the middle | a reveal: what was behind the doors | `line`: `vertical` · `horizontal` (`vertical`) | 0.8 s | slide |
 | | `clock` | a clock hand sweeps from twelve | time passing, by the clock | – | 0.9 s | slide |
@@ -311,9 +346,10 @@ recipe names:
 "enter": {"type": "inkBleed", "at": [1400, 200], "seed": 3}   ink from the top right, another blot
 "enter": {"type": "ringIris", "at": [1060, 400], "radius": 120}  opens through a ring drawn there in the old picture
 "enter": {"type": "morph", "region": "card", "into": "page"}  the old picture's card becomes the new one's page
+"enter": {"type": "cloudBurst", "sound": {"type": "found", "name": "bubble-pop"}}  the thought cloud pops: back to now
 ```
 
-**Paper transitions.** `torn`, `eraser`, `inkBleed`, `ringIris`, `glassSheet`, `curl`, `fold` and `morph` are drawn
+**Paper transitions.** `cloudBurst`, `torn`, `eraser`, `inkBleed`, `ringIris`, `glassSheet`, `curl`, `fold` and `morph` are drawn
 as things done to paper and ink (`footprint-storyreel/transitions`; they live in `src/transitions/paper/`). Their
 paper and ink are the film's theme's — its card, its well, its bg and its ink — so a storybook film tears storybook
 paper; a colour one adds (the ring, the morph's outline, the ink) is a setting whose default, null, is the theme's
@@ -326,7 +362,9 @@ it goes, so the same seed tears the same way every time. `morph` goes from box t
 `region` and `into` name (found as `match` finds them), or, left out, `fromBox` and `toBox` (`[x0, y0, x1, y1]`).
 
 Every entrance also takes `seconds` (0.2–4), `ease` (a name from the ease table, or a four-number curve as CSS
-writes it, `"cubic-bezier(0.16, 1, 0.3, 1)"`) and `sound` (a sound's name, or `false`). An ease that goes past
+writes it, `"cubic-bezier(0.16, 1, 0.3, 1)"`) and `sound` (a sound's name, or `false`). The sound plays from the
+change's first moment, or hits where the change has its moment: `cloudBurst`'s on its pop, however long the change
+takes and however it is eased. An ease that goes past
 the end (`back`, `outBack`, `spring`, or a four-number curve whose y leaves 0..1) is refused where the frame's
 edge would show — only `slide` takes one. An unknown name, key or setting refuses, naming what the transition
 takes: `enter has unsupported key at (a push takes seconds, ease, sound, from)`.
@@ -400,7 +438,9 @@ through things says which with `regions: p => ({from: [p.region], to: [p.into]})
 `boxes.from[name]` / `boxes.to[name]` (`[x0, y0, x1, y1]` on the frame); a `{name: true}` setting is the
 recipe's name for one (no default: the recipe must give it). A `{box: true}` setting is a box the recipe gives
 (`[x0, y0, x1, y1]`, x0 < x1 and y0 < y1), and a `{color: true}` setting may default to null: the draw picks the
-colour then, the theme's say (`theme.palette.ink`), as the paper transitions do. A kit's transition
+colour then, the theme's say (`theme.palette.ink`), as the paper transitions do. `hitAt` (0 by default, below 1) moves
+its sound to its moment: the e its draw reaches it at (0.3 for a pop three tenths of the way in), placed in time
+through the entrance's ease, so an eased change still sounds on its moment. A kit's transition
 may not take a built-in name or another kit's. `transitionSheet({catalog})` draws any collection on one
 PNG (`node examples/transitions.mjs` wrote the picture above), and the studio shows it under
 **Transitions**.

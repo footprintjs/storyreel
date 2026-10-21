@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+- **A thought cloud: a world shown as a memory or a daydream.** `"frame": "thought"` on the story or on a world stage
+  draws the world inside a cartoon thought cloud: scalloped, inked in the theme's ink on its card, with a soft shadow,
+  and a trail of three little circles toward a corner (no thinker: remembering is the cloud). The world is drawn at the
+  cloud's scale (`size`, 0.5–0.9, 0.8 by default), so the cloud is a window onto all of it but its corners. As the shot
+  starts, the trail pops up from the corner, one circle after another with a small overshoot, and the cloud puffs open
+  out of it. `corner`, `size`, `seed` (the scallops), `color` and `ink` set it, and a bad one refuses, naming the fix.
+  `backdrop` darkens the ground round the cloud so the thought stands out: a hex colour (flat), or `{color, vignette}`
+  (lighter near the cloud, darker at the edges). It darkens in as the trail rises, and `cloudBurst` clears it on its
+  pop (0.3 s, eased out), so nothing dark lingers on the next shot.
+  A paper stage, and the story of a film with a `pushIn`, refuse a frame; so does `frame` written inside a stage's
+  `world`. The world's regions follow it into the cloud. The opening is a change of picture: pushes and camera moves take
+  turns with it, the world is not on screen until the cloud starts to open, and a `match`, `through` or `morph` cannot go
+  to a named thing in a world in a cloud.
+- **`cloudBurst`: back to now.** A new transition in the dissolve family: the cloud swells a little and the memory pales
+  into the cloud's paper, then it pops into puffs that drift out and shrink away. Nothing of the next shot shows before
+  the pop: the old shot stays whole round the cloud. After it, the next shot is uncovered where the puffs part and fades
+  up round the cloud. Out of a thought it pops that very cloud: the settings the recipe leaves out are the frame's, and
+  one it gives must agree; over a plain shot it cuts the same cloud from the picture. The pop keeps `principles.mjs`'s
+  `BURSTS.pop` timing at its default 1 s (a longer change stretches it), and the cloud and its puffs are seeded. 1 s,
+  sound `whoosh`.
+- **`envelopeShare(age, shape)`** (`footprint-storyreel/principles`): how much of a one-shot event has come by `age`, its
+  envelope added up as a share of all of it: how far a thing the event pushed has gone (cloudBurst's puffs).
+- **A transition's sound can hit on its moment.** `hitAt` (0 to below 1) moves a transition's sound from the change's
+  first moment to its moment: the e its draw reaches it at (`cloudBurst`'s pop, 0.3). The entrance places it in time
+  through its ease, so an eased change still sounds on its moment. A kit's transition may say it too; it is 0 by
+  default, so every other transition sounds where it did.
+
 - **Every render is drawn in pieces kept beside the video, by default.** `renderFilm` and `makeFilm` without `video`
   keep the picture in `<out folder>/.storyreel/segments/<format>-<W>x<H>-<quality>` and redraw only the pieces an edit
   reached. `whole: true` draws every frame in one pass (to debug the cache); a part or an intro is drawn whole.

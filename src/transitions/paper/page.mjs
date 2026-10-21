@@ -4,7 +4,7 @@
  */
 import {W, H, smooth} from '../../frame.mjs';
 import {rgba} from '../../colour.mjs';
-import {paperTokens} from './tokens.mjs';
+import {paperTokens} from '../../paper-tokens.mjs';
 
 const CORNERS = Object.freeze({'bottom-right': [W, H], 'bottom-left': [0, H], 'top-right': [W, 0], 'top-left': [0, 0]});
 const DIAGONAL = Math.hypot(W, H), FAR = 6000;

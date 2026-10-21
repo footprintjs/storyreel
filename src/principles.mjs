@@ -5,7 +5,8 @@
  *   anticipate(t, {at, distance})         a small counter-move before a move: wind back, then go
  *   squash(t, {velocity, landings})        squash and stretch that keep the volume (sx × sy = 1), from speed and impacts
  *   envelope(age, 'pop') · burst(t, hits)  a one-shot event (a flash, a pop, a shake): a quick rise, an exponential fade;
- *                                           burst adds every event by its own age, so overlapping events add
+ *                                           burst adds every event by its own age, so overlapping events add;
+ *   envelopeShare(age, 'pop')              how much of the event has come by `age`: how far a thing it pushed has gone
  *   arc(from, to, u)                       a point-to-point path that curves a little, as a hand's does
  *
  * The walk (walk.mjs) and acting (acting.mjs) already anticipate in their own way (a dip before setting off, a squint
@@ -102,6 +103,21 @@ export function envelope(age, shape = 'pop') {
   if (age < attack) return smooth(age / attack);
   const v = Math.exp(-(age - attack) / decay);
   return v < 1e-3 ? 0 : v;
+}
+
+/**
+ * How much of a one-shot event has come by `age`, 0..1: its envelope added up from the event to `age`, as a share of
+ * all of it (0 before; nearly 1 a few decays after). A thing the event pushes goes this share of its whole way: fast as
+ * the event rises, slower as it fades (cloudBurst's puffs, pushed by its pop). The envelope's own shape, in closed form:
+ * the smoothstep rise adds attack/2, the exponential fall adds decay (the fall's last thousandth, which envelope drops,
+ * is kept here, so the share never jumps).
+ */
+export function envelopeShare(age, shape = 'pop') {
+  if (!Number.isFinite(age)) throw new Error(`envelopeShare: age is seconds since the event, not ${shown(age)}`);
+  const {attack, decay} = readBurst(shape), all = attack / 2 + decay;
+  if (age <= 0) return 0;
+  if (age < attack) { const x = age / attack; return attack * (x ** 3 - x ** 4 / 2) / all; }
+  return (attack / 2 + decay * (1 - Math.exp(-(age - attack) / decay))) / all;
 }
 
 /**

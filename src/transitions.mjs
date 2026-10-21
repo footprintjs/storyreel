@@ -9,7 +9,8 @@
  *
  *   family     transitions
  *   cut        cut                 the new picture, whole, on the scene's first frame
- *   dissolve   fade · dip          a cross-fade; a dip through a colour (black by default)
+ *   dissolve   fade · dip          a cross-fade; a dip through a colour (black by default);
+ *              cloudBurst          a thought cloud (thought.mjs) pops into puffs over the new picture
  *   wipe       wipe · split · clock an edge crosses the frame; doors open from the middle; a clock hand sweeps;
  *              torn · eraser       the old page torn away; a board eraser wiping it off
  *   iris       iris                a circle opens from a point;
@@ -21,11 +22,11 @@
  *                                  it folds shut and the new one pops open
  *   match      through · match     through a thing in the old picture (a window, a screen) into the new one;
  *              morph               a thing in the old picture becomes the same thing in the new one; a box becomes a box
- * The paper ones (torn, eraser, inkBleed, ringIris, glassSheet, curl, fold, morph) live in transitions/paper/; what each
- * one means is the README's table (README · Transitions).
+ * The paper ones (cloudBurst, torn, eraser, inkBleed, ringIris, glassSheet, curl, fold, morph) live in transitions/paper/;
+ * what each one means is the README's table (README · Transitions).
  *
  * A kit adds its own, as Final Cut takes Motion templates and Premiere takes .mogrt files:
- * `{name, transitions: {swirl: {family, seconds, ease, sound, params, regions?, draw}}}`. Every transition
+ * `{name, transitions: {swirl: {family, seconds, ease, sound, hitAt?, params, regions?, draw}}}`. Every transition
  * draws through one contract, `draw(ctx, {e, from, to, p, ghost, theme, boxes})`:
  *   e      how far the change has come, 0..1, already eased
  *   from   from(c) draws the leaving picture into c, to(c) the arriving one (the 1600×900 frame through
@@ -39,7 +40,10 @@
  *          last, found once when the film is built. A transition says which names it looks for with
  *          regions(p) → {from?: [names], to?: [names]} (a name is a thing a kit names: regionsAt → {box,
  *          name}); a name the picture does not have refuses then, naming the ones it has.
- * A transition covers the whole frame at every e: the picture under it is not cleared to anything.
+ * A transition covers the whole frame at every e: the picture under it is not cleared to anything. Its sound plays from
+ * the change's first moment, or hits where its moment is when that comes later: `hitAt`, the e (0 to below 1) its draw
+ * reaches it at — cloudBurst's pop, at 0.3. The entrance turns that into seconds through its ease (hitAfter), so an
+ * eased change still sounds on its moment.
  * Every change happens on the film clock (most of it in the silence before the scene's first word:
  * `lead` = 0.75 of its seconds), so a frame is a pure function of time like any other.
  *
@@ -52,7 +56,7 @@ import {SOUND_NAMES, readSoundChoice} from './sound.mjs';
 import {readMove, moveAt, applyMove, MOVES, MOVE_NAMES, REST} from './moves.mjs';
 import {PAPER_TRANSITIONS as PAPER} from './transitions/paper/index.mjs';
 import {W, H, clamp, smooth, farthest} from './frame.mjs';
-import {isHex as isColor} from './colour.mjs';
+import {readSettings} from './settings.mjs';
 
 const DIRECTIONS = Object.freeze(['left', 'right', 'top', 'bottom']);
 /** Where a picture that comes FROM a side starts, as a unit offset. */
@@ -245,6 +249,7 @@ export const TRANSITIONS = deepFreeze({
   cut: {family: 'cut', seconds: 0, ease: 'jump', sound: null, params: {}, draw: null},
   fade: {family: 'dissolve', seconds: .8, ease: 'inOut', sound: null, params: {}, draw: fade},
   dip: {family: 'dissolve', seconds: 1, ease: 'inOut', sound: null, params: {color: {color: true, default: '#000000'}}, draw: dip},
+  cloudBurst: PAPER.cloudBurst,
   wipe: {family: 'wipe', seconds: .8, ease: 'inOut', sound: 'slide', params: {from: side('left')}, draw: wipe},
   split: {family: 'wipe', seconds: .8, ease: 'inOut', sound: 'slide', params: {line: {oneOf: ['vertical', 'horizontal'], default: 'vertical'}}, draw: split},
   clock: {family: 'wipe', seconds: .9, ease: 'inOut', sound: 'slide', params: {}, draw: clockWipe},
@@ -274,7 +279,7 @@ const inRange = s => typeof s === 'number' && s >= SECONDS[0] && s <= SECONDS[1]
 const RESERVED = [...COMMON, 'move'];
 /** The setting kinds written as a flag ({point: true}); the others carry their choices or range. */
 const FLAGS = ['point', 'color', 'box', 'name'];
-const DEF_KEYS = ['family', 'seconds', 'ease', 'sound', 'overshoot', 'params', 'regions', 'draw'];
+const DEF_KEYS = ['family', 'seconds', 'ease', 'sound', 'hitAt', 'overshoot', 'params', 'regions', 'draw'];
 
 /** A hard cut: the new shot is there, whole, on the scene's first frame. */
 export const CUT = Object.freeze({type: 'cut', seconds: 0, lead: 0, sound: null, p: Object.freeze({}), at: Object.freeze([800, 450])});
@@ -282,7 +287,8 @@ export const CUT = Object.freeze({type: 'cut', seconds: 0, lead: 0, sound: null,
 /**
  * A shot's entrance, read from the recipe: a transition's name, or {type, seconds?, ease?, sound?, …its
  * settings}, or a move, {move, seconds?, feel?, sound?}; left out, a fade. Returns {type, seconds, lead, ease,
- * sound, p, draw, regions, at} (a move's type is 'move', and `move` names it); a cut is CUT.
+ * sound, hitAfter, p, draw, regions, at} (hitAfter: the seconds after the change's first moment that its sound hits; a
+ * move's type is 'move', and `move` names it); a cut is CUT.
  */
 export function readEntrance(enter, where, catalog = TRANSITIONS) {
   const e = typeof enter === 'string' ? {type: enter} : enter ?? {type: 'fade'};
@@ -303,9 +309,25 @@ export function readEntrance(enter, where, catalog = TRANSITIONS) {
   const easeName = e.ease ?? tr.ease, ease = easeNamed(easeName, `${where}: enter.ease`);
   if (overshoots(easeName) && !tr.overshoot) throw new Error(`${where}: a ${e.type} cannot take the ease "${easeName}" (it goes past the end, and the frame's edge would show); ${Object.entries(catalog).filter(([, t]) => t.overshoot).map(([n]) => n).join(', ')} can`);
   const sound = entranceSound(e.sound, tr.sound, where);
-  const p = readParams(params, e, where);
+  const p = readSettings(params, e, where);
   // Most of the change happens in the silence before the scene's first word.
-  return {type: e.type, seconds, lead: seconds * .75, ease, sound, p, draw: tr.draw, regions: tr.regions ?? null, names: Object.keys(params).filter(k => params[k]?.name), at: p.at ?? [800, 450]};
+  return {type: e.type, seconds, lead: seconds * .75, ease, sound, hitAfter: seconds * reached(ease, tr.hitAt ?? 0), p, draw: tr.draw, regions: tr.regions ?? null, names: Object.keys(params).filter(k => params[k]?.name), at: p.at ?? [800, 450]};
+}
+
+/**
+ * The share of its seconds at which an eased change first reaches e = at (0 for at 0): where a sound that hits at a moment
+ * of the draw must be placed in time. Found by a scan and then bisection, once, when the entrance is read.
+ */
+function reached(ease, at) {
+  if (!(at > 0)) return 0;
+  const N = 400;
+  for (let i = 1; i <= N; i++) {
+    if (ease(i / N) < at) continue;
+    let lo = (i - 1) / N, hi = i / N;
+    for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (ease(mid) >= at) hi = mid; else lo = mid; }
+    return hi;
+  }
+  return 1;
 }
 
 /**
@@ -342,7 +364,7 @@ function readMoveEntrance(e, where) {
   const sound = entranceSound(e.sound, null, where);
   const feel = e.feel ?? null;
   const p = Object.freeze({move, seconds, feel, start: Object.freeze(moveAt(move, 0)), restAt: restMoments(move, seconds, feel)});
-  return {type: 'move', move: move.name, seconds, lead: seconds * .75, ease: EASES.linear, sound, p, draw: drawMove, regions: null, names: [], at: [800, 450]};
+  return {type: 'move', move: move.name, seconds, lead: seconds * .75, ease: EASES.linear, sound, hitAfter: 0, p, draw: drawMove, regions: null, names: [], at: [800, 450]};
 }
 
 /**
@@ -453,23 +475,6 @@ function blurred(ctx, v, to) {
   ctx.restore();
 }
 
-/** A transition's settings from an entrance, each checked against its kind, the defaults filled in. */
-function readParams(params, e, where) {
-  const out = {};
-  for (const [name, spec] of Object.entries(params)) {
-    const v = e[name] ?? spec.default, bad = what => new Error(`${where}: enter.${name} must be ${what}`);
-    if (spec.name && v === undefined) throw new Error(`${where}: a ${e.type} needs enter.${name}: the name of a thing in the picture (a kit names what it draws: regionsAt → {box, path, name})`);
-    if (spec.name && v !== null && !(typeof v === 'string' && v.trim())) throw bad('the name of a thing in the picture');
-    if (spec.oneOf && !spec.oneOf.includes(v)) throw bad(spec.oneOf.join(', '));
-    if (spec.point && !(Array.isArray(v) && v.length === 2 && v.every(Number.isFinite))) throw bad('[x, y]');
-    if (spec.color && !(v === null && spec.default === null) && !isColor(v)) throw bad('a hex colour such as "#000000"');
-    if (spec.box && !isBox(v)) throw bad('a box [x0, y0, x1, y1] on the 1600×900 frame, with x0 < x1 and y0 < y1');
-    if (spec.number && !(typeof v === 'number' && v >= spec.number[0] && v <= spec.number[1])) throw bad(`a number ${spec.number[0]}–${spec.number[1]}`);   // refusal: bad() says "must be" it
-    out[name] = Array.isArray(v) ? Object.freeze([...v]) : v;
-  }
-  return Object.freeze(out);
-}
-const isBox = v => Array.isArray(v) && v.length === 4 && v.every(Number.isFinite) && v[0] < v[2] && v[1] < v[3];
 
 /**
  * The film's collection: the built-in transitions and every kit's own (kit.transitions), each checked.
@@ -491,7 +496,7 @@ export function transitionCatalog(kits = []) {
   return catalog;
 }
 
-/** A kit's transition, checked: {family, seconds, ease, sound, overshoot?, params?, draw}. */
+/** A kit's transition, checked: {family, seconds, ease, sound, hitAt?, overshoot?, params?, draw}. */
 function checkTransition(def, who) {
   if (!def || typeof def !== 'object' || Array.isArray(def)) throw new Error(`${who} must be {family, seconds, ease, sound, params?, draw}`);
   for (const key of Object.keys(def)) if (!DEF_KEYS.includes(key)) throw new Error(`${who} has unsupported key ${key} (a transition has ${DEF_KEYS.join(', ')})`);
@@ -500,6 +505,7 @@ function checkTransition(def, who) {
   if (!inRange(def.seconds)) throw new Error(`${who}: seconds must be between ${SECONDS[0]} and ${SECONDS[1]}`);
   easeNamed(def.ease, `${who}: ease`);
   if (def.sound !== null && !SOUND_NAMES.includes(def.sound)) throw new Error(`${who}: sound must be null or a sound: ${SOUND_NAMES.join(', ')}`);
+  if (def.hitAt !== undefined && !(typeof def.hitAt === 'number' && def.hitAt >= 0 && def.hitAt < 1)) throw new Error(`${who}: hitAt is where in the change its sound hits, the e its draw reaches it at, from 0 (its first moment, the default) to below 1 (e.g. 0.3 for a pop three tenths of the way in)`);
   if (def.overshoot !== undefined && typeof def.overshoot !== 'boolean') throw new Error(`${who}: overshoot must be true or false`);
   if (def.regions !== undefined && typeof def.regions !== 'function') throw new Error(`${who}: regions must be p => ({from?: [names], to?: [names]}): the things it looks for in the picture it leaves and the one it arrives at`);
   if (def.regions === undefined && Object.values(def.params ?? {}).some(spec => spec?.name)) throw new Error(`${who} has a setting that names a thing in the picture, and no regions(p) to look it up: add regions: p => ({from: [p.yourSetting]}) (or to: …)`);
@@ -511,7 +517,7 @@ function checkTransition(def, who) {
     if (kinds.length !== 1 || (FLAGS.includes(kinds[0]) && spec[kinds[0]] !== true) || !(spec.name === true || 'default' in spec)) throw new Error(`${who}: the setting "${name}" must be one of {oneOf: [...]}, {point: true}, {color: true}, {number: [min, max]}, {box: true}, with a default (a colour's may be null: your draw picks one, e.g. the theme's); or {name: true} (a thing in the picture; default: null when it may be left out)`);
     if (spec.oneOf && !(Array.isArray(spec.oneOf) && spec.oneOf.length && spec.oneOf.every(v => typeof v === 'string'))) throw new Error(`${who}: the setting "${name}" lists its choices as words`);
     if (spec.number && !(Array.isArray(spec.number) && spec.number.length === 2 && spec.number.every(Number.isFinite) && spec.number[0] < spec.number[1])) throw new Error(`${who}: the setting "${name}" gives number as [min, max]`);
-    if (!(spec.name && spec.default === undefined)) readParams({[name]: spec}, {type: 'transition'}, who);   // the default must pass its own check
+    if (!(spec.name && spec.default === undefined)) readSettings({[name]: spec}, {type: 'transition'}, who);   // the default must pass its own check
   }
   return Object.freeze({...def, params});
 }

@@ -15,6 +15,8 @@ export const BURSTS: Readonly<Record<BurstName, Readonly<BurstShape>>>;
 export const BURST_NAMES: readonly BurstName[];
 /** A one-shot event's strength at its age: 0 before, a smoothstep rise over attack, 1, then an exponential fade (0 below a thousandth). */
 export function envelope(age: number, shape?: BurstName | BurstShape): number;
+/** How much of a one-shot event has come by `age`, 0..1: its envelope added up, a share of all of it (how far a thing it pushed has gone). */
+export function envelopeShare(age: number, shape?: BurstName | BurstShape): number;
 /** Every event's envelope at t, added (events are times or {at, strength?}): overlapping events add. */
 export function burst(t: number, events: readonly (number | {at: number; strength?: number})[], shape?: BurstName | BurstShape): number;
 /** A point on a slightly curved path from `from` to `to` at u: the middle sits `bend` (0.12) of the distance off the straight line, bulging `toward` a side of the screen (up). */

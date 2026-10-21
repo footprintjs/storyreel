@@ -1,7 +1,7 @@
 /**
  * A seeded stream of numbers in [0, 1) (mulberry32): the same seed gives the same stream on every frame and every
- * machine, so a torn edge or an ink blot is a shape, not noise, and a frame stays a pure function of time. Any finite
- * seed works; its whole and fractional parts both count.
+ * machine, so a torn edge, an ink blot or a thought cloud's scallops are a shape, not noise, and a frame stays a pure
+ * function of time. Any finite seed works; its whole and fractional parts both count. A leaf: it imports nothing.
  */
 export function seeded(seed) {
   const whole = Math.floor(seed);
