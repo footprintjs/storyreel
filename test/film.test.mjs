@@ -94,7 +94,7 @@ test('makeFilm: a footprintjs pipeline writes the film and its making-of record'
   assert.ok(record.loudness.target.LRA >= Math.ceil(record.loudness.measured.LRA), 'the range target asked for is recorded');
   assert.equal(record.loudness.flag, undefined);
   // A finished run's record is as it always was: no failed mark, and its keys in their order.
-  assert.deepEqual(Object.keys(record), ['schemaVersion', 'made', 'out', 'seconds', 'chapters', 'span', 'inputs', 'pacing', 'claims', 'beats', 'sounds', 'loudness', 'tools', 'pipeline', 'compile']);
+  assert.deepEqual(Object.keys(record), ['schemaVersion', 'made', 'out', 'seconds', 'chapters', 'span', 'inputs', 'pacing', 'claims', 'beats', 'sounds', 'loudness', 'picture', 'tools', 'pipeline', 'compile']);
 });
 
 // A picture strategy whose plan throws: the run fails in its plan-picture stage, after the film is compiled.

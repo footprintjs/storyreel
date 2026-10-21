@@ -73,6 +73,8 @@ export function compileLayout(film, spec) {
     width: f.width * k, height: f.height * k, format: spec.format, boxes,
     /** The caption shown at t (null when none is, or the layout has no captions). */
     captionAt: t => chunks ? captionAt(chunks, t) : null,
+    /** Every caption chunk it burns in, on the film clock (null without captions): a cached piece's key holds the ones near it. */
+    captionChunks: chunks,
     picture(ctx, t) {
       ctx.save(); ctx.scale(k, k); ctx.fillStyle = bg; ctx.fillRect(0, 0, f.width, f.height);
       const [bx, by, bw, bh] = f.film;

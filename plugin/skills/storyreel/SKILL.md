@@ -18,6 +18,13 @@ storyboard → kit → recipe → timings (`evenTimings(storyboard)`, or a voice
 → read `making-of.json` → `approveFilm` the draft the person watched (the final render refuses when anything it was
 made from changed) → `makeRelease` for each platform. The `storyreel-cartoon` skill walks it with a working film.
 
+## The edit loop
+
+- Look at an edit with `npx storyreel part --scene <id>` (seconds; never cached).
+- A full render redraws only the pieces an edit reached: `picture.line` in `making-of.json` says which, and why.
+- Keep the stamp's label steady: a new label re-encodes the join (no redraw).
+- `render: {whole: true}` only to debug the cache.
+
 ## Which skill or page for each job
 
 | job | read |

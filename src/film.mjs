@@ -1130,11 +1130,24 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   // What is drawn over every shot for a while: the guess cards, from their question to the card gone.
   const overlays = Object.freeze([...guesses.map((g, n) => Object.freeze({path: `guesses[${n}]`, from: g.start, to: g.until + .5})),
     ...(stepsTrack ? [Object.freeze({path: 'stepsTrack', from: stepsTrack.from, to: stepsTrack.until + .5})] : [])]);
+  // The moments that replay earlier pictures (segments.mjs keys a piece by what it replays too): the teaser's rewind,
+  // played at–until showing from–to, and a steps track's rewind cue (its own shot, played backward).
+  const replays = Object.freeze([...(teaser ? [{at: teaser.at + 2.7, until: teaser.at + 4.8, from: Math.min(teaser.from, teaser.to), to: Math.max(teaser.from, teaser.to)}] : []),
+    ...(stepsTrack?.rewind ? [{at: stepsTrack.rewind.from, until: stepsTrack.rewind.from + stepsTrack.rewind.seconds, from: Math.min(stepsTrack.rewind.to, stepsTrack.rewind.from), to: Math.max(stepsTrack.rewind.to, stepsTrack.rewind.from)}] : [])].map(Object.freeze));
+  // Which kit draws each recipe entry (a built-in stage is the engine's own: absent), and the kits by name: a piece's
+  // key holds the code of the kits that draw it (segments/kitcode.mjs, from each kit's `sources`).
+  const drawnBy = Object.freeze(Object.fromEntries([[storyPathName, storySpec.kit], ...stages.map((st, i) => [`stages[${i}]`, st.world?.kit ?? stageKitNames[st.type] ?? null])].filter(([, kit]) => kit)));
   return {total: clock.total, clock, timings, sounds, foundSounds: foundUsed, listening, frame, beats, strings: [...used], notes: notesApplied, attention: attention?.record ?? null, focusAt: attention?.focus?.viewAt ?? null,
+    attentionFrames: attention?.frames ?? null,
     camera: camerawork?.record ?? null, cameraAt: camerawork?.viewAt ?? null, reading, reads, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching,
-    rows: Object.freeze(rows().map(Object.freeze)), overlays, inputs, stringHashes, mouthsAt, partsAt, pictureAt: pictureClock,
-    lines: Object.freeze(lines.map(l => Object.freeze({...l}))), changes: Object.freeze(pictureChanges().map(c => Object.freeze({...c}))), claims, lang: filmLang};
+    rows: Object.freeze(rows().map(Object.freeze)), overlays, replays, inputs, stringHashes, mouthsAt, partsAt, pictureAt: pictureClock,
+    lines: Object.freeze(lines.map(l => Object.freeze({...l}))), changes: Object.freeze(pictureChanges().map(c => Object.freeze({...c}))), claims, lang: filmLang,
+    // What it was compiled from, kept for the cache's keys (segments.mjs): the recipe as given (its strings unresolved), frozen.
+    recipe: deepFreeze(structuredClone(given)), kits: Object.freeze(Object.fromEntries(allKits.map(k => [k.name, k]))), drawnBy};
 }
+
+/** A value frozen all the way down (a copy the caller cannot change under the film's keys). */
+const deepFreeze = v => { if (v && typeof v === 'object' && !Object.isFrozen(v)) { Object.freeze(v); Object.values(v).forEach(deepFreeze); } return v; };
 
 /** What reading the inputs gave (record.mjs): the recipe's top-level keys, each scene's seconds, the notes, the strings used. */
 function inputsSummary({recipe, storyboard, clock, notes, strings}) {

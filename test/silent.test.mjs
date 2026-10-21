@@ -218,7 +218,7 @@ test('two films made at once with a voice, into one folder: each paces and rende
   const voice = voiceFolder(), dir = tmp();
   const made = await Promise.all(['a', 'b'].map(name => makeFilm({storyboard, recipe, root: hello, narrationDir: voice, pacing, out: path.join(dir, `${name}.mp4`), render: small})));
   assert.deepEqual(made.map(m => path.basename(m.out)), ['a.mp4', 'b.mp4'], 'both made');
-  assert.deepEqual(readdirSync(dir).filter(f => f.startsWith('.')), [], 'no paced copy and no working files left');
+  assert.deepEqual(readdirSync(dir).filter(f => f.startsWith('.')), ['.storyreel'], 'no paced copy and no working files left: only the picture\'s cache, which both shared');
   assert.ok(readdirSync(path.join(dir, 'narration')).includes('timings.json'), 'the folder\'s narration is the paced voice');
 });
 

@@ -384,6 +384,17 @@ export interface Film {
   inputs: FilmInputs;
   /** Each string's own hash (a segment's key holds only the strings its entries name); null without a string table. */
   stringHashes: Readonly<Record<string, string>> | null;
+  /** The moments that replay earlier pictures (a teaser's rewind, a steps track's rewind cue): played at–until, showing from–to. A cached piece's key holds what it replays. */
+  replays: readonly {at: number; until: number; from: number; to: number}[];
+  /** The recipe it was compiled from, as given (its strings unresolved), frozen: the default cache keys each piece's entries from it. */
+  recipe: Readonly<Recipe>;
+  /** Its kits by name (the built-in whiteboard too): the default cache keys a piece by the code of the kits that draw it (Kit.sources). */
+  kits: Readonly<Record<string, Kit | ContextKit>>;
+  /** Which kit draws each recipe entry, by path ('story', 'stages[2]'); a built-in stage, drawn by the engine itself, is absent. */
+  drawnBy: Readonly<Record<string, string>>;
+  /** The focus keys and emphasis words as they frame and show the picture (a cached piece's key holds the ones that reach it), or null. */
+  attentionFrames: {focus: {strategy: string; feel: unknown; safe: number[]; keys: {t: number; on: string; size: string | null; cx: number; cy: number; z: number; sx: number; sy: number; box: number[]; w: number}[]} | null;
+    emphasis: {strategy: string; feel: unknown; words: {t: number; text: string; next: number}[]} | null} | null;
   /** The mouths drawn at t (each kit on screen that draws one says so: mouthsAt), with the recipe entry that drew it. */
   mouthsAt(t: number): {who: string | null; open: number; path: string}[];
   /** The parts drawn at t (each kit on screen that gives them: parts), with the recipe entry that drew them: what the geometry audit reads. Read on the picture's clock. */
@@ -483,9 +494,25 @@ export interface KitContext {
   readFile(file: string): Uint8Array;
 }
 
+/**
+ * Where a kit's drawing code lives: the default cache keys each piece by the code of the entries it draws (each entry's
+ * files and everything they import; the shared files as they are), so editing one shot redraws only the pieces that
+ * show it. Files are paths or file URLs: new URL(`./shots/${spec.shot}.mjs`, import.meta.url).
+ */
+export interface KitSources {
+  /** The files that draw this spec (what the kit compiles: the story's spec, a world stage's `world`, a kit stage's own spec), followed through their imports. */
+  entry(spec: any): (string | URL)[] | null | undefined;
+  /** Files every entry uses, hashed as they are (a kit's index imports every shot, so its imports are not followed). */
+  shared?: (string | URL)[];
+  /** The files that draw one of the kit's transitions, by its name. */
+  transition?(name: string): (string | URL)[] | null | undefined;
+}
+
 /** A plug-in: a story kit draws a world; stage kits add stage types; a kit may add transitions. A story kit on the context contract is a ContextKit. */
 export interface Kit {
   name: string;
+  /** Where its drawing code lives (the default cache keys each piece by it); without it, a piece it draws is keyed by makeFilm's `code`, or only spot-checked. */
+  sources?: KitSources;
   /** Transitions a recipe can name in a shot's `enter`, as it names the built-in ones. */
   transitions?: Record<string, Transition>;
   story?: {
@@ -622,8 +649,16 @@ export function renderFilm(options: {
   part?: {scenes: string[]; handles?: number} | {scene: string; handles?: number};
   /** true (the default): the poster replaces the first frame; false: written beside the video only (for a platform that takes an uploaded thumbnail). */
   posterFrame?: boolean;
-  /** How the picture is made: wholeVideo() (the default: every frame in one pass) or segmentedVideo({...}) (cached segments, joined). */
+  /**
+   * How the picture is made. Left out: in pieces kept in a cache beside the video (<out folder>/.storyreel/segments/…),
+   * each reused while nothing that draws it changed (a part or an intro is drawn whole). segmentedVideo({...}): a cache
+   * of your own; wholeVideo(): every frame in one pass.
+   */
   video?: VideoStrategy;
+  /** true: every frame in one pass, to debug the cache (never needed for a final render). */
+  whole?: boolean;
+  /** The default cache's options. */
+  segments?: SegmentOptions;
   /** A song under the film: its first second plays at film second `start` (negative: it begins that far in), at `gain` (0.2), fading over the last `fadeOut` seconds (1.5). */
   music?: import('./sub/music.js').SongPlacement | null;
   /** 'start' (the default: each sound begins on its moment) or 'peak' (each sound's loudest transient lands on it). */
@@ -638,14 +673,35 @@ export interface VideoStrategy {
   join(job: unknown, done: unknown[]): {file: string; report?: unknown} | Promise<{file: string; report?: unknown}>;
   render(job: unknown): Promise<{file: string; report?: unknown}>;
 }
-/** One segment's fate in a segmented render. */
-export interface SegmentReport { index: number; from: number; to: number; frames: number; scenes: string[]; key: string; status: 'rendered' | 'reused'; why?: string }
-/** What a segmented render did: how many segments were drawn and how many were reused, and each one. */
-export interface SegmentsReport { strategy: 'segments'; store: string; reused: number; rendered: number; note?: string; segments: SegmentReport[] }
-/** Where segments are kept between renders (folderStore(dir) is the default): get by key, put a file under a key. */
-export interface SegmentStore { name: string; dir?: string; get(key: string): {file: string; manifest: Record<string, unknown>} | null; put(key: string, file: string, manifest: Record<string, unknown>): string }
-/** How segment files are joined into one video (ffmpegJoin() is the default: no re-encode). */
-export interface SegmentJoiner { name: string; join(files: string[], out: string): string }
+/** One piece's fate in a segmented render: drawn (and why: "words changed", "shot code changed", "new"…) or reused. */
+export interface SegmentReport { index: number; from: number; to: number; frames: number; scenes: string[]; key: string; label?: string; status: 'rendered' | 'reused'; why?: string }
+/** What a segmented render did: how many pieces were drawn and how many were reused, each one, and `line`, all of it in one short line to read. */
+export interface SegmentsReport { strategy: 'segments'; store: string; reused: number; rendered: number; line: string; note?: string; stamp?: 'burned at the join'; evicted?: number; segments: SegmentReport[] }
+/** The default cache's options (renderFilm's and makeFilm's render.segments). */
+export interface SegmentOptions {
+  /** The folder it is kept in (default: <out folder>/.storyreel/segments/<format>-<W>x<H>-<quality>). */
+  dir?: string;
+  /** The most it holds, in bytes (4 GB): after a render, the pieces used longest ago go first. */
+  cap?: number;
+  /** The longest piece a row is cut into, seconds (6; Infinity keeps rows whole); the shortest (1.5). */
+  chunkSeconds?: number; minSeconds?: number;
+  /** How far around a piece a beat, word or note counts by its exact time (3 s). */
+  margin?: number;
+  /** How many pieces are drawn at once (availableParallelism − 1, at most 6); how many frames of a reused one are checked (6, at least 1). */
+  parallel?: number; samples?: number;
+  /** Pieces drawn again whatever their keys say: an index, or a scene id they cover. */
+  force?: (number | string)[];
+  /** The kits' code in each key (left out: each kit's own sources); kitsCode keys the pieces a kit without sources draws. */
+  code?: string | SegmentCode | null; kitsCode?: string | null;
+}
+/** Where pieces are kept between renders (folderStore(dir) is the default): get by key (a piece that passes every check, or null), put a file under a key. */
+export interface SegmentStore { name: string; dir?: string; get(key: string): {file: string; manifest: Record<string, unknown>} | null; put(key: string, file: string, manifest: Record<string, unknown>): string;
+  /** The newest manifest of each group `group` names (what each slot was last drawn from: the reasons a piece was drawn again). */
+  newest?(group: (manifest: Record<string, unknown>) => string | null | undefined): Map<string, Record<string, unknown>>;
+  /** Evict the pieces used longest ago until the store fits its cap, never one in `keep`. */
+  trim?(options?: {keep?: Set<string>; cap?: number; now?: number}): {bytes: number; evicted: string[]} }
+/** How piece files are joined into one video (ffmpegJoin() is the default: no re-encode, or one when `stamp` is burned over every frame). */
+export interface SegmentJoiner { name: string; join(files: string[], out: string, options?: {stamp?: {png: string; quality: 'standard' | 'draft' | 'high'} | null}): string | Promise<string> }
 /** The default strategy: every frame in one pass. */
 export function wholeVideo(): VideoStrategy;
 /**
@@ -656,26 +712,34 @@ export function wholeVideo(): VideoStrategy;
  * names it: an index or a scene id), then joined (by default with the render's own FFmpeg). The sound is mixed for
  * the whole film each time. An intro or a part (from, to) refuses: use wholeVideo().
  */
-/** Code per segment (segments.mjs · sourceCode): a segment's own entries → the fingerprint of the code that draws them. */
-export type SegmentCode = (entries: unknown[]) => string;
-export function segmentedVideo(options: {store: SegmentStore; recipe: Recipe; code?: string | SegmentCode | null; joiner?: SegmentJoiner | null; force?: (number | string)[]; samples?: number; minSeconds?: number; parallel?: number}): VideoStrategy;
-/** Keep segments as <key>.mp4 + <key>.json in one folder; a segment lands whole or not at all, and a file cut short is never reused. */
-export function folderStore(dir: string): SegmentStore;
-/** Join segment files with FFmpeg's concat demuxer, without re-encoding. */
+/** Code per piece (segments.mjs · sourceCode, kitCode): a piece's own entries (and its paths and the transitions it plays) → the fingerprint of the code that draws them. */
+export type SegmentCode = (entries: unknown[], piece?: {paths: string[]; enters?: string[]}) => string | null;
+export function segmentedVideo(options: {store: SegmentStore; recipe?: Recipe | null; code?: string | SegmentCode | null; kitsCode?: string | null; joiner?: SegmentJoiner | null; force?: (number | string)[]; samples?: number; minSeconds?: number; chunkSeconds?: number; margin?: number; parallel?: number}): VideoStrategy;
+/** Keep pieces as <key>.mp4 + <key>.json in one folder (hex keys only; no link read; a manifest of the right shape; the bytes it recorded), held to `cap` bytes (4 GB). */
+export function folderStore(dir: string, options?: {cap?: number; grace?: number}): SegmentStore;
+/** Join piece files with FFmpeg's concat demuxer, without re-encoding — or burning a stamp over every frame, with one. */
 export function ffmpegJoin(options?: {ffmpeg?: string}): SegmentJoiner;
 /** One planned segment: frames [f0, f1), seconds [from, to), the recipe entries that draw it, the row an entrance (or a blurred cut) also draws, the scenes it covers. */
-export interface Segment { index: number; f0: number; f1: number; from: number; to: number; paths: string[]; before: string[] | null; scenes: string[] }
+export interface Segment { index: number; f0: number; f1: number; from: number; to: number; paths: string[]; before: string[] | null; scenes: string[];
+  /** Each entrance inside it: its frames, its transition, and the row it also draws while it plays. */
+  entrances?: {f0: number; f1: number; type: string; before: string[] | null}[] }
+/** One piece of a row (planPieces): which row (`segment`), the transitions that play in it, the moments it replays, its slot (the same piece across renders) and a label to read ("forward 12–18 s"). */
+export interface Piece extends Segment { segment: number; enters: string[]; replays: {at: number; until: number; from: number; to: number}[]; slot: string; label: string }
 /** The film's segments: one per row of pictures, on whole frames, covering every frame once and in order (a row that never shows alone joins the next); `blur`: frames are drawn with motion blur. */
 export function planSegments(film: Film, options?: {fps?: number; frames?: number; minSeconds?: number; blur?: boolean}): Segment[];
+/** The film's pieces: each row cut where a scene or a sentence starts (a word after one that ends a sentence, or after a `pause` of 0.3 s) and every `chunkSeconds` (6) from there, so an edit redraws the seconds around it; together every frame once, in order. */
+export function planPieces(film: Film, options?: {fps?: number; frames?: number; minSeconds?: number; chunkSeconds?: number; pause?: number; blur?: boolean}): Piece[];
+/** What a segmented render drew, in one short line ("picture: 3 of 41 pieces drawn (title: shot code changed; …), 38 reused"); `full`: every reason. */
+export function pictureLine(report: SegmentsReport | undefined, options?: {full?: boolean; top?: number}): string;
 /** A segment's cache key (on its own clock, so a segment further on keeps it when an earlier scene grows by whole frames). */
 export function segmentKey(film: Film, segment: Segment, options: {recipe: Recipe; storyboard?: Storyboard | null; pixels: Record<string, unknown>; code?: string | SegmentCode | null; fps?: number; margin?: number; extra?: {poster?: unknown; recalls?: unknown}}): string;
 /** A fingerprint of drawing code: every file under the folders given and every file they read (relative and TypeScript imports, transitively; a linked package's code; `new URL('…', import.meta.url)` assets; never into node_modules), and each package in node_modules by its installed version. What it cannot follow is listed (codeCover), never thrown on. */
 export function codeFingerprint(paths: string[], options?: {extensions?: string[]}): string;
 /** What a fingerprint made in this process covered: every file (real paths, sorted), every package ('name@version'), the relative imports that lead nowhere and the imports chosen at run time; or null. */
 export function codeCover(fingerprint: string): Readonly<{files: readonly string[]; packages: readonly string[]; missing: readonly {from: string; spec: string}[]; unfollowed: readonly {from: string; code: string}[]; unparsed: readonly {file: string; from: number}[]}> | null;
-/** The engine's fingerprint: StoryReel's own files and the versions of what draws a frame (versions.mjs · DRAWING), nothing else; `versionOf` stubs a version. */
+/** The engine's whole fingerprint: StoryReel's own files and the versions of what draws a frame (versions.mjs · DRAWING), nothing else; `versionOf` stubs a version. An approval locks it; a cached piece holds the narrower drawing fingerprint (footprint-storyreel/segments · drawingCode). */
 export function engineFingerprint(options?: {versionOf?: (name: string) => string}): string;
-/** StoryReel's own code fingerprint (every file of its code, its fonts, the versions of what it draws with): in every segment key, and locked by an approval. */
+/** StoryReel's own code fingerprint (every file of its code, its fonts, the versions of what it draws with): locked by an approval. */
 export function storyreelCode(): string;
 
 /** What a film was made from, hashed (keys sorted first: reformatting changes nothing): film.inputs, and makeFilm adds the pacing, the voice and the kits' code. */

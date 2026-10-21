@@ -166,7 +166,9 @@ function readFocus(spec, {clock, named, strategies, pushes, theme}) {
   // While it moves the camera: from each key until its spring settles (the camera's moves take turns with it: camerawork.mjs).
   const moving = strategy.moves ? keys.map((k, key) => ({from: k.t, to: k.t + settleTime(feel), key, on: k.on})) : [];
   return {strategy: strategy.name, moves: Boolean(strategy.moves), moving, viewAt, show: (ctx, t, paint) => strategy.show(ctx, viewAt(t), paint, theme),
-    record: {strategy: strategy.name, ...(spec.safe ? {safe} : {}), keys: keys.map(k => ({t: +k.t.toFixed(3), on: k.on, ...(k.size ? {size: k.size} : {})}))}};
+    record: {strategy: strategy.name, ...(spec.safe ? {safe} : {}), keys: keys.map(k => ({t: +k.t.toFixed(3), on: k.on, ...(k.size ? {size: k.size} : {})}))},
+    // Each key as it frames the picture (where the camera points, how close, the box it holds): what a cached piece's key holds.
+    frames: {strategy: strategy.name, feel, safe, keys: keys.map(k => ({t: k.t, on: k.on, size: k.size ?? null, cx: k.cx, cy: k.cy, z: k.z, sx: k.sx, sy: k.sy, box: [...k.box], w: k.w}))}};
 }
 
 /** The emphasis as written, checked and placed on the clock: {strategy, draw(ctx, t), record}. */
@@ -184,7 +186,8 @@ function readEmphasis(spec, {clock, strategies, theme, focus = null}) {
   inOrder(words, 'emphasis.words');
   words.forEach((w, i) => { w.next = Math.min(w.until, words[i + 1]?.t ?? Infinity); });
   return {strategy: strategy.name, draw(ctx, t) { const w = words.findLast(x => t >= x.t); if (w && t < w.next) strategy.draw(ctx, t, w, theme, focus?.viewAt(t) ?? null); },
-    record: {strategy: strategy.name, words: words.map(w => ({t: +w.t.toFixed(3), text: w.text}))}};
+    record: {strategy: strategy.name, words: words.map(w => ({t: +w.t.toFixed(3), text: w.text}))},
+    frames: {strategy: strategy.name, feel, words: words.map(w => ({t: w.t, text: w.text, next: w.next}))}};
 }
 
 /**
@@ -196,5 +199,6 @@ export function readAttention(recipe, {clock, named, strategies = null, pushes =
   const focus = recipe.focus === undefined ? null : readFocus(recipe.focus, {clock, named, strategies, pushes, theme});
   const emphasis = recipe.emphasis === undefined ? null : readEmphasis(recipe.emphasis, {clock, strategies, theme, focus});
   if (!focus && !emphasis) return null;
-  return {focus, emphasis, record: {...(focus ? {focus: focus.record} : {}), ...(emphasis ? {emphasis: emphasis.record} : {})}};
+  return {focus, emphasis, record: {...(focus ? {focus: focus.record} : {}), ...(emphasis ? {emphasis: emphasis.record} : {})},
+    frames: {focus: focus?.frames ?? null, emphasis: emphasis?.frames ?? null}};
 }

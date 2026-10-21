@@ -1,5 +1,47 @@
 # Changelog
 
+## Unreleased
+
+- **Every render is drawn in pieces kept beside the video, by default.** `renderFilm` and `makeFilm` without `video`
+  keep the picture in `<out folder>/.storyreel/segments/<format>-<W>x<H>-<quality>` and redraw only the pieces an edit
+  reached. `whole: true` draws every frame in one pass (to debug the cache); a part or an intro is drawn whole.
+  `segments: {dir, cap, chunkSeconds, minSeconds, margin, parallel, samples, force, code, kitsCode}` sets the cache.
+  - The cache is held to 4 GB (`cap`): after each render the pieces used longest ago go first, never one that render
+    used or one used in the last ten minutes.
+  - `result.video.line` (and `making-of.json` → `picture.line`) says it in one line: `picture: 3 of 41 pieces drawn
+    (title: shot code changed; forward 12–18 s: words changed), 38 reused`. Every piece's reason is in
+    `picture.segments[i].why`.
+- **Pieces, not shots.** A row of pictures is cut where a scene or a sentence starts and every 6 s from there
+  (`chunkSeconds`), so a re-voiced word redraws its sentence from there on; the sentences and scenes after it move
+  whole and are reused. A key is on the piece's own clock: a beat, a word, a caption, a note or a camera move near it
+  (3 s, `margin`) counts exactly; one farther off counts only by the side it is on. A piece inside a camera freeze or
+  speed ramp is keyed by the moments it shows.
+- **Only the code that paints is in a key.** A key holds StoryReel's drawing fingerprint (the painter, the film, the
+  layout and what they import; `footprint-storyreel/segments` · `drawingCode`) instead of every StoryReel file, and a
+  transition or the steps track only in the pieces that draw it. A release that changes sounds, reviews, the command
+  line or a transition the film never plays keeps the cache. An approval still locks all of StoryReel.
+- **The stamp is burned at the join**, from a picture the painter drew (FFmpeg's `overlay`, not `drawtext`): a new
+  label costs one re-encode, never a redraw. A render with no stamp joins its pieces by copying, as before.
+- **A kit says where its code lives:** `sources: {entry: spec => [files], shared?, transition?}`. A piece is then keyed
+  by the code of the entries it draws, so editing one shot redraws only the pieces that show it. The cartoon and
+  whiteboard kits declare theirs. A kit without `sources` is keyed by `makeFilm`'s `code` where it draws.
+- **Focus, emphasis and an example scene's label are in the keys** of the pieces they reach. Before, a change to
+  `recipe.focus` or `recipe.emphasis` was caught only by the spot check. So is the arriving row a blurred frame just
+  before an entrance draws.
+- **The cache trusts nothing it reads back:** hex keys name the files, a link is never read, a manifest must have a
+  piece's shape for its key, and the video must be the bytes it recorded (size and SHA-256). A key also holds the
+  FFmpeg build that encodes it: pieces are joined by copying, and an MP4 keeps one set of H.264 parameters, so a piece
+  another build encoded is drawn again rather than joined.
+- **Pieces are drawn a fair share of the cores at a time** (`parallel`: the cores less one, at most 6; it was 2). The
+  drawing is one thread, so this overlaps encoding with drawing.
+- The StoryReel skill gains a four-line edit loop (part first, a full render redraws only what changed, keep the
+  stamp's label steady, `whole: true` only to debug): its agent-cost baseline is re-recorded for that page alone
+  (3821 → 4483 B, about 165 tokens more); every other row keeps its baseline.
+- **Breaking:** `segmentedVideo`'s `samples` is 1–60 (0, no spot check, is refused); its `recipe` is optional (the
+  film's own, `film.recipe`); `code` left out now means each kit's `sources` (`code: null` is still no code).
+  `ffmpegJoin().join` takes `{stamp}` and the strategy's `join` is async. A segment key from 0.17 never matches (a
+  first render draws everything once).
+
 ## 0.17.0 — a convincing tear, trimmed sounds, a steps track
 
 - **`torn` is a slow peel, rebuilt** (it was a quick tear, then a drag). A rip runs across the old picture at a seeded,

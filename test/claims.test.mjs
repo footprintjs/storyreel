@@ -132,7 +132,7 @@ test('an example scene says so on screen, in the top right corner, from its firs
   assert.ok(cropped && cropped.box[0] > 0 && cropped.box[2] < vertical.width && cropped.box[1] >= vertical.boxes.film[1], JSON.stringify(cropped));
   // An edit to the label redraws the segments that show it: it is in their key.
   const [first] = planSegments(film), material = segmentMaterial(film, first, {recipe, storyboard, pixels: {}});
-  assert.deepEqual(material.scenes.map(s => s.example ?? null), [null, true, null]);
+  assert.deepEqual(material.words.map(s => s.example ?? null), [null, true, null]);
 });
 
 test('the facts draw nothing: a corrected source leaves every segment\'s key alone, and an approval still locks it', async () => {

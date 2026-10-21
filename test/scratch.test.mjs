@@ -94,7 +94,8 @@ test('a render sweeps the working folders a stopped render left beside it; one g
   assert.ok(existsSync(path.join(dir, stale)) && existsSync(path.join(dir, 'kept', 'film-video.mp4')), 'a render given `work` sweeps nothing and keeps its working files');
   // Default: the stale folder from this host's dead process goes; the live one's, the other host's and the named one stay.
   await renderFilm({film: f, storyboard, timings, out: path.join(dir, 'film.mp4'), ...small});
-  assert.deepEqual(readdirSync(dir).filter(n => n.startsWith('.')).sort(), [live, elsewhere].sort());
+  // (.storyreel is the picture's cache, kept beside the video by design: picture.mjs.)
+  assert.deepEqual(readdirSync(dir).filter(n => n.startsWith('.') && n !== '.storyreel').sort(), [live, elsewhere].sort());
   assert.ok(existsSync(path.join(dir, 'kept', 'film-video.mp4')), 'a folder the caller named is never swept');
 });
 
@@ -103,7 +104,7 @@ test('makeFilm sweeps a stopped run\'s voice copy and working files, and its mak
   const work = plant(dir, `.storyreel-work-${scratchHost}-${dead}-1`), voice = plant(dir, `.narration-${scratchHost}-${dead}-2`);
   const made = await makeFilm({storyboard, timings, recipe: {story: {kit: 'plain'}}, kits: [kit], out: path.join(dir, 'film.mp4'), render: small});
   assert.deepEqual(JSON.parse(readFileSync(made.makingOf, 'utf8')).swept, {count: 2, names: [voice, work]});
-  assert.deepEqual(readdirSync(dir).filter(n => n.startsWith('.')), [], 'nothing hidden left');
+  assert.deepEqual(readdirSync(dir).filter(n => n.startsWith('.') && n !== '.storyreel'), [], 'nothing hidden left but the picture\'s cache');
   const again = await makeFilm({storyboard, timings, recipe: {story: {kit: 'plain'}}, kits: [kit], out: path.join(dir, 'film.mp4'), render: small});
   assert.equal(JSON.parse(readFileSync(again.makingOf, 'utf8')).swept, undefined, 'nothing swept: no `swept` in the record');
 });

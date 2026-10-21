@@ -241,6 +241,26 @@ function notOurs(st, accounts) {
 }
 
 /**
+ * The folders StoryReel names inside the caller's `parent`, checked as outputFolder checks them but never made: each one
+ * that is there must be a real folder this user owns that no other user can change (a link there is refused, never
+ * followed); the first one missing ends the check, and outputFolder makes the rest when something is first written.
+ * Returns where the last one is (or will be), inside the parent's real path. (The segment cache beside a video:
+ * picture.mjs.)
+ */
+export function ownFoldersIn(parent, names, fs = {}) {
+  const lstat = fs.lstat ?? lstatSync, accounts = 'accounts' in fs ? fs.accounts : systemAccounts();
+  const base = securePath(parent, fs), list = [].concat(names);
+  let at = base;
+  for (const name of list) {
+    at = path.join(at, name);
+    let st; try { st = lstat(at); } catch { break; }   // not there yet
+    const why = notOurs(st, accounts);
+    if (why) throw new Error(`${at} ${why}: StoryReel keeps its cache only in a folder of its own there, that no one else can change — remove it, or name another folder (segments.dir)`);
+  }
+  return path.join(base, ...list);
+}
+
+/**
  * The folders StoryReel names inside the caller's `parent` (a release's <target> and work/<target>, a breakdown's
  * shots/, the tools' stills/), inside the parent's real path (securePath: every folder above it checked, and the
  * folders made there through that path only), each made when it is not there (0755 less the umask) and,

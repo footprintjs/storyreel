@@ -17,7 +17,9 @@ import {flowChart, narrative} from 'footprintjs';
 import {applyPacing, validatePacing, paceTimings} from './pacing.mjs';
 import {withDirections} from './clock.mjs';
 import {compileFilm} from './film.mjs';
-import {prepareRender, finishRender, closeRender, wholeVideo, checkVideoStrategy} from './render.mjs';
+import {prepareRender, finishRender, closeRender} from './render.mjs';
+import {checkVideoStrategy} from './whole.mjs';
+import {pictureStrategy, checkPictureOptions} from './picture.mjs';
 import {makeScratch, sweepScratch} from './scratch.mjs';
 import {readApproval, requireApproval, voiceHash, unlocked} from './approval.mjs';
 import {hashOf} from './hash.mjs';
@@ -25,7 +27,7 @@ import {checkVideo, ffmpegProbe} from './finished.mjs';
 import {verdictChart} from './verdict.mjs';
 import {claimsCount, unsourcedClaims, claimText, CLAIMS_VERDICT} from './claims.mjs';
 import {installedVersion, lockedVersions} from './versions.mjs';
-import {codeCover, storyreelCode} from './segments.mjs';
+import {codeCover, storyreelCode, MAX_PIECES} from './segments.mjs';
 import {beatMap, likelyTempi} from './beats.mjs';
 import {readMusic, musicHash, fitToMusic, fitVoice} from './music.mjs';
 
@@ -100,8 +102,8 @@ function musicRecord(song, beats, fit) {
     ...(unsure && beats.phase !== 'unsure' ? {findings: [{kind: 'tempo-unsure', tempi: likelyTempi(beats), text: `tempo unsure (close): cuts only on beats every candidate shares (${fit.cutOn.beats} of ${fit.cutOn.of}${fit.cutOn.unsure ? `; none, as ${fit.cutOn.unsure.join(', ')} BPM is unsure of its phase` : ''}); give music.bpm (one of ${likelyTempi(beats).join(', ')}) to cut on every beat — storyreel beats <song> shows why`}]} : {})};
 }
 
-/** The most parts a picture is planned in (segments.mjs · planSegments makes one per row of pictures). */
-const MAX_PARTS = 256;
+/** The most parts a picture is planned in (segments.mjs · MAX_PIECES: a longer film is planned in longer pieces). */
+const MAX_PARTS = MAX_PIECES;
 
 /**
  * @param storyboard, recipe, data, kits, theme, root, hostKeys — as compileFilm
@@ -117,9 +119,10 @@ const MAX_PARTS = 256;
  *                     table, and the numbers on screen are read by it (compileFilm's lang, film.lang)
  * @param out          the .mp4 to write; making-of.json is written beside it
  * @param render       extra options for renderFilm (intro, stamp, from, to, width, height, layout, motionBlur,
- *                     captionFiles, video…); a layout, motion blur or caption files are written into the record as
- *                     `version`; a segmentedVideo strategy renders each segment as its own subflow and the record's
- *                     `picture` says which were drawn and which were reused
+ *                     captionFiles, video, whole, segments…); a layout, motion blur or caption files are written into the
+ *                     record as `version`. The picture is drawn in pieces kept beside the video by default (picture.mjs ·
+ *                     pictureStrategy), each its own subflow, and the record's `picture` says which were drawn — and
+ *                     why — and which were reused (picture.line, one line to read)
  * @param voiceCheck   'report' (the default: the record lists the words the voice check scored low or did not hear,
  *                     from the voice folder's word-check.json) or 'refuse' (a word not heard refuses the film, and so
  *                     does a voice with no check, or a check older than the voice's timings)
@@ -127,7 +130,8 @@ const MAX_PARTS = 256;
  *                     render refuses if anything it was made from changed since (the record's `inputs`); the record
  *                     keeps who approved it, when, and what the approval does not lock
  * @param code         a fingerprint of the kits' drawing code (segments.mjs · codeFingerprint), kept in the record's
- *                     inputs: with it an approval locks the kits' code too
+ *                     inputs: with it an approval locks the kits' code too, and a cached piece a kit draws that says
+ *                     nothing of where its code lives (kit.sources) is keyed by it
  * @param check        checks on the finished file (finished.mjs · checkVideo): null (the default: none), 'report'
  *                     (the record's `finished` lists what they found) or 'refuse' (a problem refuses the film);
  *                     `expect: {seconds, tolerance?}` is the length the brief asks for
@@ -171,7 +175,10 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   let copy = null;
   const dropCopy = () => { if (copy) rmSync(copy, {recursive: true, force: true}); };
   let film, paced, result, job, plan, inputs, finished = null, voice = null, placed = null, beats = null, fit = null;
-  const video = checkVideoStrategy(render.video ?? wholeVideo()), done = [];
+  // How the picture is made is decided once the render is prepared (plan-picture); its options refuse now.
+  checkPictureOptions(render);
+  let video = null;
+  const done = [];
   const stages = {
     'check-inputs': scope => {
       if (!storyboard?.scenes?.length) throw new Error('The storyboard has no scenes: give it scenes: [{id, narration} or {id, silent: [[what happens, seconds]]}]');
@@ -249,8 +256,9 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     // The picture: planned as one pass or as segments (render.mjs · wholeVideo, segments.mjs · segmentedVideo).
     'plan-picture': scope => {
       job = prepareRender({film, storyboard, timings: paced, narrationDir: scope.narration, out, ...render, ...(song ? {music: {file: song.file, start: fit.start, gain: song.gain, fadeOut: song.fadeOut}} : {})});
+      video = checkVideoStrategy(pictureStrategy(render, job, {kitsCode: code}));
       plan = video.plan(job);
-      if (plan.length > MAX_PARTS) throw new Error(`The picture is planned in ${plan.length} parts; at most ${MAX_PARTS} can be drawn (segments.mjs · planSegments: give the segments a larger minSeconds)`);
+      if (plan.length > MAX_PARTS) throw new Error(`The picture is planned in ${plan.length} parts; at most ${MAX_PARTS} can be drawn (segments.mjs · planPieces: give the segments a larger minSeconds)`);
       scope.picture = {strategy: video.name, parts: plan.length};
       scope.parts = plan.map(p => ({index: p.index, frames: p.f1 - p.f0, ...(p.key ? {key: p.key, scenes: [...p.scenes]} : {})}));
     },
@@ -258,7 +266,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       const picture = await video.join(job, done);
       result = await finishRender(job, picture);
       scope.out = result.out; scope.chapters = result.chapters; scope.loudness = result.loudness.type;
-      if (result.video) scope.reused = result.video.reused, scope.rendered = result.video.rendered;
+      if (result.video) { scope.reused = result.video.reused; scope.rendered = result.video.rendered; }
     },
     // The finished file, checked (finished.mjs): what a person would catch watching it, against what the film meant.
     'check-finished': async scope => {

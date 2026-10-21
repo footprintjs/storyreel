@@ -5,10 +5,12 @@
  */
 import {writeFileSync, rmSync} from 'node:fs';
 import path from 'node:path';
-import {spawn, spawnSync} from 'node:child_process';
-import {once} from 'node:events';
-import {createHash} from 'node:crypto';
+import {spawnSync} from 'node:child_process';
 import {createCanvas} from '@napi-rs/canvas';
+import {ENCODE, QUALITIES, makePainter, readMotionBlur, frameEncoder, frameHasher} from './paint.mjs';
+import {concatList} from './ffconcat.mjs';
+import {checkVideoStrategy} from './whole.mjs';
+import {pictureStrategy} from './picture.mjs';
 import {createMotionSound, soundsByScene, SOUND_AT, FOUND} from './sound.mjs';
 import {useFound, addCommand, trimOf, AUDIO_ONLY} from './found/index.mjs';
 import {compileLayout, draftSize} from './layout.mjs';
@@ -140,19 +142,6 @@ export function checkLoudnessTarget(loudness) {
 }
 
 /**
- * An ffmpeg concat list of files: each path absolute and quoted, a quote in it written '\'' (a folder called
- * "Sanjay's films" is fine). A line break cannot be written in such a list (it would end the entry and start another,
- * naming any file), so a path with one is refused.
- */
-function concatList(files) {
-  return files.map(f => {
-    const p = path.resolve(f);
-    if (/[\r\n]/.test(p)) throw new Error(`render: ${JSON.stringify(p)} has a line break, which ffmpeg's concat list cannot hold: rename it`);
-    return `file '${p.replace(/'/g, "'\\''")}'`;
-  }).join('\n') + '\n';
-}
-
-/**
  * The voice, scene by scene, into `voice`: each scene's audio from narrationDir, and generated silence
  * of its duration for a silent scene whose timing names no audio (clock.mjs · directionTimings). FFmpeg's
  * concat joins only files of one format, so when any silence is generated every part is first made
@@ -174,52 +163,10 @@ function joinVoice(run, {dir, storyboard, timings, narrationDir, voice}) {
 }
 
 
-/** The motionBlur option: null, a number of subframes, or {subframes 2–16, shutter 0.1–1 (default 0.5)}. */
-export function readMotionBlur(v) {
-  if (v === null || v === undefined || v === false) return null;
-  const o = typeof v === 'number' ? {subframes: v} : v;
-  if (!o || typeof o !== 'object' || Array.isArray(o)) throw new Error('motionBlur must be a number of subframes or {subframes, shutter}');
-  for (const key of Object.keys(o)) if (!['subframes', 'shutter'].includes(key)) throw new Error(`motionBlur has unsupported key ${key} (the keys are subframes, shutter)`);
-  const shutter = o.shutter ?? .5;
-  if (!(Number.isInteger(o.subframes) && o.subframes >= 2 && o.subframes <= 16)) throw new Error('motionBlur.subframes must be a whole number 2–16');
-  if (!(typeof shutter === 'number' && shutter >= .1 && shutter <= 1)) throw new Error('motionBlur.shutter must be 0.1–1 (the share of a frame\'s time the blur spans)');
-  return {subframes: o.subframes, shutter};
-}
-
-/**
- * The moments one frame's motion blur averages: `subframes` of them spread evenly over `shutter` of the frame's time,
- * centred on it. Always strictly inside the frame (a shutter of 1 reaches 0.4999995 of a frame either side, not the
- * half-way point the next frame shares), so a drawing held on twos (motion.mjs · heldTime) is the same drawing at
- * every moment of its frame.
- */
-export function blurMoments(t, {subframes: n, shutter}, fps) {
-  const span = Math.min(shutter, 1 - 1e-6) / fps;
-  return Array.from({length: n}, (_, i) => t + (i / (n - 1) - .5) * span);
-}
-
-/**
- * The painter: one output picture at film time t into ctx — the film (in its layout, if any), averaged
- * over the motion-blur subframes, then the layout's bands on top (never blurred). A still (the poster)
- * takes no blur and no caption (a thumbnail shows the picture and the title band). Every call leaves ctx
- * with an identity transform and full alpha.
- */
-export function makePainter({film, framed, blur, width, height, fps, ctx}) {
-  const k = width / 1600;
-  const picture = (c, t) => { c.resetTransform(); c.globalAlpha = 1; c.clearRect(0, 0, width, height); if (framed) framed.picture(c, t); else { c.scale(k, k); film.frame(c, t); } c.resetTransform(); };
-  const sub = blur ? createCanvas(width, height) : null, subCtx = sub?.getContext('2d');
-  return (t, {still = false} = {}) => {
-    if (!blur || still) picture(ctx, t);
-    else {
-      // A running average: subframe i is laid over the first i at 1 / (i + 1), so each counts once.
-      const moments = blurMoments(t, blur, fps).map(at => Math.max(0, Math.min(film.total, at)));
-      for (const [i, at] of moments.entries()) {
-        if (i === 0) { picture(ctx, at); continue; }
-        picture(subCtx, at); ctx.globalAlpha = 1 / (i + 1); ctx.drawImage(sub, 0, 0); ctx.globalAlpha = 1;
-      }
-    }
-    if (framed) { framed.overlay(ctx, t, {still}); ctx.resetTransform(); ctx.globalAlpha = 1; }
-  };
-}
+// The painter (one picture at a film second, the motion blur, the encoder's settings) lives in paint.mjs: it is what
+// draws, so it is the root of every cached piece's drawing fingerprint; these names stay here, as they always were.
+export {readMotionBlur, blurMoments, makePainter, QUALITIES} from './paint.mjs';
+export {wholeVideo, checkVideoStrategy} from './whole.mjs';
 
 /**
  * @param film       from compileFilm
@@ -229,7 +176,8 @@ export function makePainter({film, framed, blur, width, height, fps, ctx}) {
  * @param narrationDir where the paced scene audio lives (null → a silent film)
  * @param out        the .mp4 to write (its folder receives the working files)
  * @param intro      optional {seconds, draw(ctx, t, {width, height, handoff}), wav?: Buffer} — a title before the film
- * @param stamp      optional text stamped on every frame (e.g. 'DRAFT · NOT APPROVED')
+ * @param stamp      optional text stamped on every frame (e.g. 'DRAFT · NOT APPROVED'): burned once over the joined
+ *                   pieces (segments/join.mjs), never into a cached piece, so a new label redraws nothing
  * @param from,to    render part of the film (seconds on the film clock); the intro plays only when from < 0
  * @param part       instead of from/to: {scenes: [id, …], handles?} — those scenes and `handles` seconds (1.5) of the
  *                   film around them, so both of the part's cuts are seen (render.mjs · partWindow)
@@ -245,9 +193,14 @@ export function makePainter({film, framed, blur, width, height, fps, ctx}) {
  *                   spread over `shutter` (0.5 by default) of the frame's time, so fast moves blur as a camera's would
  * @param captionFiles true (both) or a list of 'vtt' / 'srt': caption files beside the video (captions.vtt,
  *                   captions.srt) on the video's clock, for players that show their own captions (footprint-narration · captionFile)
- * @param video      how the picture is made (a strategy, segments.mjs): wholeVideo() — every frame in one pass, the
- *                   default — or segmentedVideo({...}) — the film in segments, each reused from a cache when nothing
- *                   that draws it changed, then joined. The sound is always mixed for the whole film, once.
+ * @param video      how the picture is made (a strategy): left out, the film is drawn in pieces kept in a cache beside
+ *                   the video (picture.mjs · pictureStrategy: <out folder>/.storyreel/segments/…), and a piece nothing
+ *                   that draws it changed is reused; a part (from, to) or an intro is drawn whole. segmentedVideo({...})
+ *                   names the cache and its options yourself; wholeVideo() draws every frame in one pass. The sound is
+ *                   always mixed for the whole film, once.
+ * @param whole      true: every frame in one pass (wholeVideo()), for debugging the cache — never needed for a final
+ * @param segments   the default cache's options: {dir?, cap?, chunkSeconds?, parallel?, samples?, force?, code?}
+ *                   (picture.mjs · pictureStrategy)
  * @param quality    'standard' (the default: quick to make, fine to watch), 'draft' (quickest, for looking while
  *                   editing) or 'high' (for posting: a slower, finer
  *                   encode, its colours converted and tagged as HD video's, BT.709, the way players read them)
@@ -268,24 +221,10 @@ export function makePainter({film, framed, blur, width, height, fps, ctx}) {
 export async function renderFilm(options) {
   const job = prepareRender(options);
   try {
-    const video = await checkVideoStrategy(options.video ?? wholeVideo()).render(job);
+    const video = await checkVideoStrategy(pictureStrategy(options, job)).render(job);
     return await finishRender(job, video);
   } finally { closeRender(job); }   // the working files go, finished or failed (kept only in a `work` folder the caller named)
 }
-
-/**
- * How the frames are encoded. 'standard': quick, fine to watch. 'high', for posting: a slower, finer encode, and the
- * colours converted with HD video's matrix and tagged so (BT.709): FFmpeg converts RGB with the older SD matrix unless
- * told, and players read HD video as BT.709, which shifts reds and greens a little.
- */
-const ENCODE = Object.freeze({
-  standard: ['-preset', 'fast', '-crf', '19', '-pix_fmt', 'yuv420p'],
-  draft: ['-preset', 'ultrafast', '-crf', '24', '-pix_fmt', 'yuv420p'],
-  // The frames carry the tags too (setparams): a newer FFmpeg takes them from the frames, an older one from the flags.
-  high: ['-preset', 'slow', '-crf', '16', '-vf', 'scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv',
-    '-pix_fmt', 'yuv420p', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv'],
-});
-export const QUALITIES = Object.freeze(Object.keys(ENCODE));
 
 /**
  * A render's defaults, as data (the skills quote them; test/skills.test.mjs holds the pages to them): the frame size
@@ -372,7 +311,7 @@ export function closeRender(job) {
 
 function prepareJob({film, storyboard, timings, narrationDir = null, out, width: givenWidth, height: givenHeight, fps = RENDER_DEFAULTS.fps, intro = null, stamp = null,
   from = intro ? -intro.seconds : 0, to = film.total, poster = film.posterAt ?? null, posterFrame = true, peakCeilingDBFS = -20, loudness = {I: -16, TP: -1.5}, layout = null, motionBlur = null,
-  captionFiles = false, quality = 'standard', ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', video: _strategy, music = null, soundAt = 'start', work = null}) {
+  captionFiles = false, quality = 'standard', ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', video: _strategy, whole: _whole, segments: _segments, music = null, soundAt = 'start', work = null}) {
   checkLoudnessTarget(loudness);
   if (work !== null && !(typeof work === 'string' && work.trim())) throw new Error(`work is a folder for the render's working files, kept after the render (left out: a hidden folder beside the video, removed when the render ends), not ${JSON.stringify(work)}`);
   if (!SOUND_AT.includes(soundAt)) throw new Error(`soundAt is 'start' (each sound begins on its moment, the default) or 'peak' (its loudest transient lands on it), not ${JSON.stringify(soundAt)}`);
@@ -403,85 +342,24 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   // A render starts on the film's frame grid (a part's window is rounded to the millisecond): frame f shows film second
   // start + f / fps, so a drawing held on twos (motion.mjs · heldTime) pairs the same frames in a part as in the film.
   const withIntro = intro && from < 0, start = Math.floor(Math.max(0, from) * fps + 1e-6) / fps;
-  const job = {film, storyboard, timings, narrationDir, out, dir, work: workDir, keepWork: work !== null, swept, unswept, width, height, fps, intro, withIntro, stamp, start, to, poster, posterFrame, peakCeilingDBFS, loudness, layout, framed, blur, captionKinds, ffmpeg, song, soundAt,
+  const job = {film, storyboard, timings, narrationDir, out, dir, work: workDir, keepWork: work !== null, swept, unswept, width, height, fps, intro, withIntro, stamp, start, to, poster, posterFrame, peakCeilingDBFS, loudness, layout, framed, blur, captionKinds, ffmpeg, song, soundAt, quality,
     /** How many frames the film part has (the intro's are extra). */
     frames: Math.ceil((to - start) * fps),
-    /** What changes a frame's pixels besides the film itself: a segment's cache key includes it (segments.mjs). */
-    pixels: {width, height, fps, layout: layout ?? null, stamp: stamp ?? null, motionBlur: blur, poster: posterFrame ? poster : null, ...(quality === 'standard' ? {} : {quality})},
+    /**
+     * What changes a frame's pixels besides the film itself: a cached piece's key includes it, with the FFmpeg that
+     * encodes it (segments.mjs · plan: paint.mjs · encoderOf). Never the stamp: a segmented render draws its pieces
+     * without it and burns it once at the join (segments/join.mjs), so a new label costs one re-encode, not a redraw.
+     */
+    pixels: {width, height, fps, layout: layout ?? null, motionBlur: blur, poster: posterFrame ? poster : null, ...(quality === 'standard' ? {} : {quality})},
   };
   /**
-   * Encode film frames [f0, f1) (frame f shows film second start + f / fps) into `file`; withIntro puts the
-   * intro's frames first; posterFirst replaces the first frame with the poster still. Each call has its own
-   * canvas and painter, so strategies may encode several parts at once.
+   * Encode film frames [f0, f1) into `file` (paint.mjs · frameEncoder: frame f shows film second start + f / fps;
+   * withIntro, posterFirst, stamp: false for a piece burned at the join). Each call has its own canvas and painter.
    */
-  job.encodeFrames = async ({f0 = 0, f1 = job.frames, file, withIntro: introHere = false, posterFirst = false}) => {
-    const k = width / 1600, canvas = createCanvas(width, height), ctx = canvas.getContext('2d');
-    const paint = makePainter({film, framed, blur, width, height, fps, ctx});
-    const ff = spawn(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pixel_format', 'rgba', '-video_size', `${width}x${height}`, '-framerate', String(fps), '-i', 'pipe:0', '-c:v', 'libx264', ...ENCODE[quality], file], {stdio: ['pipe', 'ignore', 'inherit']});
-    // FFmpeg that cannot start, or that stops taking frames, is a refusal (not a crash): every failure lands on `closed`.
-    let failed = null;
-    const closed = new Promise(resolve => { ff.once('error', e => { failed ??= e; resolve([null]); }); ff.once('close', code => resolve([code])); });
-    ff.stdin.on('error', e => { failed ??= e; });
-    const push = async () => {
-      drawStamp(ctx, stamp, width);
-      if (failed) throw new Error(`ffmpeg (${ffmpeg}) could not encode ${path.basename(file)}: ${failed.message}`);
-      if (!ff.stdin.write(canvas.data())) await Promise.race([once(ff.stdin, 'drain'), closed]);
-    };
-    let posterNext = posterFirst && poster !== null && posterFrame;
-    const frameOrPoster = async draw => { if (posterNext) { posterNext = false; paint(poster, {still: true}); } else draw(); await push(); };
-    if (introHere) {
-      const handoff = createCanvas(width, height); { const c = handoff.getContext('2d'); c.scale(k, k); film.frame(c, 0); }
-      for (let f = 0; f < Math.round(intro.seconds * fps); f++) await frameOrPoster(() => { ctx.resetTransform(); ctx.globalAlpha = 1; ctx.clearRect(0, 0, width, height); intro.draw(ctx, f / fps, {width, height, handoff}); });
-    }
-    for (let f = f0; f < f1; f++) await frameOrPoster(() => paint(start + f / fps));
-    ff.stdin.end();
-    const [code] = await closed;
-    if (failed) throw new Error(`ffmpeg (${ffmpeg}) could not encode ${path.basename(file)}: ${failed.message}`);
-    if (code !== 0) throw new Error(`ffmpeg failed encoding frames ${f0}–${f1} into ${path.basename(file)} (exit ${code}): FFmpeg's own error is printed above it`);   // refusal: FFmpeg's stderr says why
-    return file;
-  };
-  /**
-   * A frame hasher with its own canvas: hash(f, {poster}) fingerprints frame f exactly as encodeFrames paints
-   * it — the layout, the motion blur, the stamp; the poster still when `poster` — so a spot check sees what
-   * the video shows. Each caller makes its own, so parts checked at once never share a canvas.
-   */
-  job.frameHasher = () => {
-    const canvas = createCanvas(width, height), ctx = canvas.getContext('2d'), paint = makePainter({film, framed, blur, width, height, fps, ctx});
-    return (f, {poster: asPoster = false} = {}) => {
-      if (asPoster && poster !== null) paint(poster, {still: true}); else paint(start + f / fps);
-      drawStamp(ctx, stamp, width);
-      return createHash('sha256').update(canvas.data()).digest('hex').slice(0, 16);
-    };
-  };
+  job.encodeFrames = frameEncoder(job);
+  /** A frame hasher with its own canvas (paint.mjs · frameHasher): frame f exactly as encodeFrames paints it. */
+  job.frameHasher = options => frameHasher(job, options);
   return job;
-}
-
-/** A draft stamp in the frame's top right corner (nothing without one). */
-function drawStamp(ctx, stamp, width) {
-  if (!stamp) return;
-  ctx.save(); ctx.resetTransform(); ctx.globalAlpha = 1; ctx.font = '600 16px Menlo'; const w = ctx.measureText(stamp).width + 24;
-  ctx.fillStyle = 'rgba(179,63,54,.92)'; ctx.fillRect(width - w - 16, 14, w, 28); ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.fillText(stamp, width - w - 4, 28); ctx.restore();
-}
-
-/** The default strategy: every frame in one pass, the intro first (if any), the poster as the first frame. */
-export function wholeVideo() {
-  return {
-    name: 'whole',
-    plan: job => [{index: 0, f0: 0, f1: job.frames, whole: true}],
-    async one(job) {
-      const file = path.join(job.work, 'film-video.mp4');   // the picture without its sound: a working file
-      await job.encodeFrames({file, withIntro: Boolean(job.withIntro), posterFirst: true});
-      return {index: 0, status: 'rendered', frames: job.frames, file};
-    },
-    join: (job, [done]) => ({file: done.file}),
-    async render(job) { return this.join(job, [await this.one(job, this.plan(job)[0])]); },
-  };
-}
-
-/** A picture strategy has plan(job), one(job, item) and join(job, done); render(job) runs them in order. */
-export function checkVideoStrategy(video) {
-  if (!video || typeof video !== 'object' || !['plan', 'one', 'join', 'render'].every(k => typeof video[k] === 'function')) throw new Error('video must be a picture strategy: wholeVideo() or segmentedVideo({...}) (an object with plan, one, join and render)');
-  return video;
 }
 
 /** Write the poster still beside the video (poster.jpg), when the render has one. */
