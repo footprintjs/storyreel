@@ -8,6 +8,9 @@
   cloud's scale (`size`, 0.5–0.9, 0.8 by default), so the cloud is a window onto all of it but its corners. As the shot
   starts, the trail pops up from the corner, one circle after another with a small overshoot, and the cloud puffs open
   out of it. `corner`, `size`, `seed` (the scallops), `color` and `ink` set it, and a bad one refuses, naming the fix.
+  `backdrop` darkens the ground round the cloud so the thought stands out: a hex colour (flat), or `{color, vignette}`
+  (lighter near the cloud, darker at the edges). It darkens in as the trail rises, and `cloudBurst` clears it on its
+  pop (0.3 s, eased out), so nothing dark lingers on the next shot.
   A paper stage, and the story of a film with a `pushIn`, refuse a frame; so does `frame` written inside a stage's
   `world`. The world's regions follow it into the cloud. The opening is a change of picture: pushes and camera moves take
   turns with it, the world is not on screen until the cloud starts to open, and a `match`, `through` or `morph` cannot go

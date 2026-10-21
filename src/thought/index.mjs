@@ -16,11 +16,14 @@
  *           onto all of it but its corners, and the words in it stay readable
  *   seed    the scallops, 0–10000 (3): a seeded shape (seeded.mjs), the same on every frame and every machine
  *   color   the cloud's paper (null: the theme's card); `ink` its outline (null: the theme's ink)
+ *   backdrop the ground round the cloud (the frame's alone): null, the shot's own; a hex colour, flat; or
+ *           {color, vignette}, lighter near the cloud and darker at the edges. It darkens in with the entrance, and
+ *           cloudBurst clears it on the pop, so a dark backdrop never lingers on the next shot
  *
  * The parts, each its own module: recipe.mjs (the frame as written, its settings), shape.mjs (the cloud as numbers),
  * entrance.mjs (its entrance, a pure function of time) and draw.mjs (on a canvas).
  */
-export {THOUGHT_CORNERS, THOUGHT_SETTINGS, readThought} from './recipe.mjs';
+export {THOUGHT_CORNERS, THOUGHT_SETTINGS, readThought, readBackdrop} from './recipe.mjs';
 export {thoughtCloud} from './shape.mjs';
 export {THOUGHT_ENTRANCE, thoughtAt, thoughtCamera} from './entrance.mjs';
 export {cloudPath, drawThought, CLOUD_LINE} from './draw.mjs';

@@ -3,8 +3,8 @@
  * it at a moment of its entrance (drawThought): the trail, the cloud's paper with a soft shadow, the picture softening
  * into the paper at the edge, the ink outline.
  */
-import {pixelScale, scaleAbout, SHEET_SHADOW} from '../frame.mjs';
-import {rgba} from '../colour.mjs';
+import {W, H, pixelScale, scaleAbout, SHEET_SHADOW} from '../frame.mjs';
+import {rgba, mixColor} from '../colour.mjs';
 import {paperTokens} from '../paper-tokens.mjs';
 import {circleOf} from './shape.mjs';
 import {thoughtAt} from './entrance.mjs';
@@ -29,19 +29,40 @@ function shade(ctx, k) {
   ctx.shadowColor = SHEET_SHADOW; ctx.shadowBlur = 26 * k * px; ctx.shadowOffsetY = 8 * k * px;
 }
 
+/** How much lighter the backdrop is round the cloud, and darker at the frame's edges, at full vignette. */
+const VIGNETTE_LIGHT = .22, VIGNETTE_DARK = .45;
+
 /**
- * The cloud on ctx at `age` seconds into its shot (entrance.mjs · thoughtAt): the trail, then the cloud — its paper,
- * casting a soft shadow; the picture inside it, softening into the paper at the edge (paint(c) draws the picture in frame
- * units: a world's sheet at the cloud's `place`, scale `S`); the ink outline. Colours: `color` and `ink`, or the theme's
- * card and ink (paper-tokens.mjs). ctx is left as it was found.
+ * The cloud on ctx at `age` seconds into its shot (entrance.mjs · thoughtAt): the backdrop round it, if it has one
+ * (recipe.mjs · readBackdrop), darkening in with the entrance; the trail; then the cloud — its paper, casting a soft
+ * shadow; the picture inside it, softening into the paper at the edge (paint(c) draws the picture in frame units: a
+ * world's sheet at the cloud's `place`, scale `S`); the ink outline. Colours: `color` and `ink`, or the theme's card
+ * and ink (paper-tokens.mjs). ctx is left as it was found.
  */
-export function drawThought(ctx, cloud, paint, {age = Infinity, color = null, ink = null, theme} = {}) {
+export function drawThought(ctx, cloud, paint, {age = Infinity, color = null, ink = null, theme, backdrop = null} = {}) {
   const tokens = paperTokens(theme), paper = color ?? tokens.paper, line = ink ?? tokens.ink, now = thoughtAt(cloud, age);
   ctx.save();
   try {
+    if (backdrop && now.backdrop > 0) drawBackdrop(ctx, cloud, backdrop, now.backdrop);
     cloud.trail.forEach((circle, i) => { if (now.trail[i] > 0) trailCircle(ctx, circle, now.trail[i], paper, line); });
     if (now.open > 0) drawCloud(ctx, cloud, now, paint, paper, line);
   } finally { ctx.restore(); }
+}
+/**
+ * The ground round the cloud, `alpha` of the way in: its colour, flat, or (vignette) lighter round the cloud and darker
+ * toward the frame's edges, on an ellipse the cloud's shape. Drawn under the cloud, which covers it inside.
+ */
+function drawBackdrop(ctx, cloud, {color, vignette}, alpha) {
+  ctx.save(); ctx.globalAlpha *= alpha;
+  if (vignette > 0) {
+    const [cx, cy] = cloud.centre, [x0, y0, x1, y1] = cloud.box, k = (y1 - y0) / (x1 - x0);
+    const far = Math.max(...[[0, 0], [W, 0], [0, H], [W, H]].map(([x, y]) => Math.hypot(x - cx, (y - cy) / k)));
+    ctx.translate(cx, cy); ctx.scale(1, k);
+    const g = ctx.createRadialGradient(0, 0, (x1 - x0) / 2 * .9, 0, 0, far);
+    g.addColorStop(0, mixColor(color, '#ffffff', VIGNETTE_LIGHT * vignette)); g.addColorStop(1, mixColor(color, '#000000', VIGNETTE_DARK * vignette));
+    ctx.fillStyle = g; ctx.fillRect(-2 * far, -2 * far / k, 4 * far, 4 * far / k);
+  } else { ctx.fillStyle = color; ctx.fillRect(-W, -H, 3 * W, 3 * H); }
+  ctx.restore();
 }
 function trailCircle(ctx, {c, r}, k, paper, line) {
   ctx.save(); scaleAbout(ctx, c, k);

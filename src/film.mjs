@@ -580,7 +580,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (spot) aim(ctx, spotCamera(w, spot));
     if (camera) aim(ctx, camera);
     ctx.drawImage(blank, 0, 0);
-    if (w.frame) drawThought(ctx, w.frame.cloud, c => c.drawImage(sheet, w.BX, w.BY, 1600 * w.S, 900 * w.S), {age: t - w.thoughtFrom, color: w.frame.color, ink: w.frame.ink, theme: paper});
+    if (w.frame) drawThought(ctx, w.frame.cloud, c => c.drawImage(sheet, w.BX, w.BY, 1600 * w.S, 900 * w.S), {age: t - w.thoughtFrom, color: w.frame.color, ink: w.frame.ink, backdrop: w.frame.backdrop, theme: paper});
     else if (w.S < 1) { ctx.save(); ctx.shadowColor = SHEET_SHADOW; ctx.shadowBlur = 26; ctx.shadowOffsetY = 8; ctx.drawImage(sheet, w.BX, w.BY, 1600 * w.S, 900 * w.S); ctx.restore(); }
     else ctx.drawImage(sheet, 0, 0);
     ctx.restore();

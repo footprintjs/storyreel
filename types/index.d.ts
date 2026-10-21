@@ -221,11 +221,13 @@ export type Watching = {kind: 'burst'; path: string; where: string; at: number; 
  * A world's frame (thought/): the world drawn inside a cartoon thought cloud, a trail of three little circles toward
  * `corner` (the cloud leans away from it). `size` is the cloud's share of the frame (0.5–0.9, 0.8), and the world is
  * drawn at it; `seed` picks the scallops (0–10000, 3); `color` and `ink` are its paper and outline (null: the theme's
- * card and ink). As the shot starts, the trail pops up from the corner, then the cloud opens (a change of picture). On
- * the story or a "type": "world" stage only (another stage refuses it). A cloudBurst out of it pops the same cloud: the
- * settings it leaves out are the frame's.
+ * card and ink). `backdrop` is the ground round the cloud: a hex colour (flat), {color, vignette?} (lighter near the cloud,
+ * darker at the edges; vignette 0–1, 0.5), or null (the shot's own ground); it darkens in as the trail rises and
+ * cloudBurst clears it on its pop. As the shot starts, the trail pops up from the corner, then the cloud opens (a change
+ * of picture). On the story or a "type": "world" stage only (another stage refuses it). A cloudBurst out of it pops the
+ * same cloud: the settings it leaves out are the frame's.
  */
-export type WorldFrame = 'thought' | {type: 'thought'; corner?: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right'; size?: number; seed?: number; color?: string | null; ink?: string | null};
+export type WorldFrame = 'thought' | {type: 'thought'; corner?: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right'; size?: number; seed?: number; color?: string | null; ink?: string | null; backdrop?: string | {color: string; vignette?: number} | null};
 
 /** The built-in transitions (transitions.mjs · TRANSITIONS). */
 export type TransitionName = 'cut' | 'fade' | 'dip' | 'cloudBurst' | 'wipe' | 'split' | 'clock' | 'torn' | 'eraser' | 'iris' | 'inkBleed' | 'ringIris'

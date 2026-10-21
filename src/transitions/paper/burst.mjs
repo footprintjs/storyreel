@@ -5,7 +5,8 @@
  * is nowhere: the old one stays whole round the cloud (a thought shot's own paper and trail), while the cloud swells a
  * little and the memory in it fades into the cloud's paper. Then it pops: the cloud breaks into puffs (its own scallops,
  * and the discs that filled it) which drift out and shrink away, and the new shot is uncovered where they part, while
- * round the cloud it fades up with the burst. The puffs travel as far as the pop has pushed them (principles.mjs ·
+ * round the cloud it fades up with the burst (0.3 s, eased) — a thought's dark backdrop falls away with it, so nothing
+ * of it lingers on the new shot. The puffs travel as far as the pop has pushed them (principles.mjs ·
  * envelopeShare, BURSTS.pop: a 60 ms rise, then a fall to a third every 180 ms, at the default 1 s; a longer change
  * stretches the pop with it). Its sound hits on the pop (hitAt).
  */
@@ -19,9 +20,10 @@ import {seeded} from '../../seeded.mjs';
 const TAU = 2 * Math.PI;
 /**
  * Where in the change the cloud pops, and how much it has swelled by then; when the memory fades into the cloud's paper;
- * how long after the pop the new shot takes to fade up round the cloud; when the last puffs fade out.
+ * how long after the pop the old shot takes to fall away round the cloud (eased out: fast as the puffs fly, then soft);
+ * when the last puffs fade out.
  */
-const POP = .3, SWELL = .05, PALE = Object.freeze([.14, .3]), AROUND = .35, FADE = Object.freeze([.6, .92]);
+const POP = .3, SWELL = .05, PALE = Object.freeze([.14, .3]), AROUND = .3, FADE = Object.freeze([.6, .92]);
 /** Its default length, seconds: the change's clock the pop's timing runs on (a recipe's longer change stretches it). */
 const LENGTH = 1;
 
@@ -119,7 +121,7 @@ function cloudBurst(ctx, {e, from, to, p, ghost, theme}) {
   const t = paperTokens(theme), paper = p.color ?? t.paper, ink = p.ink ?? t.ink, cloud = thoughtCloud(p);
   if (e < POP) { swelling(ctx, from, cloud, e, paper, ink); return; }
   to(ctx);
-  const old = 1 - smooth(POP, POP + AROUND, e), alpha = 1 - smooth(FADE[0], FADE[1], e);
+  const old = (1 - Math.min(1, (e - POP) / AROUND)) ** 2, alpha = 1 - smooth(FADE[0], FADE[1], e);
   if (old > 0) ghost(old, c => { c.save(); aroundCloud(c, cloud, 1 + SWELL); from(c); c.restore(); });
   if (alpha > 0) ghost(alpha, c => drawPuffs(c, cloud, e, paper, ink));
 }

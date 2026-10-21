@@ -290,6 +290,7 @@ none of it is on the frame when the change ends. `{"type": "thought", …}` take
 | `size` | the cloud's share of the frame, 0.5–0.9 | `0.8` |
 | `seed` | the scallops, 0–10000: the same seed is the same cloud on every frame | `3` |
 | `color`, `ink` | the cloud's paper and its outline | the theme's card and ink |
+| `backdrop` | the ground round the cloud, to make the thought stand out: a hex colour (`"#111111"`, flat), or `{"color": "#2b2622", "vignette": 0.5}` (lighter near the cloud, darker at the frame's edges; `vignette` 0–1, 0.5 when left out). It darkens in as the trail rises, is drawn only round the cloud, and `cloudBurst` clears it on its pop, so nothing dark lingers on the next shot | the shot's own ground |
 
 `cloudBurst` ends the thought: the cloud swells, pales and pops into puffs. Until it pops, nothing of the next shot
 shows: the thought's own paper and trail stay round the cloud. After the pop, the next shot is uncovered where the puffs

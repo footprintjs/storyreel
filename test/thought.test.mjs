@@ -66,7 +66,7 @@ test('at its default size the cloud keeps a margin from the frame\'s edges: at r
 
 test('the entrance: the trail pops one circle after another from the corner, then the cloud opens; at rest by 1.6 s', () => {
   const cloud = thoughtCloud({}), at = age => thoughtAt(cloud, age);
-  assert.deepEqual({...at(0), bulge: null}, {trail: [0, 0, 0], open: 0, bulge: null}, 'nothing before the shot');
+  assert.deepEqual({...at(0), bulge: null}, {trail: [0, 0, 0], open: 0, bulge: null, backdrop: 0}, 'nothing before the shot');
   const firstSeen = i => { for (let t = 0; t < 2; t += 1 / 240) if (at(t).trail[i] > 0) return t; return Infinity; };
   const firstOpen = (() => { for (let t = 0; t < 2; t += 1 / 240) if (at(t).open > 0) return t; return Infinity; })();
   const order = [0, 1, 2].map(firstSeen);
@@ -76,7 +76,7 @@ test('the entrance: the trail pops one circle after another from the corner, the
   for (const i of [0, 1, 2]) { const m = most(s => s.trail[i]); assert.ok(m > 1.02 && m < 1.12, `circle ${i} overshoots a little (${m.toFixed(3)})`); }
   const open = most(s => s.open);
   assert.ok(open > 1.01 && open < 1.04, `the cloud overshoots a little (${open.toFixed(3)})`);
-  assert.deepEqual(at(THOUGHT_ENTRANCE.settled), {trail: [1, 1, 1], open: 1, bulge: null}, 'at rest: exactly the cloud');
+  assert.deepEqual(at(THOUGHT_ENTRANCE.settled), {trail: [1, 1, 1], open: 1, bulge: null, backdrop: 1}, 'at rest: exactly the cloud');
   assert.ok(Math.abs(at(THOUGHT_ENTRANCE.settled - 1e-3).open - 1) < 1e-3, 'and no jump onto it');
   // In pixels: early on only the corner's circle is drawn (paper at its middle); the rest of the frame is untouched.
   const page = '#00ff00', drawnAt = age => {
@@ -171,9 +171,9 @@ test('in a film: a world stage takes a frame, its entrance timed from its own sc
 test('bad frames refuse, naming the fix', async () => {
   const refuses = (value, re) => assert.throws(() => readThought(value, 'stage dream'), re);
   assert.equal(readThought(undefined, 'x'), null, 'left out: no frame');
-  assert.deepEqual({...readThought('thought', 'x'), cloud: null}, {type: 'thought', corner: 'bottom-left', size: .8, seed: 3, color: null, ink: null, cloud: null});
+  assert.deepEqual({...readThought('thought', 'x'), cloud: null}, {type: 'thought', corner: 'bottom-left', size: .8, seed: 3, color: null, ink: null, backdrop: null, cloud: null});
   assert.equal(readThought({type: 'thought', size: .7}, 'x').cloud, thoughtCloud({size: .7}), 'its cloud, the one cloudBurst draws with the same settings');
-  refuses('dream', /stage dream: frame must be "thought" or \{"type": "thought", "corner"\?, "size"\?, "seed"\?, "color"\?, "ink"\?\} \(a thought cloud is the one frame there is\), not "dream"/);
+  refuses('dream', /stage dream: frame must be "thought" or \{"type": "thought", "corner"\?, "size"\?, "seed"\?, "color"\?, "ink"\?, "backdrop"\?\} \(a thought cloud is the one frame there is\), not "dream"/);
   refuses({type: 'cloud'}, /frame must be "thought" or/);
   // The settings are read by the one reader (settings.mjs), in the words a bad entrance setting gets.
   refuses({type: 'thought', corner: 'north'}, /stage dream: frame.corner must be bottom-left, bottom-right, top-left, top-right/);
@@ -182,7 +182,7 @@ test('bad frames refuse, naming the fix', async () => {
   refuses({type: 'thought', seed: -1}, /frame.seed must be a number 0–10000/);
   refuses({type: 'thought', color: 'white'}, /frame.color must be a hex colour such as "#000000"/);
   refuses({type: 'thought', ink: 12}, /frame.ink must be a hex colour/);
-  refuses({type: 'thought', at: [1, 2]}, /stage dream: frame has unsupported key at \(a thought frame takes corner, size, seed, color, ink\)/);
+  refuses({type: 'thought', at: [1, 2]}, /stage dream: frame has unsupported key at \(a thought frame takes corner, size, seed, color, ink, backdrop\)/);
   // In a film: a frame on a paper stage, and on the story of a film with a pushIn.
   await assert.rejects(film({story: {kit: 'red'}, stages: [{type: 'code', scene: 'b', enter: 'cut', frame: 'thought', code: {file: 'x.ts'}}]}),
     /stage b has a frame, and a frame is for a world \(the story, or a stage of "type": "world"\): a code stage has the page to itself/);
@@ -200,6 +200,44 @@ test('bad frames refuse, naming the fix', async () => {
   await film({story: {kit: 'red', frame: {type: 'thought', size: .7}}, stages: [{type: 'world', scene: 'b', enter: {type: 'cloudBurst', size: .7, corner: 'bottom-left'}, world: {kit: 'blue'}}]});   // the same: fine
 });
 
+test('a backdrop: the ground round the cloud — dark in with the entrance, only outside the cloud, gone on the burst\'s pop', async () => {
+  // As written: a colour (flat), {color, vignette?} (soft), or null / left out (the shot's own ground).
+  assert.deepEqual({...readThought({type: 'thought', backdrop: '#111111'}, 'x').backdrop}, {color: '#111111', vignette: 0});
+  assert.deepEqual({...readThought({type: 'thought', backdrop: {color: '#2b2622'}}, 'x').backdrop}, {color: '#2b2622', vignette: .5});
+  assert.deepEqual({...readThought({type: 'thought', backdrop: {color: '#2b2622', vignette: .8}}, 'x').backdrop}, {color: '#2b2622', vignette: .8});
+  assert.equal(readThought({type: 'thought', backdrop: null}, 'x').backdrop, null); assert.equal(readThought('thought', 'x').backdrop, null);
+  const refuses = (backdrop, re) => assert.throws(() => readThought({type: 'thought', backdrop}, 'the story'), re);
+  refuses('black', /the story: frame.backdrop is the ground round the cloud: a hex colour such as "#111111" \(flat\), or \{"color": "#2b2622", "vignette": 0.5\} \(lighter near the cloud, darker at the frame's edges; vignette 0–1\), or null \(the shot's own ground\), not "black"/);
+  refuses(7, /frame.backdrop is the ground round the cloud: .*, not 7/);
+  refuses({colour: '#111111'}, /frame.backdrop has unsupported key colour \(a backdrop takes color and vignette\)/);
+  refuses({color: 'dark'}, /frame.backdrop.color must be a hex colour such as "#2b2622", not "dark"/);
+  refuses({color: '#111111', vignette: 2}, /frame.backdrop.vignette is how much lighter near the cloud and darker at the edges: a number 0–1 \(0 is flat; 0.5 by default\), not 2/);
+  // In a film: the dark darkens in as the trail rises, is drawn only round the cloud, and the burst takes it away on its pop.
+  const f = await film({story: {kit: 'red', frame: {type: 'thought', backdrop: '#111111'}}, stages: [{type: 'world', scene: 'b', enter: 'cloudBurst', world: {kit: 'blue'}}]});
+  const cloud = thoughtCloud({}), lum = px => px[0] + px[1] + px[2], corner = [1590, 10];
+  const away = ([x, y]) => !insideCloud(cloud, [x, y], 1.15) && cloud.trail.every(({c, r}) => Math.hypot(x - c[0], y - c[1]) > r + 40);
+  const darkening = [.05, .4, 1].map(t => lum(frameAt(f, t).px(corner)));
+  assert.ok(darkening[0] > darkening[1] && darkening[1] > darkening[2], `it darkens in with the entrance (${darkening})`);
+  assert.ok(darkening[0] > 600, `not a hard cut: at 0.05 s the page still shows (${darkening[0]})`);
+  const rest = frameAt(f, 2);
+  for (let y = 4; y < 900; y += 22) for (let x = 4; x < 1600; x += 22) {
+    if (away([x, y])) assert.ok(rest.px([x, y]).every(v => Math.abs(v - 0x11) <= 2), `round the cloud at (${x}, ${y}): the backdrop (${rest.px([x, y])})`);
+    if (insideCloud(cloud, [x, y], .86)) assert.ok(isRed(rest.px([x, y])), `inside the cloud at (${x}, ${y}): the picture, no backdrop (${rest.px([x, y])})`);
+  }
+  for (const {c} of cloud.trail) assert.ok(lum(rest.px(c)) > 600, `a trail circle reads on the dark: its paper (${rest.px(c)})`);
+  // The burst: before its pop the dark is still there; after it, nothing of it is left on the next shot.
+  const start = f.clock.start('b') - .75, blueish = ([r, g, b]) => b > 200 && r < 40 && g < 40;
+  assert.ok(frameAt(f, start + .29).px(corner).every(v => Math.abs(v - 0x11) <= 2), 'just before the pop, still the backdrop');
+  const after = frameAt(f, start + .62); let dark = 0;
+  for (let i = 0; i < after.data.length; i += 4) if (after.data[i] + after.data[i + 1] + after.data[i + 2] < 120) dark++;
+  assert.equal(dark, 0, '0.32 s after the pop no dark is left anywhere');
+  assert.ok(blueish(after.px(corner)), `the next shot round where the cloud was (${after.px(corner)})`);
+  // A vignette: lighter near the cloud than at the frame's edge.
+  const soft = await film({story: {kit: 'red', frame: {type: 'thought', backdrop: {color: '#2b2622', vignette: .8}}}, stages: []}), lit = frameAt(soft, 2);
+  const near = [1100, cloud.box[3] + 44], edge = [1594, 894];   // just under the cloud (past its shadow), and the far corner
+  assert.ok(lum(lit.px(near)) > lum(lit.px(edge)) + 20, `lighter by the cloud (${lit.px(near)}) than at the edge (${lit.px(edge)})`);
+});
+
 test('the README\'s thought table is the settings: each one, with its default', () => {
   const lines = readFileSync(new URL('../README.md', import.meta.url), 'utf8').split('\n');
   const head = lines.findIndex(l => l.startsWith('| setting | what it is | default |'));
@@ -207,8 +245,9 @@ test('the README\'s thought table is the settings: each one, with its default', 
   const rows = [];
   for (const line of lines.slice(head + 2)) { if (!line.startsWith('|')) break; rows.push(line.split('|').slice(1, -1).map(c => c.trim())); }
   const named = rows.flatMap(([cell, , dflt]) => [...cell.matchAll(/`(\w+)`/g)].map(m => [m[1], dflt]));
-  assert.deepEqual(named.map(([n]) => n), Object.keys(THOUGHT_SETTINGS), 'every setting, in order');
+  assert.deepEqual(named.map(([n]) => n), [...Object.keys(THOUGHT_SETTINGS), 'backdrop'], 'every setting, in order, and the backdrop');
   for (const [name, dflt] of named) {
+    if (name === 'backdrop') { assert.match(dflt, /the shot's own ground/, 'left out, the backdrop is the shot\'s own ground'); continue; }
     const d = THOUGHT_SETTINGS[name].default;
     assert.ok(d === null ? /the theme's/.test(dflt) : dflt === `\`${d}\``, `${name}'s default, ${d}, is in its row (${dflt})`);
   }

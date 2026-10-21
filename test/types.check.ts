@@ -158,6 +158,10 @@ export const remembered: Recipe = {story: {kit: 'draws', frame: 'thought'}, stag
   {type: 'world', scene: 'dream', frame: {type: 'thought', corner: 'bottom-right', size: .75, seed: 9, color: null, ink: '#1b1f27'}, world: {kit: 'draws'}},
   {type: 'world', scene: 'now', enter: {type: 'cloudBurst', corner: 'bottom-right', size: .75, seed: 9, sound: {type: 'found', name: 'bubble-pop'}}, world: {kit: 'draws'}}]};
 export const popping: Transition = {...curtain, hitAt: .3};
+export const darkened: Recipe = {story: {kit: 'draws', frame: {type: 'thought', backdrop: '#111111'}}, stages: [
+  {type: 'world', scene: 'dream', frame: {type: 'thought', backdrop: {color: '#2b2622', vignette: .6}}, world: {kit: 'draws'}}]};
+// @ts-expect-error a backdrop's colour is its color
+export const colourBackdrop: Recipe = {story: {kit: 'draws', frame: {type: 'thought', backdrop: {colour: '#111111'}}}};
 // @ts-expect-error the trail points to a corner
 export const northCloud: Recipe = {story: {kit: 'draws', frame: {type: 'thought', corner: 'north'}}};
 // @ts-expect-error a thought cloud is the one frame there is
