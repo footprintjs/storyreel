@@ -165,6 +165,33 @@ function drawRecallFramed(c, P, image, x, y, w, h, near) {
 export const recapSlotBox = (i, scale = 1) => { const [x, y] = strip(i), w = FRAME[0] * scale, h = FRAME[1] * scale; return [x - w / 2, y - h / 2, w, h]; };
 export {drawRecallFramed};
 
+/** How wide a transport mark is at s = 1: ⏪ two triangles (back), ▶ one (forward). */
+export const TRANSPORT_WIDTH = Object.freeze({back: 48, forward: 26});
+/**
+ * A tape deck's transport mark, filled in `color`: 'back' ⏪ (two triangles pointing left) or 'forward' ▶ (one
+ * pointing right), its left edge at x, its middle at y, 30·s tall. The rewind badge and the steps track draw it.
+ */
+export function drawTransport(c, dir, x, y, s, color) {
+  c.fillStyle = color;
+  if (dir === 'back') for (const dx of [0, 26 * s]) { c.beginPath(); c.moveTo(x + 22 * s + dx, y - 15 * s); c.lineTo(x + dx, y); c.lineTo(x + 22 * s + dx, y + 15 * s); c.fill(); }
+  else { c.beginPath(); c.moveTo(x, y - 15 * s); c.lineTo(x + 26 * s, y); c.lineTo(x, y + 15 * s); c.fill(); }
+}
+
+/** Where a rewind is, k (0..1) of the way through it: the picture's moment, eased from `from` back to `to`. */
+export const rewindAt = (k, from, to) => from + (to - from) * ease(Math.max(0, Math.min(1, k)));
+/**
+ * The rewind look, over a picture the caller has drawn at the rewound moment (rewindAt): a cool tint, scanlines
+ * rolling with `u` (seconds), and a red REWIND badge with ⏪ in the top right corner. The teaser's rewind and a
+ * steps track's rewind cue both draw it, so a film has one rewind.
+ */
+export function drawRewind(c, P, u) {
+  c.fillStyle = 'rgba(28,36,54,.16)'; c.fillRect(0, 0, 1600, 900);
+  c.fillStyle = 'rgba(255,255,255,.06)'; for (let y = (u * 400) % 8; y < 900; y += 8) c.fillRect(0, y, 1600, 2);
+  c.fillStyle = '#c0392b'; c.beginPath(); c.roundRect(1330, 40, 230, 54, 27); c.fill();
+  drawTransport(c, 'back', 1350, 67, 1, '#fff');
+  P.text('REWIND', 1470, 68, 22, '#fff', {mono: true, weight: 700});
+}
+
 /** A dashed curve that draws itself from `from` to `to`, flowing while it is shown, with an arrowhead. */
 export function drawConnector(c, P, from, to, color, w, t) {
   const [ax, ay] = from, [bx, by] = to, mx = (ax + bx) / 2;

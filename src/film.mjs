@@ -11,7 +11,7 @@
  *               hand over on that one page (the lesson shape: idea → build → loop → recap)
  *   no pushIn — every stage is a SHOT: a world (any story kit, full frame) or paper, entering
  *               with a fade, a wipe, an iris, a page turn or a cut; paper stages in a row hand over on one page
- * Over any of it: guesses (pause and guess). On-screen words may be keys into a string table.
+ * Over any of it: guesses (pause and guess) and a steps track (kits/paper/steps-track.mjs). On-screen words may be keys into a string table.
  * Director notes (notes.mjs) lay camera words over the film: a camera speed, cuts, pushes. Camera moves by
  * name (camera.mjs, placed by camerawork.mjs) move the camera over the picture: pan, dolly, orbit, rack focus…
  * See README.md for the data.
@@ -30,7 +30,8 @@ import {makeClock, ramp} from './clock.mjs';
 import {withStrings} from './strings.mjs';
 import {whiteboardKit} from './kits/whiteboard/index.mjs';
 import {icons} from './kits/whiteboard/board.mjs';
-import {drawCard, drawStage, drawSummary, drawConnector, cardEdge, PANEL, drawRecap, recapSlotBox, drawRecallFramed, drawGuess, GUESS_PLACES, GUESS_FLIP, cardPlacement, cardRowBoxes, stageBoxes} from './kits/paper/paper.mjs';
+import {drawCard, drawStage, drawSummary, drawConnector, cardEdge, PANEL, drawRecap, recapSlotBox, drawRecallFramed, drawGuess, GUESS_PLACES, GUESS_FLIP, cardPlacement, cardRowBoxes, stageBoxes, drawRewind, rewindAt} from './kits/paper/paper.mjs';
+import {readStepsTrack, drawStepsTrack, stepsTrackBox, stepsTrackLines} from './kits/paper/steps-track.mjs';
 import {tokenize, excerpt} from './kits/paper/code.mjs';
 import {readAttention, chip} from './attention.mjs';
 import {readFacts, exampleScenes, findClaims, labelSpans, numberLocale} from './claims.mjs';
@@ -46,7 +47,7 @@ import {step, drainSteps, recordSteps} from './record.mjs';
 import {readEntrance, transitionCatalog, ghostPainter, layerCrossfader, CUT} from './transitions.mjs';
 
 /** The recipe's own top-level keys: anything else refuses, unless the host application names it in `hostKeys`. */
-const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle', 'focus', 'emphasis', 'camera', 'foundSounds'];
+const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'stepsTrack', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle', 'focus', 'emphasis', 'camera', 'foundSounds'];
 /** What every shot may say about itself (shots.mjs): what it is for, and what is true when it starts and ends. */
 const PLAN_KEYS = ['intent', 'continuity', 'reads'];
 const STAGE_KEYS = new Set(['type', 'scene', 'chip', 'chipDark', 'title', 'file', 'label', 'code', 'lh', 'reveal', 'focus', 'glows', 'footer', 'list', 'loop', 'cards', 'closing', 'hero', 'frames', 'keys', 'teaser', 'enter', 'chrome', 'marks', 'columns', 'card', ...PLAN_KEYS]);
@@ -413,6 +414,16 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (until > last) throw new Error(`guess "${g.question}": until must be 1.1 s before its scene ends, so the card is gone before the hand-over`);
     return {question: g.question, answer: g.answer, place, start, end, until};
   });
+  // A steps track (kits/paper/steps-track.mjs): a slim band over every shot, its playhead walking the stations the voice
+  // names — back with ⏪, then (a flip) forward with ▶. Its rewind cue replays the picture of its own shot only, so
+  // what a segment draws stays inside the segment.
+  const stepsTrack = recipe.stepsTrack === undefined ? null : readStepsTrack(recipe.stepsTrack, {where: 'stepsTrack', at: b => clock.at(b)});
+  const rewinding = t => Boolean(stepsTrack?.rewind) && t >= stepsTrack.rewind.from && t < stepsTrack.rewind.from + stepsTrack.rewind.seconds;
+  if (stepsTrack?.rewind && !push) {
+    const {from, to, seconds} = stepsTrack.rewind, j = shotAt(from);
+    if (shotAt(to) !== j || to < shots[j].start || shotAt(from + seconds) !== j) throw new Error(`stepsTrack.rewind replays the shot it plays in (${(shots[j].stages[0] ?? stages.find(st => st.world && st.world === shots[j].world))?.scene ?? 'the story'}): rewind.to must be inside that shot after its entrance, and the ${seconds} s rewind must end before the next shot arrives`);
+  }
+  const rewindNest = stepsTrack?.rewind ? createCanvas(1600, 900) : null;
 
   const blank = createCanvas(1600, 900);
   { const c = blank.getContext('2d'); c.fillStyle = paper.palette.bg; c.fillRect(0, 0, 1600, 900); paperGround(makePen(c, paper, {baseScale: 1}), paper.background); }
@@ -509,14 +520,10 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     }
     if (u < 4.8) {
       // Rewind: the recorded scene plays backwards, fast.
-      const k = ease((u - 2.7) / 2.1), back = teaser.from + (teaser.to - teaser.from) * k;
+      const back = rewindAt((u - 2.7) / 2.1, teaser.from, teaser.to);
       const n = nest.getContext('2d'); n.resetTransform(); n.clearRect(0, 0, 1600, 900); frame(n, back);
       ctx.drawImage(nest, 0, 0);
-      ctx.fillStyle = 'rgba(28,36,54,.16)'; ctx.fillRect(0, 0, 1600, 900);
-      ctx.fillStyle = 'rgba(255,255,255,.06)'; for (let y = (u * 400) % 8; y < 900; y += 8) ctx.fillRect(0, y, 1600, 2);
-      ctx.fillStyle = '#c0392b'; ctx.beginPath(); ctx.roundRect(1330, 40, 230, 54, 27); ctx.fill();
-      ctx.fillStyle = '#fff'; for (const dx of [0, 26]) { ctx.beginPath(); ctx.moveTo(1372 + dx, 52); ctx.lineTo(1350 + dx, 67); ctx.lineTo(1372 + dx, 82); ctx.fill(); }
-      P.text('REWIND', 1470, 68, 22, '#fff', {mono: true, weight: 700});
+      drawRewind(ctx, P, u);
       return;
     }
     // The next film's title card.
@@ -657,8 +664,21 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
    * frame), when a layout shows only part of it (a crop: layout.mjs · cropWindow), is what is shown: a label the viewer
    * must see (an example scene's) sits in its corner.
    */
-  function frame(ctx, t, {window = null} = {}) {
+  function frame(ctx, t, {window = null} = {}) { drawFrame(ctx, t, window, true); }
+  /**
+   * The frame at t. In a steps track's rewind cue (`rewinds`) the picture of an earlier moment plays back under the
+   * rewind look (paper.mjs · drawRewind, the teaser's) and the track enters over it; the replay itself draws no rewind.
+   */
+  function drawFrame(ctx, t, window, rewinds) {
     if (teaser && t >= teaser.at) { drawTeaser(ctx, t); return; }
+    if (rewinds && rewinding(t)) {
+      const {from, to, seconds} = stepsTrack.rewind, u = t - from, n = rewindNest.getContext('2d');
+      n.resetTransform(); n.clearRect(0, 0, 1600, 900); drawFrame(n, rewindAt(u / seconds, from, to), window, false);
+      ctx.drawImage(rewindNest, 0, 0);
+      const P = makePen(ctx, paper, {baseScale: 1});
+      drawRewind(ctx, P, u); drawStepsTrack(ctx, P, stepsTrack, t);
+      return;
+    }
     // A director's push moves the camera over the picture; the guess cards stay where they are. The picture is
     // drawn on its own clock (a freeze holds it); the push, the focus and the camera keep the voice's.
     const tp = pictureClock(t);
@@ -674,6 +694,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (camerawork) camerawork.show(ctx, t, focused); else focused(ctx);
     if (!push) drawOverlays(ctx, t);
     for (const g of guesses) if (t >= g.start && t <= g.until + .5) drawGuess(ctx, makePen(ctx, paper, {baseScale: 1}), paper, g, t);
+    if (stepsTrack) drawStepsTrack(ctx, makePen(ctx, paper, {baseScale: 1}), stepsTrack, t);
     attention?.emphasis?.draw(ctx, t);
     exampleLabel(ctx, t, window);
   }
@@ -777,11 +798,15 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   /** What is drawn where at t: [{box: [x0, y0, x1, y1], path, label}] on the frame, in drawing order. */
   function regionsAt(t) {
     if (teaser && t >= teaser.at) return [{box: [0, 0, 1600, 900], path: `${stagePath(recapStage)}.teaser`, label: 'the teaser'}];
-    const out = regionsUnder(pictureClock(t));
+    // In a steps track's rewind cue the picture is an earlier moment's (drawFrame): its regions are that moment's.
+    const at = rewinding(t) ? rewindAt((t - stepsTrack.rewind.from) / stepsTrack.rewind.seconds, stepsTrack.rewind.from, stepsTrack.rewind.to) : t;
+    const out = regionsUnder(pictureClock(at));
     // Through the push and the focus (underView), then the camera's moves (a rolled box: the box that holds it).
-    const under = underView(t), framed = under ? out.map(r => ({...r, box: through(under, r.box)})) : out;
-    const lens = camerawork?.viewOn(t), seen = lens ? framed.map(r => ({...r, box: through(lens, r.box)})) : framed;
-    guesses.forEach((g, n) => { if (t >= g.start && t <= g.until + .5) seen.push({box: guessBox(g, t), path: `guesses[${n}]`, label: g.question}); });
+    const under = underView(at), framed = under ? out.map(r => ({...r, box: through(under, r.box)})) : out;
+    const lens = camerawork?.viewOn(at), seen = lens ? framed.map(r => ({...r, box: through(lens, r.box)})) : framed;
+    guesses.forEach((g, n) => { if (at >= g.start && at <= g.until + .5) seen.push({box: guessBox(g, at), path: `guesses[${n}]`, label: g.question}); });
+    const band = stepsTrack && stepsTrackBox(stepsTrack, t);
+    if (band) seen.push({box: band, path: 'stepsTrack', label: 'the steps track'});
     return seen;
   }
   /** What is drawn where at t before any director's push: the world's (or the page's) regions, on the frame. */
@@ -929,7 +954,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   // Watching time (shots.mjs): each shot's moments — the phrases the recipe names while it is on screen —
   // never too many, too close together. Phrases that are not something to see are left out, by identity:
   // a push's camera words, a teaser's rewind (it names the past), the poster and the recalls.
-  const notMoments = new Set([...notes.pushes.flatMap(n => [n.push.from, n.push.to]), ...stages.flatMap(st => st.teaser ? [st.teaser.rewind.from, st.teaser.rewind.to] : []),
+  const notMoments = new Set([...notes.pushes.flatMap(n => [n.push.from, n.push.to]), ...stages.flatMap(st => st.teaser ? [st.teaser.rewind.from, st.teaser.rewind.to] : []), ...(recipe.stepsTrack?.rewind?.to ? [recipe.stepsTrack.rewind.to] : []),
     ...(recipe.poster ? [recipe.poster] : []), ...Object.values(recipe.recalls ?? {}), ...readRefs, ...(camerawork ? recipe.camera.flatMap(m => [m.at, m.until]) : [])]);
   const momentsOf = u => beats.filter(b => !notMoments.has(b.ref) && b.t >= u.from && b.t < u.to).map(b => b.t);
   const watchingRule = watchingMode(recipe.watching);
@@ -987,6 +1012,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
       lines.push({text: g.question, from: g.start + .35, to: g.answer ? g.end : g.until + .5, path: `guesses[${n}].question`});
       if (g.answer) lines.push({text: g.answer, from: g.end + 2 * GUESS_FLIP, to: g.until, path: `guesses[${n}].answer`});
     });
+    if (stepsTrack) for (const l of stepsTrackLines(stepsTrack)) lines.push({...l, path: `stepsTrack.${l.path}.label`});
     return lines;
   }
 
@@ -1102,7 +1128,8 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const claims = Object.freeze({facts: factList, examples: Object.freeze([...examples]), labels: Object.freeze(labels.map(l => Object.freeze({...l}))),
     numbers: Object.freeze(findClaims(shown, {facts: factList, examples, scenes: storyboard.scenes.map(sc => sc.id), lang: filmLang}).map(Object.freeze))});
   // What is drawn over every shot for a while: the guess cards, from their question to the card gone.
-  const overlays = Object.freeze(guesses.map((g, n) => Object.freeze({path: `guesses[${n}]`, from: g.start, to: g.until + .5})));
+  const overlays = Object.freeze([...guesses.map((g, n) => Object.freeze({path: `guesses[${n}]`, from: g.start, to: g.until + .5})),
+    ...(stepsTrack ? [Object.freeze({path: 'stepsTrack', from: stepsTrack.from, to: stepsTrack.until + .5})] : [])]);
   return {total: clock.total, clock, timings, sounds, foundSounds: foundUsed, listening, frame, beats, strings: [...used], notes: notesApplied, attention: attention?.record ?? null, focusAt: attention?.focus?.viewAt ?? null,
     camera: camerawork?.record ?? null, cameraAt: camerawork?.viewAt ?? null, reading, reads, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching,
     rows: Object.freeze(rows().map(Object.freeze)), overlays, inputs, stringHashes, mouthsAt, partsAt, pictureAt: pictureClock,

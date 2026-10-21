@@ -102,6 +102,10 @@
     "./kits/whiteboard/board": "./src/kits/whiteboard/board.mjs",
     "./kits/paper": "./src/kits/paper/paper.mjs",
     "./kits/paper/code": "./src/kits/paper/code.mjs",
+    "./kits/paper/steps-track": {
+      "types": "./types/sub/steps-track.d.ts",
+      "default": "./src/kits/paper/steps-track.mjs"
+    },
     "./kits/cartoon": {
       "types": "./types/sub/cartoon.d.ts",
       "default": "./src/kits/cartoon/index.mjs"

@@ -17,6 +17,14 @@
 - **Found sounds can be trimmed:** `from` / `to`, seconds into the recording, on a found sound event or an entrance's
   sound. A span outside the recording refuses when the film is built, naming its length. The mix cuts the span (with
   10 ms fades) and turns it down by its own peak, and the listening check measures what plays.
+- **A steps track: a process walked backward, then played forward.** `recipe.stepsTrack` puts a slim band over every
+  shot: labelled stations, a playhead that hops to each as the voice names it (⏪ walking back, ▶ forward), the current
+  station lit, the ones behind ticked, the next a "?" until reached. A `flip` turns the finished rewind into play
+  through its own forward station list; `rewind` replays the shot's picture under the teaser's rewind look as the
+  track enters. Labels are the film's own words (1–18 characters; empty or longer refuses, naming the fix). Drawn
+  outside a film through `footprint-storyreel/kits/paper/steps-track` (typed).
+- The teaser's rewind look is one piece now, `footprint-storyreel/kits/paper` · `drawRewind` and `rewindAt`: the teaser
+  and the steps track draw the same rewind (the teaser's pixels are unchanged).
 
 ## 0.16.0 — 2026-10-20
 
