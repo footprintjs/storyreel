@@ -221,7 +221,7 @@ test('the command line: changes and changes --render in a project, part over a w
   assert.match(listed.stdout, /^0:00–0:\d\d one \+ two \+ three · new\n\d+ of \d+ pieces changed/);
   const drawn = run('changes', '--render');
   assert.equal(drawn.status, 0, drawn.stderr);
-  assert.match(drawn.stdout, /\nno clip: every piece changed \(the full render shows them, and draws none again\) · \d+ pieces drawn \(\d+ frames\) and kept/, 'a first preview draws the film into the cache, and shows no clip of all of it');
+  assert.match(drawn.stdout, /\nno clip: every piece changed \(the full render shows them\) · \d+ pieces drawn \(\d+ frames\) and kept: the full render reuses them/, 'a first preview draws the film into the cache, and shows no clip of all of it');
   assert.match(run('changes').stdout, /^0 of \d+ pieces changed/, 'the preview\'s pieces are kept: the full render only joins');
   const window = run('part', '--from', '0:02', '--to', '4.5');
   assert.equal(window.status, 0, window.stderr);

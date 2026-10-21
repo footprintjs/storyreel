@@ -244,8 +244,9 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     },
     // The picture: planned as one pass or as segments (render.mjs · wholeVideo, segments.mjs · segmentedVideo).
     'plan-picture': scope => {
-      ({job, video} = planPicture({film, storyboard, timings: paced, narrationDir: scope.narration, out, render, code,
-        music: song ? {file: song.file, start: fit.start, gain: song.gain, fadeOut: song.fadeOut} : null}));
+      // The job is held as soon as it is made: a refusal after it still records what its sweep removed (sweptRecord).
+      ({video} = planPicture({film, storyboard, timings: paced, narrationDir: scope.narration, out, render, code,
+        music: song ? {file: song.file, start: fit.start, gain: song.gain, fadeOut: song.fadeOut} : null}, made => { job = made; }));
       plan = video.plan(job);
       if (plan.length > MAX_PARTS) throw new Error(`The picture is planned in ${plan.length} parts; at most ${MAX_PARTS} can be drawn (segments.mjs · planPieces: give the segments a larger minSeconds)`);
       scope.picture = {strategy: video.name, parts: plan.length};

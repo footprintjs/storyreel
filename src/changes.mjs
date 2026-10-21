@@ -93,7 +93,7 @@ function drawnLine({made, drawn, pieces, kept, lost, seconds}) {
   const frames = drawn.reduce((n, d) => n + d.frames, 0), besides = drawn.filter(d => pieces[d.index].why === null), forced = drawn.filter(d => d.why === 'forced').length;
   const reused = !forced ? ' and kept: the full render reuses them' : forced === drawn.length ? ' and kept, but forced: every render draws them again'
     : ` and kept: the full render reuses all but the ${forced} forced (every render draws those again)`;
-  return `${made ? `${made.file} · ${clockOf(made.seconds, 'nearest')}` : 'no clip: every piece changed (the full render shows them, and draws none again)'} · ${drawn.length} piece${drawn.length > 1 ? 's' : ''} drawn (${frames} frames)`
+  return `${made ? `${made.file} · ${clockOf(made.seconds, 'nearest')}` : 'no clip: every piece changed (the full render shows them)'} · ${drawn.length} piece${drawn.length > 1 ? 's' : ''} drawn (${frames} frames)`
     + (besides.length ? `, ${besides.length} beside a change: ${besides[0].why}` : '')
     + (kept ? reused : ', not all kept: a file a key reads changed on disk after this started')
     + (lost.length ? `; no handle where a neighbour could not be taken (${lost[0]})` : '')

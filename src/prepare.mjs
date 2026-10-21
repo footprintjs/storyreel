@@ -69,11 +69,13 @@ export const compileForRender = ({storyboard, recipe, data = null, kits = [], th
 
 /**
  * The render's job and its picture strategy for a compiled film (render.mjs · prepareRender, picture.mjs ·
- * pictureStrategy): what the plan is made from. `music` is the song as the render places it. A strategy that refuses
- * leaves no working folder.
+ * pictureStrategy): what the plan is made from. `music` is the song as the render places it. `held(job)` is told the
+ * job as soon as it is made, so a caller's record keeps it (what its sweep removed) even when the strategy refuses —
+ * which leaves no working folder.
  */
-export function planPicture({film, storyboard, timings, narrationDir, out, render = {}, code = null, music = null}) {
+export function planPicture({film, storyboard, timings, narrationDir, out, render = {}, code = null, music = null}, held = () => {}) {
   const job = prepareRender({film, storyboard, timings, narrationDir, out, ...render, ...(music ? {music} : {})});
+  held(job);
   try { return {job, video: checkVideoStrategy(pictureStrategy(render, job, {kitsCode: code}))}; } catch (e) { closeRender(job); throw e; }
 }
 
@@ -100,8 +102,7 @@ export async function prepareFull({out, render = {}, code = null, music = null, 
   try {
     const paced = await pacedTimings({storyboard, narrationDir, timings, pacing, copy});
     const film = await compileForRender({...inputs, storyboard, recipe, strings}, paced);
-    const planned = planPicture({film, storyboard, timings: paced, narrationDir: copy, out: file, render, code});
-    job = planned.job;
-    return {job, video: planned.video, close};
+    const {video} = planPicture({film, storyboard, timings: paced, narrationDir: copy, out: file, render, code}, made => { job = made; });
+    return {job, video, close};
   } catch (e) { close(); throw e; }
 }
