@@ -1537,11 +1537,12 @@ console.log(result.video.line);
 
 An edit asked for in chat is seen in seconds, and only the frames it touched are drawn:
 
-1. Edit the recipe (or a shot's code).
+1. Edit the recipe (or a shot's code, when its kit names its `sources`).
 2. `npx storyreel changes`: one line per changed stretch and why (`0:12–0:18 left · its recipe entries changed`), then the count (`3 of 41 pieces changed (0:16 of 4:17)`); nothing is drawn.
 3. `npx storyreel changes --render`: only those pieces drawn, into the cache; `<out>/changes/review.mp4` plays them back to back with 1 s of the film either side (`--handles`), each labelled with its time, the film's voice under it.
 4. Show that clip; frames of your own choosing: `npx storyreel part --from 0:12 --to 0:18`.
-5. The full render at the end only joins and mixes: it draws nothing the preview drew.
+5. The full render at the end draws nothing the preview drew. What the keys cannot see (a kit with no `sources`, said
+   after `note:` on the count) only the full render's spot check catches.
 
 `changes` compares with the full render's cache, so the project's config names that render — makeFilm's own `render`
 and `code`, its video in `out` — and the render script makes it from the same config:
@@ -1558,10 +1559,14 @@ await makeFilm(fullRender(await loadInputs({ep: 'ep1'})));
 ```
 
 In code, `previewChanges(film, {render})` takes makeFilm's own options and returns the lines (`text`), each piece and
-why it would be drawn, the changed ranges and, with `render: true`, the clip. It paces and compiles the film as makeFilm
-does, so its keys are the full render's; it draws nothing but the changed pieces (a neighbour shown either side is the
-cache's, spot-checked), and the 0.18 cache laws hold for what it keeps. A film fitted to a song (`music`) is refused: the
-fit moves its scenes, and a preview does not run it.
+why it would be drawn, the changed ranges and, with `render: true`, the pieces drawn and the clip (none when every piece
+changed: the clip would be the film). It makes the film ready as makeFilm does — the cast, the voice paced in a copy of
+its own, the compile, the plan — so its keys are the full render's; a piece kept where an earlier scene's growth moved
+it is spot-checked, as the render checks it. It draws nothing but the changed pieces (a neighbour shown either side is
+the cache's, spot-checked), and the 0.18 cache laws hold for what it keeps. A listing reads no video: in the bench, 0.5 s
+for a three-minute silent film after a recipe edit; a voiced film paces a copy of its voice first, and a piece that moved
+is painted for its check. A film fitted to a song (`music`) is refused: the fit moves its scenes, and a preview does not
+run it.
 
 - **The cache** is `<out folder>/.storyreel/segments/<format>-<W>x<H>-<quality>` (one per format, size and quality), a folder
   of its own: a link there is refused, never followed. It is held to 4 GB (`segments: {cap}` in bytes): after each

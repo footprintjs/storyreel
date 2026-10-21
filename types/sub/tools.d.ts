@@ -5,7 +5,10 @@ import type {Film} from '../index.js';
  */
 export interface ProjectInputs {storyboard: unknown; recipe: unknown; kits?: unknown[]; root?: string; narrationDir?: string; pacing?: Record<string, unknown>; timings?: unknown;
   layout?: import('../index.js').Layout | null; out?: string; strings?: unknown; data?: unknown; theme?: unknown; cast?: unknown; lang?: string;
-  render?: Record<string, unknown>; code?: string | null}
+  strategies?: unknown; reducedMotion?: boolean;
+  /** The full render's own makeFilm options (fullRender carries them; the review tools do not read them). */
+  render?: Record<string, unknown>; code?: string | null; music?: unknown; check?: 'report' | 'refuse' | null; expect?: {seconds?: number; tolerance?: number};
+  voiceCheck?: 'report' | 'refuse'; claims?: 'report' | 'refuse'; approval?: unknown}
 /** The project's inputs, timed (from its voice, or evenly) but not compiled. */
 export interface ProjectSource {inputs: ProjectInputs & {voiced: boolean}; cwd: string}
 export interface Project extends ProjectSource {film: Film}
@@ -32,5 +35,5 @@ export function still(project: Project, args: {at: string | string[]; width?: nu
 /** A fast move frame by frame: `frames` (12) consecutive frames at `fps` (30) around one moment, side by side as a PNG. */
 export function strip(project: Project, args: {at: string; frames?: number | string; fps?: number | string; width?: number | string}): Promise<{text: string; file: string}>;
 /** A tool: what it runs, what it does, what it takes; `picture` when its result is an image (MCP returns it as one); `compile: false` when it reads the inputs and prepares the film itself. */
-export interface Tool {run(project: Project, args: Record<string, unknown>): Promise<string | {text: string; file: string}>; about: string; args: Record<string, string>; picture?: boolean; compile?: false}
+export interface Tool {run(project: Project | ProjectSource, args: Record<string, unknown>): Promise<string | {text: string; file: string}>; about: string; args: Record<string, string>; picture?: boolean; compile?: false}
 export const TOOLS: Readonly<Record<'timeline' | 'review' | 'part' | 'changes' | 'still' | 'strip', Tool>>;

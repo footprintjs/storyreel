@@ -33,8 +33,12 @@ export function segmentMaterial(film: import('../index.js').Film, segment: impor
   captions?: {start: number; end: number; text: string; words: {text: string; start: number; end: number}[]}[] | null; extra?: {poster?: unknown; recalls?: unknown}; drawing?: {core: string; catalog(name: string): string | null}}): Record<string, unknown>;
 /** The changed pieces (why not null) merged into runs on the film clock: their scenes and reasons once each. */
 export function changedRanges(pieces: {index: number; f0: number; f1: number; from: number; to: number; scenes: readonly string[]; why: string | null}[]): import('../index.js').ChangesPreview['ranges'];
-/** The lines to read: one per range (at most `lines`, 10), then the count; when no piece of the film is kept, where the cache is. */
-export function changesText(preview: {pieces: {from: number; to: number; why: string | null}[]; ranges: import('../index.js').ChangesPreview['ranges']; total: number; cache?: string | null}, options?: {lines?: number}): string;
+/** The lines to read: one per range (at most `lines`, 10), then the count; when no piece of the film is kept, where the cache is; `notes`, what weakens the keys, after `note:`. */
+export function changesText(preview: {pieces: {from: number; to: number; why: string | null}[]; ranges: import('../index.js').ChangesPreview['ranges']; total: number; cache?: string | null; notes?: string[]}, options?: {lines?: number}): string;
+/** A range's times as it is said: its start rounded down, its end up ("0:12–0:18"). */
+export function rangeText(range: {from: number; to: number}): string;
+/** A review clip's stretches: each range's own pieces whole, with up to `handles` seconds of a neighbour either side where `got` has it (piece index → {file, frames}). */
+export function reviewWindows(ranges: import('../index.js').ChangesPreview['ranges'], got: Map<number, {file: string; frames: number}>, options: {handles: number; fps: number}): {label: string; from: number; to: number; frames: number; labelled: [number, number]; parts: {file: string; start: number; end: number}[]}[];
 /** Seconds on the film clock as m:ss: rounded down (floor), up (ceil), to the nearest second, or as given to the hundredth (exact). */
 export function clockOf(seconds: number, round?: 'floor' | 'ceil' | 'nearest' | 'exact'): string;
 /** The preview's defaults: at most `lines` ranges said; `handles` seconds of the film either side of a change in its clip. */

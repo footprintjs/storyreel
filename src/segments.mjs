@@ -43,7 +43,9 @@ export {ffmpegJoin} from './segments/join.mjs';
 export {drawingCode, CATALOG, NOT_DRAWING} from './segments/drawing.mjs';
 export {kitCode} from './segments/kitcode.mjs';
 export {pictureLine} from './segments/report.mjs';
-export {changedRanges, changesText, clockOf, CHANGES_DEFAULTS} from './segments/changed.mjs';
+export {changedRanges, changesText, rangeText, CHANGES_DEFAULTS} from './segments/changed.mjs';
+export {reviewWindows} from './segments/clip.mjs';
+export {clockOf} from './clocktext.mjs';
 
 /** How many pieces are drawn at once by default: a fair share of the machine's cores (one left free), at most 6. */
 export const defaultParallel = () => Math.max(1, Math.min(6, availableParallelism() - 1));
@@ -106,13 +108,14 @@ export function segmentedVideo({store, recipe = null, code, kitsCode = null, joi
   const moved = (m, seg) => Math.abs((m.from ?? round(seg.from)) - round(seg.from)) > 1e-6;
   /** The piece's frames at offsets inside it, hashed exactly as it is kept: drawn without the stamp, which the join burns over every frame. */
   const hasherFor = (job, seg) => { const hash = job.frameHasher({stamp: false}); return offsets => Object.fromEntries(offsets.map(o => [o, hash(seg.f0 + o, {poster: seg.index === 0 && o === 0})])); };
+  /** Whether a kept piece can be spot-checked as this one: as many frames, and checked by at least as many as asked (nothing painted). */
+  const comparable = (seg, m) => m.frames === seg.f1 - seg.f0 && Object.keys(m.samples ?? {}).length >= Math.min(samples, seg.f1 - seg.f0);
+  const UNCOMPARABLE = 'its kept copy was checked by fewer frames than asked';
   /** The spot check (see the header): null when a kept piece's frames are this piece's, else why it is drawn again. */
   const spotCheck = (seg, m, hashesAt) => {
-    const offsets = Object.keys(m.samples ?? {}).map(Number);
-    const comparable = m.frames === seg.f1 - seg.f0 && offsets.length >= Math.min(samples, seg.f1 - seg.f0);
-    if (comparable && Object.entries(hashesAt(offsets)).every(([o, h]) => m.samples[o] === h)) return null;
-    return !comparable ? 'its kept copy was checked by fewer frames than asked' : moved(m, seg) ? 'it moved, and its frames moved with the film\'s clock'
-      : 'its frames changed though its key did not (the key missed something)';
+    if (!comparable(seg, m)) return UNCOMPARABLE;
+    if (Object.entries(hashesAt(Object.keys(m.samples).map(Number))).every(([o, h]) => m.samples[o] === h)) return null;
+    return moved(m, seg) ? 'it moved, and its frames moved with the film\'s clock' : 'its frames changed though its key did not (the key missed something)';
   };
   /** What weakens a render's keys (said after `note:` where it is read), shortest first. */
   const notesOf = job => {
@@ -164,15 +167,17 @@ export function segmentedVideo({store, recipe = null, code, kitsCode = null, joi
     },
     /**
      * Why `one` would draw a piece, read before anything is drawn: null when the store keeps it, else the reason one
-     * gives — 'forced', what changed since its slot was last drawn ("words changed"), or 'new'. A piece kept where it
-     * starts is taken on its key, its video unread (the render's spot check still checks it); one kept elsewhere (an
-     * earlier scene grew) is spot-checked now, as one() checks it, since a kit that animates on the film's clock redraws it.
+     * gives — 'forced', what changed since its slot was last drawn ("words changed"), its kept copy checked by fewer
+     * frames than asked, or 'new'. A piece kept where it starts is taken on its key, its video unread (the render's spot
+     * check still checks it); one kept elsewhere (an earlier scene grew) is spot-checked now, as one() checks it, since
+     * a kit that animates on the film's clock redraws it.
      */
     why(job, seg) {
       of(job);
       if (seg.forced) return 'forced';
       const m = keptManifest(seg.key);
       if (!m) return whyDrawn(lastDrawn(job, seg), seg.parts) ?? 'new';
+      if (!comparable(seg, m)) return UNCOMPARABLE;
       return moved(m, seg) ? spotCheck(seg, m, hasherFor(job, seg)) : null;
     },
     /** What weakens this render's keys: the notes its report's line ends with. */
@@ -197,11 +202,11 @@ export function segmentedVideo({store, recipe = null, code, kitsCode = null, joi
         stopIfFailed(job, seg);
         const tmp = path.join(job.work, `segment-${seg.index}-${seg.key}-${process.pid}-${++made}.mp4`);   // in the render's work folder until the store takes it
         await job.encodeFrames({f0: seg.f0, f1: seg.f1, file: tmp, posterFirst: seg.index === 0, stamp: false});
-        if (!of(job).keeping) return {...report, status: 'rendered', why, file: tmp};   // drawn with code older than its key: not kept
+        if (!of(job).keeping) return {...report, status: 'rendered', why, kept: false, file: tmp};   // drawn with code older than its key: not kept
         held(tmp);
         store.put(seg.key, tmp, {key: seg.key, index: seg.index, from: round(seg.from), frames: seg.f1 - seg.f0, scenes: seg.scenes, film: seg.film, slot: seg.slot, ...(seg.label ? {label: seg.label} : {}), parts: seg.parts,
           samples: hashesAt(sampleOffsets(seg, samples, job.fps)), made: new Date().toISOString()});
-        return {...report, status: 'rendered', why, file: own};
+        return {...report, status: 'rendered', why, kept: true, file: own};
       } catch (e) {
         of(job).failed ??= {index: seg.index, message: e.message};
         throw e;
@@ -214,7 +219,7 @@ export function segmentedVideo({store, recipe = null, code, kitsCode = null, joi
       await (joiner ?? ffmpegJoin({ffmpeg: job.ffmpeg})).join(done.map(d => d.file), file, {stamp});
       // The store held to its size: the pieces used longest ago go, never one this render used.
       const trimmed = typeof store.trim === 'function' ? store.trim({keep: new Set(done.map(d => d.key))}) : null;
-      const {keeping} = of(job), segments = done.map(({file: _f, ...d}) => d);
+      const {keeping} = of(job), segments = done.map(({file: _f, kept: _k, ...d}) => d);   // the record as it was: whether all were kept is its own field
       // What weakens this render's keys, said where it is read (the line).
       const notes = notesOf(job);
       const report = {strategy: 'segments', store: store.dir ?? store.name, reused: segments.filter(s => s.status === 'reused').length, rendered: segments.filter(s => s.status === 'rendered').length,

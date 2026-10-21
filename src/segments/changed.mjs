@@ -8,23 +8,10 @@
  * The reasons are the ones a render's report gives (segments/material.mjs · whyDrawn). A range is said in whole seconds
  * that hold it (its start rounded down, its end up), so it can be handed back as a window (storyreel part --from --to).
  */
-import {clockText} from 'footprint-narration';
+import {clockOf} from '../clocktext.mjs';
 
 /** The defaults: at most `lines` ranges said (the rest counted), and `handles` seconds of the pieces either side in a clip. */
 export const CHANGES_DEFAULTS = Object.freeze({lines: 10, handles: 1});
-
-/**
- * Seconds on the film clock as m:ss (h:mm:ss past an hour): rounded down ('floor', the default), up ('ceil'), to the
- * nearest second ('nearest'), or as given to the hundredth ('exact': 0:12.5).
- */
-export function clockOf(t, round = 'floor') {
-  if (round === 'exact') {
-    const whole = Math.floor(t + 1e-6), part = +(t - whole).toFixed(2);
-    return part > 0 && part < 1 ? `${clockText(Math.max(0, whole))}${part.toFixed(2).slice(1).replace(/0+$/, '')}` : clockText(Math.max(0, Math.round(t)));
-  }
-  const whole = round === 'ceil' ? Math.ceil(t - 1e-6) : round === 'nearest' ? Math.round(t) : Math.floor(t + 1e-6);
-  return clockText(Math.max(0, whole));
-}
 
 /** A range's times as it is said: its start rounded down, its end up ("0:12–0:18"). */
 export const rangeText = ({from, to}) => `${clockOf(from)}–${clockOf(to, 'ceil')}`;

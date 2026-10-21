@@ -8,12 +8,30 @@ import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {ENCODE, stampPicture} from '../paint.mjs';
 import {writeOutput} from '../files.mjs';
+import {rangeText} from './changed.mjs';
+
+/**
+ * The clip's stretches, one per changed range (segments/changed.mjs · changedRanges): the range's own pieces whole, with
+ * up to `handles` seconds of the pieces either side where they can be taken (`got`: piece index → {file, frames}; a
+ * neighbour not there, or the film's start or end, leaves that side without one). Each stretch: {label (the range's
+ * times), from, to (the window on the film clock), frames, labelled: [first, last] frame of the window that is the
+ * range's own, parts: [{file, start, end}] (frames of each file, in order)}.
+ */
+export function reviewWindows(ranges, got, {handles, fps}) {
+  const h = Math.round(handles * fps);
+  return ranges.map(r => {
+    const before = got.get(r.first - 1), after = got.get(r.last + 1), own = r.f1 - r.f0;
+    const lead = before ? Math.min(h, before.frames) : 0, tail = after ? Math.min(h, after.frames) : 0;
+    const pieces = Array.from({length: r.last - r.first + 1}, (_, k) => got.get(r.first + k)).map(d => ({file: d.file, start: 0, end: d.frames}));
+    return {label: rangeText(r), from: (r.f0 - lead) / fps, to: (r.f1 + tail) / fps, frames: lead + own + tail, labelled: [lead, lead + own - 1],
+      parts: [...(lead ? [{file: before.file, start: before.frames - lead, end: before.frames}] : []), ...pieces, ...(tail ? [{file: after.file, start: 0, end: tail}] : [])]};
+  });
+}
 
 /**
  * Write the clip into `file` (a working file: the caller moves it into place).
- * @param windows [{label, from, to, labelled: [first, last] frame of the window, parts: [{file, start, end}]}] — from/to:
- *                the window on the film clock (the voice's seconds); parts: the piece files it is made of, in order, each
- *                its frames [start, end)
+ * @param windows its stretches (reviewWindows): from/to on the film clock (the voice's seconds), the piece files each is
+ *                made of, in order, each its frames [start, end)
  * @param voice   the film's voice as one WAV on the film clock, or null (a silent clip)
  */
 export async function writeClip({windows, fps, width, height, voice = null, file, work, ffmpeg}) {

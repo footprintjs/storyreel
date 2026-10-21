@@ -163,13 +163,17 @@ function joinVoice(run, {dir, storyboard, timings, narrationDir, voice}) {
 }
 
 /**
- * The film's voice end to end on the film clock, as one WAV in `dir` (film-voice.wav), joined as a render joins it
- * (joinVoice): what a review clip takes its stretches of (changes.mjs). `timings` and `narrationDir` are the paced ones.
+ * A prepared render's voice end to end on the film clock (its paced timings and narration), joined as finishRender
+ * joins it (joinVoice), as one WAV in the render's own work folder (film-voice.wav): what a review clip takes its
+ * stretches of (changes.mjs). It writes nowhere else.
  */
-export function voiceTrack({dir, storyboard, timings, narrationDir, ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg'}) {
-  const voice = path.join(dir, 'film-voice.wav');
-  const run = args => { const r = spawnSync(ffmpeg, ['-y', '-loglevel', 'error', ...args], {encoding: 'utf8'}); if (r.error || r.status) throw new Error(`ffmpeg could not join the voice: ${r.error?.message ?? String(r.stderr).slice(-300)}`); };
-  joinVoice(run, {dir, storyboard, timings, narrationDir, voice});
+export function voiceTrack(job) {
+  const voice = path.join(job.work, 'film-voice.wav');
+  const run = args => {
+    const r = spawnSync(job.ffmpeg, ['-y', '-loglevel', 'error', ...args], {encoding: 'utf8'});
+    if (r.error || r.status !== 0) throw new Error(`ffmpeg could not join the voice: ${r.error?.message ?? (String(r.stderr).slice(-300) || `stopped (${r.signal ?? r.status})`)}`);
+  };
+  joinVoice(run, {dir: job.work, storyboard: job.storyboard, timings: job.timings, narrationDir: job.narrationDir, voice});
   return voice;
 }
 

@@ -835,10 +835,10 @@ export interface MakeFilmOptions<K = Kit | ContextKit> {
 /** What an edit changed (previewChanges): each planned piece and why the full render would draw it (null: kept), the runs of changed ones on the film clock, and the lines to read. */
 export interface ChangesPreview {
   text: string; cache: string | null; total: number; seconds: number;
-  pieces: {index: number; f0: number; f1: number; from: number; to: number; frames: number; scenes: string[]; key: string; label: string; why: string | null}[];
+  pieces: {index: number; f0: number; f1: number; from: number; to: number; frames: number; scenes: string[]; key: string; label?: string; why: string | null}[];
   ranges: {first: number; last: number; f0: number; f1: number; from: number; to: number; scenes: string[]; why: string[]}[];
-  /** With render: the review clip, the pieces drawn (the changed ones; a neighbour only when its kept copy failed its check), and whether all were kept. */
-  clip?: {file: string; seconds: number}; drawn?: {index: number; frames: number; why?: string}[]; kept?: boolean;
+  /** With render: the pieces drawn (the changed ones; a neighbour only when its kept copy failed its check), whether all are kept, and the review clip (none when every piece changed). */
+  drawn?: {index: number; frames: number; why?: string; kept: boolean}[]; kept?: boolean; clip?: {file: string; seconds: number};
 }
 /**
  * What an edit changed, before the full render: `film` is makeFilm's options for it (out, render and code too), cast,

@@ -9,17 +9,13 @@
  * Heavy things (the compiled film, canvases) never enter the flowchart's tracked scope; stages
  * pass small values and file paths, as footprintjs expects.
  */
-import {readCast, withCast} from './cast.mjs';
+import {castFilm, checkCode, checkInputs, outFolder, pacedTimings, compileForRender, planPicture} from './prepare.mjs';
 import {readFileSync, writeFileSync, rmSync, existsSync, statSync} from 'node:fs';
-import {copyVoice, requireVoiceApart, placeVoice, writeOutput, refuseFolders, securePath, makeFolder} from './files.mjs';
+import {placeVoice, writeOutput, refuseFolders, makeFolder} from './files.mjs';
 import path from 'node:path';
 import {flowChart, narrative} from 'footprintjs';
-import {applyPacing, validatePacing, paceTimings} from './pacing.mjs';
-import {withDirections} from './clock.mjs';
-import {compileFilm} from './film.mjs';
-import {prepareRender, finishRender, closeRender} from './render.mjs';
-import {checkVideoStrategy} from './whole.mjs';
-import {pictureStrategy, checkPictureOptions} from './picture.mjs';
+import {finishRender, closeRender} from './render.mjs';
+import {checkPictureOptions} from './picture.mjs';
 import {makeScratch, sweepScratch} from './scratch.mjs';
 import {readApproval, requireApproval, voiceHash, unlocked} from './approval.mjs';
 import {hashOf} from './hash.mjs';
@@ -106,37 +102,6 @@ function musicRecord(song, beats, fit) {
 const MAX_PARTS = MAX_PIECES;
 
 /**
- * The cast's names put into the text before anything reads it (cast.mjs): the storyboard, the recipe and the strings a
- * render reads (the one way: makeFilm, changes.mjs).
- */
-export function castFilm({storyboard, recipe, strings = null, cast = null}) {
-  if (!cast) return {storyboard, recipe, strings};
-  const c = readCast(cast);
-  return {storyboard: withCast(storyboard, c, 'storyboard'), recipe: withCast(recipe, c, 'recipe'), strings: strings ? withCast(strings, c, 'strings') : strings};
-}
-
-/**
- * The film's timings as a render paces them (the one way: makeFilm, changes.mjs): a voice's, copied into `copy` (a new
- * folder of the run's own, files.mjs · copyVoice) and paced there — its audio rewritten, its timings.json the paced one
- * — or a silent film's word times, paced. A voice knows only the spoken scenes: a silent scene it left out gets its
- * directions' timing (clock.mjs · withDirections).
- */
-export async function pacedTimings({storyboard, narrationDir = null, timings = null, pacing = null, copy = null}) {
-  if (narrationDir) {
-    const raw = copyVoice(narrationDir, copy);
-    const paced = pacing ? await applyPacing({runDir: copy, board: storyboard, timings: raw, pacing}) : withDirections(storyboard, raw);
-    writeFileSync(path.join(copy, 'timings.json'), JSON.stringify(paced, null, 2));
-    return paced;
-  }
-  if (!timings) throw new Error('A silent film needs timings (word times per scene)');
-  return pacing ? paceTimings(storyboard, timings, pacing) : withDirections(storyboard, timings);
-}
-
-/** The film a render draws, compiled from its inputs (makeFilm's, with its defaults) and its paced timings, recorded (the one way: makeFilm, changes.mjs). */
-export const compileForRender = ({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], strings = null, lang = null, cast = null, strategies = null, reducedMotion = false}, timings) =>
-  compileFilm({storyboard, timings, recipe, data, kits, theme, root, strings, lang, hostKeys, cast, strategies, reducedMotion, record: true});
-
-/**
  * @param storyboard, recipe, data, kits, theme, root, hostKeys — as compileFilm
  * @param narrationDir a folder with the UNPACED timings.json and the scene audio (or null → silent;
  *                     then pass `timings` with word times, e.g. evenTimings(storyboard)). It is only ever read: the
@@ -184,17 +149,15 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   if (check !== null && check !== 'report' && check !== 'refuse') throw new Error(`check is 'report' (the record lists what the checks on the finished file found), 'refuse' (a problem refuses the film) or left out, not ${JSON.stringify(check)}`);
   if (voiceCheck !== 'report' && voiceCheck !== 'refuse') throw new Error(`voiceCheck is 'report' (the record lists words the voice check did not hear) or 'refuse' (the film refuses them), not ${JSON.stringify(voiceCheck)}`);
   if (claims !== 'report' && claims !== 'refuse') throw new Error(`claims is 'report' (the record lists the numbers on screen with no source) or 'refuse' (one refuses the film), not ${JSON.stringify(claims)}`);
-  if (code !== null && !(typeof code === 'string' && code.trim())) throw new Error("code is a fingerprint of the kits' drawing code (codeFingerprint([kitsFolder])), or left out");
+  checkCode(code);
   if (approval) readApproval(approval);
   const song = music === null ? null : readMusic(music);
   if (song && render.music !== undefined) throw new Error('makeFilm takes the song as music ({file, snap?, dropOn?, …}), which also places it; leave render.music out');
-  // First of all, the out folder's REAL path, with no folder on the way another user could rearrange (files.mjs ·
-  // securePath): the film is made through it only.
-  const dir = securePath(path.dirname(path.resolve(out)));
-  out = path.join(dir, path.basename(path.resolve(out)));
-  // Before anything is written, even the out folder: the voice is paced in the out folder and then replaces its
-  // narration folder, so the two must not overlap (files.mjs · requireVoiceApart).
-  if (narrationDir) requireVoiceApart(narrationDir, dir);
+  // First of all, the out folder's REAL path, with no folder on the way another user could rearrange: the film is made
+  // through it only. Before anything is written, even the out folder: the voice is paced in the out folder and then
+  // replaces its narration folder, so the two must not overlap (prepare.mjs · outFolder).
+  const ready = outFolder({out, narrationDir}), {dir} = ready;
+  out = ready.out;
   // The record is written last, after the video: a folder at its name refuses now (the render's own outputs are checked
   // when it is prepared, before a frame is drawn: render.mjs · prepareJob).
   refuseFolders([path.join(dir, 'making-of.json')]);
@@ -212,9 +175,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   const done = [];
   const stages = {
     'check-inputs': scope => {
-      if (!storyboard?.scenes?.length) throw new Error('The storyboard has no scenes: give it scenes: [{id, narration} or {id, silent: [[what happens, seconds]]}]');
-      // A silent cut has no voice speed to check; its holds and tails are checked the same way.
-      if (pacing) validatePacing(narrationDir ? pacing : {voiceSpeed: 1, ...pacing}, storyboard);
+      // A silent cut has no voice speed to check; its holds and tails are checked the same way (prepare.mjs · checkInputs).
+      checkInputs({storyboard, narrationDir, pacing});
       scope.scenes = storyboard.scenes.length;
       if (strings) scope.lang = lang;
     },
@@ -282,8 +244,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     },
     // The picture: planned as one pass or as segments (render.mjs · wholeVideo, segments.mjs · segmentedVideo).
     'plan-picture': scope => {
-      job = prepareRender({film, storyboard, timings: paced, narrationDir: scope.narration, out, ...render, ...(song ? {music: {file: song.file, start: fit.start, gain: song.gain, fadeOut: song.fadeOut}} : {})});
-      video = checkVideoStrategy(pictureStrategy(render, job, {kitsCode: code}));
+      ({job, video} = planPicture({film, storyboard, timings: paced, narrationDir: scope.narration, out, render, code,
+        music: song ? {file: song.file, start: fit.start, gain: song.gain, fadeOut: song.fadeOut} : null}));
       plan = video.plan(job);
       if (plan.length > MAX_PARTS) throw new Error(`The picture is planned in ${plan.length} parts; at most ${MAX_PARTS} can be drawn (segments.mjs · planPieces: give the segments a larger minSeconds)`);
       scope.picture = {strategy: video.name, parts: plan.length};
