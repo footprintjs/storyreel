@@ -84,7 +84,8 @@ only those by default ([release.md](release.md#approve-the-film-that-was-watched
 
 A kit says where its drawing code lives with `sources: {entry: spec => [files], shared?: [files]}` beside `story`
 (files as paths or `new URL('./shots/x.mjs', import.meta.url)`; `spec` is what `compile` gets): every render keys each
-cached piece by the files of the entries it draws, so editing one shot redraws only the pieces that show it. Without
+cached piece by the files of the entries it draws, so editing one shot redraws only the pieces that show it (what they
+import from StoryReel by its content, never its version: a release that changes none of it keeps the pieces). Without
 it, a piece the kit draws is keyed by `makeFilm`'s `code`, or only spot-checked.
 
 Words a kit draws that claim nothing (line numbers, a step counter) go inside `footprint-storyreel/decorative` ·

@@ -18,8 +18,9 @@ approval (an approval locks all of StoryReel).
 **The kit's code.** `codeFingerprint(paths)` hashes the files and folders it is given and everything they read: relative
 static imports, transitively, and literal `import('…')` and `require('…')`; JavaScript and TypeScript (`.ts`, `.mts`,
 `.cts`, `.tsx`, `.jsx`; `./x.js` finds `x.ts`); assets loaded by a literal `new URL('…', import.meta.url)`; a linked or
-workspace package's code, followed as the film's own; each installed package as `name@version`. What it cannot follow it
-lists in the record (`code.missing`, `code.unfollowed`, `code.unparsed`, [record.md](record.md)).
+workspace package's code, followed as the film's own; each installed package as `name@version`, but StoryReel, read by
+content (the modules a kit imports from it). What it cannot follow it lists in the record (`code.missing`,
+`code.unfollowed`, `code.unparsed`, [record.md](record.md)).
 
 A kit that loads files another way (`readFile` with a path, an asset path built at run time) names their folder in
 `codeFingerprint([…])` — and from a folder only code, JSON, fonts and images are hashed (`footprint-storyreel/segments` ·
