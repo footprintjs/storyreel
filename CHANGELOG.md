@@ -3,9 +3,9 @@
 ## Unreleased
 
 - **A release that changes no code a kit uses keeps that kit's pieces.** A kit file that imports `footprint-storyreel` or
-  a subpath is keyed by the StoryReel modules it reaches, read by content through StoryReel's exports, no longer by
-  StoryReel's version; another package is still keyed by its version. The first render after upgrading to this release
-  redraws once, because the key changes from version to content.
+  a subpath is keyed by the StoryReel modules it reaches, read by content through StoryReel's exports (and the packages
+  they import that draw, by version), no longer by StoryReel's version; another package is still keyed by its version.
+  The first render after upgrading to this release redraws once, because the key changes from version to content.
 
 ## 0.18.0 — quick edits by default, a thought cloud
 

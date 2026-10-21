@@ -56,7 +56,8 @@ export function kitCode(film, {fallback = null} = {}) {
   // What the reading saw: the newest change to a file read (a render whose code changed after it started keeps nothing),
   // and the imports chosen at run time, which no key can follow (the report names them, so they can be named in sources).
   // An installed StoryReel's own are not the kit's to name: the themes it loads by name are in every key (the drawing
-  // fingerprint), and its other run-time loads draw nothing.
+  // fingerprint), and its other run-time loads draw nothing. (The key holds the engine's themes: a kit whose StoryReel is
+  // another install than the engine's leaves a change to a theme alone to the spot check.)
   let newest = 0; const runtime = new Set();
   const seen = (f, e) => {
     try { newest = Math.max(newest, statSync(f).mtimeMs); } catch { newest = Infinity; }

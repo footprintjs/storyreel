@@ -26,9 +26,10 @@ import path from 'node:path';
  * StoryReel's own package name. An installed package of this name is the engine itself, so it is read by its content
  * like the film's own code: an import of it (`footprint-storyreel` or a subpath) is resolved through its exports and
  * followed into the modules it reaches. A kit that imports StoryReel is then keyed by the StoryReel code it uses, and a
- * release that changes none of it keeps the kit's pieces. StoryReel's package.json is never read into a key: its version
- * names a release, not code, and no module that reads it draws (the engine's own fingerprint holds its src and fonts,
- * never its manifest). Every other package is named by its version: it is not ours to read.
+ * release that changes none of it keeps the kit's pieces. StoryReel's package.json, as its own modules read it, is never
+ * read into a key: its version names a release, not code, and none of them draws with it (the engine's own fingerprint
+ * holds its src and fonts, never its manifest). A kit that reads it itself (a credits card drawing the version) keeps it.
+ * Every other package is named by its version: it is not ours to read.
  */
 export const STORYREEL = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).name;
 /** The name a folder's package.json gives, or null (none there, or not JSON). */
@@ -260,10 +261,11 @@ export function moduleReader(who) {
     const bytes = readFileSync(file), files = [], packages = [], missing = [], unfollowed = []; let unparsed = null;
     // A file in node_modules is a package's, named by its version — except a file of the same installed package as the
     // one reading it (a package's own modules are its code) and StoryReel's, read by content from anywhere. StoryReel's
-    // package.json is never taken: its version names a release, not code (STORYREEL).
+    // package.json, read by one of its own modules, is never taken: its version names a release, not code (STORYREEL).
     const own = packageRoot(file);
+    const storyReelReadsItsManifest = f => path.basename(f) === 'package.json' && nameIn(path.dirname(f)) === STORYREEL && file.startsWith(path.dirname(f) + path.sep);
     const take = f => {
-      if (path.basename(f) === 'package.json' && nameIn(path.dirname(f)) === STORYREEL) return;
+      if (storyReelReadsItsManifest(f)) return;
       const root = packageRoot(f); if (root === null || root === own || isStoryReel(root)) files.push(f);
     };
     if (PARSED.test(file)) {

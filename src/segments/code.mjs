@@ -15,6 +15,13 @@ import {moduleReader} from '../codegraph.mjs';
 export const CODE_EXTENSIONS = Object.freeze(['.mjs', '.js', '.cjs', '.ts', '.mts', '.cts', '.tsx', '.jsx', '.json', '.ttf', '.otf', '.woff', '.woff2', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg']);
 
 /**
+ * The packages a module's imports put in a key: every one, but for an installed StoryReel's own modules (read by content:
+ * codegraph.mjs · STORYREEL) only those that draw (versions.mjs · DRAWING), as the engine's own fingerprint keys them:
+ * footprintjs runs the making-of record and draws nothing, so its release redraws no kit that reaches it through StoryReel.
+ */
+const keyedPackages = e => (e.storyreel ? e.packages.filter(p => DRAWING.includes(p.slice(0, p.lastIndexOf('@')))) : e.packages);
+
+/**
  * A fingerprint of drawing code: every file under the given folders (or the files themselves), and every file they read
  * (codegraph.mjs): relative imports, resolved and read, transitively (a helper two folders up that a kit imports is the
  * kit's code too), TypeScript as well as JavaScript; the files a package linked or in a workspace holds; an asset a
@@ -30,7 +37,9 @@ export function codeFingerprint(paths, {extensions = CODE_EXTENSIONS} = {}) {
     const f = realpathSync(given);   // one name per file, through any link: a linked package's files sort with the rest
     if (files.has(f)) return;
     files.add(f); const m = read(f);
-    m.packages.forEach(x => packages.add(x)); m.missing.forEach(spec => missing.push({from: f, spec})); m.unfollowed.forEach(code => unfollowed.push({from: f, code}));
+    keyedPackages(m).forEach(x => packages.add(x));
+    // An installed StoryReel's own run-time loads are the engine's, not the kit's to name (segments/kitcode.mjs).
+    if (!m.storyreel) { m.missing.forEach(spec => missing.push({from: f, spec})); m.unfollowed.forEach(code => unfollowed.push({from: f, code})); }
     if (m.unparsed !== null) unparsed.push({file: f, from: m.unparsed});   // read only to that line: what follows may hold imports
     m.files.forEach(follow);
   };
@@ -102,7 +111,7 @@ export function asFile(f, who) {
 export function fileSetHash(read, followed, shared = [], {seen = null} = {}) {
   const files = new Map(), packages = new Set(), name = f => `${path.basename(path.dirname(f))}/${path.basename(f)}`;
   // `seen(file, entry)`, when given, hears of every file read (a caller that keeps their times or what they could not follow).
-  const follow = f => { if (files.has(f)) return; const e = read(f); seen?.(f, e); files.set(f, e.hash); e.packages.forEach(p => packages.add(p)); e.files.forEach(follow); };
+  const follow = f => { if (files.has(f)) return; const e = read(f); seen?.(f, e); files.set(f, e.hash); keyedPackages(e).forEach(p => packages.add(p)); e.files.forEach(follow); };
   followed.forEach(follow);
   for (const p of shared) { const e = read(p); seen?.(p, {...e, files: [], unfollowed: [], missing: []}); files.set(p, e.hash); }
   const h = createHash('sha256');
