@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createCanvas} from '@napi-rs/canvas';
 import {compileFilm, evenTimings} from '../src/index.mjs';
-import {thoughtCloud, thoughtAt, cloudPath, drawThought, readThought, THOUGHT_CORNERS, THOUGHT_SETTINGS, THOUGHT_ENTRANCE} from '../src/thought.mjs';
+import {thoughtCloud, thoughtAt, cloudPath, drawThought, readThought, THOUGHT_CORNERS, THOUGHT_SETTINGS, THOUGHT_ENTRANCE} from '../src/thought/index.mjs';
 
 const pathCtx = () => createCanvas(16, 16).getContext('2d');
 /** Whether (x, y) is inside the cloud's outline, the outline scaled by k about the cloud's middle. */
@@ -40,7 +40,8 @@ test('the cloud: a seeded shape inside the box the picture fills, leaning away f
       assert.ok(far[0] < far[1] && far[1] < far[2], `${corner} ${size}: the trail runs from the corner out (${far.map(Math.round)})`);
       assert.ok(cloud.trail[0].r < cloud.trail[1].r && cloud.trail[1].r < cloud.trail[2].r, 'small at the corner, bigger toward the cloud');
       for (const {c: [x, y], r} of cloud.trail) {
-        for (let k = 0; k < 16; k++) assert.ok(!insideCloud(cloud, [x + r * Math.cos(k / 16 * 2 * Math.PI), y + r * Math.sin(k / 16 * 2 * Math.PI)]), `${corner} ${size}: a trail circle clear of the cloud`);
+        // Clear of the cloud even swollen as cloudBurst swells it (5 %) and its ink line, at every size.
+        for (let k = 0; k < 32; k++) assert.ok(!insideCloud(cloud, [x + r * Math.cos(k / 32 * 2 * Math.PI), y + r * Math.sin(k / 32 * 2 * Math.PI)], 1.06), `${corner} ${size}: a trail circle clear of the cloud swollen to burst`);
         assert.ok(x - r >= 0 && x + r <= 1600 && y - r >= 0 && y + r <= 900, 'on the frame');
       }
       assert.ok(Math.hypot(cloud.anchor[0] - at[0], cloud.anchor[1] - at[1]) < Math.hypot(cx - at[0], cy - at[1]), 'it grows from its edge nearest the trail');
@@ -122,18 +123,29 @@ test('in a film: the world is drawn inside its cloud, and only there; its region
   const first = frameAt(f, .05); let red = 0;
   for (let i = 0; i < first.data.length; i += 4) if (isRed([first.data[i], first.data[i + 1], first.data[i + 2]])) red++;
   assert.equal(red, 0, 'at 0.05 s the cloud is not open yet');
-  // The world's regions are where the cloud shows it: its box, at rest; inside it, shrunk toward the trail, while it opens.
-  const box = t => f.regionsAt(t).find(r => r.path === 'story.all').box;
+  // The world's regions are where the cloud shows it: its box at rest; while it opens, where the drawn picture is.
+  const box = t => f.regionsAt(t).find(r => r.path === 'story.all')?.box;
   box(2).forEach((v, i) => assert.ok(Math.abs(v - cloud.box[i]) < 1e-6, `at rest the world's region is the cloud's box (${box(2)})`));
-  const opening = box(.5), [ax, ay] = cloud.anchor;
-  assert.ok(opening[2] - opening[0] < cloud.box[2] - cloud.box[0], 'opening: smaller');
-  assert.ok(opening[0] <= ax && opening[2] >= ax && opening[1] <= ay && opening[3] >= ay, 'and about the anchor');
+  for (const t of [.5, .62]) {
+    const drawn = frameAt(f, t), red = [Infinity, Infinity, -Infinity, -Infinity];
+    for (let y = 0; y < 450; y++) for (let x = 0; x < 800; x++) { const i = (y * 800 + x) * 4; if (isRed([drawn.data[i], drawn.data[i + 1], drawn.data[i + 2]])) { red[0] = Math.min(red[0], 2 * x); red[1] = Math.min(red[1], 2 * y); red[2] = Math.max(red[2], 2 * x + 2); red[3] = Math.max(red[3], 2 * y + 2); } }
+    const [x0, y0, x1, y1] = box(t);
+    assert.ok(red[0] >= x0 - 3 && red[1] >= y0 - 3 && red[2] <= x1 + 3 && red[3] <= y1 + 3, `at ${t} s the drawn picture ${red} sits in its region ${box(t).map(Math.round)}`);
+    assert.ok(red[2] - red[0] > .85 * (x1 - x0) && red[3] - red[1] > .75 * (y1 - y0), `and fills most of it (${red}, ${box(t).map(Math.round)})`);
+  }
+  // Before the cloud opens, the world is not on screen: no region, no point in it.
+  assert.equal(box(.05), undefined, 'no region before the cloud opens');
+  assert.equal(f.pointAt(.05, 800, 450).world, undefined, 'and no point in the world');
+  assert.deepEqual(f.pointAt(2, ...cloud.centre).world.at, [800, 450], 'at rest, the cloud\'s middle is the world\'s');
+  // The opening is a change of picture: a push or a camera move takes turns with it.
+  const opening = f.changes.find(c => c.what === 'the thought cloud opening on the story');
+  assert.deepEqual([opening.from, opening.to], [0, THOUGHT_ENTRANCE.settled]);
 });
 
 test('in a film: a world stage takes a frame, its entrance timed from its own scene; cloudBurst pops the very cloud', async () => {
   const f = await film({story: {kit: 'red'}, stages: [
     {type: 'world', scene: 'b', enter: 'cut', frame: {type: 'thought', corner: 'top-right', size: .7, seed: 12}, world: {kit: 'blue'}},
-    {type: 'world', scene: 'c', enter: {type: 'cloudBurst', corner: 'top-right', size: .7, seed: 12, sound: 'tap'}, world: {kit: 'green'}}]});
+    {type: 'world', scene: 'c', enter: {type: 'cloudBurst', sound: 'tap'}, world: {kit: 'green'}}]});   // its settings: the frame's
   const cloud = thoughtCloud({corner: 'top-right', size: .7, seed: 12}), b = f.clock.start('b'), c = f.clock.start('c'), blue = ([r, g, bl]) => bl > 200 && r < 70 && g < 70;
   assert.ok(!blue(frameAt(f, b + .05).px(cloud.centre)), 'just into its scene, the cloud has not opened');
   const settled = frameAt(f, b + 2);
@@ -163,19 +175,29 @@ test('bad frames refuse, naming the fix', async () => {
   assert.equal(readThought({type: 'thought', size: .7}, 'x').cloud, thoughtCloud({size: .7}), 'its cloud, the one cloudBurst draws with the same settings');
   refuses('dream', /stage dream: frame must be "thought" or \{"type": "thought", "corner"\?, "size"\?, "seed"\?, "color"\?, "ink"\?\} \(a thought cloud is the one frame there is\), not "dream"/);
   refuses({type: 'cloud'}, /frame must be "thought" or/);
-  refuses({type: 'thought', corner: 'north'}, /stage dream: frame.corner is where the trail of little circles points: bottom-left, bottom-right, top-left, top-right, not "north"/);
-  refuses({type: 'thought', size: 1.2}, /frame.size is the cloud's share of the frame: a number from 0.5 to 0.9 \(0.8, the default, keeps the picture inside readable\), not 1.2/);
-  refuses({type: 'thought', size: '0.8'}, /frame.size is the cloud's share of the frame/);
-  refuses({type: 'thought', seed: -1}, /frame.seed is a number from 0 to 10000 \(it picks the scallops\), not -1/);
-  refuses({type: 'thought', color: 'white'}, /frame.color is the cloud's paper: a hex colour such as "#fffdf8" \(left out: the theme's card\), not "white"/);
-  refuses({type: 'thought', ink: 12}, /frame.ink is the outline's ink: a hex colour/);
+  // The settings are read by the one reader (settings.mjs), in the words a bad entrance setting gets.
+  refuses({type: 'thought', corner: 'north'}, /stage dream: frame.corner must be bottom-left, bottom-right, top-left, top-right/);
+  refuses({type: 'thought', size: 1.2}, /stage dream: frame.size must be a number 0.5–0.9/);
+  refuses({type: 'thought', size: '0.8'}, /frame.size must be a number 0.5–0.9/);
+  refuses({type: 'thought', seed: -1}, /frame.seed must be a number 0–10000/);
+  refuses({type: 'thought', color: 'white'}, /frame.color must be a hex colour such as "#000000"/);
+  refuses({type: 'thought', ink: 12}, /frame.ink must be a hex colour/);
   refuses({type: 'thought', at: [1, 2]}, /stage dream: frame has unsupported key at \(a thought frame takes corner, size, seed, color, ink\)/);
   // In a film: a frame on a paper stage, and on the story of a film with a pushIn.
   await assert.rejects(film({story: {kit: 'red'}, stages: [{type: 'code', scene: 'b', enter: 'cut', frame: 'thought', code: {file: 'x.ts'}}]}),
     /stage b has a frame, and a frame is for a world \(the story, or a stage of "type": "world"\): a code stage has the page to itself/);
   await assert.rejects(film({story: {kit: 'red', frame: 'thought'}, pushIn: {after: 'a', rest: .3, caption: 'Now.'}, stages: []}),
     /the story: a frame is for a film without a pushIn/);
-  await assert.rejects(film({story: {kit: 'red'}, stages: [{type: 'world', scene: 'b', frame: {type: 'thought', size: 2}, world: {kit: 'blue'}}]}), /stage b: frame.size is the cloud's share/);
+  await assert.rejects(film({story: {kit: 'red'}, stages: [{type: 'world', scene: 'b', frame: {type: 'thought', size: 2}, world: {kit: 'blue'}}]}), /stage b: frame.size must be a number 0.5–0.9/);
+  // The story's spelling inside a world stage's world: the engine reads frame on the stage, beside world.
+  await assert.rejects(film({story: {kit: 'red'}, stages: [{type: 'world', scene: 'b', world: {kit: 'blue', frame: 'thought'}}]}), /stage b: frame belongs on the stage, beside world \(the engine reads it there\), not inside world/);
+  // Going through a thing into a world in a thought cloud: none of it is on the frame until its cloud opens.
+  await assert.rejects(film({story: {kit: 'red'}, stages: [{type: 'world', scene: 'b', enter: {type: 'match', region: 'all'}, frame: 'thought', world: {kit: 'blue'}}]}),
+    /stage b: the match goes to "all" in the picture it arrives at, and that world opens in a thought cloud \(its frame\): none of it is on the frame until the cloud has opened, after the change\. Enter it another way/);
+  // A burst out of a thought pops that very cloud: a setting it gives that differs from the frame's refuses.
+  await assert.rejects(film({story: {kit: 'red', frame: {type: 'thought', size: .7}}, stages: [{type: 'world', scene: 'b', enter: {type: 'cloudBurst', size: .6}, world: {kit: 'blue'}}]}),
+    /stage b: the cloudBurst pops the thought cloud the story is in, and gives size 0.6 where that cloud has 0.7: leave size out \(it takes the thought's own\), or give both the same/);
+  await film({story: {kit: 'red', frame: {type: 'thought', size: .7}}, stages: [{type: 'world', scene: 'b', enter: {type: 'cloudBurst', size: .7, corner: 'bottom-left'}, world: {kit: 'blue'}}]});   // the same: fine
 });
 
 test('the README\'s thought table is the settings: each one, with its default', () => {

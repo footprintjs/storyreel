@@ -157,7 +157,7 @@ export const shortBox: Enter = {type: 'morph', fromBox: [0, 0, 400]};
 export const remembered: Recipe = {story: {kit: 'draws', frame: 'thought'}, stages: [
   {type: 'world', scene: 'dream', frame: {type: 'thought', corner: 'bottom-right', size: .75, seed: 9, color: null, ink: '#1b1f27'}, world: {kit: 'draws'}},
   {type: 'world', scene: 'now', enter: {type: 'cloudBurst', corner: 'bottom-right', size: .75, seed: 9, sound: {type: 'found', name: 'bubble-pop'}}, world: {kit: 'draws'}}]};
-export const popping: Transition = {...curtain, soundAt: .3};
+export const popping: Transition = {...curtain, hitAt: .3};
 // @ts-expect-error the trail points to a corner
 export const northCloud: Recipe = {story: {kit: 'draws', frame: {type: 'thought', corner: 'north'}}};
 // @ts-expect-error a thought cloud is the one frame there is

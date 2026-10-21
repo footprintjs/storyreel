@@ -9,9 +9,9 @@
  * Three laws every one keeps (pinned by test/paper-transitions.test.mjs):
  *   - e = 0 is the leaving picture and e = 1 the arriving one, exactly (landed): the shapes start and end off the
  *     frame, and the two ends are drawn as the pictures themselves, so nothing jumps when the shot takes over;
- *   - a frame is a pure function of e and the settings: a torn edge or an ink blot is a seeded shape (seeded.mjs ·
+ *   - a frame is a pure function of e and the settings: a torn edge or an ink blot is a seeded shape (src/seeded.mjs ·
  *     seeded, the `seed` setting), never Math.random, so the same frame index gives the same pixels;
- *   - paper and ink are the film's theme's (tokens.mjs · paperTokens). A colour a transition adds to the picture (the
+ *   - paper and ink are the film's theme's (src/paper-tokens.mjs · paperTokens). A colour a transition adds to the picture (the
  *     ring, the morph's outline, the ink) is a setting whose default, null, is the theme's own.
  */
 import {W, H} from '../../frame.mjs';
@@ -38,5 +38,5 @@ export const PAPER_TRANSITIONS = Object.freeze({
   cloudBurst: entry(CLOUD_BURST), torn: entry(TORN), eraser: entry(ERASER), inkBleed: entry(INK_BLEED), ringIris: entry(RING_IRIS),
   glassSheet: entry(GLASS_SHEET), curl: entry(CURL), fold: entry(FOLD), morph: entry(MORPH),
 });
-export {paperTokens} from './tokens.mjs';
-export {seeded} from './seeded.mjs';
+export {paperTokens} from '../../paper-tokens.mjs';
+export {seeded} from '../../seeded.mjs';

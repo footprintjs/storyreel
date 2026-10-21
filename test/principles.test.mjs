@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {anticipate, squash, envelope, burst, BURSTS, BURST_NAMES, arc} from '../src/principles.mjs';
+import {anticipate, squash, envelope, envelopeShare, burst, BURSTS, BURST_NAMES, arc} from '../src/principles.mjs';
 
 const steps = (from, to, n) => Array.from({length: n + 1}, (_, i) => from + (to - from) * i / n);
 
@@ -58,6 +58,25 @@ test('envelope: a quick smooth rise (40–120 ms), then an exponential fade to n
   assert.throws(() => envelope(.1, {attack: .5, decay: .2}), /envelope: attack is 0.04–0.12 s \(a one-shot event rises in 40–120 ms: quicker reads as a glitch, slower as a fade\), not 0.5/);
   assert.throws(() => envelope(.1, {attack: .01, decay: .2}), /attack is 0.04–0.12 s/);
   assert.throws(() => envelope(.1, 'boom'), /envelope: no shape called "boom" \(the shapes are flash, pop, shake, or \{attack, decay\} of your own\)/);
+});
+
+test('envelopeShare: the envelope added up, a share of all of it — how far a thing the event pushed has gone', () => {
+  for (const shape of [...BURST_NAMES, {attack: .1, decay: .5}]) {
+    const {attack, decay} = typeof shape === 'string' ? BURSTS[shape] : shape, all = attack / 2 + decay;
+    assert.equal(envelopeShare(-1, shape), 0); assert.equal(envelopeShare(0, shape), 0);
+    assert.ok(Math.abs(envelopeShare(attack, shape) - attack / 2 / all) < 1e-12, 'the rise adds half its length');
+    // Against envelope itself, summed in small steps: the same share at every age (the closed form is envelope's own).
+    for (const age of [attack / 2, attack * 2, decay, 3 * decay]) {
+      let sum = 0; const n = 20000;
+      for (let i = 0; i < n; i++) sum += envelope((i + .5) / n * age, shape) * age / n;
+      assert.ok(Math.abs(envelopeShare(age, shape) - sum / all) < 2e-3, `${JSON.stringify(shape)} at ${age} s: ${envelopeShare(age, shape).toFixed(4)}, the envelope sums to ${(sum / all).toFixed(4)}`);
+    }
+    const ages = Array.from({length: 200}, (_, i) => i / 100);
+    assert.ok(ages.every((a, i) => !i || envelopeShare(a, shape) >= envelopeShare(ages[i - 1], shape)), 'never back');
+    assert.ok(envelopeShare(attack + 10 * decay, shape) > .999, 'all of it, given time');
+  }
+  assert.throws(() => envelopeShare(NaN), /envelopeShare: age is seconds since the event, not NaN/);
+  assert.throws(() => envelopeShare(.1, 'thud'), /no shape called "thud"/);
 });
 
 test('burst: every event by its own age, so overlapping events add', () => {

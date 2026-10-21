@@ -132,9 +132,9 @@ test('a kit adds its own transitions, checked like the built-in ones; names neve
   bad({...curtain, seconds: 9}, /seconds must be between 0.2 and 4/);
   bad({...curtain, ease: 'wobble'}, /"wobble" is not an ease/);
   bad({...curtain, sound: 'boom'}, /sound must be null or a sound/);
-  bad({...curtain, soundAt: 1}, /soundAt is where in the change its sound lands, a share of it from 0 \(its first moment, the default\) to below 1/);
-  bad({...curtain, soundAt: '.3'}, /soundAt is where in the change its sound lands/);
-  assert.equal(readEntrance('curtain', 'x', catalog).soundAt, 0, 'left out: its sound at the change\'s first moment');
+  bad({...curtain, hitAt: 1}, /hitAt is where in the change its sound hits, the e its draw reaches it at, from 0 \(its first moment, the default\) to below 1/);
+  bad({...curtain, hitAt: '.3'}, /hitAt is where in the change its sound hits/);
+  assert.equal(readEntrance('curtain', 'x', catalog).hitAfter, 0, 'left out: its sound at the change\'s first moment');
   bad({...curtain, params: {seconds: {number: [0, 1], default: .5}}}, /may not be called "seconds"/);
   bad({...curtain, params: {color: {color: true}}}, /must be one of \{oneOf/);
   bad({...curtain, params: {color: {color: true, default: 'red'}}}, /enter.color must be a hex colour/);
@@ -173,9 +173,13 @@ test('in a film: a kit\'s transition is named like a built-in one', async () => 
   assert.deepEqual(pixel(f, b - .75 + .5, 100, 450), [0x7a, 0x10, 0x20], 'the curtain closed half way through');
   assert.deepEqual(pixel(f, b + .3, 800, 450), BLUE);
   assert.ok(f.sounds.some(s => s.type === 'whoosh' && Math.abs(s.time - (b - .75)) < 1e-9));
-  // A kit's transition whose moment comes later says where: its sound lands there.
-  const late = await film({type: 'curtain', seconds: 2}, [{name: 'stage', transitions: {curtain: {...curtain, soundAt: .5}}}]), lb = late.clock.start('b');
-  assert.ok(late.sounds.some(s => s.type === 'whoosh' && Math.abs(s.time - (lb - 1.5 + 1)) < 1e-9), 'half way through its 2 s');
+  // A kit's transition whose moment comes later says where (hitAt, in its draw's e): its sound hits there, whatever the
+  // ease — the moment the eased change reaches it, not that share of its seconds.
+  const late = await film({type: 'curtain', seconds: 2}, [{name: 'stage', transitions: {curtain: {...curtain, hitAt: .5}}}]), lb = late.clock.start('b');
+  assert.ok(late.sounds.some(s => s.type === 'whoosh' && Math.abs(s.time - (lb - 1.5 + 1)) < 1e-9), 'half way through its 2 s (inOut reaches 0.5 at half time)');
+  const eased = await film({type: 'curtain', seconds: 2, ease: 'in'}, [{name: 'stage', transitions: {curtain: {...curtain, hitAt: .3}}}]), en = readEntrance({type: 'curtain', seconds: 2, ease: 'in'}, 'x', transitionCatalog([{name: 'stage', transitions: {curtain: {...curtain, hitAt: .3}}}]));
+  assert.ok(Math.abs(en.ease(en.hitAfter / 2) - .3) < 1e-9 && en.hitAfter > .6 + .1, `eased in, it hits where e reaches 0.3 (${en.hitAfter.toFixed(3)} s in), not at 0.6 s`);
+  assert.ok(eased.sounds.some(s => s.type === 'whoosh' && Math.abs(s.time - (eased.clock.start('b') - 1.5 + en.hitAfter)) < 1e-9), 'and the film places it there');
   await assert.rejects(film('curtain'), /stage b: enter must be a transition: cut, fade, dip, cloudBurst, wipe, split, clock, torn, eraser, iris, inkBleed, ringIris, push, slide, whip, glassSheet, zoom, page, curl, fold, through, match, morph \(not "curtain"\)/);
 });
 

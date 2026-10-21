@@ -10,9 +10,8 @@ import {compileFilm, evenTimings, loadTheme, validateTheme} from '../src/index.m
 import {TRANSITIONS, TRANSITION_NAMES, readEntrance, transitionCatalog, ghostPainter} from '../src/transitions.mjs';
 import {PAPER_TRANSITIONS, seeded, paperTokens} from '../src/transitions/paper/index.mjs';
 import {tornAt, tearPace} from '../src/transitions/paper/torn.mjs';
-import {pushed, puffsOf} from '../src/transitions/paper/burst.mjs';
-import {thoughtCloud, cloudPath} from '../src/thought.mjs';
-import {BURSTS} from '../src/principles.mjs';
+import {puffsOf} from '../src/transitions/paper/burst.mjs';
+import {thoughtCloud, cloudPath} from '../src/thought/index.mjs';
 
 const PAPER = Object.keys(PAPER_TRANSITIONS);
 const RED = [255, 0, 0], BLUE = [0, 0, 255];
@@ -256,14 +255,8 @@ test('cloudBurst: the cloud swells and pales, pops on principles.mjs\'s pop, and
   assert.deepEqual(drawn('cloudBurst', .62).px(cx, cy), BLUE, 'the middle, cleared');
   assert.ok(share(drawn('cloudBurst', .45).data, card, 8) > .02, 'puffs of the cloud\'s paper still on screen');
   assert.equal(share(drawn('cloudBurst', .93).data, BLUE, 0), 1, 'the puffs gone before the end');
-  // The pop's push is principles.mjs's pop envelope, added up: 0 at the pop, all of it by the end.
-  const {attack, decay} = BURSTS.pop, total = attack / 2 + decay;
-  assert.equal(pushed(0), 0); assert.ok(Math.abs(pushed(attack) - attack / 2 / total) < 1e-12);
-  for (const age of [.03, .1, .25, .5]) {
-    let sum = 0; const n = 4000;
-    for (let i = 0; i < n; i++) sum += envelopeAt((i + .5) / n * age) * age / n;
-    assert.ok(Math.abs(pushed(age) - sum / total) < 2e-3, `at ${age} s after the pop: ${pushed(age).toFixed(4)} pushed, the envelope says ${(sum / total).toFixed(4)}`);
-  }
+  // (The puffs travel as far as principles.mjs · envelopeShare says the pop has pushed them: pinned against envelope
+  // itself in test/principles.test.mjs.)
   // At the pop, the puffs ARE the cloud: its scallops, and discs inside its outline.
   const puffs = puffsOf(cloud), c = createCanvas(16, 16).getContext('2d');
   cloudPath(c, cloud);
@@ -272,7 +265,6 @@ test('cloudBurst: the cloud swells and pales, pops on principles.mjs\'s pop, and
   for (const p of puffs) assert.ok(c.isPointInPath(p.x, p.y), `a puff at (${p.x.toFixed(0)}, ${p.y.toFixed(0)}) starts inside the cloud`);
   assert.ok(puffs.filter(p => !p.rim).every(p => p.life < Math.min(...puffs.filter(q => q.rim).map(q => q.life))), 'the inside clears before the scallops');
 });
-const envelopeAt = age => (age <= 0 ? 0 : age < BURSTS.pop.attack ? (u => u * u * (3 - 2 * u))(age / BURSTS.pop.attack) : Math.exp(-(age - BURSTS.pop.attack) / BURSTS.pop.decay));
 
 // A film: a red world, then a blue one entering by a paper transition, then a green one.
 const storyboard = {title: 'T', scenes: [
@@ -294,10 +286,12 @@ test('in a film: a recipe names a paper transition like any other, on the film c
   const ink = await film({type: 'inkBleed', at: [800, 450], sound: false});
   assert.ok(!ink.sounds.some(s => s.type === 'whoosh'), 'sound: false');
   await assert.rejects(film({type: 'morph', region: 'door'}), /stage b: the morph looks for "door" in the picture it leaves, and nothing in the picture is called "door"/);
-  // A cloudBurst's sound lands on its pop, three tenths of the way in, however long the change takes.
-  for (const seconds of [1, 2]) {
-    const burst = await film({type: 'cloudBurst', seconds}), start = burst.clock.start('b') - .75 * seconds;
-    assert.ok(burst.sounds.some(s => s.type === 'whoosh' && Math.abs(s.time - (start + .3 * seconds)) < 1e-9), `${seconds} s: heard on the pop, at ${(start + .3 * seconds).toFixed(2)} s`);
+  // A cloudBurst's sound hits on its pop (e = 0.3), however long the change takes and however it is eased.
+  for (const [seconds, ease] of [[1, undefined], [2, undefined], [2, 'in'], [1.5, 'out']]) {
+    const enter = {type: 'cloudBurst', seconds, ...(ease ? {ease} : {})}, en = readEntrance(enter, 'x');
+    const burst = await film(enter), start = burst.clock.start('b') - .75 * seconds, hit = start + en.hitAfter;
+    assert.ok(Math.abs(en.ease(en.hitAfter / seconds) - .3) < 1e-9, `${seconds} s ${ease ?? 'linear'}: e is 0.3 when it sounds`);
+    assert.ok(burst.sounds.some(s => s.type === 'whoosh' && Math.abs(s.time - hit) < 1e-9), `${seconds} s ${ease ?? 'linear'}: heard on the pop, at ${hit.toFixed(3)} s`);
     assert.ok(!burst.sounds.some(s => s.type === 'whoosh' && Math.abs(s.time - start) < 1e-9), 'not at the change\'s first moment');
   }
 });

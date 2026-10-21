@@ -5,7 +5,7 @@
  */
 import {W, H, clamp01, lerp} from '../../frame.mjs';
 import {rgba} from '../../colour.mjs';
-import {paperTokens} from './tokens.mjs';
+import {paperTokens} from '../../paper-tokens.mjs';
 
 const CARD = Object.freeze([600, 320, 1000, 580]), WIDE = Object.freeze([160, 90, 1440, 810]);
 

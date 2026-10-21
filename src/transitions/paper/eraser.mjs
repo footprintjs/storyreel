@@ -4,7 +4,7 @@
  */
 import {W, H, lerp} from '../../frame.mjs';
 import {rgba} from '../../colour.mjs';
-import {paperTokens} from './tokens.mjs';
+import {paperTokens} from '../../paper-tokens.mjs';
 
 const BLOCK = Object.freeze({w: 270, h: 360, felt: 48, shadow: [15, 24]});
 /** How far past the frame the eraser starts and ends: half its width, its shadow and a margin. */

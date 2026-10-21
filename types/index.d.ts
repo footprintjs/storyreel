@@ -116,7 +116,7 @@ export interface Read { what: string; at: Beat; min?: number; region?: string }
  */
 export interface Recipe {
   /** The opening world; its `intent`, `continuity` and `frame` are the engine's (read, then left out of what the kit gets). */
-  story?: {kit: string; frame?: Frame; [key: string]: unknown} & ShotPlan;
+  story?: {kit: string; frame?: WorldFrame; [key: string]: unknown} & ShotPlan;
   /** The older spelling of a whiteboard story: {items, erasers, spots…} without `kit`. */
   whiteboard?: Record<string, unknown>;
   /** The built-in theme's name when compileFilm gets no `theme`. */
@@ -124,7 +124,7 @@ export interface Recipe {
   pushIn?: {after: string; rest: number; turn?: number; zoom?: number; hang?: number; caption: string};
   card?: Record<string, unknown>;
   /** A world stage's `intent` and `continuity` sit on the stage, beside `world` (inside `world` they refuse); so does its `frame` (worlds only). */
-  stages?: ({type: string; scene: string; enter?: Enter; frame?: Frame; [key: string]: unknown} & ShotPlan)[];
+  stages?: ({type: string; scene: string; enter?: Enter; frame?: WorldFrame; [key: string]: unknown} & ShotPlan)[];
   guesses?: {after: Beat; question: string; answer?: string; place?: 'top' | 'center' | 'bottom'; until?: Beat}[];
   /** A steps track over every shot (footprint-storyreel/kits/paper/steps-track): every moment a beat. */
   stepsTrack?: StepsTrackSpec<Beat>;
@@ -218,13 +218,14 @@ export interface WorldLayer { name: string; depth: number }
 export type Watching = {kind: 'burst'; path: string; where: string; at: number; moments: number; seconds: number};
 
 /**
- * A world's frame (thought.mjs): the world drawn inside a cartoon thought cloud, a trail of three little circles toward
+ * A world's frame (thought/): the world drawn inside a cartoon thought cloud, a trail of three little circles toward
  * `corner` (the cloud leans away from it). `size` is the cloud's share of the frame (0.5–0.9, 0.8), and the world is
  * drawn at it; `seed` picks the scallops (0–10000, 3); `color` and `ink` are its paper and outline (null: the theme's
- * card and ink). As the shot starts, the trail pops up from the corner, then the cloud opens. cloudBurst, given the
- * same corner, size and seed, pops the same cloud.
+ * card and ink). As the shot starts, the trail pops up from the corner, then the cloud opens (a change of picture). On
+ * the story or a "type": "world" stage only (another stage refuses it). A cloudBurst out of it pops the same cloud: the
+ * settings it leaves out are the frame's.
  */
-export type Frame = 'thought' | {type: 'thought'; corner?: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right'; size?: number; seed?: number; color?: string | null; ink?: string | null};
+export type WorldFrame = 'thought' | {type: 'thought'; corner?: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right'; size?: number; seed?: number; color?: string | null; ink?: string | null};
 
 /** The built-in transitions (transitions.mjs · TRANSITIONS). */
 export type TransitionName = 'cut' | 'fade' | 'dip' | 'cloudBurst' | 'wipe' | 'split' | 'clock' | 'torn' | 'eraser' | 'iris' | 'inkBleed' | 'ringIris'
@@ -287,8 +288,8 @@ export interface Transition {
   seconds: number;
   ease: EaseSpec;
   sound: SoundType | null;
-  /** Where in the change its sound lands, a share of it from 0 (its first moment, the default) to below 1: 0.3 for a pop three tenths of the way in. */
-  soundAt?: number;
+  /** Where in the change its sound hits: the e its draw reaches it at, from 0 (its first moment, the default) to below 1 (cloudBurst's pop: 0.3). However the change is eased, the sound lands where e reaches it. */
+  hitAt?: number;
   /** true when an overshooting ease (back, outBack, spring, a four-number curve past 0..1) may drive it. */
   overshoot?: boolean;
   params?: Record<string, TransitionSetting>;

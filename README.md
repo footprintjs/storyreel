@@ -274,12 +274,15 @@ with a trail of three little circles toward a corner (no one is thinking it: rem
  "stages": [{"type": "world", "scene": "title", "enter": "cloudBurst", "world": {"kit": "draws", "shot": "title"}}]}
 ```
 
-`"frame"` goes on the story or on a `"type": "world"` stage, beside `world`. A paper stage has the page to itself, and a
-film with a `pushIn` keeps its page, so both refuse one. The world is drawn at the cloud's scale, so the cloud is a
-window onto all of it but its corners: keep its words a little in from its edges. At the default size the cloud keeps
-a margin from the frame's edges, even as it opens and as it swells to burst; at 0.9 it all but fills the frame. As the
-shot starts, the trail's circles pop up one after another from the corner, each with a small overshoot, and then the
-cloud puffs open out of the trail (about 1.4 s). `{"type": "thought", …}` takes:
+`"frame"` goes on the story or on a `"type": "world"` stage, beside `world` (inside `world` it refuses, as `intent`
+does). A paper stage has the page to itself, and a film with a `pushIn` keeps its page, so both refuse one. The world
+is drawn at the cloud's scale, so the cloud is a window onto all of it but its corners: keep its words a little in from
+its edges. At the default size the cloud keeps a margin from the frame's edges, even as it opens and as it swells to
+burst; at 0.9 it all but fills the frame. As the shot starts, the trail's circles pop up one after another from the
+corner, each with a small overshoot, and then the cloud puffs open out of the trail (1.6 s in all). The opening is a
+change of picture: a push or a camera move takes turns with it, the world is not on screen (no regions) until the
+cloud starts to open, and a `match`, `through` or `morph` cannot go to a named thing in a world in a cloud, because
+none of it is on the frame when the change ends. `{"type": "thought", …}` takes:
 
 | setting | what it is | default |
 |---|---|---|
@@ -290,9 +293,9 @@ cloud puffs open out of the trail (about 1.4 s). `{"type": "thought", …}` take
 
 `cloudBurst` ends the thought: the cloud swells, pales and pops into puffs. Until it pops, nothing of the next shot
 shows: the thought's own paper and trail stay round the cloud. After the pop, the next shot is uncovered where the puffs
-part and fades up round the cloud. Given the same `corner`, `size` and `seed`, it pops the very cloud the frame drew. A
-bad setting refuses, naming what it takes:
-`stage dream: frame.corner is where the trail of little circles points: bottom-left, bottom-right, top-left, top-right, not "north"`.
+part and fades up round the cloud. Out of a thought it pops that very cloud: each setting the recipe leaves out is the
+frame's (`"enter": "cloudBurst"` is enough), and one it gives must be the frame's too. A bad setting refuses in the words
+a bad entrance setting gets: `stage dream: frame.corner must be bottom-left, bottom-right, top-left, top-right`.
 
 ### Transitions
 
@@ -359,8 +362,8 @@ it goes, so the same seed tears the same way every time. `morph` goes from box t
 
 Every entrance also takes `seconds` (0.2–4), `ease` (a name from the ease table, or a four-number curve as CSS
 writes it, `"cubic-bezier(0.16, 1, 0.3, 1)"`) and `sound` (a sound's name, or `false`). The sound plays from the
-change's first moment, or from where the change has its moment: `cloudBurst`'s lands on its pop, three tenths of the
-way in, however long the change takes. An ease that goes past
+change's first moment, or hits where the change has its moment: `cloudBurst`'s on its pop, however long the change
+takes and however it is eased. An ease that goes past
 the end (`back`, `outBack`, `spring`, or a four-number curve whose y leaves 0..1) is refused where the frame's
 edge would show — only `slide` takes one. An unknown name, key or setting refuses, naming what the transition
 takes: `enter has unsupported key at (a push takes seconds, ease, sound, from)`.
@@ -434,8 +437,9 @@ through things says which with `regions: p => ({from: [p.region], to: [p.into]})
 `boxes.from[name]` / `boxes.to[name]` (`[x0, y0, x1, y1]` on the frame); a `{name: true}` setting is the
 recipe's name for one (no default: the recipe must give it). A `{box: true}` setting is a box the recipe gives
 (`[x0, y0, x1, y1]`, x0 < x1 and y0 < y1), and a `{color: true}` setting may default to null: the draw picks the
-colour then, the theme's say (`theme.palette.ink`), as the paper transitions do. `soundAt` (a share of the change,
-0 to below 1; 0 by default) moves its sound to its moment: 0.3 for a pop three tenths of the way in. A kit's transition
+colour then, the theme's say (`theme.palette.ink`), as the paper transitions do. `hitAt` (0 by default, below 1) moves
+its sound to its moment: the e its draw reaches it at (0.3 for a pop three tenths of the way in), placed in time
+through the entrance's ease, so an eased change still sounds on its moment. A kit's transition
 may not take a built-in name or another kit's. `transitionSheet({catalog})` draws any collection on one
 PNG (`node examples/transitions.mjs` wrote the picture above), and the studio shows it under
 **Transitions**.

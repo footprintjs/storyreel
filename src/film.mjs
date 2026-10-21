@@ -45,7 +45,8 @@ import {readLibrary, useFound, trimOf, foundFields} from './found/index.mjs';
 import {listeningMode, changeSounds, listeningText} from './listening.mjs';
 import {step, drainSteps, recordSteps} from './record.mjs';
 import {readEntrance, transitionCatalog, ghostPainter, layerCrossfader, CUT} from './transitions.mjs';
-import {readThought, drawThought, thoughtCamera} from './thought.mjs';
+import {readThought, drawThought, thoughtAt, thoughtCamera, THOUGHT_ENTRANCE, THOUGHT_SETTINGS} from './thought/index.mjs';
+import {SHEET_SHADOW} from './frame.mjs';
 
 /** The recipe's own top-level keys: anything else refuses, unless the host application names it in `hostKeys`. */
 const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'stepsTrack', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle', 'focus', 'emphasis', 'camera', 'foundSounds'];
@@ -284,11 +285,12 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     return instance;
   };
   /**
-   * A world on its sheet: hung on the paper at scale S (1 = full frame) — or, with a frame (thought.mjs · readThought),
-   * in a thought cloud: the sheet at the cloud's scale and place, its entrance timed from `at` (the shot's start).
+   * A world on its sheet: hung on the paper at scale S (`hang`, or the kit's own, or 0.9; 1 = full frame), or, with a
+   * thought frame (thought/ · readThought), in its cloud: the sheet at the cloud's scale and place, the cloud's entrance
+   * timed from `from` (its shot's start).
    */
-  const hung = (instance, hang, frame = null, at = 0) => {
-    if (frame) { const {S, place: [BX, BY]} = frame.cloud; return {instance, S, BX, BY, frame, frameAt: at}; }
+  const hung = (instance, {hang, frame = null, from = 0} = {}) => {
+    if (frame) { const {S, place: [BX, BY]} = frame.cloud; return {instance, S, BX, BY, frame, thoughtFrom: from}; }
     const S = hang ?? instance.hang ?? .9; return {instance, S, BX: 1600 * (1 - S) / 2, BY: 900 * (1 - S) / 2 + 7.5 * (S < 1 ? 1 : 0)};
   };
   yield step('read-inputs', () => inputsSummary({recipe, storyboard, clock: base, notes, strings: strings ? [...used] : null}));
@@ -302,7 +304,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   if (recipe.card && !push) throw new Error('The recipe has a card and no pushIn: the card is the story prop the camera pushes into');
   const card = recipe.card ?? {prop: [700, 350, 900, 550], rows: [], template: {}, aside: {at: [800, 450], scale: 1}};
   const boardEnd = push ? clock.spokenEnd(push.after) + push.rest : Infinity, TURN = (push?.turn ?? 1) / notes.speed;
-  const storyWorld = {...hung(story, push?.hang, readThought(storyFrame, 'the story'), 0), kit: storySpec.kit}, {S, BX, BY} = storyWorld, ZOOM = push?.zoom ?? 1;
+  const storyWorld = {...hung(story, {hang: push?.hang, frame: readThought(storyFrame, 'the story')}), kit: storySpec.kit}, {S, BX, BY} = storyWorld, ZOOM = push?.zoom ?? 1;
   // Geometry in 1600×900 units: the sheet hangs on the paper at scale S; the camera pushes into the prop.
   const onPage = (bx, by) => [BX + bx * S, BY + by * S];
   const propCentre = onPage((card.prop[0] + card.prop[2]) / 2, (card.prop[1] + card.prop[3]) / 2);
@@ -326,8 +328,8 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     const st = {...spec, start: clock.start(spec.scene)};
     if (!push) st.entrance = readEntrance(spec.enter, where, transitions);
     if (spec.type === 'world') {
-      for (const key of PLAN_KEYS) if (spec.world && Object.hasOwn(spec.world, key)) throw new Error(`${where}: ${key} belongs on the stage, beside world (the engine reads it there), not inside world (the kit's own spec)`);
-      st.world = {...hung(compileWorld(spec.world, where), undefined, readThought(spec.frame, where), st.start), kit: spec.world.kit};
+      for (const key of [...PLAN_KEYS, 'frame']) if (spec.world && Object.hasOwn(spec.world, key)) throw new Error(`${where}: ${key} belongs on the stage, beside world (the engine reads it there), not inside world (the kit's own spec)`);
+      st.world = {...hung(compileWorld(spec.world, where), {frame: readThought(spec.frame, where), from: st.start}), kit: spec.world.kit};
     }
     if (reads('code') && spec.code) {
       const source = excerpt(within(spec.code.file), {elide: spec.code.elide ?? []});
@@ -403,6 +405,25 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
       if (st.cutNote) { st.cutWas = st.entrance.type; st.entrance = CUT; }
       shots.push({world: st.world ?? null, stages: st.world ? [] : [st], start: st.start, enter: st.entrance});
     }
+  }
+  // A burst out of a thought pops that very cloud (thoughtPopped).
+  if (!push) shots.forEach((shot, j) => { if (j) shot.enter = thoughtPopped(shot, shots[j - 1]); });
+  /**
+   * An entrance on the thought's own settings (cloudBurst) out of a shot in a thought cloud pops that very cloud: each
+   * setting the recipe leaves out is the frame's, and one it gives must be the frame's too (two clouds never show).
+   */
+  function thoughtPopped(shot, leaving) {
+    const en = shot.enter, frame = leaving.world?.frame;
+    if (!frame || transitions[en.type]?.params !== THOUGHT_SETTINGS) return en;
+    const st = shot.stages[0] ?? stages.find(s => s.world === shot.world), given = st.enter && typeof st.enter === 'object' ? st.enter : {};
+    const same = (a, b) => (typeof a === 'string' && typeof b === 'string' ? a.toLowerCase() === b.toLowerCase() : a === b);
+    const thought = leaving === shots[0] ? 'the story' : `stage ${(leaving.stages[0] ?? stages.find(s => s.world === leaving.world)).scene}`;
+    for (const name of Object.keys(THOUGHT_SETTINGS)) {
+      if (given[name] !== undefined && !same(given[name], frame[name])) throw new Error(`stage ${st.scene}: the ${en.type} pops the thought cloud ${thought} is in, and gives ${name} ${JSON.stringify(given[name])} where that cloud has ${JSON.stringify(frame[name])}: leave ${name} out (it takes the thought's own), or give both the same`);
+    }
+    const popped = Object.freeze({...en, p: Object.freeze({...en.p, ...Object.fromEntries(Object.keys(THOUGHT_SETTINGS).map(name => [name, frame[name]]))})});
+    st.entrance = popped;
+    return popped;
   }
 
   // Pause and guess: a question over any scene while the narration holds a pause after it.
@@ -559,8 +580,8 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (spot) aim(ctx, spotCamera(w, spot));
     if (camera) aim(ctx, camera);
     ctx.drawImage(blank, 0, 0);
-    if (w.frame) drawThought(ctx, w.frame.cloud, c => c.drawImage(sheet, w.BX, w.BY, 1600 * w.S, 900 * w.S), {age: t - w.frameAt, color: w.frame.color, ink: w.frame.ink, theme: paper});
-    else if (w.S < 1) { ctx.save(); ctx.shadowColor = 'rgba(60,50,35,.22)'; ctx.shadowBlur = 26; ctx.shadowOffsetY = 8; ctx.drawImage(sheet, w.BX, w.BY, 1600 * w.S, 900 * w.S); ctx.restore(); }
+    if (w.frame) drawThought(ctx, w.frame.cloud, c => c.drawImage(sheet, w.BX, w.BY, 1600 * w.S, 900 * w.S), {age: t - w.thoughtFrom, color: w.frame.color, ink: w.frame.ink, theme: paper});
+    else if (w.S < 1) { ctx.save(); ctx.shadowColor = SHEET_SHADOW; ctx.shadowBlur = 26; ctx.shadowOffsetY = 8; ctx.drawImage(sheet, w.BX, w.BY, 1600 * w.S, 900 * w.S); ctx.restore(); }
     else ctx.drawImage(sheet, 0, 0);
     ctx.restore();
   }
@@ -738,8 +759,12 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   }
   function pictureChanges() {
     const out = stages.map(arrivalOf);
+    // A thought cloud opening changes the picture too: its world grows in out of the trail (thought/entrance.mjs).
+    for (const [w, what] of [[storyWorld, 'the thought cloud opening on the story'], ...stages.filter(st => st.world).map(st => [st.world, `the thought cloud opening in ${st.scene}`])]) {
+      if (w.frame && !push) out.push({from: w.thoughtFrom, to: Math.min(clock.total, w.thoughtFrom + THOUGHT_ENTRANCE.settled), what});
+    }
     if (teaser) out.push({from: teaser.at, to: clock.total, what: 'the teaser'});
-    return out;
+    return out.sort((a, b) => a.from - b.from);
   }
   /**
    * A world's own camera moving between a and b while that world is on screen (StoryWorld · cameraMoves: e.g. the
@@ -767,7 +792,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   /** A world's view on the frame at t: its sheet hung on the paper (or in its cloud, as it opens), then the push-in's and the spotlight's cameras. */
   function worldView(w, t, spot, camera = null) {
     let v = view(w.S, w.BX, w.BY);
-    if (w.frame) v = compose(about(thoughtCamera(w.frame.cloud, t - w.frameAt)), v);
+    if (w.frame) v = compose(about(thoughtCamera(w.frame.cloud, t - w.thoughtFrom)), v);
     if (camera) v = compose(about(camera), v);
     if (spot) v = compose(about(spotCamera(w, spot)), v);
     return v;
@@ -780,8 +805,9 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     }
     return shotWorld(shots[shotAt(t)], t);
   }
-  /** A shot's world at t (the part of the recipe that draws it, and its view), or null for a shot on paper. */
+  /** A shot's world at t (the part of the recipe that draws it, and its view), or null for a shot on paper or a thought cloud not yet open. */
   function shotWorld(shot, t) {
+    if (shot.world?.frame && !(thoughtAt(shot.world.frame.cloud, t - shot.world.thoughtFrom).open > 0)) return null;
     const st = shot.world && stages.find(s => s.world === shot.world);
     return shot.world ? {w: shot.world, path: st ? `${stagePath(st)}.world` : storyPath, until: Infinity, view: worldView(shot.world, t, spotOf(shot.world, t))} : null;
   }
@@ -914,6 +940,8 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     const st = shot.stages[0] ?? stages.find(s => s.world === shot.world), where = `stage ${st.scene}`, want = en.regions(en.p);
     const lists = want && typeof want === 'object' && !Array.isArray(want) && ['from', 'to'].every(side => want[side] === undefined || (Array.isArray(want[side]) && want[side].every(n => typeof n === 'string' && n.trim())));
     if (!lists) throw new Error(`${where}: the ${en.type}'s regions(p) must return {from?: [names], to?: [names]}`);
+    // A world in a thought cloud is not on the frame until its cloud opens, after the change has ended.
+    if (want.to?.length && shot.world?.frame) throw new Error(`${where}: the ${en.type} goes to ${want.to.map(n => `"${n}"`).join(', ')} in the picture it arrives at, and that world opens in a thought cloud (its frame): none of it is on the frame until the cloud has opened, after the change. Enter it another way (a cut, a fade, an iris), or leave its frame out`);
     // Every thing a setting names is looked up: one regions(p) leaves out would never be checked.
     const looked = new Set([...(want.from ?? []), ...(want.to ?? [])]);
     for (const [name, value] of Object.entries(en.p)) if (en.names?.includes(name) && value !== null && !looked.has(value)) throw new Error(`${where}: the ${en.type}'s ${name} names "${value}", which its regions(p) does not look for`);
@@ -1039,8 +1067,8 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     sounds.push(sound); if (type === FOUND && who) askedBy.set(sound, who);
   };
   const addKitSounds = (list, who) => { for (const s of list ?? []) { checkSound(s, who); add(s.time, s.type, s.gain, s, who); } };
-  /** When a shot's entrance sounds: from the change's first moment, or later where its own moment is (transitions.mjs · soundAt: cloudBurst's pop). */
-  const soundTime = shot => shot.start - shot.enter.lead + (shot.enter.soundAt ?? 0) * shot.enter.seconds;
+  /** When a shot's entrance sounds: from the change's first moment, or later where its moment is (transitions.mjs · hitAt, hitAfter: cloudBurst's pop). */
+  const soundTime = shot => shot.start - shot.enter.lead + (shot.enter.hitAfter ?? 0);
   addKitSounds(story.sounds, `the story kit "${storySpec.kit}"`);
   if (push) { add(boardEnd, 'slide'); add(MOVE0, 'slide'); }
   for (const shot of shots.slice(1)) {
