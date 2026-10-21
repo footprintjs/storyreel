@@ -1,0 +1,39 @@
+{
+ "id": "33333333-2222-4333-8444-555555555555",
+ "title": "Paper rustle",
+ "indexed_on": "2024-05-21T15:00:07.873258Z",
+ "foreign_landing_url": "https://sounds.example.org/sounds/33333333",
+ "url": "https://cdn.example.org/previews/33333333.wav",
+ "creator": "f-maker",
+ "creator_url": "https://sounds.example.org/people/a-maker",
+ "license": "by-sa",
+ "license_version": "4.0",
+ "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+ "provider": "freesound",
+ "source": "freesound",
+ "category": null,
+ "genres": null,
+ "filesize": 24630,
+ "filetype": "wav",
+ "tags": [
+  {
+   "name": "page",
+   "accuracy": null
+  }
+ ],
+ "alt_files": null,
+ "attribution": "\"Paper rustle\" by f-maker is licensed under CC BY-SA 4.0. To view a copy of this license, visit https://creativecommons.org/licenses/by-sa/4.0/.",
+ "fields_matched": [
+  "title"
+ ],
+ "mature": false,
+ "audio_set": null,
+ "duration": 1500,
+ "bit_rate": 128000,
+ "sample_rate": null,
+ "thumbnail": null,
+ "detail_url": "https://api.openverse.org/v1/audio/33333333-2222-4333-8444-555555555555/",
+ "related_url": null,
+ "waveform": null,
+ "unstable__sensitivity": []
+}

@@ -7,6 +7,7 @@
  */
 import path from 'node:path';
 import {TOOLS, CONFIG, loadProject} from './tools.mjs';
+import {SOUNDS_HELP} from './sounds/cli.mjs';
 
 const BEATS_HELP = `  beats    <song> — the song's tempo as the beat map hears it (no project needed): the verdict, the candidate tempi with
            their scores, and why each level of the beat is unsure; an unsure tempo is settled by giving music.bpm
@@ -61,6 +62,8 @@ async function breakdownCommand(args) {
 
 const [command, ...given] = process.argv.slice(2), flags = {};
 if (command === 'breakdown') { await breakdownCommand(given); process.exit(0); }
+// sounds needs no project: its own usage, flags and exit codes (sounds/cli.mjs; the Openverse adapter loads only for search and add).
+if (command === 'sounds') { const {soundsCommand} = await import('./sounds/cli.mjs'); process.exit(await soundsCommand(given)); }
 // `<command> --help` (or `help <command>`): that command's usage alone, on stdout, exit 0 — every command has one.
 const asked = given.includes('--help') ? command : command === 'help' && given[0] ? given[0] : null;
 if (asked) {
@@ -68,10 +71,11 @@ if (asked) {
   const usage = tool ? `storyreel ${asked} [--flag value …]   ${tool.about}\n${Object.entries(tool.args).map(([a, d]) => `  --${a}  ${d}`).join('\n')}\n  --config  the project file (default ./${CONFIG}); any other flag reaches the config's film(flags)`
     : asked === 'beats' ? `storyreel beats <song> [--bpm n] [--ffmpeg path]\n${BEATS_HELP}`
     : asked === 'breakdown' ? BREAKDOWN_USAGE
+    : asked === 'sounds' ? SOUNDS_HELP
     : asked === 'mcp' ? `storyreel mcp [--flag value …]   serves ${Object.keys(TOOLS).join(', ')} over MCP (stdio); the flags are every call's defaults (e.g. --out work/out)`
     : null;
   if (usage) { console.log(usage); process.exit(0); }
-  console.error(`storyreel: "${asked}" is not a command; the commands are ${[...Object.keys(TOOLS), 'beats', 'breakdown', 'mcp'].join(', ')} (storyreel help lists them all)`); process.exit(2);
+  console.error(`storyreel: "${asked}" is not a command; the commands are ${[...Object.keys(TOOLS), 'beats', 'sounds', 'breakdown', 'mcp'].join(', ')} (storyreel help lists them all)`); process.exit(2);
 }
 // beats takes the song first: a path, not a flag.
 const song = command === 'beats' && given[0] !== undefined && !given[0].startsWith('--') ? given[0] : null, rest = song === null ? given : given.slice(1);
@@ -95,7 +99,7 @@ if (command === 'beats') {
   } catch (e) { console.error(`storyreel beats: ${e.message}`); process.exit(e.code === 'BEAT_OPTIONS' ? 2 : 1); }
 }
 if (!command || command === 'help' || command === '--help' || !TOOLS[command]) {
-  const lines = [...Object.entries(TOOLS).map(([name, t]) => `  ${name.padEnd(9)}${t.about}\n${Object.entries(t.args).map(([a, d]) => `             --${a}  ${d}`).join('\n')}`), BEATS_HELP];
+  const lines = [...Object.entries(TOOLS).map(([name, t]) => `  ${name.padEnd(9)}${t.about}\n${Object.entries(t.args).map(([a, d]) => `             --${a}  ${d}`).join('\n')}`), BEATS_HELP, SOUNDS_HELP];
   (TOOLS[command] || !command || command === 'help' || command === '--help' ? console.log : console.error)(`storyreel <tool> [--flag value …]   (the film is named in ./${CONFIG}; --config another file)\n\n${lines.join('\n')}\n\nRead first, look last: timeline → review → fix → part → still.\nstoryreel mcp [--flag value …] serves the same tools over MCP (stdio); the flags are every call's defaults.\n${BREAKDOWN_USAGE}`);
   process.exit(command && command !== 'help' && command !== '--help' && !TOOLS[command] ? 2 : 0);
 }

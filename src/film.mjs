@@ -39,13 +39,14 @@ import {readNotes, placePushes, pushAt} from './notes.mjs';
 import {view, compose, about, through, back} from './regions.mjs';
 import {tooShortToRead, readingMode, readingPace} from './reading.mjs';
 import {readIntent, readContinuity, checkContinuity, tooMuchTooFast, distinctMoments, watchingMode, watchingText, WATCHING, readReads, checkReads} from './shots.mjs';
-import {checkSound, soundsByScene, MAX_SOUNDS_PER_SCENE} from './sound.mjs';
+import {checkSound, soundsByScene, MAX_SOUNDS_PER_SCENE, FOUND} from './sound.mjs';
+import {readLibrary, useFound} from './found/index.mjs';
 import {listeningMode, changeSounds, listeningText} from './listening.mjs';
 import {step, drainSteps, recordSteps} from './record.mjs';
 import {readEntrance, transitionCatalog, ghostPainter, layerCrossfader, CUT} from './transitions.mjs';
 
 /** The recipe's own top-level keys: anything else refuses, unless the host application names it in `hostKeys`. */
-const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle', 'focus', 'emphasis', 'camera'];
+const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle', 'focus', 'emphasis', 'camera', 'foundSounds'];
 /** What every shot may say about itself (shots.mjs): what it is for, and what is true when it starts and ends. */
 const PLAN_KEYS = ['intent', 'continuity', 'reads'];
 const STAGE_KEYS = new Set(['type', 'scene', 'chip', 'chipDark', 'title', 'file', 'label', 'code', 'lh', 'reveal', 'focus', 'glows', 'footer', 'list', 'loop', 'cards', 'closing', 'hero', 'frames', 'keys', 'teaser', 'enter', 'chrome', 'marks', 'columns', 'card', ...PLAN_KEYS]);
@@ -122,6 +123,27 @@ function fileLedger(root) {
     list: () => Object.fromEntries([...seen].filter(([, h]) => h).map(([real, h]) => [path.relative(base, real).split(path.sep).join('/'), h]).sort(([a], [b]) => a.localeCompare(b))),
   };
 }
+
+/** A recipe's "foundSounds": {"allowShareAlike"?: true}, checked. */
+function readFoundSounds(spec) {
+  if (spec === undefined) return {allowShareAlike: false};
+  if (!spec || typeof spec !== 'object' || Array.isArray(spec) || Object.keys(spec).some(k => k !== 'allowShareAlike') || (spec.allowShareAlike !== undefined && typeof spec.allowShareAlike !== 'boolean')) {
+    throw new Error('recipe.foundSounds takes {"allowShareAlike": true} (CC BY-SA sounds too: they put the whole film under CC BY-SA), or is left out');
+  }
+  return {allowShareAlike: spec.allowShareAlike === true};
+}
+/** The found sounds a film's sounds name, each checked for use (found/library.mjs · useFound), in name order: [{name, file, record, root, allowShareAlike}]. */
+function foundSoundsUsed(sounds, spec, root) {
+  const {allowShareAlike} = readFoundSounds(spec), names = [...new Set(sounds.filter(s => s.type === FOUND).map(s => s.name))].sort();
+  if (!names.length) return Object.freeze([]);
+  const library = readLibrary(root);
+  // Each keeps the film's root and the rule it was checked by, so the render checks it again the same way (render.mjs ·
+  // mixFound) — through the root, never a folder guessed from the file's real path (sounds/ may be a link inside it).
+  const at = path.resolve(root);
+  return Object.freeze(names.map(name => Object.freeze({...useFound(at, name, {library, allowShareAlike}), root: at, allowShareAlike})));
+}
+/** A change's sound for the listening check: its name, or "found sound "<name>"" (listening.mjs compares and says them). */
+const soundLabel = s => (s && typeof s === 'object' ? `found sound "${s.name}"` : s);
 
 /**
  * The facts a storyboard names (claims.mjs · readFacts): `facts` is a JSON file inside the film's root (files.mjs ·
@@ -966,11 +988,15 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   // Sound design: quiet accents on the actions, a chime on the eurekas and the answer. A kit's sounds are
   // checked by name and gain here (sound.mjs · checkSound), and keep their gain.
   const sounds = [];
-  const add = (time, type, gain) => { if (Number.isFinite(time) && time >= 0 && time < clock.total) sounds.push(gain === undefined ? {time, type} : {time, type, gain}); };
-  const addKitSounds = (list, who) => { for (const s of list ?? []) { checkSound(s, who); add(s.time, s.type, s.gain); } };
+  // A found sound (found/) keeps its name: {time, type: 'found', name, gain?}.
+  const add = (time, type, gain, name) => { if (Number.isFinite(time) && time >= 0 && time < clock.total) sounds.push({time, type, ...(gain === undefined ? {} : {gain}), ...(type === FOUND ? {name} : {})}); };
+  const addKitSounds = (list, who) => { for (const s of list ?? []) { checkSound(s, who); add(s.time, s.type, s.gain, s.name); } };
   addKitSounds(story.sounds, `the story kit "${storySpec.kit}"`);
   if (push) { add(boardEnd, 'slide'); add(MOVE0, 'slide'); }
-  for (const shot of shots.slice(1)) if (shot.enter.sound) add(shot.start - shot.enter.lead, shot.enter.sound);
+  for (const shot of shots.slice(1)) {
+    const s = shot.enter.sound;   // a sound's name, or a found sound {type: 'found', name, gain?} (transitions.mjs · entranceSound)
+    if (s) add(shot.start - shot.enter.lead, s.type ?? s, s.gain, s.name);
+  }
   for (const st of stages) {
     if (st.world) addKitSounds(st.world.instance.sounds, `the story kit "${st.world.kit}" (stage ${st.scene})`);
     for (const [, at] of st.reveal ?? []) add(at, 'tap');
@@ -985,9 +1011,13 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   for (const g of guesses) { add(g.start, 'question'); if (g.answer) add(g.end, 'chime'); }
   sounds.sort((a, b) => a.time - b.time);
   checkSoundCounts(sounds, clock, storyboard, timings);
+  // Found sounds (found/): each one used is checked once, here — in the library at <root>/sounds/sounds.json, its
+  // record's own licence through the gate (CC BY-SA only with recipe.foundSounds.allowShareAlike), its file the record's
+  // (size and sha256) — so a film that cannot be rendered offline refuses when it is built, naming the sounds add fix.
+  const foundUsed = foundSoundsUsed(sounds, recipe.foundSounds, root);
   // Listening (listening.mjs): about half the changes of picture silent, never the same cue twice running.
   const listeningRule = listeningMode(recipe.listening);
-  const listening = push ? [] : changeSounds(shots.slice(1).map(shot => ({at: shot.start - shot.enter.lead, where: `stage ${(shot.stages[0] ?? stages.find(st => st.world === shot.world)).scene}`, sound: shot.enter.sound})));
+  const listening = push ? [] : changeSounds(shots.slice(1).map(shot => ({at: shot.start - shot.enter.lead, where: `stage ${(shot.stages[0] ?? stages.find(st => st.world === shot.world)).scene}`, sound: soundLabel(shot.enter.sound)})));
   if (listeningRule === 'refuse' && listening.length) throw new Error(`The sound asks too much of the ear (the recipe says listening: "refuse"): ${listening.slice(0, 3).map(listeningText).join('; ')}${listening.length > 3 ? `; and ${listening.length - 3} more` : ''}`);
 
   /**
@@ -1050,6 +1080,8 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     // A film whose camera moves are cut for reduced motion is another film: an approval of the moving one does not cover it.
     ...(reducedMotion && camerawork ? {reducedMotion: true} : {}),
     ...(factList ? {facts: hashOf(factList.map(({kind, ...written}) => written))} : {}),   // the facts as written
+    // The found sounds it plays, by name, file hash and licence: an approval locks them (none: the key is left out).
+    ...(foundUsed.length ? {sounds: hashOf(foundUsed.map(f => ({name: f.name, sha256: f.record.sha256, license: f.record.license})))} : {}),
     ...(filmLang ? {lang: filmLang} : {})});   // the language its numbers are read by: an approval of the film in one is not of it in another
   // Each string's own hash (segments.mjs): a segment's key holds only the strings its entries name, so changing one
   // word redraws the segments that show it, not the whole film. Not part of `inputs` (the table's hash is).
@@ -1060,7 +1092,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     numbers: Object.freeze(findClaims(shown, {facts: factList, examples, scenes: storyboard.scenes.map(sc => sc.id), lang: filmLang}).map(Object.freeze))});
   // What is drawn over every shot for a while: the guess cards, from their question to the card gone.
   const overlays = Object.freeze(guesses.map((g, n) => Object.freeze({path: `guesses[${n}]`, from: g.start, to: g.until + .5})));
-  return {total: clock.total, clock, timings, sounds, listening, frame, beats, strings: [...used], notes: notesApplied, attention: attention?.record ?? null, focusAt: attention?.focus?.viewAt ?? null,
+  return {total: clock.total, clock, timings, sounds, foundSounds: foundUsed, listening, frame, beats, strings: [...used], notes: notesApplied, attention: attention?.record ?? null, focusAt: attention?.focus?.viewAt ?? null,
     camera: camerawork?.record ?? null, cameraAt: camerawork?.viewAt ?? null, reading, reads, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching,
     rows: Object.freeze(rows().map(Object.freeze)), overlays, inputs, stringHashes, mouthsAt, partsAt, pictureAt: pictureClock,
     lines: Object.freeze(lines.map(l => Object.freeze({...l}))), changes: Object.freeze(pictureChanges().map(c => Object.freeze({...c}))), claims, lang: filmLang};

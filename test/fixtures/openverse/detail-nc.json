@@ -1,0 +1,39 @@
+{
+ "id": "69390fd8-ef36-489f-8e57-a1cc40e19ccd",
+ "title": "Book close",
+ "indexed_on": "2024-05-21T15:00:07.873258Z",
+ "foreign_landing_url": "https://sounds.example.org/sounds/69390fd8",
+ "url": "https://cdn.example.org/previews/69390fd8.wav",
+ "creator": "c-maker",
+ "creator_url": "https://sounds.example.org/people/a-maker",
+ "license": "by-nc",
+ "license_version": "4.0",
+ "license_url": "https://creativecommons.org/licenses/by-nc/4.0/",
+ "provider": "freesound",
+ "source": "freesound",
+ "category": null,
+ "genres": null,
+ "filesize": 24630,
+ "filetype": "wav",
+ "tags": [
+  {
+   "name": "page",
+   "accuracy": null
+  }
+ ],
+ "alt_files": null,
+ "attribution": "\"Book close\" by c-maker is licensed under CC BY-NC 4.0. To view a copy of this license, visit https://creativecommons.org/licenses/by-nc/4.0/.",
+ "fields_matched": [
+  "title"
+ ],
+ "mature": false,
+ "audio_set": null,
+ "duration": 26989,
+ "bit_rate": 128000,
+ "sample_rate": null,
+ "thumbnail": null,
+ "detail_url": "https://api.openverse.org/v1/audio/69390fd8-ef36-489f-8e57-a1cc40e19ccd/",
+ "related_url": null,
+ "waveform": null,
+ "unstable__sensitivity": []
+}

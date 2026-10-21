@@ -36,6 +36,7 @@ import {readCaptionFiles} from './render.mjs';
 import path from 'node:path';
 import {makeFilm} from './pipeline.mjs';
 import {FORMAT_NAMES, formatOf, formatScale} from './layout.mjs';
+import {creditLines} from './found/index.mjs';
 
 /** The built-in adapters, each loaded on first use. */
 export const TARGETS = Object.freeze({
@@ -162,12 +163,15 @@ async function checkThumbnail(adapter, file) {
 
 /**
  * What the film was made with, for the post (CREDITS.txt): StoryReel and every tool its record lists (name, version,
- * licence, what for), then what the maker brought (post.credits), and the synthetic voice when the post declares one.
+ * licence, what for), the found sounds it plays (their attribution lines, as their record keeps them, made plain:
+ * found/credits.mjs · creditLines — never typed by hand), then what the maker brought (post.credits), and the synthetic voice
+ * when the post declares one.
  */
-export function creditsText(post, tools) {
+export function creditsText(post, tools, sounds = []) {
   const own = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   const line = t => `- ${t.name}${t.version ? ` ${t.version}` : ''} (${t.license})${t.detail ? ` — ${t.detail}` : ''}`;
   return [`Credits — ${post.title}`, '', 'Made with', line({name: own.name, version: own.version, license: own.license, detail: 'the film, drawn in code'}), ...tools.map(line),
+    ...(sounds.length ? ['', 'Sounds', ...creditLines(sounds)] : []),
     ...(post.credits?.length ? ['', 'From the maker', ...post.credits.map(c => `- ${c}`)] : []),
     ...(post.synthetic?.includes('voice') ? ['', 'The narration is a synthetic voice.'] : []), ''].join('\n');
 }
@@ -250,7 +254,8 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
       ...(thumbnail ? {thumbnail: path.basename(thumbnail)} : {}), seconds: +result.seconds.toFixed(2), format: adapter.video.format, audience: p.audience, ...(p.synthetic.length ? {synthetic: p.synthetic} : {}), ...(p.lang ? {lang: p.lang} : {}), facts: adapter.facts};
     writeOutput(path.join(dir, 'post.json'), JSON.stringify(record, null, 2));
     writeOutput(path.join(dir, 'post.txt'), postText(adapter, fields));
-    const credits = writeOutput(path.join(dir, 'CREDITS.txt'), creditsText(p, JSON.parse(readFileSync(result.makingOf, 'utf8')).tools ?? []));
+    const made = JSON.parse(readFileSync(result.makingOf, 'utf8')), sounds = Array.isArray(made.foundSounds) ? made.foundSounds.filter(r => r && typeof r === 'object') : [];
+    const credits = writeOutput(path.join(dir, 'CREDITS.txt'), creditsText(p, made.tools ?? [], sounds));
     released.push({target: options.name, dir, video, captions, thumbnail, credits, post: fields, makingOf: result.makingOf, work});
   }
   return released;

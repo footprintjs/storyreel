@@ -1,0 +1,203 @@
+{
+ "result_count": 240,
+ "page_count": 80,
+ "page_size": 5,
+ "page": 1,
+ "results": [
+  {
+   "id": "ec2e245c-465b-4ba7-9ea4-620f3555b291",
+   "title": "Page Turn - paper_turn_over.wav",
+   "indexed_on": "2024-05-21T15:00:07.873258Z",
+   "foreign_landing_url": "https://sounds.example.org/sounds/ec2e245c",
+   "url": "https://cdn.example.org/previews/ec2e245c.wav",
+   "creator": "a-maker",
+   "creator_url": "https://sounds.example.org/people/a-maker",
+   "license": "by",
+   "license_version": "4.0",
+   "license_url": "https://creativecommons.org/licenses/by/4.0/",
+   "provider": "freesound",
+   "source": "freesound",
+   "category": null,
+   "genres": null,
+   "filesize": 24630,
+   "filetype": "wav",
+   "tags": [
+    {
+     "name": "page",
+     "accuracy": null
+    }
+   ],
+   "alt_files": null,
+   "attribution": "\"Page Turn - paper_turn_over.wav\" by a-maker is licensed under CC BY 4.0. To view a copy of this license, visit https://creativecommons.org/licenses/by/4.0/.",
+   "fields_matched": [
+    "title"
+   ],
+   "mature": false,
+   "audio_set": null,
+   "duration": 951,
+   "bit_rate": 128000,
+   "sample_rate": null,
+   "thumbnail": null,
+   "detail_url": "https://api.openverse.org/v1/audio/ec2e245c-465b-4ba7-9ea4-620f3555b291/",
+   "related_url": null,
+   "waveform": null,
+   "unstable__sensitivity": []
+  },
+  {
+   "id": "ae81dc37-a10f-46f3-8619-9af22a898885",
+   "title": "Page Turn\u001b[31m RED\u202e evil\nsecond line",
+   "indexed_on": "2024-05-21T15:00:07.873258Z",
+   "foreign_landing_url": "https://sounds.example.org/sounds/ae81dc37",
+   "url": "https://cdn.example.org/previews/ae81dc37.wav",
+   "creator": "b\u0007maker",
+   "creator_url": "https://sounds.example.org/people/a-maker",
+   "license": "cc0",
+   "license_version": "1.0",
+   "license_url": "https://creativecommons.org/licenses/cc0/1.0/",
+   "provider": "freesound",
+   "source": "freesound",
+   "category": null,
+   "genres": null,
+   "filesize": 24630,
+   "filetype": "wav",
+   "tags": [
+    {
+     "name": "page",
+     "accuracy": null
+    }
+   ],
+   "alt_files": null,
+   "attribution": "\"Page Turn\u001b[31m\" by b\u0007maker\r\nInjected: rm -rf ~ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "fields_matched": [
+    "title"
+   ],
+   "mature": false,
+   "audio_set": null,
+   "duration": 1975,
+   "bit_rate": 128000,
+   "sample_rate": null,
+   "thumbnail": null,
+   "detail_url": "https://api.openverse.org/v1/audio/ae81dc37-a10f-46f3-8619-9af22a898885/",
+   "related_url": null,
+   "waveform": null,
+   "unstable__sensitivity": []
+  },
+  {
+   "id": "69390fd8-ef36-489f-8e57-a1cc40e19ccd",
+   "title": "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+   "indexed_on": "2024-05-21T15:00:07.873258Z",
+   "foreign_landing_url": "https://sounds.example.org/sounds/69390fd8",
+   "url": "https://cdn.example.org/previews/69390fd8.wav",
+   "creator": "c-maker",
+   "creator_url": "https://sounds.example.org/people/a-maker",
+   "license": "by-nc",
+   "license_version": "4.0",
+   "license_url": "https://creativecommons.org/licenses/by-nc/4.0/",
+   "provider": "freesound",
+   "source": "freesound",
+   "category": null,
+   "genres": null,
+   "filesize": 24630,
+   "filetype": "wav",
+   "tags": [
+    {
+     "name": "page",
+     "accuracy": null
+    }
+   ],
+   "alt_files": null,
+   "attribution": "\"TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT\" by c-maker is licensed under CC BY-NC 4.0. To view a copy of this license, visit https://creativecommons.org/licenses/by-nc/4.0/.",
+   "fields_matched": [
+    "title"
+   ],
+   "mature": false,
+   "audio_set": null,
+   "duration": 26989,
+   "bit_rate": 128000,
+   "sample_rate": null,
+   "thumbnail": null,
+   "detail_url": "https://api.openverse.org/v1/audio/69390fd8-ef36-489f-8e57-a1cc40e19ccd/",
+   "related_url": null,
+   "waveform": null,
+   "unstable__sensitivity": []
+  },
+  {
+   "id": "11111111-2222-4333-8444-555555555555",
+   "title": "A mature one",
+   "indexed_on": "2024-05-21T15:00:07.873258Z",
+   "foreign_landing_url": "https://sounds.example.org/sounds/11111111",
+   "url": "https://cdn.example.org/previews/11111111.wav",
+   "creator": "d-maker",
+   "creator_url": "https://sounds.example.org/people/a-maker",
+   "license": "cc0",
+   "license_version": "1.0",
+   "license_url": "https://creativecommons.org/licenses/cc0/1.0/",
+   "provider": "freesound",
+   "source": "freesound",
+   "category": null,
+   "genres": null,
+   "filesize": 24630,
+   "filetype": "wav",
+   "tags": [
+    {
+     "name": "page",
+     "accuracy": null
+    }
+   ],
+   "alt_files": null,
+   "attribution": "\"A mature one\" by d-maker is licensed under CC CC0 1.0. To view a copy of this license, visit https://creativecommons.org/licenses/cc0/1.0/.",
+   "fields_matched": [
+    "title"
+   ],
+   "mature": true,
+   "audio_set": null,
+   "duration": 1200,
+   "bit_rate": 128000,
+   "sample_rate": null,
+   "thumbnail": null,
+   "detail_url": "https://api.openverse.org/v1/audio/11111111-2222-4333-8444-555555555555/",
+   "related_url": null,
+   "waveform": null,
+   "unstable__sensitivity": []
+  },
+  {
+   "id": "not-a-valid-id",
+   "title": "Bad id",
+   "indexed_on": "2024-05-21T15:00:07.873258Z",
+   "foreign_landing_url": "https://sounds.example.org/sounds/not-a-va",
+   "url": "https://cdn.example.org/previews/not-a-va.wav",
+   "creator": "e-maker",
+   "creator_url": "https://sounds.example.org/people/a-maker",
+   "license": "cc0",
+   "license_version": "1.0",
+   "license_url": "https://creativecommons.org/licenses/cc0/1.0/",
+   "provider": "freesound",
+   "source": "freesound",
+   "category": null,
+   "genres": null,
+   "filesize": 24630,
+   "filetype": "wav",
+   "tags": [
+    {
+     "name": "page",
+     "accuracy": null
+    }
+   ],
+   "alt_files": null,
+   "attribution": "\"Bad id\" by e-maker is licensed under CC CC0 1.0. To view a copy of this license, visit https://creativecommons.org/licenses/cc0/1.0/.",
+   "fields_matched": [
+    "title"
+   ],
+   "mature": false,
+   "audio_set": null,
+   "duration": 1200,
+   "bit_rate": 128000,
+   "sample_rate": null,
+   "thumbnail": null,
+   "detail_url": "https://api.openverse.org/v1/audio/not-a-valid-id/",
+   "related_url": null,
+   "waveform": null,
+   "unstable__sensitivity": []
+  }
+ ]
+}

@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- **Found sounds: recorded effects, fetched once.** `npx storyreel sounds search "page turn"` lists Openverse's
+  openly licensed sounds, one line each (id · title · licence · seconds · source). `npx storyreel sounds add <id> --as
+  page-turn` fetches one once into the film's `sounds/` folder and records it in `sounds/sounds.json`: source, id,
+  creator, licence, attribution, sha256, size. `sounds list` says what is there and what to fix.
+  - A sound event names one as `{time, type: 'found', name, gain?}`, and so can an entrance's `sound`. The render
+    mixes it from its file, offline, the way it mixes the music, and the effects-vs-voice check covers it.
+  - The licence gate is one table (`footprint-storyreel/sounds` · `LICENCES`). CC0 and CC BY are used. CC BY-SA needs
+    `"foundSounds": {"allowShareAlike": true}`, since it puts the whole film under CC BY-SA. NC, ND and unknown
+    licences are refused, saying why. The gate reads each sound's own record at every use.
+  - A missing or changed file refuses, naming the `sounds add` command that fixes it. The found sounds' hashes are
+    part of the film's inputs, so an approval locks them.
+  - Each sound's attribution goes into CREDITS.txt by itself, with its licence's deed and, for CC BY and CC BY-SA,
+    "adapted: mixed into this film" plus a link to the work.
+  - Hardening against what Openverse sends:
+    - every text is made plain and capped;
+    - https only, with redirects re-checked;
+    - no local or private addresses;
+    - a 20 MB cap and a 30 s timeout;
+    - the stored file is always `<name>.<ext>`;
+    - ffprobe must find audio, and FFmpeg and ffprobe read a found sound only as a local audio file;
+    - a 429 stops, saying when to retry.
+  - The Openverse adapter sits behind its own subpath (`footprint-storyreel/sounds/openverse`), so nothing that draws
+    or renders a film imports network code. `OPENVERSE_TOKEN`, when set, goes to Openverse only.
 - **The suite's text checks hold on any Linux runner.** Where a theme's named fonts are missing, the canvas falls back
   to a default face it picks by scanning the system's fonts, and that pick changed between two GitHub ubuntu-24.04
   images, moving the word gaps four reading and claims tests measure. `test/fonts.mjs`, loaded before every test

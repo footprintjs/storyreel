@@ -140,6 +140,8 @@ export interface Recipe {
   emphasis?: {strategy: string; feel?: string | {k: number; d: number}; words: {at: Beat; text: string; until?: Beat}[]};
   /** Camera moves by name (camera.mjs · CAMERA_MOVES), in the order they start: one picture each, one camera (they take turns with a moving focus and the pushes). */
   camera?: CameraMove[];
+  /** Found sounds (footprint-storyreel/sounds): allowShareAlike lets CC BY-SA ones play, which puts the whole film under CC BY-SA. */
+  foundSounds?: {allowShareAlike?: boolean};
   [key: string]: unknown;
 }
 
@@ -230,13 +232,13 @@ export type TransitionName = 'cut' | 'fade' | 'dip' | 'wipe' | 'split' | 'clock'
  * {move: 'soft-rise', seconds?, feel?, sound?}: the new picture moves in over the old one on the move's own curve
  * (or its `feel`'s: a move feel, a spring feel, or {k, d}); silent unless it names a sound.
  */
-export type Enter = TransitionName | (string & {}) | ({type: TransitionName | (string & {}); seconds?: number; ease?: EaseSpec; sound?: SoundType | false;
+export type Enter = TransitionName | (string & {}) | ({type: TransitionName | (string & {}); seconds?: number; ease?: EaseSpec; sound?: SoundType | FoundSoundChoice | false;
   from?: 'left' | 'right' | 'top' | 'bottom'; line?: 'vertical' | 'horizontal'; at?: [number, number]; color?: string | null;
   region?: string; into?: string; shape?: 'box' | 'round'; seed?: number; radius?: number; width?: number; accent?: string | null;
   tint?: string; corner?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'; fromBox?: FrameBox; toBox?: FrameBox;
   direction?: 'left' | 'right' | 'top' | 'bottom'; tear?: number;
   move?: never; [setting: string]: unknown})
-  | {move: MoveName | (string & {}) | Move; seconds?: number; feel?: MoveFeelName | FeelName | Feel; sound?: SoundType | false; type?: never};
+  | {move: MoveName | (string & {}) | Move; seconds?: number; feel?: MoveFeelName | FeelName | Feel; sound?: SoundType | FoundSoundChoice | false; type?: never};
 /**
  * A transition's setting: one of some words, a point, a colour, a number or a box, each with its default (a colour's
  * may be null: the draw picks it, e.g. the theme's); or the name of a thing in the picture (no default: the recipe
@@ -321,7 +323,17 @@ export type SoundType = 'tap' | 'slide' | 'settle' | 'question' | 'chime' | 'doo
  * A sound at a time. `gain` (0..1) overrides the sound's default; it is relative to its SCENE, because a
  * scene is scaled by one factor set by its loudest moment (a loud door turns down every tap in it).
  */
-export interface SoundEvent { time: number; type: SoundType; gain?: number }
+export type SoundEvent = { time: number; type: SoundType; gain?: number } | FoundSoundEvent;
+/**
+ * A found sound at a time: a recording kept in the film's sounds/ folder, added once with `npx storyreel sounds add <id>
+ * --as <name>` (footprint-storyreel/sounds), mixed from its file at render (never fetched then). `gain` 0..1 (default 1)
+ * of its own level, after it is turned down to the effects' ceiling when it peaks over it.
+ */
+export interface FoundSoundEvent { time: number; type: 'found'; name: string; gain?: number }
+/** An entrance's found sound: the same as a found sound event, without its time (the change of picture is its time). */
+export type FoundSoundChoice = { type: 'found'; name: string; gain?: number };
+/** A found sound a film plays, checked when it was built (its record, its file inside the root): see footprint-storyreel/sounds. */
+export interface UsedFoundSound { name: string; file: string; record: import('./sub/sounds.js').FoundRecord; root: string; allowShareAlike: boolean }
 
 export interface Film {
   /** Seconds. */
@@ -329,6 +341,8 @@ export interface Film {
   clock: Clock;
   timings: Timings;
   sounds: SoundEvent[];
+  /** The found sounds its sounds name, each checked (licence, file, sha256) when the film was built. */
+  foundSounds: readonly UsedFoundSound[];
   /** Draw the film at t into a context whose transform maps 1600×900 onto the frame. Pure. */
   frame(ctx: CanvasRenderingContext2D | unknown, t: number, options?: {window?: {x0: number; y0: number; w: number; h: number} | null}): void;
   /** Every phrase the recipe named, when it is said, and the recipe entry that asked for it. */
