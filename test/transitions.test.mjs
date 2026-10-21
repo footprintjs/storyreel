@@ -96,7 +96,7 @@ test('settings and refusals: each refusal names what the transition takes', () =
   assert.throws(() => readEntrance({type: 'push', from: 'north'}, 'stage b'), /enter.from must be left, right, top, bottom/);
   assert.throws(() => readEntrance({type: 'dip', color: 'black'}, 'stage b'), /enter.color must be a hex colour/);
   assert.throws(() => readEntrance({type: 'iris', at: [800]}, 'stage b'), /enter.at must be \[x, y\]/);
-  assert.throws(() => readEntrance({type: 'wipe', seconds: 5}, 'stage b'), /enter.seconds must be between 0.2 and 3/);
+  assert.throws(() => readEntrance({type: 'wipe', seconds: 5}, 'stage b'), /enter.seconds must be between 0.2 and 4/);
   assert.throws(() => readEntrance({type: 'wipe', ease: 'bouncy'}, 'stage b'), /"bouncy" is not an ease/);
   assert.throws(() => readEntrance({type: 'push', ease: 'back'}, 'stage b'), /a push cannot take the ease "back" \(it goes past the end, and the frame's edge would show\); slide can/);
   assert.equal(readEntrance({type: 'slide', ease: 'spring'}, 'stage b').type, 'slide', 'a slide may overshoot and settle');
@@ -129,7 +129,7 @@ test('a kit adds its own transitions, checked like the built-in ones; names neve
   bad({...curtain, draw: undefined}, /needs draw\(ctx, \{e, from, to, p, ghost, theme, boxes\}\)/);
   bad({...curtain, colour: 1}, /has unsupported key colour/);
   bad({...curtain, family: ''}, /needs a family/);
-  bad({...curtain, seconds: 9}, /seconds must be between 0.2 and 3/);
+  bad({...curtain, seconds: 9}, /seconds must be between 0.2 and 4/);
   bad({...curtain, ease: 'wobble'}, /"wobble" is not an ease/);
   bad({...curtain, sound: 'boom'}, /sound must be null or a sound/);
   bad({...curtain, params: {seconds: {number: [0, 1], default: .5}}}, /may not be called "seconds"/);
