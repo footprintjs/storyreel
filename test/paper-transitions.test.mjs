@@ -142,19 +142,38 @@ test('torn: a slow peel — behind the moving rip the old picture is gone and th
     assert.ok(core > 3, `e ${e}: the white fibrous core shows along the tear (${core} samples)`);
   }
   // The flap carries the old picture as it lifts: a green mark lying just behind the front shows on the lifting strip,
-  // squeezed toward the front, off its own place.
-  const MARK = [600, 400, 620, 500], marked = c => { solid(RED)(c); c.fillStyle = '#00ff00'; c.fillRect(MARK[0], MARK[1], MARK[2] - MARK[0], MARK[3] - MARK[1]); };
-  const greenIn = data => { let n = 0, x = 0; for (let i = 0; i < data.length; i += 4) if (data[i + 1] > 150 && data[i] < 110 && data[i + 2] < 110) { n++; x += (i / 4) % (1600 * S); } return {n, x: n ? x / n / S : null}; };
-  let lo = 0, hi = .9;
-  for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (at(m).f < 640) lo = m; else hi = m; }
-  const carried = greenIn(drawn('torn', hi, {from: marked}).data);
-  assert.ok(carried.n > 0 && carried.x > 610 + 5, `the mark rides the lifting flap, squeezed toward the front (its centre at ${carried.x?.toFixed(1)}, from 610)`);
+  // squeezed toward the front, off its own place — on every row, the slanted front's own (top, middle, bottom).
+  for (const [y0, y1] of [[40, 120], [400, 500], [780, 860]]) {
+    const yMid = (y0 + y1) / 2, front = e => at(e).f + .18 * (yMid - 450), x0 = 600 + .18 * (yMid - 450);
+    const marked = c => { solid(RED)(c); c.fillStyle = '#00ff00'; c.fillRect(x0, y0, 20, y1 - y0); };
+    const greenIn = data => { let n = 0, x = 0; for (let i = 0; i < data.length; i += 4) if (data[i + 1] > 150 && data[i] < 110 && data[i + 2] < 110) { n++; x += (i / 4) % (1600 * S); } return {n, x: n ? x / n / S : null}; };
+    let lo = 0, hi = .9;
+    for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (front(m) < x0 + 40) lo = m; else hi = m; }
+    const carried = greenIn(drawn('torn', hi, {from: marked}).data), {lift} = at(hi);
+    assert.ok(carried.n > 0 && carried.x > x0 + 10 + 5 && carried.x > front(hi) - lift, `rows ${y0}–${y1}: the mark rides the lifting flap, squeezed toward the front (centre ${carried.x?.toFixed(1)}, from ${(x0 + 10).toFixed(1)}; front ${front(hi).toFixed(1)})`);
+  }
+  // Never a dark line: under a near-black title card, the strip from the lifting flap to past the front is paper and
+  // the old picture only — the card never shows through the tear.
+  const dark = c => { c.fillStyle = '#141414'; c.fillRect(0, 0, 1600, 900); };
+  for (const e of [.25, .45, .65]) {
+    const {f, lift} = at(e), frame = drawn('torn', e, {to: dark});
+    for (const y of [60, 250, 450, 650, 840]) {
+      const front = f + .18 * (y - 450);
+      for (let x = Math.max(0, Math.ceil(front - lift + 4)); x < Math.min(1600, front + 40); x += 2) assert.ok(Math.max(...frame.px(x, y)) >= 70, `e ${e}: at (${x}, ${y}) the tear is paper, not the dark card showing through (${frame.px(x, y)})`);
+    }
+  }
   // drift: the new picture comes along with the tear, set back by up to `drift` while it is uncovered, home at the end.
   const titled = c => { solid(BLUE)(c); c.fillStyle = '#ffff00'; c.fillRect(200, 400, 60, 100); };
   const yellowAt = (enter, e) => { const d = drawn(enter, e, {to: titled}).data; let n = 0, x = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 200 && d[i + 1] > 200 && d[i + 2] < 80) { n++; x += (i / 4) % (1600 * S); } return x / n / S; };
   const still = yellowAt('torn', .6), along = yellowAt({type: 'torn', drift: 40}, .6), home = yellowAt({type: 'torn', drift: 40}, .97);
   assert.ok(Math.abs(still - 229.5) < 2 && along < still - 4, `with drift the title sits back while uncovered (${along.toFixed(1)} against ${still.toFixed(1)})`);
   assert.ok(Math.abs(home - still) < 3, `and comes home with the tear, settling (${home.toFixed(1)})`);
+  // drift never uncovers the ground behind the new picture, nor does the settle at an edge: drawn over a vivid green
+  // ground, in every direction, no green shows at any moment.
+  const vivid = validateTheme({...structuredClone(paper), palette: {...paper.palette, bg: '#00ff00'}});
+  for (const direction of ['right', 'left', 'top', 'bottom']) for (const drift of [0, 40, 200]) for (let e = .1; e < 1; e += .035) {
+    assert.equal(share(drawn({type: 'torn', direction, drift}, e, {theme: vivid}).data, [0, 255, 0], 30), 0, `${direction}, drift ${drift}, e ${e.toFixed(3)}: no ground shows`);
+  }
   // The other way: from the right edge, the new picture uncovered on the right first.
   const {f} = at(.5), mirrored = drawn({type: 'torn', direction: 'left'}, .5);
   assert.deepEqual(mirrored.px(1590, 450), BLUE); assert.deepEqual(mirrored.px(Math.max(4, 1600 - f - 60), 450), RED);

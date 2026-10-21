@@ -201,22 +201,40 @@ test('a found sound trimmed with from/to: the span checked against its recording
     recipe: {story: {kit: 'red'}, stages: [{type: 'world', scene: 'b', enter: {type: 'fade', ...(enterSound ? {sound: enterSound} : {})}, world: {kit: 'blue'}}]}});
   const ok = await trimmed({time: 1, type: 'found', name: 'long', from: .5, to: .8}, {type: 'found', name: 'long', from: 1.2});
   assert.deepEqual(ok.sounds.filter(s => s.type === 'found').map(s => [s.from, s.to]), [[.5, .8], [1.2, undefined]], 'the span rides with each sound');
-  await assert.rejects(trimmed({time: 1, type: 'found', name: 'long', from: 2.5}), /the found sound "long" is 2\.00 s long, and its "from" \(2\.5\) is past its end: give "from" under 2\.00/);
+  await assert.rejects(trimmed({time: 1, type: 'found', name: 'long', from: 2.5}), /the story kit "red": the found sound "long" is 2\.00 s long, and its "from" \(2\.5\) is past its end: give "from" under 2\.00/, 'naming who asked for it');
+  await assert.rejects(trimmed({time: 1, type: 'found', name: 'long'}, {type: 'found', name: 'long', to: 9}), /stage b's entrance: the found sound "long" is 2\.00 s long, and its "to" \(9\) is past its end/);
   await assert.rejects(trimmed({time: 1, type: 'found', name: 'long', to: 3}), /the found sound "long" is 2\.00 s long, and its "to" \(3\) is past its end: give "to" at most 2\.00, or leave it out to play to the end/);
   await assert.rejects(trimmed({time: 1, type: 'found', name: 'long', from: 1, to: .5}), /trims the found sound "long" with from 1 and to 0\.5: give seconds into the recording, from 0 or more, to after from/);
   await assert.rejects(trimmed({time: 1, type: 'found', name: 'long'}, {type: 'found', name: 'long', to: -1}), /enter\.sound must be false or a sound: .*or a found sound: \{"type": "found", "name": "page-turn"/);
   assert.deepEqual(readSoundChoice({type: 'found', name: 'tear', from: 1.35, to: 4.25}), {type: 'found', name: 'tear', from: 1.35, to: 4.25});
 });
 
-test('the mix plays only a trimmed span: at its second, for its length, faded at the cuts', {skip: ffmpeg ? false : 'needs ffmpeg'}, async t => {
-  const root = filmWith({long: {bytes: sine(.05, 2), seconds: 2}}, t), work = tempDir('found-trim', t);
-  const f = await compileFilm({storyboard, timings, root, kits: [world('red', '#ff0000', [{time: 1, type: 'found', name: 'long', from: .5, to: .8}]), world('blue', '#0000ff')],
+test('the mix plays only a trimmed span: the right part of the recording, at its second, for its length, turned down by its own peak', {skip: ffmpeg ? false : 'needs ffmpeg'}, async t => {
+  // A 2 s recording, quiet for its first second and loud for its second: which part plays shows in the level.
+  const halves = Buffer.concat([sine(.02, 1).subarray(0, 44), sine(.02, 1).subarray(44), sine(.9, 1).subarray(44)]);
+  halves.writeUInt32LE(halves.length - 8, 4); halves.writeUInt32LE(halves.length - 44, 40);
+  const root = filmWith({long: {bytes: halves, seconds: 2}}, t), work = tempDir('found-trim', t);
+  const f = await compileFilm({storyboard, timings, root, kits: [world('red', '#ff0000', [{time: 1, type: 'found', name: 'long', from: .2, to: .5}, {time: 2.5, type: 'found', name: 'long', from: 1.2, to: 1.5}]), world('blue', '#0000ff')],
     recipe: {story: {kit: 'red'}, stages: [{type: 'world', scene: 'b', enter: 'cut', world: {kit: 'blue'}}]}});
   await renderFilm({film: f, storyboard, timings, out: path.join(tempDir('found-trim-out', t), 'film.mp4'), width: 160, height: 90, fps: 4, work});
-  const fx = samplesOf(readFileSync(path.join(work, 'film-effects.wav')));
-  assert.equal(peakIn(fx, 0, .99), 0, 'nothing before its second');
-  assert.ok(Math.abs(peakIn(fx, 1.02, 1.28) - .05) < .006, `the span plays at its own level (quiet: never turned up) (${peakIn(fx, 1.02, 1.28).toFixed(4)})`);
-  assert.equal(peakIn(fx, 1.32, 3), 0, 'and stops after its 0.3 s, not the recording\'s 2 s');
+  const fx = samplesOf(readFileSync(path.join(work, 'film-effects.wav'))), ceiling = 10 ** (-20 / 20);
+  assert.equal(peakIn(fx, 0, .99), 0, 'nothing before the first span\'s second');
+  assert.ok(Math.abs(peakIn(fx, 1.02, 1.28) - .02) < .004, `the quiet span plays as recorded, never turned up (${peakIn(fx, 1.02, 1.28).toFixed(4)})`);
+  assert.equal(peakIn(fx, 1.32, 2.49), 0, 'and stops after its 0.3 s');
+  const loud = peakIn(fx, 2.52, 2.78);
+  assert.ok(loud <= ceiling * 1.02 && loud >= ceiling * .9, `the loud span is turned down by its own peak, to the ceiling (${loud.toFixed(4)})`);
+  assert.equal(peakIn(fx, 2.82, 4), 0, 'and stops after its 0.3 s, not the recording\'s 2 s');
+});
+
+test('an untrimmed found sound plays as recorded: its attack is not faded', {skip: ffmpeg ? false : 'needs ffmpeg'}, async t => {
+  // A click: full level from its first sample, for 4 ms, then silence.
+  const click = sine(0, .5); for (let i = 0; i < 192; i++) click.writeInt16LE(i % 2 ? -29000 : 29000, 44 + i * 2);
+  const root = filmWith({click: {bytes: click, seconds: .5}}, t), work = tempDir('found-click', t);
+  const f = await compileFilm({storyboard, timings, root, kits: [world('red', '#ff0000', [{time: 1, type: 'found', name: 'click'}]), world('blue', '#0000ff')],
+    recipe: {story: {kit: 'red'}, stages: [{type: 'world', scene: 'b', enter: 'cut', world: {kit: 'blue'}}]}});
+  await renderFilm({film: f, storyboard, timings, out: path.join(tempDir('found-click-out', t), 'film.mp4'), width: 160, height: 90, fps: 4, work});
+  const peak = peakIn(samplesOf(readFileSync(path.join(work, 'film-effects.wav'))), 1, 1.004), ceiling = 10 ** (-20 / 20);
+  assert.ok(peak >= ceiling * .9, `the attack keeps its level in its first 4 ms (${peak.toFixed(4)}, the ceiling ${ceiling.toFixed(4)})`);
 });
 
 test('the same found sound on two changes in a row is the same cue twice, as the listening check says of any sound', async t => {

@@ -3,7 +3,7 @@
  * is written after a fetch or read back from a file anyone may have edited. A record never names a path: its file is
  * <name>.<ext> or nothing.
  */
-import {isFoundName} from './name.mjs';
+import {isFoundName, isTrim} from './name.mjs';
 import {plainText, shown} from './text.mjs';
 import {LICENCES, licenceName, licenceUrl, licenceVersion} from './licences.mjs';
 
@@ -39,14 +39,18 @@ export function foundRecord(r) {
 }
 
 /**
- * A found sound event's trim checked against its recording (record.seconds, as ffprobe measured it at add): {from, to}
- * in seconds, `to` null for the recording's end. The shape (numbers, to after from) is sound.mjs · checkSound's.
+ * A found sound event's trim, its shape checked (name.mjs · isTrim) and its span checked against its recording
+ * (record.seconds, as ffprobe measured it at add): {from, to, cutStart, cutEnd} in seconds, `to` the recording's end (or
+ * null, its length unknown) when it is not given. cutStart/cutEnd say which side was asked for: an untrimmed sound is
+ * played exactly as recorded, never cut nor faded.
  */
 export function trimOf(event, record) {
-  const who = `the found sound "${record.name}"`, length = record.seconds, from = event.from ?? 0, to = event.to ?? null;
+  const who = `the found sound "${record.name}"`, length = record.seconds;
+  if (!isTrim(event.from, event.to)) throw new Error(`${who}'s trim (from ${JSON.stringify(event.from)}, to ${JSON.stringify(event.to)}) is not one: give seconds into the recording, from 0 or more, to after from, or leave them out`);
+  const from = event.from ?? 0, to = event.to ?? null;
   if (length !== null && from >= length) throw new Error(`${who} is ${length.toFixed(2)} s long, and its "from" (${from}) is past its end: give "from" under ${length.toFixed(2)}`);
   if (length !== null && to !== null && to > length + .005) throw new Error(`${who} is ${length.toFixed(2)} s long, and its "to" (${to}) is past its end: give "to" at most ${length.toFixed(2)}, or leave it out to play to the end`);
-  return {from, to: to ?? length};
+  return {from, to: to ?? length, cutStart: from > 0, cutEnd: to !== null};
 }
 
 /** The command that fetches a sound again, for a refusal to name. */

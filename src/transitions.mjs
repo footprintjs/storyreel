@@ -316,7 +316,7 @@ function entranceSound(given, fallback, where) {
   if (given === false) return null;
   if (given === undefined) return fallback;
   const sound = readSoundChoice(given);
-  if (sound === null) throw new Error(`${where}: enter.sound must be false or a sound: ${SOUND_NAMES.join(', ')} (not ${JSON.stringify(given)}), or a found sound: {"type": "found", "name": "page-turn", "gain"?: 0–1} (npx storyreel sounds add)`);
+  if (sound === null) throw new Error(`${where}: enter.sound must be false or a sound: ${SOUND_NAMES.join(', ')} (not ${JSON.stringify(given)}), or a found sound: {"type": "found", "name": "page-turn", "gain"?: 0–1, "from"?, "to"?: seconds into the recording, to after from} (npx storyreel sounds add)`);
   return sound;
 }
 

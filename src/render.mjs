@@ -573,11 +573,18 @@ function mixSong(run, {song, total, dir, lesson, roles, integrated}) {
   return musicUnderVoice(roles);
 }
 
-/** The filter that cuts a found sound to its trim (from/to, seconds into it), the cuts faded over 10 ms so they never click. */
-const trimFilter = ({from, to}) => `atrim=start=${from.toFixed(6)}${to === null ? '' : `:end=${to.toFixed(6)}`},asetpts=PTS-STARTPTS,afade=t=in:d=0.01${to === null ? '' : `,afade=t=out:st=${Math.max(0, to - from - .01).toFixed(6)}:d=0.01`}`;
+/**
+ * The filters that cut a found sound to its trim (found/record.mjs · trimOf), each cut faded over 10 ms so it never
+ * clicks, as a prefix for the chain ('' when the sound is not trimmed: it plays as recorded, attack and all).
+ */
+function trimFilter({from, to, cutStart, cutEnd}) {
+  if (!cutStart && !cutEnd) return '';
+  const span = `atrim=start=${from.toFixed(6)}${cutEnd ? `:end=${to.toFixed(6)}` : ''},asetpts=PTS-STARTPTS`;
+  return `${span}${cutStart ? ',afade=t=in:d=0.01' : ''}${cutEnd ? `,afade=t=out:st=${Math.max(0, to - from - .01).toFixed(6)}:d=0.01` : ''},`;
+}
 /** A found sound's loudest sample in dBFS over its trimmed span, as FFmpeg's volumedetect measures it mono at 48 kHz; a file it cannot read refuses. */
 function peakDB(ffmpeg, {file, record}, trim) {
-  const r = spawnSync(ffmpeg, ['-hide_banner', '-nostdin', ...AUDIO_ONLY, '-i', file, '-af', `${trimFilter(trim)},aresample=48000,aformat=channel_layouts=mono,volumedetect`, '-f', 'null', '-'], {encoding: 'utf8', timeout: 60000});
+  const r = spawnSync(ffmpeg, ['-hide_banner', '-nostdin', ...AUDIO_ONLY, '-i', file, '-af', `${trimFilter(trim)}aresample=48000,aformat=channel_layouts=mono,volumedetect`, '-f', 'null', '-'], {encoding: 'utf8', timeout: 60000});
   const m = r.status === 0 ? /max_volume:\s*(-?\d+(?:\.\d+)?|-inf) dB/.exec(String(r.stderr ?? '')) : null;
   if (!m) throw new Error(`FFmpeg could not read the found sound "${record.name}" (sounds/${record.file}): add it again with ${addCommand(record)}`);
   return m[1] === '-inf' ? -Infinity : Number(m[1]);
@@ -604,9 +611,9 @@ function mixFound(run, {ffmpeg, events, sounds, dir, sfx, ceiling}) {
     filters.push(`[${k + 1}:a]asplit=${mine.length}${mine.map((_, j) => `[s${k}_${j}]`).join('')}`);
     mine.forEach((event, j) => {
       // Each event its own span of the recording (found/record.mjs · trimOf), turned down by that span's own peak.
-      const trim = trimOf(event, now.record), key = `${trim.from}|${trim.to}`;
+      const trim = trimOf(event, now.record), key = `${trim.from}|${trim.to}|${trim.cutStart}|${trim.cutEnd}`;
       if (!peaks.has(key)) peaks.set(key, Math.min(1, 10 ** ((ceiling - peakDB(ffmpeg, now, trim)) / 20)));
-      filters.push(`[s${k}_${j}]${trimFilter(trim)},aresample=48000,aformat=channel_layouts=mono,volume=${(peaks.get(key) * (event.gain ?? 1)).toFixed(6)},adelay=delays=${Math.round(event.time * 48000)}S:all=1[f${placed.length}]`);
+      filters.push(`[s${k}_${j}]${trimFilter(trim)}aresample=48000,aformat=channel_layouts=mono,volume=${(peaks.get(key) * (event.gain ?? 1)).toFixed(6)},adelay=delays=${Math.round(event.time * 48000)}S:all=1[f${placed.length}]`);
       placed.push(`[f${placed.length}]`);
     });
   });

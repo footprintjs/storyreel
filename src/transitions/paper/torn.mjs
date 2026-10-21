@@ -40,7 +40,8 @@ const DIRECTIONS = Object.freeze(Object.keys(AXES));
 
 /**
  * The torn edge from the seed, a row each: its raggedness (a slow wander, a middle wobble and a fine grain, as paper
- * fibres part), how wide its white core is on the sheet and on the flap, and the hair of a gap between the two lips.
+ * fibres part) and how wide its white core is on the sheet and on the flap. The two lips meet: the new picture never
+ * shows through the tear as a line (a dark card would draw it black).
  */
 function tearShape(seed) {
   const next = seeded(seed), [a, b] = [next() * 2 * Math.PI, next() * 2 * Math.PI];
@@ -49,7 +50,7 @@ function tearShape(seed) {
     wobble = .8 * wobble + .2 * (2 * next() - 1); grain = .45 * grain + .55 * (2 * next() - 1);
     return {
       ragged: RAGGED * (.42 * Math.sin(i * .045 + a) + .23 * Math.sin(i * .13 + b) + .9 * wobble) + 2.6 * grain,
-      core: 2.5 + 6 * next() ** 1.5, flapCore: 1.5 + 4 * next() ** 1.5, gap: 1 + 2.5 * next(),
+      core: 2.5 + 6 * next() ** 1.5, flapCore: 1.5 + 4 * next() ** 1.5,
     };
   });
 }
@@ -79,17 +80,22 @@ export function tearPace(seed) {
 
 /**
  * Where the change is at e: the front's mean position `f`, the curl's radius, the lifting strip's reach, how far the new
- * picture still sits back (drift and the settle), all in tear space. Exported for the tests.
+ * picture still sits back along the rip (`behind`, from `drift`), and its settle (`swell`, a scale ≥ 1), all in tear
+ * space. Exported for the tests.
  */
 export function tornAt(e, p, ax = AXES[p.direction]) {
   const reach = SLANT * ax.spanV / 2 + RAGGED + 12;
   const flap = CURL.lift * CURL.most + 2 * CURL.most + SHADOW.length + 16;
   const ripped = tearPace(p.seed)(e / RIP), f = lerp(-reach, ax.spanU + reach + flap, ripped);
   const r = lerp(CURL.start, CURL.most, smooth(0, .45, clamp01(f / ax.spanU)));
-  // The new picture comes in with the tear: back by `drift` at the start, home as the front leaves; then a small
-  // damped settle (a few px, ending exactly home at e = 1).
-  const settleU = clamp01((e - RIP) / (1 - RIP)), settle = (2 + .06 * p.drift) * Math.sin(settleU * Math.PI * 2.5) * (1 - settleU) ** 2;
-  return {f, r, lift: CURL.lift * r, behind: -p.drift * (1 - clamp01(ripped * 1.08)) + (e > RIP ? settle : 0), ripped};
+  // The new picture comes in with the tear: back by `drift` at the start, home as the front leaves. It is never further
+  // back than the uncovered part leaves room for (its far edge, set back, would show the ground behind the curl).
+  const uncovered = f + SLANT * ax.spanV / 2 - CURL.lift * r - 2 * r;
+  const behind = -Math.min(p.drift * (1 - clamp01(ripped * 1.08)), Math.max(0, ax.spanU - uncovered));
+  // Then the settle: a slight swell of the new picture about the frame's centre, damped, never below full size (so no
+  // edge ever shows), exactly 1 at e = 1.
+  const u = clamp01((e - RIP) / (1 - RIP)), swell = 1 + .006 * (1 - Math.cos(u * Math.PI * 4)) / 2 * (1 - u) ** 2;
+  return {f, r, lift: CURL.lift * r, behind, swell, ripped};
 }
 
 /** An affine map taking three frame points to three others: [a, b, c, d, e, f] for ctx.transform. */
@@ -109,7 +115,7 @@ function torn(ctx, {e, from, to, p, theme}) {
   const shape = tearShape(p.seed), rows = shape.map((s, i) => ({...s, v: i / ROWS * ax.spanV}));
   const mean = v => at.f + SLANT * (v - mid), edge = row => mean(row.v) + row.ragged;
   const pt = (u, v) => ax.point(u, v);
-  /** A polygon in tear space: a line of rows at uOf(row), closed through `far` (a u beyond the frame). */
+  /** A polygon in tear space: from row to row along uOf(row), then back along uOfBack(row). */
   const band = (uOf, uOfBack) => {
     ctx.beginPath(); ctx.moveTo(...pt(uOf(rows[0]), rows[0].v));
     for (const row of rows) ctx.lineTo(...pt(uOf(row), row.v));
@@ -127,7 +133,8 @@ function torn(ctx, {e, from, to, p, theme}) {
 
   // The new picture, uncovered behind the curl: drawn whole, set back along the rip by `behind` (drift, settle).
   ctx.fillStyle = t.ground; ctx.fillRect(0, 0, W, H);
-  ctx.save(); const [bx, by] = pt(at.behind, 0), [ox, oy] = pt(0, 0); ctx.translate(bx - ox, by - oy); to(ctx); ctx.restore();
+  ctx.save(); const [bx, by] = pt(at.behind, 0), [ox, oy] = pt(0, 0); ctx.translate(bx - ox, by - oy);
+  ctx.translate(W / 2, H / 2); ctx.scale(at.swell, at.swell); ctx.translate(-W / 2, -H / 2); to(ctx); ctx.restore();
   // The curl's shadow on it, moving with the curl.
   ctx.save(); band(row => curlOut(row) - SHADOW.length, curlOut); ctx.fillStyle = across(at.f - at.lift - 2 * at.r - SHADOW.length, at.f - at.lift - 2 * at.r,
     [[0, rgba(t.ink, 0)], [.7, rgba(t.ink, SHADOW.alpha * .55)], [1, rgba(t.ink, SHADOW.alpha)]]); ctx.fill(); ctx.restore();
@@ -139,10 +146,12 @@ function torn(ctx, {e, from, to, p, theme}) {
 
   // The flap: next to its torn edge it still shows the old picture, foreshortened as it rises (the strip that lay just
   // behind the front, squeezed toward it), shading darker as it turns away.
-  const flapEdge = row => edge(row) - row.gap;
-  const [a0, a1, a2] = [[at.f, 0], [at.f, ax.spanV], [at.f - 100, 0]];
-  const squeeze = affine([pt(...a0), pt(...a1), pt(...a2)], [pt(...a0), pt(...a1), pt(at.f - 100 * CURL.squeeze, 0)]);
-  ctx.save(); band(liftOut, flapEdge); ctx.clip();
+  const flapEdge = edge;
+  // The squeeze is pinned to the slanted front, so on every row the flap shows the strip that lay just behind it.
+  const [a0, a1, a2] = [[mean(0), 0], [mean(ax.spanV), ax.spanV], [mean(0) - 100, 0]];
+  const squeeze = affine([pt(...a0), pt(...a1), pt(...a2)], [pt(...a0), pt(...a1), pt(mean(0) - 100 * CURL.squeeze, 0)]);
+  // Paper first: near the far edge the squeezed picture runs out (the sheet ends at the frame), and the flap is paper there.
+  ctx.save(); band(liftOut, flapEdge); ctx.clip(); ctx.fillStyle = t.back; ctx.fillRect(-W, -H, 3 * W, 3 * H);
   ctx.save(); ctx.transform(...squeeze); from(ctx); ctx.restore();
   band(liftOut, flapEdge); ctx.fillStyle = across(at.f - at.lift, at.f, [[0, rgba(t.ink, .42)], [.55, rgba(t.ink, .14)], [1, rgba(t.ink, .04)]]); ctx.fill();
   band(row => flapEdge(row) - row.flapCore, flapEdge); ctx.fillStyle = core; ctx.fill(); ctx.restore();

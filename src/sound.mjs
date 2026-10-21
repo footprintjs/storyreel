@@ -4,7 +4,7 @@
  * module only checks by shape: the render mixes it from its file (render.mjs · mixFound), never synthesizes it.
  */
 import {peakOfSamples} from './dsp.mjs';
-import {FOUND, isFoundName} from './found/name.mjs';
+import {FOUND, isFoundName, isTrim, foundFields} from './found/name.mjs';
 const TAU=Math.PI*2;
 /**
  * Every sound by name: how long it lasts (seconds) and its default gain (0..1, the share of its own full
@@ -68,8 +68,6 @@ export function checkSound(event,who){
 }
 /** The type of a sound event that names a found sound (found/name.mjs): {type: 'found', name, gain?}. */
 export {FOUND};
-/** A found sound's trim: `from` and `to`, seconds into its recording, each left out or a number from 0, `to` after `from`. */
-const isTrim=(from,to)=>(from===undefined||(typeof from==='number'&&Number.isFinite(from)&&from>=0))&&(to===undefined||(typeof to==='number'&&Number.isFinite(to)&&to>0))&&(from===undefined||to===undefined||to>from);
 /** Refuse a found-sound event whose name is not a found sound's name, whose gain is not 0..1, or whose trim is not one. */
 function checkFound(event,who){
  if(!isFoundName(event.name))throw Error(`${who} makes a found sound whose name is not one (a found sound's name is lower case with dashes, e.g. "page-turn", as sounds add --as gave it), not ${JSON.stringify(String(event.name)).slice(0,60)}`);
@@ -87,7 +85,7 @@ export function readSoundChoice(value){
  if(Object.keys(value).some(k=>!['type','name','gain','from','to'].includes(k)))return null;
  if(value.gain!==undefined&&!isGain(value.gain))return null;
  if(!isTrim(value.from,value.to))return null;
- return Object.freeze({type:FOUND,name:value.name,...(value.gain!==undefined?{gain:value.gain}:{}),...(value.from!==undefined?{from:value.from}:{}),...(value.to!==undefined?{to:value.to}:{})});
+ return Object.freeze({type:FOUND,...foundFields(value),...(value.gain!==undefined?{gain:value.gain}:{})});
 }
 /**
  * A film's sounds, scene by scene, on each scene's own clock: [[{type, time, gain?}]] — the one rule for
@@ -97,7 +95,7 @@ export function readSoundChoice(value){
 export function soundsByScene(sounds,offsets,durations){
  return durations.map((duration,i)=>{
   const t0=offsets[i];
-  return sounds.filter(e=>e.time>=t0&&e.time<t0+duration-.02).map(e=>({type:e.type,time:e.time-t0,...(e.gain!==undefined?{gain:e.gain}:{}),...(e.type===FOUND?{name:e.name,...(e.from!==undefined?{from:e.from}:{}),...(e.to!==undefined?{to:e.to}:{})}:{})}));
+  return sounds.filter(e=>e.time>=t0&&e.time<t0+duration-.02).map(e=>({type:e.type,time:e.time-t0,...(e.gain!==undefined?{gain:e.gain}:{}),...(e.type===FOUND?foundFields(e):{})}));
  });
 }
 
