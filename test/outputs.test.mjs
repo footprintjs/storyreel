@@ -473,6 +473,7 @@ const IMPORTS = {
   'files.mjs': ['writeFileSync', 'renameSync', 'chmodSync', 'copyFileSync', 'linkSync'],   // the owner: writeOutput, makeFolder, copyVoice, placeVoice
   'pipeline.mjs': ['writeFileSync'], 'render.mjs': ['writeFileSync'], 'segments/join.mjs': ['writeFileSync'], 'stills.mjs': ['writeFileSync'],
   'segments/store.mjs': ['utimesSync'],   // a kept piece's manifest touched when it is reused: its age orders eviction
+  'mcp.mjs': ['writeSync'],   // sendPicture: one line on the pipe the MCP server opened for the call (fd 3), never a file
 };
 const OWN = [
   ['files.mjs', 'ops.copyFileSync(from, temp, constants.COPYFILE_EXCL)', 'writeOutput: a new random name beside the output, created exclusively'],
@@ -499,6 +500,7 @@ const OWN = [
   ['segments/store.mjs', 'utimesSync(json, now, now)', 'folderStore: a reused piece\'s manifest, its times set to now (a piece it checked, in the store it was given)'],
   ['segments/clip.mjs', "spawnSync(ffmpeg, ['-y', '-loglevel', 'error', ...inputs", 'writeClip: the review clip, into the render\'s work folder (changes.mjs moves it onto its output with writeOutput)'],
   ['stills.mjs', 'writeFileSync(script, filter)', 'the stills pass\'s tempScratch folder'],
+  ['mcp.mjs', 'writeSync(pictureFd, ', 'sendPicture: the picture\'s path, one line on fd 3 — a pipe the MCP server opened for this call (callTool), not a file'],
 ];
 const RUNS = [
   ['files.mjs', "spawnSync('/sbin/mount', [], {encoding: 'utf8'})", 'macOS\'s mount table, read once by securePath (to stdout): a reader, it writes nothing'],

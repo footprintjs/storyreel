@@ -8,6 +8,8 @@
 import path from 'node:path';
 import {TOOLS, CONFIG, loadProject, loadInputs} from './tools.mjs';
 import {SOUNDS_HELP} from './sounds/cli.mjs';
+// Loaded first, so the picture's channel is taken from the environment before any project code runs (mcp.mjs · sendPicture).
+import {serveMcp, startOf, sendPicture} from './mcp.mjs';
 
 const BEATS_HELP = `  beats    <song> — the song's tempo as the beat map hears it (no project needed): the verdict, the candidate tempi with
            their scores, and why each level of the beat is unsure; an unsure tempo is settled by giving music.bpm
@@ -86,7 +88,6 @@ for (let i = 0; i < rest.length; i++) {
 }
 if (command === 'mcp') {
   // The project is fixed here, at start (mcp.mjs · startOf): a call can never name another config or folder.
-  const {serveMcp, startOf} = await import('./mcp.mjs');
   let start; try { start = startOf(flags); } catch (e) { console.error(`storyreel mcp: ${e.message}`); process.exit(2); }
   await serveMcp(start); process.exit(0);
 }
@@ -112,8 +113,7 @@ try {
   // A tool that prepares the film itself (changes: as the full render does) reads the config without compiling it first.
   const project = await (TOOLS[command].compile === false ? loadInputs : loadProject)(flags), out = await TOOLS[command].run(project, flags);
   console.log(typeof out === 'string' ? out : out.text);
-  // Run by the MCP server (mcp.mjs · callTool), the picture's path goes to it on a channel of its own: never out of the text.
-  if (typeof out?.file === 'string' && typeof process.send === 'function') process.send({picture: out.file});
+  sendPicture(out?.file);   // run by the MCP server for a still or a strip: the picture's path on its own pipe, never read out of the text
 } catch (e) {
   console.error(`storyreel ${command}: ${e.message}`); process.exit(1);
 }

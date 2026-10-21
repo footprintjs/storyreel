@@ -13,10 +13,11 @@
  * film() too), so a client steered by text it read cannot make the server run another module or work in another folder:
  * a call that names config or cwd, an argument its tool does not take, or a value the command line would read as a flag
  * is refused before anything runs (refusalOf), and the server goes on answering. Nothing a call can shape is read back
- * as a path: a picture's path comes from the command line on a channel of its own (IPC), never out of the text.
+ * as a path: a picture's path comes from the command line on a pipe of its own (fd 3: sendPicture, pictureOf), never
+ * out of the text.
  */
 import {spawn} from 'node:child_process';
-import {existsSync, readFileSync, statSync} from 'node:fs';
+import {existsSync, readFileSync, statSync, writeSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createInterface} from 'node:readline';
@@ -66,10 +67,24 @@ export function refusalOf(name, args) {
 const failed = text => ({isError: true, content: [{type: 'text', text}]});
 
 /**
- * The picture a tool made, as its command line sends it (cli.mjs: `{picture: file}` over IPC) — an absolute .png path,
- * or null. Read from that channel only: the text holds words a call shaped (a moment's label), the channel none.
+ * The picture's channel: for a still or a strip this server opens fd 3, a pipe of the call's own, and says so in
+ * PICTURE_FD; the command line writes the picture's path there as one line (sendPicture) and the server reads it from
+ * there only (pictureOf). The text is never read for a path: it holds words a call shaped (a moment's label).
  */
-const pictureOf = message => (typeof message?.picture === 'string' && path.isAbsolute(message.picture) && message.picture.endsWith('.png') ? message.picture : null);
+const PICTURE_FD = 'STORYREEL_PICTURE_FD';
+// Taken once, as the command line loads: neither the project's config nor anything the command line starts sees it.
+const pictureFd = process.env[PICTURE_FD] === '3' ? 3 : null;
+delete process.env[PICTURE_FD];
+
+/** The command line's half (cli.mjs, after a still or a strip): the picture's path, as one line on fd 3 when the server opened it. */
+export function sendPicture(file) {
+  if (pictureFd === null || typeof file !== 'string') return;
+  try { writeSync(pictureFd, `${JSON.stringify({picture: file})}\n`); } catch { /* the server is gone: the path is in the text */ }
+}
+
+/** The server's half: the last line on fd 3 that is {"picture": an absolute .png path}, or null; anything else there is ignored. */
+const pictureOf = said => said.split('\n').map(line => { try { return JSON.parse(line)?.picture; } catch { return undefined; } })
+  .filter(p => typeof p === 'string' && path.isAbsolute(p) && p.endsWith('.png')).at(-1) ?? null;
 
 /**
  * One call: the command line in a fresh process in the project's folder — the start's flags, the call's arguments over
@@ -79,18 +94,18 @@ export function callTool(name, args = {}, {defaults = {}, config, cwd = process.
   const refused = refusalOf(name, args);
   if (refused) return Promise.resolve(failed(refused));
   const flags = Object.entries({...defaults, ...args, ...(config === undefined ? {} : {config})}).flatMap(([k, v]) => [`--${k}`, String(v)]);
+  const picturing = TOOLS[name].picture === true, channel = picturing ? {stdio: ['pipe', 'pipe', 'pipe', 'pipe'], env: {...process.env, [PICTURE_FD]: '3'}} : {};
   return new Promise(resolve => {
     let child;
-    try { child = spawn(process.execPath, [CLI, name, ...flags], {cwd, stdio: ['pipe', 'pipe', 'pipe', 'ipc']}); } catch (e) { return resolve(failed(`storyreel ${name}: ${e.message}`)); }   // a value it cannot pass (a NUL byte)
-    const out = [], err = [];
-    let picture = null;
+    try { child = spawn(process.execPath, [CLI, name, ...flags], {cwd, ...channel}); } catch (e) { return resolve(failed(`storyreel ${name}: ${e.message}`)); }   // a value it cannot pass (a NUL byte)
+    const out = [], err = [], sent = [];
     child.stdout.on('data', d => out.push(d)); child.stderr.on('data', d => err.push(d));
-    child.on('message', m => { if (TOOLS[name].picture) picture = pictureOf(m) ?? picture; });
+    child.stdio[3]?.on('data', d => sent.push(d));   // the picture's pipe (a still's or a strip's): 'close' waits for its end too
     child.on('error', e => resolve(failed(`storyreel ${name}: ${existsSync(cwd) ? e.message : `the project's folder ${cwd} is not there any more: restart the server on it`}`)));   // it could not start
     child.on('close', code => {
       const text = Buffer.concat(out).toString('utf8').trim(), problem = Buffer.concat(err).toString('utf8').trim();
       if (code !== 0) return resolve(failed(problem || `storyreel ${name} stopped (${code})`));
-      const content = [{type: 'text', text}];
+      const content = [{type: 'text', text}], picture = picturing ? pictureOf(Buffer.concat(sent).toString('utf8')) : null;
       if (picture) try { content.push({type: 'image', mimeType: 'image/png', data: readFileSync(picture).toString('base64')}); } catch { /* unreadable: the path is in the text */ }
       resolve({content});
     });

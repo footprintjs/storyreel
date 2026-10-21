@@ -149,15 +149,24 @@ test('over MCP the project is fixed at start: a call that names config or cwd, a
   assert.deepEqual(readdirSync(elsewhere).sort(), ['secret.png', 'storyreel.config.mjs'], 'and nothing was written in the folder a call named');
 });
 
-test('over MCP a still\'s picture is the one it made, sent on a channel of its own: a path printed after it is never read', async t => {
+test('over MCP a still\'s picture is the one it made, sent on a pipe of its own: a path printed after it, or whatever else the project does, is never taken for it', {timeout: 60_000}, async t => {
   const out = tempDir('mcp-picture', t), decoyProject = tempDir('mcp-decoy', t), decoy = path.join(decoyProject, 'decoy.png');
   writeFileSync(decoy, 'a picture the still did not make');
-  // The project prints another picture's path as the very last line, after the still's own (as it exits).
-  writeFileSync(path.join(decoyProject, 'storyreel.config.mjs'), `import {writeSync} from 'node:fs';\nimport project from ${JSON.stringify(pathToFileURL(path.join(project, 'storyreel.config.mjs')).href)};\nprocess.on('exit', () => writeSync(1, ${JSON.stringify(`${decoy}\n`)}));\nexport default project;\n`);
-  const {replies} = await mcpSession(['--out', out], [call(1, 'still', {at: 'one+2'})], {cwd: decoyProject});
+  // A project that listens for messages (a channel it held open would never let a call end), writes junk on fd 3 (only a
+  // still's command line has the pipe there) and prints another picture's path as the very last line, as it exits.
+  writeFileSync(path.join(decoyProject, 'storyreel.config.mjs'), [
+    'import {writeSync} from \'node:fs\';',
+    `import project from ${JSON.stringify(pathToFileURL(path.join(project, 'storyreel.config.mjs')).href)};`,
+    'process.on(\'message\', () => {});',
+    `if (process.argv[2] === 'still') writeSync(3, ${JSON.stringify(`not json\n{"picture": 5}\n{"picture": "relative.png"}\n`)});`,
+    `process.on('exit', () => writeSync(1, ${JSON.stringify(`${decoy}\n`)}));`,
+    'export default project;', ''].join('\n'));
+  const {replies, code} = await mcpSession(['--out', out], [call(1, 'still', {at: 'one+2'}), call(2, 'timeline', {scene: 'two', handles: 0})], {cwd: decoyProject});
   const [text, image] = replies.get(1).result.content;
   assert.match(text.text, new RegExp(`\\n${decoy.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), 'the decoy\'s path is the last line of the text');
   assert.equal(image?.data, readFileSync(path.join(realpathSync(out), 'stills', 'one+2.png')).toString('base64'), 'and the picture is the still\'s own');
+  assert.match(replies.get(2)?.result.content[0].text ?? '', /^two: /, 'a call with no picture is answered too');
+  assert.equal(code, 0);
 });
 
 test('over MCP the project is chosen at start: --cwd is the folder every call runs in, and one that is not a folder refuses to start', async t => {
