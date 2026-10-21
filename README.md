@@ -1651,9 +1651,9 @@ run it.
 - **And as an MCP server,** for any assistant that speaks MCP: `storyreel mcp [--flag value …]` serves the same
   six tools over stdio, `changes` among them (its flags apply to every call; a still or a strip comes back as the picture). Each call runs in
   a fresh process, so an edit to a kit between two calls is always seen. The project is fixed when the server starts:
-  `--config`, `--cwd` (the folder every call runs in) and the film's own flags are set there only, and a call that
-  passes one, or any argument its tool does not take, is refused, so text an agent reads cannot make the server run
-  another module or work in another folder:
+  `--config`, `--cwd` (the folder every call runs in) and the film's own flags are set there only. A call passes only
+  its tool's arguments (they reach `film()` too, as every flag does), and one that passes anything else is refused, so
+  text an agent reads cannot make the server run another module or work in another folder:
 
   ```bash
   claude mcp add storyreel -- npx storyreel mcp --ep ep1 --voice work/ep1/voice      # Claude Code

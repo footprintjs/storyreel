@@ -43,8 +43,11 @@
 - **The MCP server's project is fixed when it starts.** A tool call could name a config (a module the server imports
   and runs) or a folder to work in. Now `config`, `cwd` (the folder each call runs in) and the film's own flags are set
   only by `storyreel mcp --config … --cwd …`; a call that passes one, an argument its tool does not take, or a value
-  starting with `--` is refused before anything runs. A malformed message, or a value the command line cannot take (a
-  NUL byte), is answered as an error and no longer stops the server.
+  starting with `--` is refused before anything runs. A still's or a strip's picture comes back on a channel of its
+  own, never read out of the text: a moment `one+2+<a line naming another .png>` was taken as `one+2`, and that other
+  file came back as the picture. A moment is now exactly `scene+seconds`, and a still or a strip is 100–4000 px wide (a
+  still holds at most 30 moments). A malformed message, an id that is not a string or a number, or a value the command
+  line cannot take (a NUL byte) is answered as an error and no longer stops the server.
 
 ## 0.18.0 — quick edits by default, a thought cloud
 

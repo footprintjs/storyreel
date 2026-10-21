@@ -112,6 +112,8 @@ try {
   // A tool that prepares the film itself (changes: as the full render does) reads the config without compiling it first.
   const project = await (TOOLS[command].compile === false ? loadInputs : loadProject)(flags), out = await TOOLS[command].run(project, flags);
   console.log(typeof out === 'string' ? out : out.text);
+  // Run by the MCP server (mcp.mjs · callTool), the picture's path goes to it on a channel of its own: never out of the text.
+  if (typeof out?.file === 'string' && typeof process.send === 'function') process.send({picture: out.file});
 } catch (e) {
   console.error(`storyreel ${command}: ${e.message}`); process.exit(1);
 }

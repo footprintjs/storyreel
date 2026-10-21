@@ -137,22 +137,34 @@ export async function part(project, args = {}) {
   return `${read}\n${result.out} · ${result.seconds.toFixed(1)} s · made in ${((Date.now() - started) / 1000).toFixed(1)} s · checks ${finished.ok ? 'clean' : finished.ok === false ? 'problems found' : 'not run'}${shown.map(f => `\n  ${f.text ?? JSON.stringify(f)}`).join('')}${found.length > shown.length ? `\n  … ${found.length - shown.length} more: ${FULL_HINT}` : ''}`;
 }
 
-/** Moments as "scene+seconds", or seconds on the film clock; `tool` is the tool that asked, so a refusal names it. */
+/**
+ * Moments as "scene+seconds", or seconds on the film clock; `tool` is the tool that asked, so a refusal names it. A
+ * moment is exactly that — one "+" at most, no control character — since its words are printed as its label.
+ */
 function momentsOf(film, at, tool) {
   const list = scenesOf(at); if (!list.length) throw new Error(`${tool}: name the moments (at: "scene+seconds,…")`);
   return list.map(m => {
-    const [id, off] = m.includes('+') ? m.split('+') : [null, m], known = !id || film.timings.scenes.some(s => s.id === id), t = known ? (id ? film.clock.start(id) : 0) + Number(off) : NaN;
-    if (!Number.isFinite(t)) throw new Error(`${tool}: "${m}" is not a moment (scene+seconds, or seconds; the scenes are ${film.timings.scenes.map(s => s.id).join(', ')})`);
+    const parts = m.split('+'), [id, off] = parts.length > 1 ? parts : [null, m], plain = parts.length <= 2 && !/[\u0000-\u001f\u007f]/.test(m);
+    const known = plain && (!id || film.timings.scenes.some(s => s.id === id)), t = known ? (id ? film.clock.start(id) : 0) + Number(off) : NaN;
+    if (!Number.isFinite(t)) throw new Error(`${tool}: ${JSON.stringify(m)} is not a moment (scene+seconds, or seconds; the scenes are ${film.timings.scenes.map(s => s.id).join(', ')})`);
     return {t: +Math.min(film.total - .001, Math.max(0, t)).toFixed(3), label: m};
   });
+}
+/** A still's or a strip's width: whole pixels, 100–4000 (a call names it, and the picture is made that wide). */
+function widthOf(args, tool) {
+  const width = Number(args.width ?? TOOL_DEFAULTS.width);
+  if (!(Number.isInteger(width) && width >= 100 && width <= 4000)) throw new Error(`${tool}: width must be a whole number of pixels 100–4000, not ${JSON.stringify(args.width)}`);
+  return width;
 }
 /** The project's stills folder, <out>/stills: a real folder of its own, never a link (files.mjs · outputFolder). */
 const stillsFolder = project => outputFolder(path.resolve(project.cwd, project.inputs.out ?? 'out'), 'stills');
 
 /** One picture to confirm the look: the moments side by side as a PNG. Returns {text, file}. */
 export async function still(project, args = {}) {
-  const moments = momentsOf(project.film, args.at, 'still'), file = path.join(stillsFolder(project), `${scenesOf(args.at).join('_').replace(/[^\w+.-]/g, '-')}.png`);
-  writeOutput(file, await contactSheet(project.film, {moments, columns: Math.min(3, moments.length), width: +(args.width ?? TOOL_DEFAULTS.width)}));
+  const moments = momentsOf(project.film, args.at, 'still'), width = widthOf(args, 'still');
+  if (moments.length > 30) throw new Error(`still: at most 30 moments in one picture, not ${moments.length}`);
+  const file = path.join(stillsFolder(project), `${scenesOf(args.at).join('_').replace(/[^\w+.-]/g, '-')}.png`);
+  writeOutput(file, await contactSheet(project.film, {moments, columns: Math.min(3, moments.length), width}));
   return {text: `${file} · ${moments.length} frame${moments.length > 1 ? 's' : ''}: ${moments.map(m => `${m.label} (${m.t.toFixed(2)} s)`).join(', ')}`, file};
 }
 
@@ -163,7 +175,7 @@ export async function still(project, args = {}) {
 export async function strip(project, args = {}) {
   const named = scenesOf(args.at);
   if (named.length !== 1) throw new Error(`strip: name one moment (at: "scene+seconds")${named.length ? '; a still shows several' : ''}`);
-  const [moment] = momentsOf(project.film, named, 'strip'), frames = +(args.frames ?? TOOL_DEFAULTS.frames), fps = +(args.fps ?? TOOL_DEFAULTS.fps);
+  const [moment] = momentsOf(project.film, named, 'strip'), frames = +(args.frames ?? TOOL_DEFAULTS.frames), fps = +(args.fps ?? TOOL_DEFAULTS.fps), width = widthOf(args, 'strip');
   if (!(Number.isInteger(frames) && frames >= 2 && frames <= 30)) throw new Error(`strip: frames must be a whole number 2–30, not ${JSON.stringify(args.frames)}`);
   if (!(Number.isFinite(fps) && fps >= 1 && fps <= 120)) throw new Error(`strip: fps must be 1–120 frames a second, not ${JSON.stringify(args.fps)}`);
   const first = moment.t - Math.floor(frames / 2) / fps, moments = [];
@@ -172,7 +184,7 @@ export async function strip(project, args = {}) {
     if (t >= 0 && t < project.film.total) moments.push({t, label: `${k - Math.floor(frames / 2) >= 0 ? '+' : ''}${k - Math.floor(frames / 2)}`});
   }
   const file = path.join(stillsFolder(project), `strip-${moment.label.replace(/[^\w+.-]/g, '-')}.png`);
-  writeOutput(file, await contactSheet(project.film, {moments, columns: Math.min(6, moments.length), width: +(args.width ?? TOOL_DEFAULTS.width)}));
+  writeOutput(file, await contactSheet(project.film, {moments, columns: Math.min(6, moments.length), width}));
   return {text: `${file} · ${moments.length} frames at ${fps} fps around ${moment.label} (${moment.t.toFixed(2)} s): frame 0 is the moment`, file};
 }
 
@@ -199,7 +211,7 @@ export const TOOLS = Object.freeze({
   changes: {run: changes, compile: false, about: 'What an edit changed, before the full render: each changed stretch of the picture and why ("0:12–0:18 left · its recipe entries changed"), then the count. With render: only those pieces drawn (kept: the full render draws none of them again) and a short clip of them back to back, labelled with their times, the film either side and its voice under them. Compares with the cache of the config\'s full render (render, code) into out.',
     args: {render: 'true to draw the changed pieces and write the clip, <out>/changes/review.mp4', handles: `seconds of the film either side of each change in the clip (${CHANGES_DEFAULTS.handles})`}},
   still: {run: still, picture: true, about: 'One picture to confirm the look: frames at the moments given, side by side, as a PNG. Look at it last, after the timeline and the review.',
-    args: {at: 'moments: scene+seconds (or seconds), comma-separated (required)', width: `the picture's width in pixels (${TOOL_DEFAULTS.width})`}},
+    args: {at: 'moments: scene+seconds (or seconds), comma-separated, at most 30 (required)', width: `the picture's width in pixels, 100–4000 (${TOOL_DEFAULTS.width})`}},
   strip: {run: strip, picture: true, about: 'A fast move frame by frame: consecutive frames around one moment, side by side, as a PNG — to catch a pop, a jump or two things crossing.',
-    args: {at: 'the moment: scene+seconds (or seconds) (required)', frames: `how many frames (${TOOL_DEFAULTS.frames})`, fps: `frames a second (${TOOL_DEFAULTS.fps})`, width: `the picture's width in pixels (${TOOL_DEFAULTS.width})`}},
+    args: {at: 'the moment: scene+seconds (or seconds) (required)', frames: `how many frames (${TOOL_DEFAULTS.frames})`, fps: `frames a second (${TOOL_DEFAULTS.fps})`, width: `the picture's width in pixels, 100–4000 (${TOOL_DEFAULTS.width})`}},
 });

@@ -71,7 +71,7 @@ function cliCommands() {
   for (const [, f] of breakdownHelp.matchAll(/--([a-z][\w-]*)/g)) commands.breakdown?.add(f);
   return commands;
 }
-const ANY_FLAG = new Set(['mcp']);   // its flags are every call's defaults: the film's own flags (--ep ep1) too
+const ANY_FLAG = new Set(['mcp']);   // its flags are fixed for every call: the project's (--config, --cwd) and the film's own (--ep ep1)
 const TOOL_FLAGS = ['config'];       // every tool reads --config (another config file)
 
 /** Every `npx storyreel <command> --flags…` (and inline `storyreel <command>`) on a page: {command, flags, line}. */
