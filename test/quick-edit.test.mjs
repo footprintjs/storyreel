@@ -94,6 +94,21 @@ test('a StoryReel change reaches only the keys it draws: an unused transition, t
   assert.deepEqual(changed(before, after), crosses, 'only the pieces the eraser crosses are drawn again');
 });
 
+test('installed from npm (inside node_modules), the drawing fingerprint and a built-in kit\'s code still follow StoryReel\'s own imports', t => {
+  const top = tempDir('installed', t), pkg = path.join(top, 'app', 'node_modules', 'footprint-storyreel');
+  for (const dir of ['src', 'fonts', 'themes']) cpSync(fileURLToPath(new URL(`../${dir}/`, import.meta.url)), path.join(pkg, dir), {recursive: true});
+  cpSync(fileURLToPath(new URL('../package.json', import.meta.url)), path.join(pkg, 'package.json'));
+  const src = realpathSync(path.join(pkg, 'src')), names = (root, files) => files.map(f => path.relative(root, f).split(path.sep).join('/')).sort();
+  const here = drawingCode().cover(), there = drawingCode({src}).cover();
+  assert.deepEqual(names(src, there.core.files), names(SRC, here.core.files), 'the same modules as in the checkout: its own imports are its code');
+  assert.deepEqual(names(src, there.catalog.torn.files), names(SRC, here.catalog.torn.files));
+  assert.ok(moduleReader('t')(path.join(src, 'kits/cartoon/index.mjs')).files.some(f => f.endsWith(`${path.sep}acting.mjs`)), 'the cartoon kit\'s sources follow its imports there too');
+  // A package a kit imports by name stays a version, never followed (a user's kit keeps the old rule).
+  const kit = path.join(top, 'app', 'kit.mjs'); writeFileSync(kit, "import {paperTokens} from 'footprint-storyreel/transitions';\nimport './node_modules/footprint-storyreel/src/ease.mjs';\n");
+  const read = moduleReader('t')(kit);
+  assert.deepEqual(read.files, [], 'a file of another package (by path) is not followed from outside it');
+});
+
 // ── The plan: rows cut into pieces ───────────────────────────────────────────────────────────────────────────────────
 
 test('pieces: each row cut where a scene starts and every chunkSeconds from there; together every frame once, in order', async () => {

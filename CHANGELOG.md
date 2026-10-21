@@ -32,6 +32,9 @@
   piece's shape for its key, and the video must be the bytes it recorded (size and SHA-256). A key also holds the
   FFmpeg build that encodes it: pieces are joined by copying, and an MP4 keeps one set of H.264 parameters, so a piece
   another build encoded is drawn again rather than joined.
+- **A code fingerprint follows an installed package's own imports** when it reads a file inside that package (StoryReel's
+  own modules, as npm installs them, and a kit's `sources` that name one). An import from your code into
+  `node_modules` is still that package's version, never followed.
 - **Pieces are drawn a fair share of the cores at a time** (`parallel`: the cores less one, at most 6; it was 2). The
   drawing is one thread, so this overlaps encoding with drawing.
 - The StoryReel skill gains a four-line edit loop (part first, a full render redraws only what changed, keep the

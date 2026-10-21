@@ -218,9 +218,17 @@ export function resolvePackage(spec, from) {
   }
 }
 
+/** The installed package a file is in (…/node_modules/<name> or …/node_modules/@scope/<name>), or null outside node_modules. */
+export function packageRoot(file) {
+  const parts = file.split(path.sep), i = parts.lastIndexOf('node_modules');
+  if (i < 0 || i + 1 >= parts.length) return null;
+  return parts.slice(0, i + (parts[i + 1].startsWith('@') ? 3 : 2)).join(path.sep);
+}
+
 /**
  * A reader of modules, each read once: {bytes, hash, files, packages, missing, unfollowed, unparsed} — its bytes, the
- * files it reads (relative imports, linked packages' entries, assets: never inside node_modules), the packages it imports
+ * files it reads (relative imports, linked packages' entries, assets: never inside node_modules, but for a file of the
+ * reading file's own installed package — StoryReel's modules as npm installs them), the packages it imports
  * by version, the relative specifiers that lead nowhere (`missing`), the imports and assets chosen at run time
  * (`unfollowed`), and the line the reading lost its way at, when the file ends inside a string or template (`unparsed`).
  */
@@ -230,7 +238,9 @@ export function moduleReader(who) {
     if (known.has(file)) return known.get(file);
     if (!existsSync(file)) throw new Error(`${who}: ${file} does not exist: name a file that is there (relative to the folder the command runs in)`);
     const bytes = readFileSync(file), files = [], packages = [], missing = [], unfollowed = []; let unparsed = null;
-    const take = f => { if (!f.split(path.sep).includes('node_modules')) files.push(f); };
+    // A file in node_modules is a package's, named by its version — except a file of the same installed package as the
+    // one reading it: a package's own modules (StoryReel's, installed) are its code, followed like any other.
+    const own = packageRoot(file), take = f => { const root = packageRoot(f); if (root === null || root === own) files.push(f); };
     if (PARSED.test(file)) {
       const scanned = scanModule(bytes.toString('utf8')), {imports, assets, computed} = scanned; unparsed = scanned.unparsed;
       for (const spec of imports) {
