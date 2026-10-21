@@ -179,6 +179,7 @@ test('StoryReel is safe to key by content: none of its modules loads a file by a
   const read = moduleReader('t'), files = filesUnder([SRC]), rel = f => path.relative(SRC, f).split(path.sep).join('/'), named = p => p.slice(0, p.lastIndexOf('@'));
   assert.deepEqual(files.filter(f => read(f).unfollowed.length || read(f).missing.length).map(rel).sort(), ['segments/code.mjs', 'segments/drawing.mjs', 'theme.mjs', 'tools.mjs'],
     'a StoryReel module that loads a file by a path built at run time is in no kit\'s key: load it by a literal new URL(…), or add its folder to PAINTER_ASSETS (segments/drawing.mjs)');
+  assert.deepEqual(files.filter(f => read(f).unparsed !== null).map(rel), [], 'a StoryReel module the reader cannot read whole hides the imports after that line from every kit\'s key');
   const unnamed = [...new Set(files.flatMap(f => read(f).packages.map(named)))].filter(n => !DRAWING.includes(n) && !NOT_DRAWING_PACKAGES.includes(n)).sort();
   assert.deepEqual(unnamed, [], 'a kit\'s key holds a StoryReel module\'s packages only when they draw: add each to versions.mjs · DRAWING, or to NOT_DRAWING_PACKAGES if it draws nothing');
 });
