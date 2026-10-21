@@ -221,10 +221,10 @@ export type Watching = {kind: 'burst'; path: string; where: string; at: number; 
 export type TransitionName = 'cut' | 'fade' | 'dip' | 'wipe' | 'split' | 'clock' | 'torn' | 'eraser' | 'iris' | 'inkBleed' | 'ringIris'
   | 'push' | 'slide' | 'whip' | 'glassSheet' | 'zoom' | 'page' | 'curl' | 'fold' | 'through' | 'match' | 'morph';
 /**
- * A shot's entrance: a transition's name (a kit's own too), or its name with settings — `seconds` (0.2–3),
+ * A shot's entrance: a transition's name (a kit's own too), or its name with settings — `seconds` (0.2–4),
  * `ease`, `sound` (a sound, or false for none) and the transition's own: `from` (push, slide, whip, wipe,
- * glassSheet: left | right | top | bottom; eraser: left | right), `direction` (torn: the edge the torn sheet is dragged
- * toward, left | right | top | bottom), `tear` (torn: the share of the change the tear takes, 0.2–0.8), `line` (split: vertical | horizontal; fold:
+ * glassSheet: left | right | top | bottom; eraser: left | right), `direction` (torn: the way the rip travels, right | left |
+ * bottom | top), `drift` (torn: px the new picture comes along with the tear, 0–200), `line` (split: vertical | horizontal; fold:
  * the crease, horizontal | vertical), `at` (iris, zoom, inkBleed, ringIris: [x, y]), `color` (dip, eraser, and the
  * ink, ring or outline of inkBleed, ringIris, morph: a hex colour; null is the transition's default, the theme's for those three), `accent` (ringIris:
  * its other half), `tint` (glassSheet), `seed` (torn, inkBleed: the ragged edge's shape, 0–10000), `radius` and
@@ -239,7 +239,7 @@ export type Enter = TransitionName | (string & {}) | ({type: TransitionName | (s
   from?: 'left' | 'right' | 'top' | 'bottom'; line?: 'vertical' | 'horizontal'; at?: [number, number]; color?: string | null;
   region?: string; into?: string; shape?: 'box' | 'round'; seed?: number; radius?: number; width?: number; accent?: string | null;
   tint?: string; corner?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'; fromBox?: FrameBox; toBox?: FrameBox;
-  direction?: 'left' | 'right' | 'top' | 'bottom'; tear?: number;
+  direction?: 'left' | 'right' | 'top' | 'bottom'; drift?: number;
   move?: never; [setting: string]: unknown})
   | {move: MoveName | (string & {}) | Move; seconds?: number; feel?: MoveFeelName | FeelName | Feel; sound?: SoundType | FoundSoundChoice | false; type?: never};
 /**
@@ -272,7 +272,7 @@ export interface TransitionDraw {
 export interface Transition {
   /** What a browser groups it under (the built-in families: cut, dissolve, wipe, iris, motion, zoom, page, match). */
   family: string;
-  /** Its default length, 0.2–3 s. */
+  /** Its default length, 0.2–4 s. */
   seconds: number;
   ease: EaseSpec;
   sound: SoundType | null;
@@ -330,11 +330,12 @@ export type SoundEvent = { time: number; type: SoundType; gain?: number } | Foun
 /**
  * A found sound at a time: a recording kept in the film's sounds/ folder, added once with `npx storyreel sounds add <id>
  * --as <name>` (footprint-storyreel/sounds), mixed from its file at render (never fetched then). `gain` 0..1 (default 1)
- * of its own level, after it is turned down to the effects' ceiling when it peaks over it.
+ * of its own level, after it is turned down to the effects' ceiling when it peaks over it. `from` / `to`: the span of the
+ * recording to play, in seconds into it (left out: from its start, to its end), checked against its length.
  */
-export interface FoundSoundEvent { time: number; type: 'found'; name: string; gain?: number }
+export interface FoundSoundEvent { time: number; type: 'found'; name: string; gain?: number; from?: number; to?: number }
 /** An entrance's found sound: the same as a found sound event, without its time (the change of picture is its time). */
-export type FoundSoundChoice = { type: 'found'; name: string; gain?: number };
+export type FoundSoundChoice = { type: 'found'; name: string; gain?: number; from?: number; to?: number };
 /** A found sound a film plays, checked when it was built (its record, its file inside the root): see footprint-storyreel/sounds. */
 export interface UsedFoundSound { name: string; file: string; record: import('./sub/sounds.js').FoundRecord; root: string; allowShareAlike: boolean }
 

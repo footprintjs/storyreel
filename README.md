@@ -281,7 +281,7 @@ recipe names:
 | wipe | `wipe` | an edge crosses the frame | the next item in a list | `from`: `left` · `right` · `top` · `bottom` (`left`) | 0.8 s | slide |
 | | `split` | doors open from the middle | a reveal: what was behind the doors | `line`: `vertical` · `horizontal` (`vertical`) | 0.8 s | slide |
 | | `clock` | a clock hand sweeps from twelve | time passing, by the clock | – | 0.9 s | slide |
-| | `torn` | a ragged tear runs across the old picture, the new one showing along it; then the torn sheet is dragged off, tilted and lifted, carrying the old picture with it | leaving the old page behind: a recap torn away to reveal the new episode's title, a plan thrown out | `direction`: `left` · `right` · `top` · `bottom` (`left`: the edge the sheet is dragged toward), `tear` (`0.5`: the share of the change the tear takes; the drag takes the rest), `seed` (`5`: the edge's shape) | 1.4 s | slide |
+| | `torn` | a rip runs slowly across the old picture, catching as paper does; behind it the torn flap peels up, still showing the old picture as it lifts, then curls over to show the paper's back, and the new picture is uncovered right behind the curl, in its soft shadow; the curl is carried off the far edge and the new picture settles | leaving the old page behind, slowly: a recap peeled away to uncover the new episode's title | `direction`: `right` · `left` · `bottom` · `top` (`right`: the way the rip travels), `drift` (`0`: px the new picture comes along with the tear), `seed` (`5`: the edge and the rip's pace) | 3.2 s | crumble |
 | | `eraser` | a board eraser wipes the old picture off; the new one is underneath | a clean slate: the same lesson started again, a wrong answer rubbed out | `from`: `left` · `right` (`left`), `color` (`#3b4a63`: the eraser's) | 1.1 s | slide |
 | iris | `iris` | a circle opens from a point | one spot the new scene grows out of | `at`: `[x, y]` (the centre) | 0.8 s | slide |
 | | `inkBleed` | ink spreads across the old picture from a point; the new picture comes up through the ink | a new chapter seeping in; a story told in ink; a change of mood | `at` (`[220, 760]`), `color` (null: the theme's ink), `seed` (`7`: the blot's shape) | 1.3 s | whoosh |
@@ -307,7 +307,7 @@ recipe names:
 "enter": {"type": "whip", "sound": false}                     no sound
 "enter": {"type": "slide", "ease": "spring"}                  slides in, overshoots a little and settles
 "enter": "torn"                                               a recap's page torn away: the new episode under it
-"enter": {"type": "torn", "direction": "top", "tear": 0.35}   a quick tear, then a long drag up and away
+"enter": {"type": "torn", "direction": "left", "drift": 40}  the rip runs right to left, the new picture coming along
 "enter": {"type": "inkBleed", "at": [1400, 200], "seed": 3}   ink from the top right, another blot
 "enter": {"type": "ringIris", "at": [1060, 400], "radius": 120}  opens through a ring drawn there in the old picture
 "enter": {"type": "morph", "region": "card", "into": "page"}  the old picture's card becomes the new one's page
@@ -319,12 +319,13 @@ paper and ink are the film's theme's — its card, its well, its bg and its ink 
 paper; a colour one adds (the ring, the morph's outline, the ink) is a setting whose default, null, is the theme's
 own, and a recipe may name another. A ragged edge (the tear, the ink blot) is a seeded shape, never chance: the same
 seed is the same edge on every frame and every machine, and `seed` picks another. Each starts on the old picture and
-ends on the new one exactly, so nothing jumps when the shot takes over. `torn` moves the paper, never fades it: the torn
-sheet carries the old picture off the frame whole, so a title card under it is uncovered first along the tear, then
-all at once as the sheet is dragged away. `morph` goes from box to box: the things
+ends on the new one exactly, so nothing jumps when the shot takes over. `torn` is a slow peel, one continuous move:
+behind the rip front the old picture is gone (its paper peeled up as the flap) and the new one shows; the torn edge is
+paper (a white fibrous core), never a dark line; and the rip keeps a seeded, uneven pace, slow to start and catching as
+it goes, so the same seed tears the same way every time. `morph` goes from box to box: the things
 `region` and `into` name (found as `match` finds them), or, left out, `fromBox` and `toBox` (`[x0, y0, x1, y1]`).
 
-Every entrance also takes `seconds` (0.2–3), `ease` (a name from the ease table, or a four-number curve as CSS
+Every entrance also takes `seconds` (0.2–4), `ease` (a name from the ease table, or a four-number curve as CSS
 writes it, `"cubic-bezier(0.16, 1, 0.3, 1)"`) and `sound` (a sound's name, or `false`). An ease that goes past
 the end (`back`, `outBack`, `spring`, or a four-number curve whose y leaves 0..1) is refused where the frame's
 edge would show — only `slide` takes one. An unknown name, key or setting refuses, naming what the transition
@@ -1656,10 +1657,14 @@ name it as its `sound`, for example to tear the recap away with a real tear:
 "enter": {"type": "torn", "sound": {"type": "found", "name": "paper-tear", "gain": 0.7}}
 ```
 
+A long recording can be cut to fit with `from` and `to`, seconds into it (the slow tear above:
+`{"type": "found", "name": "paper-tear", "from": 1.35, "to": 4.25}`). A span outside the recording refuses when the
+film is built, naming the recording's length.
+
 It is mixed the way the music is (`render.mjs · mixFound`):
 
-- decoded from its file;
-- turned down if it peaks over the effects' ceiling (never up);
+- decoded from its file and cut to its span, the cuts faded over 10 ms so they never click;
+- turned down if its span peaks over the effects' ceiling (never up);
 - set at its `gain` (default 1) and placed at its second.
 
 The effects-vs-voice check then measures it with the other effects.

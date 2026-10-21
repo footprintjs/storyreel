@@ -9,6 +9,7 @@ import {createCanvas} from '@napi-rs/canvas';
 import {compileFilm, evenTimings, loadTheme, validateTheme} from '../src/index.mjs';
 import {TRANSITIONS, TRANSITION_NAMES, readEntrance, transitionCatalog, ghostPainter} from '../src/transitions.mjs';
 import {PAPER_TRANSITIONS, seeded, paperTokens} from '../src/transitions/paper/index.mjs';
+import {tornAt, tearPace} from '../src/transitions/paper/torn.mjs';
 
 const PAPER = Object.keys(PAPER_TRANSITIONS);
 const RED = [255, 0, 0], BLUE = [0, 0, 255];
@@ -17,10 +18,10 @@ const paper = loadTheme('paper');
 const S = .5;   // drawn at half size: 800 × 450
 
 /** One transition drawn alone at e, red leaving and blue arriving: its pixels, and a reader at frame coordinates. */
-function drawn(enter, e, {theme = paper, boxes = {from: {}, to: {}}, from = solid(RED)} = {}) {
+function drawn(enter, e, {theme = paper, boxes = {from: {}, to: {}}, from = solid(RED), to = solid(BLUE)} = {}) {
   const en = readEntrance(enter, 'test'), c = createCanvas(1600 * S, 900 * S), ctx = c.getContext('2d'), ghost = ghostPainter();
   ctx.scale(S, S);
-  en.draw(ctx, {e, from, to: solid(BLUE), p: en.p, ghost: (alpha, paint) => ghost(ctx, alpha, paint), theme, boxes});
+  en.draw(ctx, {e, from, to, p: en.p, ghost: (alpha, paint) => ghost(ctx, alpha, paint), theme, boxes});
   const data = ctx.getImageData(0, 0, c.width, c.height).data;
   return {ctx, data, px: (x, y) => { const i = (Math.round(y * S) * c.width + Math.round(x * S)) * 4; return [data[i], data[i + 1], data[i + 2]]; }};
 }
@@ -41,7 +42,7 @@ test('the eight are in the catalog, each in its family, with the defaults a reci
   }
   assert.deepEqual(Object.fromEntries(PAPER.map(n => [n, TRANSITIONS[n].family])),
     {torn: 'wipe', eraser: 'wipe', inkBleed: 'iris', ringIris: 'iris', glassSheet: 'motion', curl: 'page', fold: 'page', morph: 'match'});
-  assert.deepEqual(readEntrance('torn', 'x').p, {direction: 'left', tear: .5, seed: 5});
+  assert.deepEqual(readEntrance('torn', 'x').p, {direction: 'right', drift: 0, seed: 5});
   assert.deepEqual(readEntrance('inkBleed', 'x').p, {at: [220, 760], color: null, seed: 7}, 'a colour left at null is the theme\'s');
   assert.deepEqual(readEntrance({type: 'ringIris', at: [1060, 400], radius: 120, color: '#c26a12'}, 'x').p, {at: [1060, 400], radius: 120, width: 26, color: '#c26a12', accent: null});
   assert.throws(() => transitionCatalog([{name: 'k', transitions: {torn: TRANSITIONS.fade}}]), /has a built-in transition's name/, 'a kit that still brings its own torn must drop it');
@@ -51,7 +52,7 @@ test('each starts on the leaving picture and ends on the arriving one, exactly, 
   const plainOf = color => { const c = createCanvas(1600 * S, 900 * S), x = c.getContext('2d'); x.scale(S, S); solid(color)(x); return x.getImageData(0, 0, c.width, c.height).data; };
   const red = plainOf(RED), blue = plainOf(BLUE);
   // Every transition at its defaults, and again with each setting that changes where it goes.
-  const entrances = [...PAPER, {type: 'torn', direction: 'right'}, {type: 'torn', direction: 'top', tear: .3}, {type: 'torn', direction: 'bottom', tear: .8},
+  const entrances = [...PAPER, {type: 'torn', direction: 'left'}, {type: 'torn', direction: 'top', drift: 100}, {type: 'torn', direction: 'bottom', seed: 9},
     {type: 'eraser', from: 'right'}, {type: 'inkBleed', at: [1500, 100]}, {type: 'ringIris', at: [1400, 200], radius: 120, width: 80},
     {type: 'glassSheet', from: 'top'}, {type: 'glassSheet', from: 'bottom'}, {type: 'glassSheet', from: 'left'},
     ...['bottom-left', 'top-right', 'top-left'].map(corner => ({type: 'curl', corner})), {type: 'fold', line: 'vertical'}, {type: 'morph', fromBox: [0, 0, 1600, 900], toBox: [700, 400, 900, 500]}];
@@ -86,9 +87,9 @@ test('a frame is a pure function of the moment: the same pixels twice, nothing f
 
 test('the shapes, part way: where each one shows the new picture', () => {
   const at = (enter, e, x, y) => drawn(enter, e).px(x, y);
-  // torn (its own test below): dragged left, the new picture is uncovered on the right first; dragged right, mirrored.
-  assert.deepEqual(at('torn', .75, 200, 450), RED); assert.deepEqual(at('torn', .75, 1450, 450), BLUE);
-  assert.deepEqual(at({type: 'torn', direction: 'right'}, .75, 200, 450), BLUE); assert.deepEqual(at({type: 'torn', direction: 'right'}, .75, 1450, 450), RED);
+  // torn (its own test below): ripping right, the new picture is uncovered on the left first; ripping left, mirrored.
+  assert.deepEqual(at('torn', .5, 100, 450), BLUE); assert.deepEqual(at('torn', .5, 1550, 450), RED);
+  assert.deepEqual(at({type: 'torn', direction: 'left'}, .5, 100, 450), RED); assert.deepEqual(at({type: 'torn', direction: 'left'}, .5, 1550, 450), BLUE);
   // eraser: what it has passed is wiped; ahead of it, the old picture.
   assert.deepEqual(at('eraser', .5, 150, 100), BLUE); assert.deepEqual(at('eraser', .5, 1500, 100), RED);
   assert.deepEqual(at({type: 'eraser', from: 'right'}, .5, 1500, 100), BLUE);
@@ -113,34 +114,69 @@ test('the shapes, part way: where each one shows the new picture', () => {
   assert.ok(near(at({type: 'morph', fromBox: [100, 100, 300, 300], toBox: [100, 100, 300, 300]}, .5, 100, 200), hex(paper.palette.accent), 30), 'the outline, on its box');
 });
 
-test('torn: the tear runs across showing the new picture along it, then the torn piece carries the old picture off', () => {
-  // The old picture is red with a white mark on it; the new one, blue.
-  const MARK = [1150, 380, 1250, 480], marked = c => { solid(RED)(c); c.fillStyle = '#ffffff'; c.fillRect(MARK[0], MARK[1], MARK[2] - MARK[0], MARK[3] - MARK[1]); };
-  /** Where the mark is in a frame: how many of its pixels (frame units²), and their centre. */
-  const markIn = data => {
-    let n = 0, x = 0, y = 0;
-    for (let i = 0; i < data.length; i += 4) if (data[i] > 245 && data[i + 1] > 245 && data[i + 2] > 245) { n++; x += (i / 4) % (1600 * S); y += Math.floor(i / 4 / (1600 * S)); }
-    return {area: n / S / S, x: x / n / S, y: y / n / S};
-  };
-  // Half way through the tear (tear: .5, so e = .25): a gap along the tear shows the new picture, the old on both sides,
-  // and the sheet beyond the tear (the mark) still in place.
-  const home = markIn(drawn('torn', 0, {from: marked}).data), tearing = drawn('torn', .25, {from: marked}), row = Array.from({length: 1600}, (_, x) => tearing.px(x, 450));
-  const gap = row.filter(c => near(c, BLUE, 40)).length;
-  assert.ok(gap > 20 && gap < 200, `a gap of the new picture along the tear (${gap} frame units of the row)`);
-  assert.deepEqual(row[60], RED); assert.deepEqual(row[1550], RED);
-  assert.equal(home.area, 10000);
-  assert.deepEqual(markIn(tearing.data), home, 'beyond the tear, the sheet lies in place');
-  // Half way through the drag (e = .75): the mark rides the torn piece, whole and unfaded, well off its place toward the drag.
-  const dragging = markIn(drawn('torn', .75, {from: marked}).data);
-  assert.ok(dragging.area > 9000, `the mark is carried whole and opaque, never faded (${dragging.area.toFixed(0)} of 10000 units pure white)`);
-  assert.ok(dragging.x < 1200 - 300, `the mark has moved left with the piece (its centre at x ${dragging.x.toFixed(0)}, from 1200)`);
-  assert.deepEqual(drawn('torn', .75, {from: marked}).px(1200, 430), BLUE, 'where the mark was, the new picture');
-  // Dragged up instead: the mark goes up.
-  const up = markIn(drawn({type: 'torn', direction: 'top'}, .6, {from: marked}).data);
-  assert.ok(up.area > 9000 && up.y < 430 - 100, `dragged toward the top, the mark rises (its centre at y ${up.y.toFixed(0)}, from 430)`);
-  // The timing split: a short tear (tear: .2) is already dragging at e = .5; a long one (tear: .8) is still tearing.
-  assert.ok(markIn(drawn({type: 'torn', tear: .2}, .5, {from: marked}).data).x < 1100, 'a short tear: dragging by half way');
-  assert.deepEqual(markIn(drawn({type: 'torn', tear: .8}, .5, {from: marked}).data), home, 'a long tear: still tearing, the mark in place');
+test('torn: a slow peel — behind the moving rip the old picture is gone and the new one shows, the flap carries the old picture, the edge is paper', () => {
+  const p = readEntrance('torn', 'x').p, at = e => tornAt(e, p);
+  // The rip runs one way only, at a seeded, uneven pace: slow to start, catching in stutters.
+  const pace = tearPace(5), xs = Array.from({length: 201}, (_, i) => pace(i / 200)), steps = xs.slice(1).map((x, i) => x - xs[i]);
+  assert.ok(steps.every(d => d >= 0), 'never back');
+  assert.ok(pace(.1) < .06 && pace(.5) > .3 && pace(.5) < .7, `slow to start (${pace(.1).toFixed(3)} by a tenth of the rip), quicker after (${pace(.5).toFixed(3)} by half)`);
+  assert.ok(steps.slice(30, 170).some(d => d < .25 / 200), 'it catches: somewhere in the middle the rip all but stops');
+  assert.deepEqual(xs, Array.from({length: 201}, (_, i) => tearPace(5)(i / 200)), 'the same seed, the same pace');
+  assert.notEqual(tearPace(6)(.5), pace(.5), 'another seed, another pace');
+  for (const e of [.2, .4, .6, .8]) assert.ok(at(e).f < at(e + .05).f, 'the front moves on');
+  // At every moment, on every row: behind the curl only the new picture; ahead of the front only the old one; and the
+  // edge between is paper and shade, never a dark line (no pixel there without a bright channel).
+  for (const e of [.2, .35, .5, .65]) {
+    const {f, r, lift} = at(e), frame = drawn('torn', e);
+    let core = 0;
+    for (const y of [60, 250, 450, 650, 840]) {
+      const front = f + .18 * (y - 450), behind = front - lift - 2 * r - 70;
+      for (let x = 4; x < Math.min(1596, behind); x += 23) assert.ok(near(frame.px(x, y), BLUE, 40), `e ${e}: behind the curl at (${x}, ${y}), the new picture (${frame.px(x, y)})`);
+      for (let x = Math.max(4, Math.ceil(front + 40)); x < 1596; x += 23) assert.deepEqual(frame.px(x, y), RED, `e ${e}: ahead of the front at (${x}, ${y}), the old picture`);
+      for (let x = Math.max(0, Math.floor(behind)); x < Math.min(1600, front + 40); x += 2) {
+        const c = frame.px(x, y);
+        assert.ok(Math.max(...c) >= 70, `e ${e}: the torn edge and the curl at (${x}, ${y}) are paper and shade, not a dark line (${c})`);
+        if (c.every(v => v >= 235)) core++;
+      }
+    }
+    assert.ok(core > 3, `e ${e}: the white fibrous core shows along the tear (${core} samples)`);
+  }
+  // The flap carries the old picture as it lifts: a green mark lying just behind the front shows on the lifting strip,
+  // squeezed toward the front, off its own place — on every row, the slanted front's own (top, middle, bottom).
+  for (const [y0, y1] of [[40, 120], [400, 500], [780, 860]]) {
+    const yMid = (y0 + y1) / 2, front = e => at(e).f + .18 * (yMid - 450), x0 = 600 + .18 * (yMid - 450);
+    const marked = c => { solid(RED)(c); c.fillStyle = '#00ff00'; c.fillRect(x0, y0, 20, y1 - y0); };
+    const greenIn = data => { let n = 0, x = 0; for (let i = 0; i < data.length; i += 4) if (data[i + 1] > 150 && data[i] < 110 && data[i + 2] < 110) { n++; x += (i / 4) % (1600 * S); } return {n, x: n ? x / n / S : null}; };
+    let lo = 0, hi = .9;
+    for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (front(m) < x0 + 40) lo = m; else hi = m; }
+    const carried = greenIn(drawn('torn', hi, {from: marked}).data), {lift} = at(hi);
+    assert.ok(carried.n > 0 && carried.x > x0 + 10 + 5 && carried.x > front(hi) - lift, `rows ${y0}–${y1}: the mark rides the lifting flap, squeezed toward the front (centre ${carried.x?.toFixed(1)}, from ${(x0 + 10).toFixed(1)}; front ${front(hi).toFixed(1)})`);
+  }
+  // Never a dark line: under a near-black title card, the strip from the lifting flap to past the front is paper and
+  // the old picture only — the card never shows through the tear.
+  const dark = c => { c.fillStyle = '#141414'; c.fillRect(0, 0, 1600, 900); };
+  for (const e of [.25, .45, .65]) {
+    const {f, lift} = at(e), frame = drawn('torn', e, {to: dark});
+    for (const y of [60, 250, 450, 650, 840]) {
+      const front = f + .18 * (y - 450);
+      for (let x = Math.max(0, Math.ceil(front - lift + 4)); x < Math.min(1600, front + 40); x += 2) assert.ok(Math.max(...frame.px(x, y)) >= 70, `e ${e}: at (${x}, ${y}) the tear is paper, not the dark card showing through (${frame.px(x, y)})`);
+    }
+  }
+  // drift: the new picture comes along with the tear, set back by up to `drift` while it is uncovered, home at the end.
+  const titled = c => { solid(BLUE)(c); c.fillStyle = '#ffff00'; c.fillRect(200, 400, 60, 100); };
+  const yellowAt = (enter, e) => { const d = drawn(enter, e, {to: titled}).data; let n = 0, x = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 200 && d[i + 1] > 200 && d[i + 2] < 80) { n++; x += (i / 4) % (1600 * S); } return x / n / S; };
+  const still = yellowAt('torn', .6), along = yellowAt({type: 'torn', drift: 40}, .6), home = yellowAt({type: 'torn', drift: 40}, .97);
+  assert.ok(Math.abs(still - 229.5) < 2 && along < still - 4, `with drift the title sits back while uncovered (${along.toFixed(1)} against ${still.toFixed(1)})`);
+  assert.ok(Math.abs(home - still) < 3, `and comes home with the tear, settling (${home.toFixed(1)})`);
+  // drift never uncovers the ground behind the new picture, nor does the settle at an edge: drawn over a vivid green
+  // ground, in every direction, no green shows at any moment.
+  const vivid = validateTheme({...structuredClone(paper), palette: {...paper.palette, bg: '#00ff00'}});
+  for (const direction of ['right', 'left', 'top', 'bottom']) for (const drift of [0, 40, 200]) for (let e = .1; e < 1; e += .035) {
+    assert.equal(share(drawn({type: 'torn', direction, drift}, e, {theme: vivid}).data, [0, 255, 0], 30), 0, `${direction}, drift ${drift}, e ${e.toFixed(3)}: no ground shows`);
+  }
+  // The other way: from the right edge, the new picture uncovered on the right first.
+  const {f} = at(.5), mirrored = drawn({type: 'torn', direction: 'left'}, .5);
+  assert.deepEqual(mirrored.px(1590, 450), BLUE); assert.deepEqual(mirrored.px(Math.max(4, 1600 - f - 60), 450), RED);
 });
 
 test('paper and ink are the theme\'s; a colour setting at null is the theme\'s own, and a recipe may name one', () => {
@@ -155,8 +191,9 @@ test('paper and ink are the theme\'s; a colour setting at null is the theme\'s o
 
 test('bad settings refuse, naming what each one takes', () => {
   const refuses = (enter, re) => assert.throws(() => readEntrance(enter, 'stage b'), re);
-  refuses({type: 'torn', direction: 'up'}, /stage b: enter.direction must be left, right, top, bottom/);
-  refuses({type: 'torn', tear: .95}, /enter.tear must be a number 0.2–0.8/);
+  refuses({type: 'torn', direction: 'up'}, /stage b: enter.direction must be right, left, bottom, top/);
+  refuses({type: 'torn', drift: 300}, /enter.drift must be a number 0–200/);
+  refuses({type: 'torn', tear: .5}, /enter has unsupported key tear \(a torn takes seconds, ease, sound, direction, drift, seed\)/);
   refuses({type: 'torn', seed: -1}, /enter.seed must be a number 0–10000/);
   refuses({type: 'eraser', color: 'slate'}, /enter.color must be a hex colour such as "#000000"/);
   refuses({type: 'inkBleed', at: [220]}, /enter.at must be \[x, y\]/);
@@ -168,7 +205,7 @@ test('bad settings refuse, naming what each one takes', () => {
   refuses({type: 'fold', line: 'diagonal'}, /enter.line must be horizontal, vertical/);
   refuses({type: 'morph', fromBox: [300, 300, 100, 100]}, /enter.fromBox must be a box \[x0, y0, x1, y1\] on the 1600×900 frame, with x0 < x1 and y0 < y1/);
   refuses({type: 'morph', toBox: [0, 0, 1]}, /enter.toBox must be a box/);
-  refuses({type: 'torn', at: [1, 2]}, /enter has unsupported key at \(a torn takes seconds, ease, sound, direction, tear, seed\)/);
+  refuses({type: 'torn', at: [1, 2]}, /enter has unsupported key at \(a torn takes seconds, ease, sound, direction, drift, seed\)/);
   refuses({type: 'glassSheet', ease: 'spring'}, /a glassSheet cannot take the ease "spring"/);
   // A kit's own transition may take the new kinds of setting too: a box, and a colour that is the theme's.
   const kit = {name: 'k', transitions: {frame: {family: 'x', seconds: 1, ease: 'linear', sound: null, params: {box: {box: true, default: [0, 0, 10, 10]}, ink: {color: true, default: null}}, draw: (c, {from}) => from(c)}}};
@@ -200,9 +237,9 @@ const pixel = (f, t, x, y) => { const c = createCanvas(1600, 900), ctx = c.getCo
 test('in a film: a recipe names a paper transition like any other, on the film clock, with its sound', async () => {
   const f = await film({type: 'torn', seconds: 1, ease: 'linear'}), b = f.clock.start('b'), t0 = b - .75;
   assert.deepEqual(pixel(f, t0, 800, 450), RED, 'the first frame of the change: the old world');
-  assert.deepEqual(pixel(f, t0 + .75, 100, 450), RED); assert.deepEqual(pixel(f, t0 + .75, 1500, 450), BLUE, 'dragging left: the new world uncovered on the right');
+  assert.deepEqual(pixel(f, t0 + .5, 100, 450), BLUE); assert.deepEqual(pixel(f, t0 + .5, 1550, 450), RED, 'ripping right: the new world uncovered on the left first');
   assert.deepEqual(pixel(f, b + .3, 800, 450), BLUE);
-  assert.ok(f.sounds.some(s => s.type === 'slide' && Math.abs(s.time - t0) < 1e-9), 'heard where it starts');
+  assert.ok(f.sounds.some(s => s.type === 'crumble' && Math.abs(s.time - t0) < 1e-9), 'heard where it starts');
   const ink = await film({type: 'inkBleed', at: [800, 450], sound: false});
   assert.ok(!ink.sounds.some(s => s.type === 'whoosh'), 'sound: false');
   await assert.rejects(film({type: 'morph', region: 'door'}), /stage b: the morph looks for "door" in the picture it leaves, and nothing in the picture is called "door"/);

@@ -318,7 +318,7 @@ test('in a film: a move a whole picture cannot make refuses, naming the ones it 
   await assert.rejects(film({move: 'pop-out'}), can);
   await assert.rejects(film({move: 'pop', ease: 'out'}), /stage b: enter has unsupported key ease \(a move entrance takes move, seconds, feel, sound; its curve is the move's, or its feel's\)/);
   await assert.rejects(film({move: 'pop', type: 'push'}), /enter has unsupported key type/);
-  await assert.rejects(film({move: 'scale-in', seconds: .1}), /stage b: enter.seconds must be between 0.2 and 3 \(the move "scale-in" takes 0.3 on its own\)/);
+  await assert.rejects(film({move: 'scale-in', seconds: .1}), /stage b: enter.seconds must be between 0.2 and 4 \(the move "scale-in" takes 0.3 on its own\)/);
   await assert.rejects(film({move: 'pop', feel: 'wobbly'}), /stage b: enter.feel: feel is a move feel/);
   await assert.rejects(film({move: 'nope'}), /stage b: enter.move: no move called "nope"/);
   assert.throws(() => readEntrance('dissolve', 'stage b'), /\(not "dissolve"\); or \{"move": …\}, a move a whole picture can make: fade-slide, /);
