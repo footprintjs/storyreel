@@ -267,6 +267,9 @@ export const TRANSITIONS = deepFreeze({
 });
 export const TRANSITION_NAMES = Object.freeze(Object.keys(TRANSITIONS));
 const COMMON = ['type', 'seconds', 'ease', 'sound'];
+/** How long a change of picture may take, in seconds: the one range (an entrance's, a move entrance's, a kit transition's). */
+const SECONDS = Object.freeze([.2, 4]);
+const inRange = s => typeof s === 'number' && s >= SECONDS[0] && s <= SECONDS[1];
 /** The names no setting may take: every entrance's own keys, and `move` (an entrance with a move is a move entrance). */
 const RESERVED = [...COMMON, 'move'];
 /** The setting kinds written as a flag ({point: true}); the others carry their choices or range. */
@@ -296,7 +299,7 @@ export function readEntrance(enter, where, catalog = TRANSITIONS) {
   const allowed = [...COMMON, ...Object.keys(params)];
   for (const key of Object.keys(e)) if (!allowed.includes(key)) throw new Error(`${where}: enter has unsupported key ${key} (a ${e.type} takes ${allowed.slice(1).join(', ')})`);
   const seconds = e.seconds ?? tr.seconds;
-  if (!(typeof seconds === 'number' && seconds >= .2 && seconds <= 3)) throw new Error(`${where}: enter.seconds must be between 0.2 and 3`);
+  if (!inRange(seconds)) throw new Error(`${where}: enter.seconds must be between ${SECONDS[0]} and ${SECONDS[1]}`);
   const easeName = e.ease ?? tr.ease, ease = easeNamed(easeName, `${where}: enter.ease`);
   if (overshoots(easeName) && !tr.overshoot) throw new Error(`${where}: a ${e.type} cannot take the ease "${easeName}" (it goes past the end, and the frame's edge would show); ${Object.entries(catalog).filter(([, t]) => t.overshoot).map(([n]) => n).join(', ')} can`);
   const sound = entranceSound(e.sound, tr.sound, where);
@@ -334,7 +337,7 @@ function readMoveEntrance(e, where) {
   const why = notForPictures(move);
   if (why) throw new Error(`${where}: a shot cannot enter with "${move.name}": ${why}; the moves a whole picture can make are ${PICTURE_MOVES.join(', ')}`);
   const seconds = e.seconds ?? move.seconds;
-  if (!(typeof seconds === 'number' && seconds >= .2 && seconds <= 3)) throw new Error(`${where}: enter.seconds must be between 0.2 and 3 (the move "${move.name}" takes ${move.seconds} on its own)`);
+  if (!inRange(seconds)) throw new Error(`${where}: enter.seconds must be between ${SECONDS[0]} and ${SECONDS[1]} (the move "${move.name}" takes ${move.seconds} on its own)`);
   if (e.feel !== undefined) { try { moveAt(move, 0, {feel: e.feel}); } catch (err) { throw new Error(`${where}: enter.feel: ${err.message.replace(/^moveAt: /, '')}`, {cause: err}); } }
   const sound = entranceSound(e.sound, null, where);
   const feel = e.feel ?? null;
@@ -494,7 +497,7 @@ function checkTransition(def, who) {
   for (const key of Object.keys(def)) if (!DEF_KEYS.includes(key)) throw new Error(`${who} has unsupported key ${key} (a transition has ${DEF_KEYS.join(', ')})`);
   if (typeof def.family !== 'string' || !def.family.trim()) throw new Error(`${who} needs a family (e.g. "wipe"; a browser groups by it)`);
   if (typeof def.draw !== 'function') throw new Error(`${who} needs draw(ctx, {e, from, to, p, ghost, theme, boxes})`);
-  if (!(typeof def.seconds === 'number' && def.seconds >= .2 && def.seconds <= 3)) throw new Error(`${who}: seconds must be between 0.2 and 3`);
+  if (!inRange(def.seconds)) throw new Error(`${who}: seconds must be between ${SECONDS[0]} and ${SECONDS[1]}`);
   easeNamed(def.ease, `${who}: ease`);
   if (def.sound !== null && !SOUND_NAMES.includes(def.sound)) throw new Error(`${who}: sound must be null or a sound: ${SOUND_NAMES.join(', ')}`);
   if (def.overshoot !== undefined && typeof def.overshoot !== 'boolean') throw new Error(`${who}: overshoot must be true or false`);

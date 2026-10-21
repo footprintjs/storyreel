@@ -38,5 +38,16 @@ export function foundRecord(r) {
   };
 }
 
+/**
+ * A found sound event's trim checked against its recording (record.seconds, as ffprobe measured it at add): {from, to}
+ * in seconds, `to` null for the recording's end. The shape (numbers, to after from) is sound.mjs · checkSound's.
+ */
+export function trimOf(event, record) {
+  const who = `the found sound "${record.name}"`, length = record.seconds, from = event.from ?? 0, to = event.to ?? null;
+  if (length !== null && from >= length) throw new Error(`${who} is ${length.toFixed(2)} s long, and its "from" (${from}) is past its end: give "from" under ${length.toFixed(2)}`);
+  if (length !== null && to !== null && to > length + .005) throw new Error(`${who} is ${length.toFixed(2)} s long, and its "to" (${to}) is past its end: give "to" at most ${length.toFixed(2)}, or leave it out to play to the end`);
+  return {from, to: to ?? length};
+}
+
 /** The command that fetches a sound again, for a refusal to name. */
 export const addCommand = record => `npx storyreel sounds add ${record?.id && /^[\w-]{1,64}$/.test(record.id) ? record.id : '<id>'} --as ${isFoundName(record?.name) ? record.name : '<name>'}`;

@@ -40,7 +40,7 @@ import {view, compose, about, through, back} from './regions.mjs';
 import {tooShortToRead, readingMode, readingPace} from './reading.mjs';
 import {readIntent, readContinuity, checkContinuity, tooMuchTooFast, distinctMoments, watchingMode, watchingText, WATCHING, readReads, checkReads} from './shots.mjs';
 import {checkSound, soundsByScene, MAX_SOUNDS_PER_SCENE, FOUND} from './sound.mjs';
-import {readLibrary, useFound} from './found/index.mjs';
+import {readLibrary, useFound, trimOf} from './found/index.mjs';
 import {listeningMode, changeSounds, listeningText} from './listening.mjs';
 import {step, drainSteps, recordSteps} from './record.mjs';
 import {readEntrance, transitionCatalog, ghostPainter, layerCrossfader, CUT} from './transitions.mjs';
@@ -139,9 +139,13 @@ function foundSoundsUsed(sounds, spec, root) {
   const library = readLibrary(root);
   // Each keeps the film's root and the rule it was checked by, so the render checks it again the same way (render.mjs ·
   // mixFound) — through the root, never a folder guessed from the file's real path (sounds/ may be a link inside it).
-  const at = path.resolve(root);
-  return Object.freeze(names.map(name => Object.freeze({...useFound(at, name, {library, allowShareAlike}), root: at, allowShareAlike})));
+  const at = path.resolve(root), used = names.map(name => Object.freeze({...useFound(at, name, {library, allowShareAlike}), root: at, allowShareAlike}));
+  // Every trim inside its recording (found/record.mjs · trimOf), refused here, not after the frames are drawn.
+  for (const s of sounds) if (s.type === FOUND) trimOf(s, used.find(u => u.name === s.name).record);
+  return Object.freeze(used);
 }
+/** What a found sound event keeps: its name, and the span of its recording when it is trimmed. */
+const foundPart = s => ({name: s.name, ...(s.from !== undefined ? {from: s.from} : {}), ...(s.to !== undefined ? {to: s.to} : {})});
 /** A change's sound for the listening check: its name, or "found sound "<name>"" (listening.mjs compares and says them). */
 const soundLabel = s => (s && typeof s === 'object' ? `found sound "${s.name}"` : s);
 
@@ -989,13 +993,13 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   // checked by name and gain here (sound.mjs · checkSound), and keep their gain.
   const sounds = [];
   // A found sound (found/) keeps its name: {time, type: 'found', name, gain?}.
-  const add = (time, type, gain, name) => { if (Number.isFinite(time) && time >= 0 && time < clock.total) sounds.push({time, type, ...(gain === undefined ? {} : {gain}), ...(type === FOUND ? {name} : {})}); };
-  const addKitSounds = (list, who) => { for (const s of list ?? []) { checkSound(s, who); add(s.time, s.type, s.gain, s.name); } };
+  const add = (time, type, gain, found = {}) => { if (Number.isFinite(time) && time >= 0 && time < clock.total) sounds.push({time, type, ...(gain === undefined ? {} : {gain}), ...(type === FOUND ? foundPart(found) : {})}); };
+  const addKitSounds = (list, who) => { for (const s of list ?? []) { checkSound(s, who); add(s.time, s.type, s.gain, s); } };
   addKitSounds(story.sounds, `the story kit "${storySpec.kit}"`);
   if (push) { add(boardEnd, 'slide'); add(MOVE0, 'slide'); }
   for (const shot of shots.slice(1)) {
     const s = shot.enter.sound;   // a sound's name, or a found sound {type: 'found', name, gain?} (transitions.mjs · entranceSound)
-    if (s) add(shot.start - shot.enter.lead, s.type ?? s, s.gain, s.name);
+    if (s) add(shot.start - shot.enter.lead, s.type ?? s, s.gain, s);
   }
   for (const st of stages) {
     if (st.world) addKitSounds(st.world.instance.sounds, `the story kit "${st.world.kit}" (stage ${st.scene})`);

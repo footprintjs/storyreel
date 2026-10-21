@@ -20,6 +20,6 @@
 export {FOUND, isFoundName, checkFoundName} from './name.mjs';
 export {plainText, shown} from './text.mjs';
 export {LICENCES, usableLicences, licenceName, licenceUrl, licenceVersion, licenceVerdict} from './licences.mjs';
-export {FOUND_LIMITS, AUDIO_EXTENSIONS, AUDIO_ONLY, TEXT, foundRecord, addCommand} from './record.mjs';
+export {FOUND_LIMITS, AUDIO_EXTENSIONS, AUDIO_ONLY, TEXT, foundRecord, addCommand, trimOf} from './record.mjs';
 export {SOUNDS_FOLDER, LIBRARY_FILE, readLibrary, libraryText, sha256Of, useFound, checkFoundFile} from './library.mjs';
 export {creditLines} from './credits.mjs';

@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- **`torn` is a slow peel, rebuilt** (it was a quick tear, then a drag). A rip runs across the old picture at a seeded,
+  uneven pace: slow to start, catching in small stutters. Behind it the torn flap peels up, still showing the old
+  picture as it lifts, then curls over to show the paper's back, and casts a soft shadow. The new picture is uncovered
+  right behind the curl; the old one is gone there, never left visible beside a line. The torn edge is two-tone paper:
+  the surface, then a white fibrous core with stray fibres. At the end the curl is carried off and the new picture
+  settles. 3.2 s by default.
+  - **Breaking:** `direction` is now the way the rip travels (`right`, from the left edge, is the default), no longer
+    the edge a sheet is dragged toward. `tear` is gone: there is no separate drag phase. `drift` (px, default 0) brings
+    the new picture in with the tear. The default sound is `crumble`.
+- **A change of picture may take up to 4 s** (was 3): one range for an entrance, a move entrance and a kit's transition.
+- **Found sounds can be trimmed:** `from` / `to`, seconds into the recording, on a found sound event or an entrance's
+  sound. A span outside the recording refuses when the film is built, naming its length. The mix cuts the span (with
+  10 ms fades) and turns it down by its own peak, and the listening check measures what plays.
+
 ## 0.16.0 — 2026-10-20
 
 - **Found sounds: recorded effects, fetched once.** `npx storyreel sounds search "page turn"` lists Openverse's

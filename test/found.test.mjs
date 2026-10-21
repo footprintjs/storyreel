@@ -25,11 +25,11 @@ function filmWith(sounds, t) {
   return root;
 }
 /** Put one sound into a film's library (as sounds add would): its file and its record. */
-function addTo(root, name, {license = 'by', version = '4.0', bytes = WAV, title = `A ${name}`, attribution, landing} = {}) {
+function addTo(root, name, {license = 'by', version = '4.0', bytes = WAV, title = `A ${name}`, attribution, landing, seconds = .5} = {}) {
   const dir = path.join(root, 'sounds'), file = path.join(dir, 'sounds.json'), library = readLibrary(root);
   writeFileSync(path.join(dir, `${name}.wav`), bytes);
   const record = foundRecord({name, file: `${name}.wav`, from: 'openverse', id: ID, title, creator: 'a-maker', license, licenseVersion: version, attribution, landing,
-    source: 'freesound', url: 'https://cdn.example.org/x.wav', seconds: .5, sha256: sha256Of(bytes), bytes: bytes.length});
+    source: 'freesound', url: 'https://cdn.example.org/x.wav', seconds, sha256: sha256Of(bytes), bytes: bytes.length});
   writeFileSync(file, libraryText({...library, [name]: record}));
 }
 /** A mono 48 kHz PCM16 WAV of a sine at `amplitude` (0..1) for `seconds`. */
@@ -193,6 +193,30 @@ test('the mix: each found sound at its second, turned down to the effects\' ceil
   assert.ok(loud <= ceiling * 1.02 && loud >= ceiling * .9, `the loud one turned down to the -20 dBFS ceiling (peak ${loud.toFixed(4)})`);
   assert.ok(Math.abs(quiet - .01) < .002, `the quiet one left as it is, never boosted (peak ${quiet.toFixed(4)})`);
   assert.equal(peakIn(fx, 1.35, 2.49), 0, 'and silence between them');
+});
+
+test('a found sound trimmed with from/to: the span checked against its recording when the film is built', async t => {
+  const root = filmWith({long: {bytes: sine(.05, 2), seconds: 2}}, t);
+  const trimmed = (sound, enterSound) => compileFilm({storyboard, timings, root, kits: [world('red', '#ff0000', [sound]), world('blue', '#0000ff')],
+    recipe: {story: {kit: 'red'}, stages: [{type: 'world', scene: 'b', enter: {type: 'fade', ...(enterSound ? {sound: enterSound} : {})}, world: {kit: 'blue'}}]}});
+  const ok = await trimmed({time: 1, type: 'found', name: 'long', from: .5, to: .8}, {type: 'found', name: 'long', from: 1.2});
+  assert.deepEqual(ok.sounds.filter(s => s.type === 'found').map(s => [s.from, s.to]), [[.5, .8], [1.2, undefined]], 'the span rides with each sound');
+  await assert.rejects(trimmed({time: 1, type: 'found', name: 'long', from: 2.5}), /the found sound "long" is 2\.00 s long, and its "from" \(2\.5\) is past its end: give "from" under 2\.00/);
+  await assert.rejects(trimmed({time: 1, type: 'found', name: 'long', to: 3}), /the found sound "long" is 2\.00 s long, and its "to" \(3\) is past its end: give "to" at most 2\.00, or leave it out to play to the end/);
+  await assert.rejects(trimmed({time: 1, type: 'found', name: 'long', from: 1, to: .5}), /trims the found sound "long" with from 1 and to 0\.5: give seconds into the recording, from 0 or more, to after from/);
+  await assert.rejects(trimmed({time: 1, type: 'found', name: 'long'}, {type: 'found', name: 'long', to: -1}), /enter\.sound must be false or a sound: .*or a found sound: \{"type": "found", "name": "page-turn"/);
+  assert.deepEqual(readSoundChoice({type: 'found', name: 'tear', from: 1.35, to: 4.25}), {type: 'found', name: 'tear', from: 1.35, to: 4.25});
+});
+
+test('the mix plays only a trimmed span: at its second, for its length, faded at the cuts', {skip: ffmpeg ? false : 'needs ffmpeg'}, async t => {
+  const root = filmWith({long: {bytes: sine(.05, 2), seconds: 2}}, t), work = tempDir('found-trim', t);
+  const f = await compileFilm({storyboard, timings, root, kits: [world('red', '#ff0000', [{time: 1, type: 'found', name: 'long', from: .5, to: .8}]), world('blue', '#0000ff')],
+    recipe: {story: {kit: 'red'}, stages: [{type: 'world', scene: 'b', enter: 'cut', world: {kit: 'blue'}}]}});
+  await renderFilm({film: f, storyboard, timings, out: path.join(tempDir('found-trim-out', t), 'film.mp4'), width: 160, height: 90, fps: 4, work});
+  const fx = samplesOf(readFileSync(path.join(work, 'film-effects.wav')));
+  assert.equal(peakIn(fx, 0, .99), 0, 'nothing before its second');
+  assert.ok(Math.abs(peakIn(fx, 1.02, 1.28) - .05) < .006, `the span plays at its own level (quiet: never turned up) (${peakIn(fx, 1.02, 1.28).toFixed(4)})`);
+  assert.equal(peakIn(fx, 1.32, 3), 0, 'and stops after its 0.3 s, not the recording\'s 2 s');
 });
 
 test('the same found sound on two changes in a row is the same cue twice, as the listening check says of any sound', async t => {
