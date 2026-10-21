@@ -250,7 +250,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test test/*.test.mjs",
+    "test": "node --import ./test/fonts.mjs --test test/*.test.mjs",
     "test:temp": "node scripts/temp-hygiene.mjs",
     "test:skills:render": "node scripts/temp-hygiene.mjs test/skills-render.mjs"
   },
