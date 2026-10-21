@@ -84,16 +84,20 @@ export function segmentedVideo({store, recipe = null, code, kitsCode = null, joi
   if (!(typeof minSeconds === 'number' && minSeconds >= .1 && minSeconds <= 60)) throw new Error(`segmentedVideo: minSeconds is the shortest piece, 0.1–60 seconds, not ${JSON.stringify(minSeconds)}`);
   if (code !== undefined && code !== null && typeof code !== 'string' && typeof code !== 'function') throw new Error('segmentedVideo: code is a fingerprint (codeFingerprint), code per piece (sourceCode), null, or left out (the kits\' own sources)');
   if (kitsCode !== null && typeof kitsCode !== 'string') throw new Error('segmentedVideo: kitsCode is a fingerprint of all the kits\' code (codeFingerprint([kitsFolder])), or left out');
-  // At most `parallel` pieces drawn at once, however many the caller starts (a fan-out starts them all);
-  // once one fails, the others stop before drawing any more (a failed render keeps nothing half made).
-  let running = 0, failed = null, made = 0, previous = null, keeping = true, pieceCode = null; const waiting = [];
+  // At most `parallel` pieces drawn at once, however many the caller starts (a fan-out starts them all), across every
+  // render this strategy serves. What belongs to one render is kept by its job (a strategy shared by two renders at once
+  // never mixes them): once one of its pieces fails, its others stop before drawing more (a failed render keeps nothing
+  // half made); whether its pieces are kept; its code; what each slot was last drawn from.
+  let running = 0, made = 0; const waiting = [], renders = new WeakMap();
   const slot = async () => { if (running >= parallel) await new Promise(r => waiting.push(r)); running++; };
   const free = () => { running--; waiting.shift()?.(); };
-  const stopIfFailed = seg => { if (failed) throw new Error(`segment ${seg.index} was not drawn: segment ${failed.index} failed (${failed.message})`); };
+  const of = job => { if (!renders.has(job)) throw new Error('segmentedVideo: plan the render (plan(job)) before drawing its pieces'); return renders.get(job); };
+  const stopIfFailed = (job, seg) => { const {failed} = of(job); if (failed) throw new Error(`segment ${seg.index} was not drawn: segment ${failed.index} failed (${failed.message})`); };
   /** What each slot of this film was last drawn from (the store's newest manifest per slot), read once a render. */
-  const lastDrawn = seg => {
-    previous ??= typeof store.newest === 'function' ? store.newest(m => (m.film === seg.film ? m.slot : null)) : new Map();
-    return previous.get(seg.slot)?.parts ?? null;
+  const lastDrawn = (job, seg) => {
+    const r = of(job);
+    r.previous ??= typeof store.newest === 'function' ? store.newest(m => (m.film === seg.film ? m.slot : null)) : new Map();
+    return r.previous.get(seg.slot)?.parts ?? null;
   };
   return {
     name: 'segments',
@@ -101,7 +105,7 @@ export function segmentedVideo({store, recipe = null, code, kitsCode = null, joi
     plan(job) {
       if (job.withIntro) throw new Error('segmentedVideo: an intro is not kept in segments; render it with wholeVideo(), or leave the intro out');
       if (job.start !== 0 || job.to < job.film.total - 1e-6) throw new Error('segmentedVideo: segments cover the whole film; render a part (from, to) with wholeVideo()');
-      failed = null; previous = null; keeping = true;
+      const render = {failed: null, previous: null, keeping: true, pieceCode: null}; renders.set(job, render);
       const {film} = job, keyRecipe = recipe ?? film.recipe;
       if (!keyRecipe) throw new Error('segmentedVideo: give the recipe (this film was not compiled with one StoryReel keeps: compile it with StoryReel 0.18 or later)');
       const recallTimes = [...new Set(film.beats.filter(b => b.path?.startsWith('recalls')).map(b => b.t))];
@@ -109,7 +113,7 @@ export function segmentedVideo({store, recipe = null, code, kitsCode = null, joi
       // a recap or a teaser draws, up to full screen: hashed at full size).
       const extra = {poster: job.poster === null || job.posterFrame === false ? null : frameHashes(film, {times: [+job.poster.toFixed(3)], width: 192}),
         recalls: recallTimes.length ? frameHashes(film, {times: recallTimes, width: 1600}) : null};
-      pieceCode = code !== undefined ? code : kitCode(film, {fallback: kitsCode});
+      const pieceCode = render.pieceCode = code !== undefined ? code : kitCode(film, {fallback: kitsCode});
       const id = filmId(film);
       // The frame settings, and the FFmpeg build that encodes the pieces (they are joined by copying: one set of H.264
       // parameters for the whole MP4, so a piece another build encoded is drawn again, never joined).
@@ -127,12 +131,12 @@ export function segmentedVideo({store, recipe = null, code, kitsCode = null, joi
       const count = new Map(); for (const p of keyed) count.set(p.key, (count.get(p.key) ?? 0) + 1);
       // Code changed on disk after this process started is not the code it draws with: its pieces are drawn, not kept.
       const newest = Math.max(ownDrawingCode().newest, typeof pieceCode === 'function' ? pieceCode.newest ?? 0 : coveredNewest(pieceCode), coveredNewest(kitsCode));
-      keeping = !(newest > performance.timeOrigin);
+      render.keeping = !(newest > performance.timeOrigin);
       return keyed.map(p => (count.get(p.key) > 1 ? {...p, key: hex24(`${p.key}|${p.slot}`)} : p));
     },
     /** One piece: reused when its key and its spot check match, drawn again otherwise. */
     async one(job, seg) {
-      stopIfFailed(seg);
+      stopIfFailed(job, seg);
       const report = {index: seg.index, from: round(seg.from), to: round(seg.to), frames: seg.f1 - seg.f0, scenes: [...seg.scenes], key: seg.key, ...(seg.label ? {label: seg.label} : {})};
       // The piece as it is kept: drawn without the stamp, which the join burns over every frame.
       const hash = job.frameHasher({stamp: false}), hashesAt = offsets => Object.fromEntries(offsets.map(o => [o, hash(seg.f0 + o, {poster: seg.index === 0 && o === 0})]));
@@ -149,19 +153,19 @@ export function segmentedVideo({store, recipe = null, code, kitsCode = null, joi
           : Math.abs((m.from ?? round(seg.from)) - round(seg.from)) > 1e-6 ? 'it moved, and its frames moved with the film\'s clock'   // as the manifest keeps it (rounded)
           : 'its frames changed though its key did not (the key missed something)';
       }
-      why ??= whyDrawn(lastDrawn(seg), seg.parts) ?? 'new';
+      why ??= whyDrawn(lastDrawn(job, seg), seg.parts) ?? 'new';
       await slot();
       try {
-        stopIfFailed(seg);
+        stopIfFailed(job, seg);
         const tmp = path.join(job.work, `segment-${seg.index}-${seg.key}-${process.pid}-${++made}.mp4`);   // in the render's work folder until the store takes it
         await job.encodeFrames({f0: seg.f0, f1: seg.f1, file: tmp, posterFirst: seg.index === 0, stamp: false});
-        if (!keeping) return {...report, status: 'rendered', why, file: tmp};   // drawn with code older than its key: not kept
+        if (!of(job).keeping) return {...report, status: 'rendered', why, file: tmp};   // drawn with code older than its key: not kept
         held(tmp);
         store.put(seg.key, tmp, {key: seg.key, index: seg.index, from: round(seg.from), frames: seg.f1 - seg.f0, scenes: seg.scenes, film: seg.film, slot: seg.slot, ...(seg.label ? {label: seg.label} : {}), parts: seg.parts,
           samples: hashesAt(sampleOffsets(seg, samples, job.fps)), made: new Date().toISOString()});
         return {...report, status: 'rendered', why, file: own};
       } catch (e) {
-        failed ??= {index: seg.index, message: e.message};
+        of(job).failed ??= {index: seg.index, message: e.message};
         throw e;
       } finally { free(); }
     },
@@ -172,13 +176,15 @@ export function segmentedVideo({store, recipe = null, code, kitsCode = null, joi
       await (joiner ?? ffmpegJoin({ffmpeg: job.ffmpeg})).join(done.map(d => d.file), file, {stamp});
       // The store held to its size: the pieces used longest ago go, never one this render used.
       const trimmed = typeof store.trim === 'function' ? store.trim({keep: new Set(done.map(d => d.key))}) : null;
-      const segments = done.map(({file: _f, ...d}) => d), unkeyed = code === undefined && !kitsCode ? unkeyedKits(job.film) : [];
+      const {keeping, pieceCode} = of(job), segments = done.map(({file: _f, ...d}) => d), unkeyed = code === undefined && !kitsCode ? unkeyedKits(job.film) : [];
       const runtime = typeof pieceCode === 'function' ? pieceCode.runtime ?? [] : [];
+      const strategies = [job.film.attentionFrames?.focus?.code, job.film.attentionFrames?.emphasis?.code].some(Boolean);
       // What weakens this render's keys, said where it is read (the line), shortest first.
       const notes = [...(keeping ? [] : ['the code changed on disk after this render started: its pieces were drawn, not kept']),
         ...(code === null ? ['no code fingerprint was given: a change in the kits\' code is caught only by the spot check'] : []),
         ...(unkeyed.length ? [`kit ${unkeyed.join(', ')} says nothing of where its code lives (sources), and no kitsCode was given: an edit to it is caught only by the spot check`] : []),
-        ...(runtime.length ? [`kit code loaded at run time is in no key (${runtime.slice(0, 3).join('; ')}${runtime.length > 3 ? '; …' : ''}): name those files in sources`] : [])];
+        ...(runtime.length ? [`kit code loaded at run time is in no key (${runtime.slice(0, 3).join('; ')}${runtime.length > 3 ? '; …' : ''}): name those files in sources`] : []),
+        ...(strategies ? ['a focus or emphasis strategy of your own is keyed by its own function\'s text, not by what it calls'] : [])];
       const report = {strategy: 'segments', store: store.dir ?? store.name, reused: segments.filter(s => s.status === 'reused').length, rendered: segments.filter(s => s.status === 'rendered').length,
         ...(notes.length ? {note: notes.join('; ')} : {}), ...(keeping ? {} : {kept: false}),
         ...(trimmed?.evicted?.length ? {evicted: trimmed.evicted.length} : {}), ...(stamp ? {stamp: 'burned at the join'} : {}), segments};

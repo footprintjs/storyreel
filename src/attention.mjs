@@ -120,7 +120,8 @@ function pick(kind, name, builtIn, mine, needs) {
   if (typeof name !== 'string' || !all[name]) throw new Error(`${kind}.strategy must be ${Object.keys(all).map(n => `"${n}"`).join(', ')} (a strategy of your own goes in compileFilm's strategies.${kind}), not ${JSON.stringify(name)}`);
   if (typeof all[name][needs] !== 'function') throw new Error(`${kind} strategy "${name}" must have ${needs}(…)`);
   // A strategy of your own is code the film draws with: its function's text is what a cached piece's key holds of it
-  // (segments/material.mjs). What it imports is not read: keep a strategy self-contained, or key it with makeFilm's code.
+  // (segments/material.mjs). What it calls or imports is in no key — the render's line says so — so keep a strategy
+  // self-contained, or render with whole: true after changing what it uses.
   const custom = Boolean(mine && Object.hasOwn(mine, name));
   return {...all[name], name, ...(custom ? {code: String(all[name][needs])} : {})};
 }

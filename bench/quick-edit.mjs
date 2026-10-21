@@ -16,7 +16,8 @@
  * word re-voiced in the cartoon scene, whose clouds drift on the film clock (every piece of it that moves is drawn
  * again: its spot check sees the clouds move). Each step renders in a fresh process,
  * from a copy of the StoryReel checkout and of the kit that the step edits — the code a render runs is the code on disk.
- * Quote a figure only from a run of this script on a quiet machine; the PR that changes it says which.
+ * Each step reports its wall time and its CPU time (the render and the FFmpeg it runs, from /usr/bin/time): on a busy
+ * machine quote the CPU time. Quote a figure only from a run of this script; the PR that changes it says which.
  */
 import {cpSync, mkdirSync, writeFileSync, readFileSync, symlinkSync, existsSync, mkdtempSync, rmSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
@@ -107,10 +108,15 @@ const drawn = v ? v.segments.filter(s => s.status === 'rendered').reduce((n, s) 
 console.log(JSON.stringify({seconds, frames, drawn, pieces: v ? v.segments.length : 1, reused: v ? v.reused : 0, line: v?.line ?? (v ? v.rendered + ' drawn, ' + v.reused + ' reused' : 'whole')}));
 `;
 writeFileSync(path.join(ws, 'render.mjs'), RENDER);
+// Each render under /usr/bin/time: its CPU seconds (user + system, the render and every FFmpeg it waited for) beside its
+// wall time — CPU time hardly moves when other work shares the machine; wall time does.
+const TIME = existsSync('/usr/bin/time') ? '/usr/bin/time' : null;
 const run = (label, revoiced = []) => {
-  const r = spawnSync(process.execPath, [path.join(ws, 'render.mjs'), ws, mode, label, revoiced.join(','), String(fps)], {encoding: 'utf8', maxBuffer: 1 << 26});
+  const args = [path.join(ws, 'render.mjs'), ws, mode, label, revoiced.join(','), String(fps)];
+  const r = TIME ? spawnSync(TIME, ['-p', process.execPath, ...args], {encoding: 'utf8', maxBuffer: 1 << 26}) : spawnSync(process.execPath, args, {encoding: 'utf8', maxBuffer: 1 << 26});
   if (r.status !== 0) throw new Error(`the render failed (${label}):\n${String(r.stderr).slice(-2000)}`);
-  return JSON.parse(String(r.stdout).trim().split('\n').at(-1));
+  const cpu = ['user', 'sys'].map(k => Number(String(r.stderr).match(new RegExp(`^${k}\\s+([\\d.]+)`, 'm'))?.[1] ?? NaN)).reduce((a, b) => a + b, 0);
+  return {...JSON.parse(String(r.stdout).trim().split('\n').at(-1)), cpu};
 };
 const edit = (file, from, to) => { const f = path.join(ws, file), text = readFileSync(f, 'utf8'); if (!text.includes(from)) throw new Error(`${file}: "${from}" is not there to edit`); writeFileSync(f, text.replace(from, to)); };
 
@@ -127,7 +133,7 @@ const rows = [];
 for (const [what, step] of steps) {
   const r = step();
   rows.push({what, ...r});
-  console.log(`${what}: ${r.drawn} of ${r.frames} frames drawn, ${r.seconds.toFixed(1)} s — ${r.line}`);
+  console.log(`${what}: ${r.drawn} of ${r.frames} frames drawn, ${r.seconds.toFixed(1)} s, ${r.cpu.toFixed(0)} CPU s — ${r.line}`);
 }
-console.log(`\n| step | frames drawn | wall time |\n|---|---|---|\n${rows.map(r => `| ${r.what} | ${r.drawn} of ${r.frames} | ${r.seconds.toFixed(1)} s |`).join('\n')}`);
+console.log(`\n| step | frames drawn | wall time | CPU time |\n|---|---|---|---|\n${rows.map(r => `| ${r.what} | ${r.drawn} of ${r.frames} | ${r.seconds.toFixed(1)} s | ${r.cpu.toFixed(0)} s |`).join('\n')}`);
 if (!flag('out')) rmSync(ws, {recursive: true, force: true});

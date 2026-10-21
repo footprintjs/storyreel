@@ -75,7 +75,12 @@ export function sourceCode(sources, {shared = []} = {}) {
   if (typeof sources !== 'function') throw new Error("sourceCode: sources(entry) names the files that draw a recipe entry (e.g. its shot's module)");
   if (!Array.isArray(shared)) throw new Error('sourceCode: shared is a list of files every segment depends on');
   const read = moduleReader('sourceCode');   // a file's own bytes and what it reads (codegraph.mjs), read once
-  return entries => fileSetHash(read, entries.flatMap(e => (sources(e) ?? []).map(f => asFile(f, 'sourceCode'))), shared.map(f => asFile(f, 'sourceCode')));
+  // The newest change to a file it read (segments.mjs keeps no piece when a keyed file changed after the render started).
+  let newest = 0;
+  const seen = f => { try { newest = Math.max(newest, statSync(f).mtimeMs); } catch { newest = Infinity; } };
+  const code = entries => fileSetHash(read, entries.flatMap(e => (sources(e) ?? []).map(f => asFile(f, 'sourceCode'))), shared.map(f => asFile(f, 'sourceCode')), {seen});
+  Object.defineProperty(code, 'newest', {get: () => newest});
+  return code;
 }
 
 /**

@@ -525,3 +525,20 @@ test('smaller misses review found: a custom strategy\'s code, crop times, a push
     spawnSync('chmod', ['644', file]);
   }
 });
+
+test('review follow-ups: a strategy of your own is named in the line; sourceCode reports its newest file; one strategy serves renders at once without mixing them', {skip: FF}, async t => {
+  const storyboard = {title: 'Look', scenes: [{id: 'a', narration: 'First the red square sits here, quietly, in its corner of the page, for a good long while today.'}]};
+  const box = {name: 'box', sources: {entry: () => []}, story: {compile: () => ({hang: 1, draw: c => { c.fillStyle = '#f3eee3'; c.fillRect(0, 0, 1600, 900); }, regionsAt: () => [{box: [200, 200, 400, 350], path: 'red', label: 'red', name: 'red'}]})}};
+  const timings = evenTimings(storyboard, {wordSeconds: .5});
+  const film = await compileFilm({storyboard, timings, kits: [box], recipe: {story: {kit: 'box'}, focus: {strategy: 'mine', keys: [{at: ['a', 'red square'], on: 'red'}]}}, strategies: {focus: {mine: {show: (c, v, paint) => paint(c)}}}});
+  const made = await renderFilm({film, storyboard, timings, out: path.join(tempDir('mine', t), 'film.mp4'), width: 64, height: 36, fps: 3});
+  assert.match(made.video.line, /note: a focus or emphasis strategy of your own is keyed by its own function's text, not by what it calls/);
+  // sourceCode knows when the files it read last changed (a file written now: newer than this process).
+  const {sourceCode} = await import('../src/segments.mjs'), dir = tempDir('src', t), file = path.join(dir, 'shot.mjs');
+  writeFileSync(file, 'export const shot = 1;\n');
+  const code = sourceCode(() => [file]); code([{}]);
+  assert.ok(code.newest > performance.timeOrigin, 'its newest file is newer than the process: such a render keeps nothing');
+  // One strategy object, two renders: what belongs to each is kept by its job.
+  const video = segmentedVideo({store: folderStore(path.join(dir, 'cache'))});
+  await assert.rejects(video.one({}, {index: 0}), /plan the render \(plan\(job\)\) before drawing its pieces/);
+});
