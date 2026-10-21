@@ -94,11 +94,12 @@ export function asFile(f, who) {
  * package in node_modules by its installed version), `shared` as they are. Each file is named by its folder and name,
  * so the same kit in two checkouts hashes the same.
  */
-export function fileSetHash(read, followed, shared = []) {
+export function fileSetHash(read, followed, shared = [], {seen = null} = {}) {
   const files = new Map(), packages = new Set(), name = f => `${path.basename(path.dirname(f))}/${path.basename(f)}`;
-  const follow = f => { if (files.has(f)) return; const e = read(f); files.set(f, e.hash); e.packages.forEach(p => packages.add(p)); e.files.forEach(follow); };
+  // `seen(file, entry)`, when given, hears of every file read (a caller that keeps their times or what they could not follow).
+  const follow = f => { if (files.has(f)) return; const e = read(f); seen?.(f, e); files.set(f, e.hash); e.packages.forEach(p => packages.add(p)); e.files.forEach(follow); };
   followed.forEach(follow);
-  for (const p of shared) files.set(p, read(p).hash);
+  for (const p of shared) { const e = read(p); seen?.(p, {...e, files: [], unfollowed: [], missing: []}); files.set(p, e.hash); }
   const h = createHash('sha256');
   for (const f of [...files.keys()].sort()) h.update(name(f)).update('\0').update(files.get(f)).update('\0');
   for (const p of [...packages].sort()) h.update(p).update('\0');

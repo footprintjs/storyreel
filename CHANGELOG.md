@@ -28,6 +28,16 @@
 - **Focus, emphasis and an example scene's label are in the keys** of the pieces they reach. Before, a change to
   `recipe.focus` or `recipe.emphasis` was caught only by the spot check. So is the arriving row a blurred frame just
   before an entrance draws.
+- **No two pieces share a file, and the join uses what was checked.** Two pieces of one film whose keys would match
+  (two quiet stretches of a long scene) are told apart by their place. Each piece is held in the render's own working
+  folder (a hard link, or a copy) when it is checked or drawn, so nothing put later changes what is joined.
+- **Code changed after a render started is never kept:** when a file a key reads changed on disk after the process
+  started (the code it draws with is older than its key), the pieces are drawn and not kept, and the line says so.
+- **Keys also hold:** a focus or emphasis strategy of your own (its function's text); a crop's keys (portrait and
+  vertical); a director's push through its ease-out; both rows of an entrance a replayed moment draws; the recalls at
+  full size. With `posterFrame: false` the spot check paints frame 0 as the video shows it. A piece file that cannot be
+  read is drawn again rather than failing the render. What weakens a render's keys is said in the line, not only in
+  `note`: a kit with no `sources`, code it loads at run time, code changed after the start.
 - **The cache trusts nothing it reads back:** hex keys name the files, a link is never read, a manifest must have a
   piece's shape for its key, and the video must be the bytes it recorded (size and SHA-256). A key also holds the
   FFmpeg build that encodes it: pieces are joined by copying, and an MP4 keeps one set of H.264 parameters, so a piece

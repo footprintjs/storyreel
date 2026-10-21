@@ -153,10 +153,11 @@ export function frameEncoder({film, framed, blur, width, height, fps, start, fra
  * poster still when `poster` — so a spot check sees what the piece shows. Each caller makes its own, so parts checked
  * at once never share a canvas.
  */
-export function frameHasher({film, framed, blur, width, height, fps, start, poster, stamp}, {stamp: stamped = true} = {}) {
+export function frameHasher({film, framed, blur, width, height, fps, start, poster, posterFrame = true, stamp}, {stamp: stamped = true} = {}) {
   const canvas = createCanvas(width, height), ctx = canvas.getContext('2d'), paint = makePainter({film, framed, blur, width, height, fps, ctx});
   return (f, {poster: asPoster = false} = {}) => {
-    if (asPoster && poster !== null) paint(poster, {still: true}); else paint(start + f / fps);
+    // The poster is the first frame only when it replaces it (posterFrame): otherwise frame 0 is the film's own.
+    if (asPoster && poster !== null && posterFrame) paint(poster, {still: true}); else paint(start + f / fps);
     drawStamp(ctx, stamped ? stamp : null, width);
     return createHash('sha256').update(canvas.data()).digest('hex').slice(0, 16);
   };

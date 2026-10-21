@@ -39,7 +39,7 @@ const drawsRecalls = entries => entries.some(([, entry]) => entry && JSON.string
  * captions (the layout's caption chunks, when it burns them in), extra ({poster, recalls}: their pixel hashes),
  * drawing (StoryReel's drawing code: segments/drawing.mjs; a test passes another).
  */
-export function segmentMaterial(film, seg, {recipe, storyboard = null, pixels, code = null, fps = 30, margin = 3, captions = null, extra = {}, drawing = ownDrawingCode()}) {
+export function segmentMaterial(film, seg, {recipe, storyboard = null, pixels, code = null, fps = 30, margin = 3, layout = null, captions = layout?.captionChunks ?? null, extra = {}, drawing = ownDrawingCode()}) {
   // The times it draws: its own, the moments it replays (a teaser's rewind, a steps track's rewind cue), and the
   // moments its pictures show when the camera holds or slows the picture (a freeze, a speed ramp: camerawork.mjs ·
   // clockAt) — a piece inside a freeze shows the moment it froze on.
@@ -55,8 +55,9 @@ export function segmentMaterial(film, seg, {recipe, storyboard = null, pixels, c
   // row it leaves (a blurred frame just before an entrance draws its first moment too).
   const half = pixels?.motionBlur ? .5 / fps : 0, drawn = [[seg.f0 / fps - half, (seg.f1 - 1) / fps + half], ...plays.map(r => [r.from - half, r.to + half]), ...(shows ? [[shows[0] - half, shows[1] + half]] : [])];
   const crossing = (film.rows ?? []).map((r, j) => ({r, j})).filter(({r}) => r.enter && drawn.some(([f, t]) => r.from <= t && r.from + (r.enter.seconds ?? 0) >= f && (r.enter.seconds ? r.from < t : true)));
-  const blurred = half ? crossing.flatMap(({r, j}) => [...r.paths, ...(j ? film.rows[j - 1].paths : [])]) : [];
-  const paths = [...new Set([...seg.paths, ...(seg.before ?? []), ...blurred, ...overlays])];
+  // Every entrance it draws brings both rows' entries (a moment it replays may hold one; a blurred frame reaches into one).
+  const entering = crossing.flatMap(({r, j}) => [...r.paths, ...(j ? film.rows[j - 1].paths : [])]);
+  const paths = [...new Set([...seg.paths, ...(seg.before ?? []), ...entering, ...overlays])];
   const entries = paths.map(p => [p, entryAt(recipe, p) ?? null]);
   const {strings = null, data = null, theme = null, files = {}, cast = null} = film.inputs ?? {};
   // The words it shows: only the strings its own entries name (a word changed elsewhere does not redraw it); a film
@@ -93,7 +94,8 @@ export function segmentMaterial(film, seg, {recipe, storyboard = null, pixels, c
     // chunk's edge shows here as the chunk it changed).
     captions: captions ? captions.filter(c => spans.some(([f, t]) => c.start < t + margin && c.end > f - margin)).map(c => [c.text, at(c.start), at(c.end), c.words.map(w => [w.text, at(w.start), at(w.end)])]) : undefined,
     // A camera speed is the whole film's; a push or a cut counts where it happens.
-    notes: (film.notes ?? []).filter(n => n.speed !== undefined || (n.push ? over(n.from, n.to) : near(n.at ?? -Infinity)))
+    // (A push eases back out for `seconds` after its last phrase: notes.mjs · pushAt.)
+    notes: (film.notes ?? []).filter(n => n.speed !== undefined || (n.push ? over(n.from, n.to + (n.seconds ?? 0)) : near(n.at ?? -Infinity)))
       .map(n => ({...n, ...(n.from === undefined ? {} : {from: when(n.from)}), ...(n.to === undefined ? {} : {to: when(n.to)}), ...(n.at === undefined ? {} : {at: when(n.at)})})),
     // The camera's moves that reach it (camerawork.mjs): each from its start until what it drew has gone.
     // (Absent for a film without them, as an absent focus, emphasis or caption band is: no part.)
@@ -103,8 +105,10 @@ export function segmentMaterial(film, seg, {recipe, storyboard = null, pixels, c
     // and the last one before each stretch it draws, by what it shows (a spring adds nothing before its key and has
     // settled long before the margin ends, so an earlier key, or one after the piece, changes none of its frames).
     attention: focus || emphasis ? {
-      focus: focus && {strategy: focus.strategy, feel: focus.feel, safe: focus.safe, keys: reaching(focus.keys).map(k => [k.on, k.size ?? null, round(k.cx), round(k.cy), round(k.z), round(k.sx), round(k.sy), k.box.map(round), round(k.w), when(k.t)])},
-      emphasis: emphasis && {strategy: emphasis.strategy, feel: emphasis.feel, words: reaching(emphasis.words).map(w => [w.text, when(w.t), when(w.next)])}} : undefined,
+      focus: focus && {strategy: focus.strategy, feel: focus.feel, safe: focus.safe, code: focus.code ?? null, keys: reaching(focus.keys).map(k => [k.on, k.size ?? null, round(k.cx), round(k.cy), round(k.z), round(k.sx), round(k.sy), k.box.map(round), round(k.w), when(k.t)])},
+      emphasis: emphasis && {strategy: emphasis.strategy, feel: emphasis.feel, code: emphasis.code ?? null, words: reaching(emphasis.words).map(w => [w.text, when(w.t), when(w.next)])}} : undefined,
+    // The crop of a format that shows part of the frame (layout.mjs · cropKeys): each key near it, and the last before.
+    crop: layout?.cropKeys ? reaching(layout.cropKeys).map(k => [round(k.x), round(k.width), when(k.t)]) : undefined,
     // An example scene's label, while it is up over the piece (claims.mjs · labelSpans).
     labels: (film.claims?.labels ?? []).filter(l => over(l.from, l.to)).map(l => [l.words ?? null, when(l.from), when(l.to)]),
     strings: words, data, theme, files, cast,
@@ -146,7 +150,7 @@ export const segmentKey = (film, seg, options) => pieceKey(film, seg, options).k
 
 /** What each part's change means, said in a few words. */
 export const PART_WHY = Object.freeze({
-  engine: "StoryReel's drawing code changed", code: 'shot code changed', frames: 'its length changed', pixels: 'frame settings changed',
+  engine: "StoryReel's drawing code changed", code: 'shot code changed', frames: 'its length changed', pixels: 'frame settings changed', crop: 'the crop moved',
   entries: 'its recipe entries changed', lines: 'beats moved', words: 'words changed', captions: 'captions changed', notes: 'notes changed',
   camera: 'camera moves changed', attention: 'focus or emphasis changed', labels: 'example label changed', strings: 'on-screen words changed',
   data: 'data changed', theme: 'theme changed', files: 'a file it shows changed', cast: 'the cast changed', poster: 'the poster changed', recalls: 'the recalls changed',

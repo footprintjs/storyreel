@@ -20,7 +20,7 @@
  * A new transition or piece in a catalog module of its own: add its name and file to CATALOG (the test refuses one
  * that is missing). A new module the painter imports that draws nothing: NOT_DRAWING, with why.
  */
-import {realpathSync, existsSync} from 'node:fs';
+import {realpathSync, existsSync, statSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -116,9 +116,13 @@ export function drawingCode({src = SRC, versionOf = installedVersion} = {}) {
   // Every entry read now, with the core: the code as it is when the render starts, whichever entries a piece names.
   const entries = new Map(Object.keys(CATALOG_ENTRIES).map(n => [n, coverOf(n)]));
   const entryCover = name => entries.get(name) ?? null;
+  // When the newest of these files was last changed: a render whose code changed on disk after its process started draws
+  // with the code it loaded, not the code a key names, and so keeps none of its pieces (segments.mjs).
+  const newest = Math.max(0, ...[...core.files, ...[...entries.values()].flatMap(e => [...e.files])].map(f => { try { return statSync(f).mtimeMs; } catch { return Infinity; } }));
   return {
     core: fingerprint,
     coreFiles: core.files,
+    newest,
     catalog: name => entryCover(name)?.fingerprint ?? null,
     /** What it all covers (for the tests and the record): the core's files, packages and unfollowed imports, and each entry's. */
     cover: () => ({core: {files: [...core.files].sort(), packages: [...core.packages].sort(), unfollowed: core.unfollowed, missing: core.missing},

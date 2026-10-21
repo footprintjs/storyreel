@@ -12,10 +12,12 @@
 export function pictureLine(report, {full = false, top = 5} = {}) {
   if (!report?.segments) return 'picture: drawn whole (every frame in one pass)';
   const drawn = report.segments.filter(s => s.status === 'rendered'), total = report.segments.length;
-  if (!drawn.length) return `picture: all ${total} pieces reused`;
+  // What weakens the keys (report.note) closes the line: an agent reads only the line.
+  const note = report.note ? ` · note: ${report.note}` : '';
+  if (!drawn.length) return `picture: all ${total} pieces reused${note}`;
   const groups = new Map();
   for (const s of drawn) { const why = s.why ?? 'new'; groups.set(why, [...(groups.get(why) ?? []), s.label ?? `piece ${s.index}`]); }
   const said = [...groups].map(([why, labels]) => labels.length > 2 ? `${labels.length} pieces: ${why}` : `${labels.join(', ')}: ${why}`);
   const shown = full ? said : said.slice(0, top), more = said.length - shown.length;
-  return `picture: ${drawn.length} of ${total} pieces drawn (${shown.join('; ')}${more ? `; +${more} more: full: true lists them` : ''}), ${total - drawn.length} reused`;
+  return `picture: ${drawn.length} of ${total} pieces drawn (${shown.join('; ')}${more ? `; +${more} more: full: true lists them` : ''}), ${total - drawn.length} reused${note}`;
 }

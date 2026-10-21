@@ -1519,8 +1519,11 @@ console.log(result.video.line);
       shared: [new URL('./index.mjs', import.meta.url)]}};                              // hashed as it is
   ```
   A kit that says nothing is keyed by `makeFilm`'s `code` (`codeFingerprint(['film/kits'])`) wherever it draws, or,
-  without it, only by the spot check (the report's `note` says so). `segmentedVideo({code: sourceCode(…)})` still
-  takes code per piece written by hand.
+  without it, only by the spot check; a kit whose code loads files at run time (`import(\`./shots/${name}.mjs\`)`)
+  names those files in `sources`. The line says either, after `note:`. A focus or emphasis strategy of your own is
+  keyed by its function's text (not what it imports). `segmentedVideo({code: sourceCode(…)})` still takes code per
+  piece written by hand. If a file a key reads changed on disk after the render started, the render draws with the
+  older code it loaded: its pieces are drawn and not kept (`note:` says so).
 - **The stamp is burned at the join.** Pieces are drawn without it; the joined picture gets it once, from a picture
   the painter drew (one re-encode at the render's quality). A render with no stamp joins its pieces by copying.
 - **Look at one part, with its handles.** `renderFilm({…, part: {scenes: ['chapters'], handles: 1.5}})` renders
@@ -1586,7 +1589,9 @@ console.log(result.video.line);
   `strategies`.
 - **The cache trusts nothing it reads back.** A key is 24 hex digits and names the piece's files; a manifest is read
   only when small and of a piece's shape, for that key; the video must be the bytes it recorded (size and SHA-256), so
-  a file cut short, damaged or put there by something else is drawn again. A piece lands whole or not at all.
+  a file cut short, damaged, unreadable or put there by something else is drawn again. A piece lands whole or not at
+  all, and each piece the render joins is held in its working folder from the moment it is checked or drawn. Two
+  pieces of one film whose materials match (two quiet stretches of a long scene) are told apart by their place.
 - **The sound is never cached.** It is mixed for the whole film on every render (it takes seconds), so it never has a
   seam.
 - **You decide when a part is drawn fresh.** `segments: {force: [2, 'race']}` draws the third piece and every piece

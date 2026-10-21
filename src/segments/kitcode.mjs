@@ -13,6 +13,8 @@
  * codeFingerprint([kitsFolder])) — in every piece it draws, or, without one, by nothing: then only the spot check sees
  * an edit to its code, and the report says so (unkeyedKits).
  */
+import {statSync} from 'node:fs';
+import path from 'node:path';
 import {moduleReader} from '../codegraph.mjs';
 import {fileSetHash, asFile} from './code.mjs';
 import {entryAt} from './material.mjs';
@@ -32,8 +34,16 @@ export function readSources(kit) {
   return {entry: s.entry, shared: (s.shared ?? []).map(f => asFile(f, `${who}.shared`)), transition: s.transition ?? null};
 }
 
-/** The kits that draw a film's pieces and say nothing of where their code lives (keyed only by `fallback`, or not at all). */
-export const unkeyedKits = film => Object.values(film.kits ?? {}).filter(k => !k.sources && Object.values(film.drawnBy ?? {}).includes(k.name)).map(k => k.name).sort();
+/**
+ * The kits that draw a film's pieces and say nothing of where their code lives (keyed only by `fallback`, or not at all):
+ * those drawing an entry with no `sources`, and those whose transition plays with no `sources.transition`.
+ */
+export function unkeyedKits(film) {
+  const kits = Object.values(film.kits ?? {}), drawing = new Set(Object.values(film.drawnBy ?? {}));
+  const played = new Set((film.rows ?? []).map(r => r.enter?.type).filter(Boolean));
+  return kits.filter(k => (drawing.has(k.name) && !k.sources) || (Object.keys(k.transitions ?? {}).some(t => played.has(t)) && typeof k.sources?.transition !== 'function'))
+    .map(k => k.name).sort();
+}
 
 /**
  * The code key of a piece, per piece (segments.mjs passes it as `code`): code(entries, piece) for a piece of `film`
@@ -41,9 +51,17 @@ export const unkeyedKits = film => Object.values(film.kits ?? {}).filter(k => !k
  */
 export function kitCode(film, {fallback = null} = {}) {
   const kits = film.kits ?? {}, drawnBy = film.drawnBy ?? {}, read = moduleReader('kit sources'), declared = new Map();
+  // What the reading saw: the newest change to a file read (a render whose code changed after it started keeps nothing),
+  // and the imports chosen at run time, which no key can follow (the report names them, so they can be named in sources).
+  let newest = 0; const runtime = new Set();
+  const seen = (f, e) => {
+    try { newest = Math.max(newest, statSync(f).mtimeMs); } catch { newest = Infinity; }
+    for (const code of e.unfollowed ?? []) runtime.add(`${path.basename(f)}: ${code}`);
+    for (const spec of e.missing ?? []) runtime.add(`${path.basename(f)}: ${spec} (not there)`);
+  };
   const sourcesOf = name => { if (!declared.has(name)) declared.set(name, readSources(kits[name])); return declared.get(name); };
   const owner = type => Object.values(kits).find(k => k.transitions && Object.hasOwn(k.transitions, type))?.name ?? null;
-  return (_entries, piece) => {
+  const code = (_entries, piece) => {
     const followed = [], shared = new Set(), bare = new Set();
     const take = (name, files, what) => { for (const f of files ?? []) followed.push(asFile(f, `kit "${name}" sources.${what}`)); };
     for (const p of piece.paths ?? []) {
@@ -59,7 +77,10 @@ export function kitCode(film, {fallback = null} = {}) {
       take(name, s.transition(type), 'transition'); s.shared.forEach(f => shared.add(f));
     }
     if (!followed.length && !shared.size && !bare.size) return null;
-    const own = followed.length || shared.size ? fileSetHash(read, followed, [...shared]) : '';
+    const own = followed.length || shared.size ? fileSetHash(read, followed, [...shared], {seen}) : '';
     return bare.size ? `${own}+${fallback ?? `unkeyed:${[...bare].sort().join(',')}`}` : own;
   };
+  /** The newest change to any file read so far (ms since the epoch), and what the kits load at run time. */
+  Object.defineProperties(code, {newest: {get: () => newest}, runtime: {get: () => [...runtime].sort()}});
+  return code;
 }

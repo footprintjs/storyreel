@@ -426,3 +426,102 @@ test('a piece inside a camera freeze is keyed by the moment it froze on, not onl
   const parts = pieceKey(a.film, late, {recipe: a.recipe, storyboard, pixels, code: 'k', fps: 10}).parts;
   assert.ok(parts.words && parts.camera);
 });
+
+// ── What review found (2026-10-21): each pinned ──────────────────────────────────────────────────────────────────────
+
+/** A film with a long wordless stretch in one scene, drawn by a kit that moves on its own clock (the review's case). */
+async function quietFilm() {
+  const storyboard = {title: 'Quiet', scenes: [{id: 'a', narration: 'Watch this. Now count them all.'}]};
+  const timings = {scenes: [{id: 'a', duration: 32, alignment: {status: 'available'}, words: [
+    {text: 'Watch', start: .2, end: .6}, {text: 'this.', start: .6, end: 1}, {text: 'Now', start: 28, end: 28.3}, {text: 'count', start: 28.3, end: 28.7}, {text: 'them', start: 28.7, end: 29}, {text: 'all.', start: 29, end: 29.5}]}]};
+  const mover = {name: 'mover', sources: {entry: () => []}, story: {compile: () => ({hang: 1, draw: (c, t) => { c.fillStyle = '#fff'; c.fillRect(0, 0, 1600, 900); c.fillStyle = '#000'; c.fillRect(40 * t, 400, 80, 80); }})}};
+  return {storyboard, timings, film: await compileFilm({storyboard, timings, kits: [mover], root: worldsDir, recipe: {story: {kit: 'mover'}}})};
+}
+
+test('two pieces whose materials match are still two pieces: each its own key, its own file, its own frames', {skip: FF}, async t => {
+  const {film, storyboard, timings} = await quietFilm(), top = tempDir('quiet', t);
+  const keyed = segmentedVideo({store: folderStore(path.join(top, 'cache')), chunkSeconds: 6}).plan({film, storyboard, start: 0, to: film.total, frames: Math.ceil(film.total * 5), fps: 5, pixels, poster: null, posterFrame: true, ffmpeg: 'ffmpeg'});
+  assert.equal(new Set(keyed.map(p => p.key)).size, keyed.length, 'no two pieces of one film share a key');
+  const plain = keyed.map(p => pieceKey(film, p, {recipe: film.recipe, storyboard, pixels, code: null, fps: 5}).key);
+  assert.ok(plain.length > new Set(plain).size, 'the review\'s case: their materials do match');
+  // Rendered: every piece shows its own moment (the box where the film puts it), cold and again from the cache.
+  const render = () => renderFilm({film, storyboard, timings, out: path.join(top, 'out', 'film.mp4'), width: 160, height: 90, fps: 5});
+  const whole = await renderFilm({film, storyboard, timings, out: path.join(top, 'whole', 'film.mp4'), width: 160, height: 90, fps: 5, whole: true});
+  for (const made of [await render(), await render()]) {
+    for (const at of [8, 14, 20]) {
+      const [a, b] = [frameAt(made.out, at, 160, 90), frameAt(whole.out, at, 160, 90)];
+      let diff = 0; for (let i = 0; i < a.length; i++) diff += Math.abs(a[i] - b[i]);
+      assert.ok(diff / a.length < 4, `at ${at} s the pieces show what one pass shows (mean difference ${(diff / a.length).toFixed(1)})`);
+    }
+  }
+});
+
+test('code changed on disk after a render started is not the code it draws: its pieces are drawn, and none is kept', {skip: FF}, async t => {
+  const dir = tempDir('late', t), {kit} = await shotsKit(dir);   // written now: after this process started
+  const film = await threeFilm({kits: [kit], specs: [{kit: 'shots', shot: 'left'}, {kit: 'shots', shot: 'right'}, {kit: 'shots', shot: 'left'}]});
+  const out = path.join(dir, 'out', 'film.mp4'), made = await renderFilm({film, storyboard: threeScenes, timings: film.timings, out, width: 160, height: 90, fps: 5});
+  assert.equal(made.video.kept, false); assert.match(made.video.line, /note: the code changed on disk after this render started: its pieces were drawn, not kept/);
+  const cache = path.join(path.dirname(out), '.storyreel');
+  assert.ok(!existsSync(cache) || !readdirSync(cache, {recursive: true}).some(f => String(f).endsWith('.mp4')), 'nothing kept');
+});
+
+test('what weakens a key is said in the line an agent reads: a kit with no sources, code loaded at run time', async t => {
+  const plainKit = {name: 'bare', story: {compile: () => ({hang: 1, draw: c => { c.fillStyle = '#fff'; c.fillRect(0, 0, 1600, 900); }})}};
+  const film = await threeFilm({kits: [plainKit], specs: [{kit: 'bare'}, {kit: 'bare'}, {kit: 'bare'}]});
+  const {unkeyedKits} = await import('../src/segments/kitcode.mjs');
+  assert.deepEqual(unkeyedKits(film), ['bare']);
+  // A kit whose only part in the film is a transition it owns, with no sources for it.
+  const swirl = {family: 'wipe', seconds: .6, ease: 'linear', sound: null, params: {}, draw: (c, {e, from, to}) => { if (e < .5) from(c); else to(c); }};
+  const owner = {name: 'fx', transitions: {swirl}}, art = {name: 'art', sources: {entry: () => []}, story: {compile: () => ({hang: 1, draw: c => { c.fillStyle = '#eee'; c.fillRect(0, 0, 1600, 900); }})}};
+  const swirled = await compileFilm({storyboard: threeScenes, timings: evenTimings(threeScenes), kits: [art, owner], root: worldsDir,
+    recipe: {story: {kit: 'art'}, stages: [{type: 'world', scene: 'two', enter: 'swirl', world: {kit: 'art'}}, {type: 'world', scene: 'three', enter: 'fade', world: {kit: 'art'}}]}});
+  assert.deepEqual(unkeyedKits(swirled), ['fx'], 'a kit whose transition plays, with no sources.transition, is named');
+  const dir = tempDir('runtime', t); mkdirSync(path.join(dir, 'shots'), {recursive: true});
+  writeFileSync(path.join(dir, 'index.mjs'), 'export const load = name => import(`./shots/${name}.mjs`);\n');
+  const dyn = {name: 'dyn', sources: {entry: () => [path.join(dir, 'index.mjs')]}, story: {compile: () => ({hang: 1, draw: c => { c.fillStyle = '#ddd'; c.fillRect(0, 0, 1600, 900); }})}};
+  const dynFilm = await threeFilm({kits: [dyn], specs: [{kit: 'dyn'}, {kit: 'dyn'}, {kit: 'dyn'}]});
+  const {kitCode} = await import('../src/segments.mjs'), code = kitCode(dynFilm);
+  code([], {paths: ['story']});
+  assert.deepEqual(code.runtime, ['index.mjs: import(`./shots/${name}.mjs`)'], 'an import chosen at run time is reported, so it can be named in sources');
+  assert.match(pictureLine({segments: [{label: 'a', status: 'reused'}], note: 'kit bare says nothing of where its code lives (sources)'}), /· note: kit bare says nothing/);
+});
+
+test('smaller misses review found: a custom strategy\'s code, crop times, a push\'s ease-out, entrances replayed, the poster when it is not frame 0, an unreadable piece', async t => {
+  // A strategy of your own: its function's text is in the key.
+  const storyboard = {title: 'Look', scenes: [{id: 'a', narration: 'First the red square sits here, quietly, in its corner of the page, for a good long while today.'}]};
+  const box = {name: 'box', story: {compile: () => ({hang: 1, draw: c => { c.fillStyle = '#f3eee3'; c.fillRect(0, 0, 1600, 900); }, regionsAt: () => [{box: [200, 200, 400, 350], path: 'red', label: 'red', name: 'red'}]})}};
+  const strategyFilm = show => compileFilm({storyboard, timings: evenTimings(storyboard, {wordSeconds: .5}), kits: [box], recipe: {story: {kit: 'box'}, focus: {strategy: 'mine', keys: [{at: ['a', 'red square'], on: 'red'}]}},
+    strategies: {focus: {mine: {show}}}});
+  const k1 = keys({film: await strategyFilm((c, v, paint) => paint(c)), recipe: {story: {kit: 'box'}}, storyboard}, {chunkSeconds: 3});
+  const k2 = keys({film: await strategyFilm((c, v, paint) => { paint(c); c.fillRect(0, 0, 10, 10); }), recipe: {story: {kit: 'box'}}, storyboard}, {chunkSeconds: 3});
+  assert.ok(changed(k1, k2).every(Boolean), 'an edited strategy: every piece it shows');
+  // Crop keys (portrait, vertical): a crop's time is keyed like a camera move's.
+  const {compileLayout} = await import('../src/index.mjs'), a = await worlds();
+  const cropAt = plus => compileLayout(a.film, {format: 'vertical', crop: [{at: ['valley', 'lets the sheep out', plus], x: 500}]});
+  const plan = planPieces(a.film, {fps: 10, chunkSeconds: 2}), when = a.film.clock.at(['valley', 'lets the sheep out', 4]);
+  const cropKeys = layout => plan.map(seg => pieceKey(a.film, seg, {recipe: a.recipe, storyboard: a.storyboard, pixels, code: 'k', fps: 10, layout}).key);
+  const [ca, cb] = [cropKeys(cropAt(4)), cropKeys(cropAt(4.5))], landing = plan.findIndex(p => p.from <= when + .5 && p.to > when + .5);
+  assert.notEqual(ca[landing], cb[landing], 'the piece the crop pans in is drawn again when the pan moves');
+  // A push eases back out after its last phrase: the piece in its ease-out holds it.
+  const pushNote = seconds => ({note: 'push in on the board', push: {at: [800, 450], zoom: 1.3, from: ['board', 'Here is our board'], to: ['board', 'count with pebbles'], seconds}});
+  const [p1, p2] = [await worlds({recipe: {...read('recipe.json'), notes: [pushNote(2)]}}), await worlds({recipe: {...read('recipe.json'), notes: [pushNote(2.5)]}})];
+  const end = p1.film.clock.at(['board', 'count with pebbles']), tail = planPieces(p1.film, {fps: 10, chunkSeconds: 2}).find(p => p.from > end + .05 && p.from < end + 1.9);
+  assert.ok(tail, 'a piece starts inside the ease-out');
+  assert.notEqual(pieceKey(p1.film, tail, {recipe: p1.recipe, storyboard: p1.storyboard, pixels, code: 'k', fps: 10}).key, pieceKey(p2.film, tail, {recipe: p2.recipe, storyboard: p2.storyboard, pixels, code: 'k', fps: 10}).key, 'a piece in the ease-out sees the push');
+  // A moment a piece replays that falls inside an entrance: both rows that entrance draws are in the piece's key.
+  const valleyRow = a.film.rows.find(r => r.paths.includes('stages[0]')), later = plan.find(p => p.paths.includes('stages[1]') && !p.before);
+  const replaying = {...later, replays: [{at: later.from, until: later.to, from: valleyRow.from + .1, to: valleyRow.from + .4}]};
+  const entries = segmentMaterial(a.film, replaying, {recipe: a.recipe, storyboard: a.storyboard, pixels, code: 'k', fps: 10}).entries.map(([p]) => p);
+  assert.ok(entries.includes('stages[0]') && entries.includes('story'), `the replayed entrance's rows are keyed (${entries})`);
+  // The poster when it does not replace frame 0: the spot check paints the film's own first frame.
+  const {frameHasher} = await import('../src/paint.mjs'), film = a.film, settings = {film, framed: null, blur: null, width: 64, height: 36, fps: 10, start: 0, poster: 5, stamp: null};
+  assert.equal(frameHasher({...settings, posterFrame: false})(0, {poster: true}), frameHasher({...settings, poster: null})(0), 'posterFrame false: frame 0 is the film\'s');
+  assert.notEqual(frameHasher({...settings, posterFrame: true})(0, {poster: true}), frameHasher({...settings, poster: null})(0), 'posterFrame true: the poster');
+  // A piece's file that cannot be read is drawn again, never a failed render.
+  if (process.getuid?.() !== 0) {
+    const {store, key, file} = storeWithPiece(t);
+    spawnSync('chmod', ['000', file]);
+    assert.equal(store.get(key), null, 'unreadable: drawn again');
+    spawnSync('chmod', ['644', file]);
+  }
+});

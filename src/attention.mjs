@@ -119,7 +119,10 @@ function pick(kind, name, builtIn, mine, needs) {
   const all = {...builtIn, ...(mine ?? {})};
   if (typeof name !== 'string' || !all[name]) throw new Error(`${kind}.strategy must be ${Object.keys(all).map(n => `"${n}"`).join(', ')} (a strategy of your own goes in compileFilm's strategies.${kind}), not ${JSON.stringify(name)}`);
   if (typeof all[name][needs] !== 'function') throw new Error(`${kind} strategy "${name}" must have ${needs}(…)`);
-  return {...all[name], name};
+  // A strategy of your own is code the film draws with: its function's text is what a cached piece's key holds of it
+  // (segments/material.mjs). What it imports is not read: keep a strategy self-contained, or key it with makeFilm's code.
+  const custom = Boolean(mine && Object.hasOwn(mine, name));
+  return {...all[name], name, ...(custom ? {code: String(all[name][needs])} : {})};
 }
 const inOrder = (list, kind) => list.forEach((k, i) => { if (i && k.t < list[i - 1].t) throw new Error(`${kind}[${i}] comes before the one above it; list them in the order they are spoken`); });
 
@@ -168,7 +171,8 @@ function readFocus(spec, {clock, named, strategies, pushes, theme}) {
   return {strategy: strategy.name, moves: Boolean(strategy.moves), moving, viewAt, show: (ctx, t, paint) => strategy.show(ctx, viewAt(t), paint, theme),
     record: {strategy: strategy.name, ...(spec.safe ? {safe} : {}), keys: keys.map(k => ({t: +k.t.toFixed(3), on: k.on, ...(k.size ? {size: k.size} : {})}))},
     // Each key as it frames the picture (where the camera points, how close, the box it holds): what a cached piece's key holds.
-    frames: {strategy: strategy.name, feel, safe, keys: keys.map(k => ({t: k.t, on: k.on, size: k.size ?? null, cx: k.cx, cy: k.cy, z: k.z, sx: k.sx, sy: k.sy, box: [...k.box], w: k.w}))}};
+    frames: {strategy: strategy.name, feel, safe, ...(parts.some(p => p.code) ? {code: parts.map(p => p.code ?? p.name)} : {}),
+      keys: keys.map(k => ({t: k.t, on: k.on, size: k.size ?? null, cx: k.cx, cy: k.cy, z: k.z, sx: k.sx, sy: k.sy, box: [...k.box], w: k.w}))}};
 }
 
 /** The emphasis as written, checked and placed on the clock: {strategy, draw(ctx, t), record}. */
@@ -187,7 +191,7 @@ function readEmphasis(spec, {clock, strategies, theme, focus = null}) {
   words.forEach((w, i) => { w.next = Math.min(w.until, words[i + 1]?.t ?? Infinity); });
   return {strategy: strategy.name, draw(ctx, t) { const w = words.findLast(x => t >= x.t); if (w && t < w.next) strategy.draw(ctx, t, w, theme, focus?.viewAt(t) ?? null); },
     record: {strategy: strategy.name, words: words.map(w => ({t: +w.t.toFixed(3), text: w.text}))},
-    frames: {strategy: strategy.name, feel, words: words.map(w => ({t: w.t, text: w.text, next: w.next}))}};
+    frames: {strategy: strategy.name, feel, ...(strategy.code ? {code: strategy.code} : {}), words: words.map(w => ({t: w.t, text: w.text, next: w.next}))}};
 }
 
 /**

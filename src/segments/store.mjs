@@ -12,7 +12,7 @@
  * A piece lands whole or not at all: its file is renamed into place (files.mjs · writeOutput), and its manifest —
  * written last — records the file's size and hash.
  */
-import {readFileSync, readdirSync, lstatSync, rmSync, utimesSync} from 'node:fs';
+import {readFileSync, readdirSync, lstatSync, statSync, rmSync, utimesSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {writeOutput, securePath, makeFolder} from '../files.mjs';
@@ -32,8 +32,8 @@ export function checkKey(key) {
 }
 
 const plainFile = f => { try { const st = lstatSync(f); return st.isFile() && !st.isSymbolicLink() ? st : null; } catch { return null; } };
-/** A file's SHA-256 (a piece is a few megabytes, read once). */
-const sha256Of = file => createHash('sha256').update(readFileSync(file)).digest('hex');
+/** A file's SHA-256 (a piece is a few megabytes, read once), or null when it cannot be read: the piece is drawn again. */
+const sha256Of = file => { try { return createHash('sha256').update(readFileSync(file)).digest('hex'); } catch { return null; } };
 
 /**
  * Whether a manifest has the shape a piece's has, for this key: its version, key, frames, the spot check's samples
@@ -80,15 +80,26 @@ export function folderStore(dir, {cap = STORE_DEFAULTS.cap, grace = STORE_DEFAUL
   const keys = () => named('.json');
   return {
     name: 'folder', dir: home,
-    get(key) {
+    /**
+     * A kept piece, or null. `into`: a file in the render's own working folder that takes the piece first (a hard link,
+     * or a copy on another disk) — the bytes checked are the ones the render will join, so a put after this one (this
+     * render's or another's) cannot change them.
+     */
+    get(key, {into = null} = {}) {
       const {file, json} = at(key), st = plainFile(file), manifest = st ? manifestAt(json) : null;
-      if (!manifest || manifestProblem(manifest, key) || manifest.bytes !== st.size || sha256Of(file) !== manifest.sha256) return null;
+      if (!manifest || manifestProblem(manifest, key) || manifest.bytes !== st.size) return null;
+      let held = file;
+      if (into) { try { writeOutput(into, {copy: file, link: true}); held = into; } catch { return null; } }
+      let same = false;
+      try { same = statSync(held).size === manifest.bytes && sha256Of(held) === manifest.sha256; } catch { same = false; }
+      if (!same) { if (into) rmSync(into, {force: true}); return null; }
       try { const now = new Date(); utimesSync(json, now, now); } catch { /* read-only: the piece is still good, it only ages */ }   // used now: the last to be evicted
-      return {file, manifest};
+      return {file: held, manifest};
     },
     put(key, file, manifest) {
       make(home);   // checked again, made, and checked once more (files.mjs · makeFolder)
       const to = at(key), bytes = lstatSync(file).size, sha256 = sha256Of(file);
+      if (sha256 === null) throw new Error(`folderStore: ${path.basename(file)} could not be read to keep it`);
       rmSync(to.json, {force: true});
       writeOutput(to.file, {move: file});
       writeOutput(to.json, JSON.stringify({...manifest, v: MANIFEST, key, bytes, sha256}, null, 2));

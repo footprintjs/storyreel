@@ -676,7 +676,9 @@ export interface VideoStrategy {
 /** One piece's fate in a segmented render: drawn (and why: "words changed", "shot code changed", "new"…) or reused. */
 export interface SegmentReport { index: number; from: number; to: number; frames: number; scenes: string[]; key: string; label?: string; status: 'rendered' | 'reused'; why?: string }
 /** What a segmented render did: how many pieces were drawn and how many were reused, each one, and `line`, all of it in one short line to read. */
-export interface SegmentsReport { strategy: 'segments'; store: string; reused: number; rendered: number; line: string; note?: string; stamp?: 'burned at the join'; evicted?: number; segments: SegmentReport[] }
+export interface SegmentsReport { strategy: 'segments'; store: string; reused: number; rendered: number; line: string; note?: string; stamp?: 'burned at the join'; evicted?: number;
+  /** false when a file a key reads changed after the render started: its pieces were drawn, not kept. */
+  kept?: false; segments: SegmentReport[] }
 /** The default cache's options (renderFilm's and makeFilm's render.segments). */
 export interface SegmentOptions {
   /** The folder it is kept in (default: <out folder>/.storyreel/segments/<format>-<W>x<H>-<quality>). */
@@ -695,7 +697,9 @@ export interface SegmentOptions {
   code?: string | SegmentCode | null; kitsCode?: string | null;
 }
 /** Where pieces are kept between renders (folderStore(dir) is the default): get by key (a piece that passes every check, or null), put a file under a key. */
-export interface SegmentStore { name: string; dir?: string; get(key: string): {file: string; manifest: Record<string, unknown>} | null; put(key: string, file: string, manifest: Record<string, unknown>): string;
+export interface SegmentStore { name: string; dir?: string;
+  /** A kept piece that passes every check, or null; `into`: a file in the render's working folder that takes the piece first (the bytes checked are the ones joined). */
+  get(key: string, options?: {into?: string | null}): {file: string; manifest: Record<string, unknown>} | null; put(key: string, file: string, manifest: Record<string, unknown>): string;
   /** The newest manifest of each group `group` names (what each slot was last drawn from: the reasons a piece was drawn again). */
   newest?(group: (manifest: Record<string, unknown>) => string | null | undefined): Map<string, Record<string, unknown>>;
   /** Evict the pieces used longest ago until the store fits its cap, never one in `keep`. */
