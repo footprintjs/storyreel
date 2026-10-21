@@ -77,7 +77,7 @@ function main() {
   // The suite is a run of its own: run from inside a test runner, the runner's NODE_TEST_CONTEXT would make it a child of that run.
   const {NODE_TEST_CONTEXT: _runner, ...env} = process.env;
   const at = concurrency({given: process.env.STORYREEL_TEST_CONCURRENCY}), memory = watchMemory(process.pid);
-  const suite = spawn(process.execPath, ['--test', `--test-concurrency=${at}`, ...files], {cwd: repo, env: {...env, TMPDIR: tmp, TMP: tmp, TEMP: tmp}, stdio: 'inherit'});
+  const suite = spawn(process.execPath, ['--import', './test/fonts.mjs', '--test', `--test-concurrency=${at}`, ...files], {cwd: repo, env: {...env, TMPDIR: tmp, TMP: tmp, TEMP: tmp}, stdio: 'inherit'});
   let stopped = null;
   for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]]) {
     process.on(signal, () => {
