@@ -57,11 +57,12 @@ export function manifestProblem(m, key) {
 }
 
 /**
- * Keep pieces as files in one folder (see the module's header). Returns {name, dir, get(key), put(key, file, manifest),
- * newest(group), trim({keep, cap, now})}: get answers a kept piece only when every check passes (null otherwise, and
- * the piece is drawn again); newest(group) is the newest manifest of each group `group(manifest)` names (what each slot
- * was last drawn from: segments.mjs says why a piece was drawn again); trim evicts the pieces used longest ago until
- * the folder fits the cap.
+ * Keep pieces as files in one folder (see the module's header). Returns {name, dir, get(key), kept(key), put(key, file,
+ * manifest), newest(group), trim({keep, cap, now})}: get answers a kept piece only when every check passes (null
+ * otherwise, and the piece is drawn again); kept(key) is the manifest of the one kept under a key, from its manifest and
+ * its size alone (its bytes are hashed only when it is taken: a preview of what changed reads no video); newest(group) is the newest
+ * manifest of each group `group(manifest)` names (what each slot was last drawn from: segments.mjs says why a piece was
+ * drawn again); trim evicts the pieces used longest ago until the folder fits the cap.
  */
 export function folderStore(dir, {cap = STORE_DEFAULTS.cap, grace = STORE_DEFAULTS.grace, make = makeFolder} = {}) {
   if (typeof dir !== 'string' || !dir) throw new Error('folderStore: give the folder the segments are kept in');
@@ -78,16 +79,23 @@ export function folderStore(dir, {cap = STORE_DEFAULTS.cap, grace = STORE_DEFAUL
   /** The names in the folder that are a piece's (<key>.json or <key>.mp4): anything else there is never read, moved or removed. */
   const named = ext => { try { return readdirSync(home).filter(n => n.endsWith(ext) && KEY.test(n.slice(0, -ext.length))).map(n => n.slice(0, -ext.length)); } catch { return []; } };
   const keys = () => named('.json');
+  /** A piece kept under `key` as far as its manifest and its size tell — {file, manifest} — or null (its bytes unread). */
+  const listed = key => {
+    const {file, json} = at(key), st = plainFile(file), manifest = st ? manifestAt(json) : null;
+    return manifest && !manifestProblem(manifest, key) && manifest.bytes === st.size ? {file, json, manifest} : null;
+  };
   return {
     name: 'folder', dir: home,
+    kept: key => listed(key)?.manifest ?? null,
     /**
      * A kept piece, or null. `into`: a file in the render's own working folder that takes the piece first (a hard link,
      * or a copy on another disk) — the bytes checked are the ones the render will join, so a put after this one (this
      * render's or another's) cannot change them.
      */
     get(key, {into = null} = {}) {
-      const {file, json} = at(key), st = plainFile(file), manifest = st ? manifestAt(json) : null;
-      if (!manifest || manifestProblem(manifest, key) || manifest.bytes !== st.size) return null;
+      const found = listed(key);
+      if (!found) return null;
+      const {file, json, manifest} = found;
       let held = file;
       if (into) { try { writeOutput(into, {copy: file, link: true}); held = into; } catch { return null; } }
       let same = false;

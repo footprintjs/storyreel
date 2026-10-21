@@ -10,7 +10,7 @@ only to confirm what the text already told you. (A film from nothing: the `story
 [its SKILL.md](../storyreel-cartoon/SKILL.md).)
 
 The project names its film in `storyreel.config.mjs`: `export default {film: flags => ({storyboard, recipe, kits?,
-timings?, root?, narrationDir?, pacing?, layout?, out?})}` (`root`: the folder the command runs in; `out`: `out`).
+timings?, root?, narrationDir?, pacing?, layout?, out?, render?, code?})}` (`root`: the folder the command runs in; `out`: `out`).
 Without `timings` the tools time the film from the voice folder's `timings.json`, or with `evenTimings(storyboard)`
 (a 0.8 s tail a scene), paced by `pacing` when the config gives one. Every flag also reaches `film()` (`--ep ep1`).
 
@@ -34,6 +34,16 @@ Without `timings` the tools time the film from the voice folder's `timings.json`
    fast move, `npx storyreel strip --at <scene>+<seconds>`: 12<!-- TOOL_DEFAULTS.frames --> frames around it, where a pop or a jump shows.
 
 `npx storyreel <command> --help` gives a command's flags.
+
+## The chat edit loop
+
+An edit asked for in chat: show only the frames it touched, in seconds.
+
+1. Edit the recipe (or a shot's code, when its kit names its `sources`) where the timeline points.
+2. `npx storyreel changes`: one line per changed stretch and why (`0:12–0:18 left · its recipe entries changed`), then the count; nothing drawn.
+3. `npx storyreel changes --render`: only those pieces drawn, into the cache; `<out>/changes/review.mp4` plays them back to back, 1 s<!-- CHANGES_DEFAULTS.handles --> of the film either side, each labelled with its time, the voice under it. Show that clip.
+4. Frames of your own choosing: `npx storyreel part --from 0:12 --to 0:18`.
+5. At the end the full render draws nothing the preview drew (a `note:` on the count says what only its spot check sees). The config names it: `render` and `code`, its video in `out` (`footprint-storyreel/tools` · `fullRender`).
 
 ## The verdicts
 

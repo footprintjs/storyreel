@@ -9,17 +9,13 @@
  * Heavy things (the compiled film, canvases) never enter the flowchart's tracked scope; stages
  * pass small values and file paths, as footprintjs expects.
  */
-import {readCast, withCast} from './cast.mjs';
+import {castFilm, checkCode, checkInputs, outFolder, pacedTimings, compileForRender, planPicture} from './prepare.mjs';
 import {readFileSync, writeFileSync, rmSync, existsSync, statSync} from 'node:fs';
-import {copyVoice, requireVoiceApart, placeVoice, writeOutput, refuseFolders, securePath, makeFolder} from './files.mjs';
+import {placeVoice, writeOutput, refuseFolders, makeFolder} from './files.mjs';
 import path from 'node:path';
 import {flowChart, narrative} from 'footprintjs';
-import {applyPacing, validatePacing, paceTimings} from './pacing.mjs';
-import {withDirections} from './clock.mjs';
-import {compileFilm} from './film.mjs';
-import {prepareRender, finishRender, closeRender} from './render.mjs';
-import {checkVideoStrategy} from './whole.mjs';
-import {pictureStrategy, checkPictureOptions} from './picture.mjs';
+import {finishRender, closeRender} from './render.mjs';
+import {checkPictureOptions} from './picture.mjs';
 import {makeScratch, sweepScratch} from './scratch.mjs';
 import {readApproval, requireApproval, voiceHash, unlocked} from './approval.mjs';
 import {hashOf} from './hash.mjs';
@@ -149,21 +145,19 @@ const MAX_PARTS = MAX_PIECES;
  */
 export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report', code = null, check = null, expect = {}, cast = null, strategies = null, music = null, reducedMotion = false, claims = 'report'}) {
   // The cast's names into the text before anything reads it: the pacing, the voice check, the chapters (cast.mjs).
-  if (cast) { const c = readCast(cast); storyboard = withCast(storyboard, c, 'storyboard'); recipe = withCast(recipe, c, 'recipe'); if (strings) strings = withCast(strings, c, 'strings'); }
+  ({storyboard, recipe, strings} = castFilm({storyboard, recipe, strings, cast}));
   if (check !== null && check !== 'report' && check !== 'refuse') throw new Error(`check is 'report' (the record lists what the checks on the finished file found), 'refuse' (a problem refuses the film) or left out, not ${JSON.stringify(check)}`);
   if (voiceCheck !== 'report' && voiceCheck !== 'refuse') throw new Error(`voiceCheck is 'report' (the record lists words the voice check did not hear) or 'refuse' (the film refuses them), not ${JSON.stringify(voiceCheck)}`);
   if (claims !== 'report' && claims !== 'refuse') throw new Error(`claims is 'report' (the record lists the numbers on screen with no source) or 'refuse' (one refuses the film), not ${JSON.stringify(claims)}`);
-  if (code !== null && !(typeof code === 'string' && code.trim())) throw new Error("code is a fingerprint of the kits' drawing code (codeFingerprint([kitsFolder])), or left out");
+  checkCode(code);
   if (approval) readApproval(approval);
   const song = music === null ? null : readMusic(music);
   if (song && render.music !== undefined) throw new Error('makeFilm takes the song as music ({file, snap?, dropOn?, …}), which also places it; leave render.music out');
-  // First of all, the out folder's REAL path, with no folder on the way another user could rearrange (files.mjs ·
-  // securePath): the film is made through it only.
-  const dir = securePath(path.dirname(path.resolve(out)));
-  out = path.join(dir, path.basename(path.resolve(out)));
-  // Before anything is written, even the out folder: the voice is paced in the out folder and then replaces its
-  // narration folder, so the two must not overlap (files.mjs · requireVoiceApart).
-  if (narrationDir) requireVoiceApart(narrationDir, dir);
+  // First of all, the out folder's REAL path, with no folder on the way another user could rearrange: the film is made
+  // through it only. Before anything is written, even the out folder: the voice is paced in the out folder and then
+  // replaces its narration folder, so the two must not overlap (prepare.mjs · outFolder).
+  const ready = outFolder({out, narrationDir}), {dir} = ready;
+  out = ready.out;
   // The record is written last, after the video: a folder at its name refuses now (the render's own outputs are checked
   // when it is prepared, before a frame is drawn: render.mjs · prepareJob).
   refuseFolders([path.join(dir, 'making-of.json')]);
@@ -181,9 +175,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   const done = [];
   const stages = {
     'check-inputs': scope => {
-      if (!storyboard?.scenes?.length) throw new Error('The storyboard has no scenes: give it scenes: [{id, narration} or {id, silent: [[what happens, seconds]]}]');
-      // A silent cut has no voice speed to check; its holds and tails are checked the same way.
-      if (pacing) validatePacing(narrationDir ? pacing : {voiceSpeed: 1, ...pacing}, storyboard);
+      // A silent cut has no voice speed to check; its holds and tails are checked the same way (prepare.mjs · checkInputs).
+      checkInputs({storyboard, narrationDir, pacing});
       scope.scenes = storyboard.scenes.length;
       if (strings) scope.lang = lang;
     },
@@ -195,10 +188,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
         // audio — as new files (files.mjs · copyVoice): pacing rewrites them, and a voice given through links, or
         // read-only, is never paced in place. Nothing else is copied.
         copy = makeScratch(dir, '.narration');
-        const raw = copyVoice(narrationDir, copy);
-        // A voice knows only the spoken scenes: a silent scene it left out gets its directions' timing (clock.mjs · withDirections).
-        paced = pacing ? await applyPacing({runDir: copy, board: storyboard, timings: raw, pacing}) : withDirections(storyboard, raw);
-        writeFileSync(path.join(copy, 'timings.json'), JSON.stringify(paced, null, 2));
+        paced = await pacedTimings({storyboard, narrationDir, pacing, copy});
         scope.narration = copy;
         voice = readVoiceCheck(narrationDir);
         if (voiceCheck === 'refuse') {
@@ -208,8 +198,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
           if (voice.notHeard.length) throw new Error(`The voice check did not hear ${voice.notHeard.map(w => `"${w.word}" (${w.scene})`).join(', ')}: choose another take (voice_takes.py), reword the line, or write a number as a say slot`);
         }
       } else {
-        if (!timings) throw new Error('A silent film needs timings (word times per scene)');
-        paced = pacing ? paceTimings(storyboard, timings, pacing) : withDirections(storyboard, timings); scope.narration = null;
+        paced = await pacedTimings({storyboard, timings, pacing}); scope.narration = null;
       }
       scope.seconds = +paced.scenes.reduce((n, s) => n + s.duration, 0).toFixed(3);
       scope.pacing = paced.pacing ?? null;
@@ -229,7 +218,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       scope.seconds = +paced.scenes.reduce((n, s) => n + s.duration, 0).toFixed(3);
     },
     'compile-film': async scope => {
-      film = await compileFilm({storyboard, timings: paced, recipe, data, kits, theme, root, strings, lang, hostKeys, cast, strategies, reducedMotion, record: true});
+      film = await compileForRender({storyboard, recipe, data, kits, theme, root, strings, lang, hostKeys, cast, strategies, reducedMotion}, paced);
       scope.beats = film.beats.length; scope.sounds = film.sounds.length; scope.total = +film.total.toFixed(3);
       // What the film is made from (film.inputs, and the pacing, the voice, the kits' code): an approval locks all of it.
       // Sounds placed by their peaks change what is heard, so an approval locks that too — only when it is asked for.
@@ -255,8 +244,9 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     },
     // The picture: planned as one pass or as segments (render.mjs · wholeVideo, segments.mjs · segmentedVideo).
     'plan-picture': scope => {
-      job = prepareRender({film, storyboard, timings: paced, narrationDir: scope.narration, out, ...render, ...(song ? {music: {file: song.file, start: fit.start, gain: song.gain, fadeOut: song.fadeOut}} : {})});
-      video = checkVideoStrategy(pictureStrategy(render, job, {kitsCode: code}));
+      // The job is held as soon as it is made: a refusal after it still records what its sweep removed (sweptRecord).
+      ({video} = planPicture({film, storyboard, timings: paced, narrationDir: scope.narration, out, render, code,
+        music: song ? {file: song.file, start: fit.start, gain: song.gain, fadeOut: song.fadeOut} : null}, made => { job = made; }));
       plan = video.plan(job);
       if (plan.length > MAX_PARTS) throw new Error(`The picture is planned in ${plan.length} parts; at most ${MAX_PARTS} can be drawn (segments.mjs · planPieces: give the segments a larger minSeconds)`);
       scope.picture = {strategy: video.name, parts: plan.length};

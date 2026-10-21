@@ -6,7 +6,7 @@
  * it prints the song's beat map as text (beats.mjs · beatMapText), so a person can settle an unsure tempo in seconds.
  */
 import path from 'node:path';
-import {TOOLS, CONFIG, loadProject} from './tools.mjs';
+import {TOOLS, CONFIG, loadProject, loadInputs} from './tools.mjs';
 import {SOUNDS_HELP} from './sounds/cli.mjs';
 
 const BEATS_HELP = `  beats    <song> — the song's tempo as the beat map hears it (no project needed): the verdict, the candidate tempi with
@@ -100,11 +100,12 @@ if (command === 'beats') {
 }
 if (!command || command === 'help' || command === '--help' || !TOOLS[command]) {
   const lines = [...Object.entries(TOOLS).map(([name, t]) => `  ${name.padEnd(9)}${t.about}\n${Object.entries(t.args).map(([a, d]) => `             --${a}  ${d}`).join('\n')}`), BEATS_HELP, SOUNDS_HELP];
-  (TOOLS[command] || !command || command === 'help' || command === '--help' ? console.log : console.error)(`storyreel <tool> [--flag value …]   (the film is named in ./${CONFIG}; --config another file)\n\n${lines.join('\n')}\n\nRead first, look last: timeline → review → fix → part → still.\nstoryreel mcp [--flag value …] serves the same tools over MCP (stdio); the flags are every call's defaults.\n${BREAKDOWN_USAGE}`);
+  (TOOLS[command] || !command || command === 'help' || command === '--help' ? console.log : console.error)(`storyreel <tool> [--flag value …]   (the film is named in ./${CONFIG}; --config another file)\n\n${lines.join('\n')}\n\nRead first, look last: timeline → review → fix → part → still.\nAfter an edit: changes (what it redraws) → changes --render (only those pieces, and a short clip of them).\nstoryreel mcp [--flag value …] serves the same tools over MCP (stdio); the flags are every call's defaults.\n${BREAKDOWN_USAGE}`);
   process.exit(command && command !== 'help' && command !== '--help' && !TOOLS[command] ? 2 : 0);
 }
 try {
-  const project = await loadProject(flags), out = await TOOLS[command].run(project, flags);
+  // A tool that prepares the film itself (changes: as the full render does) reads the config without compiling it first.
+  const project = await (TOOLS[command].compile === false ? loadInputs : loadProject)(flags), out = await TOOLS[command].run(project, flags);
   console.log(typeof out === 'string' ? out : out.text);
 } catch (e) {
   console.error(`storyreel ${command}: ${e.message}`); process.exit(1);

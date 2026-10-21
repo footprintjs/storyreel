@@ -162,6 +162,21 @@ function joinVoice(run, {dir, storyboard, timings, narrationDir, voice}) {
   run(['-f', 'concat', '-safe', '0', '-i', path.join(dir, 'film-narration.txt'), '-ar', '48000', '-ac', '1', voice]);
 }
 
+/**
+ * A prepared render's voice end to end on the film clock (its paced timings and narration), joined as finishRender
+ * joins it (joinVoice), as one WAV in the render's own work folder (film-voice.wav): what a review clip takes its
+ * stretches of (changes.mjs). It writes nowhere else.
+ */
+export function voiceTrack(job) {
+  const voice = path.join(job.work, 'film-voice.wav');
+  const run = args => {
+    const r = spawnSync(job.ffmpeg, ['-y', '-loglevel', 'error', ...args], {encoding: 'utf8'});
+    if (r.error || r.status !== 0) throw new Error(`ffmpeg could not join the voice: ${r.error?.message ?? (String(r.stderr).slice(-300) || `stopped (${r.signal ?? r.status})`)}`);
+  };
+  joinVoice(run, {dir: job.work, storyboard: job.storyboard, timings: job.timings, narrationDir: job.narrationDir, voice});
+  return voice;
+}
+
 
 // The painter (one picture at a film second, the motion blur, the encoder's settings) lives in paint.mjs: it is what
 // draws, so it is the root of every cached piece's drawing fingerprint; these names stay here, as they always were.

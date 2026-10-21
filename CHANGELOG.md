@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+- **The chat edit loop: see an edit before the full render.** `storyreel changes` plans the full render's pieces and
+  compares each key with the cache that render keeps, drawing nothing: one line per changed stretch with the reason a
+  render's report gives, then the count —
+  `2:37–3:08 left + right · its recipe entries changed, beats moved` / `7 of 41 pieces changed (0:30 of 3:08)` (0.5 s
+  in the bench: a silent three-minute film after a recipe edit; a voiced film paces a copy of its voice first). A piece
+  kept where an earlier scene's growth moved it is spot-checked now, as the render checks it, so a kit that animates on
+  the film's clock is listed ("it moved, and its frames moved with the film's clock"); so is a kept piece checked by
+  fewer frames than asked. What the keys cannot see (a kit with no `sources`) closes the count after `note:`, as a
+  render's line ends — only the full render's spot check catches it. `storyreel changes --render` draws only those
+  pieces, into the cache (the 0.18 store and spot-check laws unchanged), and writes `<out>/changes/review.mp4`: the
+  changed stretches back to back, each with 1 s of the film either side (`--handles`, from the cache), labelled with its
+  time, the film's voice under it (no clip when every piece changed: it would be the film). The full render that follows
+  draws nothing they drew. The MCP server serves `changes` too.
+- **`previewChanges(film, {render, handles, clip})`** is the same in code, on makeFilm's own options. A film is made
+  ready for it as makeFilm makes it — the cast, the inputs' checks, the out folder, the voice paced in a copy of its own,
+  the compile, the plan — one way for both (the internal `prepare.mjs`), so its keys are the full render's. A film
+  fitted to a song (`music`) is refused: the fit moves its scenes, and a preview does not run it.
+- **A project's config names its full render:** `render` and `code`, its video in `out` (`film.mp4`), and the rest of
+  makeFilm's own options it gives (`music`, `check`, `claims`, …). `fullRender(project)` (`footprint-storyreel/tools`)
+  is that render's makeFilm options, so a project's render script is `makeFilm(fullRender(await loadInputs(flags)))`;
+  `loadInputs` reads the config without compiling the film. The tools now read a config's `strategies` and
+  `reducedMotion` too, and time a film with no voice by what is said — the cast's names in it (a `{{role}}` in the
+  narration refused the tools before).
+- **`storyreel part --from 0:12 --to 0:18`**: a window of the film clock (seconds or m:ss) instead of scenes, with the
+  same handles — "frames N–M".
+- The segment cache: `folderStore` gains `kept(key)` (a kept piece's manifest from its shape and size, its video unread),
+  and `segmentedVideo` gains `why(job, piece)` (why `one` would draw it, read before anything is drawn), `notes(job)`
+  and `cache`; `one` and `why` share one spot check.
+- `bench/changes.mjs` measures the loop on a three-minute film; the benches' film moved to `bench/counting-film.mjs`.
+  The agent-cost baseline grows by the review skill's chat edit loop (5123 → 6046 bytes) and takes the cartoon skill's
+  current size (9869 bytes).
 - **A release that changes no code a kit uses keeps that kit's pieces.** A kit file that imports `footprint-storyreel` or
   a subpath is keyed by the StoryReel modules it reaches, read by content through StoryReel's exports (and the packages
   they import that draw, by version), no longer by StoryReel's version; another package is still keyed by its version.

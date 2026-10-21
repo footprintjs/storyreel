@@ -43,6 +43,9 @@ export {ffmpegJoin} from './segments/join.mjs';
 export {drawingCode, CATALOG, NOT_DRAWING} from './segments/drawing.mjs';
 export {kitCode} from './segments/kitcode.mjs';
 export {pictureLine} from './segments/report.mjs';
+export {changedRanges, changesText, rangeText, CHANGES_DEFAULTS} from './segments/changed.mjs';
+export {reviewWindows} from './segments/clip.mjs';
+export {clockOf} from './clocktext.mjs';
 
 /** How many pieces are drawn at once by default: a fair share of the machine's cores (one left free), at most 6. */
 export const defaultParallel = () => Math.max(1, Math.min(6, availableParallelism() - 1));
@@ -99,8 +102,36 @@ export function segmentedVideo({store, recipe = null, code, kitsCode = null, joi
     r.previous ??= typeof store.newest === 'function' ? store.newest(m => (m.film === seg.film ? m.slot : null)) : new Map();
     return r.previous.get(seg.slot)?.parts ?? null;
   };
+  /** The manifest of the piece the store keeps under `key`, or null (a store without kept() is asked for the piece itself). */
+  const keptManifest = key => (typeof store.kept === 'function' ? store.kept(key) : store.get(key)?.manifest) ?? null;
+  /** Whether a kept piece was drawn where the planned one starts (as its manifest keeps it: rounded). */
+  const moved = (m, seg) => Math.abs((m.from ?? round(seg.from)) - round(seg.from)) > 1e-6;
+  /** The piece's frames at offsets inside it, hashed exactly as it is kept: drawn without the stamp, which the join burns over every frame. */
+  const hasherFor = (job, seg) => { const hash = job.frameHasher({stamp: false}); return offsets => Object.fromEntries(offsets.map(o => [o, hash(seg.f0 + o, {poster: seg.index === 0 && o === 0})])); };
+  /** Whether a kept piece can be spot-checked as this one: as many frames, and checked by at least as many as asked (nothing painted). */
+  const comparable = (seg, m) => m.frames === seg.f1 - seg.f0 && Object.keys(m.samples ?? {}).length >= Math.min(samples, seg.f1 - seg.f0);
+  const UNCOMPARABLE = 'its kept copy was checked by fewer frames than asked';
+  /** The spot check (see the header): null when a kept piece's frames are this piece's, else why it is drawn again. */
+  const spotCheck = (seg, m, hashesAt) => {
+    if (!comparable(seg, m)) return UNCOMPARABLE;
+    if (Object.entries(hashesAt(Object.keys(m.samples).map(Number))).every(([o, h]) => m.samples[o] === h)) return null;
+    return moved(m, seg) ? 'it moved, and its frames moved with the film\'s clock' : 'its frames changed though its key did not (the key missed something)';
+  };
+  /** What weakens a render's keys (said after `note:` where it is read), shortest first. */
+  const notesOf = job => {
+    const {keeping, pieceCode} = of(job), unkeyed = code === undefined && !kitsCode ? unkeyedKits(job.film) : [];
+    const runtime = typeof pieceCode === 'function' ? pieceCode.runtime ?? [] : [];
+    const strategies = [job.film.attentionFrames?.focus?.code, job.film.attentionFrames?.emphasis?.code].some(Boolean);
+    return [...(keeping ? [] : ['the code changed on disk after this render started: its pieces were drawn, not kept']),
+      ...(code === null ? ['no code fingerprint was given: a change in the kits\' code is caught only by the spot check'] : []),
+      ...(unkeyed.length ? [`kit ${unkeyed.join(', ')} says nothing of where its code lives (sources), and no kitsCode was given: an edit to it is caught only by the spot check`] : []),
+      ...(runtime.length ? [`kit code loaded at run time is in no key (${runtime.slice(0, 3).join('; ')}${runtime.length > 3 ? '; …' : ''}): name those files in sources`] : []),
+      ...(strategies ? ['a focus or emphasis strategy of your own is keyed by its own function\'s text, not by what it calls'] : [])];
+  };
   return {
     name: 'segments',
+    /** Where the pieces are kept (the store's folder, or its name). */
+    cache: store.dir ?? store.name ?? null,
     /** The pieces, each with its key and its parts. */
     plan(job) {
       if (job.withIntro) throw new Error('segmentedVideo: an intro is not kept in segments; render it with wholeVideo(), or leave the intro out');
@@ -134,24 +165,36 @@ export function segmentedVideo({store, recipe = null, code, kitsCode = null, joi
       render.keeping = !(newest > performance.timeOrigin);
       return keyed.map(p => (count.get(p.key) > 1 ? {...p, key: hex24(`${p.key}|${p.slot}`)} : p));
     },
+    /**
+     * Why `one` would draw a piece, read before anything is drawn: null when the store keeps it, else the reason one
+     * gives — 'forced', what changed since its slot was last drawn ("words changed"), its kept copy checked by fewer
+     * frames than asked, or 'new'. A piece kept where it starts is taken on its key, its video unread (the render's spot
+     * check still checks it); one kept elsewhere (an earlier scene grew) is spot-checked now, as one() checks it, since
+     * a kit that animates on the film's clock redraws it.
+     */
+    why(job, seg) {
+      of(job);
+      if (seg.forced) return 'forced';
+      const m = keptManifest(seg.key);
+      if (!m) return whyDrawn(lastDrawn(job, seg), seg.parts) ?? 'new';
+      if (!comparable(seg, m)) return UNCOMPARABLE;
+      return moved(m, seg) ? spotCheck(seg, m, hasherFor(job, seg)) : null;
+    },
+    /** What weakens this render's keys: the notes its report's line ends with. */
+    notes: job => notesOf(job),
     /** One piece: reused when its key and its spot check match, drawn again otherwise. */
     async one(job, seg) {
       stopIfFailed(job, seg);
       const report = {index: seg.index, from: round(seg.from), to: round(seg.to), frames: seg.f1 - seg.f0, scenes: [...seg.scenes], key: seg.key, ...(seg.label ? {label: seg.label} : {})};
-      // The piece as it is kept: drawn without the stamp, which the join burns over every frame.
-      const hash = job.frameHasher({stamp: false}), hashesAt = offsets => Object.fromEntries(offsets.map(o => [o, hash(seg.f0 + o, {poster: seg.index === 0 && o === 0})]));
+      const hashesAt = hasherFor(job, seg);
       // The render's own hold on the piece it joins: a link in its working folder (a copy on another disk), taken when the
       // piece is checked or drawn, so nothing put after that — by this render or another — changes what is joined.
       const own = path.join(job.work, `piece-${seg.index}.mp4`), held = file => (file === own ? own : writeOutput(own, {copy: file, link: true}));
       const kept = seg.forced ? null : store.get(seg.key, {into: own});
       let why = seg.forced ? 'forced' : null;
       if (kept) {
-        const m = kept.manifest, offsets = Object.keys(m.samples ?? {}).map(Number);
-        const comparable = m.frames === seg.f1 - seg.f0 && offsets.length >= Math.min(samples, seg.f1 - seg.f0);
-        if (comparable && Object.entries(hashesAt(offsets)).every(([o, h]) => m.samples[o] === h)) return {...report, status: 'reused', file: held(kept.file)};
-        why = !comparable ? 'its kept copy was checked by fewer frames than asked'
-          : Math.abs((m.from ?? round(seg.from)) - round(seg.from)) > 1e-6 ? 'it moved, and its frames moved with the film\'s clock'   // as the manifest keeps it (rounded)
-          : 'its frames changed though its key did not (the key missed something)';
+        why = spotCheck(seg, kept.manifest, hashesAt);
+        if (why === null) return {...report, status: 'reused', file: held(kept.file)};
       }
       why ??= whyDrawn(lastDrawn(job, seg), seg.parts) ?? 'new';
       await slot();
@@ -159,11 +202,11 @@ export function segmentedVideo({store, recipe = null, code, kitsCode = null, joi
         stopIfFailed(job, seg);
         const tmp = path.join(job.work, `segment-${seg.index}-${seg.key}-${process.pid}-${++made}.mp4`);   // in the render's work folder until the store takes it
         await job.encodeFrames({f0: seg.f0, f1: seg.f1, file: tmp, posterFirst: seg.index === 0, stamp: false});
-        if (!of(job).keeping) return {...report, status: 'rendered', why, file: tmp};   // drawn with code older than its key: not kept
+        if (!of(job).keeping) return {...report, status: 'rendered', why, kept: false, file: tmp};   // drawn with code older than its key: not kept
         held(tmp);
         store.put(seg.key, tmp, {key: seg.key, index: seg.index, from: round(seg.from), frames: seg.f1 - seg.f0, scenes: seg.scenes, film: seg.film, slot: seg.slot, ...(seg.label ? {label: seg.label} : {}), parts: seg.parts,
           samples: hashesAt(sampleOffsets(seg, samples, job.fps)), made: new Date().toISOString()});
-        return {...report, status: 'rendered', why, file: own};
+        return {...report, status: 'rendered', why, kept: true, file: own};
       } catch (e) {
         of(job).failed ??= {index: seg.index, message: e.message};
         throw e;
@@ -176,15 +219,9 @@ export function segmentedVideo({store, recipe = null, code, kitsCode = null, joi
       await (joiner ?? ffmpegJoin({ffmpeg: job.ffmpeg})).join(done.map(d => d.file), file, {stamp});
       // The store held to its size: the pieces used longest ago go, never one this render used.
       const trimmed = typeof store.trim === 'function' ? store.trim({keep: new Set(done.map(d => d.key))}) : null;
-      const {keeping, pieceCode} = of(job), segments = done.map(({file: _f, ...d}) => d), unkeyed = code === undefined && !kitsCode ? unkeyedKits(job.film) : [];
-      const runtime = typeof pieceCode === 'function' ? pieceCode.runtime ?? [] : [];
-      const strategies = [job.film.attentionFrames?.focus?.code, job.film.attentionFrames?.emphasis?.code].some(Boolean);
-      // What weakens this render's keys, said where it is read (the line), shortest first.
-      const notes = [...(keeping ? [] : ['the code changed on disk after this render started: its pieces were drawn, not kept']),
-        ...(code === null ? ['no code fingerprint was given: a change in the kits\' code is caught only by the spot check'] : []),
-        ...(unkeyed.length ? [`kit ${unkeyed.join(', ')} says nothing of where its code lives (sources), and no kitsCode was given: an edit to it is caught only by the spot check`] : []),
-        ...(runtime.length ? [`kit code loaded at run time is in no key (${runtime.slice(0, 3).join('; ')}${runtime.length > 3 ? '; …' : ''}): name those files in sources`] : []),
-        ...(strategies ? ['a focus or emphasis strategy of your own is keyed by its own function\'s text, not by what it calls'] : [])];
+      const {keeping} = of(job), segments = done.map(({file: _f, kept: _k, ...d}) => d);   // the record as it was: whether all were kept is its own field
+      // What weakens this render's keys, said where it is read (the line).
+      const notes = notesOf(job);
       const report = {strategy: 'segments', store: store.dir ?? store.name, reused: segments.filter(s => s.status === 'reused').length, rendered: segments.filter(s => s.status === 'rendered').length,
         ...(notes.length ? {note: notes.join('; ')} : {}), ...(keeping ? {} : {kept: false}),
         ...(trimmed?.evicted?.length ? {evicted: trimmed.evicted.length} : {}), ...(stamp ? {stamp: 'burned at the join'} : {}), segments};
