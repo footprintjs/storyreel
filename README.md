@@ -1548,8 +1548,8 @@ console.log(result.video.line);
   is drawn again wherever it moved: the spot check sees it.)
 - **Only the code that paints.** The key holds StoryReel's drawing code (`footprint-storyreel/segments` ·
   `drawingCode`: the painter, the film, the layout and what they import), not its sounds, reviews or command line,
-  and a transition or a steps track only in the pieces that draw it: a release that changes a transition your film
-  never plays keeps your cache. (An approval still locks all of StoryReel: [Approve a film](#approve-a-film).)
+  and a transition, a steps track or a thought cloud only in the pieces that draw it: a release that changes a
+  transition your film never plays keeps your cache. (An approval still locks all of StoryReel: [Approve a film](#approve-a-film).)
 - **Your kits' code, per shot.** A kit says where each entry's code lives, and a piece is keyed by the code of the
   entries it draws, so editing one shot redraws only the pieces that show it:
 

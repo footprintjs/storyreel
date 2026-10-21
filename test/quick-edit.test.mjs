@@ -80,9 +80,10 @@ test('a StoryReel change reaches only the keys it draws: an unused transition, t
   for (const n of Object.keys(CATALOG_ENTRIES).filter(n => n !== 'eraser')) assert.equal(one.catalog(n), base.catalog(n), `and not ${n}'s`);
   for (const f of ['sound.mjs', 'found/library.mjs', 'listening.mjs', 'review.mjs', 'cli.mjs', 'mcp.mjs', 'release.mjs', 'breakdown.mjs', 'beats.mjs', 'files.mjs', 'sounds/openverse.mjs', 'render.mjs', 'pipeline.mjs', 'reading.mjs', 'shots.mjs']) edit(f);
   assert.equal(drawingCode({src}).core, base.core, 'sounds, reviews, the command line, files, the render\'s mix: no key changes');
-  edit('transitions/paper/tokens.mjs');
+  edit('paper-tokens.mjs');
   const shared = drawingCode({src});
   assert.ok(['torn', 'eraser', 'curl'].every(n => shared.catalog(n) !== one.catalog(n)) && shared.catalog('stepsTrack') === one.catalog('stepsTrack'), 'a helper the paper transitions share: every paper transition, not the steps track');
+  assert.equal(shared.core, base.core, 'and not the core');
   edit('film.mjs');
   assert.notEqual(drawingCode({src}).core, base.core, 'the painter itself: every key');
   // In keys: a film that enters its code stage with the eraser.
@@ -107,6 +108,24 @@ test('installed from npm (inside node_modules), the drawing fingerprint and a bu
   const kit = path.join(top, 'app', 'kit.mjs'); writeFileSync(kit, "import {paperTokens} from 'footprint-storyreel/transitions';\nimport './node_modules/footprint-storyreel/src/ease.mjs';\n");
   const read = moduleReader('t')(kit);
   assert.deepEqual(read.files, [], 'a file of another package (by path) is not followed from outside it');
+});
+
+test('the thought cloud and cloudBurst are catalog pieces: an edit to them redraws only the pieces a framed world or the burst is in', async t => {
+  const top = tempDir('thought', t), src = path.join(top, 'src');
+  for (const dir of ['src', 'fonts', 'themes']) cpSync(fileURLToPath(new URL(`../${dir}/`, import.meta.url)), path.join(top, dir), {recursive: true});
+  const base = drawingCode({src});
+  writeFileSync(path.join(src, 'thought/draw.mjs'), readFileSync(path.join(src, 'thought/draw.mjs'), 'utf8') + '\nexport const edited = 1;\n');
+  const one = drawingCode({src});
+  assert.equal(one.core, base.core, 'not the core: a film with no thought cloud keeps every piece');
+  assert.notEqual(one.catalog('thought'), base.catalog('thought')); assert.notEqual(one.catalog('cloudBurst'), base.catalog('cloudBurst'), 'the burst draws the cloud it pops');
+  assert.equal(one.catalog('torn'), base.catalog('torn'));
+  // The valley in a thought cloud, popped by a cloudBurst into the code.
+  const recipe = read('recipe.json'); recipe.stages[0].frame = 'thought'; recipe.stages[1].enter = 'cloudBurst';
+  const made = await worlds({recipe}), pieces = planPieces(made.film, {fps: 10, chunkSeconds: 2});
+  const keyed = drawing => pieces.map(seg => pieceKey(made.film, seg, {recipe, storyboard: made.storyboard, pixels, code: 'k', fps: 10, drawing}).key);
+  const shows = pieces.map(p => [...p.paths, ...(p.before ?? [])].includes('stages[0]') || p.enters.includes('cloudBurst'));
+  assert.ok(shows.some(Boolean) && !shows.every(Boolean));
+  assert.deepEqual(changed(keyed(base), keyed(one)), shows, 'only the pieces that draw the cloud or its burst');
 });
 
 // ── The plan: rows cut into pieces ───────────────────────────────────────────────────────────────────────────────────
@@ -136,7 +155,9 @@ test('a chunked render paints the same frames as one pass: every example film, e
   const painter = film => { const c = createCanvas(width, height), paint = makePainter({film, framed: null, blur: null, width, height, fps, ctx: c.getContext('2d')}); return f => { paint(f / fps); return hashOf(c); }; };
   // The examples, and a film whose steps track replays its shot backwards (a nested picture drawn at an earlier moment).
   const {stepsFilm} = await import('./quick-edit-fixtures.mjs');
-  const films = [...await Promise.all(Object.keys(FILMS).map(n => compileExample(n))), await stepsFilm()];
+  // …and a world in a thought cloud, popped by a cloudBurst (the cloud opens on its shot's clock).
+  const framed = read('recipe.json'); framed.stages[0].frame = 'thought'; framed.stages[1].enter = 'cloudBurst';
+  const films = [...await Promise.all(Object.keys(FILMS).map(n => compileExample(n))), await stepsFilm(), (await worlds({recipe: framed})).film];
   for (const film of films) {
     const frames = Math.ceil(film.total * fps), whole = painter(film), once = Array.from({length: frames}, (_, f) => whole(f));
     for (const chunkSeconds of [1.7, 6]) {

@@ -57,8 +57,10 @@ export const CATALOG = Object.freeze({
   transitions: Object.freeze({registry: 'transitions/paper/index.mjs', entries: Object.freeze({
     torn: 'transitions/paper/torn.mjs', eraser: 'transitions/paper/eraser.mjs', inkBleed: 'transitions/paper/ink.mjs',
     ringIris: 'transitions/paper/ring.mjs', glassSheet: 'transitions/paper/glass.mjs', curl: 'transitions/paper/page.mjs',
-    fold: 'transitions/paper/page.mjs', morph: 'transitions/paper/morph.mjs'})}),
-  pieces: Object.freeze({registry: null, entries: Object.freeze({stepsTrack: 'kits/paper/steps-track.mjs'})}),
+    fold: 'transitions/paper/page.mjs', morph: 'transitions/paper/morph.mjs', cloudBurst: 'transitions/paper/burst.mjs'})}),
+  // A piece of the film drawn over or around a shot: the steps track (recipe.stepsTrack, an overlay) and the thought
+  // cloud a world is framed in (a story's or a world stage's "frame": "thought").
+  pieces: Object.freeze({registry: null, entries: Object.freeze({stepsTrack: 'kits/paper/steps-track.mjs', thought: 'thought/index.mjs'})}),
 });
 
 /** Every catalog entry's name → {group, file, registry}. */

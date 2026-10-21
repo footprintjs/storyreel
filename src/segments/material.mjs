@@ -11,7 +11,7 @@
  * reused piece is checked.
  *
  * The parts: engine (StoryReel's drawing code: segments/drawing.mjs · core), catalog:<name> (each transition or
- * piece of a catalog the piece draws), code (the kits' code), frames, pixels (the frame settings), entries (its recipe
+ * piece of a catalog the piece draws: a transition, the steps track, a thought cloud), code (the kits' code), frames, pixels (the frame settings), entries (its recipe
  * entries, whole), lines (when each of their beats lands), words (the scenes around it: their words, number slots,
  * speakers, example flags), captions (the burned-in caption chunks shown in and around it), notes, camera, attention
  * (focus and emphasis), labels (an example scene's label), strings, data, theme, files, cast (what reaches every
@@ -76,7 +76,9 @@ export function segmentMaterial(film, seg, {recipe, storyboard = null, pixels, c
   // The transitions it draws (crossing, above), by name; a catalog's own module is keyed only here
   // (segments/drawing.mjs · CATALOG), with the steps track when it is over the piece.
   const enters = crossing.map(({r}) => r.enter.type);
-  const used = [...new Set([...enters, ...overlays])].filter(n => Object.hasOwn(CATALOG_ENTRIES, n)).sort();
+  // A frame a world is drawn in (a thought cloud: "frame": "thought" or {"type": "thought", …}), by its kind.
+  const frames = entries.map(([, e]) => e?.frame).filter(f => f !== undefined && f !== null).map(f => (typeof f === 'string' ? f : f.type));
+  const used = [...new Set([...enters, ...overlays, ...frames])].filter(n => Object.hasOwn(CATALOG_ENTRIES, n)).sort();
   const attention = film.attentionFrames ?? null, focus = attention?.focus ?? null, emphasis = attention?.emphasis ?? null;
   /** Keys in time order ({t}) that reach the piece: each near a stretch it draws, and the last one before each stretch. */
   const reaching = list => list.filter((k, i) => near(k.t) || spans.some(([f]) => k.t < f - margin && !(list[i + 1]?.t < f - margin)));

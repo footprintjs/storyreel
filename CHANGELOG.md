@@ -45,7 +45,7 @@
   speed ramp is keyed by the moments it shows.
 - **Only the code that paints is in a key.** A key holds StoryReel's drawing fingerprint (the painter, the film, the
   layout and what they import; `footprint-storyreel/segments` · `drawingCode`) instead of every StoryReel file, and a
-  transition or the steps track only in the pieces that draw it. A release that changes sounds, reviews, the command
+  transition (`cloudBurst` too), the steps track or a thought cloud only in the pieces that draw it. A release that changes sounds, reviews, the command
   line or a transition the film never plays keeps the cache. An approval still locks all of StoryReel.
 - **The stamp is burned at the join**, from a picture the painter drew (FFmpeg's `overlay`, not `drawtext`): a new
   label costs one re-encode, never a redraw. A render with no stamp joins its pieces by copying, as before.
