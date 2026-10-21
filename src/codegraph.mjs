@@ -14,12 +14,28 @@
  * A relative import is followed to its file, transitively; one that leads nowhere is listed as missing (never a throw:
  * a stale import in a kit is reported, and the fingerprint still names what is there). A package in node_modules is
  * named by its installed version; a package linked or in a workspace (its real path outside node_modules: a `file:`
- * dependency, `npm link`) is the film's own code, and its files are followed like any other.
+ * dependency, `npm link`) is the film's own code, and its files are followed like any other. StoryReel itself, installed,
+ * is read by its content (STORYREEL), never by its version.
  */
 import {readFileSync, existsSync, statSync, realpathSync} from 'node:fs';
 import {isBuiltin} from 'node:module';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
+
+/**
+ * StoryReel's own package name. An installed package of this name is the engine itself, so it is read by its content
+ * like the film's own code: an import of it (`footprint-storyreel` or a subpath) is resolved through its exports and
+ * followed into the modules it reaches. A kit that imports StoryReel is then keyed by the StoryReel code it uses, and a
+ * release that changes none of it keeps the kit's pieces. StoryReel's package.json, as its own modules read it, is never
+ * read into a key: its version names a release, not code, and none of them draws with it (the engine's own fingerprint
+ * holds its src and fonts, never its manifest). A kit that reads it itself (a credits card drawing the version) keeps it.
+ * Every other package is named by its version: it is not ours to read.
+ */
+export const STORYREEL = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).name;
+/** The name a folder's package.json gives, or null (none there, or not JSON). */
+function manifestName(dir) {
+  try { return JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')).name ?? null; } catch { return null; }
+}
 
 /** The files read as code, whose imports are followed. */
 export const PARSED = /\.(mjs|js|cjs|ts|mts|cts|tsx|jsx)$/i;
@@ -196,8 +212,9 @@ function packageEntry(dir, subpath, manifest) {
 
 /**
  * A bare specifier from a file: null for a built-in; {pkg: 'name@version'} for a package in node_modules (its version
- * is what is hashed); {file} for a package linked or in a workspace (its real path is outside node_modules: its code
- * is followed), or for a package importing itself by name; {pkg: 'name@?'} when it is not installed beside the code.
+ * is what is hashed); {file} for StoryReel installed (STORYREEL: its entry for the subpath, by its exports), for a
+ * package linked or in a workspace (its real path is outside node_modules: its code is followed), or for a package
+ * importing itself by name; {pkg: 'name@?'} when it is not installed beside the code.
  */
 export function resolvePackage(spec, from) {
   if (spec.startsWith('node:') || isBuiltin(spec)) return null;
@@ -206,7 +223,7 @@ export function resolvePackage(spec, from) {
     const installed = path.join(dir, 'node_modules', name), own = path.join(dir, 'package.json');
     if (existsSync(path.join(installed, 'package.json'))) {
       const real = realpathSync(installed), manifest = JSON.parse(readFileSync(path.join(real, 'package.json'), 'utf8'));
-      if (real.split(path.sep).includes('node_modules')) return {pkg: `${name}@${manifest.version ?? '?'}`};
+      if (real.split(path.sep).includes('node_modules') && manifest.name !== STORYREEL) return {pkg: `${name}@${manifest.version ?? '?'}`};
       const file = packageEntry(real, subpath, manifest);
       return file ? {file} : {pkg: `${name}@${manifest.version ?? '?'}`};
     }
@@ -226,21 +243,31 @@ export function packageRoot(file) {
 }
 
 /**
- * A reader of modules, each read once: {bytes, hash, files, packages, missing, unfollowed, unparsed} — its bytes, the
- * files it reads (relative imports, linked packages' entries, assets: never inside node_modules, but for a file of the
- * reading file's own installed package — StoryReel's modules as npm installs them), the packages it imports
- * by version, the relative specifiers that lead nowhere (`missing`), the imports and assets chosen at run time
- * (`unfollowed`), and the line the reading lost its way at, when the file ends inside a string or template (`unparsed`).
+ * A reader of modules, each read once: {bytes, hash, files, packages, missing, unfollowed, unparsed, storyreel} — its
+ * bytes, the files it reads (relative imports, linked packages' entries, assets: never inside node_modules, but for a
+ * file of the reading file's own installed package — a package's own modules — and for StoryReel's, from anywhere:
+ * STORYREEL), the packages it imports by version, the relative specifiers that lead nowhere (`missing`), the imports and
+ * assets chosen at run time (`unfollowed`), the line the reading lost its way at, when the file ends inside a string or
+ * template (`unparsed`), and whether the file is an installed StoryReel's own (`storyreel`).
  */
 export function moduleReader(who) {
-  const known = new Map();
+  const known = new Map(), names = new Map();
+  /** A folder's package name, read once; whether a package folder (packageRoot) is StoryReel's. */
+  const nameIn = dir => { if (!names.has(dir)) names.set(dir, manifestName(dir)); return names.get(dir); };
+  const isStoryReel = root => root !== null && nameIn(root) === STORYREEL;
   return file => {
     if (known.has(file)) return known.get(file);
     if (!existsSync(file)) throw new Error(`${who}: ${file} does not exist: name a file that is there (relative to the folder the command runs in)`);
     const bytes = readFileSync(file), files = [], packages = [], missing = [], unfollowed = []; let unparsed = null;
     // A file in node_modules is a package's, named by its version — except a file of the same installed package as the
-    // one reading it: a package's own modules (StoryReel's, installed) are its code, followed like any other.
-    const own = packageRoot(file), take = f => { const root = packageRoot(f); if (root === null || root === own) files.push(f); };
+    // one reading it (a package's own modules are its code) and StoryReel's, read by content from anywhere. StoryReel's
+    // package.json, read by one of its own modules, is never taken: its version names a release, not code (STORYREEL).
+    const own = packageRoot(file);
+    const storyReelReadsItsManifest = f => path.basename(f) === 'package.json' && nameIn(path.dirname(f)) === STORYREEL && file.startsWith(path.dirname(f) + path.sep);
+    const take = f => {
+      if (storyReelReadsItsManifest(f)) return;
+      const root = packageRoot(f); if (root === null || root === own || isStoryReel(root)) files.push(f);
+    };
     if (PARSED.test(file)) {
       const scanned = scanModule(bytes.toString('utf8')), {imports, assets, computed} = scanned; unparsed = scanned.unparsed;
       for (const spec of imports) {
@@ -251,7 +278,7 @@ export function moduleReader(who) {
       for (const spec of assets) { const f = path.resolve(path.dirname(file), spec); if (isFile(f)) take(f); else missing.push(spec); }
       unfollowed.push(...computed);
     }
-    const entry = {bytes, hash: createHash('sha256').update(bytes).digest('hex'), files, packages, missing, unfollowed, unparsed};
+    const entry = {bytes, hash: createHash('sha256').update(bytes).digest('hex'), files, packages, missing, unfollowed, unparsed, storyreel: isStoryReel(own)};
     known.set(file, entry);
     return entry;
   };

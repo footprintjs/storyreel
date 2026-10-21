@@ -33,6 +33,10 @@
 - `bench/changes.mjs` measures the loop on a three-minute film; the benches' film moved to `bench/counting-film.mjs`.
   The agent-cost baseline grows by the review skill's chat edit loop (5123 → 6046 bytes) and takes the cartoon skill's
   current size (9869 bytes).
+- **A release that changes no code a kit uses keeps that kit's pieces.** A kit file that imports `footprint-storyreel` or
+  a subpath is keyed by the StoryReel modules it reaches, read by content through StoryReel's exports (and the packages
+  they import that draw, by version), no longer by StoryReel's version; another package is still keyed by its version.
+  The first render after upgrading to this release redraws once, because the key changes from version to content.
 
 ## 0.18.0 — quick edits by default, a thought cloud
 

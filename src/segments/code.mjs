@@ -15,14 +15,21 @@ import {moduleReader} from '../codegraph.mjs';
 export const CODE_EXTENSIONS = Object.freeze(['.mjs', '.js', '.cjs', '.ts', '.mts', '.cts', '.tsx', '.jsx', '.json', '.ttf', '.otf', '.woff', '.woff2', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg']);
 
 /**
+ * The packages a module's imports put in a key: every one, but for an installed StoryReel's own modules (read by content:
+ * codegraph.mjs · STORYREEL) only those that draw (versions.mjs · DRAWING), as the engine's own fingerprint keys them:
+ * footprintjs runs the making-of record and draws nothing, so its release redraws no kit that reaches it through StoryReel.
+ */
+const keyedPackages = e => (e.storyreel ? e.packages.filter(p => DRAWING.includes(p.slice(0, p.lastIndexOf('@')))) : e.packages);
+
+/**
  * A fingerprint of drawing code: every file under the given folders (or the files themselves), and every file they read
  * (codegraph.mjs): relative imports, resolved and read, transitively (a helper two folders up that a kit imports is the
  * kit's code too), TypeScript as well as JavaScript; the files a package linked or in a workspace holds; an asset a
  * module loads by `new URL('…', import.meta.url)` — never inside node_modules — and each package in node_modules by its
- * installed version (`pkg@1.2.3`), so an approval misses no change the kit draws with. A cycle is read once. What it
- * cannot follow it lists, never throws on: a relative import that leads nowhere (`missing`) and an import chosen at run
- * time (`unfollowed`) — name a kit's asset folder in `paths` when it loads files another way. codeCover(fingerprint)
- * gives it all back (the making-of record lists it).
+ * installed version (`pkg@1.2.3`) but StoryReel, read by its content (codegraph.mjs · STORYREEL), so an approval misses
+ * no change the kit draws with. A cycle is read once. What it cannot follow it lists, never throws on: a relative import
+ * that leads nowhere (`missing`) and an import chosen at run time (`unfollowed`) — name a kit's asset folder in `paths`
+ * when it loads files another way. codeCover(fingerprint) gives it all back (the making-of record lists it).
  */
 export function codeFingerprint(paths, {extensions = CODE_EXTENSIONS} = {}) {
   const given = filesUnder(paths, extensions), read = moduleReader('codeFingerprint'), files = new Set(), packages = new Set(), missing = [], unfollowed = [], unparsed = [];
@@ -30,7 +37,9 @@ export function codeFingerprint(paths, {extensions = CODE_EXTENSIONS} = {}) {
     const f = realpathSync(given);   // one name per file, through any link: a linked package's files sort with the rest
     if (files.has(f)) return;
     files.add(f); const m = read(f);
-    m.packages.forEach(x => packages.add(x)); m.missing.forEach(spec => missing.push({from: f, spec})); m.unfollowed.forEach(code => unfollowed.push({from: f, code}));
+    keyedPackages(m).forEach(x => packages.add(x));
+    // An installed StoryReel's own run-time loads are the engine's, not the kit's to name (segments/kitcode.mjs).
+    if (!m.storyreel) { m.missing.forEach(spec => missing.push({from: f, spec})); m.unfollowed.forEach(code => unfollowed.push({from: f, code})); }
     if (m.unparsed !== null) unparsed.push({file: f, from: m.unparsed});   // read only to that line: what follows may hold imports
     m.files.forEach(follow);
   };
@@ -66,10 +75,10 @@ export const codeCover = fingerprint => COVERS.get(fingerprint) ?? null;
 /**
  * Code per segment, for a kit that draws many shots: `sources(entry)` names the files that draw a recipe entry (its
  * shot's module, say), and a segment's code is the fingerprint of the files its own entries name, everything they
- * import (relative imports followed; a package by its installed version) and the `shared` files (hashed as they
- * are, their imports not followed: a kit's index imports every shot). Editing one shot then draws again only the
- * segments that show it; the rest are reused. Give the result to segmentedVideo as `code`. (A kit can declare the same
- * itself, `sources: {entry, shared}`, and the default cache uses it with no wiring: segments/kitcode.mjs.)
+ * import (relative imports and StoryReel followed; another package by its installed version) and the `shared` files
+ * (hashed as they are, their imports not followed: a kit's index imports every shot). Editing one shot then draws again
+ * only the segments that show it; the rest are reused. Give the result to segmentedVideo as `code`. (A kit can declare
+ * the same itself, `sources: {entry, shared}`, and the default cache uses it with no wiring: segments/kitcode.mjs.)
  */
 export function sourceCode(sources, {shared = []} = {}) {
   if (typeof sources !== 'function') throw new Error("sourceCode: sources(entry) names the files that draw a recipe entry (e.g. its shot's module)");
@@ -95,14 +104,14 @@ export function asFile(f, who) {
 }
 
 /**
- * The hash of a set of code files: `followed` with everything they import (relative imports and linked packages; a
- * package in node_modules by its installed version), `shared` as they are. Each file is named by its folder and name,
- * so the same kit in two checkouts hashes the same.
+ * The hash of a set of code files: `followed` with everything they import (relative imports, linked packages and
+ * StoryReel itself; another package in node_modules by its installed version), `shared` as they are. Each file is named
+ * by its folder and name, so the same kit in two checkouts hashes the same.
  */
 export function fileSetHash(read, followed, shared = [], {seen = null} = {}) {
   const files = new Map(), packages = new Set(), name = f => `${path.basename(path.dirname(f))}/${path.basename(f)}`;
   // `seen(file, entry)`, when given, hears of every file read (a caller that keeps their times or what they could not follow).
-  const follow = f => { if (files.has(f)) return; const e = read(f); seen?.(f, e); files.set(f, e.hash); e.packages.forEach(p => packages.add(p)); e.files.forEach(follow); };
+  const follow = f => { if (files.has(f)) return; const e = read(f); seen?.(f, e); files.set(f, e.hash); keyedPackages(e).forEach(p => packages.add(p)); e.files.forEach(follow); };
   followed.forEach(follow);
   for (const p of shared) { const e = read(p); seen?.(p, {...e, files: [], unfollowed: [], missing: []}); files.set(p, e.hash); }
   const h = createHash('sha256');

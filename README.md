@@ -1593,6 +1593,8 @@ run it.
     sources: {entry: spec => [new URL(`./shots/${spec.shot}.mjs`, import.meta.url)],   // followed through its imports
       shared: [new URL('./index.mjs', import.meta.url)]}};                              // hashed as it is
   ```
+  What a shot imports from StoryReel (`footprint-storyreel` or a subpath) is keyed by the StoryReel modules it reaches,
+  never by StoryReel's version: a release that changes none of them keeps the pieces.
   A kit that says nothing is keyed by `makeFilm`'s `code` (`codeFingerprint(['film/kits'])`) wherever it draws, or,
   without it, only by the spot check; a kit whose code loads files at run time (`import(\`./shots/${name}.mjs\`)`)
   names those files in `sources`. The line says either, after `note:`. A focus or emphasis strategy of your own is
@@ -1690,8 +1692,9 @@ the data, the theme, every file the film read through its root, the pacing, the 
 pass `code: codeFingerprint(['film/kits'])` — the kits' drawing code, and every file it reads: imports followed
 transitively, JavaScript and TypeScript (a helper in `../lib` the kit imports is its code too; `./x.js` finds `x.ts`), a
 package linked or in a workspace (`npm link`, a `file:` dependency) as code, each package in `node_modules` by its
-installed version, and the assets a module loads by `new URL('./font.ttf', import.meta.url)`. Imports are read as code,
-so one in a comment or a string is none. What it cannot follow it lists, never throws on: an import that leads nowhere
+installed version — but StoryReel itself, read by content (the modules a kit imports from it, never its version) — and
+the assets a module loads by `new URL('./font.ttf', import.meta.url)`. Imports are read as code, so one in a comment or
+a string is none. What it cannot follow it lists, never throws on: an import that leads nowhere
 (`missing`), one chosen at run time (`unfollowed`: `import(\`./scenes/${name}.mjs\`)`, `new URL(name, import.meta.url)`)
 and a module the reader lost its way in (`unparsed`, with the line: it ends inside a string or a template, as a regular
 expression holding a backtick can make it). **A kit that loads files another
