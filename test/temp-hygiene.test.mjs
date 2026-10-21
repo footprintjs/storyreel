@@ -18,10 +18,10 @@ test('the suite\'s memory is read from ps: the whole tree under the script, and 
   const ps = [
     '    1     0   4000 /sbin/launchd',
     '  100     1  50000 node scripts/temp-hygiene.mjs test/claims.test.mjs test/review.test.mjs',
-    '  101   100  80000 /usr/bin/node --test --test-concurrency=3 test/claims.test.mjs test/review.test.mjs',
-    '  102   101 900000 /usr/bin/node --test-reporter=tap /home/me/storyreel/test/claims.test.mjs',
+    '  101   100  80000 /usr/bin/node --import ./test/fonts.mjs --test --test-concurrency=3 test/claims.test.mjs test/review.test.mjs',
+    '  102   101 900000 /usr/bin/node --import ./test/fonts.mjs --test-reporter=tap /home/me/storyreel/test/claims.test.mjs',
     '  103   102 300000 ffmpeg -y -loglevel error -i pipe:0 film-video.mp4',
-    '  104   101 200000 /usr/bin/node --test-reporter=tap /home/me/storyreel/test/review.test.mjs',
+    '  104   101 200000 /usr/bin/node --import ./test/fonts.mjs --test-reporter=tap /home/me/storyreel/test/review.test.mjs',
     '  105   101  70000 /usr/bin/node --test-reporter=tap /home/me/storyreel/test/skills-render.mjs',
     '  200     1 999999 node elsewhere.mjs',
   ].join('\n');

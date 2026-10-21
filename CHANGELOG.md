@@ -2,13 +2,18 @@
 
 ## Unreleased
 
+- **The suite's text checks hold on any Linux runner.** Where a theme's named fonts are missing, the canvas falls back
+  to a default face it picks by scanning the system's fonts, and that pick changed between two GitHub ubuntu-24.04
+  images, moving the word gaps four reading and claims tests measure. `test/fonts.mjs`, loaded before every test
+  file, registers DejaVu Sans (regular, bold) at Debian/Ubuntu's path under the generic families, the face those
+  tests were calibrated on there. Nothing changes where that path is absent (macOS, Windows), nor in the package.
+
 - **Eight paper transitions, built in.** `torn`, `eraser`, `inkBleed`, `ringIris`, `glassSheet`, `curl`, `fold` and
   `morph` join the collection (`footprint-storyreel/transitions` · `TRANSITIONS`), each in its family, named in a
   recipe like any other: `"enter": "torn"` leaves the old page behind (a recap torn away to reveal the new episode's
   title): a ragged tear runs across the old picture with the new one showing along it, then the torn sheet is dragged
   off toward `direction`, tilted and lifted, carrying the old picture whole (`tear` sets the share of the change the
-  tear takes). They
-  draw paper and ink in the film's theme's colours; a colour they add (the ring, the outline, the ink) defaults to the
+  tear takes). They draw paper and ink in the film's theme's colours; a colour they add (the ring, the outline, the ink) defaults to the
   theme's and a recipe may name another. A torn edge or an ink blot is a seeded shape (`seed`), never chance, so the
   same frame is the same pixels; each starts on the old picture and ends on the new one exactly. The README's table
   gains a "use it for" column: what each transition means, for every transition, held to the catalog by a test.
