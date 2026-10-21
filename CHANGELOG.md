@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.18.0 — quick edits by default, a thought cloud
 
 - **A thought cloud: a world shown as a memory or a daydream.** `"frame": "thought"` on the story or on a world stage
   draws the world inside a cartoon thought cloud: scalloped, inked in the theme's ink on its card, with a soft shadow,
@@ -77,10 +77,11 @@
 - The StoryReel skill gains a four-line edit loop (part first, a full render redraws only what changed, keep the
   stamp's label steady, `whole: true` only to debug): its agent-cost baseline is re-recorded for that page alone
   (3821 → 4483 B, about 165 tokens more); every other row keeps its baseline.
-- **Breaking:** `segmentedVideo`'s `samples` is 1–60 (0, no spot check, is refused); its `recipe` is optional (the
-  film's own, `film.recipe`); `code` left out now means each kit's `sources` (`code: null` is still no code).
-  `ffmpegJoin().join` takes `{stamp}` and the strategy's `join` is async. A segment key from 0.17 never matches (a
-  first render draws everything once).
+- **Breaking:** `renderFilm` and `makeFilm` without `video` now draw in pieces kept beside the video (`whole: true`
+  draws every frame in one pass); `segmentedVideo`'s `samples` is 1–60 (0, no spot check, is refused); its `recipe` is
+  optional (the film's own, `film.recipe`); `code` left out now means each kit's `sources` (`code: null` is still no
+  code). `ffmpegJoin().join` takes `{stamp}` and the strategy's `join` is async. A segment key from 0.17 never matches
+  (a first render draws everything once).
 
 ## 0.17.0 — a convincing tear, trimmed sounds, a steps track
 
