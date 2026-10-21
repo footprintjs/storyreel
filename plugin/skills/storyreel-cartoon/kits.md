@@ -82,6 +82,11 @@ another way (`readFile`, a path built at run time) should have that folder named
 `extensions` for files that are not code, JSON, fonts or images (an audio sample, a `.txt`, a shader): a folder hashes
 only those by default ([release.md](release.md#approve-the-film-that-was-watched)).
 
+A kit says where its drawing code lives with `sources: {entry: spec => [files], shared?: [files]}` beside `story`
+(files as paths or `new URL('./shots/x.mjs', import.meta.url)`; `spec` is what `compile` gets): every render keys each
+cached piece by the files of the entries it draws, so editing one shot redraws only the pieces that show it. Without
+it, a piece the kit draws is keyed by `makeFilm`'s `code`, or only spot-checked.
+
 Words a kit draws that claim nothing (line numbers, a step counter) go inside `footprint-storyreel/decorative` ·
 `decorative`, and code inside `code`, so the numbers check reads them rightly ([checks.md](checks.md#every-number-has-a-source)).
 

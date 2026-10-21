@@ -332,4 +332,9 @@ function cartoonParts(t, {sheep, eureka}) {
   return {segments: Object.assign({}, ...all.map(p => p.segments)), regions: Object.assign({}, ...all.map(p => p.regions)), apart: all.flatMap(p => p.apart)};
 }
 
-export const cartoonKit = {name: 'cartoon', story: {compile: compileCartoon, motion: ['cameraSpeed']}};
+/**
+ * The cartoon kit. `sources`: where its drawing code lives — this module and what it imports — so a cached piece of a
+ * film is keyed by the cartoon's code only where the cartoon is drawn (segments/kitcode.mjs).
+ */
+export const cartoonKit = {name: 'cartoon', story: {compile: compileCartoon, motion: ['cameraSpeed']},
+  sources: {entry: () => [new URL('./index.mjs', import.meta.url)]}};

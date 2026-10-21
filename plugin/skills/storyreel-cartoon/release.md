@@ -11,8 +11,9 @@ the recipe has camera moves), `render.soundAt: 'peak'` (the one render setting t
 `approveFilm` takes the record of the render the person watched; `makeFilm({…, approval})` then refuses to render
 anything else, naming what changed: "storyreel version (A approved, B now)", "StoryReel's code (same version X)" (a
 `file:` dependency or a local edit), "footprintjs version (…)", "code" (the kit's), "recipe", "the file …". After an
-`npm update`, re-approve: a footprintjs patch keeps every cached segment (segments hold the engine's fingerprint, not
-footprintjs's version) but needs a new approval.
+`npm update`, re-approve: a footprintjs patch keeps every cached piece (a piece holds StoryReel's drawing code, not
+footprintjs's version), and so does a StoryReel release that changes no code your film paints, but each needs a new
+approval (an approval locks all of StoryReel).
 
 **The kit's code.** `codeFingerprint(paths)` hashes the files and folders it is given and everything they read: relative
 static imports, transitively, and literal `import('…')` and `require('…')`; JavaScript and TypeScript (`.ts`, `.mts`,

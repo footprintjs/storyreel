@@ -137,7 +137,7 @@ test('makeFilm checks the finished file when asked: the record lists what was fo
   assert.equal(record.finished.ok, true); assert.deepEqual(record.finished.checked, ['duration', 'blank', 'flash', 'handovers']);
   assert.ok(record.pipeline.some(e => /check-finished/.test(e.text ?? e.stageName ?? JSON.stringify(e))), 'a stage of its own in the run');
   await assert.rejects(makeFilm({storyboard: board, recipe, root: dir, timings, out: path.join(top, 'b', 'film.mp4'), render: {width: 320, height: 180, fps}, check: 'refuse', expect: {seconds: 10}}), /The finished file has 1 problem \(check: 'refuse'\): duration: it is [\d.]+ s; the brief asks for 10 s/);
-  assert.deepEqual(readdirSync(path.join(top, 'b')).filter(n => n.startsWith('.')), [], 'refused after the render: its working files are gone all the same (pipeline.mjs · makeFilm, render.mjs · closeRender)');
+  assert.deepEqual(readdirSync(path.join(top, 'b')).filter(n => n.startsWith('.') && n !== '.storyreel'), [], 'refused after the render: its working files are gone all the same (pipeline.mjs · makeFilm, render.mjs · closeRender); the picture\'s cache is kept');
   await assert.rejects(makeFilm({storyboard: board, recipe, root: dir, timings, out: path.join(top, 'c', 'film.mp4'), check: 'always'}), /check is 'report'/);
 });
 

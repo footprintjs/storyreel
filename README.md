@@ -1478,7 +1478,8 @@ keep out in a folder of your own, and render locally.
 | `.storyreel-work-<host>-<pid>-<XXXXXX>` beside `out` | the working files: the picture without its sound, the voice and the effects as WAVs, the lists FFmpeg joins, segment files on their way to the cache | removed when the render ends, finished or failed |
 | `.narration-<host>-<pid>-<XXXXXX>` beside `out` (`makeFilm` with a voice) | the paced copy of the voice, which the render reads; it becomes `narration/` once the film is made | removed if the film is refused or fails |
 | `work` (a folder you name: `renderFilm({…, work})`, `makeFilm({…, render: {work}})`) | the same working files, when you want to look at them | yes: you chose the place |
-| `folderStore(dir)` | the segment cache (Re-render only what changed) | yes: you chose the place |
+| `.storyreel/segments/<format>-<W>x<H>-<quality>/` beside `out` | the picture's cache: each piece drawn, as `<key>.mp4` and `<key>.json` ([Re-render only what changed](#re-render-only-what-changed)) | yes, held to 4 GB: the pieces used longest ago go first |
+| `folderStore(dir)` | a piece cache you named (`segments: {dir}`, or `segmentedVideo({store})`) | yes: you chose the place, held to its cap |
 | `makeRelease({out})` | each target's post in `<out>/<target>/`, the render and its making-of in `<out>/work/<target>/` | yes |
 
 ```js
@@ -1512,42 +1513,59 @@ the publish run the same gates — `test:temp`, publint, attw on every typed ent
 
 ## Re-render only what changed
 
-A film is edited many times. Fixing one word, one beat or one drawing should not mean drawing all
-4 000 frames again. `video: segmentedVideo({store, recipe, code})` makes the picture in **segments** — one
-per row of pictures (a shot, from the moment its entrance starts), so a transition is never cut in two —
-keeps each one in a store, and on the next render reuses every segment that nothing has changed:
+A film is edited many times. Fixing one word, one beat or one drawing should not mean drawing all 4 000 frames again,
+and it does not: **every render is drawn in pieces kept in a cache beside the video**, and a piece is drawn again only
+when something that draws it changed.
+
+### The edit loop
+
+1. Look at what you changed first: `npx storyreel part --scene <id>` (seconds; a part is drawn whole, never cached).
+2. Render the whole film as often as you like: only the pieces an edit reached are drawn again, the rest are reused.
+3. Read what was drawn, and why, in one line: `result.video.line` (and `making-of.json` → `picture.line`).
+4. Keep the draft stamp's label steady: a new label costs one re-encode at the join, never a redraw.
+5. `whole: true` draws every frame in one pass: only to debug the cache, never for a final render.
 
 ```js
-import {renderFilm, segmentedVideo, folderStore, codeFingerprint} from 'footprint-storyreel';
+import {makeFilm} from 'footprint-storyreel';
 
-const video = segmentedVideo({
-  store: folderStore('work/segments'),     // <key>.mp4 + <key>.json per segment, kept between renders
-  recipe,                                  // each segment's recipe entries are part of its key
-  code: codeFingerprint(['film/kits']),    // your drawing code: change a kit, and what it draws changes
-});
-const result = await renderFilm({film, storyboard, timings, narrationDir, out: 'out/draft.mp4', video});
-console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
+const result = await makeFilm({storyboard, recipe, kits, narrationDir, out: 'out/draft.mp4', render: {stamp: 'DRAFT'}});
+console.log(result.video.line);
+// picture: 3 of 41 pieces drawn (title: shot code changed; forward 12–18 s: words changed), 38 reused
 ```
 
-- **A key is on the segment's own clock.** It is built from what draws the segment, timed from its first
-  frame: its recipe entries (and the shot an entrance, or a blurred cut, also draws; a push-in film's
-  `pushIn` and `card`; every row a teaser rewinds through), the guess cards over it, every line they
-  resolved, the words spoken in and around it (captions and mouths; an example scene's label), the director's
-  notes over it, the strings its entries name (`{"$string": key}`: one word changed redraws only the segments that show it),
-  what reaches every frame — the data, the theme, the cast and every file the film read (`film.inputs`) —
-  the frame settings (size, layout, stamp, motion blur, poster) and the drawing code (StoryReel's own, its
-  fonts and the versions it draws with, and yours). So a scene near the start that grows by whole frames
-  changes the keys of the segments around it, not of the ones further on.
-- **Edit one shot, draw one segment.** With one fingerprint for all your kits, any edit draws every segment
-  again. `code: sourceCode(entry => [the files that draw it])` keys each segment by its own shots' code
-  instead: the files a segment's entries name, everything they import (followed; a package by its installed
-  version) and any `shared` files (hashed as they are — a kit's index imports every shot, so its imports are
-  not followed). An edit to one shot's module then draws only the segments that show it:
+- **The cache** is `<out folder>/.storyreel/segments/<format>-<W>x<H>-<quality>` (one per format, size and quality), a folder
+  of its own: a link there is refused, never followed. It is held to 4 GB (`segments: {cap}` in bytes): after each
+  render the pieces used longest ago go first, never one that render used. `segments: {dir}` keeps it elsewhere.
+- **Pieces, not shots.** A film is cut by rows of pictures (a shot, from the moment its entrance starts, so a
+  transition is never cut in two), then each row where a scene or a sentence starts and every 6 s from there
+  (`segments: {chunkSeconds}`; `Infinity` keeps rows whole). Each piece is whole frames and starts on its own key frame.
+- **A key is on the piece's own clock.** It is built from what draws the piece: its recipe entries (whole), the beats,
+  words, burned-in captions, director's notes, camera moves, focus and emphasis around it, what reaches every frame —
+  the strings its entries name, the data, the theme, the cast, every file the film read — the frame settings, the
+  FFmpeg build that encodes it (pieces are joined by copying) and the code. A time near the piece (within 3 s:
+  `segments: {margin}`) counts exactly; one farther off counts only by the side it is on. So a re-voiced word redraws
+  the pieces around it to the end of its sentence; the sentences and scenes after it move whole and keep their keys. (A kit that draws on the film's clock, as the cartoon's drifting clouds do,
+  is drawn again wherever it moved: the spot check sees it.)
+- **Only the code that paints.** The key holds StoryReel's drawing code (`footprint-storyreel/segments` ·
+  `drawingCode`: the painter, the film, the layout and what they import), not its sounds, reviews or command line,
+  and a transition, a steps track or a thought cloud only in the pieces that draw it: a release that changes a
+  transition your film never plays keeps your cache. (An approval still locks all of StoryReel: [Approve a film](#approve-a-film).)
+- **Your kits' code, per shot.** A kit says where each entry's code lives, and a piece is keyed by the code of the
+  entries it draws, so editing one shot redraws only the pieces that show it:
 
   ```js
-  code: sourceCode(entry => entry.world?.shot ? [`film/kits/draws/shots/${entry.world.shot}.mjs`] : [],
-    {shared: ['film/kits/draws/index.mjs']}),
+  export const myKit = {name: 'draws', story: {compile},
+    sources: {entry: spec => [new URL(`./shots/${spec.shot}.mjs`, import.meta.url)],   // followed through its imports
+      shared: [new URL('./index.mjs', import.meta.url)]}};                              // hashed as it is
   ```
+  A kit that says nothing is keyed by `makeFilm`'s `code` (`codeFingerprint(['film/kits'])`) wherever it draws, or,
+  without it, only by the spot check; a kit whose code loads files at run time (`import(\`./shots/${name}.mjs\`)`)
+  names those files in `sources`. The line says either, after `note:`. A focus or emphasis strategy of your own is
+  keyed by its function's text (not what it imports). `segmentedVideo({code: sourceCode(…)})` still takes code per
+  piece written by hand. If a file a key reads changed on disk after the render started, the render draws with the
+  older code it loaded: its pieces are drawn and not kept (`note:` says so).
+- **The stamp is burned at the join.** Pieces are drawn without it; the joined picture gets it once, from a picture
+  the painter drew (one re-encode at the render's quality). A render with no stamp joins its pieces by copying.
 - **Look at one part, with its handles.** `renderFilm({…, part: {scenes: ['chapters'], handles: 1.5}})` renders
   those scenes and 1.5 s of the film either side — the end of the part before and the start of the part after,
   as a film editor's handles — so both of its cuts are seen without rendering the whole film. With
@@ -1600,28 +1618,33 @@ console.log(result.video.rendered, 'drawn,', result.video.reused, 'reused');
   claude mcp add storyreel -- npx storyreel mcp --ep ep1 --voice work/ep1/voice      # Claude Code
   # Claude Desktop / VS Code (Copilot) / Cursor: a stdio server, command "npx", args ["storyreel", "mcp", …]
   ```
-- **A reused segment must pass a spot check.** A few of its frames (6 by default, `samples`) are painted
-  again exactly as the video shows them (layout, motion blur, stamp, poster) at the same places in the
-  segment, and must match the ones kept when it was drawn. A segment that moved is reused only when its
-  frames did not move with the film's clock: a kit that animates on it (the cartoon's drifting clouds)
-  makes it draw again (`why`: it moved). A key whose frames changed anyway is drawn again, saying the key
-  missed something. Six frames are a spot check, not a proof: a change the key misses that shows only
-  between them is not seen, which is why the key lists what it does and a final render can use
-  `wholeVideo()`.
-- **The sound is never cached.** It is mixed for the whole film on every render (it takes seconds), so it
-  never has a seam; the segments are joined without re-encoding (`ffmpegJoin()` with the render's own
-  FFmpeg; every segment is encoded with the same settings). A segment lands in the store whole or not at
-  all, and a file cut short is never reused; when one segment fails, the others stop.
-- **You decide when a part is drawn fresh.** `force: [2, 'race']` draws the third segment and every
-  segment covering the scene `race` again, whatever their keys say. A final render for publishing can
-  still use `wholeVideo()` (the default): every frame in one pass.
-- **Three seams.** The strategy (`wholeVideo()`, `segmentedVideo()`), the store (`folderStore(dir)`, or
-  your own `{get(key), put(key, file, manifest)}`) and the joiner (`ffmpegJoin()`, or your own
-  `{join(files, out)}`) are each replaceable. A segmented render covers the whole film: an `intro` or a
-  part (`from`, `to`) refuses, naming `wholeVideo()`.
-- **In `makeFilm`**, each segment is its own footprintjs subflow (a fan-out over the plan), and
-  `making-of.json` gets a `picture` entry: every segment, its key, and whether it was drawn or reused
-  and why. `parallel` (2 by default) is how many segments are drawn at once.
+- **A reused piece must pass a spot check.** A few of its frames (6, `segments: {samples}`, at least 1: it cannot be
+  turned off) are painted again exactly as the piece shows them (layout, motion blur, poster) at the same places in
+  it, and must match the ones kept when it was drawn. A piece that moved is reused only when its frames did not move
+  with the film's clock: a kit that animates on it (the cartoon's drifting clouds) makes it draw again ("it moved").
+  A key whose frames changed anyway is drawn again, saying the key missed something. Six frames are a spot check, not
+  a proof: a change the key misses that shows only between them is not seen, which is why the key lists what it does.
+  What only the spot check holds: a drawing that keeps changing more than 3 s after its beat (a flock walking out over
+  twelve seconds), and code the key cannot see — a kit with no `sources` and no `code`, your own focus or emphasis
+  `strategies`.
+- **The cache trusts nothing it reads back.** A key is 24 hex digits and names the piece's files; a manifest is read
+  only when small and of a piece's shape, for that key; the video must be the bytes it recorded (size and SHA-256), so
+  a file cut short, damaged, unreadable or put there by something else is drawn again. A piece lands whole or not at
+  all, and each piece the render joins is held in its working folder from the moment it is checked or drawn. Two
+  pieces of one film whose materials match (two quiet stretches of a long scene) are told apart by their place.
+- **The sound is never cached.** It is mixed for the whole film on every render (it takes seconds), so it never has a
+  seam.
+- **You decide when a part is drawn fresh.** `segments: {force: [2, 'race']}` draws the third piece and every piece
+  covering the scene `race` again, whatever their keys say. Pieces are drawn a fair share of the cores at a time
+  (`segments: {parallel}`: the cores less one, at most 6); the drawing itself is one thread, so this overlaps encoding.
+- **Three seams.** The strategy (the default, `segmentedVideo({store, …})` for a cache of your own, `wholeVideo()`),
+  the store (`folderStore(dir, {cap})`, or your own `{get(key), put(key, file, manifest)}`) and the joiner
+  (`ffmpegJoin()`, or your own `{join(files, out, {stamp})}`, which burns `stamp` when there is one) are each
+  replaceable. A segmented render covers the whole film: a part or an intro is drawn whole by default, and refused by
+  an explicit `segmentedVideo`, naming `wholeVideo()`.
+- **In `makeFilm`**, each piece is its own footprintjs subflow (a fan-out over the plan), and `making-of.json` gets a
+  `picture` entry: every piece, its key, whether it was drawn or reused, and why ("words changed", "shot code
+  changed", "torn code changed", "new"), and `line`, all of it in one line.
 
 ## Approve a film
 
@@ -1638,8 +1661,9 @@ and a module the reader lost its way in (`unparsed`, with the line: it ends insi
 expression holding a backtick can make it). **A kit that loads files another
 way (a path it builds, a folder it reads) names that folder too: `codeFingerprint(['film/kits', 'film/art'])`.** The
 record lists what the fingerprint covered (`"code": {fingerprint, files, packages, missing?, unfollowed?, unparsed?}`, files from the
-film's root) — and what draws the film: StoryReel's version and its code (`inputs.engine`, the engine's fingerprint
-every segment key holds: every file of its code and the versions of what it draws with), and footprintjs's version
+film's root) — and what draws the film: StoryReel's version and its code (`inputs.engine`, the engine's whole fingerprint:
+every file of its code and the versions of what it draws with — a cached piece's key holds only the code that paints),
+and footprintjs's version
 (`inputs.storyreel`, `inputs.footprintjs`). An `npm update` between the draft and the final render is named
 ("storyreel version (0.12.0 approved, 0.13.0 now)"), and so is a change under the same version — a `file:` dependency,
 a local edit ("StoryReel's code (same version 0.12.0)"). `approveFilm` takes the record of the
@@ -2559,7 +2583,7 @@ the default because it rarely does; there is no swap repair.
 | `approveFilm({record, by, note?})` · `checkApproval(approval, inputs)` | the approval lock: approve a watched render from its making-of.json, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
 | `checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})` · `FINISHED_CHECK_NAMES` | checks on the finished file: lengths, blank runs, flash frames, hand-overs and joins, the voice, captions (`footprint-storyreel/finished` adds `ffmpegProbe`, `FINISHED_CHECKS`, `FINISHED`) |
 | `footprint-storyreel/breakdown` → `breakdown(videoFile, {out?, beatMap?, beatOptions?, thresholds?, ffmpeg?, probe?, hints?})` · `breakdownText(spec)` · `BREAKDOWN` | a reference film as a spec to match: cuts, fades and dissolves, shots, pacing, motion, lettering (a heuristic), cuts on the beat (`beatMap(video, {ffmpeg})`: the reader reads the video's sound itself; `storyreel breakdown --beats`), judged by `safeBeats`; every verdict with its evidence |
-| `segmentedVideo({store, recipe, code?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir)` · `ffmpegJoin()` · `planSegments(film, {fps})` · `segmentKey(…)` · `codeFingerprint(paths)` · `codeCover(fingerprint)` | re-render only what changed: the picture in cached segments, joined (`renderFilm({…, video})`) |
+| `segmentedVideo({store, recipe?, code?, kitsCode?, chunkSeconds?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir, {cap})` · `ffmpegJoin()` · `planSegments(film, {fps})` · `planPieces(film, {fps, chunkSeconds})` · `segmentKey(…)` · `pictureLine(report)` · `codeFingerprint(paths)` · `codeCover(fingerprint)` | re-render only what changed: every render's picture in cached pieces, joined (the default; `renderFilm({…, segments, whole, video})`) |
 | `footprint-storyreel/release` → `makeRelease({targets, post, out, …})` · `loadTarget` · `checkAdapter` · `planProblems` · `TARGET_NAMES` | the post for each platform: the video in its shape, captions, thumbnail, the text to paste, checked against the platform's limits and audience |
 | `readCast(cast)` · `castText(text, cast)` · `withCast(value, cast)` | the cast: `{{role}}` in any text becomes the role's name; kits read the rest from `context.cast` |
 | `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |

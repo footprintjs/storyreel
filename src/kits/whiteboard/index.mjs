@@ -130,6 +130,9 @@ export function drawWhiteboard(ctx, board, t, spot = spotAt(board, t)) {
  */
 export const whiteboardKit = {
   name: 'whiteboard',
+  // Where its drawing code lives (segments/kitcode.mjs): nowhere a piece must name — the whiteboard is built in, and
+  // its code is in StoryReel's drawing fingerprint, which every cached piece's key holds (film.mjs imports it).
+  sources: {entry: () => []},
   story: {
     motion: ['cameraSpeed'],
     compile(spec, clock, motion) {

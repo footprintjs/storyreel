@@ -170,7 +170,7 @@ test('securePath: the real path is returned and written through, so a link in th
   chmodSync(open, 0o777); symlinkSync(mine, link, 'dir');
   assert.throws(() => securePath(open), /can be changed by other users/, 'the 0777 folder itself is refused');
   assert.equal(securePath(path.join(link, 'store')), path.join(realpathSync(mine), 'store'), 'through the link: judged, and returned, as where it leads');
-  const store = folderStore(path.join(link, 'store')), key = 's'.repeat(24), work = tempDir('work', t);
+  const store = folderStore(path.join(link, 'store')), key = 'e'.repeat(24), work = tempDir('work', t);
   assert.equal(store.dir, path.join(realpathSync(mine), 'store'));
   // Another user swaps the link for one to the victim's folder, mid-run.
   rmSync(link); symlinkSync(victim, link, 'dir');
@@ -441,10 +441,10 @@ test('fitting a voice to a song replaces a link at a scene\'s audio, and never w
 });
 
 test('the segment store replaces a link planted at a segment\'s file or its manifest, and reuses the segment', t => {
-  const dir = tempDir('store', t), work = tempDir('work', t), store = folderStore(dir), key = 'k'.repeat(24);
+  const dir = tempDir('store', t), work = tempDir('work', t), store = folderStore(dir), key = 'c'.repeat(24);
   const planted = plant(t, dir, [`${key}.mp4`, `${key}.json`]);
   writeFileSync(path.join(work, 'segment.mp4'), 'frames');
-  store.put(key, path.join(work, 'segment.mp4'), {version: 1});
+  store.put(key, path.join(work, 'segment.mp4'), {frames: 2, samples: {0: '0'.repeat(16), 1: '1'.repeat(16)}});
   replaced(planted);
   const got = store.get(key);
   assert.equal(got.file, path.join(realpathSync(dir), `${key}.mp4`)); assert.equal(got.manifest.bytes, 6);
@@ -471,7 +471,8 @@ const RUNNERS = ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFile
 const FLAGS = ['-y', '-report', '-progress', '-vstats', '-vstats_file', '-passlogfile', '-dump_attachment', '-sdp_file', '-o'];
 const IMPORTS = {
   'files.mjs': ['writeFileSync', 'renameSync', 'chmodSync', 'copyFileSync', 'linkSync'],   // the owner: writeOutput, makeFolder, copyVoice, placeVoice
-  'pipeline.mjs': ['writeFileSync'], 'render.mjs': ['writeFileSync'], 'segments.mjs': ['writeFileSync'], 'stills.mjs': ['writeFileSync'],
+  'pipeline.mjs': ['writeFileSync'], 'render.mjs': ['writeFileSync'], 'segments/join.mjs': ['writeFileSync'], 'stills.mjs': ['writeFileSync'],
+  'segments/store.mjs': ['utimesSync'],   // a kept piece's manifest touched when it is reused: its age orders eviction
 };
 const OWN = [
   ['files.mjs', 'ops.copyFileSync(from, temp, constants.COPYFILE_EXCL)', 'writeOutput: a new random name beside the output, created exclusively'],
@@ -487,14 +488,15 @@ const OWN = [
   ['pipeline.mjs', "if (scope.narration) writeFileSync(path.join(scope.narration, 'timings.json')", 'fit-to-music: the same copy (place-narration, the last stage, makes it narration/)'],
   ['render.mjs', "spawnSync(ffmpeg, ['-y', '-hide_banner'", 'runReporting: the mux, into the work folder (finishRender renames it onto out)'],
   ['render.mjs', "writeFileSync(path.join(dir, 'film-narration.txt')", 'joinVoice: called with the work folder'],
-  ['render.mjs', "spawn(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'rawvideo'", 'encodeFrames: a picture in the work folder (wholeVideo, segmentedVideo)'],
+  ['paint.mjs', "spawn(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'rawvideo'", 'frameEncoder: a picture in the work folder (wholeVideo, segmentedVideo)'],
   ['render.mjs', "spawnSync(ffmpeg, ['-y', '-loglevel', 'error', ...args]", 'finishRender: the sound, in the work folder'],
   ['render.mjs', 'writeFileSync(file, createMotionSound(', 'finishRender: the work folder'],
   ['render.mjs', "writeFileSync(path.join(work, 'film-sfx.txt')", 'finishRender: the work folder'],
   ['render.mjs', 'writeFileSync(introWav, intro.wav)', 'finishRender: the work folder'],
   ['render.mjs', "writeFileSync(path.join(work, 'film-audio.txt')", 'finishRender: the work folder'],
-  ['segments.mjs', 'writeFileSync(list, files.map(', 'ffmpegJoin: beside its out, the joined picture in the work folder'],
-  ['segments.mjs', "spawnSync(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'concat'", 'ffmpegJoin: the same'],
+  ['segments/join.mjs', 'writeFileSync(list, concatList(files))', 'ffmpegJoin: beside its out, the joined picture in the work folder'],
+  ['segments/join.mjs', "spawnSync(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'concat'", 'ffmpegJoin: the same'],
+  ['segments/store.mjs', 'utimesSync(json, now, now)', 'folderStore: a reused piece\'s manifest, its times set to now (a piece it checked, in the store it was given)'],
   ['stills.mjs', 'writeFileSync(script, filter)', 'the stills pass\'s tempScratch folder'],
 ];
 const RUNS = [
@@ -508,14 +510,15 @@ const RUNS = [
   ['stills.mjs', 'spawned(ffmpeg, args, {stdio:', 'FFmpeg reading stills to a pipe (stills.mjs · stillsArgs)'],
   ['render.mjs', "spawnSync(ffmpeg, ['-y', '-hide_banner'", 'FFmpeg: the mux, into the work folder'],
   ['render.mjs', "spawnSync(ffmpeg, ['-hide_banner', '-nostats', '-i', wav, '-filter_complex', 'ebur128", 'FFmpeg measuring, to null'],
-  ['render.mjs', "spawn(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'rawvideo'", 'FFmpeg encoding into the work folder'],
+  ['paint.mjs', "spawn(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'rawvideo'", 'FFmpeg encoding into the work folder'],
+  ['paint.mjs', "spawnSync(ffmpeg, ['-version']", 'FFmpeg naming its version and build (encoderOf), to stdout'],
   ['render.mjs', "spawnSync(ffmpeg, ['-y', '-loglevel', 'error', ...args]", 'FFmpeg: the sound, in the work folder'],
   ['render.mjs', "spawnSync(ffmpeg, ['-hide_banner', '-nostdin', '-i', file]", 'FFmpeg reading a song\'s length, no output'],
   ['finished.mjs', 'spawnSync(cmd, args, {encoding:', 'ffprobe / FFmpeg reading a file, to stdout'],
   ['finished.mjs', "spawned(ffmpeg, ['-v', 'error', '-i', file, '-vf', vf, '-f', 'rawvideo', 'pipe:1']", 'FFmpeg frames to a pipe'],
   ['finished.mjs', "spawnSync(ffmpeg, ['-v', 'error', '-i', file, '-vn', '-ac', '1'", 'FFmpeg sound to a pipe'],
   ['finished.mjs', "spawned(ffmpeg, ['-hide_banner', '-nostats', '-v', 'info', '-reinit_filter'", 'FFmpeg frames to a pipe'],
-  ['segments.mjs', "spawnSync(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'concat'", 'FFmpeg joining into the work folder'],
+  ['segments/join.mjs', "spawnSync(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'concat'", 'FFmpeg joining into the work folder (the stamp, when there is one, burned over it)'],
   ['render.mjs', "spawnSync(ffmpeg, ['-hide_banner', '-nostdin', ...AUDIO_ONLY", 'FFmpeg measuring a found sound\'s peak (volumedetect), to null'],
   ['sounds/index.mjs', "spawnSync(ffprobe, ['-v', 'error', ...AUDIO_ONLY", 'ffprobe reading a fetched sound (probeAudio), to stdout'],
 ];

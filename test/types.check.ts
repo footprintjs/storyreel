@@ -196,6 +196,19 @@ export const rows = (film: Film): number => film.rows.filter(r => r.enter?.type 
 export const reusedOf = (r: SegmentsReport): number => r.segments.filter(s => s.status === 'reused').length + r.reused;
 // @ts-expect-error a segmented render needs a store
 export const noStore = segmentedVideo({recipe: {}});
+// Pieces by default: the cache's options, whole for debugging, one line to read, a kit that says where its code lives.
+import {planPieces, pictureLine, kitCode, drawingCode} from '../types/sub/segments.js';
+import {renderFilm as renderPieces} from '../types/sub/render.js';
+import type {Timings} from '../types/index.js';
+export const draft = (film: Film, storyboard: Storyboard, timings: Timings) => renderPieces({film, storyboard, timings, out: 'out/draft.mp4', stamp: 'DRAFT · v4', segments: {cap: 2 * 1024 ** 3, chunkSeconds: 8, parallel: 4, kitsCode: 'fp'}});
+export const debug = (film: Film, storyboard: Storyboard, timings: Timings) => renderPieces({film, storyboard, timings, out: 'out/whole.mp4', whole: true});
+export const pictureSaid = (r: SegmentsReport): string => `${pictureLine(r)} ${pictureLine(r, {full: true})} ${r.line}`;
+export const pieces = (film: Film): string[] => planPieces(film, {chunkSeconds: 6}).map(p => `${p.label} ${p.slot} ${p.enters.join(',')}`);
+export const shotsKit: Kit = {name: 'shots', story: {compile: () => ({hang: 1, draw: () => {}})}, sources: {entry: spec => [new URL(`./shots/${spec.shot}.mjs`, 'file:///kit/')], shared: ['kit/index.mjs']}};
+export const perPiece = (film: Film) => kitCode(film, {fallback: 'fp'})([], {paths: ['story']});
+export const core: string = drawingCode().core;
+// @ts-expect-error whole is true or left out
+export const wholeYes = (film: Film, storyboard: Storyboard, timings: Timings) => renderPieces({film, storyboard, timings, out: 'x.mp4', whole: 'yes'});
 // @ts-expect-error force names segments by index or scene id
 export const badForce = segmentedVideo({store: folderStore('x'), recipe: {}, force: [true]});
 
