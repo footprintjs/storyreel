@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased
+
+- **One script: moments and speakers written in the narration.** A beat keyed to a phrase breaks when its line is
+  reworded (the phrase is no longer said, or is said twice), and a line changed meant editing it twice: in the
+  storyboard, and in the voice step's own list of who says what. Now the narration carries marks that are never spoken
+  and never shown: `{name}` is a MOMENT — when the scene's next spoken word starts (with none after it, when its last
+  word ends) — and `{@who}` is the SPEAKER of the quoted line right after it. `"Ten ones {dots} make a ten {hop}."` is
+  said, voiced and captioned as "Ten ones make a ten."; a beat names a moment as it names a phrase (`["today",
+  "{dots}"]`, `["today", "{hop}", 0.2]`, `{scene, phrase: "{dots}", plus}`), a pacing hold puts its silence in the pause
+  at the mark (`{scene, after: "{dots}"}`), and a guess after one waits there — and a rewording keeps each on its word.
+  A moment is one time, so `nth` and `edge` on one refuse, naming the fix.
+- **`script.mjs`, the one owner of the grammar** (`footprint-storyreel/script`, and the main entry): `said(narration)`
+  (the marks out, the white space they leave tidied), `marksOf` (`[{name, at}]`, `at` where in `said` the next word
+  starts), `linesOf` (`[{by, say, at}]`), `scriptOf(scene)` and `momentOf(phrase)`. Every reader of a scene's words
+  reads what is said — `spokenText`, `sceneText`, `evenTimings`, the number slots, the captions, the studio — so no
+  voice, caption or clock sees a mark. The clock finds a moment by the letters said before it (a number slot counted as
+  the voice says it), and gains `moments(scene)`: `[{name, t}]`. Refusals name the scene, the mark and the fix: braces
+  holding anything else, a brace that opens or closes no mark, a name written twice in a scene (both places named), a
+  mark inside a word, a speaker tag with no quoted line after it (or one that never closes, or another speaker inside
+  it), a mark in a silent scene's directions, a moment inside a number slot, and one the timings put inside a word.
+- **`storyreel anchors` knows moments:** one its scene does not have is "not said", with the scene's moments listed; a
+  moment is never said more than once; one named with `nth` or `edge` is noted (`problem: 'moment'`) and stands at the
+  moment. A speaker tag is no anchor. `phrasesIn` reads moments from a recipe as it reads phrases.
+- **`storyreel script`: the film's script as JSON, for a voice step in any language** — each spoken scene, one a line:
+  `{id, said, lines, moments}`, and `spoken` where a number slot is said in words; a silent scene is left out. Over MCP
+  too (nine tools). `footprint-storyreel/tools` · `script`.
+- **Films without marks do not change:** every reader of their words gives what 0.20.1 gave, pinned by hash from 0.20.1
+  itself (`test/unmarked.mjs`), beside the pixel pins. Phrases work exactly as before.
+- **Breaking:** braces in a narration are marks now. A narration with anything else in braces (`"we write {a: 1}"`), or
+  a lone `{` or `}`, refuses, naming the scene and the fix: write the words a voice says. So does a mark-shaped `{…}` in
+  a silent scene's direction. A beat whose phrase is exactly a mark (`"{dots}"`) names a moment, no longer the word in it.
+
 ## 0.20.1 — anchors reads the holds on the film's clock
 
 - **`storyreel anchors` reads the pacing's holds on the film's clock too:** a hold said more than once now gets its

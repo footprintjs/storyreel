@@ -17,8 +17,8 @@ voice). The voice folder holds each scene's audio and a `timings.json` beside it
 `{id, duration, words: [{text, start, end}], alignment: {status: 'available'}, audio}` (seconds from the scene's
 start; `audio` is a file inside the folder). Pass the folder: `makeFilm({…, narrationDir: 'voice'})` and, for the
 command line, `narrationDir` in `storyreel.config.mjs`'s `film()`. Voice what `spokenText(scene)` returns, not the
-narration as written (they differ where a number is said in words, below). A silent scene needs no entry: its
-directions are timed for you.
+narration as written (they differ where a number is said in words, and where the narration has marks: below). A
+silent scene needs no entry: its directions are timed for you.
 
 `makeFilm` never writes into the voice folder: it paces a copy and leaves it as `<out folder>/narration`, so an out
 folder that overlaps the voice folder is refused. `footprint-narration/voice` (installed with StoryReel) is a
@@ -51,6 +51,31 @@ assert.equal(even.scenes[0].duration, 2.8);        // a silent scene: its direct
 const paced = paceTimings(storyboard, even, {voiceSpeed: 1, sceneTail: .8, holds: [{scene: 'frame', after: 'at 60 Hz', seconds: 1.5}]});
 const at = (timings, phrase) => makeClock(storyboard, timings).at(['frame', phrase]);
 assert.equal(+(at(paced, 'That is fast') - at(even, 'That is fast')).toFixed(3), 1.5);   // the hold moved it 1.5 s later
+```
+
+## One script: moments and speakers
+
+A beat keyed to a phrase breaks when its line is reworded. For new work, write the moments into the narration: marks
+are never spoken and never shown, and a rewording keeps each on its word. `{name}` is a moment: when the scene's next
+spoken word starts (with none after it, when its last word ends). A beat names it as a phrase (`plus` as usual; no
+`nth` or `edge`), and a hold puts its silence in the pause at the mark. `{@who}` gives the quoted line right after it
+a speaker. Anything else in braces refuses, naming the fix; so does a mark in a silent scene. A voice step in any
+language reads `npx storyreel script`, the spoken scenes as JSON (what is said, who says each line, each moment), and
+never copies the grammar.
+
+```js run
+import assert from 'node:assert/strict';
+import {said, marksOf, linesOf, evenTimings, paceTimings, makeClock} from 'footprint-storyreel';
+
+const storyboard = {title: 'Tens', scenes: [{id: 'today', narration: "Ten ones {dots} make a ten {hop}. Mom walks in. {@mom}'What are you two up to?'"}]};
+const {narration} = storyboard.scenes[0];
+assert.equal(said(narration), "Ten ones make a ten. Mom walks in. 'What are you two up to?'");   // voiced and captioned
+assert.deepEqual(marksOf(narration), [{name: 'dots', at: 9}, {name: 'hop', at: 21}]);     // where each next word starts: "make", "Mom"
+assert.deepEqual(linesOf(narration), [{by: 'mom', say: 'What are you two up to?', at: 36}]);
+const even = evenTimings(storyboard), clock = makeClock(storyboard, even);
+assert.equal(clock.at(['today', '{dots}']), clock.at(['today', 'make']));                // the moment is the word after the mark
+const paced = paceTimings(storyboard, even, {voiceSpeed: 1, sceneTail: .8, holds: [{scene: 'today', after: '{dots}', seconds: 1.5}]});
+assert.equal(+(makeClock(storyboard, paced).at(['today', '{dots}']) - clock.at(['today', '{dots}'])).toFixed(3), 1.5);   // the hold is at the mark
 ```
 
 ## Numbers: shown in digits, said in words

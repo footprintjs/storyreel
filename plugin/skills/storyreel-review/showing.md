@@ -7,7 +7,9 @@ is the scarce thing. Show the least that answers their question, in an order tha
 
 1. **Words first.** After any edit to the narration, the recipe or the pacing: `npx storyreel anchors`. Every phrase
    not said, or now said more than once, is a drawing at the wrong moment; fix them before anything is drawn. A new
-   voice goes: narration → voice → `anchors` → stills → render.
+   voice goes: narration → voice → `anchors` → stills → render. Key new beats to moments written in the narration
+   (`{name}`, [voice.md](../storyreel-cartoon/voice.md#one-script-moments-and-speakers)): a rewording keeps them on
+   their words, and the voice reads `npx storyreel script`.
 2. **Pictures before videos.** For each change, find its moments in the timeline (search its text for the recipe
    entry rather than reading the recipe), and make one `still` an episode holding all of them. Show those. Render only
    once they agree — and then `changes` first: only the changed pieces are drawn.
@@ -21,7 +23,7 @@ is the scarce thing. Show the least that answers their question, in an order tha
 ## A review by several viewers
 
 For a draft that is nearly done, `npx storyreel sheet --every 4` (a frame every 4 s<!-- TOOL_DEFAULTS.every -->, labelled) and, for each episode,
-its script: each scene's narration, who says what, and the words on screen. Give them to separate reviewers, one lens
+its script (`npx storyreel script`: what each scene says and who says each line) and the words on screen. Give them to separate reviewers, one lens
 each, so no lens is crowded out by another:
 
 - **A child of the audience's age:** where they would look, what drags, what is too busy, what they would shout at the screen.
