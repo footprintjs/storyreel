@@ -8,7 +8,7 @@
  * narration without its marks — and finds each moment by the letters said before it.
  */
 import {normSpeech, checkSlots, findSlot, spokenMap, spokenOffset, shownWords, unsaidDigits} from 'footprint-narration';
-import {scriptOf, momentOf} from './script.mjs';
+import {sceneScript, momentOf} from './script.mjs';
 
 /** How long one direction may last, in seconds: long enough to see, short enough to stay a beat. */
 export const DIRECTION_SECONDS = Object.freeze([.2, 20]);
@@ -26,7 +26,7 @@ export function checkScene(scene, i = 0) {
   if (scene.speaker !== undefined && !(typeof scene.speaker === 'string' && scene.speaker.trim())) throw new TypeError(`${name}: speaker must name who says the scene (a word, e.g. "robot"), not ${JSON.stringify(scene.speaker)}`);
   if (spoken) {
     if (typeof scene.narration !== 'string') throw new TypeError(`${name}: narration must be the words said, as one string`);
-    const script = scriptOf(scene, i);   // its marks (script.mjs): one not as written refuses
+    const script = sceneScript(scene, i);   // its marks (script.mjs): one not as written refuses
     if (scene.say !== undefined) checkSlotsSaid(script, scene.say, name);   // number slots (footprint-narration), in what is said
     return 'spoken';
   }
@@ -39,7 +39,7 @@ export function checkScene(scene, i = 0) {
     if (typeof text !== 'string' || !normSpeech(text)) throw new TypeError(`${name}: silent[${k}] must start with the direction's words (letters or digits), not ${JSON.stringify(text)}`);
     if (typeof seconds !== 'number' || !(seconds >= lo && seconds <= hi)) throw new RangeError(`${name}: silent[${k}] "${text}" must last ${lo}..${hi} seconds, not ${JSON.stringify(seconds)}`);
   });
-  scriptOf(scene, i);   // a direction takes no marks (script.mjs)
+  sceneScript(scene, i);   // a direction takes no marks (script.mjs)
   return 'silent';
 }
 
@@ -52,7 +52,7 @@ function checkSlotsSaid(script, say, name) {
   checkSlots(script.said, say, {name, field: 'say'});
   let from = 0;
   say.forEach(([shown], k) => {
-    const at = findSlot(script.said, shown, from), end = at + shown.length, inside = script.moments.find(m => m.at > at && m.at < end);
+    const at = findSlot(script.said, shown, from), end = at + shown.length, inside = script.moments.find(m => m.offset > at && m.offset < end);
     if (inside) throw new Error(`${name}: the moment {${inside.name}} stands inside the number slot "${shown}" (say[${k}]), which the voice says as one run: put it before or after "${shown}"`);
     from = end;
   });
@@ -65,7 +65,7 @@ function checkSlotsSaid(script, say, name) {
  * POSITION — each shown text where it stands whole, in order — and a scene's map is made from them.
  */
 /** What a spoken scene says (script.mjs · said): its narration without its marks — as written when it has none. */
-const saidOf = (scene, i) => (typeof scene.narration === 'string' ? scriptOf(scene, i).said : scene.narration);
+const saidOf = (scene, i) => (typeof scene.narration === 'string' ? sceneScript(scene, i).said : scene.narration);
 /** A spoken scene's map of what is said, its slots checked first as the storyboard names them (`storyboard scene <id or index>: say[k] …`). */
 function sceneMap(scene, i) {
   const text = saidOf(scene, i);
@@ -155,9 +155,9 @@ export function speechIndex(scene, timing) {
  */
 function momentsIn(scene, words, slots, duration) {
   if (scene.silent !== undefined || !words.length) return [];
-  const {said, moments} = scriptOf(scene);
-  return moments.map(({name, at}) => {
-    const shown = normSpeech(said.slice(0, at)).length, from = slots ? spokenOffset(slots, shown) : shown;
+  const {said, moments} = sceneScript(scene);
+  return moments.map(({name, offset}) => {
+    const shown = normSpeech(said.slice(0, offset)).length, from = slots ? spokenOffset(slots, shown) : shown;
     const inside = words.find(w => w.from < from && w.to > from);
     if (inside) throw new Error(`storyboard scene ${scene.id}: the moment {${name}} falls inside the timed word "${inside.text}": a moment stands between words — move it before or after the word, or time the word as two`);
     const k = words.findIndex(w => w.from >= from), after = k < 0 ? null : words[k], before = k < 0 ? words.at(-1) : words[k - 1] ?? null;

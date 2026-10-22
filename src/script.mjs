@@ -8,8 +8,8 @@
  *   {@who}  the SPEAKER of the quoted line right after it, only spaces between: {@mom}'What are you two up to?'. The
  *           quotes are ' " ‘ ’ “ ”, and the line runs to its closing quote (an apostrophe inside a word is not one).
  *
- *   said('Ten ones {dots} make a ten {hop}.')     → 'Ten ones make a ten.'   what is voiced, shown and captioned
- *   marksOf('Ten ones {dots} make a ten {hop}.')  → [{name: 'dots', at: 9}, {name: 'hop', at: 20}]
+ *   said('Ten ones {dots} make a ten {hop}.')       → 'Ten ones make a ten.'   what is voiced, shown and captioned
+ *   momentsOf('Ten ones {dots} make a ten {hop}.')  → [{name: 'dots', offset: 9}, {name: 'hop', offset: 20}]
  *
  * Anything else in braces refuses, naming the scene and the mark, and so does a mark in a silent scene's directions (a
  * beat names a direction by its words). The white space a mark leaves is tidied: one run stays between two words, none
@@ -137,19 +137,19 @@ function script(narration, where) {
   if (typeof narration !== 'string') throw new TypeError(`${where}: narration must be the words said, as one string`);
   const {said, marks, kept} = read(narration, where);
   const lines = marks.filter(m => m.kind === 'speaker').map(tag => {
-    const {open, close} = lineAfter(narration, tag, marks, where), at = kept(open) + 1;
-    return {by: tag.name, say: said.slice(at, kept(close)), at};
+    const {open, close} = lineAfter(narration, tag, marks, where), offset = kept(open) + 1;
+    return {by: tag.name, say: said.slice(offset, kept(close)), offset};
   });
-  return {said, lines, moments: marks.filter(m => m.kind === 'moment').map(m => ({name: m.name, at: nextWord(said, m.place)}))};
+  return {said, lines, moments: marks.filter(m => m.kind === 'moment').map(m => ({name: m.name, offset: nextWord(said, m.place)}))};
 }
 
 const whose = options => options?.name ?? 'the narration';
 
 /** What is said: the narration without its marks, the white space they leave tidied — what is voiced, shown and captioned. `name` names the text in a refusal. */
 export const said = (narration, options) => script(narration, whose(options)).said;
-/** The narration's moments ({name}), in order: [{name, at}] — `at` where in said() the next spoken word starts (said()'s length when none follows). */
-export const marksOf = (narration, options) => script(narration, whose(options)).moments;
-/** The narration's quoted lines with a speaker tag ({@who}'…'), in order: [{by, say, at}] — `say` the line inside its quotes, its own marks out; `at` where in said() it starts. */
+/** The narration's moments ({name}), in order: [{name, offset}] — `offset` where in said() the next spoken word starts (said()'s length when none follows). */
+export const momentsOf = (narration, options) => script(narration, whose(options)).moments;
+/** The narration's quoted lines with a speaker tag ({@who}'…'), in order: [{by, say, offset}] — `say` the line inside its quotes, its own marks out; `offset` where in said() it starts. */
 export const linesOf = (narration, options) => script(narration, whose(options)).lines;
 
 /** A silent scene's directions take no marks (a beat names a direction by its words): one refuses, naming it. */
@@ -166,7 +166,7 @@ function noMarks(directions, where) {
  * {id, said, lines, moments}. A silent scene says nothing — said null, no lines, no moments — and its directions take
  * no marks.
  */
-export function scriptOf(scene, i) {
+export function sceneScript(scene, i) {
   const where = `storyboard scene ${scene?.id ?? i ?? '(no id)'}`;
   if (scene?.narration === undefined && Array.isArray(scene?.silent)) { noMarks(scene.silent, where); return {id: scene.id, said: null, lines: [], moments: []}; }
   return {id: scene?.id, ...script(scene?.narration, where)};

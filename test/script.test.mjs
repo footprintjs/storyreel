@@ -1,12 +1,12 @@
 // One script (script.mjs): marks written in the narration — a moment, {name}, and a speaker tag, {@who} — never said and
-// never shown. What is said (said, marksOf, linesOf, scriptOf) and every refusal; a mark in a scene with number slots;
+// never shown. What is said (said, momentsOf, linesOf, sceneScript) and every refusal; a mark in a scene with number slots;
 // the clock's moments (a beat at a mark, plus, the end of a scene, the pause at a mark); a pacing hold at a mark; the
 // anchors; the script tool; and a film keyed to moments that keeps its beats on their words when a line is reworded.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {said, marksOf, linesOf, scriptOf, momentOf, makeClock, evenTimings, paceTimings, spokenText, sceneText, unsaidNumbers, compileFilm} from '../src/index.mjs';
+import {said, momentsOf, linesOf, sceneScript, momentOf, makeClock, evenTimings, paceTimings, spokenText, sceneText, unsaidNumbers, compileFilm, castText, readCast} from '../src/index.mjs';
 import {checkScene} from '../src/clock.mjs';
 import {planHolds} from '../src/pacing.mjs';
 import {checkPhrase, anchorsText, phrasesIn} from '../src/anchors.mjs';
@@ -15,33 +15,33 @@ import {startStudio} from '../src/studio/server.mjs';
 
 /** A kit whose spec names beats, each resolved as any kit resolves them. */
 const kit = {name: 'beats', story: {compile: (spec, c) => { for (const b of spec.beats ?? []) c.at(b); return {hang: 1, draw() {}}; }}};
-const talk = "Mom walks in. {@mom}'What are you two up to?' {@amaira}'Mom! I can't wait {wow} to show you!'";
+const talk = 'Mom walks in. {@mom}"What are you two up to?" {@amaira}"Mom! I can\'t wait {wow} to show you!"';
 
 test('what is said: the marks out and the white space they leave tidied; each moment where its next word starts', () => {
   assert.equal(said('Ten ones {dots} make a ten {hop}.'), 'Ten ones make a ten.');
-  assert.deepEqual(marksOf('Ten ones {dots} make a ten {hop}.'), [{name: 'dots', at: 9}, {name: 'hop', at: 20}], '{hop} has no word after it: the end of what is said');
+  assert.deepEqual(momentsOf('Ten ones {dots} make a ten {hop}.'), [{name: 'dots', offset: 9}, {name: 'hop', offset: 20}], '{hop} has no word after it: the end of what is said');
   // One run of white space between two words; none at the ends, before a closing mark or after an opening one.
   for (const [written, out] of [['{intro} Hello there.', 'Hello there.'], ['Hello there {end}', 'Hello there'], ['Ten ones {dots}, make', 'Ten ones, make'],
     ['Hello{x} there', 'Hello there'], ['Hello {x}there', 'Hello there'], ['A {x} {y} B', 'A B'], ['(aside {x})', '(aside)'], ['({x} aside)', '(aside)'],
-    ["He said {x} 'hi'", "He said 'hi'"], ["'Hi there {wave}' she said", "'Hi there' she said"], ['line one {x}\nline two', 'line one\nline two']]) {
+    ["He said {x} 'hi'", "He said 'hi'"], ["'Hi there {wave}' she said", "'Hi there' she said"], ['‘Hi there {wave}’ she said', '‘Hi there’ she said'], ['line one {x}\nline two', 'line one\nline two']]) {
     assert.equal(said(written), out, written);
   }
   // A narration without marks is said exactly as written; the cast's {{role}} is no mark (withCast puts the name there).
   for (const text of ['Plain words.', '  Spaces  as  written ', 'Quotes \'stay\' and "stay".', '{{hero}} waves.', '']) {
-    assert.equal(said(text), text); assert.deepEqual(marksOf(text), []); assert.deepEqual(linesOf(text), []);
+    assert.equal(said(text), text); assert.deepEqual(momentsOf(text), []); assert.deepEqual(linesOf(text), []);
   }
   assert.equal(said('{{hero}} {wave}waves.'), '{{hero}} waves.');
   // Speaker tags: who says each quoted line, the line inside its quotes with its own marks out (an apostrophe is no quote).
   const text = said(talk);
-  assert.equal(text, "Mom walks in. 'What are you two up to?' 'Mom! I can't wait to show you!'");
-  assert.deepEqual(linesOf(talk), [{by: 'mom', say: 'What are you two up to?', at: 15}, {by: 'amaira', say: "Mom! I can't wait to show you!", at: 41}]);
-  for (const line of linesOf(talk)) assert.equal(text.slice(line.at, line.at + line.say.length), line.say, 'a line stands in what is said where its at says');
-  assert.deepEqual(marksOf(talk), [{name: 'wow', at: text.indexOf('to show')}], 'a moment inside a line');
-  assert.deepEqual(linesOf('{@a}"One." {@b}‘Two.’ {@c}“Three.” {@d} \'Four.\'').map(l => [l.by, l.say]), [['a', 'One.'], ['b', 'Two.'], ['c', 'Three.'], ['d', 'Four.']], 'each pair of quotes, only spaces after the tag');
-  assert.deepEqual(scriptOf({id: 'talk', narration: talk}), {id: 'talk', said: text, lines: linesOf(talk), moments: marksOf(talk)});
-  assert.deepEqual(scriptOf({id: 'open', silent: [['the door opens', 1]]}), {id: 'open', said: null, lines: [], moments: []}, 'a silent scene says nothing');
+  assert.equal(text, 'Mom walks in. "What are you two up to?" "Mom! I can\'t wait to show you!"');
+  assert.deepEqual(linesOf(talk), [{by: 'mom', say: 'What are you two up to?', offset: 15}, {by: 'amaira', say: 'Mom! I can\'t wait to show you!', offset: 41}]);
+  for (const line of linesOf(talk)) assert.equal(text.slice(line.offset, line.offset + line.say.length), line.say, 'a line stands in what is said at its offset');
+  assert.deepEqual(momentsOf(talk), [{name: 'wow', offset: text.indexOf('to show')}], 'a moment inside a line');
+  assert.deepEqual(linesOf('{@a}"One." {@b}‘Two.’ {@c}“Three.” {@d} \'Four.\' {@e}\'I can\'t.\'').map(l => [l.by, l.say]), [['a', 'One.'], ['b', 'Two.'], ['c', 'Three.'], ['d', 'Four.'], ['e', 'I can\'t.']], 'each pair of quotes, only spaces after the tag');
+  assert.deepEqual(sceneScript({id: 'talk', narration: talk}), {id: 'talk', said: text, lines: linesOf(talk), moments: momentsOf(talk)});
+  assert.deepEqual(sceneScript({id: 'open', silent: [['the door opens', 1]]}), {id: 'open', said: null, lines: [], moments: []}, 'a silent scene says nothing');
   // A beat's phrase that is a mark names a moment; words are a phrase, as ever.
-  assert.equal(momentOf('{hop}'), 'hop'); assert.equal(momentOf('make a ten'), null); assert.equal(momentOf('{{hero}} waves'), null);
+  assert.equal(momentOf('{hop}'), 'hop'); assert.equal(momentOf(' {hop} '), 'hop'); assert.equal(momentOf('make a ten'), null); assert.equal(momentOf('{{hero}} waves'), null);
   assert.throws(() => momentOf('{@mom}'), /^Error: "\{@mom\}": a speaker tag names who says a line, and is no moment: write a moment where the beat lands/);
   assert.throws(() => momentOf('{1x}'), /^Error: "\{1x\}": not a moment: a moment's name is a letter, then letters, digits, - or _/);
 });
@@ -158,9 +158,9 @@ test('storyreel script: the spoken scenes as JSON, one a line — what is said, 
   assert.equal(r.status, 0, r.stderr);
   const scenes = JSON.parse(r.stdout);
   assert.deepEqual(scenes, [
-    {id: 'today', said: 'Ten ones make a ten.', lines: [], moments: [{name: 'dots', at: 9}, {name: 'hop', at: 20}]},
-    {id: 'talk', said: "Mom walks in. 'What are you two up to?' 'Mom! I can add big numbers now!'", lines: [{by: 'mom', say: 'What are you two up to?', at: 15}, {by: 'amaira', say: 'Mom! I can add big numbers now!', at: 41}], moments: []},
-    {id: 'frame', said: 'One frame takes 16.67 ms.', spoken: 'One frame takes sixteen point six seven milliseconds.', lines: [], moments: [{name: 'fast', at: 16}]},
+    {id: 'today', said: 'Ten ones make a ten.', lines: [], moments: [{name: 'dots', offset: 9}, {name: 'hop', offset: 20}]},
+    {id: 'talk', said: "Mom walks in. 'What are you two up to?' 'Mom! I can add big numbers now!'", lines: [{by: 'mom', say: 'What are you two up to?', offset: 15}, {by: 'amaira', say: 'Mom! I can add big numbers now!', offset: 41}], moments: []},
+    {id: 'frame', said: 'One frame takes 16.67 ms.', spoken: 'One frame takes sixteen point six seven milliseconds.', lines: [], moments: [{name: 'fast', offset: 16}]},
   ], 'the silent scene left out, the cast\'s name in, `spoken` only where the voice says something else');
   assert.deepEqual(r.stdout.trim().split('\n').slice(1, -1).map(line => JSON.parse(line.replace(/,$/, '')).id), ['today', 'talk', 'frame'], 'one scene a line, inside [ and ]');
   assert.equal(await script(await readInputs({cwd: project})), r.stdout.trim(), 'the tool, as the command line runs it');

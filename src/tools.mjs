@@ -22,7 +22,7 @@ import {castFilm} from './prepare.mjs';
 import {CHANGES_DEFAULTS} from './segments.mjs';
 import {clockOf, clockSeconds} from './clocktext.mjs';
 import {clockTenths, checkScene, spokenText} from './clock.mjs';
-import {scriptOf} from './script.mjs';
+import {sceneScript} from './script.mjs';
 import {contactSheet} from './sheet.mjs';
 import {partWindow, partTimeline, timelineText, RENDER_DEFAULTS} from './render.mjs';
 import {formatScale} from './layout.mjs';
@@ -277,7 +277,7 @@ export async function anchors(project, args = {}) {
 export async function script(project) {
   const scenes = project.said.scenes.flatMap((scene, i) => {
     if (checkScene(scene, i) === 'silent') return [];
-    const {id, said, lines, moments} = scriptOf(scene, i), spoken = spokenText(scene);
+    const {id, said, lines, moments} = sceneScript(scene, i), spoken = spokenText(scene);
     return [{id, said, ...(spoken === said ? {} : {spoken}), lines, moments}];
   });
   return `[\n${scenes.map(s => JSON.stringify(s)).join(',\n')}\n]`;

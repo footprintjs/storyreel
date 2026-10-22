@@ -65,13 +65,13 @@ never copies the grammar.
 
 ```js run
 import assert from 'node:assert/strict';
-import {said, marksOf, linesOf, evenTimings, paceTimings, makeClock} from 'footprint-storyreel';
+import {said, momentsOf, linesOf, evenTimings, paceTimings, makeClock} from 'footprint-storyreel';
 
 const storyboard = {title: 'Tens', scenes: [{id: 'today', narration: "Ten ones {dots} make a ten {hop}. Mom walks in. {@mom}'What are you two up to?'"}]};
 const {narration} = storyboard.scenes[0];
 assert.equal(said(narration), "Ten ones make a ten. Mom walks in. 'What are you two up to?'");   // voiced and captioned
-assert.deepEqual(marksOf(narration), [{name: 'dots', at: 9}, {name: 'hop', at: 21}]);     // where each next word starts: "make", "Mom"
-assert.deepEqual(linesOf(narration), [{by: 'mom', say: 'What are you two up to?', at: 36}]);
+assert.deepEqual(momentsOf(narration), [{name: 'dots', offset: 9}, {name: 'hop', offset: 21}]);   // where in what is said each next word starts: "make", "Mom"
+assert.deepEqual(linesOf(narration), [{by: 'mom', say: 'What are you two up to?', offset: 36}]);
 const even = evenTimings(storyboard), clock = makeClock(storyboard, even);
 assert.equal(clock.at(['today', '{dots}']), clock.at(['today', 'make']));                // the moment is the word after the mark
 const paced = paceTimings(storyboard, even, {voiceSpeed: 1, sceneTail: .8, holds: [{scene: 'today', after: '{dots}', seconds: 1.5}]});

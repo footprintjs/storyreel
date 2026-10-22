@@ -171,8 +171,8 @@ spoken and never shown, and a rewording keeps it on its word:
   read only that. Anything else in braces refuses, naming the scene and the mark, and so does a mark in a silent
   scene; a narration without marks is said exactly as written. Phrases still work as ever.
 - **A voice step in any language** reads `npx storyreel script` instead of copying the grammar: the spoken scenes as
-  JSON, one a line — `{id, said, lines: [{by, say, at}], moments: [{name, at}]}`, `at` an offset in `said`, and
-  `spoken` too where a number slot is said in words. In code: `said`, `marksOf`, `linesOf`, `scriptOf(scene)`,
+  JSON, one a line — `{id, said, lines: [{by, say, offset}], moments: [{name, offset}]}`, each `offset` a place in `said`, and
+  `spoken` too where a number slot is said in words. In code: `said`, `momentsOf`, `linesOf`, `sceneScript(scene)`,
   `momentOf(phrase)` (`footprint-storyreel/script`), and the clock's `moments(scene)`. `npx storyreel anchors` lists a
   moment its scene no longer has, with the moments it has.
 
@@ -2711,7 +2711,7 @@ the default because it rarely does; there is no swap repair.
 | `readCast(cast)` · `castText(text, cast)` · `withCast(value, cast)` | the cast: `{{role}}` in any text becomes the role's name; kits read the rest from `context.cast` |
 | `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |
 | `directionTimings(scene, {tail?})` · `withDirections(storyboard, timings)` · `sceneText(scene)` · `spokenText(scene)` · `unsaidNumbers(storyboard)` | a silent scene's timing; a voice's timings completed with the silent scenes; a scene's text as spoken (number slots in words); digits without a slot |
-| `said(narration)` · `marksOf` · `linesOf` · `scriptOf(scene)` · `momentOf(phrase)` | one script: what is said (the marks out), its moments (`{name}`) and its speakers' lines (`{@who}`); `footprint-storyreel/script` |
+| `said(narration)` · `momentsOf` · `linesOf` · `sceneScript(scene)` · `momentOf(phrase)` | one script: what is said (the marks out), its moments (`{name}`) and its speakers' lines (`{@who}`); `footprint-storyreel/script` |
 | `makeClock(storyboard, timings)` | phrases and moments → seconds; `moments(scene)`, `speaking(t)`, `turns()`, `gaze(t, who)` |
 | `footprint-storyreel/shots` → `readIntent` · `readContinuity` · `checkContinuity` · `tooMuchTooFast` · `distinctMoments` · `WATCHING` | the shot plan's checks, on their own |
 | `footprint-storyreel/review` → `reviewPart(film, {part?, layout?, checks?, …})` · `REVIEW_DEFAULTS` · `REVIEW_CHECKS` · `findingsText` · `verdictsText` · `wordsAt` | a part reviewed by reading it: findings with times, and three verdicts (passed, failed, not run) with their `decide()` evidence |

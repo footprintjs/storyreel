@@ -880,20 +880,20 @@ export function sceneText(scene: StoryboardScene): string;
 export function spokenText(scene: StoryboardScene): string;
 /** Numbers left as digits in the narration (not inside a say slot): a voice tool can refuse them before it speaks. */
 export function unsaidNumbers(storyboard: Storyboard): {scene: string; text: string}[];
-/** A moment written in the narration ({name}): its name, and where in said() the next spoken word starts (said()'s length when none follows). */
-export interface Moment {name: string; at: number}
-/** A quoted line given a speaker ({@who}'…'): who says it, the line inside its quotes (its own marks out), and where in said() it starts. */
-export interface SpeakerLine {by: string; say: string; at: number}
+/** A moment written in the narration ({name}): its name, and `offset`, where in said() the next spoken word starts (said()'s length when none follows). */
+export interface Moment {name: string; offset: number}
+/** A quoted line given a speaker ({@who}'…'): who says it, the line inside its quotes (its own marks out), and `offset`, where in said() it starts. */
+export interface SpeakerLine {by: string; say: string; offset: number}
 /** A storyboard scene's script: what is said, its speakers' lines and its moments (a silent scene: said null, none of either). */
-export interface Script {id: string; said: string | null; lines: SpeakerLine[]; moments: Moment[]}
+export interface SceneScript {id: string; said: string | null; lines: SpeakerLine[]; moments: Moment[]}
 /** What is said: the narration without its marks, the white space they leave tidied (as written when it has none). `name` names the text in a refusal. */
 export function said(narration: string, options?: {name?: string}): string;
 /** The narration's moments ({name}), in order. */
-export function marksOf(narration: string, options?: {name?: string}): Moment[];
+export function momentsOf(narration: string, options?: {name?: string}): Moment[];
 /** The narration's quoted lines with a speaker tag ({@who}'…'), in order. */
 export function linesOf(narration: string, options?: {name?: string}): SpeakerLine[];
 /** A storyboard scene's script, every mark checked (a refusal names the scene). */
-export function scriptOf(scene: StoryboardScene, index?: number): Script;
+export function sceneScript(scene: StoryboardScene, index?: number): SceneScript;
 /** The moment a beat's phrase names ("{hop}" → "hop"), or null for a phrase of words; a speaker tag or braces round anything but a name refuse. */
 export function momentOf(phrase: string, where?: string): string | null;
 export function paceTimings(storyboard: Storyboard, timings: Timings, pacing: Pacing): Timings;

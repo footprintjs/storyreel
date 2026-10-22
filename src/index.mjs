@@ -4,7 +4,7 @@
  */
 export {compileFilm} from './film.mjs';
 export {makeClock, ramp, speechIndex, phraseMatches, evenTimings, directionTimings, withDirections, sceneText, spokenText, unsaidNumbers} from './clock.mjs';
-export {said, marksOf, linesOf, scriptOf, momentOf} from './script.mjs';   // one script: moments ({name}) and speaker tags ({@who}) in the narration
+export {said, momentsOf, linesOf, sceneScript, momentOf} from './script.mjs';   // one script: moments ({name}) and speaker tags ({@who}) in the narration
 export {renderFilm, wholeVideo} from './render.mjs';
 export {segmentedVideo, folderStore, ffmpegJoin, planSegments, planPieces, segmentKey, codeFingerprint, codeCover, storyreelCode, engineFingerprint, pictureLine} from './segments.mjs';
 export {makeFilm} from './pipeline.mjs';
