@@ -595,8 +595,8 @@ export interface CompileFilmOptions<K = Kit | ContextKit> {
    */
   anchors?: 'refuse' | 'note';
 }
-/** A phrase not as written (compileFilm's anchors: 'note'): where it is named, what is wrong, every place it is said, and for a missing one the nearest words said. */
-export interface AnchorNote {ref: Beat; path: string | null; problem: 'missing' | 'ambiguous' | 'past' | 'scene'; places: {start: number; end: number}[]; near?: {phrase: string; start: number; end: number} | null}
+/** A phrase not as written (compileFilm's anchors: 'note'): where it is named, what is wrong, every place it is said, and for a missing one the nearest words said ('moment': a moment named with nth or edge). */
+export interface AnchorNote {ref: Beat; path: string | null; problem: 'missing' | 'ambiguous' | 'past' | 'scene' | 'moment'; places: {start: number; end: number}[]; near?: {phrase: string; start: number; end: number} | null}
 // Two signatures, so a kit written inline on today's contract keeps its contextual types (a list that
 // mixes both contracts cannot give them: TypeScript cannot tell an unmarked story kit apart from the union).
 export function compileFilm(options: CompileFilmOptions<Kit>): Promise<Film>;

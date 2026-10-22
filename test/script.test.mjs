@@ -1,12 +1,16 @@
 // One script (script.mjs): marks written in the narration — a moment, {name}, and a speaker tag, {@who} — never said and
 // never shown. What is said (said, marksOf, linesOf, scriptOf) and every refusal; a mark in a scene with number slots;
-// the clock's moments (a beat at a mark, plus, the end of a scene, the pause at a mark); a pacing hold at a mark.
+// the clock's moments (a beat at a mark, plus, the end of a scene, the pause at a mark); a pacing hold at a mark; the
+// anchors.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {said, marksOf, linesOf, scriptOf, momentOf, makeClock, evenTimings, paceTimings, spokenText, sceneText, unsaidNumbers} from '../src/index.mjs';
+import {said, marksOf, linesOf, scriptOf, momentOf, makeClock, evenTimings, paceTimings, spokenText, sceneText, unsaidNumbers, compileFilm} from '../src/index.mjs';
 import {checkScene} from '../src/clock.mjs';
 import {planHolds} from '../src/pacing.mjs';
+import {checkPhrase, anchorsText, phrasesIn} from '../src/anchors.mjs';
 
+/** A kit whose spec names beats, each resolved as any kit resolves them. */
+const kit = {name: 'beats', story: {compile: (spec, c) => { for (const b of spec.beats ?? []) c.at(b); return {hang: 1, draw() {}}; }}};
 const talk = "Mom walks in. {@mom}'What are you two up to?' {@amaira}'Mom! I can't wait {wow} to show you!'";
 
 test('what is said: the marks out and the white space they leave tidied; each moment where its next word starts', () => {
@@ -116,4 +120,28 @@ test('a pacing hold at a mark puts its silence in the pause there: the words aft
   const timing = even.scenes[0], rate = 8000, wav = {rate, samples: Int16Array.from({length: Math.round(timing.duration * rate)}, (_, i) => Math.round(3000 * Math.sin(i / 3)))};
   const [hold] = planHolds(board.scenes[0], timing, [{scene: 'today', after: '{dots}', seconds: 1}], wav);
   assert.ok(hold.time >= before[1].end && hold.time <= before[2].start, `cut in between "ones" (${before[1].end}) and "make" (${before[2].start}), not at ${hold.time}`);
+});
+
+test('the anchors know marks: one its scene does not have is missing, the scene\'s moments listed; never ambiguous; nth or edge on one is noted; a speaker tag is no anchor', async () => {
+  const board = {scenes: [{id: 'today', narration: "Ten ones {dots} make a ten {hop}. {@mom}'And ten tens?'"}]}, timings = evenTimings(board), clock = makeClock(board, timings);
+  assert.deepEqual(checkPhrase(clock, ['today', '{dots}']), {problem: null, places: clock.places('today', '{dots}')});
+  assert.deepEqual(checkPhrase(clock, ['today', '{nope}']), {problem: 'missing', places: [], near: null}, 'no nearest words: a mark has none');
+  assert.equal(checkPhrase(clock, {scene: 'today', phrase: '{dots}', nth: 0}).problem, 'moment');
+  assert.equal(checkPhrase(clock, ['today', '{@mom}']).problem, 'missing', 'a speaker tag is no anchor');
+  assert.equal(checkPhrase(clock, ['nowhere', '{dots}']).problem, 'scene');
+  // Read from a recipe by their shape, as a phrase is.
+  const recipe = {story: {kit: 'beats', beats: [['today', '{dots}'], ['today', '{nope}', .3], {scene: 'today', phrase: '{hop}', nth: 0}, ['today', '{@mom}']]}};
+  assert.deepEqual(phrasesIn(recipe, new Set(['today'])).map(p => [p.path, p.ref]), recipe.story.beats.map((ref, i) => [`story.beats[${i}]`, ref]));
+  // Noted by the compile, each standing in where it can, and said as text.
+  const film = await compileFilm({storyboard: board, timings, recipe, kits: [kit], anchors: 'note'});
+  assert.deepEqual(film.anchors.map(n => [n.problem, n.path]), [['missing', 'story.beats[1]'], ['moment', 'story.beats[2]'], ['missing', 'story.beats[3]']]);
+  const at = path => film.beats.find(b => b.path === path).t;
+  assert.equal(at('story.beats[1]'), +(clock.start('today') + .3).toFixed(3), 'a missing moment stands at its scene\'s start');
+  assert.equal(at('story.beats[2]'), +clock.at(['today', '{hop}']).toFixed(3), 'a moment named with nth stands at the moment');
+  const text = anchorsText({clock: film.clock, notes: film.anchors, checked: 4});
+  assert.match(text, /^4 phrases checked: 2 not said, 1 a moment named with nth or edge\n/);
+  assert.match(text, /\n {2}today "\{nope\}" → story\.beats\[1\] — no such moment in today; its moments: \{dots\} \([\d.]+ s\) · \{hop\} \([\d.]+ s\)\n/);
+  assert.match(text, /\n {2}today "\{@mom\}" → story\.beats\[3\] — no such moment in today; its moments: /);
+  assert.match(text, /a moment named with nth or edge \(the moment is used\):\n {2}today "\{hop\}" → story\.beats\[2\] — a moment is one time, at its word: leave out nth$/);
+  await assert.rejects(compileFilm({storyboard: board, timings, recipe: {story: {kit: 'beats', beats: [['today', '{nope}']]}}, kits: [kit]}), /Moment not in today: "\{nope\}"/, 'by default the compile stops at it');
 });
