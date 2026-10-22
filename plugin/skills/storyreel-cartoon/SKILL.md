@@ -84,7 +84,9 @@ export const farmKit = {name: 'farm', story: {compile}};
 
 `story.kit` names the kit; the other `story` keys are the kit's own (here, the phrases it acts on). `camera` lists
 moves by name ([camera.md](camera.md)). `[scene, phrase, seconds]` lands that many seconds after the phrase starts
-(`["farm", "she waves", 1.5]`). An unknown top-level key, or a phrase not in the storyboard, refuses.
+(`["farm", "she waves", 1.5]`). An unknown top-level key, or a phrase not in the storyboard, refuses. A spoken scene keys
+new beats to a moment written in its narration (`"Then {wave}she waves."`, named `[scene, "{wave}"]`): a reworded line
+keeps it on its word ([voice.md](voice.md#one-script-moments-and-speakers)). Phrases still work.
 
 ```json file=recipe.json
 {"story": {"kit": "farm",

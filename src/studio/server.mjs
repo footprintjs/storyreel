@@ -18,6 +18,7 @@ import {hitTest} from '../regions.mjs';
 import {jsonLines, valueAt} from './lines.mjs';
 import {contactSheet, transitionSheet} from '../sheet.mjs';
 import {transitionCatalog} from '../transitions.mjs';
+import {said} from '../script.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PAGE = {'/': ['page.html', 'text/html; charset=utf-8'], '/studio.js': ['page.js', 'text/javascript; charset=utf-8'], '/studio.css': ['page.css', 'text/css; charset=utf-8']};
@@ -68,8 +69,9 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
     return {
       version: state.version, error: state.error, loadedAt: state.loadedAt, title: title ?? storyboard.title ?? 'Untitled film', total: film.total,
       recipeFile: source?.file ?? null, audio: Boolean(audio),
-      // A silent scene's words are its directions (clock.mjs · directionTimings): shown, never spoken.
-      scenes: storyboard.scenes.map((s, i) => ({id: s.id, title: s.title ?? s.id, start: clock.offsets[i], end: clock.end(s.id), narration: s.narration,
+      // A silent scene's words are its directions (clock.mjs · directionTimings): shown, never spoken. The narration is what is
+      // said (script.mjs · said): its marks are never shown.
+      scenes: storyboard.scenes.map((s, i) => ({id: s.id, title: s.title ?? s.id, start: clock.offsets[i], end: clock.end(s.id), narration: s.narration === undefined ? undefined : said(s.narration),
         ...(s.silent ? {silent: s.silent} : {}),
         words: (film.timings?.scenes?.[i]?.words ?? []).map(w => ({text: w.text, start: clock.offsets[i] + w.start, end: clock.offsets[i] + w.end, spoken: !s.silent}))})),
       beats: film.beats.map(b => ({t: b.t, said: Array.isArray(b.ref) ? {scene: b.ref[0], phrase: b.ref[1], plus: b.ref[2] ?? 0} : b.ref, path: b.path, line: b.path ? lineOf(b.path) : null})),

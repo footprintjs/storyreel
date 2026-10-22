@@ -140,6 +140,46 @@ heard**. `makeFilm` reads the voice folder's `word-check.json` into `making-of.j
 not-heard words, stale when older than the timings), and `voiceCheck: 'refuse'` refuses a film with a word
 not heard.
 
+### One script: moments and speakers in the narration
+
+A beat keyed to a phrase breaks when its line is reworded: the phrase is no longer said, or is now said twice, and
+every rewording means re-targeting the beats — and editing the line twice, in the storyboard and again in the voice
+step's own list of who says what. Write the moments and the speakers into the narration instead. A mark is never
+spoken and never shown, and a rewording keeps it on its word:
+
+```json
+{"id": "today", "narration": "Ten ones {dots} make a ten {hop}. Mom walks in. {@mom}\"What are you two up to?\""}
+```
+
+```json
+{"story": {"kit": "whiteboard", "items": [
+   {"at": ["today", "{dots}"], "dur": 1.2, "draw": [["figure", 300, 620, 1.1]]},
+   {"at": ["today", "{hop}", 0.2], "eureka": [1360, 360]}]}}
+```
+
+```json
+{"sceneTail": 0.8, "holds": [{"scene": "today", "after": "{dots}", "seconds": 1.5}]}
+```
+
+- **`{name}` is a moment:** when the scene's next spoken word starts (`{dots}`: "make"; `{hop}`: "Mom"); with no word
+  after it, when its last word ends. A beat names it as it names a phrase, `plus` as for a phrase (a moment is one time:
+  `nth` and `edge` refuse); a hold puts its silence in the pause at the mark, and a guess after it waits there. A name
+  is a letter, then letters, digits, `-` or `_`, used once in its scene. A phrase is a moment alone or words alone:
+  `"a {ten}"` refuses.
+- **`{@who}` is a speaker:** who says the quoted line right after it (only spaces between). Write lines in `"…"` (or
+  `“…”`): in `'…'` or `‘…’` an apostrophe can read as the line's end (the dogs' bowls), and a line that could end at
+  two places refuses. A speaker tag moves no mouth by itself: the voice step writes each word's `speaker` in its
+  `timings.json` from the lines, and the clock's `speaking`, `turns` and `gaze` — and so the mouths — read those.
+- **What is said** is the narration without its marks, the white space they leave tidied — here "Ten ones make a ten.
+  Mom walks in. "What are you two up to?"" (`said(narration)`). The voice, the captions, the clock and `spokenText`
+  read only that. Anything else in braces refuses, naming the scene and the mark, and so does a mark in a silent
+  scene; a narration without marks is said exactly as written. Phrases still work as ever.
+- **A voice step in any language** reads `npx storyreel script` instead of copying the grammar: the spoken scenes as
+  JSON, one a line — `{id, speaker?, said, spoken?, lines: [{by, say, offset, spoken?}], moments: [{name, offset}]}`,
+  each `offset` a place in `said`, and `spoken` what the voice says where a number slot is said in words. In code:
+  `said`, `momentsOf`, `linesOf`, `sceneScript(scene)`, `momentOf(phrase)` (`footprint-storyreel/script`), and the
+  clock's `moments(scene)`. `npx storyreel anchors` lists a moment its scene no longer has, with the moments it has.
+
 ## Silent scenes
 
 A scene with no voice — the door opens, a character walks in — is written in the storyboard with
@@ -177,7 +217,8 @@ the studio shows its words dim and slanted (`spoken: false` in the transcript).
 
 ## The recipe
 
-A recipe is data only, never code. Every beat names what is SAID: `["scene", "phrase", plus?]`.
+A recipe is data only, never code. Every beat names what is SAID: `["scene", "phrase", plus?]`, or a moment
+written in the narration, `["scene", "{hop}", plus?]` ([one script](#one-script-moments-and-speakers-in-the-narration)).
 A phrase that is not in the narration refuses the recipe.
 
 ```json
@@ -1567,7 +1608,9 @@ A fix keeps the beat's time: words are added after a beat's phrase, before a pau
 it after every edit to the narration, the recipe or the pacing. In code: `compileFilm({…, anchors: 'note'})` notes each
 phrase not as written in `film.anchors` instead of stopping (a missing one stands at the nearest words said, so the rest
 still compiles; a compile that stops anyway carries what it noted on its error, `error.anchors`, and the tool then
-reads the rest from the recipe itself), and `film.clock.places(scene, phrase)` is every place a phrase is said.
+reads the rest from the recipe itself), and `film.clock.places(scene, phrase)` is every place a phrase is said. A beat keyed to a moment written in the narration
+(`["shop", "{two-tens}"]`) stays on its word through a rewording ([one script](#one-script-moments-and-speakers-in-the-narration));
+`anchors` lists one its scene no longer has, with the moments it has.
 
 ### Showing a film to a person
 
@@ -1676,6 +1719,7 @@ run it.
   source (`r.verdicts`, `r.verdictText`; [below](#three-verdicts-no-slideshow-parts-that-hold-numbers-with-a-source)).
 - **The same, from the command line — and as a skill for agents.** `npx storyreel timeline | review | part | anchors |
   still | sheet | strip --scene <id>` (`anchors`: [every phrase, checked at once](#when-the-words-change-anchors);
+  `script`: [the film's script as JSON, for a voice step](#one-script-moments-and-speakers-in-the-narration);
   `sheet`: [the film at a glance](#showing-a-film-to-a-person)) (`part --from 0:12 --to 0:18`: a window of the film clock instead of scenes, with the same handles;
   `changes`: [the chat edit loop](#the-chat-edit-loop)) (`strip --at <scene>+<seconds>`: a fast move frame by frame — 12 consecutive frames around
   the moment, side by side — to catch a pop, a jump or two things crossing) (the film named in the project's `storyreel.config.mjs`: `export default {film: flags =>
@@ -1689,7 +1733,7 @@ run it.
   command takes `--help` (`npx storyreel still --help`). A config's `pacing` paces a film with no voice too (its even
   timings), as `makeFilm` paces the timings it is given.
 - **And as an MCP server,** for any assistant that speaks MCP: `storyreel mcp [--flag value …]` serves the same
-  eight tools over stdio, `changes` and `anchors` among them (its flags apply to every call; a still or a strip comes back as the picture, a sheet as its pictures). Each call runs in
+  nine tools over stdio, `changes`, `anchors` and `script` among them (its flags apply to every call; a still or a strip comes back as the picture, a sheet as its pictures). Each call runs in
   a fresh process, so an edit to a kit between two calls is always seen. The project is fixed when the server starts:
   `--config`, `--cwd` (the folder every call runs in) and the film's own flags are set there only. A call passes only
   its tool's arguments (they reach `film()` too, as every flag does), and one that passes anything else is refused, so
@@ -2671,7 +2715,8 @@ the default because it rarely does; there is no swap repair.
 | `readCast(cast)` · `castText(text, cast)` · `withCast(value, cast)` | the cast: `{{role}}` in any text becomes the role's name; kits read the rest from `context.cast` |
 | `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |
 | `directionTimings(scene, {tail?})` · `withDirections(storyboard, timings)` · `sceneText(scene)` · `spokenText(scene)` · `unsaidNumbers(storyboard)` | a silent scene's timing; a voice's timings completed with the silent scenes; a scene's text as spoken (number slots in words); digits without a slot |
-| `makeClock(storyboard, timings)` | phrases → seconds; `speaking(t)`, `turns()`, `gaze(t, who)` |
+| `said(narration)` · `momentsOf` · `linesOf` · `sceneScript(scene)` · `momentOf(phrase)` | one script: what is said (the marks out), its moments (`{name}`) and its speakers' lines (`{@who}`); `footprint-storyreel/script` |
+| `makeClock(storyboard, timings)` | phrases and moments → seconds; `moments(scene)`, `speaking(t)`, `turns()`, `gaze(t, who)` |
 | `footprint-storyreel/shots` → `readIntent` · `readContinuity` · `checkContinuity` · `tooMuchTooFast` · `distinctMoments` · `WATCHING` | the shot plan's checks, on their own |
 | `footprint-storyreel/review` → `reviewPart(film, {part?, layout?, checks?, …})` · `REVIEW_DEFAULTS` · `REVIEW_CHECKS` · `findingsText` · `verdictsText` · `wordsAt` | a part reviewed by reading it: findings with times, and three verdicts (passed, failed, not run) with their `decide()` evidence |
 | `footprint-storyreel/slideshow` → `slideshowOf(film, {from?, to?, every?, rule?})` · `shotMotion` · `shotInsides` · `moved` · `SLIDESHOW` · `SLIDESHOW_VERDICT` | no slideshow: how much each shot moves in its middle, and whether most of the running time is dead (held still more than 3 s) |
@@ -2692,13 +2737,13 @@ the default because it rarely does; there is no swap repair.
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/review`, `/slideshow`, `/geometry`, `/claims`, `/decorative`, `/regions`, `/captions`, `/layout`, `/transitions`, `/breakdown`, `/sounds`, `/sounds/openverse`, `/camera`, `/beats`, `/music`, `/kits/whiteboard`, `/kits/cartoon`, `/kits/paper/steps-track`, `/pose`, `/mocap`, `/kits/cartoon/figure`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/script`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/review`, `/slideshow`, `/geometry`, `/claims`, `/decorative`, `/regions`, `/captions`, `/layout`, `/transitions`, `/breakdown`, `/sounds`, `/sounds/openverse`, `/camera`, `/beats`, `/music`, `/kits/whiteboard`, `/kits/cartoon`, `/kits/paper/steps-track`, `/pose`, `/mocap`, `/kits/cartoon/figure`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws
 
 1. **Data only.** A recipe names shapes, phrases and numbers; an unknown key refuses. Nothing in a recipe runs.
-2. **Phrases, not seconds.** Pictures follow the voice; change the voice and the film follows. Seconds appear only where the storyboard declares a silent scene, as each direction's length.
+2. **Phrases, not seconds.** Pictures follow the voice — a beat names a phrase, or a moment written in the narration; change the voice and the film follows. Seconds appear only where the storyboard declares a silent scene, as each direction's length.
 3. **Pure function of time.** `frame(ctx, t)` draws any moment in any order, the same way every time.
 4. **Every frame restores the canvas**: no leaked transform, alpha, compositing, shadow, filter or clip (the test fills the whole frame after each one and reads its corners).
 5. **One focal point at a time**: speech is a bubble, data is a pill, the old stage leaves before the new one arrives, one camera: its moves take turns with the focus, the pushes and the spotlights.

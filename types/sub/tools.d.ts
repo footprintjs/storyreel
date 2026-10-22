@@ -35,8 +35,12 @@ export function part(project: Project, args: PartArgs): Promise<string>;
 /** What an edit changed before the full render (previewChanges on fullRender): one line per changed range, then the count; render: true draws only those pieces (kept) and writes a short clip of them. */
 export function changes(project: ProjectSource, args?: {render?: boolean | string; handles?: number | string}): Promise<string>;
 export function still(project: Project, args: {at: string | string[]; width?: number | string}): Promise<{text: string; file: string}>;
-/** Every phrase the film is keyed to (the pacing's holds, the recipe's beats), checked in one pass: the count, then each not said, said more than once, past its nth or in no scene, where it is named, with what to write instead. full: every one (default: the first 10 a kind). */
+/** Every phrase the film is keyed to (the pacing's holds, the recipe's beats), checked in one pass: the count, then each not said, said more than once, past its nth, in no scene or a moment named with nth or edge, where it is named, with what to write instead. full: every one (default: the first 10 a kind). */
 export function anchors(project: ProjectConfig, args?: {full?: boolean | string}): Promise<string>;
+/** The film's script as JSON, one spoken scene a line (silent scenes left out): each a ScriptScene. A mark not as written refuses, naming the scene. */
+export function script(project: ProjectConfig): Promise<string>;
+/** One scene of the script tool's JSON: the scene's own speaker, what is said, `spoken` only when the voice says something else (number slots in words), who says each line (with what the voice says in it, when that differs), and the moments. */
+export interface ScriptScene {id: string; speaker?: string; said: string; spoken?: string; lines: (import('../index.js').SpeakerLine & {spoken?: string})[]; moments: import('../index.js').Moment[]}
 /** The film (or scenes, or a window) at a glance: a frame every `every` seconds (4), `per` to a sheet (20), labelled with time and scene, as PNGs. */
 export function sheet(project: Project, args?: PartArgs & {every?: number | string; per?: number | string; width?: number | string}): Promise<{text: string; file: string; files: string[]}>;
 /** A copy of a finished film to send to a person: <name>.share.mp4 (width 854, H.264/AAC, faststart) and <name>.poster.jpg (at 6 s, or a shorter film's middle), beside it or in `out`. */
@@ -45,6 +49,6 @@ export function shareCopy(file: string, options?: {width?: number; crf?: number;
 export const SHARE_DEFAULTS: Readonly<{width: number; crf: number; poster: number}>;
 /** A fast move frame by frame: `frames` (12) consecutive frames at `fps` (30) around one moment, side by side as a PNG. */
 export function strip(project: Project, args: {at: string; frames?: number | string; fps?: number | string; width?: number | string}): Promise<{text: string; file: string}>;
-/** A tool: what it runs, what it does, what it takes; `picture` when its result is an image (MCP returns it as one); `load`: 'inputs' when it reads the timed inputs and prepares the film itself (changes), 'config' when it times the film itself too (anchors); none: the compiled film. */
+/** A tool: what it runs, what it does, what it takes; `picture` when its result is an image (MCP returns it as one); `load`: 'inputs' when it reads the timed inputs and prepares the film itself (changes), 'config' when it reads the config's film untimed (anchors, script); none: the compiled film. */
 export interface Tool {run(project: Project | ProjectSource | ProjectConfig, args: Record<string, unknown>): Promise<string | {text: string; file: string}>; about: string; args: Record<string, string>; picture?: boolean; load?: 'inputs' | 'config'}
-export const TOOLS: Readonly<Record<'timeline' | 'review' | 'part' | 'anchors' | 'changes' | 'still' | 'sheet' | 'strip', Tool>>;
+export const TOOLS: Readonly<Record<'timeline' | 'review' | 'part' | 'anchors' | 'script' | 'changes' | 'still' | 'sheet' | 'strip', Tool>>;

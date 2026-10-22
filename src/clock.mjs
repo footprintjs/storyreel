@@ -3,9 +3,12 @@
  * ({scene, phrase}); the clock turns it into seconds on the whole-lesson timeline. A phrase the
  * narration does not contain refuses the recipe (no silent fallback to a guessed time). A silent
  * scene's directions are its "narration" here: a beat names a direction the way it names a phrase,
- * and the directions are never spoken (clock.mjs · directionTimings).
+ * and the directions are never spoken (clock.mjs · directionTimings). A beat may name a moment
+ * written in the narration instead ("{hop}": script.mjs): the clock reads what is said — the
+ * narration without its marks — and finds each moment by the letters said before it.
  */
-import {normSpeech, checkSlots, spokenMap, spokenOffset, shownWords, unsaidDigits} from 'footprint-narration';
+import {normSpeech, checkSlots, findSlot, spokenMap, spokenOffset, shownWords, unsaidDigits} from 'footprint-narration';
+import {sceneScript, momentOf, momentFix, shownMark} from './script.mjs';
 
 /** How long one direction may last, in seconds: long enough to see, short enough to stay a beat. */
 export const DIRECTION_SECONDS = Object.freeze([.2, 20]);
@@ -23,7 +26,8 @@ export function checkScene(scene, i = 0) {
   if (scene.speaker !== undefined && !(typeof scene.speaker === 'string' && scene.speaker.trim())) throw new TypeError(`${name}: speaker must name who says the scene (a word, e.g. "robot"), not ${JSON.stringify(scene.speaker)}`);
   if (spoken) {
     if (typeof scene.narration !== 'string') throw new TypeError(`${name}: narration must be the words said, as one string`);
-    if (scene.say !== undefined) checkSlots(scene.narration, scene.say, {name, field: 'say'});   // number slots (footprint-narration)
+    const script = sceneScript(scene, i);   // its marks (script.mjs): one not as written refuses
+    if (scene.say !== undefined) checkSlotsSaid(script, scene.say, name);   // number slots (footprint-narration), in what is said
     return 'spoken';
   }
   if (scene.say !== undefined) throw new Error(`${name}: say is for a spoken scene (what the voice says for a word the captions show); a silent scene says nothing`);
@@ -35,7 +39,25 @@ export function checkScene(scene, i = 0) {
     if (typeof text !== 'string' || !normSpeech(text)) throw new TypeError(`${name}: silent[${k}] must start with the direction's words (letters or digits), not ${JSON.stringify(text)}`);
     if (typeof seconds !== 'number' || !(seconds >= lo && seconds <= hi)) throw new RangeError(`${name}: silent[${k}] "${text}" must last ${lo}..${hi} seconds, not ${JSON.stringify(seconds)}`);
   });
+  sceneScript(scene, i);   // a direction takes no marks (script.mjs)
   return 'silent';
+}
+
+/**
+ * A spoken scene's number slots, in what is said (script.mjs · said: its marks out): each shown text whole and in
+ * order (footprint-narration · checkSlots), and no moment inside one — the voice says a slot as one run of words, so a
+ * moment has no word to stand before there. A moment is inside a slot when something the voice says of the slot comes
+ * before it: one before "$5", "(16.67 ms)" or "−3 °C" stands before the slot's first word.
+ */
+function checkSlotsSaid(script, say, name) {
+  checkSlots(script.said, say, {name, field: 'say'});
+  let from = 0;
+  say.forEach(([shown], k) => {
+    const at = findSlot(script.said, shown, from), end = at + shown.length;
+    const inside = script.moments.find(m => m.offset > at && m.offset < end && normSpeech(script.said.slice(at, m.offset)));
+    if (inside) throw new Error(`${name}: the moment ${shownMark(inside.name)} stands inside the number slot "${shown}" (say[${k}]), which the voice says as one run: put it before or after "${shown}"`);
+    from = end;
+  });
 }
 
 /**
@@ -44,17 +66,35 @@ export function checkScene(scene, i = 0) {
  * in words and shown on screen in digits. The slots are footprint-narration's (spokenMap, checkSlots): a slot is a
  * POSITION — each shown text where it stands whole, in order — and a scene's map is made from them.
  */
-/** A spoken scene's map, its slots checked first as the storyboard names them (`storyboard scene <id or index>: say[k] …`). */
+/** What a spoken scene says (script.mjs · said): its narration without its marks — as written when it has none. */
+const saidOf = (scene, i) => (typeof scene.narration === 'string' ? sceneScript(scene, i).said : scene.narration);
+/** A spoken scene's map of what is said, its slots checked first as the storyboard names them (`storyboard scene <id or index>: say[k] …`). */
 function sceneMap(scene, i) {
-  if (scene.say !== undefined) checkSlots(scene.narration, scene.say, {name: `storyboard scene ${scene.id ?? i ?? '(no id)'}`, field: 'say'});
-  return spokenMap(scene.narration, {slots: scene.say ?? []});
+  const text = saidOf(scene, i);
+  if (scene.say !== undefined) checkSlots(text, scene.say, {name: `storyboard scene ${scene.id ?? i ?? '(no id)'}`, field: 'say'});
+  return spokenMap(text, {slots: scene.say ?? []});
 }
 const slotsOf = scene => (scene?.say !== undefined && scene.narration !== undefined ? sceneMap(scene) : null);
 
-/** What the voice says for a scene: its narration with each number slot's spoken words in place of what is shown. */
+/** What the voice says for a scene: its narration without its marks (script.mjs), with each number slot's spoken words in place of what is shown. */
 export function spokenText(scene) {
-  if (scene.say === undefined) return scene.narration;
+  if (scene.say === undefined) return saidOf(scene);
   return sceneMap(scene).spoken;
+}
+
+/**
+ * What the voice says for a stretch of what a spoken scene says — said()'s [from, to), a line (script.mjs ·
+ * linesOf) — with each number slot it touches said in words, whole: what a voice step voices for that stretch.
+ */
+export function spokenIn(scene, from, to) {
+  if (scene.say === undefined) return saidOf(scene).slice(from, to);
+  let at = 0, out = '';
+  for (const p of sceneMap(scene).pieces) {
+    const end = at + p.shown.length;
+    if (end > from && at < to) out += p.kind === 'text' ? p.spoken.slice(Math.max(from, at) - at, Math.min(to, end) - at) : p.spoken;
+    at = end;
+  }
+  return out;
 }
 
 /**
@@ -105,9 +145,10 @@ export function withDirections(board, timings) {
 }
 
 /**
- * Index a scene's measured words against its text (clock.mjs · sceneText: the narration, or a silent
- * scene's directions), or null when the timings are not complete (every word timed, in order, and
- * together spelling the text exactly).
+ * Index a scene's measured words against its text (clock.mjs · sceneText: what the narration says, or a
+ * silent scene's directions), or null when the timings are not complete (every word timed, in order, and
+ * together spelling the text exactly). `moments`: where the narration's moments fall among the words
+ * (momentsIn).
  */
 export function speechIndex(scene, timing) {
   if (timing?.alignment?.status !== 'available' || !Array.isArray(timing.words) || !timing.words.length) return null;
@@ -118,7 +159,37 @@ export function speechIndex(scene, timing) {
     words.push({...word, from: content.length, to: content.length + text.length}); content += text; previous = word.end;
   }
   if (content !== normSpeech(sceneText(scene))) return null;
-  return {content, words, slots: scene.silent === undefined ? slotsOf(scene) : null};
+  const slots = scene.silent === undefined ? slotsOf(scene) : null;
+  return {content, words, slots, moments: momentsIn(scene, words, slots, timing.duration)};
+}
+
+/**
+ * Where a spoken scene's moments (script.mjs) fall among its timed words, on the scene's own clock: [{name, at, start,
+ * end}] — `at` when the word after the mark starts (with none after it, when the last word ends); `start`–`end` the
+ * pause there, from the end of the word before the mark to the start of the word after it (the scene's start or end
+ * where there is none). A mark is found by its letters: what is said before it, normalized as the words are (a number
+ * slot counted as the voice says it), so the normalizing never sees a mark. One the timings put inside a word refuses.
+ */
+function momentsIn(scene, words, slots, duration) {
+  if (scene.silent !== undefined || !words.length) return [];
+  const {said, moments} = sceneScript(scene);
+  return moments.map(({name, offset}) => {
+    const shown = normSpeech(said.slice(0, offset)).length, from = slots ? spokenOffset(slots, shown) : shown;
+    const inside = words.find(w => w.from < from && w.to > from);
+    if (inside) throw new Error(`storyboard scene ${scene.id}: the moment ${shownMark(name)} falls inside the timed word ${JSON.stringify(inside.text)}: a moment stands between words — move it before or after the word, or time the word as two`);
+    const k = words.findIndex(w => w.from >= from), after = k < 0 ? null : words[k], before = k < 0 ? words.at(-1) : words[k - 1] ?? null;
+    // (A voice's word may start just before the one before it ends: the pause is never past the word after the mark.)
+    const start = before ? Math.min(before.end, after ? after.start : Infinity) : 0;
+    return Object.freeze({name, at: after ? after.start : before.end, start, end: after ? after.start : duration});
+  });
+}
+
+/** A scene's moment by name, from its speechIndex ({name, at, start, end}), or a refusal naming the moments it has (the first ten). */
+export function momentIn(index, name, id, what = 'Moment') {
+  const moment = index.moments.find(m => m.name === name);
+  if (moment) return moment;
+  const has = index.moments.map(m => shownMark(m.name)), shown = has.slice(0, 10).join(', ') + (has.length > 10 ? `, … ${has.length - 10} more` : '');
+  throw new Error(`${what} not in ${id}: "${shownMark(name)}" (${has.length ? `its moments: ${shown}` : 'it has no moments'})`);
 }
 
 /** Every offset where `needle` starts in `text`. */
@@ -166,6 +237,15 @@ export function makeClock(board, timings) {
   });
   const total = at;
   const sceneIndex = id => { if (!(id in byId)) throw new Error(`Unknown scene ${id} (the scenes are ${Object.keys(byId).join(', ')})`); return byId[id]; };
+  /**
+   * A ref's moment (script.mjs · momentOf: its phrase is "{name}") — {at, start, end} on its scene's clock
+   * (speechIndex) — or null when it names a phrase. A moment is one time: nth and edge refuse (script.mjs · momentFix).
+   */
+  const momentFor = r => {
+    const name = momentOf(r.phrase, `${r.scene} "${r.phrase}"`), fix = name === null ? null : momentFix(r);
+    if (fix) throw new Error(`${r.scene} "${r.phrase}": ${fix}`);
+    return name === null ? null : momentIn(speech[r.scene], name, r.scene);
+  };
   // Each scene's said words on the whole-lesson clock (a silent scene's directions are seen, never said).
   // Who says each word: the word's own `speaker` (a voice step that knows who said what writes it — the narrator and
   // the characters taking turns inside one scene), else the scene's, else null (the narrator).
@@ -194,30 +274,47 @@ export function makeClock(board, timings) {
     spokenEnd: id => offsets[sceneIndex(id)] + spoken[id].last,
     /**
      * A beat reference → seconds. ref = [scene, phrase] | [scene, phrase, plus] |
-     * {scene, phrase, edge?: 'start'|'end', plus?, nth?}
+     * {scene, phrase, edge?: 'start'|'end', plus?, nth?}. A phrase may be a moment written in the
+     * narration ("{hop}": script.mjs): when the word after the mark starts, plus `plus` (no nth, no edge).
      */
     at(ref) {
       const r = Array.isArray(ref) ? {scene: ref[0], phrase: ref[1], plus: ref[2]} : ref;
-      const i = sceneIndex(r.scene), match = phraseMatches(speech[r.scene], r.phrase)[r.nth ?? 0];
+      const i = sceneIndex(r.scene), moment = momentFor(r);
+      if (moment) return offsets[i] + moment.at + (r.plus ?? 0);
+      const match = phraseMatches(speech[r.scene], r.phrase)[r.nth ?? 0];
       if (!match) throw new Error(`Phrase not in ${r.scene}: "${r.phrase}"`);
       return offsets[i] + (r.edge === 'end' ? match.end : match.start) + (r.plus ?? 0);
     },
     /**
      * The pause after a phrase: {start, end} in whole-lesson seconds, from the phrase's last word
      * to the next spoken word (or the scene's end). A pacing hold after the phrase is this pause.
+     * At a moment ("{hop}"), the pause at the mark: from the end of the word before it to the start
+     * of the word after it.
      */
     pauseAfter(ref) {
       const r = Array.isArray(ref) ? {scene: ref[0], phrase: ref[1]} : ref;
-      const i = sceneIndex(r.scene), match = phraseMatches(speech[r.scene], r.phrase)[r.nth ?? 0];
+      const i = sceneIndex(r.scene), moment = momentFor(r);
+      if (moment) return {start: offsets[i] + moment.start, end: offsets[i] + moment.end};
+      const match = phraseMatches(speech[r.scene], r.phrase)[r.nth ?? 0];
       if (!match) throw new Error(`Phrase not in ${r.scene}: "${r.phrase}"`);
       const next = speech[r.scene].words.find(w => w.start >= match.end - 1e-6);
       return {start: offsets[i] + match.end, end: offsets[i] + (next ? next.start : timings.scenes[i].duration)};
     },
     /**
      * Every place a phrase is said in scene `id`, in order, on the whole-lesson clock: [{start, end}] — none when it is
-     * not said. A ref's `nth` picks one of these (at, pauseAfter); the anchors (anchors.mjs) read them all.
+     * not said. A ref's `nth` picks one of these (at, pauseAfter); the anchors (anchors.mjs) read them all. A moment
+     * ("{hop}") is one place, its time (start and end alike); none when the scene has no such moment, and a speaker tag
+     * is no place (at says why).
      */
-    places: (id, phrase) => { const i = sceneIndex(id); return phraseMatches(speech[id], phrase).map(m => ({start: offsets[i] + m.start, end: offsets[i] + m.end})); },
+    places: (id, phrase) => {
+      const i = sceneIndex(id);
+      let name; try { name = momentOf(phrase); } catch { return []; }
+      if (name === null) return phraseMatches(speech[id], phrase).map(m => ({start: offsets[i] + m.start, end: offsets[i] + m.end}));
+      const moment = speech[id].moments.find(m => m.name === name);
+      return moment ? [{start: offsets[i] + moment.at, end: offsets[i] + moment.at}] : [];
+    },
+    /** The moments written in scene `id`'s narration (script.mjs), in order, on the whole-lesson clock: [{name, t}] (none in a silent scene). */
+    moments: id => { const i = sceneIndex(id); return speech[id].moments.map(m => Object.freeze({name: m.name, t: offsets[i] + m.at})); },
     /** Which scene a whole-lesson time falls in, and the time inside it. */
     locate(t) {
       let i = offsets.length - 1; while (i > 0 && t < offsets[i]) i--;

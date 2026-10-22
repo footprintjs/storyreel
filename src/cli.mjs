@@ -77,7 +77,7 @@ if (command === 'sounds') { const {soundsCommand} = await import('./sounds/cli.m
 const asked = given.includes('--help') ? command : command === 'help' && given[0] ? given[0] : null;
 if (asked) {
   const tool = TOOLS[asked];
-  const usage = tool ? `storyreel ${asked} [--flag value …]   ${tool.about}\n${Object.entries(tool.args).map(([a, d]) => `  --${a}  ${d}`).join('\n')}\n  --config  the project file (default ./${CONFIG}); any other flag reaches the config's film(flags)`
+  const usage = tool ? [`storyreel ${asked} [--flag value …]   ${tool.about}`, ...Object.entries(tool.args).map(([a, d]) => `  --${a}  ${d}`), `  --config  the project file (default ./${CONFIG}); any other flag reaches the config's film(flags)`].join('\n')
     : asked === 'beats' ? `storyreel beats <song> [--bpm n] [--ffmpeg path]\n${BEATS_HELP}`
     : asked === 'share' ? `storyreel share <video> [--width 854] [--crf 28] [--poster 6] [--out folder] [--ffmpeg path]\n${SHARE_HELP}`
     : asked === 'breakdown' ? BREAKDOWN_USAGE
@@ -126,7 +126,7 @@ if (command === 'beats') {
   } catch (e) { console.error(`storyreel beats: ${e.message}`); process.exit(e.code === 'BEAT_OPTIONS' ? 2 : 1); }
 }
 if (!command || command === 'help' || command === '--help' || !TOOLS[command]) {
-  const lines = [...Object.entries(TOOLS).map(([name, t]) => `  ${name.padEnd(9)}${t.about}\n${Object.entries(t.args).map(([a, d]) => `             --${a}  ${d}`).join('\n')}`), BEATS_HELP, SHARE_HELP, SOUNDS_HELP];
+  const lines = [...Object.entries(TOOLS).map(([name, t]) => [`  ${name.padEnd(9)}${t.about}`, ...Object.entries(t.args).map(([a, d]) => `             --${a}  ${d}`)].join('\n')), BEATS_HELP, SHARE_HELP, SOUNDS_HELP];
   (TOOLS[command] || !command || command === 'help' || command === '--help' ? console.log : console.error)(`storyreel <tool> [--flag value …]   (the film is named in ./${CONFIG}; --config another file)\n\n${lines.join('\n')}\n\nRead first, look last: timeline → review → fix → part → still.\nAfter an edit to the words (narration, recipe, pacing): anchors first.\nAfter an edit: changes (what it redraws) → changes --render (only those pieces, and a short clip of them).\nstoryreel mcp [--flag value …] serves the same tools over MCP (stdio); the project (--config, --cwd) and the film's own flags are fixed when it starts.\n${BREAKDOWN_USAGE}`);
   process.exit(command && command !== 'help' && command !== '--help' && !TOOLS[command] ? 2 : 0);
 }

@@ -9,13 +9,20 @@
  *   ambiguous  said more than once, with no nth: each place, and a few words said only there
  *   past       its nth names no place (past the last, or not a whole number from 0)
  *   scene      its scene is not the film's
+ *   moment     a moment named with nth or edge (a moment is one time)
+ *
+ * A moment written in the narration ("{hop}": script.mjs) is checked the same way: missing when its scene has no such
+ * moment (the scene's moments are listed), never ambiguous (its name is used once). A speaker tag ("{@mom}") is no
+ * anchor: it is missing too.
  *
  * compileFilm({anchors: 'note'}) notes each of the recipe's own phrases in film.anchors and keeps a missing one at the
  * nearest words said (else at its scene's start), so the rest of the film still compiles; `storyreel anchors` says them
  * (tools.mjs · anchors), and reads the recipe itself (phrasesIn) when a compile stops anyway. Pure: it reads the film's
- * clock (clock.mjs · places, words, start). It decides no pixel (segments/drawing.mjs · NOT_DRAWING): a time it stands
+ * clock (clock.mjs · places, words, start, moments). It decides no pixel (segments/drawing.mjs · NOT_DRAWING): a time it stands
  * in moves the beats, and a beat's time is in every piece's key.
  */
+
+import {momentOf, momentFix} from './script.mjs';
 
 /** The most words a suggested phrase runs to: past it, a scene says the same words too often to name a place by them. */
 const MOST_WORDS = 8;
@@ -25,6 +32,8 @@ export const PLACES_SHOWN = 3;
 const plain = text => String(text).replace(/[^\p{L}\p{M}\p{N}'’]+/gu, ' ').trim();
 /** A ref as an object, whichever way it is written. */
 export const refOf = ref => (Array.isArray(ref) ? {scene: ref[0], phrase: ref[1], plus: ref[2]} : ref);
+/** Whether a phrase is written as a mark ("{hop}", or braces that name no moment: script.mjs): no words to look for. */
+const isMark = phrase => { try { return momentOf(phrase) !== null; } catch { return true; } };
 
 /**
  * Every phrase a recipe names, read from the recipe itself (no compile): an array ["scene", "phrase", plus?] or an
@@ -93,15 +102,18 @@ export function exactPhrases(clock, scene, places, {keep = 'start'} = {}) {
 }
 
 /**
- * One phrase, checked against its scene: {problem: null | 'missing' | 'ambiguous' | 'past' | 'scene', places, near?}.
- * `places`: every place it is said (clock · places); `near`: for a missing phrase, the nearest words said.
+ * One phrase, checked against its scene: {problem: null | 'missing' | 'ambiguous' | 'past' | 'scene' | 'moment',
+ * places, near?}. `places`: every place it is said (clock · places); `near`: for a missing phrase, the nearest words
+ * said (none for a moment: a mark has no words to look for).
  */
 export function checkPhrase(clock, ref) {
   const r = refOf(ref);
   if (typeof clock?.places !== 'function') throw new Error('checkPhrase reads a film\'s clock: pass film.clock, or makeClock(storyboard, timings)');
   let places;
   try { places = clock.places(r.scene, r.phrase); } catch { return {problem: 'scene', places: []}; }
-  if (!places.length) return {problem: 'missing', places, near: nearestWords(clock, r.scene, r.phrase)};
+  const mark = isMark(r.phrase);
+  if (!places.length) return {problem: 'missing', places, near: mark ? null : nearestWords(clock, r.scene, r.phrase)};
+  if (mark && momentFix(r)) return {problem: 'moment', places};
   if (r.nth !== undefined && !(Number.isInteger(r.nth) && r.nth >= 0 && r.nth < places.length)) return {problem: 'past', places};
   if (r.nth === undefined && places.length > 1) return {problem: 'ambiguous', places};
   return {problem: null, places};
@@ -111,11 +123,12 @@ export function checkPhrase(clock, ref) {
 const PAUSE_STAND_IN = 1.5;
 /**
  * Where a phrase that is not as written stands while the compile goes on (compileFilm's anchors: 'note'): a missing
- * phrase at the nearest words said (else at its scene's start), a past nth at the last place, an unknown scene at the
- * film's start. `how` is the clock's own: 'at' (seconds) or 'pauseAfter' ({start, end}).
+ * phrase at the nearest words said (else at its scene's start), a past nth at the last place, a moment named with nth
+ * or edge at the moment, an unknown scene at the film's start. `how` is the clock's own: 'at' (seconds) or 'pauseAfter'
+ * ({start, end}).
  */
 export function standIn(clock, ref, check, how) {
-  const r = refOf(ref), place = check.problem === 'missing' ? check.near : check.problem === 'past' ? check.places.at(-1) : null;
+  const r = refOf(ref), place = check.problem === 'missing' ? check.near : check.problem === 'past' ? check.places.at(-1) : check.problem === 'moment' ? check.places[0] : null;
   if (!place) { const start = check.problem === 'scene' ? 0 : clock.start(r.scene); return how === 'at' ? start + (r.plus ?? 0) : {start, end: start + PAUSE_STAND_IN}; }
   return how === 'at' ? (r.edge === 'end' ? place.end : place.start) + (r.plus ?? 0) : {start: place.end, end: place.end + PAUSE_STAND_IN};
 }
@@ -124,11 +137,20 @@ export function standIn(clock, ref, check, how) {
 const secs = t => `${t.toFixed(2)} s`;
 /** The edge a noted phrase is timed by: the end for a pause (a hold, a guess) or edge: 'end', else the start. */
 const keepOf = n => (n.how === 'pauseAfter' || n.path?.startsWith('pacing.') || refOf(n.ref).edge === 'end' ? 'end' : 'start');
+/** Why a phrase written as a mark names no moment of its scene: the clock's own reason (script.mjs · momentOf), or the moments the scene has. */
+function noMoment(clock, r) {
+  try { momentOf(r.phrase, null); } catch (e) { return e.message; }
+  return `no such moment in ${r.scene}; ${momentsLine(clock, r.scene)}`;
+}
+/** A scene's moments as a line lists them, each with its time: what a missing moment could be. */
+const momentsLine = (clock, scene) => { const list = clock.moments?.(scene) ?? []; return list.length ? `its moments: ${list.map(m => `{${m.name}} (${secs(m.t)})`).join(' · ')}` : 'it has no moments'; };
 /** A noted phrase as one line: where it is named, what is wrong, and what to write instead. */
 function lineOf(clock, n) {
   const r = refOf(n.ref), named = `${r.scene} "${r.phrase}"${n.path ? ` → ${n.path}` : ''}`;
   if (n.problem === 'scene') return `${named} — no scene "${r.scene}"`;
+  if (n.problem === 'missing' && isMark(r.phrase)) return `${named} — ${noMoment(clock, r)}`;
   if (n.problem === 'missing') return `${named} — not said${n.near ? `; the nearest words said: "${n.near.phrase}" (${secs(n.near.start)})` : ''}`;
+  if (n.problem === 'moment') return `${named} — ${momentFix(r)}`;
   if (n.problem === 'past') return `${named} — nth ${JSON.stringify(r.nth)}, but it is said ${n.places.length} time${n.places.length > 1 ? 's' : ''} (nth counts the places from 0)`;
   const keep = keepOf(n), shown = n.places.slice(0, PLACES_SHOWN), exact = exactPhrases(clock, r.scene, shown, {keep}), more = n.places.length - shown.length;
   return `${named} — said ${n.places.length} times; the first is used (${secs(n.places[0][keep])})${exact.length ? `. Each alone: ${exact.map(e => `"${e.phrase}" (${secs(e.at)})`).join(' · ')}${more > 0 ? ` · … ${more} more` : ''}` : ''}`;
@@ -143,7 +165,7 @@ export const ANCHORS_TOP = 10;
  * can break a kit's order); clock: the film's, for the fixes.
  */
 export function anchorsText({clock, notes, checked, stopped = null}, {full = false} = {}) {
-  const kinds = [['missing', 'not said'], ['past', 'past the last place'], ['scene', 'no such scene'], ['ambiguous', 'said more than once (the first place is used)']];
+  const kinds = [['missing', 'not said'], ['past', 'past the last place'], ['scene', 'no such scene'], ['moment', 'a moment named with nth or edge (the moment is used)'], ['ambiguous', 'said more than once (the first place is used)']];
   const count = kinds.map(([kind, said]) => [notes.filter(n => n.problem === kind), said]).filter(([list]) => list.length);
   const tally = count.map(([list, said]) => `${list.length} ${said.replace(/ \(.*\)$/, '')}`).join(', ');
   const head = stopped ? `the compile stopped, so the recipe's phrases were read from the recipe itself: ${checked} checked${tally ? `: ${tally}` : ''}`
