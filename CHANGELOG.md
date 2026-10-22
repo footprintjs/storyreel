@@ -38,6 +38,17 @@
   voice says), and U+2028, U+2029 and U+0085 are written as escapes, so a reader that splits lines at them (Python's
   `splitlines()`) still reads one scene a line. A silent scene is left out. Over MCP too (nine tools).
   `footprint-storyreel/tools` · `script`.
+- **The timeline speaks the still tool's language.** `storyreel timeline --scene X` counted its times from the start
+  of its window, which opens `handles` seconds (1.5) before the scene, while `still --at X+seconds` counts from the
+  scene's own start: every time copied from the timeline landed 1.5 s late, and an agent did the subtraction by hand.
+  Now a scene's timeline prints each time as `scene+seconds` from the start of the scene it falls in, the film clock
+  beside it (`two+2.02 (0:07.3)  "{turn}" → story.beats[2]`); a line in the handles counts from its own scene, the
+  one before or after, so no time is negative and none needs a new form. A window's (`--from`, `--to`) and the whole
+  film's are seconds on the film clock (a window's counted from its own start before). The header says what the times
+  count from. Whatever the timeline prints goes to `still --at` and `strip --at` as written, and `--at` takes m:ss too
+  (`0:07.3`, as the review prints its times). The timeline's help lists `--from` and `--to` (MCP takes them too). In
+  code: `filmTimeline(film, {from, to})` (`footprint-storyreel/render`) gives the rows on the film clock, exactly
+  (`partTimeline` keeps the stretch's own clock), and `timelineText(rows, {time})` says each time your own way.
 - **Fix: a hold not said, with no nearest words, stands in after its scene's last word** (`storyreel anchors`): it
   stood in by the last word's text, which names the first place that word is said — so the report's other times moved
   by the hold. Now it is named by words said only there (`exactPhrases`), or left out when none are.
@@ -51,6 +62,9 @@
   a lone `{` or `}`, refuses, naming the scene and the fix: write the words a voice says. So does a mark-shaped `{…}` in
   a silent scene's direction, and a beat's phrase with a brace that is not one moment alone. A beat whose phrase is
   exactly a mark (`"{dots}"`) names a moment, no longer the word in it.
+- **Breaking:** `storyreel timeline`'s times (above): a scene's are `scene+seconds (m:ss.t)`, a window's are on the film
+  clock, and the header says so (`(times: scene+seconds from that scene's start, then the film clock)`, `(times:
+  seconds from the film's start)`). A script that read the times as counted from the window's start reads them anew.
 
 ## 0.20.1 — anchors reads the holds on the film's clock
 

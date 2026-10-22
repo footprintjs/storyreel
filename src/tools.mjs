@@ -24,7 +24,8 @@ import {clockOf, clockSeconds} from './clocktext.mjs';
 import {clockTenths, checkScene, spokenText, spokenIn} from './clock.mjs';
 import {sceneScript} from './script.mjs';
 import {contactSheet} from './sheet.mjs';
-import {partWindow, partTimeline, timelineText, RENDER_DEFAULTS} from './render.mjs';
+import {partWindow, filmTimeline, timelineText, RENDER_DEFAULTS} from './render.mjs';
+import {momentAt, sceneTime} from './momenttext.mjs';
 import {formatScale} from './layout.mjs';
 import {hashOf} from './hash.mjs';
 import {reviewPart, reviewSummary, REVIEW_DEFAULTS, SUMMARY_TOP} from './review.mjs';
@@ -125,10 +126,19 @@ const spanOf = (film, part) => {
 const nameOf = part => (part.window ? `${clockOf(part.window.from, 'exact')}–${clockOf(part.window.to, 'exact')}` : part.scenes.join(' + '));
 const head = (film, part, w) => `${part ? nameOf(part) : 'the whole film'}: ${w.from.toFixed(2)}–${w.to.toFixed(2)} s of ${film.total.toFixed(2)} s`;
 
-/** When each scene starts and each beat lands (times from the part's start). */
+/** What a timeline's times count from, as its header says: a scene's, or the film's. */
+const SCENE_TIMES = 'times: scene+seconds from that scene\'s start, then the film clock', FILM_TIMES = 'times: seconds from the film\'s start';
+
+/**
+ * When each scene starts and each beat lands, in the still tool's own words (momenttext.mjs), so a time read here goes
+ * to still --at or strip --at as it is. For scenes: scene+seconds from the start of the scene each line falls in — a
+ * line in the handles counts from its own scene, the one before or after, so no time is negative and none needs a
+ * new form — then the film clock (m:ss.t). For a window or the whole film: seconds on the film clock.
+ */
 export async function timeline(project, args = {}) {
-  const part = partOf(args), w = part ? spanOf(project.film, part) : {from: 0, to: project.film.total};
-  return `${head(project.film, part, w)} (times from its start)\n${timelineText(partTimeline(project.film, w))}`;
+  const {film} = project, part = partOf(args), w = part ? spanOf(film, part) : {from: 0, to: film.total}, scenes = Boolean(part?.scenes);
+  const time = scenes ? r => `${sceneTime(film, r.t)} (${clockTenths(r.t)})` : r => r.t.toFixed(2);
+  return `${head(film, part, w)} (${scenes ? SCENE_TIMES : FILM_TIMES})\n${timelineText(filmTimeline(film, w), {time})}`;
 }
 
 /**
@@ -158,17 +168,12 @@ export async function part(project, args = {}) {
 }
 
 /**
- * Moments as "scene+seconds", or seconds on the film clock; `tool` is the tool that asked, so a refusal names it. A
- * moment is exactly that — one "+" at most, no control character — since its words are printed as its label.
+ * Moments as a still or a strip takes them (momenttext.mjs · momentAt), each held to the film and labelled as written;
+ * `tool` is the tool that asked, so a refusal names it.
  */
 function momentsOf(film, at, tool) {
   const list = scenesOf(at); if (!list.length) throw new Error(`${tool}: name the moments (at: "scene+seconds,…")`);
-  return list.map(m => {
-    const parts = m.split('+'), [id, off] = parts.length > 1 ? parts : [null, m], plain = parts.length <= 2 && !/[\u0000-\u001f\u007f]/.test(m);
-    const known = plain && (!id || film.timings.scenes.some(s => s.id === id)), t = known ? (id ? film.clock.start(id) : 0) + Number(off) : NaN;
-    if (!Number.isFinite(t)) throw new Error(`${tool}: ${JSON.stringify(m)} is not a moment (scene+seconds, or seconds; the scenes are ${film.timings.scenes.map(s => s.id).join(', ')})`);
-    return {t: +Math.min(film.total - .001, Math.max(0, t)).toFixed(3), label: m};
-  });
+  return list.map(m => ({t: +Math.min(film.total - .001, Math.max(0, momentAt(film, m, tool))).toFixed(3), label: m}));
 }
 /** A still's or a strip's width: whole pixels, 100–4000 (a call names it, and the picture is made that wide). */
 function widthOf(args, tool) {
@@ -325,8 +330,9 @@ export async function changes(project, args = {}) {
 const FULL_ARG = `true for every finding and every verdict's why (default: the counts, what did not pass, the first ${SUMMARY_TOP} findings)`;
 /** The tools, as the command line and an MCP server list them: what each does and what it takes. */
 export const TOOLS = Object.freeze({
-  timeline: {run: timeline, about: 'When each scene starts and each beat lands, as text (times from the part\'s start). Read it before choosing a moment to look at.',
-    args: {scene: 'scene ids, comma-separated (default: the whole film)', handles: `seconds of the film shown either side of the scenes (${TOOL_DEFAULTS.handles})`}},
+  timeline: {run: timeline, about: 'When each scene starts and each beat lands, as text. For scenes, each time is scene+seconds from the start of the scene it falls in (today+64.70), the film clock beside it; for a window or the whole film, seconds on the film clock. Either goes to still --at or strip --at as it is. Read it before choosing a moment to look at.',
+    args: {scene: 'scene ids, comma-separated (default: the whole film; or a window: from and to)', from: 'the window\'s start on the film clock: seconds or m:ss (0:12)', to: 'the window\'s end: seconds or m:ss',
+      handles: `seconds of the film shown either side of the scenes or the window (${TOOL_DEFAULTS.handles})`}},
   review: {run: review, about: `What is wrong, read from the picture as text: words under the captions, over each other, cut off at the edge, the picture frozen for ${REVIEW_DEFAULTS.stillFor} s, nothing new for ${REVIEW_DEFAULTS.newEvery} s while it moves. Times on the film clock. Then three verdicts (passed, failed, or not run): no slideshow, drawn parts hold together, every number on screen has a source.`,
     args: {scene: 'scene ids, comma-separated (default: the whole film)', handles: `seconds either side (${TOOL_DEFAULTS.handles})`, loop: 'true when the part is made to loop: the end of its scenes (not the handles) must come round to their start', full: FULL_ARG}},
   part: {run: part, about: `A quick look at scenes, or at a window of the film (from, to): rendered with ${TOOL_DEFAULTS.handles} s of the film either side (both cuts seen), the draft encode (half size when the config names a layout); reviewed first. Prints the video's path.`,
@@ -338,10 +344,10 @@ export const TOOLS = Object.freeze({
   changes: {run: changes, load: 'inputs', about: 'What an edit changed, before the full render: each changed stretch of the picture and why ("0:12–0:18 left · its recipe entries changed"), then the count. With render: only those pieces drawn (kept: the full render draws none of them again) and a short clip of them back to back, labelled with their times, the film either side and its voice under them. Compares with the cache of the config\'s full render (render, code) into out.',
     args: {render: 'true to draw the changed pieces and write the clip, <out>/changes/review.mp4', handles: `seconds of the film either side of each change in the clip (${CHANGES_DEFAULTS.handles})`}},
   still: {run: still, picture: true, about: 'One picture to confirm the look: frames at the moments given, side by side, as a PNG. Look at it last, after the timeline and the review.',
-    args: {at: 'moments: scene+seconds (or seconds), comma-separated, at most 30 (required)', width: `the picture's width in pixels, 100–4000 (${TOOL_DEFAULTS.width})`}},
+    args: {at: 'moments: scene+seconds (today+64.70, as the timeline prints a scene\'s times), or seconds or m:ss on the film clock; comma-separated, at most 30 (required)', width: `the picture's width in pixels, 100–4000 (${TOOL_DEFAULTS.width})`}},
   sheet: {run: sheet, picture: true, about: `The whole film at a glance, for a reviewer: a frame every ${TOOL_DEFAULTS.every} s, ${TOOL_DEFAULTS.per} to a sheet, each labelled with its time and scene, as PNGs (paths printed). Hand them with the script to someone checking the film.`,
     args: {scene: 'scene ids, comma-separated (default: the whole film; or a window: from and to)', from: 'the window\'s start on the film clock: seconds or m:ss', to: 'the window\'s end: seconds or m:ss',
       every: `seconds between frames (${TOOL_DEFAULTS.every})`, per: `frames a sheet (${TOOL_DEFAULTS.per})`, width: `each sheet's width in pixels, 100–4000 (${TOOL_DEFAULTS.sheetWidth})`}},
   strip: {run: strip, picture: true, about: 'A fast move frame by frame: consecutive frames around one moment, side by side, as a PNG — to catch a pop, a jump or two things crossing.',
-    args: {at: 'the moment: scene+seconds (or seconds) (required)', frames: `how many frames (${TOOL_DEFAULTS.frames})`, fps: `frames a second (${TOOL_DEFAULTS.fps})`, width: `the picture's width in pixels, 100–4000 (${TOOL_DEFAULTS.width})`}},
+    args: {at: 'the moment: scene+seconds (as the timeline prints a scene\'s times), or seconds or m:ss on the film clock (required)', frames: `how many frames (${TOOL_DEFAULTS.frames})`, fps: `frames a second (${TOOL_DEFAULTS.fps})`, width: `the picture's width in pixels, 100–4000 (${TOOL_DEFAULTS.width})`}},
 });

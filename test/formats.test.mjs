@@ -11,7 +11,7 @@ import {spokenTracks} from '../src/captions.mjs';
 /** A film's caption chunks: footprint-narration's chunker over the film's spoken tracks. */
 const captionChunks = (film, options) => chunksOf(spokenTracks(film), options);
 import {compileLayout, cropWindow, formatOf, FORMAT_NAMES} from '../src/layout.mjs';
-import {makePainter, readMotionBlur, readCaptionFiles, partWindow, partTimeline, timelineText, prepareRender} from '../src/render.mjs';
+import {makePainter, readMotionBlur, readCaptionFiles, partWindow, partTimeline, filmTimeline, timelineText, prepareRender} from '../src/render.mjs';
 import {tempDir} from './tmp.mjs';
 
 // A silent opening, then two spoken scenes; a world that is red with a white square sliding fast.
@@ -123,6 +123,9 @@ test('a part\'s timeline: the scenes and beats in it as text, on the part\'s own
   const rows = partTimeline(fake, {from: 3.5, to: 10});
   assert.deepEqual(rows, [{t: 1.5, kind: 'scene', scene: 'b'}, {t: 2.7, kind: 'beat', scene: 'b', phrase: 'the network does the waiting', entry: 'stages[1].world.beats.waiting'}]);
   assert.equal(timelineText(rows), '1.50  ── b\n2.70  "the network does the waiting" → stages[1].world.beats.waiting');
+  // The same rows on the film clock, exactly (what the review tools name a moment by), and the lines with times of one's own.
+  assert.deepEqual(filmTimeline(fake, {from: 3.5, to: 10}), rows.map((r, k) => ({...r, t: [5, 6.2][k]})));
+  assert.equal(timelineText(filmTimeline(fake, {from: 3.5}), {time: r => `b+${(r.t - 5).toFixed(1)}`}), 'b+0.0  ── b\nb+1.2  "the network does the waiting" → stages[1].world.beats.waiting');
 });
 
 test('a quick look at one part: its scenes with handles, at half size, in the draft encode', {skip: spawnSync('ffmpeg', ['-version']).error ? 'needs ffmpeg' : false}, async () => {

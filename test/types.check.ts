@@ -530,3 +530,9 @@ export const scriptRead = async (run: typeof scriptTool, read: typeof readInputs
 export const badMoment = momentOf(3);
 // @ts-expect-error a moment's place in what is said is its offset (at is seconds, as on the clock)
 export const oldPlace = (m: Moment) => m.at;
+
+// The timeline in the still tool's words: its rows on the film clock, its lines with times said one's own way.
+import {filmTimeline, timelineText} from '../types/sub/render.js';
+export const sceneLines = (film: Film): string => timelineText(filmTimeline(film, {from: 0}), {time: r => `a+${r.t.toFixed(2)}`});
+// @ts-expect-error a row's time is said as text
+export const badTime = (film: Film) => timelineText(filmTimeline(film), {time: r => r.t});
