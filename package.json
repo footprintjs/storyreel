@@ -40,6 +40,10 @@
       "types": "./types/sub/pacing.d.ts",
       "default": "./src/pacing.mjs"
     },
+    "./script": {
+      "types": "./types/sub/script.d.ts",
+      "default": "./src/script.mjs"
+    },
     "./ease": {
       "types": "./types/sub/ease.d.ts",
       "default": "./src/ease.mjs"
