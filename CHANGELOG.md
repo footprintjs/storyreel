@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.20.0 — anchors: every phrase checked at once; sheets and a copy to share
 
 - **`storyreel anchors`: every phrase the film is keyed to, checked in one pass.** An edit to the narration leaves
   beats on words no longer said — the compile stops at the first, so they were found one render at a time — and on
@@ -30,6 +30,9 @@
 - **The review skill** checks the phrases after an edit to the words, and links `showing.md`: pictures before videos,
   one page a person opens on a phone, and a review by several viewers (a child, a parent, a teacher, an animator, a
   historian) merged into one list. It stays inside the agent-cost baseline (6 566 bytes of 6 046 + 10 %).
+- **Breaking:** a review tool says how it loads with `load: 'inputs' | 'config'`; the `compile: false` it had is gone
+  (`TOOLS.changes.load` is `'inputs'`). A focus strategy of your own is shown a view with three more fields (`on`,
+  `thing`, `since`); nothing it read before changed.
 
 ## 0.19.0 — the chat edit loop: see only what changed
 
