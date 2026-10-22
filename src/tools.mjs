@@ -250,9 +250,11 @@ export async function anchors(project, args = {}) {
   let film = null, stopped = null, noted = [];
   try { film = await compileFilm({...pick(inputs, FILM_KEYS), timings: pacedOf(project, placed.filter(Boolean)), root: inputs.root ?? cwd, anchors: 'note'}); noted = film.anchors; }
   catch (e) { stopped = e.message; noted = e.anchors ?? []; }
-  // Every place is said on the film's clock (the paced film says the same words), so the report has one clock.
+  // Every place is said on the film's clock (the paced film says the same words), so the report has one clock: the
+  // holds are read again on it, so their times and their fixes are the film's too.
   const clock = film?.clock ?? spoken, recipe = path => (path === null ? null : `recipe.${path}`);
-  const notes = [...held.filter(n => n.problem), ...noted.map(n => ({...n, path: recipe(n.path)}))];
+  const heldOn = film ? holds.map((h, i) => ({ref: holdRef(h), path: `pacing.holds[${i}]`, how: 'pauseAfter', ...checkPhrase(clock, holdRef(h))})) : held;
+  const notes = [...heldOn.filter(n => n.problem), ...noted.map(n => ({...n, path: recipe(n.path)}))];
   let checked = holds.length + new Set((film?.beats ?? []).filter(b => b.path !== null).map(b => b.ref)).size;
   if (stopped) {
     // (Read from the recipe as written: what the compile noted before it stopped is said once, as it noted it.)

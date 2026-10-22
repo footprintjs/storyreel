@@ -49,6 +49,10 @@ test('anchors: every phrase the film is keyed to, in one pass — the pacing\'s 
   assert.match(text, /two "scene" → recipe\.story\.beats\[3\] — nth 2, but it is said 1 time \(nth counts the places from 0\)/);
   assert.match(text, /three "hello" → recipe\.story\.beats\[4\] — no scene "three"/);
   assert.match(text, /one "a" → recipe\.story\.beats\[2\] — said 2 times; the first is used \([\d.]+ s\)\. Each alone: "A first" \([\d.]+ s\) · "a few" \([\d.]+ s\)/);
+  // A hold is read on the film's clock too: its time is the paced film's, and it has its fixes (words before its end).
+  const held = await anchors(await readInputs({cwd: project, anchors: 'twice'})), film = await loadProject({cwd: project, anchors: 'twice'});
+  const [first, second] = film.film.clock.places('one', 'a');
+  assert.match(held, new RegExp(`one "a" → pacing\\.holds\\[0\\] — said 2 times; the first is used \\(${first.end.toFixed(2)} s\\)\\. Each alone: "A first" \\([\\d.]+ s\\) · "with a" \\(${second.end.toFixed(2)} s\\)`), `${held}\n(the second keeps its end: words added before it; the first has none before, so its fix moves the end and says when)`);
   assert.match(await anchors(await readInputs({cwd: project})), /^no phrase is named/);
   const r = run(['anchors', '--anchors', 'true']);
   assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /^8 phrases checked/, 'the command line, as the tool');

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **`storyreel anchors` reads the pacing's holds on the film's clock too:** a hold said more than once now gets its
+  fixes (words added before it, so its pause stays where it is) and its time is the paced film's; in 0.20.0 a hold's
+  lines showed the time before pacing and no fixes.
+
 ## 0.20.0 — anchors: every phrase checked at once; sheets and a copy to share
 
 - **`storyreel anchors`: every phrase the film is keyed to, checked in one pass.** An edit to the narration leaves
