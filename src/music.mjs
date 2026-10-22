@@ -14,6 +14,7 @@ import {writeOutput, securePath} from './files.mjs';
 import path from 'node:path';
 import {flowChart, narrative, decide} from 'footprintjs';
 import {makeClock} from './clock.mjs';
+import {phrasesIn} from './anchors.mjs';
 import {firstAtOrAfter} from './dsp.mjs';
 import {hashOf, hashBytes} from './hash.mjs';
 import {QUIET, plainNarrative} from './record.mjs';
@@ -111,16 +112,6 @@ export function requireOverlap({start, seconds, total, who}) {
 /** Where the scenes start on the film clock, from their lengths. */
 const offsetsOf = durations => durations.reduce((out, d, i) => (out.push(i ? out[i - 1] + durations[i - 1] : 0), out), []);
 
-/** Every moment a recipe names: an array ["scene", "phrase", plus?] or an object {scene, phrase, …} whose scene is the film's. */
-function keysIn(value, scenes, found = [], seen = new Set()) {
-  if (!value || typeof value !== 'object' || seen.has(value)) return found;
-  seen.add(value);
-  if (Array.isArray(value) && typeof value[0] === 'string' && scenes.has(value[0]) && typeof value[1] === 'string' && (value[2] === undefined || typeof value[2] === 'number') && value.length <= 3) found.push(value);
-  else if (!Array.isArray(value) && typeof value.scene === 'string' && scenes.has(value.scene) && typeof value.phrase === 'string') found.push(value);
-  for (const v of Array.isArray(value) ? value : Object.values(value)) keysIn(v, scenes, found, seen);
-  return found;
-}
-
 /**
  * How far before each scene's start its picture begins to change (seconds, by scene index): a stage's entrance lead
  * (transitions.mjs · readEntrance: three quarters of its change) or, on one page, the hand-over (MUSIC.handOver); an
@@ -145,7 +136,7 @@ function floorsOf({storyboard, timings, recipe, kits}) {
   const ids = storyboard.scenes.map(s => s.id), latest = timings.scenes.map(lastWordEnd);
   if (recipe) {
     const clock = makeClock(storyboard, timings);
-    for (const key of keysIn(recipe, new Set(ids))) {
+    for (const {ref: key} of phrasesIn(recipe, new Set(ids))) {
       const scene = Array.isArray(key) ? key[0] : key.scene, i = ids.indexOf(scene);
       let at; try { at = clock.at(key) - clock.start(scene); } catch { continue; }   // a phrase not said: the compile refuses it
       latest[i] = Math.max(latest[i], at);

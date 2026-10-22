@@ -27,6 +27,7 @@ import {makePen} from './pen.mjs';
 import {loadTheme} from './theme.mjs';
 import {paperGround} from './ground.mjs';
 import {makeClock, ramp} from './clock.mjs';
+import {checkPhrase, standIn} from './anchors.mjs';
 import {withStrings} from './strings.mjs';
 import {whiteboardKit} from './kits/whiteboard/index.mjs';
 import {icons} from './kits/whiteboard/board.mjs';
@@ -216,15 +217,25 @@ async function readyWorlds(readies) {
  *                   {narrative, snapshot} (record.mjs · recordSteps); false (default) → no record, nothing else changes
  * @param reducedMotion true → the recipe's camera moves are played as cuts to their end framing, handheld off
  *                   (camerawork.mjs); false (default) → as written. A film without camera moves is the same either way
+ * @param anchors    'refuse' (default) → a phrase the recipe names that its scene does not say stops the compile;
+ *                   'note' → each phrase not as written (not said, said more than once with no nth, an nth past the
+ *                   last place, an unknown scene) is noted in film.anchors, and one not said stands at the nearest words
+ *                   said, so every phrase is checked in one pass (anchors.mjs; the anchors tool)
  * @returns {total, clock, timings, sounds, frame(ctx, t), beats: [{ref, t, path}] (every phrase resolved, and the
  *          recipe entry that named it), strings: [keys used], notes: [the director's notes as applied],
  *          regionsAt(t) → [{box, path, label}] (what is drawn where), pointAt(t, x, y) → {frame, world?}, camera (the
- *          camera moves as played, or null), cameraAt(t) → the camera's {x, y, z, r} (null at rest or without moves), record?}
+ *          camera moves as played, or null), cameraAt(t) → the camera's {x, y, z, r} (null at rest or without moves),
+ *          anchors: [{ref, path, how, problem, places, near?}] (with anchors: 'note'; else none), record?}
+ *          With anchors: 'note', a compile that stops anyway (a kit refusing a time a phrase stood in for) carries the
+ *          phrases noted so far on its error (error.anchors), so none is lost.
  */
 export async function compileFilm(options) {
-  const {record = false, ...rest} = options;
+  const {record = false, ...rest} = options, noted = [];
   if (typeof record !== 'boolean') throw new Error(`compileFilm: record must be true (the compile is recorded with footprintjs: film.record) or false (the default), not ${JSON.stringify(record)}`);
-  return record ? recordSteps(compileSteps(rest)) : drainSteps(compileSteps(rest));
+  try { return await (record ? recordSteps(compileSteps(rest, noted)) : drainSteps(compileSteps(rest, noted))); } catch (e) {
+    if (rest.anchors === 'note' && e && typeof e === 'object') e.anchors = noted;
+    throw e;
+  }
 }
 
 /**
@@ -232,9 +243,10 @@ export async function compileFilm(options) {
  * summary)`, where `summary()` (called only when recording) says what the segment read and wrote.
  * The segments run the same code in the same order whether or not the compile is recorded.
  */
-async function* compileSteps({storyboard, board, timings, recipe, data, capture, kits = [], theme, root = process.cwd(), strings = null, lang = null, hostKeys = [], cast = null, strategies = null, reducedMotion = false}) {
+async function* compileSteps({storyboard, board, timings, recipe, data, capture, kits = [], theme, root = process.cwd(), strings = null, lang = null, hostKeys = [], cast = null, strategies = null, reducedMotion = false, anchors = 'refuse'}, noted = []) {
   storyboard ??= board; data ??= capture ?? null;
   if (typeof reducedMotion !== 'boolean') throw new Error(`compileFilm: reducedMotion must be true (the camera's moves cut to their end framing; handheld off) or false (the default), not ${JSON.stringify(reducedMotion)}`);
+  if (anchors !== 'refuse' && anchors !== 'note') throw new Error(`compileFilm: anchors must be 'refuse' (the default: a phrase its scene does not say stops the compile) or 'note' (every phrase not as written is noted in film.anchors, so all are checked in one pass), not ${JSON.stringify(anchors)}`);
   checkRecipeKeys(recipe, hostKeys);
   // The film's first shot is its story world (the shots are the story, then each stage): a recipe names it. An empty
   // board is said ("items": []), never assumed — a recipe that lost its story would otherwise open on a blank board.
@@ -253,9 +265,18 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   // Every phrase the recipe names is logged as it is resolved: the film's making-of record says which
   // spoken words triggered which drawing.
   const beats = [], base = makeClock(storyboard, timings);
+  // Noting the anchors ('note'): each of the recipe's own phrases not as written is noted once (with how it is read: a
+  // beat, or the pause after it), and one not said stands at the nearest words said. A phrase a kit builds for itself
+  // is read as ever, so a kit that probes nth until the clock refuses still stops.
+  const resolve = (ref, how) => {
+    if (anchors === 'refuse' || !entries.has(ref)) return base[how](ref);
+    const check = checkPhrase(base, ref);
+    if (check.problem && !noted.some(n => n.ref === ref)) noted.push({ref, path: entries.get(ref), how, ...check});
+    return check.problem && check.problem !== 'ambiguous' ? standIn(base, ref, check, how) : base[how](ref);
+  };
   const clock = {...base,
-    at: ref => { const t = base.at(ref); beats.push({ref, t: +t.toFixed(3), path: entries.get(ref) ?? null}); return t; },
-    pauseAfter: ref => { const p = base.pauseAfter(ref); beats.push({ref, t: +p.start.toFixed(3), path: entries.get(ref) ?? null}); return p; }};
+    at: ref => { const t = resolve(ref, 'at'); beats.push({ref, t: +t.toFixed(3), path: entries.get(ref) ?? null}); return t; },
+    pauseAfter: ref => { const p = resolve(ref, 'pauseAfter'); beats.push({ref, t: +p.start.toFixed(3), path: entries.get(ref) ?? null}); return p; }};
   const paper = typeof theme === 'object' && theme ? theme : loadTheme(theme ?? recipe.paperStyle ?? 'paper');
   // Files the recipe names load only from inside root (files.mjs · insideRoot: real paths, so no link leads out),
   // and every one the film reads is hashed into its inputs (fileLedger).
@@ -1011,7 +1032,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     return words.map(w => { const o = offset; offset += w.text.length + 1; return {text: w.text, line, offset: o, at: clock.offsets[i] + w.start, to: clock.offsets[i] + w.end, scene: i, path: 'captions'}; });
   };
   // An emphasis word is up from its beat until the next word's, or its own `until` (read again on the plain clock: no beat is logged twice).
-  const emphasized = attention?.record?.emphasis?.words ?? [], untilOf = i => { const u = recipe.emphasis?.words?.[i]?.until; return u === undefined ? Infinity : base.at(u); };
+  const emphasized = attention?.record?.emphasis?.words ?? [], untilOf = i => { const u = recipe.emphasis?.words?.[i]?.until; return u === undefined ? Infinity : resolve(u, 'at'); };
   const shown = [...shownLines.filter(l => Number.isFinite(l.from) && l.from < clock.total).map(l => ({text: l.text, at: Math.max(0, l.from), to: Math.min(clock.total, l.to), ...(l.gone !== undefined ? {gone: Math.min(clock.total, l.gone)} : {}), scene: sceneOf(Math.max(0, l.from)), path: l.path})),
     ...emphasized.map((w, i) => ({text: w.text, at: w.t, to: Math.min(untilOf(i), emphasized[i + 1]?.t ?? Infinity, clock.total), scene: sceneOf(w.t), path: `emphasis.words[${i}]`})),
     ...storyboard.scenes.flatMap(captionsOf)];
@@ -1178,7 +1199,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   // Which kit draws each recipe entry (a built-in stage is the engine's own: absent), and the kits by name: a piece's
   // key holds the code of the kits that draw it (segments/kitcode.mjs, from each kit's `sources`).
   const drawnBy = Object.freeze(Object.fromEntries([[storyPathName, storySpec.kit], ...stages.map((st, i) => [`stages[${i}]`, st.world?.kit ?? stageKitNames[st.type] ?? null])].filter(([, kit]) => kit)));
-  return {total: clock.total, clock, timings, sounds, foundSounds: foundUsed, listening, frame, beats, strings: [...used], notes: notesApplied, attention: attention?.record ?? null, focusAt: attention?.focus?.viewAt ?? null,
+  return {total: clock.total, clock, timings, sounds, foundSounds: foundUsed, listening, frame, beats, anchors: noted, strings: [...used], notes: notesApplied, attention: attention?.record ?? null, focusAt: attention?.focus?.viewAt ?? null,
     attentionFrames: attention?.frames ?? null,
     camera: camerawork?.record ?? null, cameraAt: camerawork?.viewAt ?? null, reading, reads, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching,
     rows: Object.freeze(rows().map(Object.freeze)), overlays, replays, inputs, stringHashes, mouthsAt, partsAt, pictureAt: pictureClock,

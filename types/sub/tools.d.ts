@@ -15,12 +15,15 @@ export interface Project extends ProjectSource {film: Film}
 export const CONFIG: 'storyreel.config.mjs';
 /** The project's inputs from its config's film(flags), timed and not compiled (what changes reads: it prepares the film as the full render does). */
 export function loadInputs(options?: {config?: string; cwd?: string; [flag: string]: unknown}): Promise<ProjectSource>;
+/** The project's inputs as film(flags) gives them, not yet timed: `said`, the storyboard with the cast's names in it; `raw`, its timings before pacing (what anchors reads: it times the film itself). */
+export interface ProjectConfig {inputs: ProjectInputs & {voiced: boolean}; cwd: string; said: unknown; raw: unknown}
+export function readInputs(options?: {config?: string; cwd?: string; [flag: string]: unknown}): Promise<ProjectConfig>;
 /** The project's full render as makeFilm's options: its film, its video in the project's out folder (film.mp4), the config's render (its layout by default) and code. */
 export function fullRender(project: ProjectSource): import('../index.js').MakeFilmOptions;
 /** A time on the film clock as a command takes it: seconds (12.5) or m:ss (0:12); anything else refuses, naming `name`. */
 export function clockSeconds(value: string | number, name?: string): number;
-/** The tools' defaults: a part's handles (seconds either side), a strip's frames and their rate, a still's width (px). */
-export const TOOL_DEFAULTS: Readonly<{handles: number; frames: number; fps: number; width: number}>;
+/** The tools' defaults: a part's handles (seconds either side), a strip's frames and their rate, a still's width (px); a sheet's seconds between frames, frames to a sheet and width (px). */
+export const TOOL_DEFAULTS: Readonly<{handles: number; frames: number; fps: number; width: number; every: number; per: number; sheetWidth: number}>;
 /** The project's film, compiled once (paced from its voice folder's timings.json when it names one). */
 export function loadProject(options?: {config?: string; cwd?: string; [flag: string]: unknown}): Promise<Project>;
 /** A part: its scenes, or a window on the film clock (from and to: seconds or m:ss), with the seconds shown either side. */
@@ -32,8 +35,16 @@ export function part(project: Project, args: PartArgs): Promise<string>;
 /** What an edit changed before the full render (previewChanges on fullRender): one line per changed range, then the count; render: true draws only those pieces (kept) and writes a short clip of them. */
 export function changes(project: ProjectSource, args?: {render?: boolean | string; handles?: number | string}): Promise<string>;
 export function still(project: Project, args: {at: string | string[]; width?: number | string}): Promise<{text: string; file: string}>;
+/** Every phrase the film is keyed to (the pacing's holds, the recipe's beats), checked in one pass: the count, then each not said, said more than once, past its nth or in no scene, where it is named, with what to write instead. full: every one (default: the first 10 a kind). */
+export function anchors(project: ProjectConfig, args?: {full?: boolean | string}): Promise<string>;
+/** The film (or scenes, or a window) at a glance: a frame every `every` seconds (4), `per` to a sheet (20), labelled with time and scene, as PNGs. */
+export function sheet(project: Project, args?: PartArgs & {every?: number | string; per?: number | string; width?: number | string}): Promise<{text: string; file: string; files: string[]}>;
+/** A copy of a finished film to send to a person: <name>.share.mp4 (width 854, H.264/AAC, faststart) and <name>.poster.jpg (at 6 s, or a shorter film's middle), beside it or in `out`. */
+export function shareCopy(file: string, options?: {width?: number; crf?: number; poster?: number; out?: string | null; ffmpeg?: string}): {video: string; poster: string; seconds: number; bytes: number; width: number; height: number | null};
+/** The share copy's defaults: width (px), crf (x264's quality), poster (s). */
+export const SHARE_DEFAULTS: Readonly<{width: number; crf: number; poster: number}>;
 /** A fast move frame by frame: `frames` (12) consecutive frames at `fps` (30) around one moment, side by side as a PNG. */
 export function strip(project: Project, args: {at: string; frames?: number | string; fps?: number | string; width?: number | string}): Promise<{text: string; file: string}>;
-/** A tool: what it runs, what it does, what it takes; `picture` when its result is an image (MCP returns it as one); `compile: false` when it reads the inputs and prepares the film itself. */
-export interface Tool {run(project: Project | ProjectSource, args: Record<string, unknown>): Promise<string | {text: string; file: string}>; about: string; args: Record<string, string>; picture?: boolean; compile?: false}
-export const TOOLS: Readonly<Record<'timeline' | 'review' | 'part' | 'changes' | 'still' | 'strip', Tool>>;
+/** A tool: what it runs, what it does, what it takes; `picture` when its result is an image (MCP returns it as one); `load`: 'inputs' when it reads the timed inputs and prepares the film itself (changes), 'config' when it times the film itself too (anchors); none: the compiled film. */
+export interface Tool {run(project: Project | ProjectSource | ProjectConfig, args: Record<string, unknown>): Promise<string | {text: string; file: string}>; about: string; args: Record<string, string>; picture?: boolean; load?: 'inputs' | 'config'}
+export const TOOLS: Readonly<Record<'timeline' | 'review' | 'part' | 'anchors' | 'changes' | 'still' | 'sheet' | 'strip', Tool>>;

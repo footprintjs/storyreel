@@ -1117,10 +1117,13 @@ strategy says HOW, so the same film can be shown another way by changing one wor
 
 - **Focus strategies** (`footprint-storyreel/attention` · `FOCUS`): `camera` eases the camera to frame the named
   thing (medium, close, insert — as a director's push; `"wide"` is the whole frame), `spotlight` darkens the rest,
-  `dim` veils the rest in the paper, `none`. A camera focus and the director's push notes cannot share the camera,
+  `dim` veils the rest in the paper, `circle` draws a teacher's marker loop round the named thing as the voice names it
+  (it draws itself at each key and is gone at `"wide"`; the theme's `palette.marker`, else a bright pink), `none`. A camera focus and the director's push notes cannot share the camera,
   and the recipe's camera moves take turns with a moving focus ([Camera moves by name](#camera-moves-by-name)).
   `safe` keeps framed things where captions cannot cover them (`[0, 0, 1600, 700]` above burned-in captions).
-  Strategies compose: `"strategy": ["camera", "dim"]` moves the camera and veils the rest of its view.
+  Strategies compose: `"strategy": ["camera", "dim"]` moves the camera and veils the rest of its view;
+  `["camera", "circle"]` frames each thing and circles it — what an explanation over a still picture needs, so the
+  words and the picture meet.
 - **Emphasis strategies** (`EMPHASIS`): `pop` lands the words big on their beat and settles them into a label in
   the top corner until the next words; `corner` is the label only; `none`.
 - **Your own strategy** has the same shape, by name: `compileFilm({…, strategies: {focus: {mine: {show(ctx, view,
@@ -1544,6 +1547,42 @@ An edit asked for in chat is seen in seconds, and only the frames it touched are
 5. The full render at the end draws nothing the preview drew. What the keys cannot see (a kit with no `sources`, said
    after `note:` on the count) only the full render's spot check catches.
 
+### When the words change: anchors
+
+A recipe times its drawings by what is said (`["shop", "two tens"]`). Change the narration and some of those phrases
+are no longer said — the compile stops at the first one, so they are found one render at a time — and some are now
+said twice, so the drawing quietly lands at the first place, where nothing says it is wrong. `npx storyreel anchors`
+checks every phrase the film is keyed to in one pass — the recipe's beats and the pacing's holds — and says where each
+is named and what to write instead:
+
+```
+125 phrases checked: 1 not said, 2 said more than once
+not said:
+  past "he keeps them in one clay envelope" → recipe.stages[0].world.close — not said; the nearest words said: "clay envelope" (91.47 s)
+said more than once (the first place is used):
+  shop "two tens" → recipe.story.add.packs[1] — said 2 times; the first is used (25.11 s). Each alone: "two tens Then" (25.11 s) · "Two tens and" (33.78 s)
+```
+
+A fix keeps the beat's time: words are added after a beat's phrase, before a pause's (a hold, or `edge: "end"`). Run
+it after every edit to the narration, the recipe or the pacing. In code: `compileFilm({…, anchors: 'note'})` notes each
+phrase not as written in `film.anchors` instead of stopping (a missing one stands at the nearest words said, so the rest
+still compiles; a compile that stops anyway carries what it noted on its error, `error.anchors`, and the tool then
+reads the rest from the recipe itself), and `film.clock.places(scene, phrase)` is every place a phrase is said.
+
+### Showing a film to a person
+
+- **The whole film at a glance:** `npx storyreel sheet --every 4` writes contact sheets — a frame every 4 s, 20 to a
+  sheet, each labelled with its time and scene (`--scene`, or `--from`/`--to`, for part of it). Hand them with the
+  script to whoever checks the film: a person, or an agent that reads pictures.
+- **A copy to send:** `npx storyreel share out/ep1.mp4` writes `ep1.share.mp4` (854 wide, H.264 and AAC, its index
+  first, so it starts playing before it has all arrived) and `ep1.poster.jpg` beside it (`--width`, `--crf`,
+  `--poster`, `--out`; `footprint-storyreel/tools` · `shareCopy`). A page that plays it on a phone loads the whole file
+  and plays it from memory, behind one big button on the poster: a host may not answer the range requests a bare
+  `<video src>` needs.
+- **Many viewers, one list:** the `storyreel-review` skill's [showing a person](plugin/skills/storyreel-review/showing.md)
+  gives each reviewer — a child, a parent, a teacher, an animator, a historian — the script and the sheets, and
+  merges what they find into one list, most important first.
+
 `changes` compares with the full render's cache, so the project's config names that render — makeFilm's own `render`
 and `code`, its video in `out` — and the render script makes it from the same config:
 
@@ -1635,21 +1674,22 @@ run it.
   fails the review with one error naming every check that failed, so a review that returns has run every check it
   picked. Three checks answer with a verdict — no slideshow, drawn parts that hold together, every number with a
   source (`r.verdicts`, `r.verdictText`; [below](#three-verdicts-no-slideshow-parts-that-hold-numbers-with-a-source)).
-- **The same, from the command line — and as a skill for agents.** `npx storyreel timeline | review | part | still |
-  strip --scene <id>` (`part --from 0:12 --to 0:18`: a window of the film clock instead of scenes, with the same handles;
+- **The same, from the command line — and as a skill for agents.** `npx storyreel timeline | review | part | anchors |
+  still | sheet | strip --scene <id>` (`anchors`: [every phrase, checked at once](#when-the-words-change-anchors);
+  `sheet`: [the film at a glance](#showing-a-film-to-a-person)) (`part --from 0:12 --to 0:18`: a window of the film clock instead of scenes, with the same handles;
   `changes`: [the chat edit loop](#the-chat-edit-loop)) (`strip --at <scene>+<seconds>`: a fast move frame by frame — 12 consecutive frames around
   the moment, side by side — to catch a pop, a jump or two things crossing) (the film named in the project's `storyreel.config.mjs`: `export default {film: flags =>
   ({storyboard, recipe, kits, root, narrationDir?, pacing?, layout?})}`; every flag also reaches `film()`). The
   package ships the skill that teaches the order — timeline, review, fix, part, one still last — `storyreel-review`,
   beside the skills that build a film ([Skills for AI agents](#skills-for-ai-agents)). `footprint-storyreel/tools` is the one core both use.
   `npx storyreel beats <song>` needs no project: it prints a song's beat map for settling its tempo (see Music: cut on
-  the beat). **Short by default:** `review` and `part` print a summary an agent can afford to read — the counts, the
+  the beat); neither does `npx storyreel share <video>` ([a copy to send](#showing-a-film-to-a-person)). **Short by default:** `review` and `part` print a summary an agent can afford to read — the counts, the
   verdicts that did not pass with why, the first 5 findings (errors before advice), the rest counted
   (`footprint-storyreel/review` · `reviewSummary`); `--full` prints every finding and every verdict's why. Every
   command takes `--help` (`npx storyreel still --help`). A config's `pacing` paces a film with no voice too (its even
   timings), as `makeFilm` paces the timings it is given.
 - **And as an MCP server,** for any assistant that speaks MCP: `storyreel mcp [--flag value …]` serves the same
-  six tools over stdio, `changes` among them (its flags apply to every call; a still or a strip comes back as the picture). Each call runs in
+  eight tools over stdio, `changes` and `anchors` among them (its flags apply to every call; a still or a strip comes back as the picture, a sheet as its pictures). Each call runs in
   a fresh process, so an edit to a kit between two calls is always seen. The project is fixed when the server starts:
   `--config`, `--cwd` (the folder every call runs in) and the film's own flags are set there only. A call passes only
   its tool's arguments (they reach `film()` too, as every flag does), and one that passes anything else is refused, so

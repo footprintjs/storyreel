@@ -1,0 +1,115 @@
+{
+ "provider": "even",
+ "scenes": [
+  {
+   "id": "one",
+   "duration": 5.28,
+   "words": [
+    {
+     "text": "A",
+     "start": 0.3,
+     "end": 0.642
+    },
+    {
+     "text": "first",
+     "start": 0.68,
+     "end": 1.022
+    },
+    {
+     "text": "scene",
+     "start": 1.06,
+     "end": 1.402
+    },
+    {
+     "text": "with",
+     "start": 1.44,
+     "end": 1.782
+    },
+    {
+     "text": "a",
+     "start": 1.82,
+     "end": 2.162
+    },
+    {
+     "text": "few",
+     "start": 2.2,
+     "end": 2.542
+    },
+    {
+     "text": "words",
+     "start": 2.58,
+     "end": 2.922
+    },
+    {
+     "text": "in",
+     "start": 2.96,
+     "end": 3.302
+    },
+    {
+     "text": "it,",
+     "start": 3.34,
+     "end": 3.682
+    },
+    {
+     "text": "said",
+     "start": 3.72,
+     "end": 4.062
+    },
+    {
+     "text": "slowly.",
+     "start": 4.1,
+     "end": 4.442
+    }
+   ],
+   "alignment": {
+    "status": "available",
+    "method": "even-spacing"
+   }
+  },
+  {
+   "id": "two",
+   "duration": 3.76,
+   "words": [
+    {
+     "text": "And",
+     "start": 0.3,
+     "end": 0.642
+    },
+    {
+     "text": "a",
+     "start": 0.68,
+     "end": 1.022
+    },
+    {
+     "text": "second",
+     "start": 1.06,
+     "end": 1.402
+    },
+    {
+     "text": "scene,",
+     "start": 1.44,
+     "end": 1.782
+    },
+    {
+     "text": "a",
+     "start": 1.82,
+     "end": 2.162
+    },
+    {
+     "text": "little",
+     "start": 2.2,
+     "end": 2.542
+    },
+    {
+     "text": "shorter.",
+     "start": 2.58,
+     "end": 2.922
+    }
+   ],
+   "alignment": {
+    "status": "available",
+    "method": "even-spacing"
+   }
+  }
+ ]
+}

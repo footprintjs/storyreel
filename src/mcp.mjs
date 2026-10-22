@@ -1,9 +1,10 @@
 /**
  * The review tools as an MCP server (stdio), so any assistant that speaks the Model Context Protocol — Claude Code,
- * Claude Desktop, VS Code's Copilot, Cursor — calls timeline, review, part, changes, still and strip directly. An adapter over
- * the same core as the command line (tools.mjs): each call runs the command line in a fresh process in the project's
- * folder, so an edit to a kit between two calls is always seen (a long-lived process would keep the old module).
- * A still or a strip comes back as the picture itself (and its path); everything else as text.
+ * Claude Desktop, VS Code's Copilot, Cursor — calls every review tool (TOOLS: timeline, review, part, anchors, changes,
+ * still, sheet, strip) directly. An adapter over the same core as the command line (tools.mjs): each call runs the
+ * command line in a fresh process in the project's folder, so an edit to a kit between two calls is always seen (a
+ * long-lived process would keep the old module). A still or a strip comes back as the picture itself (and its path), a
+ * sheet as its pictures (up to MAX_PICTURES; every path is in the text); everything else as text.
  *
  *   claude mcp add storyreel -- npx storyreel mcp --ep ep1 --voice work/ep1/voice
  *
@@ -13,7 +14,7 @@
  * film() too), so a client steered by text it read cannot make the server run another module or work in another folder:
  * a call that names config or cwd, an argument its tool does not take, or a value the command line would read as a flag
  * is refused before anything runs (refusalOf), and the server goes on answering. Nothing a call can shape is read back
- * as a path: a picture's path comes from the command line on a pipe of its own (fd 3: sendPicture, pictureOf), never
+ * as a path: a picture's path comes from the command line on a pipe of its own (fd 3: sendPicture, picturesOf), never
  * out of the text.
  */
 import {spawn} from 'node:child_process';
@@ -69,23 +70,25 @@ const failed = text => ({isError: true, content: [{type: 'text', text}]});
 /**
  * The picture's channel: for a still or a strip this server opens fd 3, a pipe of the call's own, and says so in
  * PICTURE_FD; the command line writes the picture's path there as one line (sendPicture) and the server reads it from
- * there only (pictureOf). The text is never read for a path: it holds words a call shaped (a moment's label).
+ * there only (picturesOf). The text is never read for a path: it holds words a call shaped (a moment's label).
  */
 const PICTURE_FD = 'STORYREEL_PICTURE_FD';
 // Taken once, as the command line loads: neither the project's config nor anything the command line starts sees it.
 const pictureFd = process.env[PICTURE_FD] === '3' ? 3 : null;
 delete process.env[PICTURE_FD];
 
-/** The command line's half (cli.mjs, after a still or a strip): the picture's path, as one line on fd 3 when the server opened it. */
+/** The command line's half (cli.mjs, after a still, a strip or each sheet): a picture's path, as one line on fd 3 when the server opened it. */
 export function sendPicture(file) {
   if (pictureFd === null || typeof file !== 'string') return;
   // A line of its own, even after a stray write that did not end one.
   try { writeSync(pictureFd, `\n${JSON.stringify({picture: file})}\n`); } catch { /* the server is gone: the path is in the text */ }
 }
 
-/** The server's half: the last line on fd 3 that is {"picture": an absolute .png path}, or null; anything else there is ignored. */
-const pictureOf = said => said.split('\n').map(line => { try { return JSON.parse(line)?.picture; } catch { return undefined; } })
-  .filter(p => typeof p === 'string' && path.isAbsolute(p) && p.endsWith('.png')).at(-1) ?? null;
+/** The most pictures one call returns (a film's sheets): each is a whole image in the reply, so the rest stay paths in the text. */
+export const MAX_PICTURES = 6;
+/** The server's half: the lines on fd 3 that are {"picture": an absolute .png path}, in order, each once, at most MAX_PICTURES; anything else there is ignored. */
+const picturesOf = said => [...new Set(said.split('\n').map(line => { try { return JSON.parse(line)?.picture; } catch { return undefined; } })
+  .filter(p => typeof p === 'string' && path.isAbsolute(p) && p.endsWith('.png')))].slice(0, MAX_PICTURES);
 
 /**
  * One call: the command line in a fresh process in the project's folder — the start's flags, the call's arguments over
@@ -101,13 +104,13 @@ export function callTool(name, args = {}, {defaults = {}, config, cwd = process.
     try { child = spawn(process.execPath, [CLI, name, ...flags], {cwd, ...channel}); } catch (e) { return resolve(failed(`storyreel ${name}: ${e.message}`)); }   // a value it cannot pass (a NUL byte)
     const out = [], err = [], sent = [];
     child.stdout.on('data', d => out.push(d)); child.stderr.on('data', d => err.push(d));
-    child.stdio[3]?.on('data', d => sent.push(d));   // the picture's pipe (a still's or a strip's): 'close' waits for its end too
+    child.stdio[3]?.on('data', d => sent.push(d));   // the pictures' pipe (a still's, a strip's, a sheet's): 'close' waits for its end too
     child.on('error', e => resolve(failed(`storyreel ${name}: ${existsSync(cwd) ? e.message : `the project's folder ${cwd} is not there any more: restart the server on it`}`)));   // it could not start
     child.on('close', code => {
       const text = Buffer.concat(out).toString('utf8').trim(), problem = Buffer.concat(err).toString('utf8').trim();
       if (code !== 0) return resolve(failed(problem || `storyreel ${name} stopped (${code})`));
-      const content = [{type: 'text', text}], picture = picturing ? pictureOf(Buffer.concat(sent).toString('utf8')) : null;
-      if (picture) try { content.push({type: 'image', mimeType: 'image/png', data: readFileSync(picture).toString('base64')}); } catch { /* unreadable: the path is in the text */ }
+      const content = [{type: 'text', text}];
+      for (const picture of picturing ? picturesOf(Buffer.concat(sent).toString('utf8')) : []) try { content.push({type: 'image', mimeType: 'image/png', data: readFileSync(picture).toString('base64')}); } catch { /* unreadable: the path is in the text */ }
       resolve({content});
     });
   });
@@ -125,7 +128,7 @@ export function serveMcp({defaults = {}, config, cwd = process.cwd(), input = pr
   const lines = createInterface({input}), pending = new Set();
   const reply = async (method, params) => {
     if (method === 'initialize') return {result: {protocolVersion: typeof params.protocolVersion === 'string' ? params.protocolVersion : '2025-06-18', capabilities: {tools: {}}, serverInfo: {name: 'storyreel', version: VERSION},
-      instructions: 'Read first, look last: timeline (when each beat lands) → review (what is wrong, as text) → fix → part (a quick render of the scenes) → one still to confirm the look. After an edit: changes (what it redraws, and why) → changes with render (only those pieces drawn, and a short clip of them to show); the full render then only joins.'}};
+      instructions: 'Read first, look last: timeline (when each beat lands) → review (what is wrong, as text) → fix → part (a quick render of the scenes) → one still to confirm the look. After an edit to the narration, recipe or pacing: anchors (every phrase not said, or said twice, with its fix) first. After an edit: changes (what it redraws, and why) → changes with render (only those pieces drawn, and a short clip of them to show); the full render then only joins. For someone checking the whole film: sheet (contact sheets).'}};
     if (method === 'ping') return {result: {}};
     if (method === 'tools/list') return {result: {tools: mcpTools()}};
     if (method === 'tools/call') return {result: await callTool(params.name, params.arguments ?? {}, {defaults, config, cwd})};
