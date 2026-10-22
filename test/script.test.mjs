@@ -1,10 +1,11 @@
 // One script (script.mjs): marks written in the narration — a moment, {name}, and a speaker tag, {@who} — never said and
 // never shown. What is said (said, marksOf, linesOf, scriptOf) and every refusal; a mark in a scene with number slots;
-// the clock's moments (a beat at a mark, plus, the end of a scene, the pause at a mark).
+// the clock's moments (a beat at a mark, plus, the end of a scene, the pause at a mark); a pacing hold at a mark.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {said, marksOf, linesOf, scriptOf, momentOf, makeClock, evenTimings, spokenText, sceneText, unsaidNumbers} from '../src/index.mjs';
+import {said, marksOf, linesOf, scriptOf, momentOf, makeClock, evenTimings, paceTimings, spokenText, sceneText, unsaidNumbers} from '../src/index.mjs';
 import {checkScene} from '../src/clock.mjs';
+import {planHolds} from '../src/pacing.mjs';
 
 const talk = "Mom walks in. {@mom}'What are you two up to?' {@amaira}'Mom! I can't wait {wow} to show you!'";
 
@@ -99,4 +100,20 @@ test('the clock: a beat at a mark lands when its next word starts, plus as for a
   assert.throws(() => clock.at(['intro', '{dots}']), /Moment not in intro: "\{dots\}" \(it has no moments\)/);
   assert.throws(() => clock.at(['today', '{@mom}']), /today "\{@mom\}": a speaker tag names who says a line, and is no moment/);
   assert.throws(() => clock.at(['today', 'dots']), /Phrase not in today: "dots"/, 'a mark is never said');
+});
+
+test('a pacing hold at a mark puts its silence in the pause there: the words after it move by its seconds, the words before do not', () => {
+  const board = {scenes: [{id: 'today', narration: 'Ten ones {dots} make a ten. {hop}Then it hops.'}]};
+  const even = evenTimings(board), paced = paceTimings(board, even, {sceneTail: .8, holds: [{scene: 'today', after: '{dots}', seconds: 1.5}]});
+  const before = makeClock(board, even).words('today'), after = makeClock(board, paced).words('today');
+  assert.deepEqual(after.map((w, i) => +(w.start - before[i].start).toFixed(3)), [0, 0, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5], 'Ten ones · make a ten. Then it hops.');
+  assert.equal(+(paced.scenes[0].duration - paceTimings(board, even, {sceneTail: .8, holds: []}).scenes[0].duration).toFixed(3), 1.5, 'the scene grows by the hold');
+  assert.deepEqual(paced.scenes[0].pacing.holds, [{after: '{dots}', seconds: 1.5, at: +before[1].end.toFixed(3)}], 'held after "ones", the word before the mark');
+  assert.deepEqual(makeClock(board, paced).pauseAfter(['today', '{dots}']), {start: after[1].end, end: after[2].start}, 'the pause at the mark is the hold');
+  assert.throws(() => paceTimings(board, even, {sceneTail: .8, holds: [{scene: 'today', after: '{nope}', seconds: 1}]}), /Pacing moment not in today: "\{nope\}" \(its moments: \{dots\}, \{hop\}\)/);
+  assert.throws(() => paceTimings(board, even, {sceneTail: .8, holds: [{scene: 'today', after: '{@mom}', seconds: 1}]}), /pacing hold in today "\{@mom\}": a speaker tag names who says a line/);
+  // A voiced cut cuts its silence in at the quietest point of the pause at the mark, never inside a word (pacing.mjs · planHolds).
+  const timing = even.scenes[0], rate = 8000, wav = {rate, samples: Int16Array.from({length: Math.round(timing.duration * rate)}, (_, i) => Math.round(3000 * Math.sin(i / 3)))};
+  const [hold] = planHolds(board.scenes[0], timing, [{scene: 'today', after: '{dots}', seconds: 1}], wav);
+  assert.ok(hold.time >= before[1].end && hold.time <= before[2].start, `cut in between "ones" (${before[1].end}) and "make" (${before[2].start}), not at ${hold.time}`);
 });

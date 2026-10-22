@@ -80,6 +80,7 @@ export interface Timings { scenes: SceneTiming[]; [key: string]: unknown }
 
 export interface Pacing {
   sceneTail: number;
+  /** after: a phrase of the scene (the hold goes in the pause after it), or a moment written in its narration ("{dots}": the pause at the mark). */
   holds: {scene: string; after: string; seconds: number}[];
   tails?: Record<string, number>;
   voiceSpeed?: number;

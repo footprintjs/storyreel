@@ -6,7 +6,8 @@
  * on the same measured clock.
  *
  * binding.pacing = {voiceSpeed, sceneTail, holds: [{scene, after, seconds}], tails?: {sceneId: seconds}}
- *   after = a phrase of that scene's narration; the hold goes in the pause after it.
+ *   after = a phrase of that scene's narration; the hold goes in the pause after it. Or a moment written in the
+ *           narration ("{dots}": script.mjs); the hold goes in the pause at the mark.
  *   tails = a longer settle for one scene (the silence a transition to the next scene plays over).
  *
  * A silent scene (clock.mjs · directionTimings) takes no hold: its directions already say how long
@@ -16,9 +17,23 @@
 import {readFile, access} from 'node:fs/promises';
 import {writeOutput, securePath} from './files.mjs';
 import path from 'node:path';
-import {speechIndex, phraseMatches, withDirections} from './clock.mjs';
+import {speechIndex, phraseMatches, withDirections, momentIn} from './clock.mjs';
+import {momentOf} from './script.mjs';
 
 const FADE = .015; // seconds of fade either side of an insertion (no clicks)
+
+/**
+ * Where a hold's silence goes in its scene (scene seconds, from its words: clock.mjs · speechIndex): after the first
+ * place its phrase is said — or, at a moment ("{dots}": script.mjs), after the word before the mark, in the pause
+ * there. A phrase not said, or a moment the scene does not have, refuses.
+ */
+function holdFrom(speech, hold, scene) {
+  const name = momentOf(hold.after, `pacing hold in ${scene.id} "${hold.after}"`);
+  if (name !== null) return momentIn(speech, name, scene.id, 'Pacing moment').start;
+  const match = phraseMatches(speech, hold.after)[0];
+  if (!match) throw new Error(`Pacing phrase not found in ${scene.id}: "${hold.after}"`);
+  return match.end;
+}
 
 export function validatePacing(pacing, board) {
   if (pacing === undefined) return null;
@@ -107,10 +122,9 @@ export function planHolds(scene, timing, holds, wav) {
   const speech = speechIndex(scene, timing);
   if (!speech) throw new Error(`Pacing needs complete token timings for ${scene.id}`);
   return holds.filter(h => h.scene === scene.id).map(hold => {
-    const match = phraseMatches(speech, hold.after)[0];
-    if (!match) throw new Error(`Pacing phrase not found in ${scene.id}: "${hold.after}"`);
-    const next = timing.words.find(w => w.start >= match.end - 1e-6 && w.text.replace(/[^\p{L}\p{N}]/gu, ''));
-    const sample = quietestPoint(wav, match.end, next ? next.start : Math.min(timing.duration, match.end + .2));
+    const from = holdFrom(speech, hold, scene);
+    const next = timing.words.find(w => w.start >= from - 1e-6 && w.text.replace(/[^\p{L}\p{N}]/gu, ''));
+    const sample = quietestPoint(wav, from, next ? next.start : Math.min(timing.duration, from + .2));
     return {after: hold.after, seconds: hold.seconds, sample, time: sample / wav.rate};
   }).sort((a, b) => a.sample - b.sample);
 }
@@ -158,11 +172,8 @@ export function paceTimings(board, timings, pacing) {
     if (timing?.id !== scene.id) throw new Error('Pacing scene identity mismatch');   // refusal: internal (withDirections lines the timings up first)
     const speech = speechIndex(scene, timing);
     if (!speech) throw new Error(`Pacing needs complete word timings for ${scene.id}`);
-    const plan = pacing.holds.filter(h => h.scene === scene.id).map(hold => {
-      const match = phraseMatches(speech, hold.after)[0];
-      if (!match) throw new Error(`Pacing phrase not found in ${scene.id}: "${hold.after}"`);
-      return {after: hold.after, seconds: hold.seconds, time: match.end};
-    }).sort((a, b) => a.time - b.time);
+    const plan = pacing.holds.filter(h => h.scene === scene.id)
+      .map(hold => ({after: hold.after, seconds: hold.seconds, time: holdFrom(speech, hold, scene)})).sort((a, b) => a.time - b.time);
     // Like applyPacing: the last word's end plus EVERY hold (one after the last phrase shifts no word) plus the tail —
     // or, when the timing names its audio, all of that audio plus the holds, if it runs longer.
     const words = shiftWords(timing.words, plan), last = timing.words.filter(w => w.text.replace(/[^\p{L}\p{N}]/gu, '')).at(-1).end;
