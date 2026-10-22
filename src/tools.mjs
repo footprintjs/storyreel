@@ -173,8 +173,10 @@ export async function part(project, args = {}) {
  */
 function momentsOf(film, at, tool) {
   const list = scenesOf(at); if (!list.length) throw new Error(`${tool}: name the moments (at: "scene+seconds,…")`);
-  return list.map(m => ({t: +Math.min(film.total - .001, Math.max(0, momentAt(film, m, tool))).toFixed(3), label: m}));
+  return list.map(m => ({t: heldTo(film, momentAt(film, m, tool)), label: m}));
 }
+/** A time held to the film, to the millisecond: a picture is taken at the film's last millisecond at most. */
+const heldTo = (film, t) => +Math.min(film.total - .001, Math.max(0, t)).toFixed(3);
 /** A still's or a strip's width: whole pixels, 100–4000 (a call names it, and the picture is made that wide). */
 function widthOf(args, tool) {
   const width = Number(args.width ?? TOOL_DEFAULTS.width);
@@ -194,14 +196,62 @@ function pictureName(text) {
   return name.length <= NAME_MOST ? name : `${name.slice(0, NAME_MOST - 17)}-${hashOf(text)}`;
 }
 
-/** One picture to confirm the look: the moments side by side as a PNG. Returns {text, file}. */
+/** The most frames one still holds. */
+const MOST_FRAMES = 30;
+
+/**
+ * One picture to confirm the look: frames side by side as a PNG, at the moments named (at: namedFrames) or at every
+ * beat of one scene (beats: sceneBeats). Returns {text, file}.
+ */
 export async function still(project, args = {}) {
-  const moments = momentsOf(project.film, args.at, 'still'), width = widthOf(args, 'still');
-  if (moments.length > 30) throw new Error(`still: at most 30 moments in one picture, not ${moments.length}`);
-  const file = path.join(stillsFolder(project), `${pictureName(scenesOf(args.at).join('_'))}.png`);
-  writeOutput(file, await contactSheet(project.film, {moments, columns: Math.min(3, moments.length), width}));
-  return {text: `${file} · ${moments.length} frame${moments.length > 1 ? 's' : ''}: ${moments.map(m => `${m.label} (${m.t.toFixed(2)} s)`).join(', ')}`, file};
+  if (args.at !== undefined && args.beats !== undefined) throw new Error('still: give the moments (at) or a scene whose every beat to show (beats), not both');
+  const {film} = project, shot = args.beats === undefined ? namedFrames(film, args) : sceneBeats(film, args), width = widthOf(args, 'still');
+  const {moments} = shot, file = path.join(stillsFolder(project), `${pictureName(shot.name)}.png`);
+  writeOutput(file, await contactSheet(film, {moments, columns: Math.min(3, moments.length), width}));
+  return {text: `${file} · ${moments.length} frame${moments.length > 1 ? 's' : ''}${shot.of ?? ''}: ${moments.map(m => `${m.label} (${m.t.toFixed(2)} s)`).join(', ')}${shot.rest ?? ''}`, file};
 }
+
+/** The moments a still names (at), at most MOST_FRAMES: {moments, name}. from and to belong to beats. */
+function namedFrames(film, args) {
+  if (args.at === undefined) throw new Error('still: name the moments (at: "scene+seconds,…") or a scene whose every beat to show (beats: "scene")');
+  if (args.from !== undefined || args.to !== undefined) throw new Error('still: from and to choose which of a scene\'s beats to show (beats: "scene"); with at, name the moments themselves');
+  const moments = momentsOf(film, args.at, 'still');
+  if (moments.length > MOST_FRAMES) throw new Error(`still: at most ${MOST_FRAMES} moments in one picture, not ${moments.length}`);
+  return {moments, name: scenesOf(args.at).join('_')};
+}
+
+/**
+ * A frame at each beat in one scene: the beats the timeline prints against it (render.mjs · filmTimeline, each where
+ * it lands; beats that land together are one frame), labelled with their scene+seconds and what is said there. from
+ * and to (moments, as at takes them) keep the beats between. At most MOST_FRAMES: the rest are counted, never dropped
+ * unsaid, and the text gives the call that shows them. {moments, name, of, rest}.
+ */
+function sceneBeats(film, {beats, from, to}) {
+  const scene = oneScene(film, beats), bound = (v, name) => (v === undefined ? null : momentAt(film, String(v).trim(), `still (${name})`));
+  const lo = bound(from, 'from') ?? -Infinity, hi = bound(to, 'to') ?? Infinity, frames = [];
+  for (const r of filmTimeline(film, {from: film.clock.start(scene), to: film.clock.end(scene)})) {
+    if (r.kind !== 'beat' || film.clock.locate(r.t).id !== scene || r.t < lo - 1e-6 || r.t > hi + 1e-6) continue;
+    const said = `"${r.phrase}"`, last = frames.at(-1);
+    if (last?.t === r.t) { if (!last.said.includes(said)) last.said.push(said); } else frames.push({t: r.t, said: [said]});
+  }
+  const range = `${from !== undefined ? ` from ${from}` : ''}${to !== undefined ? ` to ${to}` : ''}`;
+  if (!frames.length) throw new Error(range ? `still: no beat in ${scene}${range}` : `still: ${scene} has no beats: the recipe keys nothing to what is said there (name moments instead: at: "${scene}+1.5")`);
+  const moments = frames.slice(0, MOST_FRAMES).map(f => ({t: heldTo(film, f.t), label: `${sceneTime(film, f.t)} ${f.said.join(' ')}`}));
+  const rest = frames.length - moments.length, next = rest ? sceneTime(film, frames[MOST_FRAMES].t, {down: true}) : null;
+  return {moments, name: `beats-${scene}${from !== undefined ? `-from-${from}` : ''}${to !== undefined ? `-to-${to}` : ''}`,
+    of: `${rest ? ` of ${frames.length}` : ''}, one at each beat in ${scene}${range}`,
+    rest: rest ? `; the other ${rest}: storyreel still --beats ${shellWord(scene)} --from ${shellWord(next)}${to !== undefined ? ` --to ${shellWord(String(to))}` : ''}` : ''};
+}
+
+/** The one scene a still's beats are of, or a refusal naming the fix. */
+function oneScene(film, beats) {
+  const ids = film.timings.scenes.map(s => s.id), list = scenesOf(beats), scenes = `the scenes are ${ids.join(', ')}`;
+  if (list.length === 1 && ids.includes(list[0])) return list[0];
+  if (list.length > 1) throw new Error(`still: beats names one scene, not ${list.length}: one still a scene (${scenes})`);
+  throw new Error(list.length && !yes(beats) ? `still: no scene called "${list[0]}" (${scenes})` : `still: beats names the scene whose every beat to show (${scenes})`);
+}
+/** A value as a shell takes it in a command a line suggests: as it is when plain, else in quotes. */
+const shellWord = v => (/^[\w+.:@{}-]+$/.test(v) ? v : JSON.stringify(v));
 
 /**
  * The whole film (or its scenes, or a window) at a glance, for a reviewer — a person, or an agent that reads pictures:
@@ -343,8 +393,10 @@ export const TOOLS = Object.freeze({
     args: {}},
   changes: {run: changes, load: 'inputs', about: 'What an edit changed, before the full render: each changed stretch of the picture and why ("0:12–0:18 left · its recipe entries changed"), then the count. With render: only those pieces drawn (kept: the full render draws none of them again) and a short clip of them back to back, labelled with their times, the film either side and its voice under them. Compares with the cache of the config\'s full render (render, code) into out.',
     args: {render: 'true to draw the changed pieces and write the clip, <out>/changes/review.mp4', handles: `seconds of the film either side of each change in the clip (${CHANGES_DEFAULTS.handles})`}},
-  still: {run: still, picture: true, about: 'One picture to confirm the look: frames at the moments given, side by side, as a PNG. Look at it last, after the timeline and the review.',
-    args: {at: 'moments: scene+seconds (today+64.70, as the timeline prints a scene\'s times), seconds or m:ss on the film clock, or what is said there — scene:phrase or scene:{moment}, +seconds after either (today:{hop}+0.5); comma-separated (a phrase\'s own commas left out), at most 30 (required)', width: `the picture's width in pixels, 100–4000 (${TOOL_DEFAULTS.width})`}},
+  still: {run: still, picture: true, about: 'One picture to confirm the look: frames side by side as a PNG, at the moments given (at) or at every beat of a scene (beats), each labelled. Look at it last, after the timeline and the review.',
+    args: {at: 'moments: scene+seconds (today+64.70, as the timeline prints a scene\'s times), seconds or m:ss on the film clock, or what is said there — scene:phrase or scene:{moment}, +seconds after either (today:{hop}+0.5); comma-separated (a phrase\'s own commas left out), at most 30 (or beats)',
+      beats: `a scene: a frame at each of its beats (the ones the timeline lists for it), labelled with its scene+seconds and what is said there; at most ${MOST_FRAMES} a picture, the rest named with the call that shows them (or at)`,
+      from: 'with beats: the beats from this moment on (a moment as at takes it)', to: 'with beats: the beats up to this moment', width: `the picture's width in pixels, 100–4000 (${TOOL_DEFAULTS.width})`}},
   sheet: {run: sheet, picture: true, about: `The whole film at a glance, for a reviewer: a frame every ${TOOL_DEFAULTS.every} s, ${TOOL_DEFAULTS.per} to a sheet, each labelled with its time and scene, as PNGs (paths printed). Hand them with the script to someone checking the film.`,
     args: {scene: 'scene ids, comma-separated (default: the whole film; or a window: from and to)', from: 'the window\'s start on the film clock: seconds or m:ss', to: 'the window\'s end: seconds or m:ss',
       every: `seconds between frames (${TOOL_DEFAULTS.every})`, per: `frames a sheet (${TOOL_DEFAULTS.per})`, width: `each sheet's width in pixels, 100–4000 (${TOOL_DEFAULTS.sheetWidth})`}},

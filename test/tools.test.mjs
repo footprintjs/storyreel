@@ -34,7 +34,7 @@ test('the tools read the project\'s film: its timeline and its review as text, a
   await assert.rejects(strip(p, {at: 'one+2,two+0'}), /strip: name one moment \(at: "scene\+seconds"\); a still shows several/);
   await assert.rejects(strip(p, {}), /^Error: strip: name one moment \(at: "scene\+seconds"\)$/, 'a strip\'s refusals name the strip, not the still');
   await assert.rejects(strip(p, {at: 'three+1'}), /^Error: strip: "three\+1" is not a moment \(scene\+seconds, .*; the scenes are one, two\)$/);
-  await assert.rejects(still(p, {}), /^Error: still: name the moments \(at: "scene\+seconds,…"\)$/);
+  await assert.rejects(still(p, {}), /^Error: still: name the moments \(at: "scene\+seconds,…"\) or a scene whose every beat to show \(beats: "scene"\)$/);
   await assert.rejects(strip(p, {at: 'one+2', frames: 1}), /frames must be a whole number 2–30/);
   // A moment is exactly scene+seconds: its words are printed as its label, so nothing may ride after them.
   await assert.rejects(still(p, {at: 'one+2+/elsewhere/secret.png'}), /^Error: still: "one\+2\+\/elsewhere\/secret\.png" is not a moment/);
@@ -128,6 +128,38 @@ test('a moment by what is said: scene:phrase or scene:{moment}, +seconds after e
   await assert.rejects(still(p, {at: 'two:'}), {message: 'still: "two:" names nothing said: write the words after the colon (two:what is said) or a moment (two:{name})'});
   for (const at of ['three:hello', 'two:{turn}+x', 'two:a+1+2']) await assert.rejects(still(p, {at}), new RegExp(`^Error: still: ".*" is not a moment \\(scene\\+seconds, seconds or m:ss on the film clock, or what is said: scene:phrase or scene:\\{moment\\}, \\+seconds after either; the scenes are one, two\\)$`), at);
   assert.equal(film.beats.length, logged + asked.length, 'only the at() asked above was logged');
+});
+
+test('still --beats: a frame at each beat the timeline lists for a scene, labelled with its scene+seconds and what is said; at most 30, the rest named with the call that shows them', async t => {
+  const out = tempDir('beats', t), p = await loadProject({cwd: project, keyed: 'true', out});
+  const s = await still(p, {beats: 'two'});
+  assert.ok(existsSync(s.file) && s.file.endsWith(`${path.sep}beats-two.png`), s.file);
+  assert.match(s.text, /· 3 frames, one at each beat in two: two\+0\.68 "a second scene" \(5\.96 s\), two\+2\.02 "\{turn\}" \(7\.30 s\), two\+2\.58 "shorter" \(7\.86 s\)$/);
+  const listed = (await timeline(p, {scene: 'two'})).split('\n').filter(l => /^two\+\S+ \(\S+\) {2}"/.test(l)).map(l => l.split(' ')[0]);
+  assert.deepEqual(listed, ['two+0.68', 'two+2.02', 'two+2.58'], 'the beats the timeline prints against two (the one in its handles counts from one)');
+  assert.match((await still(p, {beats: 'one'})).text, /· 1 frame, one at each beat in one: one\+4\.10 "slowly" \(4\.10 s\)$/);
+  // More than a still holds: the first 30 (two beats landing together are one frame), and the call that shows the rest.
+  const many = await loadProject({cwd: project, keyed: 'many', out}), first = await still(many, {beats: 'one'});
+  assert.match(first.text, /· 30 frames of 35, one at each beat in one: one\+0\.30 "A first scene" "A first" \(0\.30 s\), one\+0\.40 "A first" \(0\.40 s\), .*, one\+3\.20 "A first" \(3\.20 s\); the other 5: storyreel still --beats one --from one\+3\.30$/);
+  const rest = await still(many, {beats: 'one', from: 'one+3.30'});
+  assert.ok(rest.file.endsWith(`${path.sep}beats-one-from-one+3.30.png`) && rest.file !== first.file, 'the rest is a picture of its own');
+  assert.match(rest.text, /· 5 frames, one at each beat in one from one\+3\.30: one\+3\.30 "A first" \(3\.30 s\), one\+3\.40 .*, one\+3\.70 "A first" \(3\.70 s\)$/);
+  assert.match((await still(many, {beats: 'one', from: '1', to: 'one:A first+1.5'})).text, /· 9 frames, one at each beat in one from 1 to one:A first\+1\.5: one\+1\.00 "A first" \(1\.00 s\), .*, one\+1\.80 "A first" \(1\.80 s\)$/);
+  const refused = [
+    [{beats: 'two', at: 'two+1'}, 'still: give the moments (at) or a scene whose every beat to show (beats), not both'],
+    [{}, 'still: name the moments (at: "scene+seconds,…") or a scene whose every beat to show (beats: "scene")'],
+    [{beats: 'three'}, 'still: no scene called "three" (the scenes are one, two)'],
+    [{beats: 'one,two'}, 'still: beats names one scene, not 2: one still a scene (the scenes are one, two)'],
+    [{beats: 'true'}, 'still: beats names the scene whose every beat to show (the scenes are one, two)'],
+    [{at: 'two+1', from: '1'}, 'still: from and to choose which of a scene\'s beats to show (beats: "scene"); with at, name the moments themselves'],
+    [{beats: 'two', from: 'two+2.9'}, 'still: no beat in two from two+2.9']];
+  for (const [args, message] of refused) await assert.rejects(still(p, args), {message}, JSON.stringify(args));
+  await assert.rejects(still(p, {beats: 'two', to: 'nowhere'}), /^Error: still \(to\): "nowhere" is not a moment/);
+  await assert.rejects(still(await loadProject({cwd: project, out}), {beats: 'two'}), {message: 'still: two has no beats: the recipe keys nothing to what is said there (name moments instead: at: "two+1.5")'});
+  // From the command line, as an agent calls it.
+  const r = run(['still', '--beats', 'two', '--keyed', 'true', '--out', out]), both = run(['still', '--beats', 'two', '--at', 'two+1', '--keyed', 'true', '--out', out]);
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /beats-two\.png · 3 frames, one at each beat in two: /);
+  assert.equal(both.status, 1); assert.match(both.stderr, /give the moments \(at\) or a scene whose every beat to show \(beats\), not both/);
 });
 
 test('anchors: every phrase the film is keyed to, in one pass — the pacing\'s holds and the recipe\'s beats, where each is named', async () => {
@@ -261,7 +293,9 @@ test('the same tools over MCP (stdio): the handshake, the list with each tool\'s
   assert.equal(tools.find(t => t.name === 'part').inputSchema.required, undefined, 'a part takes its scenes or a window: it says which it lacks');
   assert.deepEqual(Object.keys(tools.find(t => t.name === 'changes').inputSchema.properties), ['render', 'handles']);
   assert.deepEqual(tools.find(t => t.name === 'strip').inputSchema.required, ['at']);
-  assert.deepEqual(tools.find(t => t.name === 'still').inputSchema.required, ['at']);
+  assert.equal(tools.find(t => t.name === 'still').inputSchema.required, undefined, 'a still takes its moments or a scene\'s beats: it says which it lacks');
+  assert.deepEqual(Object.keys(tools.find(t => t.name === 'still').inputSchema.properties), ['at', 'beats', 'from', 'to', 'width']);
+  assert.deepEqual(Object.keys(tools.find(t => t.name === 'timeline').inputSchema.properties), ['scene', 'from', 'to', 'handles']);
   assert.ok(tools.every(t => t.inputSchema.additionalProperties === false), 'a tool takes its own arguments and no others');
   assert.match(replies.get(3).result.content[0].text, /words over words: "Alpha" and "Beta"/);
   const [text, image] = replies.get(4).result.content;
@@ -282,6 +316,23 @@ test('the same tools over MCP (stdio): the handshake, the list with each tool\'s
   assert.equal(noisyImage?.type, 'image', 'and the picture still comes back');
 });
 
+test('over MCP the new arguments work as on the command line: a scene\'s beats, a moment by what is said, the timeline\'s scene times and window', async t => {
+  const out = tempDir('mcp-beats', t);
+  const {replies} = await mcpSession(['--out', out, '--keyed', 'true'], [
+    call(1, 'still', {beats: 'two'}), call(2, 'still', {at: 'two:{turn}+0.5'}), call(3, 'strip', {at: 'two:a second scene', frames: '2'}),
+    call(4, 'timeline', {scene: 'two'}), call(5, 'timeline', {from: '0:06', to: '0:08', handles: '0'}),
+    call(6, 'still', {beats: 'two', at: 'two+1'}), call(7, 'still', {at: 'two:a'})]);
+  const text = id => replies.get(id).result.content[0].text;
+  assert.match(text(1), /beats-two\.png · 3 frames, one at each beat in two: two\+0\.68 "a second scene" \(5\.96 s\)/);
+  assert.equal(replies.get(1).result.content[1]?.type, 'image', 'a still of a scene\'s beats comes back as the picture');
+  assert.match(text(2), /two--turn-\+0\.5\.png · 1 frame: two:\{turn\}\+0\.5 \(7\.60 s\)$/); assert.equal(replies.get(2).result.content[1]?.type, 'image');
+  assert.match(text(3), /strip-two-a-second-scene\.png · 2 frames at 30 fps around two:a second scene \(5\.96 s\)/);
+  assert.match(text(4), /^two: [\d.]+–[\d.]+ s of [\d.]+ s \(times: scene\+seconds from that scene's start, then the film clock\)\none\+4\.10 \(0:04\.1\) {2}"slowly"/);
+  assert.match(text(5), /^0:06–0:08: 6\.00–8\.00 s of [\d.]+ s \(times: seconds from the film's start\)\n7\.30 {2}"\{turn\}"/);
+  for (const id of [6, 7]) assert.equal(replies.get(id).result.isError, true);
+  assert.match(text(6), /not both/); assert.match(text(7), /said 2 times in two \(two\+0\.68 · two\+1\.82\)/);
+});
+
 test('over MCP the project is fixed at start: a call that names config or cwd, another argument, or a value read as a flag is refused, runs nothing, and the server answers the next call', async t => {
   const out = tempDir('mcp-fixed', t), elsewhere = tempDir('mcp-elsewhere', t), ran = path.join(elsewhere, 'ran.txt'), secret = path.join(elsewhere, 'secret.png');
   // A config that leaves a mark when it is imported: what a call naming it would run. And a picture outside the project.
@@ -295,7 +346,7 @@ test('over MCP the project is fixed at start: a call that names config or cwd, a
   const said = id => { assert.ok(replies.has(id), `no answer to call ${id}: the server stopped (exit ${code})`); return replies.get(id).result; };
   const rule = 'config and cwd are fixed when the MCP server starts; restart it with --config (or --cwd) to use another';
   for (const id of [1, 2]) assert.deepEqual(said(id), {isError: true, content: [{type: 'text', text: rule}]});
-  assert.equal(said(3).content[0].text, 'still takes no "out" (it takes at, width): the rest — the config, the folder, the film\'s own flags — is fixed when the MCP server starts');
+  assert.equal(said(3).content[0].text, 'still takes no "out" (it takes at, beats, from, to, width): the rest — the config, the folder, the film\'s own flags — is fixed when the MCP server starts');
   assert.equal(said(4).content[0].text, 'timeline: scene "--config" would be read as a flag: a value never starts with --');
   assert.match(said(5).content[0].text, /^no tool called "constructor"/, 'a name every object inherits is not a tool');
   assert.equal(said(6).isError, true, 'a value the command line cannot be given (a NUL byte) is an error, not the server\'s end');

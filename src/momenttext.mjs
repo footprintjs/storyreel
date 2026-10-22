@@ -17,10 +17,13 @@ import {momentOf, shownMark} from './script.mjs';
 /** The ways a moment is written, as a refusal names them. */
 export const MOMENT_FORMS = 'scene+seconds, seconds or m:ss on the film clock, or what is said: scene:phrase or scene:{moment}, +seconds after either';
 
-/** A time on the film clock as scene+seconds: from the start of the scene it falls in (the clock's locate), to the hundredth. */
-export function sceneTime(film, t) {
+/**
+ * A time on the film clock as scene+seconds: from the start of the scene it falls in (the clock's locate), to the
+ * hundredth — rounded down with `down` (where a call to see what follows starts: never past the time itself).
+ */
+export function sceneTime(film, t, {down = false} = {}) {
   const {id, time} = film.clock.locate(t);
-  return `${id}+${time.toFixed(2)}`;
+  return `${id}+${(down ? Math.floor(time * 100 + 1e-6) / 100 : time).toFixed(2)}`;
 }
 
 /**

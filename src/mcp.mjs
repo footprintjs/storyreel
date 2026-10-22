@@ -26,7 +26,7 @@ import {TOOLS} from './tools.mjs';
 
 const CLI = fileURLToPath(new URL('./cli.mjs', import.meta.url));
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
-const REQUIRED = {still: ['at'], strip: ['at']};   // part takes its scenes or a window (from, to): it says which it lacks
+const REQUIRED = {strip: ['at']};   // part takes its scenes or a window (from, to), still its moments or a scene's beats: each says which it lacks
 
 /** What only the server's start chooses: the project's config (a module the command line runs) and its folder. */
 export const FIXED_AT_START = Object.freeze(['config', 'cwd']);

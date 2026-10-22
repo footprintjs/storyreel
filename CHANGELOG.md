@@ -58,6 +58,13 @@
   moment (the clock's own reason). `--at` is comma-separated, so a phrase's own commas are left out (words match
   whatever the punctuation). The lookup reads the clock's places, so a still adds nothing to the film's beats.
   `scene+seconds` and plain seconds read exactly as before.
+- **`storyreel still --beats <scene>`: every beat of a scene in one picture,** instead of reading the timeline and
+  working out a time for each: a frame at each beat the timeline lists for the scene, labelled with its
+  `scene+seconds` and what is said there (`0:07.3  two+2.02 "{turn}"`); beats that land together are one frame. A still
+  holds 30 frames: with more, the text says so (`30 frames of 35`) and gives the call that shows the rest (`storyreel
+  still --beats one --from one+3.30`), and `--from` and `--to` (moments, as `--at` takes them) keep the beats between.
+  `--beats` with `--at` refuses, naming each. Over MCP too: `still` no longer requires `at` (it takes `at` or `beats`,
+  and says which it lacks).
 - **Fix: a hold not said, with no nearest words, stands in after its scene's last word** (`storyreel anchors`): it
   stood in by the last word's text, which names the first place that word is said — so the report's other times moved
   by the hold. Now it is named by words said only there (`exactPhrases`), or left out when none are.
