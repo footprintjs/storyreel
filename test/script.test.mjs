@@ -306,13 +306,14 @@ test('a film keyed to moments keeps its beats on their words when a line is rewo
   await assert.rejects(film(lines.reworded), /Phrase not in count: "make a ten"/);
 });
 
-test('reading a narration is linear: 40 KB with long runs of white space, braces or lines reads in well under 100 ms', () => {
+test('reading a narration is linear: 40 KB with long runs of white space, braces or lines reads in well under half a second (a quadratic reading takes seconds)', () => {
   for (const text of ['x' + ' '.repeat(40000) + 'y {m}', 'a {m} x' + ' '.repeat(40000) + 'y {k} b', Array.from({length: 3500}, (_, k) => `{@a${k}}"hi."`).join(' '),
     Array.from({length: 5000}, (_, k) => `w {m${k}}`).join(' '), '{'.repeat(40000), '{{{{{{'.repeat(7000) + '}', '{@a}\'' + 'it\'s '.repeat(8000) + 'end.\'']) {
-    const t0 = performance.now();
-    try { said(text); linesOf(text); } catch { /* a refusal is read in time too */ }
-    const ms = performance.now() - t0;
-    assert.ok(ms < 100, `${ms.toFixed(1)} ms for ${JSON.stringify(text.slice(0, 30))}… (${text.length} characters)`);
+    const read = () => { try { said(text); linesOf(text); } catch { /* a refusal is read in time too */ } };
+    read();   // (once to warm up: the budget is for the reading, not the engine's first compile of it)
+    const t0 = performance.now(); read(); const ms = performance.now() - t0;
+    // (Half a second, not less: a shared CI machine runs it beside the other tests; a quadratic reading of 40 KB takes 1.3 s and more.)
+    assert.ok(ms < 500, `${ms.toFixed(1)} ms for ${JSON.stringify(text.slice(0, 30))}… (${text.length} characters)`);
   }
 });
 
