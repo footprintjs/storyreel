@@ -40,6 +40,8 @@ const CLOSES = /^(?:[.,;:!?…)\]»”]|['"’](?![\p{L}\p{M}\p{N}]))/u, OPENS =
 const QUOTES = Object.freeze({'"': '"', '“': '”', '‘': '’', "'": "'"});
 /** The closing quotes an apostrophe is also written with: a line in them can end at an apostrophe. */
 const APOSTROPHES = new Set(["'", '’']);
+/** A moment is one time: what a beat naming one may not say, and why. */
+const ONE_TIME = Object.freeze({nth: 'its name is used once in its scene', edge: 'it has no start and end: plus moves it'});
 /** The most characters a refusal quotes of a mark, a name or the text around it. */
 const SHOWN = 40;
 
@@ -241,13 +243,28 @@ export function sceneScript(scene, i) {
 }
 
 /**
- * The moment a beat's phrase names: "{hop}" → 'hop'; null for a phrase of words, read as ever. A speaker tag ("{@mom}")
- * names no moment, and braces round anything but a name refuse: `where` says whose phrase it is in the refusal.
+ * The moment a beat's phrase names: "{hop}" → 'hop'; null for a phrase of words, read as ever (a {{role}} is words,
+ * once the cast's name is in). A speaker tag ("{@mom}"), braces round anything but a name, and a mark with other words
+ * ("a {ten}", "{hop}.") refuse, naming the fix. `where` says whose phrase it is in the refusal (null: the reason alone).
  */
-export function momentOf(phrase, where = `"${phrase}"`) {
-  const mark = typeof phrase === 'string' ? /^\s*\{([^{}]*)\}\s*$/.exec(phrase) : null;
-  if (!mark) return null;
-  if (NAME.test(mark[1])) return mark[1];
-  if (mark[1].startsWith('@')) throw new Error(`${where}: a speaker tag names who says a line, and is no moment: write a moment where the beat lands ({look}${mark[1] ? `{${mark[1]}}` : ''}'…') and name that ("{look}")`);
-  throw new Error(`${where}: not a moment: a moment's name is a letter, then letters, digits, - or _ ("{hop}")`);
+export function momentOf(phrase, where = quoted(String(phrase))) {
+  if (typeof phrase !== 'string') return null;
+  const braces = bracesIn(phrase);
+  if (!braces.length) return null;
+  const refuse = reason => { throw new Error(where ? `${where}: ${reason}` : reason); };
+  const [mark] = braces;
+  if (braces.length > 1 || mark.kind !== 'group' || phrase.slice(0, mark.from).trim() || phrase.slice(mark.to).trim()) refuse('a moment is named alone ("{ten}"), and a phrase is the words said, with no braces ("a ten"): write one or the other');
+  const body = phrase.slice(mark.from + 1, mark.to - 1);
+  if (NAME.test(body)) return body;
+  if (body.startsWith('@')) refuse(`a speaker tag names who says a line, and is no moment: write a moment where the beat lands ({look}{${cut(body)}}"…") and name that ("{look}")`);
+  return refuse(`not a moment: a moment's name is a letter, then letters, digits, - or _ ("{hop}")`);
+}
+
+/**
+ * What a beat that names a moment must leave out to name it as it may — a moment is one time, so it takes no nth and no
+ * edge — as the fix says it; null when it names it as written. The one rule the clock refuses by and the anchors note.
+ */
+export function momentFix(ref) {
+  const keys = Object.keys(ONE_TIME).filter(k => ref?.[k] !== undefined);
+  return keys.length ? `a moment is one time, so it takes no ${keys.join(' and no ')} (${keys.map(k => ONE_TIME[k]).join('; ')}): leave ${keys.join(' and ')} out` : null;
 }

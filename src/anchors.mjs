@@ -22,7 +22,7 @@
  * in moves the beats, and a beat's time is in every piece's key.
  */
 
-import {momentOf} from './script.mjs';
+import {momentOf, momentFix} from './script.mjs';
 
 /** The most words a suggested phrase runs to: past it, a scene says the same words too often to name a place by them. */
 const MOST_WORDS = 8;
@@ -113,7 +113,7 @@ export function checkPhrase(clock, ref) {
   try { places = clock.places(r.scene, r.phrase); } catch { return {problem: 'scene', places: []}; }
   const mark = isMark(r.phrase);
   if (!places.length) return {problem: 'missing', places, near: mark ? null : nearestWords(clock, r.scene, r.phrase)};
-  if (mark && (r.nth !== undefined || r.edge !== undefined)) return {problem: 'moment', places};
+  if (mark && momentFix(r)) return {problem: 'moment', places};
   if (r.nth !== undefined && !(Number.isInteger(r.nth) && r.nth >= 0 && r.nth < places.length)) return {problem: 'past', places};
   if (r.nth === undefined && places.length > 1) return {problem: 'ambiguous', places};
   return {problem: null, places};
@@ -137,15 +137,20 @@ export function standIn(clock, ref, check, how) {
 const secs = t => `${t.toFixed(2)} s`;
 /** The edge a noted phrase is timed by: the end for a pause (a hold, a guess) or edge: 'end', else the start. */
 const keepOf = n => (n.how === 'pauseAfter' || n.path?.startsWith('pacing.') || refOf(n.ref).edge === 'end' ? 'end' : 'start');
+/** Why a phrase written as a mark names no moment of its scene: the clock's own reason (script.mjs · momentOf), or the moments the scene has. */
+function noMoment(clock, r) {
+  try { momentOf(r.phrase, null); } catch (e) { return e.message; }
+  return `no such moment in ${r.scene}; ${momentsLine(clock, r.scene)}`;
+}
 /** A scene's moments as a line lists them, each with its time: what a missing moment could be. */
 const momentsLine = (clock, scene) => { const list = clock.moments?.(scene) ?? []; return list.length ? `its moments: ${list.map(m => `{${m.name}} (${secs(m.t)})`).join(' · ')}` : 'it has no moments'; };
 /** A noted phrase as one line: where it is named, what is wrong, and what to write instead. */
 function lineOf(clock, n) {
   const r = refOf(n.ref), named = `${r.scene} "${r.phrase}"${n.path ? ` → ${n.path}` : ''}`;
   if (n.problem === 'scene') return `${named} — no scene "${r.scene}"`;
-  if (n.problem === 'missing' && isMark(r.phrase)) return `${named} — no such moment in ${r.scene}; ${momentsLine(clock, r.scene)}`;
+  if (n.problem === 'missing' && isMark(r.phrase)) return `${named} — ${noMoment(clock, r)}`;
   if (n.problem === 'missing') return `${named} — not said${n.near ? `; the nearest words said: "${n.near.phrase}" (${secs(n.near.start)})` : ''}`;
-  if (n.problem === 'moment') return `${named} — a moment is one time, at its word: leave out ${['nth', 'edge'].filter(k => r[k] !== undefined).join(' and ')}`;
+  if (n.problem === 'moment') return `${named} — ${momentFix(r)}`;
   if (n.problem === 'past') return `${named} — nth ${JSON.stringify(r.nth)}, but it is said ${n.places.length} time${n.places.length > 1 ? 's' : ''} (nth counts the places from 0)`;
   const keep = keepOf(n), shown = n.places.slice(0, PLACES_SHOWN), exact = exactPhrases(clock, r.scene, shown, {keep}), more = n.places.length - shown.length;
   return `${named} — said ${n.places.length} times; the first is used (${secs(n.places[0][keep])})${exact.length ? `. Each alone: ${exact.map(e => `"${e.phrase}" (${secs(e.at)})`).join(' · ')}${more > 0 ? ` · … ${more} more` : ''}` : ''}`;

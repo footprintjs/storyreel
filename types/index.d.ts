@@ -894,8 +894,8 @@ export function momentsOf(narration: string, options?: {name?: string}): Moment[
 export function linesOf(narration: string, options?: {name?: string}): SpeakerLine[];
 /** A storyboard scene's script, every mark checked (a refusal names the scene). */
 export function sceneScript(scene: StoryboardScene, index?: number): SceneScript;
-/** The moment a beat's phrase names ("{hop}" → "hop"), or null for a phrase of words; a speaker tag or braces round anything but a name refuse. */
-export function momentOf(phrase: string, where?: string): string | null;
+/** The moment a beat's phrase names ("{hop}" → "hop"), or null for a phrase of words; a speaker tag, braces round anything but a name, or a mark with other words ("a {ten}") refuse. `where` prefixes the refusal (null: the reason alone). */
+export function momentOf(phrase: string, where?: string | null): string | null;
 export function paceTimings(storyboard: Storyboard, timings: Timings, pacing: Pacing): Timings;
 export function applyPacing(options: {runDir: string; board: Storyboard; timings: Timings; pacing: Pacing}): Promise<Timings>;
 export function validatePacing(pacing: Pacing, board: Storyboard): void;

@@ -8,7 +8,7 @@
  * narration without its marks — and finds each moment by the letters said before it.
  */
 import {normSpeech, checkSlots, findSlot, spokenMap, spokenOffset, shownWords, unsaidDigits} from 'footprint-narration';
-import {sceneScript, momentOf, shownMark} from './script.mjs';
+import {sceneScript, momentOf, momentFix, shownMark} from './script.mjs';
 
 /** How long one direction may last, in seconds: long enough to see, short enough to stay a beat. */
 export const DIRECTION_SECONDS = Object.freeze([.2, 20]);
@@ -220,15 +220,12 @@ export function makeClock(board, timings) {
   const sceneIndex = id => { if (!(id in byId)) throw new Error(`Unknown scene ${id} (the scenes are ${Object.keys(byId).join(', ')})`); return byId[id]; };
   /**
    * A ref's moment (script.mjs · momentOf: its phrase is "{name}") — {at, start, end} on its scene's clock
-   * (speechIndex) — or null when it names a phrase. A moment is one time: nth and edge refuse, naming the fix.
+   * (speechIndex) — or null when it names a phrase. A moment is one time: nth and edge refuse (script.mjs · momentFix).
    */
   const momentFor = r => {
-    const name = momentOf(r.phrase, `${r.scene} "${r.phrase}"`);
-    if (name === null) return null;
-    for (const [key, why] of [['nth', 'its name is used once in its scene'], ['edge', 'it has no start and end: plus moves it']]) {
-      if (r[key] !== undefined) throw new Error(`${r.scene} "${r.phrase}": a moment is one time, so it takes no ${key} (${why}): leave ${key} out`);
-    }
-    return momentIn(speech[r.scene], name, r.scene);
+    const name = momentOf(r.phrase, `${r.scene} "${r.phrase}"`), fix = name === null ? null : momentFix(r);
+    if (fix) throw new Error(`${r.scene} "${r.phrase}": ${fix}`);
+    return name === null ? null : momentIn(speech[r.scene], name, r.scene);
   };
   // Each scene's said words on the whole-lesson clock (a silent scene's directions are seen, never said).
   // Who says each word: the word's own `speaker` (a voice step that knows who said what writes it — the narrator and
