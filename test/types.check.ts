@@ -504,3 +504,20 @@ export const anchorsChecked = async (read: typeof readInputs, check: typeof anch
   (await check(await read({ep: 'ep1'}), {full: true})).length + (await at(project, {scene: 'a', every: 2})).files.length;
 export const shared = (share: typeof shareCopy) => share('out/film.mp4', {width: 854, poster: 2}).bytes;
 export const circled = (focus: typeof FOCUS, loop: typeof LOOP, view: FocusView) => focus.circle.show(null, view, () => {}, null) ?? loop.draw + (view.since ?? 0);
+
+// One script: moments ({name}) and speaker tags ({@who}) in the narration; a beat or a hold names a moment as a phrase.
+import {said as saidText, marksOf, linesOf, scriptOf, momentOf, type Moment, type SpeakerLine, type Script, type Beat} from '../types/index.js';
+import {scriptOf as sceneScript} from '../types/sub/script.js';
+import type {script as scriptTool, ScriptScene, TOOLS as Tools} from '../types/sub/tools.js';
+export const scripts: Storyboard = {scenes: [{id: 'today', narration: "Ten ones {dots} make a ten {hop}. {@mom}'And ten tens?'"}]};
+export const spoken: string = saidText(scripts.scenes[0].narration ?? '', {name: 'storyboard scene today'});
+export const moments: Moment[] = marksOf('Ten ones {dots} make a ten.'), lines: SpeakerLine[] = linesOf("{@mom}'Hi.'");
+export const scripted: Script = scriptOf(scripts.scenes[0], 0);
+export const silentScript: string | null = sceneScript({id: 'open', silent: [['the door opens', 1]]}).said;
+export const named: string | null = momentOf('{hop}', 'a beat');
+export const atMoment: Beat[] = [['today', '{dots}'], ['today', '{hop}', .5], {scene: 'today', phrase: '{dots}', plus: .2}];
+export const heldAtMoment: Recipe = {guesses: [{after: ['today', '{dots}'], question: 'How many?'}]};
+export const momentsOn = (film: Film): number => film.clock.moments('today').reduce((t, m) => t + m.t, 0) + film.anchors.filter(n => n.problem === 'moment').length;
+export const scriptRead = async (run: typeof scriptTool, read: typeof readInputs, tools: typeof Tools) => (JSON.parse(await run(await read({})))[0] as ScriptScene).said + tools.script.load;
+// @ts-expect-error a moment is a name, not a number
+export const badMoment = momentOf(3);

@@ -1,7 +1,7 @@
 // One script (script.mjs): marks written in the narration — a moment, {name}, and a speaker tag, {@who} — never said and
 // never shown. What is said (said, marksOf, linesOf, scriptOf) and every refusal; a mark in a scene with number slots;
 // the clock's moments (a beat at a mark, plus, the end of a scene, the pause at a mark); a pacing hold at a mark; the
-// anchors; the script tool.
+// anchors; the script tool; and a film keyed to moments that keeps its beats on their words when a line is reworded.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
@@ -11,6 +11,7 @@ import {checkScene} from '../src/clock.mjs';
 import {planHolds} from '../src/pacing.mjs';
 import {checkPhrase, anchorsText, phrasesIn} from '../src/anchors.mjs';
 import {readInputs, script, TOOLS} from '../src/tools.mjs';
+import {startStudio} from '../src/studio/server.mjs';
 
 /** A kit whose spec names beats, each resolved as any kit resolves them. */
 const kit = {name: 'beats', story: {compile: (spec, c) => { for (const b of spec.beats ?? []) c.at(b); return {hang: 1, draw() {}}; }}};
@@ -168,4 +169,38 @@ test('storyreel script: the spoken scenes as JSON, one a line — what is said, 
   assert.equal(bad.status, 1); assert.match(bad.stderr, /^storyreel script: storyboard scene today: a "\{" opens a mark that never closes, at "Ten ones \{dots make a ten\.": close it/);
   const help = run(['script', '--help']);
   assert.equal(help.status, 0); assert.match(help.stdout, /^storyreel script \[--flag value …\] {3}The film's script as JSON, one spoken scene a line, .*\n {2}--config {2}the project file/);
+});
+
+test('a film keyed to moments keeps its beats on their words when a line is reworded; the same film keyed by phrases breaks', async () => {
+  const lines = {
+    first: 'Ten ones {dots} make a ten. The new ten {hop}hops to the tens place.',
+    reworded: 'Look closely: ten little ones {dots} make one ten together. And now the new ten {hop}hops over to the tens place.',
+  };
+  const recipe = {story: {kit: 'beats', beats: [['count', '{dots}'], ['count', '{hop}', .2]]}, guesses: [{after: ['count', '{dots}'], question: 'How many ones?'}]};
+  const pacing = {sceneTail: .8, holds: [{scene: 'count', after: '{dots}', seconds: 1.5}]};
+  const times = {};
+  for (const [version, narration] of Object.entries(lines)) {
+    const storyboard = {scenes: [{id: 'count', narration}, {id: 'next', narration: 'That is how a ten is made.'}]};
+    const even = evenTimings(storyboard), film = await compileFilm({storyboard, timings: paceTimings(storyboard, even, pacing), recipe, kits: [kit]});
+    const words = film.clock.words('count'), start = word => words.find(w => w.text === word).start, at = path => film.beats.find(b => b.path === path).t;
+    assert.equal(at('story.beats[0]'), +start('make').toFixed(3), `${version}: {dots} lands as "make" is said`);
+    assert.equal(at('story.beats[1]'), +(start('hops') + .2).toFixed(3), `${version}: {hop} lands 0.2 s after "hops" starts`);
+    // The hold is the pause at {dots}: "make" waits 1.5 s longer than it would unpaced, the words before it never move,
+    // and the guess waits in it, from "ones" ending.
+    const unpaced = makeClock(storyboard, even).words('count'), ones = words.findIndex(w => w.text === 'ones');
+    assert.equal(+(start('make') - unpaced.find(w => w.text === 'make').start).toFixed(3), 1.5, version);
+    assert.deepEqual(words.slice(0, ones + 1).map(w => w.start), unpaced.slice(0, ones + 1).map(w => w.start), version);
+    assert.equal(at('guesses[0].after'), +words[ones].end.toFixed(3), `${version}: the guess's pause starts as "ones" ends`);
+    times[version] = at('story.beats[0]');
+    // What is shown never has a mark: the captions and the studio's script.
+    assert.ok(film.clock.shownWords(0).every(w => !/[{}]/.test(w.text)));
+    const studio = await startStudio({load: async () => ({film, storyboard, recipe}), port: 0, log: () => {}});
+    try { assert.equal((await (await fetch(studio.url + 'api/film')).json()).scenes[0].narration, said(narration)); } finally { await studio.close(); }
+  }
+  assert.ok(times.reworded > times.first + 1, `the reworded line says more before "make": its beat moved with the word (${times.first} → ${times.reworded})`);
+  // The same beats written as phrases of the first line: the rewording leaves them on words no longer said.
+  const phrases = {story: {kit: 'beats', beats: [['count', 'make a ten'], ['count', 'hops', .2]]}};
+  const film = narration => { const storyboard = {scenes: [{id: 'count', narration}, {id: 'next', narration: 'That is how a ten is made.'}]}; return compileFilm({storyboard, timings: evenTimings(storyboard), recipe: phrases, kits: [kit]}); };
+  await film(lines.first);
+  await assert.rejects(film(lines.reworded), /Phrase not in count: "make a ten"/);
 });
