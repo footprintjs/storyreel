@@ -15,7 +15,7 @@
  */
 const ROLE = /^[A-Za-z][\w-]*$/;
 /** A {{role}} in a text, as withCast replaces it: the one way the cast's token is read (script.mjs passes over it: it is no mark). */
-export const ROLE_TOKEN = /\{\{\s*([^}]*?)\s*\}\}/;
+export const ROLE_TOKEN = /\{\{([^}]*)\}\}/;   // (the role trimmed where it is read: a lazy group between two \s* runs is quadratic on long white space)
 const TOKEN = new RegExp(ROLE_TOKEN.source, 'g');
 
 /** The cast checked and frozen (deep): {role: {name, …}}; null stays null (a film without a cast). */
@@ -33,8 +33,8 @@ const deepFreeze = o => { if (o && typeof o === 'object') { Object.values(o).for
 
 /** One text with every {{role}} replaced by the role's name; a role the cast lacks refuses. */
 export function castText(text, cast, where = 'text') {
-  return String(text).replace(TOKEN, (_, role) => {
-    const who = cast?.[role];
+  return String(text).replace(TOKEN, (_, named) => {
+    const role = named.trim(), who = cast?.[role];
     if (!who) throw new Error(`${where} names {{${role}}}, which the cast does not have (${cast ? `roles: ${Object.keys(cast).join(', ')}` : 'no cast given: pass cast: {' + role + ': {name}}'})`);
     return who.name;
   });
