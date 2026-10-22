@@ -148,6 +148,19 @@ test('a mark in a scene with number slots: the slots stand in what is said, the 
   assert.deepEqual(clock.shownWords(0).map(w => w.text), ['One', 'frame', 'takes', '16.67 ms,', 'at', '60 Hz.', 'In', '1868', 'it', 'was', 'slower.'], 'the captions show the digits, and no mark');
 });
 
+test('a moment before a number slot that starts with a symbol the voice does not say ($, €, −, (, #) stands before its first spoken word', () => {
+  // A slot that starts with a symbol the voice does not say ($, €, −, (, #): a moment before it is its first spoken word.
+  for (const [narration, slot, first] of [['It costs {x} $5 today.', ['$5', 'five dollars'], 'five'], ['It costs {x}$5 today.', ['$5', 'five dollars'], 'five'], ['It costs {x} €10 today.', ['€10', 'ten euros'], 'ten'],
+    ['It is {x} −3 °C outside.', ['−3 °C', 'minus three degrees'], 'minus'], ['It takes {x} (16.67 ms) per frame.', ['(16.67 ms)', 'sixteen point six seven milliseconds'], 'sixteen'], ['We are {x} #1 again.', ['#1', 'number one'], 'number']]) {
+    const s = {id: 'slot', narration, say: [slot]}, b = {scenes: [s]}, c = makeClock(b, evenTimings(b));
+    assert.equal(checkScene(s), 'spoken', narration);
+    assert.equal(c.words('slot').find(w => w.start === c.at(['slot', '{x}'])).text, first, narration);
+  }
+  // A mark after a slot's digits ("5{x}%") stands before the next word said after it: the voice says the slot as one run.
+  const pct = {scenes: [{id: 'slot', narration: 'It is 5{x}% more.', say: [['5%', 'five percent']]}]}, after = makeClock(pct, evenTimings(pct));
+  assert.equal(after.words('slot').find(w => w.start === after.at(['slot', '{x}'])).text, 'more.');
+});
+
 test('the clock: a beat at a mark lands when its next word starts, plus as for a phrase; with no word after, at the last word\'s end; the pause at a mark is the gap there', () => {
   const board = {scenes: [{id: 'intro', narration: 'Hello there.'}, {id: 'today', narration: 'Ten ones {dots} make a ten {hop}.'}]};
   const clock = makeClock(board, evenTimings(board)), w = clock.words('today');   // Ten · ones · make · a · ten.
@@ -199,6 +212,15 @@ test('a pacing hold at a mark puts its silence in the pause there: the words aft
   const timing = even.scenes[0], rate = 8000, wav = {rate, samples: Int16Array.from({length: Math.round(timing.duration * rate)}, (_, i) => Math.round(3000 * Math.sin(i / 3)))};
   const [hold] = planHolds(board.scenes[0], timing, [{scene: 'today', after: '{dots}', seconds: 1}], wav);
   assert.ok(hold.time >= before[1].end && hold.time <= before[2].start, `cut in between "ones" (${before[1].end}) and "make" (${before[2].start}), not at ${hold.time}`);
+});
+
+test('the pause at a mark never runs backwards: a voice\'s word may start just before the one before it ends, and a hold at the mark still moves the word after it', () => {
+  const board = {scenes: [{id: 'today', narration: 'Ten ones {dots} make a ten. {hop}Then it hops.'}]};
+  const overlap = {scenes: [{id: 'today', duration: 4, alignment: {status: 'available'}, words: [{text: 'Ten', start: .1, end: .5}, {text: 'ones', start: .5, end: 1}, {text: 'make', start: .99, end: 1.4},
+    {text: 'a', start: 1.5, end: 1.6}, {text: 'ten.', start: 1.7, end: 2.1}, {text: 'Then', start: 2.3, end: 2.6}, {text: 'it', start: 2.7, end: 2.8}, {text: 'hops.', start: 2.9, end: 3.3}]}]};
+  const held = makeClock(board, paceTimings(board, overlap, {sceneTail: .8, holds: [{scene: 'today', after: '{dots}', seconds: 1.5}]}));
+  assert.equal(held.at(['today', '{dots}']), .99 + 1.5, '"make" waits the hold');
+  assert.ok(held.pauseAfter(['today', '{dots}']).end > held.pauseAfter(['today', '{dots}']).start, 'the pause at the mark is never backwards');
 });
 
 test('the anchors know marks: one its scene does not have is missing, the scene\'s moments listed; never ambiguous; nth or edge on one is noted; a speaker tag is no anchor', async () => {

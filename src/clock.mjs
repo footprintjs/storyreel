@@ -46,13 +46,15 @@ export function checkScene(scene, i = 0) {
 /**
  * A spoken scene's number slots, in what is said (script.mjs · said: its marks out): each shown text whole and in
  * order (footprint-narration · checkSlots), and no moment inside one — the voice says a slot as one run of words, so a
- * moment has no word to stand before there.
+ * moment has no word to stand before there. A moment is inside a slot when something the voice says of the slot comes
+ * before it: one before "$5", "(16.67 ms)" or "−3 °C" stands before the slot's first word.
  */
 function checkSlotsSaid(script, say, name) {
   checkSlots(script.said, say, {name, field: 'say'});
   let from = 0;
   say.forEach(([shown], k) => {
-    const at = findSlot(script.said, shown, from), end = at + shown.length, inside = script.moments.find(m => m.offset > at && m.offset < end);
+    const at = findSlot(script.said, shown, from), end = at + shown.length;
+    const inside = script.moments.find(m => m.offset > at && m.offset < end && normSpeech(script.said.slice(at, m.offset)));
     if (inside) throw new Error(`${name}: the moment ${shownMark(inside.name)} stands inside the number slot "${shown}" (say[${k}]), which the voice says as one run: put it before or after "${shown}"`);
     from = end;
   });
@@ -161,7 +163,9 @@ function momentsIn(scene, words, slots, duration) {
     const inside = words.find(w => w.from < from && w.to > from);
     if (inside) throw new Error(`storyboard scene ${scene.id}: the moment ${shownMark(name)} falls inside the timed word ${JSON.stringify(inside.text)}: a moment stands between words — move it before or after the word, or time the word as two`);
     const k = words.findIndex(w => w.from >= from), after = k < 0 ? null : words[k], before = k < 0 ? words.at(-1) : words[k - 1] ?? null;
-    return Object.freeze({name, at: after ? after.start : before.end, start: before ? before.end : 0, end: after ? after.start : duration});
+    // (A voice's word may start just before the one before it ends: the pause is never past the word after the mark.)
+    const start = before ? Math.min(before.end, after ? after.start : Infinity) : 0;
+    return Object.freeze({name, at: after ? after.start : before.end, start, end: after ? after.start : duration});
   });
 }
 
