@@ -148,7 +148,7 @@ step's own list of who says what. Write the moments and the speakers into the na
 spoken and never shown, and a rewording keeps it on its word:
 
 ```json
-{"id": "today", "narration": "Ten ones {dots} make a ten {hop}. Mom walks in. {@mom}'What are you two up to?'"}
+{"id": "today", "narration": "Ten ones {dots} make a ten {hop}. Mom walks in. {@mom}\"What are you two up to?\""}
 ```
 
 ```json
@@ -164,17 +164,21 @@ spoken and never shown, and a rewording keeps it on its word:
 - **`{name}` is a moment:** when the scene's next spoken word starts (`{dots}`: "make"; `{hop}`: "Mom"); with no word
   after it, when its last word ends. A beat names it as it names a phrase, `plus` as for a phrase (a moment is one time:
   `nth` and `edge` refuse); a hold puts its silence in the pause at the mark, and a guess after it waits there. A name
-  is a letter, then letters, digits, `-` or `_`, used once in its scene.
-- **`{@who}` is a speaker:** who says the quoted line right after it (only spaces between; quotes `'` `"` `‘’` `“”`).
+  is a letter, then letters, digits, `-` or `_`, used once in its scene. A phrase is a moment alone or words alone:
+  `"a {ten}"` refuses.
+- **`{@who}` is a speaker:** who says the quoted line right after it (only spaces between). Write lines in `"…"` (or
+  `“…”`): in `'…'` or `‘…’` an apostrophe can read as the line's end (the dogs' bowls), and a line that could end at
+  two places refuses. A speaker tag moves no mouth by itself: the voice step writes each word's `speaker` in its
+  `timings.json` from the lines, and the clock's `speaking`, `turns` and `gaze` — and so the mouths — read those.
 - **What is said** is the narration without its marks, the white space they leave tidied — here "Ten ones make a ten.
-  Mom walks in. 'What are you two up to?'" (`said(narration)`). The voice, the captions, the clock and `spokenText`
+  Mom walks in. "What are you two up to?"" (`said(narration)`). The voice, the captions, the clock and `spokenText`
   read only that. Anything else in braces refuses, naming the scene and the mark, and so does a mark in a silent
   scene; a narration without marks is said exactly as written. Phrases still work as ever.
 - **A voice step in any language** reads `npx storyreel script` instead of copying the grammar: the spoken scenes as
-  JSON, one a line — `{id, said, lines: [{by, say, offset}], moments: [{name, offset}]}`, each `offset` a place in `said`, and
-  `spoken` too where a number slot is said in words. In code: `said`, `momentsOf`, `linesOf`, `sceneScript(scene)`,
-  `momentOf(phrase)` (`footprint-storyreel/script`), and the clock's `moments(scene)`. `npx storyreel anchors` lists a
-  moment its scene no longer has, with the moments it has.
+  JSON, one a line — `{id, speaker?, said, spoken?, lines: [{by, say, offset, spoken?}], moments: [{name, offset}]}`,
+  each `offset` a place in `said`, and `spoken` what the voice says where a number slot is said in words. In code:
+  `said`, `momentsOf`, `linesOf`, `sceneScript(scene)`, `momentOf(phrase)` (`footprint-storyreel/script`), and the
+  clock's `moments(scene)`. `npx storyreel anchors` lists a moment its scene no longer has, with the moments it has.
 
 ## Silent scenes
 

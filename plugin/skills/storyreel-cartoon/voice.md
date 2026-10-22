@@ -59,17 +59,19 @@ A beat keyed to a phrase breaks when its line is reworded. For new work, write t
 are never spoken and never shown, and a rewording keeps each on its word. `{name}` is a moment: when the scene's next
 spoken word starts (with none after it, when its last word ends). A beat names it as a phrase (`plus` as usual; no
 `nth` or `edge`), and a hold puts its silence in the pause at the mark. `{@who}` gives the quoted line right after it
-a speaker. Anything else in braces refuses, naming the fix; so does a mark in a silent scene. A voice step in any
-language reads `npx storyreel script`, the spoken scenes as JSON (what is said, who says each line, each moment), and
-never copies the grammar.
+a speaker: write the line in `"…"` (in `'…'` an apostrophe can end it, and a line that could end twice refuses). A tag
+moves no mouth by itself: the voice step writes each word's `speaker` from the lines, and the clock's `speaking`,
+`turns` and `gaze` read those. Anything else in braces refuses, naming the fix; so does a mark in a silent scene. A
+voice step in any language reads `npx storyreel script` — the spoken scenes as JSON: what is said, what the voice says
+where a number is said in words, who says each line, each moment — and never copies the grammar.
 
 ```js run
 import assert from 'node:assert/strict';
 import {said, momentsOf, linesOf, evenTimings, paceTimings, makeClock} from 'footprint-storyreel';
 
-const storyboard = {title: 'Tens', scenes: [{id: 'today', narration: "Ten ones {dots} make a ten {hop}. Mom walks in. {@mom}'What are you two up to?'"}]};
+const storyboard = {title: 'Tens', scenes: [{id: 'today', narration: 'Ten ones {dots} make a ten {hop}. Mom walks in. {@mom}"What are you two up to?"'}]};
 const {narration} = storyboard.scenes[0];
-assert.equal(said(narration), "Ten ones make a ten. Mom walks in. 'What are you two up to?'");   // voiced and captioned
+assert.equal(said(narration), 'Ten ones make a ten. Mom walks in. "What are you two up to?"');   // voiced and captioned
 assert.deepEqual(momentsOf(narration), [{name: 'dots', offset: 9}, {name: 'hop', offset: 21}]);   // where in what is said each next word starts: "make", "Mom"
 assert.deepEqual(linesOf(narration), [{by: 'mom', say: 'What are you two up to?', offset: 36}]);
 const even = evenTimings(storyboard), clock = makeClock(storyboard, even);

@@ -21,7 +21,7 @@ export type StoryboardScene = {id: string; title?: string; /** Who says the scen
   say?: [string, string][];
   /** The scene shows example data (claims.mjs): its numbers need no source, and it says so on screen — true draws "Example data", a string draws those words (the film's language); false or left out, it is not. */
   example?: boolean | string; [key: string]: unknown}
-  & ({/** What is said. Marks in it are never said nor shown: {name} a moment a beat or a hold names ("{hop}"), {@who} the speaker of the quoted line right after it (script.mjs). */ narration: string; silent?: never}
+  & ({/** What is said. Marks in it are never said nor shown: {name} a moment a beat or a hold names ("{hop}"), {@who} the speaker of the quoted line right after it ({@mom}"…": script.mjs; the voice step writes each word's speaker from it). */ narration: string; silent?: never}
     | {silent: Direction[]; narration?: never});
 
 export interface Storyboard {
@@ -882,7 +882,7 @@ export function spokenText(scene: StoryboardScene): string;
 export function unsaidNumbers(storyboard: Storyboard): {scene: string; text: string}[];
 /** A moment written in the narration ({name}): its name, and `offset`, where in said() the next spoken word starts (said()'s length when none follows). */
 export interface Moment {name: string; offset: number}
-/** A quoted line given a speaker ({@who}'…'): who says it, the line inside its quotes (its own marks out), and `offset`, where in said() it starts. */
+/** A quoted line given a speaker ({@who}"…"): who says it, the line inside its quotes (its own marks out), and `offset`, where in said() it starts. A tag moves no mouth by itself: the voice step writes each word's speaker from the lines. */
 export interface SpeakerLine {by: string; say: string; offset: number}
 /** A storyboard scene's script: what is said, its speakers' lines and its moments (a silent scene: said null, none of either). */
 export interface SceneScript {id: string; said: string | null; lines: SpeakerLine[]; moments: Moment[]}
@@ -890,7 +890,7 @@ export interface SceneScript {id: string; said: string | null; lines: SpeakerLin
 export function said(narration: string, options?: {name?: string}): string;
 /** The narration's moments ({name}), in order. */
 export function momentsOf(narration: string, options?: {name?: string}): Moment[];
-/** The narration's quoted lines with a speaker tag ({@who}'…'), in order. */
+/** The narration's quoted lines with a speaker tag ({@who}"…"), in order. */
 export function linesOf(narration: string, options?: {name?: string}): SpeakerLine[];
 /** A storyboard scene's script, every mark checked (a refusal names the scene). */
 export function sceneScript(scene: StoryboardScene, index?: number): SceneScript;
