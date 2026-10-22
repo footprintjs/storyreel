@@ -256,11 +256,14 @@ test('storyreel script: the spoken scenes as JSON, one a line — what is said, 
   assert.equal(r.status, 0, r.stderr);
   const scenes = JSON.parse(r.stdout);
   assert.deepEqual(scenes, [
-    {id: 'today', said: 'Ten ones make a ten.', lines: [], moments: [{name: 'dots', offset: 9}, {name: 'hop', offset: 20}]},
-    {id: 'talk', said: "Mom walks in. 'What are you two up to?' 'Mom! I can add big numbers now!'", lines: [{by: 'mom', say: 'What are you two up to?', offset: 15}, {by: 'amaira', say: 'Mom! I can add big numbers now!', offset: 41}], moments: []},
-    {id: 'frame', said: 'One frame takes 16.67 ms.', spoken: 'One frame takes sixteen point six seven milliseconds.', lines: [], moments: [{name: 'fast', offset: 16}]},
-  ], 'the silent scene left out, the cast\'s name in, `spoken` only where the voice says something else');
-  assert.deepEqual(r.stdout.trim().split('\n').slice(1, -1).map(line => JSON.parse(line.replace(/,$/, '')).id), ['today', 'talk', 'frame'], 'one scene a line, inside [ and ]');
+    {id: 'today', speaker: 'grandma', said: 'Ten ones make a ten.', lines: [], moments: [{name: 'dots', offset: 9}, {name: 'hop', offset: 20}]},
+    {id: 'talk', said: 'Mom walks in. "What are you two up to?" "Mom! I can add 16 and 24 now!"', spoken: 'Mom walks in. "What are you two up to?" "Mom! I can add sixteen and twenty-four now!"',
+      lines: [{by: 'mom', say: 'What are you two up to?', offset: 15}, {by: 'amaira', say: 'Mom! I can add 16 and 24 now!', offset: 41, spoken: 'Mom! I can add sixteen and twenty-four now!'}], moments: []},
+    {id: 'frame', said: `One frame takes 16.67 ms.${String.fromCodePoint(0x2028)}That is fast.`, spoken: `One frame takes sixteen point six seven milliseconds.${String.fromCodePoint(0x2028)}That is fast.`, lines: [], moments: [{name: 'fast', offset: 16}]},
+  ], 'the silent scene left out, the cast\'s name in, the scene\'s speaker, `spoken` only where the voice says something else (a line too)');
+  // One scene a line, as any reader splits lines — Python's splitlines() too, which breaks at U+2028, U+2029 and U+0085.
+  const lines = r.stdout.trim().split(/\r\n|[\n\r\v\f\x1c-\x1e\x85\u{2028}\u{2029}]/u);
+  assert.deepEqual(lines.slice(1, -1).map(line => JSON.parse(line.replace(/,$/, '')).id), ['today', 'talk', 'frame'], 'one scene a line, inside [ and ]');
   assert.equal(await script(await readInputs({cwd: project})), r.stdout.trim(), 'the tool, as the command line runs it');
   assert.equal(TOOLS.script.load, 'config', 'it reads the config\'s film untimed');
   const bad = run(['script', '--bad', 'true']);

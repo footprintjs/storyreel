@@ -83,6 +83,21 @@ export function spokenText(scene) {
 }
 
 /**
+ * What the voice says for a stretch of what a spoken scene says — said()'s [from, to), a line (script.mjs ·
+ * linesOf) — with each number slot it touches said in words, whole: what a voice step voices for that stretch.
+ */
+export function spokenIn(scene, from, to) {
+  if (scene.say === undefined) return saidOf(scene).slice(from, to);
+  let at = 0, out = '';
+  for (const p of sceneMap(scene).pieces) {
+    const end = at + p.shown.length;
+    if (end > from && at < to) out += p.kind === 'text' ? p.spoken.slice(Math.max(from, at) - at, Math.min(to, end) - at) : p.spoken;
+    at = end;
+  }
+  return out;
+}
+
+/**
  * Numbers in the narration the voice would have to read as digits: [{scene, text}] — every run of digits
  * not in a number slot (a slot is a position: the same digits written again elsewhere are not said).
  * A voice tool can refuse these before it speaks (a voice drops or garbles digits); write them as `say` slots.

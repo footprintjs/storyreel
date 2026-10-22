@@ -39,8 +39,8 @@ export function still(project: Project, args: {at: string | string[]; width?: nu
 export function anchors(project: ProjectConfig, args?: {full?: boolean | string}): Promise<string>;
 /** The film's script as JSON, one spoken scene a line (silent scenes left out): each a ScriptScene. A mark not as written refuses, naming the scene. */
 export function script(project: ProjectConfig): Promise<string>;
-/** One scene of the script tool's JSON: what is said, `spoken` only when the voice says something else (number slots in words), who says each line, and the moments. */
-export interface ScriptScene {id: string; said: string; spoken?: string; lines: import('../index.js').SpeakerLine[]; moments: import('../index.js').Moment[]}
+/** One scene of the script tool's JSON: the scene's own speaker, what is said, `spoken` only when the voice says something else (number slots in words), who says each line (with what the voice says in it, when that differs), and the moments. */
+export interface ScriptScene {id: string; speaker?: string; said: string; spoken?: string; lines: (import('../index.js').SpeakerLine & {spoken?: string})[]; moments: import('../index.js').Moment[]}
 /** The film (or scenes, or a window) at a glance: a frame every `every` seconds (4), `per` to a sheet (20), labelled with time and scene, as PNGs. */
 export function sheet(project: Project, args?: PartArgs & {every?: number | string; per?: number | string; width?: number | string}): Promise<{text: string; file: string; files: string[]}>;
 /** A copy of a finished film to send to a person: <name>.share.mp4 (width 854, H.264/AAC, faststart) and <name>.poster.jpg (at 6 s, or a shorter film's middle), beside it or in `out`. */

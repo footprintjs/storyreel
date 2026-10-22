@@ -21,7 +21,7 @@ import {previewChanges} from './changes.mjs';
 import {castFilm} from './prepare.mjs';
 import {CHANGES_DEFAULTS} from './segments.mjs';
 import {clockOf, clockSeconds} from './clocktext.mjs';
-import {clockTenths, checkScene, spokenText} from './clock.mjs';
+import {clockTenths, checkScene, spokenText, spokenIn} from './clock.mjs';
 import {sceneScript} from './script.mjs';
 import {contactSheet} from './sheet.mjs';
 import {partWindow, partTimeline, timelineText, RENDER_DEFAULTS} from './render.mjs';
@@ -277,21 +277,27 @@ function lastWords(clock, scene) {
   return last ? exactPhrases(clock, scene, [last], {keep: 'end'})[0]?.phrase ?? null : null;
 }
 
+/** JSON as one line that every reader splits as one line: U+0085, U+2028 and U+2029 written as escapes, as Python's splitlines() would break a line at them. */
+const oneLine = value => JSON.stringify(value).replace(/[\u0085\u2028\u2029]/gu, ch => `\\u${ch.codePointAt(0).toString(16).padStart(4, '0')}`);
+
 /**
  * The film's script, for a voice step in any language: script.mjs owns the grammar, and this hands it over as JSON, one
- * spoken scene a line — {id, said, lines, moments}: `said` what is said and shown (the narration without its marks,
- * the cast's names in), `lines` who says each quoted line ({by, say, at}), `moments` each mark's name and where in
- * `said` its next word starts; `spoken` beside them only when the voice says something else (number slots in words:
- * clock.mjs · spokenText). A silent scene says nothing: it is left out. Every scene is checked first (clock.mjs ·
- * checkScene), so a mark not as written refuses here as it would in the compile.
+ * spoken scene a line — {id, speaker?, said, spoken?, lines, moments}: `speaker` the scene's own (the storyboard's);
+ * `said` what is said and shown (the narration without its marks, the cast's names in); `lines` who says each quoted
+ * line ({by, say, offset}, and `spoken` when the voice says something else in it); `moments` each mark's name and the
+ * offset in `said` where its next word starts; `spoken` what the voice says, only when it is not `said` (number slots
+ * in words: clock.mjs · spokenText, spokenIn). A speaker tag moves no mouth by itself: the voice step writes each
+ * word's `speaker` from the lines into the timings, and the clock reads those. A silent scene says nothing: it is left
+ * out. Every scene is checked first (clock.mjs · checkScene), so a mark not as written refuses here as in the compile.
  */
 export async function script(project) {
   const scenes = project.said.scenes.flatMap((scene, i) => {
     if (checkScene(scene, i) === 'silent') return [];
     const {id, said, lines, moments} = sceneScript(scene, i), spoken = spokenText(scene);
-    return [{id, said, ...(spoken === said ? {} : {spoken}), lines, moments}];
+    const voiced = lines.map(line => { const words = spokenIn(scene, line.offset, line.offset + line.say.length); return words === line.say ? line : {...line, spoken: words}; });
+    return [{id, ...(scene.speaker ? {speaker: scene.speaker} : {}), said, ...(spoken === said ? {} : {spoken}), lines: voiced, moments}];
   });
-  return `[\n${scenes.map(s => JSON.stringify(s)).join(',\n')}\n]`;
+  return `[\n${scenes.map(oneLine).join(',\n')}\n]`;
 }
 
 /**
@@ -316,7 +322,7 @@ export const TOOLS = Object.freeze({
     args: {scene: 'scene ids, comma-separated (or a window: from and to)', from: 'the window\'s start on the film clock: seconds or m:ss (0:12)', to: 'the window\'s end: seconds or m:ss', handles: `seconds either side (${TOOL_DEFAULTS.handles})`, full: FULL_ARG}},
   anchors: {run: anchors, load: 'config', about: 'Every phrase the film is keyed to (the recipe\'s beats, the pacing\'s holds), checked in one pass: each not said (with the nearest words said), each said more than once with no nth (with words said only at each place), where each is named. Run it after any edit to the narration, the recipe or the pacing.',
     args: {full: 'true for every phrase found (default: the first 10 of each kind)'}},
-  script: {run: script, load: 'config', about: 'The film\'s script as JSON, one spoken scene a line, for a voice step in any language: {id, said, lines, moments} — what is said (its marks out), who says each quoted line ({@who}), each moment ({name}) and where its next word starts in said; spoken too when the voice says something else (number slots).',
+  script: {run: script, load: 'config', about: 'The film\'s script as JSON, one spoken scene a line, for a voice step in any language: {id, speaker?, said, spoken?, lines, moments} — what is said (its marks out), who says each quoted line ({@who}), each moment ({name}) and the offset in said where its next word starts; spoken where the voice says something else (number slots).',
     args: {}},
   changes: {run: changes, load: 'inputs', about: 'What an edit changed, before the full render: each changed stretch of the picture and why ("0:12–0:18 left · its recipe entries changed"), then the count. With render: only those pieces drawn (kept: the full render draws none of them again) and a short clip of them back to back, labelled with their times, the film either side and its voice under them. Compares with the cache of the config\'s full render (render, code) into out.',
     args: {render: 'true to draw the changed pieces and write the clip, <out>/changes/review.mp4', handles: `seconds of the film either side of each change in the clip (${CHANGES_DEFAULTS.handles})`}},

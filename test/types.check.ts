@@ -507,19 +507,25 @@ export const circled = (focus: typeof FOCUS, loop: typeof LOOP, view: FocusView)
 
 // One script: moments ({name}) and speaker tags ({@who}) in the narration; a beat or a hold names a moment as a phrase.
 import {said as saidText, momentsOf, linesOf, sceneScript, momentOf, type Moment, type SpeakerLine, type SceneScript, type Beat} from '../types/index.js';
-import {sceneScript as scriptOfScene} from '../types/sub/script.js';
+import {sceneScript as scriptOfScene, momentFix} from '../types/sub/script.js';
+import {spokenIn} from '../types/sub/clock.js';
 import type {script as scriptTool, ScriptScene, TOOLS as Tools} from '../types/sub/tools.js';
-export const scripts: Storyboard = {scenes: [{id: 'today', narration: "Ten ones {dots} make a ten {hop}. {@mom}'And ten tens?'"}]};
+export const scripts: Storyboard = {scenes: [{id: 'today', narration: 'Ten ones {dots} make a ten {hop}. {@mom}"And ten tens?"'}]};
 export const spoken: string = saidText(scripts.scenes[0].narration ?? '', {name: 'storyboard scene today'});
-export const moments: Moment[] = momentsOf('Ten ones {dots} make a ten.'), lines: SpeakerLine[] = linesOf("{@mom}'Hi.'");
+export const moments: Moment[] = momentsOf('Ten ones {dots} make a ten.'), lines: SpeakerLine[] = linesOf('{@mom}"Hi."');
 export const offsets: number = moments[0].offset + lines[0].offset;
 export const scripted: SceneScript = sceneScript(scripts.scenes[0], 0);
 export const silentScript: string | null = scriptOfScene({id: 'open', silent: [['the door opens', 1]]}).said;
-export const named: string | null = momentOf('{hop}', 'a beat');
+export const named: string | null = momentOf('{hop}', 'a beat') ?? momentOf('{hop}', null);
+export const fixed: string | null = momentFix({nth: 0});
+export const lineSaid: string = spokenIn(scripts.scenes[0], lines[0].offset, lines[0].offset + lines[0].say.length);
 export const atMoment: Beat[] = [['today', '{dots}'], ['today', '{hop}', .5], {scene: 'today', phrase: '{dots}', plus: .2}];
 export const heldAtMoment: Recipe = {guesses: [{after: ['today', '{dots}'], question: 'How many?'}]};
 export const momentsOn = (film: Film): number => film.clock.moments('today').reduce((t, m) => t + m.t, 0) + film.anchors.filter(n => n.problem === 'moment').length;
-export const scriptRead = async (run: typeof scriptTool, read: typeof readInputs, tools: typeof Tools) => (JSON.parse(await run(await read({})))[0] as ScriptScene).said + tools.script.load;
+export const scriptRead = async (run: typeof scriptTool, read: typeof readInputs, tools: typeof Tools) => {
+  const [scene] = JSON.parse(await run(await read({}))) as ScriptScene[];
+  return `${scene.speaker ?? ''}${scene.said}${scene.lines[0]?.spoken ?? ''}${tools.script.load}`;
+};
 // @ts-expect-error a moment is a name, not a number
 export const badMoment = momentOf(3);
 // @ts-expect-error a moment's place in what is said is its offset (at is seconds, as on the clock)
