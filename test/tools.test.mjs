@@ -105,6 +105,31 @@ test('a still and a strip take the moments they always took, read exactly as bef
   for (const at of ['0:61', '1:2:3:4', 'one+2+3', 'one+x']) await assert.rejects(still(p, {at}), new RegExp(`^Error: still: ${JSON.stringify(at).replace(/[+]/g, '\\+')} is not a moment \\(`), at);
 });
 
+test('a moment by what is said: scene:phrase or scene:{moment}, +seconds after either, where the film\'s clock says it is — labelled as written', async t => {
+  const p = await loadProject({cwd: project, keyed: 'true', out: tempDir('said', t)}), {film} = p, logged = film.beats.length;
+  const s = await still(p, {at: 'two:a second scene,two:{turn},two:{turn}+0.5,two:a little shorter+0.25,one:said slowly'});
+  assert.ok(s.file.endsWith(`${path.sep}two-a-second-scene_two--turn-_two--turn-+0.5_two-a-little-shorter+0.25_one-said-slowly.png`), s.file);
+  assert.equal(film.beats.length, logged, 'a still looks a moment up without adding it to the film\'s beats (the timeline lists those)');
+  // Each lands where the clock a recipe's beats are read on puts it (its at(), asked last: it logs what it is asked).
+  const asked = [['two', 'a second scene', 0], ['two', '{turn}', 0], ['two', '{turn}', .5], ['two', 'a little shorter', .25], ['one', 'said slowly', 0]];
+  assert.deepEqual([...s.text.matchAll(/(?:: |, )([^,]+) \(([\d.]+) s\)/g)].map(m => [m[1], m[2]]),
+    asked.map(([scene, phrase, plus]) => [`${scene}:${phrase}${plus ? `+${plus}` : ''}`, (film.clock.at([scene, phrase]) + plus).toFixed(2)]));
+  assert.match((await strip(p, {at: 'two:{turn}+0.5', frames: 2})).text, /strip-two--turn-\+0\.5\.png · 2 frames at 30 fps around two:\{turn\}\+0\.5 \(7\.60 s\)/);
+  // What names no one place refuses, saying why and what to write, each place as the timeline says it.
+  const refused = {
+    'two:a': 'said 2 times in two (two+0.68 · two+1.82): name one by its time, or by words said only there, as storyreel anchors suggests them: "a second" (two+0.68) · "a little" (two+1.82)',
+    'two:much shorter': 'not said in two; the nearest words said: "shorter" (two+2.58)',
+    'two:{gone}': 'two has no moment {gone} (its moments: {turn} (two+1.82))',
+    'one:{gone}': 'one has no moment {gone} (it has none)',
+    'two:{@mom}': 'a speaker tag names who says a line, and is no moment: write a moment where the beat lands ({look}{@mom}"…") and name that ("{look}")',
+    'two:a {turn}': 'a moment is named alone ("{ten}"), and a phrase is the words said, with no braces ("a ten"): write one or the other'};
+  for (const [at, why] of Object.entries(refused)) await assert.rejects(still(p, {at}), {message: `still: ${JSON.stringify(at)} — ${why}`});
+  await assert.rejects(strip(p, {at: 'two:much shorter+1'}), {message: 'strip: "two:much shorter+1" — not said in two; the nearest words said: "shorter" (two+2.58)'});
+  await assert.rejects(still(p, {at: 'two:'}), {message: 'still: "two:" names nothing said: write the words after the colon (two:what is said) or a moment (two:{name})'});
+  for (const at of ['three:hello', 'two:{turn}+x', 'two:a+1+2']) await assert.rejects(still(p, {at}), new RegExp(`^Error: still: ".*" is not a moment \\(scene\\+seconds, seconds or m:ss on the film clock, or what is said: scene:phrase or scene:\\{moment\\}, \\+seconds after either; the scenes are one, two\\)$`), at);
+  assert.equal(film.beats.length, logged + asked.length, 'only the at() asked above was logged');
+});
+
 test('anchors: every phrase the film is keyed to, in one pass — the pacing\'s holds and the recipe\'s beats, where each is named', async () => {
   const text = await anchors(await readInputs({cwd: project, anchors: 'true'}));
   assert.match(text, /^8 phrases checked: 2 not said, 1 past the last place, 1 no such scene, 1 said more than once\n/);

@@ -49,6 +49,15 @@
   (`0:07.3`, as the review prints its times). The timeline's help lists `--from` and `--to` (MCP takes them too). In
   code: `filmTimeline(film, {from, to})` (`footprint-storyreel/render`) gives the rows on the film clock, exactly
   (`partTimeline` keeps the stretch's own clock), and `timelineText(rows, {time})` says each time your own way.
+- **A moment by what is said.** `still --at` and `strip --at` take `scene:phrase` (`two:a second scene`) and
+  `scene:{moment}` (`today:{hop}`, a moment written in the narration), with `+seconds` after either
+  (`today:{hop}+0.5`): found on the film's clock as a recipe's beat is, with no time to work out first, and labelled
+  on the picture as written. What names no one place refuses, saying why and each place as `scene+seconds`: a phrase
+  not said (with the nearest words said), one said more than once (each place, and words said only there, as
+  `storyreel anchors` suggests them), a moment the scene does not have (with the ones it has), braces that name no
+  moment (the clock's own reason). `--at` is comma-separated, so a phrase's own commas are left out (words match
+  whatever the punctuation). The lookup reads the clock's places, so a still adds nothing to the film's beats.
+  `scene+seconds` and plain seconds read exactly as before.
 - **Fix: a hold not said, with no nearest words, stands in after its scene's last word** (`storyreel anchors`): it
   stood in by the last word's text, which names the first place that word is said — so the report's other times moved
   by the hold. Now it is named by words said only there (`exactPhrases`), or left out when none are.
