@@ -24,7 +24,7 @@ test('the tools read the project\'s film: its timeline and its review as text, a
   const s = await still(p, {at: 'one+2.5,two+0'});
   assert.ok(existsSync(s.file) && s.file.endsWith('.png'), s.text);
   await assert.rejects(still(p, {at: 'three+1'}), /"three\+1" is not a moment \(scene\+seconds, or seconds; the scenes are one, two\)/);
-  assert.deepEqual(Object.keys(TOOLS), ['timeline', 'review', 'part', 'anchors', 'changes', 'still', 'sheet', 'strip']);
+  assert.deepEqual(Object.keys(TOOLS), ['timeline', 'review', 'part', 'anchors', 'script', 'changes', 'still', 'sheet', 'strip']);
   const st = await strip(p, {at: 'one+2', frames: 6});
   assert.ok(existsSync(st.file) && st.file.endsWith('strip-one+2.png'), st.text);
   assert.match(st.text, /6 frames at 30 fps around one\+2 \([\d.]+ s\): frame 0 is the moment/);
@@ -116,7 +116,7 @@ test('the command line: each tool by name, its flags to the film too; refusals n
   const none = run(['review'], tempDir('empty'));   // a folder with no project in it (its own, not the shared temp folder)
   assert.equal(none.status, 1); assert.match(none.stderr, /no storyreel\.config\.mjs in .*: a project names its film there/);
   assert.equal(run(['draw']).status, 2, 'an unknown tool is a usage error');
-  for (const command of ['timeline', 'review', 'part', 'anchors', 'changes', 'still', 'sheet', 'strip', 'beats', 'share', 'breakdown', 'mcp']) {
+  for (const command of ['timeline', 'review', 'part', 'anchors', 'script', 'changes', 'still', 'sheet', 'strip', 'beats', 'share', 'breakdown', 'mcp']) {
     const h = run([command, '--help']);
     assert.equal(h.status, 0, `${command} --help: ${h.stderr}`); assert.match(h.stdout, new RegExp(`^storyreel ${command} `), `${command} --help gives its own usage`);
   }
@@ -158,7 +158,8 @@ test('the same tools over MCP (stdio): the handshake, the list with each tool\'s
     call(9, 'anchors', {})]);
   assert.equal(replies.get(1).result.serverInfo.name, 'storyreel'); assert.ok(replies.get(1).result.capabilities.tools);
   const tools = replies.get(2).result.tools;
-  assert.deepEqual(tools.map(t => t.name), ['timeline', 'review', 'part', 'anchors', 'changes', 'still', 'sheet', 'strip']);
+  assert.deepEqual(tools.map(t => t.name), ['timeline', 'review', 'part', 'anchors', 'script', 'changes', 'still', 'sheet', 'strip']);
+  assert.deepEqual(tools.find(t => t.name === 'script').inputSchema.properties, {}, 'script takes no arguments of its own');
   assert.deepEqual(Object.keys(tools.find(t => t.name === 'part').inputSchema.properties), ['scene', 'from', 'to', 'handles', 'full']);
   assert.equal(tools.find(t => t.name === 'part').inputSchema.required, undefined, 'a part takes its scenes or a window: it says which it lacks');
   assert.deepEqual(Object.keys(tools.find(t => t.name === 'changes').inputSchema.properties), ['render', 'handles']);

@@ -1,13 +1,16 @@
 // One script (script.mjs): marks written in the narration — a moment, {name}, and a speaker tag, {@who} — never said and
 // never shown. What is said (said, marksOf, linesOf, scriptOf) and every refusal; a mark in a scene with number slots;
 // the clock's moments (a beat at a mark, plus, the end of a scene, the pause at a mark); a pacing hold at a mark; the
-// anchors.
+// anchors; the script tool.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {said, marksOf, linesOf, scriptOf, momentOf, makeClock, evenTimings, paceTimings, spokenText, sceneText, unsaidNumbers, compileFilm} from '../src/index.mjs';
 import {checkScene} from '../src/clock.mjs';
 import {planHolds} from '../src/pacing.mjs';
 import {checkPhrase, anchorsText, phrasesIn} from '../src/anchors.mjs';
+import {readInputs, script, TOOLS} from '../src/tools.mjs';
 
 /** A kit whose spec names beats, each resolved as any kit resolves them. */
 const kit = {name: 'beats', story: {compile: (spec, c) => { for (const b of spec.beats ?? []) c.at(b); return {hang: 1, draw() {}}; }}};
@@ -144,4 +147,25 @@ test('the anchors know marks: one its scene does not have is missing, the scene\
   assert.match(text, /\n {2}today "\{@mom\}" → story\.beats\[3\] — no such moment in today; its moments: /);
   assert.match(text, /a moment named with nth or edge \(the moment is used\):\n {2}today "\{hop\}" → story\.beats\[2\] — a moment is one time, at its word: leave out nth$/);
   await assert.rejects(compileFilm({storyboard: board, timings, recipe: {story: {kit: 'beats', beats: [['today', '{nope}']]}}, kits: [kit]}), /Moment not in today: "\{nope\}"/, 'by default the compile stops at it');
+});
+
+const project = fileURLToPath(new URL('./fixtures/script/', import.meta.url)), cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url));
+const run = args => spawnSync(process.execPath, [cli, ...args], {cwd: project, encoding: 'utf8'});
+
+test('storyreel script: the spoken scenes as JSON, one a line — what is said, who says each line, each moment — for a voice step in any language', async () => {
+  const r = run(['script']);
+  assert.equal(r.status, 0, r.stderr);
+  const scenes = JSON.parse(r.stdout);
+  assert.deepEqual(scenes, [
+    {id: 'today', said: 'Ten ones make a ten.', lines: [], moments: [{name: 'dots', at: 9}, {name: 'hop', at: 20}]},
+    {id: 'talk', said: "Mom walks in. 'What are you two up to?' 'Mom! I can add big numbers now!'", lines: [{by: 'mom', say: 'What are you two up to?', at: 15}, {by: 'amaira', say: 'Mom! I can add big numbers now!', at: 41}], moments: []},
+    {id: 'frame', said: 'One frame takes 16.67 ms.', spoken: 'One frame takes sixteen point six seven milliseconds.', lines: [], moments: [{name: 'fast', at: 16}]},
+  ], 'the silent scene left out, the cast\'s name in, `spoken` only where the voice says something else');
+  assert.deepEqual(r.stdout.trim().split('\n').slice(1, -1).map(line => JSON.parse(line.replace(/,$/, '')).id), ['today', 'talk', 'frame'], 'one scene a line, inside [ and ]');
+  assert.equal(await script(await readInputs({cwd: project})), r.stdout.trim(), 'the tool, as the command line runs it');
+  assert.equal(TOOLS.script.load, 'config', 'it reads the config\'s film untimed');
+  const bad = run(['script', '--bad', 'true']);
+  assert.equal(bad.status, 1); assert.match(bad.stderr, /^storyreel script: storyboard scene today: a "\{" opens a mark that never closes, at "Ten ones \{dots make a ten\.": close it/);
+  const help = run(['script', '--help']);
+  assert.equal(help.status, 0); assert.match(help.stdout, /^storyreel script \[--flag value …\] {3}The film's script as JSON, one spoken scene a line, .*\n {2}--config {2}the project file/);
 });

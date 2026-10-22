@@ -21,7 +21,8 @@ import {previewChanges} from './changes.mjs';
 import {castFilm} from './prepare.mjs';
 import {CHANGES_DEFAULTS} from './segments.mjs';
 import {clockOf, clockSeconds} from './clocktext.mjs';
-import {clockTenths} from './clock.mjs';
+import {clockTenths, checkScene, spokenText} from './clock.mjs';
+import {scriptOf} from './script.mjs';
 import {contactSheet} from './sheet.mjs';
 import {partWindow, partTimeline, timelineText, RENDER_DEFAULTS} from './render.mjs';
 import {formatScale} from './layout.mjs';
@@ -266,6 +267,23 @@ export async function anchors(project, args = {}) {
 }
 
 /**
+ * The film's script, for a voice step in any language: script.mjs owns the grammar, and this hands it over as JSON, one
+ * spoken scene a line — {id, said, lines, moments}: `said` what is said and shown (the narration without its marks,
+ * the cast's names in), `lines` who says each quoted line ({by, say, at}), `moments` each mark's name and where in
+ * `said` its next word starts; `spoken` beside them only when the voice says something else (number slots in words:
+ * clock.mjs · spokenText). A silent scene says nothing: it is left out. Every scene is checked first (clock.mjs ·
+ * checkScene), so a mark not as written refuses here as it would in the compile.
+ */
+export async function script(project) {
+  const scenes = project.said.scenes.flatMap((scene, i) => {
+    if (checkScene(scene, i) === 'silent') return [];
+    const {id, said, lines, moments} = scriptOf(scene, i), spoken = spokenText(scene);
+    return [{id, said, ...(spoken === said ? {} : {spoken}), lines, moments}];
+  });
+  return `[\n${scenes.map(s => JSON.stringify(s)).join(',\n')}\n]`;
+}
+
+/**
  * What an edit changed, before the full render (changes.mjs · previewChanges, on the project's fullRender): one line per
  * changed stretch with why, then the count; render: 'true' draws only those pieces (kept: the full render draws none of
  * them again) and writes a short clip of them, <out>/changes/review.mp4.
@@ -287,6 +305,8 @@ export const TOOLS = Object.freeze({
     args: {scene: 'scene ids, comma-separated (or a window: from and to)', from: 'the window\'s start on the film clock: seconds or m:ss (0:12)', to: 'the window\'s end: seconds or m:ss', handles: `seconds either side (${TOOL_DEFAULTS.handles})`, full: FULL_ARG}},
   anchors: {run: anchors, load: 'config', about: 'Every phrase the film is keyed to (the recipe\'s beats, the pacing\'s holds), checked in one pass: each not said (with the nearest words said), each said more than once with no nth (with words said only at each place), where each is named. Run it after any edit to the narration, the recipe or the pacing.',
     args: {full: 'true for every phrase found (default: the first 10 of each kind)'}},
+  script: {run: script, load: 'config', about: 'The film\'s script as JSON, one spoken scene a line, for a voice step in any language: {id, said, lines, moments} — what is said (its marks out), who says each quoted line ({@who}), each moment ({name}) and where its next word starts in said; spoken too when the voice says something else (number slots).',
+    args: {}},
   changes: {run: changes, load: 'inputs', about: 'What an edit changed, before the full render: each changed stretch of the picture and why ("0:12–0:18 left · its recipe entries changed"), then the count. With render: only those pieces drawn (kept: the full render draws none of them again) and a short clip of them back to back, labelled with their times, the film either side and its voice under them. Compares with the cache of the config\'s full render (render, code) into out.',
     args: {render: 'true to draw the changed pieces and write the clip, <out>/changes/review.mp4', handles: `seconds of the film either side of each change in the clip (${CHANGES_DEFAULTS.handles})`}},
   still: {run: still, picture: true, about: 'One picture to confirm the look: frames at the moments given, side by side, as a PNG. Look at it last, after the timeline and the review.',
