@@ -1,7 +1,7 @@
 /**
  * Films without marks are read as before (script.mjs: a narration with no {name} or {@who} is said exactly as written):
  * what every reader of a scene's words gives for the example films and for scenes with number slots, speakers and
- * anchors, each hashed. `node test/unmarked.mjs --write` records test/fixtures/unmarked.json — recorded from 0.20.1, the
+ * anchors — the voiced cut's holds too (planHolds, over a voice made of the word times) — each hashed. `node test/unmarked.mjs --write` records test/fixtures/unmarked.json — recorded from 0.20.1, the
  * last release before marks — and unmarked.test.mjs holds the code to it. Re-record only for an intended change, and
  * say so in the commit. Times and text only: no fonts are involved, so the pins hold on every machine.
  */
@@ -10,6 +10,7 @@ import {readFileSync, writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {evenTimings, paceTimings, makeClock, spokenText, sceneText, unsaidNumbers, compileFilm} from '../src/index.mjs';
 import {checkPhrase, anchorsText} from '../src/anchors.mjs';
+import {planHolds} from '../src/pacing.mjs';
 import {FILMS, compileExample} from './golden.mjs';
 
 export const PINS = fileURLToPath(new URL('./fixtures/unmarked.json', import.meta.url));
@@ -28,11 +29,16 @@ function clockReads(storyboard, clock) {
   }));
 }
 
-/** One storyboard read every way, without a film: its text, its even and paced timings, its clock. */
+/** A voice for a scene's timing: a tone while each word is said, silence between (where a voiced cut puts a hold). */
+const voiceOf = (timing, rate = 8000) => ({rate, samples: Int16Array.from({length: Math.round(timing.duration * rate)},
+  (_, i) => (timing.words.some(w => i / rate >= w.start && i / rate < w.end) ? Math.round(6000 * Math.sin(i / 3)) : 0))});
+
+/** One storyboard read every way, without a film: its text, its even and paced timings, its clock, and where a voiced cut holds. */
 function readings(storyboard, pacing = null) {
   const even = evenTimings(storyboard), paced = pacing ? paceTimings(storyboard, even, pacing) : null;
+  const voiced = pacing ? storyboard.scenes.map((scene, i) => (scene.silent ? null : said(() => planHolds(scene, even.scenes[i], pacing.holds, voiceOf(even.scenes[i]))))) : null;
   return {spoken: storyboard.scenes.map(s => (s.narration === undefined ? null : spokenText(s))), text: storyboard.scenes.map(s => sceneText(s)),
-    unsaid: unsaidNumbers(storyboard), even, paced, clock: clockReads(storyboard, makeClock(storyboard, paced ?? even))};
+    unsaid: unsaidNumbers(storyboard), even, paced, clock: clockReads(storyboard, makeClock(storyboard, paced ?? even)), ...(voiced ? {voiced} : {})};
 }
 
 /** Scenes beside the examples: number slots, a speaker and a word's own speaker, a silent opening, phrases said more than once. */
