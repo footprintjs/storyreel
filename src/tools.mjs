@@ -26,6 +26,7 @@ import {sceneScript} from './script.mjs';
 import {contactSheet} from './sheet.mjs';
 import {partWindow, partTimeline, timelineText, RENDER_DEFAULTS} from './render.mjs';
 import {formatScale} from './layout.mjs';
+import {hashOf} from './hash.mjs';
 import {reviewPart, reviewSummary, REVIEW_DEFAULTS, SUMMARY_TOP} from './review.mjs';
 
 export const CONFIG = 'storyreel.config.mjs';
@@ -177,12 +178,22 @@ function widthOf(args, tool) {
 }
 /** The project's stills folder, <out>/stills: a real folder of its own, never a link (files.mjs · outputFolder). */
 const stillsFolder = project => outputFolder(path.resolve(project.cwd, project.inputs.out ?? 'out'), 'stills');
+/** The longest name a picture is given (a file name holds 255 bytes): past it, cut, with a short hash of the whole. */
+const NAME_MOST = 100;
+/**
+ * A picture's file name from what it shows: letters, digits, _ + . and - kept, anything else a -. A longer one (a still
+ * of many moments) is cut and ends in a hash of the whole, so it can be written and two such names never meet.
+ */
+function pictureName(text) {
+  const name = text.replace(/[^\w+.-]/g, '-');
+  return name.length <= NAME_MOST ? name : `${name.slice(0, NAME_MOST - 17)}-${hashOf(text)}`;
+}
 
 /** One picture to confirm the look: the moments side by side as a PNG. Returns {text, file}. */
 export async function still(project, args = {}) {
   const moments = momentsOf(project.film, args.at, 'still'), width = widthOf(args, 'still');
   if (moments.length > 30) throw new Error(`still: at most 30 moments in one picture, not ${moments.length}`);
-  const file = path.join(stillsFolder(project), `${scenesOf(args.at).join('_').replace(/[^\w+.-]/g, '-')}.png`);
+  const file = path.join(stillsFolder(project), `${pictureName(scenesOf(args.at).join('_'))}.png`);
   writeOutput(file, await contactSheet(project.film, {moments, columns: Math.min(3, moments.length), width}));
   return {text: `${file} · ${moments.length} frame${moments.length > 1 ? 's' : ''}: ${moments.map(m => `${m.label} (${m.t.toFixed(2)} s)`).join(', ')}`, file};
 }
@@ -199,7 +210,7 @@ export async function sheet(project, args = {}) {
   if (!(Number.isInteger(per) && per >= 2 && per <= 60)) throw new Error(`sheet: per is how many frames a sheet holds, a whole number 2–60, not ${JSON.stringify(args.per)}`);
   const moments = [];
   for (let k = 0; w.from + k * every < w.to - 1e-6; k++) { const t = +(w.from + k * every).toFixed(3); moments.push({t, label: project.film.clock.locate(t).id}); }
-  const name = (part ? nameOf(part) : 'film').replace(/[^\w+.-]/g, '-'), files = [];
+  const name = pictureName(part ? nameOf(part) : 'film'), files = [];
   for (let k = 0; k * per < moments.length; k++) {
     const frames = moments.slice(k * per, (k + 1) * per), file = path.join(stillsFolder(project), `sheet-${name}-${k + 1}.png`);
     writeOutput(file, await contactSheet(project.film, {moments: frames, columns: Math.min(5, frames.length), width}));
@@ -224,7 +235,7 @@ export async function strip(project, args = {}) {
     const t = +(first + k / fps).toFixed(3);
     if (t >= 0 && t < project.film.total) moments.push({t, label: `${k - Math.floor(frames / 2) >= 0 ? '+' : ''}${k - Math.floor(frames / 2)}`});
   }
-  const file = path.join(stillsFolder(project), `strip-${moment.label.replace(/[^\w+.-]/g, '-')}.png`);
+  const file = path.join(stillsFolder(project), `strip-${pictureName(moment.label)}.png`);
   writeOutput(file, await contactSheet(project.film, {moments, columns: Math.min(6, moments.length), width}));
   return {text: `${file} · ${moments.length} frames at ${fps} fps around ${moment.label} (${moment.t.toFixed(2)} s): frame 0 is the moment`, file};
 }

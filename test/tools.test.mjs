@@ -43,6 +43,17 @@ test('the tools read the project\'s film: its timeline and its review as text, a
   assert.match(await review(p, {loop: 'true'}), /review \(.*loop.*\):[\s\S]*the loop jumps: the end is not the start/);
 });
 
+test('a still of many moments is written: a name too long for a file is cut, with a hash of the whole, so two never meet', async t => {
+  const p = await loadProject({cwd: project, out: tempDir('long-names', t)});
+  // 30 moments of 8 characters named a file of 273 bytes, past the 255 a file name holds: the still failed to write.
+  const many = from => Array.from({length: 30}, (_, k) => `one+1.${from + k}`).join(',');
+  const [a, b] = [await still(p, {at: many(10)}), await still(p, {at: many(11)})];
+  for (const s of [a, b]) assert.ok(existsSync(s.file) && path.basename(s.file).length <= 104, s.file);
+  assert.match(path.basename(a.file), /^one\+1\.10_one\+1\.11_[\w+.-]*-[0-9a-f]{16}\.png$/);
+  assert.notEqual(a.file, b.file, 'two long names that start alike end in their own hash');
+  assert.ok((await still(p, {at: 'one+2.5,two+0'})).file.endsWith(`${path.sep}one+2.5_two+0.png`), 'a short name is as it was');
+});
+
 test('anchors: every phrase the film is keyed to, in one pass — the pacing\'s holds and the recipe\'s beats, where each is named', async () => {
   const text = await anchors(await readInputs({cwd: project, anchors: 'true'}));
   assert.match(text, /^8 phrases checked: 2 not said, 1 past the last place, 1 no such scene, 1 said more than once\n/);

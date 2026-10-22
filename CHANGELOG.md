@@ -41,6 +41,9 @@
 - **Fix: a hold not said, with no nearest words, stands in after its scene's last word** (`storyreel anchors`): it
   stood in by the last word's text, which names the first place that word is said — so the report's other times moved
   by the hold. Now it is named by words said only there (`exactPhrases`), or left out when none are.
+- **Fix: a still of many moments is written.** A still's file is named after its moments, and 30 short ones
+  (`one+1.10,…`) made a name longer than the 255 bytes a file name holds, so the still failed (`ENAMETOOLONG`). A name
+  past 100 characters is now cut and ends in a hash of the whole (a strip's and a sheet's too); a shorter one is as it was.
 - **Films without marks do not change:** every reader of their words gives what 0.20.1 gave — the voiced cut's holds
   (`planHolds`) too — pinned by hash from 0.20.1 itself (`test/unmarked.mjs`), beside the pixel pins. Phrases work
   exactly as before.
