@@ -43,12 +43,14 @@
   scene's own start: every time copied from the timeline landed 1.5 s late, and an agent did the subtraction by hand.
   Now a scene's timeline prints each time as `scene+seconds` from the start of the scene it falls in, the film clock
   beside it (`two+2.02 (0:07.3)  "{turn}" → story.beats[2]`); a line in the handles counts from its own scene, the
-  one before or after, so no time is negative and none needs a new form. A window's (`--from`, `--to`) and the whole
-  film's are seconds on the film clock (a window's counted from its own start before). The header says what the times
-  count from. Whatever the timeline prints goes to `still --at` and `strip --at` as written, and `--at` takes m:ss too
-  (`0:07.3`, as the review prints its times). The timeline's help lists `--from` and `--to` (MCP takes them too). In
-  code: `filmTimeline(film, {from, to})` (`footprint-storyreel/render`) gives the rows on the film clock, exactly
-  (`partTimeline` keeps the stretch's own clock), and `timelineText(rows, {time})` says each time your own way.
+  one before or after, so no time is negative and none needs a new form (a time in an earlier scene of an id the
+  storyboard gives twice is said in seconds: that id names its last scene, as everywhere). A window's (`--from`,
+  `--to`) and the whole film's are seconds on the film clock (a window's counted from its own start before). The
+  header says what the times count from. Whatever the timeline prints goes to `still --at` and `strip --at` as
+  written, and `--at` takes m:ss too (`0:07.3`, as the review prints its times). The timeline's help lists `--from`
+  and `--to` (MCP takes them too). In code: `filmTimeline(film, {from, to})` (`footprint-storyreel/render`) gives the
+  rows on the film clock, exactly (`partTimeline` keeps the stretch's own clock), and `timelineText(rows, {time})`
+  says each time your own way.
 - **A moment by what is said.** `still --at` and `strip --at` take `scene:phrase` (`two:a second scene`) and
   `scene:{moment}` (`today:{hop}`, a moment written in the narration), with `+seconds` after either
   (`today:{hop}+0.5`): found on the film's clock as a recipe's beat is, with no time to work out first, and labelled
