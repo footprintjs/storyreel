@@ -7,9 +7,9 @@ import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {loadProject, readInputs, timeline, review, still, TOOLS, strip, anchors, sheet} from '../src/tools.mjs';
 import {tempDir} from './tmp.mjs';
-import {makeClock, paceTimings} from '../src/index.mjs';
+import {makeClock, paceTimings, compileFilm, evenTimings} from '../src/index.mjs';
 import {filmTimeline} from '../src/render.mjs';
-import {momentAt} from '../src/momenttext.mjs';
+import {momentAt, sceneTime} from '../src/momenttext.mjs';
 
 const project = fileURLToPath(new URL('./fixtures/tools/', import.meta.url)), cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url));
 const run = (args, cwd = project) => spawnSync(process.execPath, [cli, ...args], {cwd, encoding: 'utf8'});
@@ -93,6 +93,14 @@ test('every time the timeline prints goes to still --at and strip --at as writte
   assert.equal(turn, 'two+2.02', listed.stdout + listed.stderr);
   const shot = run(['still', '--at', turn, '--keyed', 'true', '--out', out]);
   assert.equal(shot.status, 0, shot.stderr); assert.match(shot.stdout, /· 1 frame: two\+2\.02 \(7\.30 s\)$/m);
+});
+
+test('a scene id given twice names its last scene, as the clock does: a time in an earlier one is said on the film clock, so it reads back the same', async () => {
+  const storyboard = {scenes: [{id: 'a', narration: 'One two three.'}, {id: 'b', narration: 'Four five.'}, {id: 'a', narration: 'Six seven.'}]};
+  const film = await compileFilm({storyboard, recipe: {story: {kit: 'whiteboard', items: []}}, timings: evenTimings(storyboard)});
+  assert.deepEqual([1, 3, 5].map(t => sceneTime(film, t)), ['1.00', 'b+0.76', 'a+0.90']);
+  for (const t of [1, 3, 5, 0, film.total - .01]) assert.ok(Math.abs(momentAt(film, sceneTime(film, t), 'still') - t) <= .005 + 1e-9, `${t} said as ${sceneTime(film, t)}`);
+  assert.equal(sceneTime(film, 5.039, {down: true}), 'a+0.93', 'rounded down, never past the time');
 });
 
 test('a still and a strip take the moments they always took, read exactly as before, and m:ss on the film clock too', async t => {

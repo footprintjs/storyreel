@@ -19,11 +19,13 @@ export const MOMENT_FORMS = 'scene+seconds, seconds or m:ss on the film clock, o
 
 /**
  * A time on the film clock as scene+seconds: from the start of the scene it falls in (the clock's locate), to the
- * hundredth — rounded down with `down` (where a call to see what follows starts: never past the time itself).
+ * hundredth — rounded down with `down` (where a call to see what follows starts: never past the time itself). A scene
+ * id the storyboard gives twice names its last scene (the clock's start), so a time in an earlier one is said in
+ * seconds on the film clock: either way, it reads back as the same time.
  */
 export function sceneTime(film, t, {down = false} = {}) {
-  const {id, time} = film.clock.locate(t);
-  return `${id}+${(down ? Math.floor(time * 100 + 1e-6) / 100 : time).toFixed(2)}`;
+  const {index, id, time} = film.clock.locate(t), hundredths = s => (down ? Math.floor(s * 100 + 1e-6) / 100 : s).toFixed(2);
+  return film.clock.start(id) === film.clock.offsets[index] ? `${id}+${hundredths(time)}` : hundredths(t);
 }
 
 /**
