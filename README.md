@@ -178,7 +178,8 @@ spoken and never shown, and a rewording keeps it on its word:
   JSON, one a line — `{id, speaker?, said, spoken?, lines: [{by, say, offset, spoken?}], moments: [{name, offset}]}`,
   each `offset` a place in `said`, and `spoken` what the voice says where a number slot is said in words. In code:
   `said`, `momentsOf`, `linesOf`, `sceneScript(scene)`, `momentOf(phrase)` (`footprint-storyreel/script`), and the
-  clock's `moments(scene)`. `npx storyreel anchors` lists a moment its scene no longer has, with the moments it has.
+  clock's `moments(scene)`. `npx storyreel anchors` lists a moment its scene no longer has, with the moments it has,
+  and `npx storyreel still --at today:{hop}` is a picture of the moment itself.
 
 ## Silent scenes
 
@@ -1690,8 +1691,9 @@ run it.
   as a film editor's handles — so both of its cuts are seen without rendering the whole film. With
   `quality: 'draft'` (the quickest encode) and `layout: {…, scale: .5}` (half size) it is a quick look while
   editing; a part render is checked as a part and can never be approved (an approval is of the whole film).
-  `partTimeline(film, {from, to})` lists the scenes and beats in it with their times (`timelineText` as lines):
-  read when "the network does the waiting" lands instead of rendering stills to guess.
+  `partTimeline(film, {from, to})` lists the scenes and beats in it with their times (`timelineText` as lines;
+  `filmTimeline` gives the same rows on the film clock): read when "the network does the waiting" lands instead of
+  rendering stills to guess.
 - **Review a part by reading it.** `reviewPart(film, {part, layout})` (`footprint-storyreel/review`) reads the
   picture as text — every line a frame draws, where it lands and how faint — and names what is wrong, with times:
   words under the captions while a caption shows, words over other words, words cut off at the edge, the picture
@@ -1732,6 +1734,27 @@ run it.
   (`footprint-storyreel/review` · `reviewSummary`); `--full` prints every finding and every verdict's why. Every
   command takes `--help` (`npx storyreel still --help`). A config's `pacing` paces a film with no voice too (its even
   timings), as `makeFilm` paces the timings it is given.
+- **The timeline's times paste straight into `--at`.** `npx storyreel timeline --scene today` prints each time as
+  `scene+seconds` from the start of that scene — the still tool's own form — with the film clock beside it; a line in
+  the handles counts from its own scene, the one before or after, so no time is negative. A window (`--from`, `--to`)
+  or the whole film prints seconds on the film clock. The header says which:
+
+  ```
+  today: 198.90–272.50 s of 400.00 s (times: scene+seconds from that scene's start, then the film clock)
+  before+40.10 (3:19.0)  "the last words" → stages[2].world.close
+  today+0.00 (3:20.4)  ── today
+  today+64.70 (4:25.1)  "Ten ones" → stages[3].world.beats.ones
+  ```
+
+  `npx storyreel still --at today+64.70` takes that frame, with no sum to do. `--at` (a still's and a strip's) also
+  takes m:ss on the film clock (`4:25.1`, as the review prints its times) and what is said there:
+  `today:Ten ones`, or a moment written in the narration, `today:{hop}`, with `+seconds` after either
+  (`today:{hop}+0.5`). It is found as a recipe's beat is, and refused, with why, when it names no one place: not said
+  (the nearest words said are named), said more than once (each place, and words said only there), a moment the scene
+  does not have (its moments are named). A phrase's own commas are left out: `--at` is comma-separated, and words match
+  whatever the punctuation. **Every beat at once:** `npx storyreel still --beats today` puts a frame at each beat the
+  timeline lists for the scene in one picture, each labelled with its `scene+seconds` and what is said there; a still
+  holds 30 frames, and with more the text says so and gives the call that shows the rest (`--from`, `--to`).
 - **And as an MCP server,** for any assistant that speaks MCP: `storyreel mcp [--flag value …]` serves the same
   nine tools over stdio, `changes`, `anchors` and `script` among them (its flags apply to every call; a still or a strip comes back as the picture, a sheet as its pictures). Each call runs in
   a fresh process, so an edit to a kit between two calls is always seen. The project is fixed when the server starts:
