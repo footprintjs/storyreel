@@ -225,12 +225,17 @@ async function readyWorlds(readies) {
  *          recipe entry that named it), strings: [keys used], notes: [the director's notes as applied],
  *          regionsAt(t) → [{box, path, label}] (what is drawn where), pointAt(t, x, y) → {frame, world?}, camera (the
  *          camera moves as played, or null), cameraAt(t) → the camera's {x, y, z, r} (null at rest or without moves),
- *          anchors: [{ref, path, problem, places, near?}] (with anchors: 'note'; else none), record?}
+ *          anchors: [{ref, path, how, problem, places, near?}] (with anchors: 'note'; else none), record?}
+ *          With anchors: 'note', a compile that stops anyway (a kit refusing a time a phrase stood in for) carries the
+ *          phrases noted so far on its error (error.anchors), so none is lost.
  */
 export async function compileFilm(options) {
-  const {record = false, ...rest} = options;
+  const {record = false, ...rest} = options, noted = [];
   if (typeof record !== 'boolean') throw new Error(`compileFilm: record must be true (the compile is recorded with footprintjs: film.record) or false (the default), not ${JSON.stringify(record)}`);
-  return record ? recordSteps(compileSteps(rest)) : drainSteps(compileSteps(rest));
+  try { return await (record ? recordSteps(compileSteps(rest, noted)) : drainSteps(compileSteps(rest, noted))); } catch (e) {
+    if (rest.anchors === 'note' && e && typeof e === 'object') e.anchors = noted;
+    throw e;
+  }
 }
 
 /**
@@ -238,7 +243,7 @@ export async function compileFilm(options) {
  * summary)`, where `summary()` (called only when recording) says what the segment read and wrote.
  * The segments run the same code in the same order whether or not the compile is recorded.
  */
-async function* compileSteps({storyboard, board, timings, recipe, data, capture, kits = [], theme, root = process.cwd(), strings = null, lang = null, hostKeys = [], cast = null, strategies = null, reducedMotion = false, anchors = 'refuse'}) {
+async function* compileSteps({storyboard, board, timings, recipe, data, capture, kits = [], theme, root = process.cwd(), strings = null, lang = null, hostKeys = [], cast = null, strategies = null, reducedMotion = false, anchors = 'refuse'}, noted = []) {
   storyboard ??= board; data ??= capture ?? null;
   if (typeof reducedMotion !== 'boolean') throw new Error(`compileFilm: reducedMotion must be true (the camera's moves cut to their end framing; handheld off) or false (the default), not ${JSON.stringify(reducedMotion)}`);
   if (anchors !== 'refuse' && anchors !== 'note') throw new Error(`compileFilm: anchors must be 'refuse' (the default: a phrase its scene does not say stops the compile) or 'note' (every phrase not as written is noted in film.anchors, so all are checked in one pass), not ${JSON.stringify(anchors)}`);
@@ -259,12 +264,14 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const notes = readNotes(recipe.notes), motion = Object.freeze({cameraSpeed: notes.speed});
   // Every phrase the recipe names is logged as it is resolved: the film's making-of record says which
   // spoken words triggered which drawing.
-  const beats = [], noted = [], base = makeClock(storyboard, timings);
-  // Noting the anchors ('note'): a phrase not as written is noted once, and one not said stands at the nearest words.
+  const beats = [], base = makeClock(storyboard, timings);
+  // Noting the anchors ('note'): each of the recipe's own phrases not as written is noted once (with how it is read: a
+  // beat, or the pause after it), and one not said stands at the nearest words said. A phrase a kit builds for itself
+  // is read as ever, so a kit that probes nth until the clock refuses still stops.
   const resolve = (ref, how) => {
-    if (anchors === 'refuse') return base[how](ref);
+    if (anchors === 'refuse' || !entries.has(ref)) return base[how](ref);
     const check = checkPhrase(base, ref);
-    if (check.problem && !noted.some(n => n.ref === ref)) noted.push({ref, path: entries.get(ref) ?? null, ...check});
+    if (check.problem && !noted.some(n => n.ref === ref)) noted.push({ref, path: entries.get(ref), how, ...check});
     return check.problem && check.problem !== 'ambiguous' ? standIn(base, ref, check, how) : base[how](ref);
   };
   const clock = {...base,
@@ -1025,7 +1032,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     return words.map(w => { const o = offset; offset += w.text.length + 1; return {text: w.text, line, offset: o, at: clock.offsets[i] + w.start, to: clock.offsets[i] + w.end, scene: i, path: 'captions'}; });
   };
   // An emphasis word is up from its beat until the next word's, or its own `until` (read again on the plain clock: no beat is logged twice).
-  const emphasized = attention?.record?.emphasis?.words ?? [], untilOf = i => { const u = recipe.emphasis?.words?.[i]?.until; return u === undefined ? Infinity : base.at(u); };
+  const emphasized = attention?.record?.emphasis?.words ?? [], untilOf = i => { const u = recipe.emphasis?.words?.[i]?.until; return u === undefined ? Infinity : resolve(u, 'at'); };
   const shown = [...shownLines.filter(l => Number.isFinite(l.from) && l.from < clock.total).map(l => ({text: l.text, at: Math.max(0, l.from), to: Math.min(clock.total, l.to), ...(l.gone !== undefined ? {gone: Math.min(clock.total, l.gone)} : {}), scene: sceneOf(Math.max(0, l.from)), path: l.path})),
     ...emphasized.map((w, i) => ({text: w.text, at: w.t, to: Math.min(untilOf(i), emphasized[i + 1]?.t ?? Infinity, clock.total), scene: sceneOf(w.t), path: `emphasis.words[${i}]`})),
     ...storyboard.scenes.flatMap(captionsOf)];

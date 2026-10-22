@@ -20,7 +20,7 @@ is the scarce thing. Show the least that answers their question, in an order tha
 
 ## A review by several viewers
 
-For a draft that is nearly done, `npx storyreel sheet --every 4` (a frame every 4 s, labelled) and, for each episode,
+For a draft that is nearly done, `npx storyreel sheet --every 4` (a frame every 4 s<!-- TOOL_DEFAULTS.every -->, labelled) and, for each episode,
 its script: each scene's narration, who says what, and the words on screen. Give them to separate reviewers, one lens
 each, so no lens is crowded out by another:
 

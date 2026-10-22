@@ -7,20 +7,40 @@
  *
  *   missing    not said in its scene: the nearest words that are, and when
  *   ambiguous  said more than once, with no nth: each place, and a few words said only there
- *   past       its nth names a place after the last one
+ *   past       its nth names no place (past the last, or not a whole number from 0)
  *   scene      its scene is not the film's
  *
- * compileFilm({anchors: 'note'}) notes each one in film.anchors and keeps a missing phrase at its nearest words (else at
- * its scene's start), so the rest of the film still compiles and every phrase is checked; `storyreel anchors` says them
- * (tools.mjs · anchors). Pure: it reads the film's clock (clock.mjs · places, words, start).
+ * compileFilm({anchors: 'note'}) notes each of the recipe's own phrases in film.anchors and keeps a missing one at the
+ * nearest words said (else at its scene's start), so the rest of the film still compiles; `storyreel anchors` says them
+ * (tools.mjs · anchors), and reads the recipe itself (phrasesIn) when a compile stops anyway. Pure: it reads the film's
+ * clock (clock.mjs · places, words, start). It decides no pixel (segments/drawing.mjs · NOT_DRAWING): a time it stands
+ * in moves the beats, and a beat's time is in every piece's key.
  */
 
 /** The most words a suggested phrase runs to: past it, a scene says the same words too often to name a place by them. */
 const MOST_WORDS = 8;
-/** A phrase as typed into a recipe: its words, no punctuation (phrases match whatever the punctuation). */
-const plain = text => String(text).replace(/[^\p{L}\p{N}'’]+/gu, ' ').trim();
+/** How many places a phrase said more than once lists, each with its own words: the rest are counted. */
+export const PLACES_SHOWN = 3;
+/** A phrase as typed into a recipe: its words, no punctuation (phrases match whatever the punctuation; marks kept). */
+const plain = text => String(text).replace(/[^\p{L}\p{M}\p{N}'’]+/gu, ' ').trim();
 /** A ref as an object, whichever way it is written. */
 export const refOf = ref => (Array.isArray(ref) ? {scene: ref[0], phrase: ref[1], plus: ref[2]} : ref);
+
+/**
+ * Every phrase a recipe names, read from the recipe itself (no compile): an array ["scene", "phrase", plus?] or an
+ * object {scene, phrase, …} whose scene is the film's, and whose phrase is not itself a scene (a list of scenes) —
+ * [{ref, path}]. The one reader of a recipe's phrases by their shape: the music's floors (music.mjs) and the anchors
+ * tool when a compile stops before it reaches them all.
+ */
+export function phrasesIn(value, scenes, path = '', found = [], seen = new Set()) {
+  if (!value || typeof value !== 'object' || seen.has(value)) return found;
+  seen.add(value);
+  const keyLike = typeof value[1] === 'string' && !scenes.has(value[1]) && (value[2] === undefined || typeof value[2] === 'number') && value.length <= 3;
+  if (Array.isArray(value) && typeof value[0] === 'string' && scenes.has(value[0]) && keyLike) found.push({ref: value, path});
+  else if (!Array.isArray(value) && typeof value.scene === 'string' && scenes.has(value.scene) && typeof value.phrase === 'string') found.push({ref: value, path});
+  for (const [k, v] of Object.entries(value)) phrasesIn(v, scenes, Array.isArray(value) ? `${path}[${k}]` : path ? `${path}.${k}` : k, found, seen);
+  return found;
+}
 
 /**
  * The longest run of a missing phrase's words that the scene does say (at least two words, or one of five letters or
@@ -50,9 +70,10 @@ export function nearestWords(clock, scene, phrase) {
  * runs across fewer sentence ends, then the shorter. A place no run of up to MOST_WORDS words names alone is left out.
  */
 export function exactPhrases(clock, scene, places, {keep = 'start'} = {}) {
-  const said = clock.words(scene), ends = w => /[.!?…]['’"”]?$/.test(w.text);
+  const said = clock.words(scene), ends = w => /[.!?…]['’"”]?$/.test(w.text), same = (a, b) => Math.abs(a - b) < 1e-6;
   return places.map(place => {
-    const first = said.findIndex(w => Math.abs(w.start - place.start) < 1e-6), last = said.findLastIndex(w => w.end <= place.end + 1e-6);
+    // (A place's first and last words are the ones that start and end it: a place is its words' own times.)
+    const first = said.findIndex(w => same(w.start, place.start)), last = first < 0 ? -1 : said.findIndex((w, i) => i >= first && same(w.end, place.end));
     if (first < 0 || last < first) return null;
     const tries = [];
     for (let extra = 1; last - first + extra < MOST_WORDS; extra++) {
@@ -81,46 +102,53 @@ export function checkPhrase(clock, ref) {
   let places;
   try { places = clock.places(r.scene, r.phrase); } catch { return {problem: 'scene', places: []}; }
   if (!places.length) return {problem: 'missing', places, near: nearestWords(clock, r.scene, r.phrase)};
-  if (r.nth !== undefined && !(r.nth < places.length)) return {problem: 'past', places};
+  if (r.nth !== undefined && !(Number.isInteger(r.nth) && r.nth >= 0 && r.nth < places.length)) return {problem: 'past', places};
   if (r.nth === undefined && places.length > 1) return {problem: 'ambiguous', places};
   return {problem: null, places};
 }
 
+/** A pause a phrase not as written stands for: long enough for anything that waits in a pause (a guess needs 1 s). */
+const PAUSE_STAND_IN = 1.5;
 /**
  * Where a phrase that is not as written stands while the compile goes on (compileFilm's anchors: 'note'): a missing
  * phrase at the nearest words said (else at its scene's start), a past nth at the last place, an unknown scene at the
- * film's start. `how` is the clock's own: 'at' (seconds) or 'pauseAfter' ({start, end}, half a second of pause).
+ * film's start. `how` is the clock's own: 'at' (seconds) or 'pauseAfter' ({start, end}).
  */
 export function standIn(clock, ref, check, how) {
   const r = refOf(ref), place = check.problem === 'missing' ? check.near : check.problem === 'past' ? check.places.at(-1) : null;
-  if (!place) { const start = check.problem === 'scene' ? 0 : clock.start(r.scene); return how === 'at' ? start + (r.plus ?? 0) : {start, end: start + .5}; }
-  return how === 'at' ? (r.edge === 'end' ? place.end : place.start) + (r.plus ?? 0) : {start: place.end, end: place.end + .5};
+  if (!place) { const start = check.problem === 'scene' ? 0 : clock.start(r.scene); return how === 'at' ? start + (r.plus ?? 0) : {start, end: start + PAUSE_STAND_IN}; }
+  return how === 'at' ? (r.edge === 'end' ? place.end : place.start) + (r.plus ?? 0) : {start: place.end, end: place.end + PAUSE_STAND_IN};
 }
 
 /** A time as the timeline prints it: seconds on the film clock, two decimals. */
 const secs = t => `${t.toFixed(2)} s`;
+/** The edge a noted phrase is timed by: the end for a pause (a hold, a guess) or edge: 'end', else the start. */
+const keepOf = n => (n.how === 'pauseAfter' || n.path?.startsWith('pacing.') || refOf(n.ref).edge === 'end' ? 'end' : 'start');
 /** A noted phrase as one line: where it is named, what is wrong, and what to write instead. */
 function lineOf(clock, n) {
   const r = refOf(n.ref), named = `${r.scene} "${r.phrase}"${n.path ? ` → ${n.path}` : ''}`;
   if (n.problem === 'scene') return `${named} — no scene "${r.scene}"`;
   if (n.problem === 'missing') return `${named} — not said${n.near ? `; the nearest words said: "${n.near.phrase}" (${secs(n.near.start)})` : ''}`;
-  if (n.problem === 'past') return `${named} — nth ${r.nth}, but it is said ${n.places.length} time${n.places.length > 1 ? 's' : ''} (nth counts from 0)`;
-  const keep = n.path?.startsWith('pacing.') || r.edge === 'end' ? 'end' : 'start', exact = exactPhrases(clock, r.scene, n.places, {keep});
-  return `${named} — said ${n.places.length} times; the first is used (${secs(n.places[0][keep])})${exact.length ? `. Each alone: ${exact.map(e => `"${e.phrase}" (${secs(e.at)})`).join(' · ')}` : ''}`;
+  if (n.problem === 'past') return `${named} — nth ${JSON.stringify(r.nth)}, but it is said ${n.places.length} time${n.places.length > 1 ? 's' : ''} (nth counts the places from 0)`;
+  const keep = keepOf(n), shown = n.places.slice(0, PLACES_SHOWN), exact = exactPhrases(clock, r.scene, shown, {keep}), more = n.places.length - shown.length;
+  return `${named} — said ${n.places.length} times; the first is used (${secs(n.places[0][keep])})${exact.length ? `. Each alone: ${exact.map(e => `"${e.phrase}" (${secs(e.at)})`).join(' · ')}${more > 0 ? ` · … ${more} more` : ''}` : ''}`;
 }
 
 /** At most this many lines a kind, unless asked for every one. */
 export const ANCHORS_TOP = 10;
 /**
- * The anchors as text: the count, then each kind's lines. notes: the compile's (film.anchors) and the pacing's, each
- * {ref, path, problem, places, near?}; checked: how many phrases were checked; stopped: the compile's error, when it
- * stopped before every phrase was reached (a stand-in time can break a kit's order); clock: the film's, for the fixes.
+ * The anchors as text: the count, then each kind's lines. notes: the compile's (film.anchors), the pacing's, and when
+ * the compile stopped those read from the recipe, each {ref, path, problem, places, near?, how?}; checked: how many
+ * phrases were checked; stopped: the compile's error, when it stopped before every phrase was reached (a stand-in time
+ * can break a kit's order); clock: the film's, for the fixes.
  */
 export function anchorsText({clock, notes, checked, stopped = null}, {full = false} = {}) {
   const kinds = [['missing', 'not said'], ['past', 'past the last place'], ['scene', 'no such scene'], ['ambiguous', 'said more than once (the first place is used)']];
   const count = kinds.map(([kind, said]) => [notes.filter(n => n.problem === kind), said]).filter(([list]) => list.length);
-  const head = !checked && !notes.length ? 'no phrase is named: the recipe keys nothing to the voice, and the pacing holds nothing'
-    : `${checked} phrase${checked === 1 ? '' : 's'} checked${count.length ? `: ${count.map(([list, said]) => `${list.length} ${said.replace(/ \(.*\)$/, '')}`).join(', ')}` : ': each said once, where it is named'}`;
+  const tally = count.map(([list, said]) => `${list.length} ${said.replace(/ \(.*\)$/, '')}`).join(', ');
+  const head = stopped ? `the compile stopped, so the recipe's phrases were read from the recipe itself: ${checked} checked${tally ? `: ${tally}` : ''}`
+    : !checked && !notes.length ? 'no phrase is named: the recipe keys nothing to the voice, and the pacing holds nothing'
+    : `${checked} phrase${checked === 1 ? '' : 's'} checked${tally ? `: ${tally}` : ': each said once, where it is named'}`;
   const body = count.map(([list, said]) => `${said}:\n${(full ? list : list.slice(0, ANCHORS_TOP)).map(n => `  ${lineOf(clock, n)}`).join('\n')}${!full && list.length > ANCHORS_TOP ? `\n  … ${list.length - ANCHORS_TOP} more: --full lists every one` : ''}`);
-  return [head, ...body, ...(stopped ? [`the compile stopped before every phrase was checked: ${stopped}\nfix the phrases above and run it again`] : [])].join('\n');
+  return [head, ...body, ...(stopped ? [`the compile stopped: ${stopped}\nfix the phrases above, and run it again`] : [])].join('\n');
 }

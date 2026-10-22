@@ -103,6 +103,11 @@ if (command === 'share') {
   if (song === null) { console.error(`storyreel share: name the finished film (storyreel share out/film.mp4)\n\n${SHARE_HELP}`); process.exit(2); }
   const other = Object.keys(flags).find(f => !['width', 'crf', 'poster', 'out', 'ffmpeg'].includes(f));
   if (other) { console.error(`storyreel share: --${other} is not a flag of share (the flags are --width, --crf, --poster, --out and --ffmpeg)`); process.exit(2); }
+  // A flag given with no value reads as 'true': each needs its value (a whole number, seconds, a folder, a path).
+  const needs = {width: /^\d+$/, crf: /^\d+$/, poster: /^\d+(\.\d+)?$/, out: /^(?!true$)./, ffmpeg: /^(?!true$)./};
+  const what = {width: 'a whole number of pixels (e.g. --width 854)', crf: 'a whole number (e.g. --crf 28)', poster: 'seconds (e.g. --poster 6)', out: 'a folder (e.g. --out share)', ffmpeg: 'the path of an FFmpeg (e.g. --ffmpeg /usr/local/bin/ffmpeg)'};
+  const wrong = Object.keys(needs).find(f => flags[f] !== undefined && !needs[f].test(flags[f]));
+  if (wrong) { console.error(`storyreel share: --${wrong} needs ${what[wrong]}${flags[wrong] === 'true' ? '' : `, not ${JSON.stringify(flags[wrong])}`}`); process.exit(2); }
   const {shareCopy, shareText} = await import('./share.mjs'), num = f => (flags[f] === undefined ? undefined : Number(flags[f]));
   try { console.log(shareText(shareCopy(song, {width: num('width'), crf: num('crf'), poster: num('poster'), out: flags.out ?? null, ffmpeg: flags.ffmpeg ?? 'ffmpeg'}))); process.exit(0); }
   catch (e) { console.error(`storyreel ${e.message}`); process.exit(/^share: (width|crf|poster|no video)/.test(e.message) ? 2 : 1); }
@@ -122,7 +127,7 @@ if (command === 'beats') {
 }
 if (!command || command === 'help' || command === '--help' || !TOOLS[command]) {
   const lines = [...Object.entries(TOOLS).map(([name, t]) => `  ${name.padEnd(9)}${t.about}\n${Object.entries(t.args).map(([a, d]) => `             --${a}  ${d}`).join('\n')}`), BEATS_HELP, SHARE_HELP, SOUNDS_HELP];
-  (TOOLS[command] || !command || command === 'help' || command === '--help' ? console.log : console.error)(`storyreel <tool> [--flag value …]   (the film is named in ./${CONFIG}; --config another file)\n\n${lines.join('\n')}\n\nRead first, look last: timeline → review → fix → part → still.\nAfter an edit: changes (what it redraws) → changes --render (only those pieces, and a short clip of them).\nstoryreel mcp [--flag value …] serves the same tools over MCP (stdio); the project (--config, --cwd) and the film's own flags are fixed when it starts.\n${BREAKDOWN_USAGE}`);
+  (TOOLS[command] || !command || command === 'help' || command === '--help' ? console.log : console.error)(`storyreel <tool> [--flag value …]   (the film is named in ./${CONFIG}; --config another file)\n\n${lines.join('\n')}\n\nRead first, look last: timeline → review → fix → part → still.\nAfter an edit to the words (narration, recipe, pacing): anchors first.\nAfter an edit: changes (what it redraws) → changes --render (only those pieces, and a short clip of them).\nstoryreel mcp [--flag value …] serves the same tools over MCP (stdio); the project (--config, --cwd) and the film's own flags are fixed when it starts.\n${BREAKDOWN_USAGE}`);
   process.exit(command && command !== 'help' && command !== '--help' && !TOOLS[command] ? 2 : 0);
 }
 try {
@@ -131,7 +136,7 @@ try {
   const load = {config: readInputs, inputs: loadInputs}[TOOLS[command].load] ?? loadProject;
   const project = await load(flags), out = await TOOLS[command].run(project, flags);
   console.log(typeof out === 'string' ? out : out.text);
-  sendPicture(out?.file);   // run by the MCP server for a still or a strip: the picture's path on its own pipe, never read out of the text
+  for (const file of out?.files ?? [out?.file]) sendPicture(file);   // run by the MCP server for a still, a strip or a sheet: each picture's path on its own pipe, never read out of the text
 } catch (e) {
   console.error(`storyreel ${command}: ${e.message}`); process.exit(1);
 }

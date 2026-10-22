@@ -46,12 +46,20 @@ test('anchors: every phrase the film is keyed to, in one pass — the pacing\'s 
   const text = await anchors(await readInputs({cwd: project, anchors: 'true'}));
   assert.match(text, /^8 phrases checked: 2 not said, 1 past the last place, 1 no such scene, 1 said more than once\n/);
   assert.match(text, /\n {2}two "much shorter" → pacing\.holds\[1\] — not said; the nearest words said: "shorter" \([\d.]+ s\)\n {2}one "a lot of words" → recipe\.story\.beats\[1\] — not said; the nearest words said: "words"/, 'a hold not said, then a beat: one clock for both');
-  assert.match(text, /two "scene" → recipe\.story\.beats\[3\] — nth 2, but it is said 1 time \(nth counts from 0\)/);
+  assert.match(text, /two "scene" → recipe\.story\.beats\[3\] — nth 2, but it is said 1 time \(nth counts the places from 0\)/);
   assert.match(text, /three "hello" → recipe\.story\.beats\[4\] — no scene "three"/);
   assert.match(text, /one "a" → recipe\.story\.beats\[2\] — said 2 times; the first is used \([\d.]+ s\)\. Each alone: "A first" \([\d.]+ s\) · "a few" \([\d.]+ s\)/);
   assert.match(await anchors(await readInputs({cwd: project})), /^no phrase is named/);
   const r = run(['anchors', '--anchors', 'true']);
   assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /^8 phrases checked/, 'the command line, as the tool');
+  // A voice leaves its silent scenes out: the clock fills them in, as pacing does.
+  assert.match(await anchors(await readInputs({cwd: project, anchors: 'true', voiced: 'true'})), /^8 phrases checked: 2 not said/);
+  // A compile that stops (a kit refusing a time stood in for) loses nothing: the rest are read from the recipe itself.
+  const stop = await anchors(await readInputs({cwd: project, anchors: 'stop'}));
+  assert.match(stop, /^the compile stopped, so the recipe's phrases were read from the recipe itself: 6 checked: 3 not said, 1 said more than once\n/);
+  assert.match(stop, /one "a lot of words in it" → recipe\.story\.beats\[1\] — not said;[\s\S]*two "much shorter" → recipe\.story\.beats\[2\] — not said;[\s\S]*one "a" → recipe\.story\.beats\[3\] — said 2 times/, 'the beats after the stop too');
+  assert.match(stop, /\nthe compile stopped: words: the beats come in order: give them as they are said\nfix the phrases above, and run it again$/);
+  assert.doesNotMatch(stop, /each said once/);
 });
 
 test('sheet: the film at a glance — a frame every few seconds, so many to a sheet, each labelled with its time and scene', async () => {
@@ -81,6 +89,9 @@ test('share: a small copy of a finished film to send, quick to start on a phone,
   const r = run(['share', film, '--width', '320', '--out', path.join(dir, 'out')]);
   assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /out\/film\.share\.mp4 · /);
   assert.equal(run(['share', film, '--widht', '320']).status, 2, 'a flag share does not take');
+  const empty = run(['share', film, '--ffmpeg']), word = run(['share', film, '--width', 'abc']);
+  assert.equal(empty.status, 2); assert.match(empty.stderr, /--ffmpeg needs the path of an FFmpeg \(e\.g\. --ffmpeg \/usr\/local\/bin\/ffmpeg\)$/m, 'a flag with no value is not "true"');
+  assert.equal(word.status, 2); assert.match(word.stderr, /--width needs a whole number of pixels \(e\.g\. --width 854\), not "abc"/);
   assert.equal(run(['share']).status, 2, 'no film named');
 });
 
@@ -139,7 +150,8 @@ test('the same tools over MCP (stdio): the handshake, the list with each tool\'s
   const {replies} = await mcpSession(['--out', out], [
     ask(1, 'initialize', {protocolVersion: '2025-06-18', capabilities: {}, clientInfo: {name: 'test', version: '0'}}), {method: 'notifications/initialized'},
     ask(2, 'tools/list', {}), call(3, 'review', {scene: 'one'}), call(4, 'still', {at: 'one+2.5'}),
-    call(5, 'still', {at: 'nowhere+1'}), ask(6, 'resources/list', {}), call(7, 'strip', {at: 'one+2', frames: '4'})]);
+    call(5, 'still', {at: 'nowhere+1'}), ask(6, 'resources/list', {}), call(7, 'strip', {at: 'one+2', frames: '4'}), call(8, 'sheet', {every: '1', per: '4'}),
+    call(9, 'anchors', {})]);
   assert.equal(replies.get(1).result.serverInfo.name, 'storyreel'); assert.ok(replies.get(1).result.capabilities.tools);
   const tools = replies.get(2).result.tools;
   assert.deepEqual(tools.map(t => t.name), ['timeline', 'review', 'part', 'anchors', 'changes', 'still', 'sheet', 'strip']);
@@ -156,6 +168,11 @@ test('the same tools over MCP (stdio): the handshake, the list with each tool\'s
   assert.equal(replies.get(6).error.code, -32601);
   const [stripText, stripImage] = replies.get(7).result.content;
   assert.match(stripText.text, /strip-one\+2\.png · 4 frames/); assert.equal(stripImage.type, 'image', 'a strip comes back as the picture too');
+  const [sheetText, ...sheets] = replies.get(8).result.content;
+  assert.match(sheetText.text, /sheets of up to 4/); assert.equal(sheets.length, sheetText.text.match(/sheet-film-\d+\.png/g).length, 'every sheet comes back as a picture');
+  assert.ok(sheets.length > 1 && sheets.every(i => i.type === 'image'));
+  assert.match(replies.get(9).result.content[0].text, /^no phrase is named/, 'anchors over MCP: it times the film itself');
+  assert.match(replies.get(1).result.instructions, /anchors \(every phrase not said, or said twice, with its fix\) first/);
   // Another config is named when the server starts, never by a call.
   const noisy = await mcpSession(['--config', 'noisy.config.mjs', '--out', out], [call(8, 'still', {at: 'two+0'})]);
   const [noisyText, noisyImage] = noisy.replies.get(8).result.content;

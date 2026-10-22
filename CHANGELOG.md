@@ -9,14 +9,21 @@
   that are), said more than once (words said only at each place, keeping the beat's time: added after a beat's phrase,
   before a pause's), an nth past the last place, an unknown scene. Over MCP too. In code, `compileFilm({anchors:
   'note'})` notes each in `film.anchors` instead of stopping (a missing phrase stands at the nearest words said), and
-  the clock gains `places(scene, phrase)`: every place a phrase is said. `readInputs` (`footprint-storyreel/tools`)
-  reads a config without timing it; a tool says how it loads with `load: 'inputs' | 'config'` (was `compile: false`).
+  the clock gains `places(scene, phrase)`: every place a phrase is said. Only the recipe's own phrases are noted (one a
+  kit builds for itself is read as ever, so a kit probing `nth` until the clock refuses still stops); a compile that
+  stops anyway carries what it noted on `error.anchors`, and the tool then reads the rest from the recipe itself
+  (`phrasesIn`, now the one reader of a recipe's phrases by their shape: the music's floors use it too). A pause (a
+  hold, a guess) is timed by its end, and its fixes keep the end. A voiced film with a silent scene is checked as it is
+  paced. `readInputs` (`footprint-storyreel/tools`) reads a config without timing it; a tool says how it loads with
+  `load: 'inputs' | 'config'` (was `compile: false`). The anchors decide no pixel (`NOT_DRAWING`).
 - **`storyreel sheet`: the film at a glance, for a reviewer.** A frame every 4 s (`--every`), 20 to a sheet (`--per`),
-  each labelled with its time and scene, as PNGs — the whole film, its scenes, or a window. Over MCP too.
+  each labelled with its time and scene, as PNGs — the whole film, its scenes, or a window. Over MCP every sheet comes
+  back as a picture (up to `MAX_PICTURES`, 6), and the server's instructions name `anchors` and `sheet`.
 - **`storyreel share <video>`: a copy to send to a person.** No project needed: `<name>.share.mp4` (854 wide, H.264 and
   AAC, its index first) and `<name>.poster.jpg` beside the film or in `--out`; `shareCopy` in
   `footprint-storyreel/tools`. FFmpeg writes them in a scratch folder of their own and each is moved onto its place
-  whole.
+  whole; a run FFmpeg did not finish (a status, a signal) is never moved; a folder at either name refuses before
+  anything is made; the film is read with the finished-file probe (`ffmpegProbe`); a flag given no value refuses.
 - **The focus strategy `circle`:** a teacher's marker loop round the named thing as the voice names it, drawn in
   0.45 s at each key and gone at `"wide"`; `["camera", "circle"]` frames and circles. A focus strategy's view gains
   `on`, `thing` (the key's box, not eased) and `since` (seconds since the key).

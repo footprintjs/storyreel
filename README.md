@@ -1566,7 +1566,8 @@ said more than once (the first place is used):
 A fix keeps the beat's time: words are added after a beat's phrase, before a pause's (a hold, or `edge: "end"`). Run
 it after every edit to the narration, the recipe or the pacing. In code: `compileFilm({…, anchors: 'note'})` notes each
 phrase not as written in `film.anchors` instead of stopping (a missing one stands at the nearest words said, so the rest
-still compiles), and `film.clock.places(scene, phrase)` is every place a phrase is said.
+still compiles; a compile that stops anyway carries what it noted on its error, `error.anchors`, and the tool then
+reads the rest from the recipe itself), and `film.clock.places(scene, phrase)` is every place a phrase is said.
 
 ### Showing a film to a person
 
@@ -1688,7 +1689,7 @@ run it.
   command takes `--help` (`npx storyreel still --help`). A config's `pacing` paces a film with no voice too (its even
   timings), as `makeFilm` paces the timings it is given.
 - **And as an MCP server,** for any assistant that speaks MCP: `storyreel mcp [--flag value …]` serves the same
-  eight tools over stdio, `changes` and `anchors` among them (its flags apply to every call; a still or a strip comes back as the picture). Each call runs in
+  eight tools over stdio, `changes` and `anchors` among them (its flags apply to every call; a still or a strip comes back as the picture, a sheet as its pictures). Each call runs in
   a fresh process, so an edit to a kit between two calls is always seen. The project is fixed when the server starts:
   `--config`, `--cwd` (the folder every call runs in) and the film's own flags are set there only. A call passes only
   its tool's arguments (they reach `film()` too, as every flag does), and one that passes anything else is refused, so

@@ -14,8 +14,8 @@ import path from 'node:path';
 import {existsSync, readFileSync} from 'node:fs';
 import {writeOutput, outputFolder} from './files.mjs';
 import {pathToFileURL} from 'node:url';
-import {compileFilm, evenTimings, paceTimings, makeFilm, makeClock} from './index.mjs';
-import {checkPhrase, anchorsText} from './anchors.mjs';
+import {compileFilm, evenTimings, paceTimings, makeFilm, makeClock, withDirections} from './index.mjs';
+import {checkPhrase, anchorsText, phrasesIn} from './anchors.mjs';
 export {shareCopy, SHARE_DEFAULTS} from './share.mjs';
 import {previewChanges} from './changes.mjs';
 import {castFilm} from './prepare.mjs';
@@ -230,22 +230,37 @@ export async function strip(project, args = {}) {
 
 /**
  * Every phrase the film is keyed to, checked in one pass (anchors.mjs): the pacing's holds against the voice as it
- * was said, then the recipe's beats in a compile that notes each phrase not as written instead of stopping at the
- * first (compileFilm's anchors: 'note'; a hold not said is left out of its pacing). The count, then each phrase not
- * said (with the nearest words said), each said more than once (with words said only at each place), each nth past
- * the last place, each unknown scene — where it is named. full: every one (default: the first 10 a kind).
+ * was said, then the recipe's beats in a compile that notes each phrase not as written instead of stopping at the first
+ * (compileFilm's anchors: 'note'). A hold not said is paced at the nearest words said instead (its place in the list
+ * kept, so a pacing refusal names the right hold). When the compile stops anyway (a kit refusing a time stood in for),
+ * the recipe's phrases are read from the recipe itself (anchors.mjs · phrasesIn), so none is lost. The count, then
+ * each phrase not said (with the nearest words said), said more than once (with words said only at each place), past
+ * its nth or in no scene — where it is named. full: every one (default: the first 10 a kind).
  */
 export async function anchors(project, args = {}) {
   const {inputs, cwd, said, raw} = project, holds = inputs.pacing?.holds ?? [], holdRef = h => ({scene: h.scene, phrase: h.after});
-  // (A hold is placed by the voice as said, before pacing; one not said is left out, so the film can still be paced.)
-  const spoken = makeClock(said, raw), keep = holds.filter(h => [null, 'ambiguous'].includes(checkPhrase(spoken, holdRef(h)).problem));
-  let film = null, stopped = null;
-  try { film = await compileFilm({...pick(inputs, FILM_KEYS), timings: pacedOf(project, keep), root: inputs.root ?? cwd, anchors: 'note'}); } catch (e) { stopped = e.message; }
+  // (The voice leaves its silent scenes out: they are filled in as pacing fills them, so the clock has every scene.)
+  const spoken = makeClock(said, withDirections(said, raw));
+  const held = holds.map((h, i) => ({ref: holdRef(h), path: `pacing.holds[${i}]`, how: 'pauseAfter', ...checkPhrase(spoken, holdRef(h))}));
+  const placed = holds.map((h, i) => {
+    if ([null, 'ambiguous'].includes(held[i].problem)) return h;
+    const words = held[i].problem === 'missing' ? (held[i].near?.phrase ?? spoken.words(h.scene).at(-1)?.text) : null;
+    return words ? {...h, after: words} : null;
+  });
+  let film = null, stopped = null, noted = [];
+  try { film = await compileFilm({...pick(inputs, FILM_KEYS), timings: pacedOf(project, placed.filter(Boolean)), root: inputs.root ?? cwd, anchors: 'note'}); noted = film.anchors; }
+  catch (e) { stopped = e.message; noted = e.anchors ?? []; }
   // Every place is said on the film's clock (the paced film says the same words), so the report has one clock.
-  const clock = film?.clock ?? spoken, named = new Set((film?.beats ?? []).map(b => b.ref));
-  const held = holds.map((h, i) => ({ref: holdRef(h), path: `pacing.holds[${i}]`, ...checkPhrase(clock, holdRef(h))})).filter(n => n.problem);
-  const notes = [...held, ...(film?.anchors ?? []).map(n => ({...n, path: n.path === null ? null : `recipe.${n.path}`}))];
-  return anchorsText({clock, notes, checked: holds.length + named.size, stopped}, {full: yes(args.full)});
+  const clock = film?.clock ?? spoken, recipe = path => (path === null ? null : `recipe.${path}`);
+  const notes = [...held.filter(n => n.problem), ...noted.map(n => ({...n, path: recipe(n.path)}))];
+  let checked = holds.length + new Set((film?.beats ?? []).filter(b => b.path !== null).map(b => b.ref)).size;
+  if (stopped) {
+    // (Read from the recipe as written: what the compile noted before it stopped is said once, as it noted it.)
+    const read = phrasesIn(inputs.recipe, new Set(said.scenes.map(sc => sc.id))), seen = new Set(noted.map(n => recipe(n.path)));
+    for (const {ref, path} of read) { const c = checkPhrase(clock, ref); if (c.problem && !seen.has(recipe(path))) notes.push({ref, path: recipe(path), ...c}); }
+    checked = holds.length + read.length;
+  }
+  return anchorsText({clock, notes, checked, stopped}, {full: yes(args.full)});
 }
 
 /**
