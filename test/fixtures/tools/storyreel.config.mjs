@@ -22,10 +22,12 @@ export default {
     // --anchors stop: beats a kit must have in order, one not said standing out of order — the compile stops there,
     // before the beats after it.
     recipe: {story: {kit: 'words', ...(flags.anchors === 'stop' ? {ordered: true, beats: [['two', 'a little shorter'], ['one', 'a lot of words in it'], ['two', 'much shorter'], ['one', 'a']]}
-      : flags.anchors ? {beats: [['one', 'a few words'], ['one', 'a lot of words'], ['one', 'a'], {scene: 'two', phrase: 'scene', nth: 2}, ['three', 'hello'], ['two', 'a little shorter']]} : {})}},
+      : flags.anchors && flags.anchors !== 'twice' ? {beats: [['one', 'a few words'], ['one', 'a lot of words'], ['one', 'a'], {scene: 'two', phrase: 'scene', nth: 2}, ['three', 'hello'], ['two', 'a little shorter']]} : {})}},
     kits: [words], layout: {format: 'landscape', captions: true}, out: flags.out ?? 'out',
     // --paced: a film with no voice, paced (a 2 s hold, a 1.5 s tail); --paced notail: the holds without their sceneTail.
     ...(flags.paced ? {pacing: {...(flags.paced === 'notail' ? {} : {sceneTail: 1.5}), holds: [{scene: 'one', after: 'a few words', seconds: 2}]}} : {}),
-    ...(flags.anchors ? {pacing: {sceneTail: 1, holds: [{scene: 'one', after: 'a few words', seconds: 1}, {scene: 'two', after: 'much shorter', seconds: 1}]}} : {}),
+    // --anchors twice: a hold after a word said twice (it is timed by its end: the fixes add words before it).
+    ...(flags.anchors === 'twice' ? {pacing: {sceneTail: 1, holds: [{scene: 'one', after: 'a', seconds: 1}]}}
+      : flags.anchors ? {pacing: {sceneTail: 1, holds: [{scene: 'one', after: 'a few words', seconds: 1}, {scene: 'two', after: 'much shorter', seconds: 1}]}} : {}),
   }),
 };
