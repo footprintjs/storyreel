@@ -8,7 +8,7 @@
  * narration without its marks — and finds each moment by the letters said before it.
  */
 import {normSpeech, checkSlots, findSlot, spokenMap, spokenOffset, shownWords, unsaidDigits} from 'footprint-narration';
-import {sceneScript, momentOf} from './script.mjs';
+import {sceneScript, momentOf, shownMark} from './script.mjs';
 
 /** How long one direction may last, in seconds: long enough to see, short enough to stay a beat. */
 export const DIRECTION_SECONDS = Object.freeze([.2, 20]);
@@ -53,7 +53,7 @@ function checkSlotsSaid(script, say, name) {
   let from = 0;
   say.forEach(([shown], k) => {
     const at = findSlot(script.said, shown, from), end = at + shown.length, inside = script.moments.find(m => m.offset > at && m.offset < end);
-    if (inside) throw new Error(`${name}: the moment {${inside.name}} stands inside the number slot "${shown}" (say[${k}]), which the voice says as one run: put it before or after "${shown}"`);
+    if (inside) throw new Error(`${name}: the moment ${shownMark(inside.name)} stands inside the number slot "${shown}" (say[${k}]), which the voice says as one run: put it before or after "${shown}"`);
     from = end;
   });
 }
@@ -159,17 +159,18 @@ function momentsIn(scene, words, slots, duration) {
   return moments.map(({name, offset}) => {
     const shown = normSpeech(said.slice(0, offset)).length, from = slots ? spokenOffset(slots, shown) : shown;
     const inside = words.find(w => w.from < from && w.to > from);
-    if (inside) throw new Error(`storyboard scene ${scene.id}: the moment {${name}} falls inside the timed word "${inside.text}": a moment stands between words — move it before or after the word, or time the word as two`);
+    if (inside) throw new Error(`storyboard scene ${scene.id}: the moment ${shownMark(name)} falls inside the timed word ${JSON.stringify(inside.text)}: a moment stands between words — move it before or after the word, or time the word as two`);
     const k = words.findIndex(w => w.from >= from), after = k < 0 ? null : words[k], before = k < 0 ? words.at(-1) : words[k - 1] ?? null;
     return Object.freeze({name, at: after ? after.start : before.end, start: before ? before.end : 0, end: after ? after.start : duration});
   });
 }
 
-/** A scene's moment by name, from its speechIndex ({name, at, start, end}), or a refusal naming the moments it has. */
+/** A scene's moment by name, from its speechIndex ({name, at, start, end}), or a refusal naming the moments it has (the first ten). */
 export function momentIn(index, name, id, what = 'Moment') {
   const moment = index.moments.find(m => m.name === name);
   if (moment) return moment;
-  throw new Error(`${what} not in ${id}: "{${name}}" (${index.moments.length ? `its moments: ${index.moments.map(m => `{${m.name}}`).join(', ')}` : 'it has no moments'})`);
+  const has = index.moments.map(m => shownMark(m.name)), shown = has.slice(0, 10).join(', ') + (has.length > 10 ? `, … ${has.length - 10} more` : '');
+  throw new Error(`${what} not in ${id}: "${shownMark(name)}" (${has.length ? `its moments: ${shown}` : 'it has no moments'})`);
 }
 
 /** Every offset where `needle` starts in `text`. */

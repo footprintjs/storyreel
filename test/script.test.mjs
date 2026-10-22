@@ -1,5 +1,6 @@
 // One script (script.mjs): marks written in the narration — a moment, {name}, and a speaker tag, {@who} — never said and
-// never shown. What is said (said, momentsOf, linesOf, sceneScript) and every refusal; a mark in a scene with number slots;
+// never shown. What is said (said, momentsOf, linesOf, sceneScript) and every refusal; the white space and quotes around
+// marks, held to any narration of words, quotes and marks; reading in linear time; a mark in a scene with number slots;
 // the clock's moments (a beat at a mark, plus, the end of a scene, the pause at a mark); a pacing hold at a mark; the
 // anchors; the script tool; and a film keyed to moments that keeps its beats on their words when a line is reworded.
 import test from 'node:test';
@@ -46,29 +47,89 @@ test('what is said: the marks out and the white space they leave tidied; each mo
   assert.throws(() => momentOf('{1x}'), /^Error: "\{1x\}": not a moment: a moment's name is a letter, then letters, digits, - or _/);
 });
 
-test('every refusal names the scene and the mark, and says what to write', () => {
+test('the white space between marks, and a mark before an opening quote, never glue words: each reads as written without the marks', () => {
+  for (const [written, out] of [
+    ['Mom walks in. {@mom}\'{wave}Hi!\'', 'Mom walks in. \'Hi!\''], ['He said {x} \'{y}hi there\'', 'He said \'hi there\''], ['He said {x} "{y}hi there"', 'He said "hi there"'],
+    ['One.\n\n{x}\n\'{y}Two.\'', 'One.\n\n\'Two.\''], ['I stayed {x} ’cause it rained.', 'I stayed ’cause it rained.'], ['Line one.{a}\n{b}Line two.', 'Line one.\nLine two.'],
+    ['Hello,{a} {b}there', 'Hello, there'], ['Hello{a} {b}there', 'Hello there'], ['Mom walks in. {look} {@mom}"{wave}Hi!"', 'Mom walks in. "Hi!"']]) {
+    assert.equal(said(written), out, written);
+  }
+  // The clock then finds each moment at its own word, never inside one glued to it.
+  const at = (narration, mark) => { const board = {scenes: [{id: 's', narration}]}, clock = makeClock(board, evenTimings(board)); return clock.words('s').find(w => w.start === clock.at(['s', mark]))?.text; };
+  assert.equal(at('Mom walks in. {@mom}\'{wave}Hi!\'', '{wave}'), '\'Hi!\'');
+  assert.equal(at('He said {x} \'{y}hi there\'', '{x}'), '\'hi');
+  assert.equal(at('I stayed {x} ’cause it rained.', '{x}'), '’cause');
+  assert.equal(at('Hello{a} {b}there', '{b}'), 'there');
+  assert.deepEqual(linesOf('Mom walks in. {@mom}\'{wave}Hi!\''), [{by: 'mom', say: 'Hi!', offset: 15}]);
+});
+
+test('any narration of words, quotes and marks reads as written: no brace is left, each moment is when its own word starts', () => {
+  // 4 000 narrations from a seeded generator: words (an apostrophe, accents, Tamil, digits), quotes of every kind,
+  // punctuation, line breaks, and marks before a word, after it, before its opening quote, or on their own.
+  let seed = 12345;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648, pick = list => list[Math.floor(rnd() * list.length)];
+  const WORDS = ['ten', 'ones', 'can\'t', 'make', 'a', 'Café', 'dogs\'', '42', 'naïve', 'über', 'கடை'], PUNCT = ['', '', '', ',', '.', '!', '?', '…', ';'];
+  const OPEN = ['', '', '', '(', '\'', '"', '“', '‘'], CLOSE = {'(': ')', '\'': '\'', '"': '"', '“': '”', '‘': '’', '': ''};
+  const failures = [];
+  for (let n = 0; n < 4000; n++) {
+    let text = '', k = 0;
+    for (let p = 0, parts = 3 + Math.floor(rnd() * 8); p < parts; p++) {
+      const open = pick(OPEN), word = pick(WORDS), mark = rnd() < .35 ? `{m${k++}}` : '', where = Math.floor(rnd() * 4);
+      const token = `${where === 2 ? mark : ''}${open}${where === 0 ? mark : ''}${word}${CLOSE[open]}${pick(PUNCT)}${where === 1 ? mark : ''}`;
+      text += (p ? pick([' ', ' ', ' ', '  ', '\n']) : '') + token;
+      if (rnd() < .15) text += ` {m${k++}}`;
+    }
+    const s = said(text), moments = momentsOf(text), board = {scenes: [{id: 's', narration: text}]}, clock = makeClock(board, evenTimings(board));
+    if (/[{}]/.test(s)) failures.push(['a brace is left', text, s]);
+    const words = clock.words('s'), tokens = [...s.matchAll(/\S+/g)];
+    for (const m of moments) {
+      const t = clock.at(['s', `{${m.name}}`]);
+      if (m.offset >= s.length) { if (t !== words.at(-1).end) failures.push(['the end', text, m.name]); continue; }
+      if (!/[\p{L}\p{M}\p{N}]/u.test(s[m.offset])) failures.push(['its offset is no word', text, m.name]);
+      const k2 = tokens.findLastIndex(x => x.index <= m.offset);
+      if (!/[\p{L}\p{M}\p{N}]/u.test(s.slice(tokens[k2].index, m.offset)) && t !== words[k2].start) failures.push(['another word', text, m.name]);
+    }
+  }
+  assert.deepEqual(failures.slice(0, 5), [], `${failures.length} of 4000 narrations`);
+});
+
+test('every refusal names the scene and the mark, quoted so nothing in it reads as the message, and says what to write', () => {
   // Through the scene's check, the timings and said() itself: the same refusal, the scene named.
   const refuses = (narration, why) => {
     for (const read of [() => checkScene({id: 'today', narration}), () => evenTimings({scenes: [{id: 'today', narration}]}), () => said(narration, {name: 'storyboard scene today'})]) assert.throws(read, why);
   };
-  refuses('Ten ones {1dots} make', /storyboard scene today: \{1dots\} is not a mark, at "Ten ones \{1dots\} make": a moment is \{name\} and a speaker \{@who\}, each name a letter, then letters, digits, - or _/);
-  refuses('Ten {hop it} ones', /\{hop it\} is not a mark/);
-  refuses('Ten {@} ones', /\{@\} is not a mark/);
+  refuses('Ten ones {1dots} make', /storyboard scene today: "\{1dots\}" is not a mark, at "Ten ones \{1dots\} make": a moment is \{name\} and a speaker \{@who\}, each name a letter, then letters, digits, - or _/);
+  refuses('Ten {hop it} ones', /"\{hop it\}" is not a mark/);
+  refuses('Ten {@} ones', /"\{@\}" is not a mark/);
   refuses('Ten ones {dots make a ten.', /storyboard scene today: a "\{" opens a mark that never closes, at "Ten ones \{dots make a ten\.": close it \(\{hop\}\), or take the brace out/);
   refuses('Ten ones dots} make', /storyboard scene today: a "\}" closes no mark, at "Ten ones dots\} make": open the mark \(\{hop\}\), or take the brace out/);
   refuses('Ten ones {dots} make a ten, and {dots} again.', /storyboard scene today: the moment \{dots\} is written twice, at "Ten ones \{dots\} make a ten, and \{dots\} …" and at "… \{dots\} make a ten, and \{dots\} again\.": a moment's name is used once in its scene — rename one/);
-  refuses('Ten ones{dots}make', /storyboard scene today: \{dots\} stands inside a word, at "Ten ones\{dots\}make": a mark goes between words — put a space before or after it/);
-  refuses('{@mom} walks in.', /storyboard scene today: \{@mom\} stands right before the quoted line it gives a speaker, only spaces between, at .*: write the line in quotes just after it/);
-  refuses("{@mom} {look}'Hi!'", /\{@mom\} stands right before the quoted line .*\(a moment goes before the tag, or inside the quotes\)/);
-  refuses("{@mom}'What are you up to?", /storyboard scene today: \{@mom\}'s line opens with ' and never closes, at .*: end it with '/);
-  refuses("{@mom}'Hi {@dad}' there.", /storyboard scene today: \{@dad\} stands inside \{@mom\}'s line, at .*: end the line with ' before the next speaker/);
+  refuses('Ten ones{dots}make', /storyboard scene today: "\{dots\}" stands inside a word, at "Ten ones\{dots\}make": a mark goes between words — put a space before or after it/);
+  refuses('{@mom} walks in.', /storyboard scene today: "\{@mom\}" stands right before the quoted line it gives a speaker, only spaces between, at .*: write the line in quotes just after it/);
+  refuses('{@mom} {look}"Hi!"', /"\{@mom\}" stands right before the quoted line .*\(a moment goes before the tag, or inside the quotes\)/);
+  refuses('{@mom}"What are you up to?', /storyboard scene today: "\{@mom\}"'s line opens with " and never closes, at .*: end it with "/);
+  refuses('{@mom}"Hi {@dad}" there.', /storyboard scene today: "\{@dad\}" stands inside "\{@mom\}"'s line, at .*: end the line with " before the next speaker/);
+  // An apostrophe can end a line in '…' or ‘…’ quotes: a line that could end at two places refuses, naming both and the fix.
+  refuses('{@mom}\'The dogs\' bowls are empty.\' she says', /storyboard scene today: "\{@mom\}"'s line could end at "\{@mom\}'The dogs'" or at "…e dogs' bowls are empty\.'": an apostrophe reads as the end of a line in '…' quotes — write the line in "…" quotes$/);
+  refuses('{@kid}‘I’m goin’ home now.’ he said', /line could end at "\{@kid\}‘I’m goin’" or at .*in ‘…’ quotes — write the line in "…" quotes$/);
+  assert.deepEqual(linesOf('{@mom}"The dogs\' bowls are empty." she says').map(l => l.say), ['The dogs\' bowls are empty.'], 'in "…" quotes the apostrophe is only an apostrophe');
+  assert.deepEqual(linesOf('{@mom}\'Hi.\' she said, \'then left.\'').map(l => l.say), ['Hi.'], 'a closing quote after a stop is never an apostrophe');
   // A silent scene takes no marks; a moment inside a number slot has no word to stand before; nor one the timings put inside a word.
-  assert.throws(() => checkScene({id: 'open', silent: [['the door {x} opens', 1]]}), /storyboard scene open: silent\[0\] has a mark, \{x\}, and a silent scene takes none \(a beat names a direction by its words\): take it out/);
+  assert.throws(() => checkScene({id: 'open', silent: [['the door {x} opens', 1]]}), /storyboard scene open: silent\[0\] has a mark, "\{x\}", and a silent scene takes none \(a beat names a direction by its words\): take it out/);
   assert.throws(() => evenTimings({scenes: [{id: 'frame', narration: 'It takes 16.67 {x}ms now.', say: [['16.67 ms', 'sixteen point six seven milliseconds']]}]}),
     /storyboard scene frame: the moment \{x\} stands inside the number slot "16\.67 ms" \(say\[0\]\), which the voice says as one run: put it before or after "16\.67 ms"/);
   const joined = {scenes: [{id: 'fact', narration: 'A well-{x}known fact.'}]};
   assert.throws(() => makeClock(joined, evenTimings(joined)), /storyboard scene fact: the moment \{x\} falls inside the timed word "well-known": a moment stands between words — move it before or after the word, or time the word as two/);
   assert.throws(() => said(42), /^TypeError: the narration: narration must be the words said, as one string/);
+  // What a refusal quotes is JSON's: a control character, a line break or a huge mark never reaches the terminal as it is.
+  const quote = text => { try { said(text, {name: 'scene h'}); } catch (e) { return e.message; } return null; };
+  assert.match(quote('Hello {\u001b[31mRED\u001b[0m} there'), /^scene h: "\{\\u001b\[31mRED\\u001b\[0m\}" is not a mark/);
+  assert.match(quote('Hello {a\nb} there'), /^scene h: "\{a\\nb\}" is not a mark, at "Hello \{a\\nb\} there"/);
+  const huge = quote(`Hello {${'a b '.repeat(2000)}} there`);
+  assert.ok(huge.length < 400 && /"\{a b a b .*…" is not a mark/.test(huge), huge.slice(0, 200));
+  const long = quote(`one {${'é'.repeat(200)}} two {${'é'.repeat(200)}}`), name = /the moment \{(é+)…\} is written twice/.exec(long)?.[1];
+  assert.ok(name && name.length < 40 && long.length < 400, long);
+  assert.doesNotMatch(quote(`${'😀'.repeat(30)} {bad mark}`), /�|\\ud83d"/, 'never half a character');
 });
 
 test('a mark in a scene with number slots: the slots stand in what is said, the voice says them in words, a moment before one is its first spoken word', () => {
@@ -203,4 +264,19 @@ test('a film keyed to moments keeps its beats on their words when a line is rewo
   const film = narration => { const storyboard = {scenes: [{id: 'count', narration}, {id: 'next', narration: 'That is how a ten is made.'}]}; return compileFilm({storyboard, timings: evenTimings(storyboard), recipe: phrases, kits: [kit]}); };
   await film(lines.first);
   await assert.rejects(film(lines.reworded), /Phrase not in count: "make a ten"/);
+});
+
+test('reading a narration is linear: 40 KB with long runs of white space, braces or lines reads in well under 100 ms', () => {
+  for (const text of ['x' + ' '.repeat(40000) + 'y {m}', 'a {m} x' + ' '.repeat(40000) + 'y {k} b', Array.from({length: 3500}, (_, k) => `{@a${k}}"hi."`).join(' '),
+    Array.from({length: 5000}, (_, k) => `w {m${k}}`).join(' '), '{'.repeat(40000), '{{{{{{'.repeat(7000) + '}', '{@a}\'' + 'it\'s '.repeat(8000) + 'end.\'']) {
+    const t0 = performance.now();
+    try { said(text); linesOf(text); } catch { /* a refusal is read in time too */ }
+    const ms = performance.now() - t0;
+    assert.ok(ms < 100, `${ms.toFixed(1)} ms for ${JSON.stringify(text.slice(0, 30))}… (${text.length} characters)`);
+  }
+});
+
+test('one owner of {{role}}: the cast reads it where script.mjs passes over it, and puts the name there', () => {
+  const cast = readCast({hero: {name: 'Amaira'}});
+  for (const text of ['{{hero}} {wave}waves.', '{{ hero }} {x} waves', '{x}{{hero}} waves']) assert.equal(castText(said(text), cast), said(castText(text, cast)), text);
 });

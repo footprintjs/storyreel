@@ -13,7 +13,10 @@
  *
  * Refuses: a role that is not a word, a role without a name, a {{role}} the cast does not have — naming the fix.
  */
-const ROLE = /^[A-Za-z][\w-]*$/, TOKEN = /\{\{\s*([^}]*?)\s*\}\}/g;
+const ROLE = /^[A-Za-z][\w-]*$/;
+/** A {{role}} in a text, as withCast replaces it: the one way the cast's token is read (script.mjs passes over it: it is no mark). */
+export const ROLE_TOKEN = /\{\{\s*([^}]*?)\s*\}\}/;
+const TOKEN = new RegExp(ROLE_TOKEN.source, 'g');
 
 /** The cast checked and frozen (deep): {role: {name, …}}; null stays null (a film without a cast). */
 export function readCast(cast) {
