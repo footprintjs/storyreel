@@ -492,3 +492,15 @@ export const previewed = async (preview: typeof previewChanges, load: typeof loa
 export const relined = (text: typeof changesText, ranges: typeof changedRanges) => text({pieces: [], ranges: ranges([]), total: 0}, {lines: 3});
 // @ts-expect-error render is true or false
 export const badPreview = (preview: typeof previewChanges, film: Parameters<typeof previewChanges>[0]) => preview(film, {render: 'yes'});
+
+// The anchors: a compile that notes every phrase not as written; the tool that says them; the clock's places.
+import type {readInputs, anchors, sheet, shareCopy} from '../types/sub/tools.js';
+import type {FOCUS, LOOP, FocusView} from '../types/sub/attention.js';
+export const noted = (make: typeof compileFilm, board: Storyboard, timings: Parameters<typeof compileFilm>[0]['timings']) => make({storyboard: board, timings, recipe: moving, anchors: 'note'})
+  .then(f => f.anchors.filter(n => n.problem === 'missing').map(n => n.near?.phrase ?? n.path).length + f.clock.places('a', 'red square').length);
+// @ts-expect-error anchors is 'refuse' or 'note'
+export const badAnchors = (make: typeof compileFilm, board: Storyboard, timings: Parameters<typeof compileFilm>[0]['timings']) => make({storyboard: board, timings, recipe: moving, anchors: 'warn'});
+export const anchorsChecked = async (read: typeof readInputs, check: typeof anchors, at: typeof sheet, project: Parameters<typeof sheet>[0]) =>
+  (await check(await read({ep: 'ep1'}), {full: true})).length + (await at(project, {scene: 'a', every: 2})).files.length;
+export const shared = (share: typeof shareCopy) => share('out/film.mp4', {width: 854, poster: 2}).bytes;
+export const circled = (focus: typeof FOCUS, loop: typeof LOOP, view: FocusView) => focus.circle.show(null, view, () => {}, null) ?? loop.draw + (view.since ?? 0);

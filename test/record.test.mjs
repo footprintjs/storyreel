@@ -12,7 +12,7 @@ import {COMPILE_STAGES} from '../src/record.mjs';
 const golden = JSON.parse(readFileSync(new URL('./golden.json', import.meta.url), 'utf8'));
 const recipeOf = name => JSON.parse(readFileSync(new URL(`../examples/${name}/recipe.json`, import.meta.url), 'utf8'));
 // 0.18 added what a cached piece's key reads from the film: attentionFrames, replays, recipe, kits, drawnBy (segments.mjs).
-const FILM_KEYS = ['total', 'clock', 'timings', 'sounds', 'foundSounds', 'listening', 'frame', 'beats', 'strings', 'notes', 'attention', 'focusAt', 'attentionFrames', 'camera', 'cameraAt', 'reading', 'reads', 'posterAt', 'moments', 'regionsAt', 'pointAt', 'theme', 'shots', 'watching', 'rows', 'overlays', 'replays', 'inputs', 'stringHashes', 'mouthsAt', 'partsAt', 'pictureAt', 'lines', 'changes', 'claims', 'lang', 'recipe', 'kits', 'drawnBy'];
+const FILM_KEYS = ['total', 'clock', 'timings', 'sounds', 'foundSounds', 'listening', 'frame', 'beats', 'anchors', 'strings', 'notes', 'attention', 'focusAt', 'attentionFrames', 'camera', 'cameraAt', 'reading', 'reads', 'posterAt', 'moments', 'regionsAt', 'pointAt', 'theme', 'shots', 'watching', 'rows', 'overlays', 'replays', 'inputs', 'stringHashes', 'mouthsAt', 'partsAt', 'pictureAt', 'lines', 'changes', 'claims', 'lang', 'recipe', 'kits', 'drawnBy'];
 /** A slice from a key in a record, its reads taken from the record's own execution tree. */
 const sliceOf = (record, key) => sliceForKey(record.snapshot.commitLog, key, keysReadFromExecutionTree(record.snapshot.executionTree));
 /** The stages a slice walked through (sliceToJSON keys its nodes by runtimeStageId). */

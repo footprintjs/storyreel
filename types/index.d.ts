@@ -317,6 +317,8 @@ export interface Clock {
   at(beat: Beat): number;
   pauseAfter(beat: Beat): {start: number; end: number};
   locate(t: number): {index: number; id: string; time: number};
+  /** Every place a phrase is said in a scene, in order, on the whole-lesson clock (none: not said); a beat's `nth` picks one. */
+  places(scene: string, phrase: string): {start: number; end: number}[];
   /** The words said in a scene, on the whole-lesson clock (none in a silent scene). */
   words(scene: string): {text: string; start: number; end: number}[];
   /** The words to show for scene i (captions), on the scene's own clock: each number slot's spoken run collapsed back into its digits, where the slot is. */
@@ -367,6 +369,8 @@ export interface Film {
   frame(ctx: CanvasRenderingContext2D | unknown, t: number, options?: {window?: {x0: number; y0: number; w: number; h: number} | null}): void;
   /** Every phrase the recipe named, when it is said, and the recipe entry that asked for it. */
   beats: {ref: Beat; t: number; path: string | null}[];
+  /** Each phrase not as written, with compileFilm's anchors: 'note' (none otherwise). */
+  anchors: AnchorNote[];
   strings: string[];
   /** The director's notes as applied, in the order written. */
   notes: Record<string, unknown>[];
@@ -577,8 +581,15 @@ export interface CompileFilmOptions<K = Kit | ContextKit> {
   /** true: the recipe's camera moves are cut to their end framing, handheld off, a speed ramp in step (default false). Only those: a focus, push notes, a kit's camera and transitions play as written. */
   reducedMotion?: boolean;
   /** Strategies of your own for the recipe's focus and emphasis (attention.mjs), by name. */
-  strategies?: {focus?: Record<string, {show(ctx: any, view: {cx: number; cy: number; z: number; box: number[]; w: number}, paint: (ctx: any) => void, theme: unknown): void}>; emphasis?: Record<string, {draw(ctx: any, t: number, word: {t: number; text: string; next: number}, theme: unknown): void}>} | null;
+  strategies?: {focus?: Record<string, {show(ctx: any, view: import('./sub/attention.js').FocusView, paint: (ctx: any) => void, theme: unknown): void}>; emphasis?: Record<string, {draw(ctx: any, t: number, word: {t: number; text: string; next: number}, theme: unknown): void}>} | null;
+  /**
+   * 'refuse' (default): a phrase the recipe names that its scene does not say stops the compile. 'note': each phrase
+   * not as written is noted in film.anchors (a missing one stands at the nearest words said), so all are checked in one pass.
+   */
+  anchors?: 'refuse' | 'note';
 }
+/** A phrase not as written (compileFilm's anchors: 'note'): where it is named, what is wrong, every place it is said, and for a missing one the nearest words said. */
+export interface AnchorNote {ref: Beat; path: string | null; problem: 'missing' | 'ambiguous' | 'past' | 'scene'; places: {start: number; end: number}[]; near?: {phrase: string; start: number; end: number} | null}
 // Two signatures, so a kit written inline on today's contract keeps its contextual types (a list that
 // mixes both contracts cannot give them: TypeScript cannot tell an unmarked story kit apart from the union).
 export function compileFilm(options: CompileFilmOptions<Kit>): Promise<Film>;

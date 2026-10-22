@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {createCanvas} from '@napi-rs/canvas';
 import {compileFilm, evenTimings} from '../src/index.mjs';
 import {spring, pop, track, readFeel, FEEL_NAMES} from '../src/motion.mjs';
-import {FOCUS, EMPHASIS} from '../src/attention.mjs';
+import {FOCUS, EMPHASIS, LOOP} from '../src/attention.mjs';
 import {wordsAt} from '../src/review.mjs';
 
 const storyboard = {title: 'Attention', scenes: [
@@ -57,7 +57,27 @@ test('the same focus, another strategy: a spotlight darkens the rest and leaves 
   const px = (x, y) => [...ctx.getImageData(x, y, 1, 1).data].slice(0, 3);
   assert.deepEqual(px(300, 275), [192, 57, 43], 'the named thing, untouched');
   assert.ok(px(800, 120).every((v, i) => v < [243, 238, 227][i] - 60), `the rest, darkened: ${px(800, 120)}`);
-  assert.deepEqual(Object.keys(FOCUS), ['camera', 'spotlight', 'dim', 'none']);
+  assert.deepEqual(Object.keys(FOCUS), ['camera', 'spotlight', 'dim', 'circle', 'none']);
+});
+
+test('circle: a marker loop draws itself round each named thing at its key, and is gone at "wide"', async () => {
+  const film = await make({focus: focus('circle')}), red = at(film, 'a', 'red square'), blue = at(film, 'b', 'the blue one'), wide = at(film, 'b', 'back to all');
+  assert.equal(film.attention.focus.strategy, 'circle');
+  const pink = [232, 70, 124], ring = t => share(film, t, pink);
+  // (Before the key, nothing; half-drawn just after it; whole once LOOP.draw has passed; the picture itself untouched.)
+  assert.equal(ring(red - .1), 0, 'no loop before its key');
+  const half = ring(red + LOOP.draw / 3), whole = ring(red + 1.2);
+  assert.ok(half > 0 && whole > half * 1.4, `it draws itself: ${half} then ${whole}`);
+  const c = createCanvas(1600, 900), ctx = c.getContext('2d'); film.frame(ctx, red + 1.2);
+  const px = (x, y) => [...ctx.getImageData(x, y, 1, 1).data].slice(0, 3);
+  assert.deepEqual(px(300, 275), [192, 57, 43], 'the named thing, untouched inside its loop');
+  assert.deepEqual(px(300, 200 - LOOP.margin - 2).map(v => Math.abs(v - pink[px(300, 200 - LOOP.margin - 2).indexOf(v)]) < 40), [true, true, true], 'the loop, just above the thing');
+  // (At the next key it is round the blue one; at "wide" it is gone.)
+  const near = (t, [x0, y0, x1, y1]) => { const k = createCanvas(1600, 900), g = k.getContext('2d'); film.frame(g, t); const d = g.getImageData(x0, y0, x1 - x0, y1 - y0).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - pink[0]) < 40 && Math.abs(d[i + 1] - pink[1]) < 40 && Math.abs(d[i + 2] - pink[2]) < 40) n++; return n; };
+  assert.ok(near(blue + 2, [1040, 440, 1400, 720]) > 200 && near(blue + 2, [150, 150, 450, 400]) === 0, 'round the blue one now, not the red');
+  assert.equal(ring(wide + 3), 0, 'gone at "wide"');
+  const both = await make({focus: {...focus(), strategy: ['camera', 'circle']}});
+  assert.equal(both.attention.focus.strategy, 'camera+circle'); assert.ok(share(both, red + 1.2, pink) > 0, 'a camera that frames it, and the loop round it');
 });
 
 test('emphasis: the words land big on their beat, then settle into a label in the top corner until the next', async () => {
@@ -71,7 +91,7 @@ test('emphasis: the words land big on their beat, then settle into a label in th
 });
 
 test('refusals name the fix; a strategy of your own has the same shape', async () => {
-  await assert.rejects(make({focus: {...focus(), strategy: 'zoom'}}), /focus\.strategy must be "camera", "spotlight", "dim", "none"/);
+  await assert.rejects(make({focus: {...focus(), strategy: 'zoom'}}), /focus\.strategy must be "camera", "spotlight", "dim", "circle", "none"/);
   await assert.rejects(make({focus: {strategy: 'camera', keys: [{at: ['a', 'red square'], on: 'green'}]}}), /focus\.keys\[0\]: nothing in the picture is called "green" .* the names there are red, blue/);
   await assert.rejects(make({focus: {strategy: 'camera', keys: [{at: ['b', 'the blue one'], on: 'blue'}, {at: ['a', 'red square'], on: 'red'}]}}), /focus\.keys\[1\] comes before the one above it/);
   await assert.rejects(make({focus: focus(), notes: [{note: 'push', push: {on: 'red', size: 'medium', from: ['a', 'red square'], to: ['a', 'quietly']}}]}), /a film has one camera/);

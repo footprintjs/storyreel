@@ -500,6 +500,7 @@ const OWN = [
   ['segments/store.mjs', 'utimesSync(json, now, now)', 'folderStore: a reused piece\'s manifest, its times set to now (a piece it checked, in the store it was given)'],
   ['segments/clip.mjs', "spawnSync(ffmpeg, ['-y', '-loglevel', 'error', ...inputs", 'writeClip: the review clip, into the render\'s work folder (changes.mjs moves it onto its output with writeOutput)'],
   ['stills.mjs', 'writeFileSync(script, filter)', 'the stills pass\'s tempScratch folder'],
+  ['share.mjs', "spawnSync(ffmpeg, ['-y', '-hide_banner', '-nostdin', '-loglevel', 'error', ...args]", 'shareCopy: the copy and its poster, into its own tempScratch folder (moved onto their outputs with writeOutput)'],
   ['mcp.mjs', 'writeSync(pictureFd, ', 'sendPicture: the picture\'s path, one line on fd 3 — a pipe the MCP server opened for this call (callTool), not a file'],
 ];
 const RUNS = [
@@ -526,6 +527,8 @@ const RUNS = [
   ['segments/clip.mjs', "spawnSync(ffmpeg, ['-y', '-loglevel', 'error', ...inputs", 'FFmpeg writing a review clip into the work folder (storyreel changes --render)'],
   ['render.mjs', "spawnSync(ffmpeg, ['-hide_banner', '-nostdin', ...AUDIO_ONLY", 'FFmpeg measuring a found sound\'s peak (volumedetect), to null'],
   ['sounds/index.mjs', "spawnSync(ffprobe, ['-v', 'error', ...AUDIO_ONLY", 'ffprobe reading a fetched sound (probeAudio), to stdout'],
+  ['share.mjs', "spawnSync(ffmpeg, ['-hide_banner', '-nostdin', '-i', file]", 'FFmpeg reading a film\'s length and size (probe), no output'],
+  ['share.mjs', "spawnSync(ffmpeg, ['-y', '-hide_banner', '-nostdin', '-loglevel', 'error', ...args]", 'FFmpeg making the share copy and its poster in its own scratch folder'],
 ];
 const MODULE = String.raw`(?:node:)?(?:fs(?:/promises)?|child_process)`, QUOTED = String.raw`[\x60'"]${MODULE}[\x60'"]`;
 const isFs = spec => /^(?:node:)?fs(?:\/promises)?$/.test(spec), isCp = spec => /^(?:node:)?child_process$/.test(spec);

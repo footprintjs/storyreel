@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+- **`storyreel anchors`: every phrase the film is keyed to, checked in one pass.** An edit to the narration leaves
+  beats on words no longer said — the compile stops at the first, so they were found one render at a time — and on
+  words now said twice, where the drawing quietly lands at the first place. The tool checks the recipe's beats and the
+  pacing's holds at once and says, for each, where it is named and what to write instead: not said (the nearest words
+  that are), said more than once (words said only at each place, keeping the beat's time: added after a beat's phrase,
+  before a pause's), an nth past the last place, an unknown scene. Over MCP too. In code, `compileFilm({anchors:
+  'note'})` notes each in `film.anchors` instead of stopping (a missing phrase stands at the nearest words said), and
+  the clock gains `places(scene, phrase)`: every place a phrase is said. `readInputs` (`footprint-storyreel/tools`)
+  reads a config without timing it; a tool says how it loads with `load: 'inputs' | 'config'` (was `compile: false`).
+- **`storyreel sheet`: the film at a glance, for a reviewer.** A frame every 4 s (`--every`), 20 to a sheet (`--per`),
+  each labelled with its time and scene, as PNGs — the whole film, its scenes, or a window. Over MCP too.
+- **`storyreel share <video>`: a copy to send to a person.** No project needed: `<name>.share.mp4` (854 wide, H.264 and
+  AAC, its index first) and `<name>.poster.jpg` beside the film or in `--out`; `shareCopy` in
+  `footprint-storyreel/tools`. FFmpeg writes them in a scratch folder of their own and each is moved onto its place
+  whole.
+- **The focus strategy `circle`:** a teacher's marker loop round the named thing as the voice names it, drawn in
+  0.45 s at each key and gone at `"wide"`; `["camera", "circle"]` frames and circles. A focus strategy's view gains
+  `on`, `thing` (the key's box, not eased) and `since` (seconds since the key).
+- **The review skill** checks the phrases after an edit to the words, and links `showing.md`: pictures before videos,
+  one page a person opens on a phone, and a review by several viewers (a child, a parent, a teacher, an animator, a
+  historian) merged into one list. It stays inside the agent-cost baseline (6 566 bytes of 6 046 + 10 %).
+
 ## 0.19.0 — the chat edit loop: see only what changed
 
 - **The chat edit loop: see an edit before the full render.** `storyreel changes` plans the full render's pieces and

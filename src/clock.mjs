@@ -213,6 +213,11 @@ export function makeClock(board, timings) {
       const next = speech[r.scene].words.find(w => w.start >= match.end - 1e-6);
       return {start: offsets[i] + match.end, end: offsets[i] + (next ? next.start : timings.scenes[i].duration)};
     },
+    /**
+     * Every place a phrase is said in scene `id`, in order, on the whole-lesson clock: [{start, end}] — none when it is
+     * not said. A ref's `nth` picks one of these (at, pauseAfter); the anchors (anchors.mjs) read them all.
+     */
+    places: (id, phrase) => { const i = sceneIndex(id); return phraseMatches(speech[id], phrase).map(m => ({start: offsets[i] + m.start, end: offsets[i] + m.end})); },
     /** Which scene a whole-lesson time falls in, and the time inside it. */
     locate(t) {
       let i = offsets.length - 1; while (i > 0 && t < offsets[i]) i--;

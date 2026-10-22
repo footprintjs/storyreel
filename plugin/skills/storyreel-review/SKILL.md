@@ -16,6 +16,9 @@ Without `timings` the tools time the film from the voice folder's `timings.json`
 
 ## The loop
 
+After an edit to the narration, recipe or pacing, first `npx storyreel anchors`: each phrase not said, or said twice,
+with its fix. Then:
+
 1. **When does it happen?** `npx storyreel timeline --scene <id>`: every scene start and beat with its time, the
    phrase it waits for and the recipe entry it moves. Never guess a time.
 2. **What is wrong?** `npx storyreel review --scene <id>` (or the whole film): the counts, the verdicts that did not
@@ -45,6 +48,11 @@ An edit asked for in chat: show only the frames it touched, in seconds.
 3. `npx storyreel changes --render`: only those pieces drawn, into the cache; `<out>/changes/review.mp4` plays them back to back, 1 s<!-- CHANGES_DEFAULTS.handles --> of the film either side, each labelled with its time, the voice under it. Show that clip.
 4. Frames of your own choosing: `npx storyreel part --from 0:12 --to 0:18`.
 5. At the end the full render draws nothing the preview drew (a `note:` on the count says what only its spot check sees). The config names it: `render` and `code`, its video in `out` (`footprint-storyreel/tools` · `fullRender`).
+
+## Showing a person
+
+Stills of what changed before films, on one page they open on a phone (`npx storyreel share out/film.mp4`); for a
+draft, several reviewers with `npx storyreel sheet` and the script: [showing.md](showing.md).
 
 ## The verdicts
 

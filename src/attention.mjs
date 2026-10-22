@@ -10,7 +10,10 @@
  *
  * Focus (FOCUS): `camera` eases the camera to frame the named thing (sizes as a director's push: medium, close,
  * insert; `on: "wide"` is the whole frame); `spotlight` darkens the rest; `dim` lays a veil of the paper over the
- * rest; `none`. A list composes them in order — ["camera", "dim"] moves the camera and veils the rest of its view.
+ * rest; `circle` draws a teacher's marker loop round the named thing as the voice names it (it draws itself in under
+ * half a second at each key, round each named thing in turn, and is gone at a "wide" key; the theme's palette.marker,
+ * else a bright pink); `none`. A list composes them in order — ["camera", "dim"] moves the camera and veils the rest
+ * of its view; ["camera", "circle"] frames the thing and circles it.
  * A film has one camera: a moving focus and the director's push notes refuse each other, and the recipe's camera
  * moves (camerawork.mjs) take turns with a moving focus — never both at once; the camera's view is the outer lens,
  * so it frames whatever the focus has framed.
@@ -22,8 +25,9 @@
  *
  * A strategy of your own has the same shape, passed to compileFilm (and makeFilm) as
  * `strategies: {focus: {name: {show(ctx, view, paint, theme)}}, emphasis: {name: {draw(ctx, t, word, theme)}}}`:
- * view = {cx, cy, z, sx, sy, box, w} (the point framed, the zoom, where on the frame it sits, the named thing's box,
- * how focused, 0–1). `safe` ([x0, y0, x1, y1] on the 1600×900 frame) is where a framed thing may sit — a film with
+ * view = {cx, cy, z, sx, sy, box, w, on, thing, since} (the point framed, the zoom, where on the frame it sits, the
+ * named thing's box as the focus eases to it, how focused, 0–1; the current key's thing — its name ("wide" too), its
+ * box as it is at the key, not eased — and the seconds since that key; before the first key, on and thing null). `safe` ([x0, y0, x1, y1] on the 1600×900 frame) is where a framed thing may sit — a film with
  * burned-in captions keeps it above them ([0, 0, 1600, 700]); it is centred there and sized to it.
  */
 import {FRAMINGS} from './notes.mjs';
@@ -55,6 +59,28 @@ function veil(ctx, v, color) {
   ctx.restore();
 }
 
+/** The marker loop's timing and size: drawn in DRAW s from its key, MARGIN px clear of the thing, WIDTH px thick. */
+export const LOOP = Object.freeze({draw: .45, margin: 24, width: 7});
+/**
+ * A teacher's marker loop round the thing in focus: a loose hand-drawn ring that starts at its top left and goes a
+ * little past where it began, drawing itself over LOOP.draw seconds from each key (its drawing is its entrance: it does
+ * not wait for the focus to ease in). None at a "wide" key or before the first. (Drawn the same every time: no
+ * randomness, so a kept piece stays true.)
+ */
+function markerLoop(ctx, v, theme) {
+  if (!v.on || v.on === 'wide' || !(v.since >= 0)) return;
+  const drawn = ease(clamp01(v.since / LOOP.draw)), [x0, y0, x1, y1] = v.thing;
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, rx = (x1 - x0) / 2 + LOOP.margin, ry = (y1 - y0) / 2 + LOOP.margin;
+  const steps = Math.max(2, Math.ceil(64 * drawn)), sweep = Math.PI * 2 * 1.08 * drawn, from = -2.4;
+  ctx.save(); ctx.strokeStyle = theme?.palette?.marker ?? '#e8467c'; ctx.lineWidth = LOOP.width; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  for (let k = 0; k <= steps; k++) {
+    const a = from + sweep * k / steps, grow = 1 + .04 * k / steps + Math.sin(a * 2 + 1.3) * .015, x = cx + Math.cos(a) * rx * grow, y = cy + Math.sin(a) * ry * grow;
+    if (k) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+  }
+  ctx.stroke(); ctx.restore();
+}
+
 /** The focus strategies: how a frame shows what the voice is about. */
 export const FOCUS = Object.freeze({
   camera: Object.freeze({name: 'camera', moves: true, show(ctx, v, paint) {
@@ -62,6 +88,7 @@ export const FOCUS = Object.freeze({
   }}),
   spotlight: Object.freeze({name: 'spotlight', show(ctx, v, paint) { paint(ctx); veil(ctx, v, 'rgba(18, 16, 26, .58)'); }}),
   dim: Object.freeze({name: 'dim', show(ctx, v, paint, theme) { paint(ctx); veil(ctx, v, withAlphaOf(theme?.palette?.bg, .62)); }}),
+  circle: Object.freeze({name: 'circle', show(ctx, v, paint, theme) { paint(ctx); markerLoop(ctx, v, theme); }}),
   none: Object.freeze({name: 'none', show(ctx, v, paint) { paint(ctx); }}),
 });
 
@@ -163,9 +190,9 @@ function readFocus(spec, {clock, named, strategies, pushes, theme}) {
   const tracks = {cx: along(k => k.cx), cy: along(k => k.cy), z: along(k => k.z), sx: along(k => k.sx), sy: along(k => k.sy), w: along(k => k.w), box: [0, 1, 2, 3].map(i => along(k => k.box[i]))};
   /** Where the focus is at t: the camera's point, zoom and place on the frame (the picture always covers the frame), the box, how focused. */
   const viewAt = t => {
-    const z = Math.max(1, track(t, tracks.z, feel)), sx = track(t, tracks.sx, feel), sy = track(t, tracks.sy, feel);
+    const z = Math.max(1, track(t, tracks.z, feel)), sx = track(t, tracks.sx, feel), sy = track(t, tracks.sy, feel), key = keys.findLast(k => t >= k.t);
     return {cx: Math.min(W - (W - sx) / z, Math.max(sx / z, track(t, tracks.cx, feel))), cy: Math.min(H - (H - sy) / z, Math.max(sy / z, track(t, tracks.cy, feel))), z, sx, sy,
-      box: tracks.box.map(b => track(t, b, feel)), w: clamp01(track(t, tracks.w, feel))};
+      box: tracks.box.map(b => track(t, b, feel)), w: clamp01(track(t, tracks.w, feel)), on: key?.on ?? null, thing: key ? key.box : null, since: key ? t - key.t : null};
   };
   // While it moves the camera: from each key until its spring settles (the camera's moves take turns with it: camerawork.mjs).
   const moving = strategy.moves ? keys.map((k, key) => ({from: k.t, to: k.t + settleTime(feel), key, on: k.on})) : [];

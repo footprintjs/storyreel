@@ -6,7 +6,7 @@
  * it prints the song's beat map as text (beats.mjs · beatMapText), so a person can settle an unsure tempo in seconds.
  */
 import path from 'node:path';
-import {TOOLS, CONFIG, loadProject, loadInputs} from './tools.mjs';
+import {TOOLS, CONFIG, loadProject, loadInputs, readInputs} from './tools.mjs';
 import {SOUNDS_HELP} from './sounds/cli.mjs';
 // Loaded first, so the picture's channel is taken from the environment before any project code runs (mcp.mjs · sendPicture).
 import {serveMcp, startOf, sendPicture} from './mcp.mjs';
@@ -15,6 +15,13 @@ const BEATS_HELP = `  beats    <song> — the song's tempo as the beat map hears
            their scores, and why each level of the beat is unsure; an unsure tempo is settled by giving music.bpm
              --bpm  the tempo you hear, to check it: the map is then sure
              --ffmpeg  the FFmpeg to read the song with`;
+const SHARE_HELP = `  share    <video> — a copy of a finished film to send to a person (no project needed): small (854 wide), quick to start
+           on a phone (its index first), and a poster still; beside the film as <name>.share.mp4 and <name>.poster.jpg
+             --width  the copy's width in pixels, even, 160–3840 (854)
+             --crf  its quality, 16–40: lower is better and larger (28)
+             --poster  the poster's moment, in seconds (6, or a shorter film's middle)
+             --out  the folder to write them in (default: the film's)
+             --ffmpeg  the FFmpeg to run`;
 const BREAKDOWN_USAGE = `storyreel breakdown <video.mp4> [--out dir] [--beats [--bpm n]] [--ffmpeg path]   a reference film broken down into a spec to match: shots, cuts, pacing, motion (breakdown.mjs); it needs no project, and FFmpeg 5.1 or later
              --beats  read the sound's beats too (beats.mjs · beatMap): which cuts land on the beat — an unsure tempo says so, and judges cuts only against the beats every candidate shares
              --bpm  the tempo you hear, for the beat map (with --beats): the map is then sure
@@ -72,15 +79,16 @@ if (asked) {
   const tool = TOOLS[asked];
   const usage = tool ? `storyreel ${asked} [--flag value …]   ${tool.about}\n${Object.entries(tool.args).map(([a, d]) => `  --${a}  ${d}`).join('\n')}\n  --config  the project file (default ./${CONFIG}); any other flag reaches the config's film(flags)`
     : asked === 'beats' ? `storyreel beats <song> [--bpm n] [--ffmpeg path]\n${BEATS_HELP}`
+    : asked === 'share' ? `storyreel share <video> [--width 854] [--crf 28] [--poster 6] [--out folder] [--ffmpeg path]\n${SHARE_HELP}`
     : asked === 'breakdown' ? BREAKDOWN_USAGE
     : asked === 'sounds' ? SOUNDS_HELP
     : asked === 'mcp' ? `storyreel mcp [--flag value …]   serves ${Object.keys(TOOLS).join(', ')} over MCP (stdio); the project (--config, --cwd) and the film's own flags (e.g. --out work/out) are fixed here for every call, and a call passes only its tool's arguments`
     : null;
   if (usage) { console.log(usage); process.exit(0); }
-  console.error(`storyreel: "${asked}" is not a command; the commands are ${[...Object.keys(TOOLS), 'beats', 'sounds', 'breakdown', 'mcp'].join(', ')} (storyreel help lists them all)`); process.exit(2);
+  console.error(`storyreel: "${asked}" is not a command; the commands are ${[...Object.keys(TOOLS), 'beats', 'share', 'sounds', 'breakdown', 'mcp'].join(', ')} (storyreel help lists them all)`); process.exit(2);
 }
-// beats takes the song first: a path, not a flag.
-const song = command === 'beats' && given[0] !== undefined && !given[0].startsWith('--') ? given[0] : null, rest = song === null ? given : given.slice(1);
+// beats takes the song first, share the video: a path, not a flag.
+const song = (command === 'beats' || command === 'share') && given[0] !== undefined && !given[0].startsWith('--') ? given[0] : null, rest = song === null ? given : given.slice(1);
 for (let i = 0; i < rest.length; i++) {
   if (!rest[i].startsWith('--')) { console.error(`storyreel: "${rest[i]}" is not a flag (flags are --name value)`); process.exit(2); }
   const next = rest[i + 1];
@@ -90,6 +98,14 @@ if (command === 'mcp') {
   // The project is fixed here, at start (mcp.mjs · startOf): a call can never name another config or folder.
   let start; try { start = startOf(flags); } catch (e) { console.error(`storyreel mcp: ${e.message}`); process.exit(2); }
   await serveMcp(start); process.exit(0);
+}
+if (command === 'share') {
+  if (song === null) { console.error(`storyreel share: name the finished film (storyreel share out/film.mp4)\n\n${SHARE_HELP}`); process.exit(2); }
+  const other = Object.keys(flags).find(f => !['width', 'crf', 'poster', 'out', 'ffmpeg'].includes(f));
+  if (other) { console.error(`storyreel share: --${other} is not a flag of share (the flags are --width, --crf, --poster, --out and --ffmpeg)`); process.exit(2); }
+  const {shareCopy, shareText} = await import('./share.mjs'), num = f => (flags[f] === undefined ? undefined : Number(flags[f]));
+  try { console.log(shareText(shareCopy(song, {width: num('width'), crf: num('crf'), poster: num('poster'), out: flags.out ?? null, ffmpeg: flags.ffmpeg ?? 'ffmpeg'}))); process.exit(0); }
+  catch (e) { console.error(`storyreel ${e.message}`); process.exit(/^share: (width|crf|poster|no video)/.test(e.message) ? 2 : 1); }
 }
 if (command === 'beats') {
   if (song === null) { console.error(`storyreel beats: name the song (storyreel beats music/theme.mp3)\n\n${BEATS_HELP}`); process.exit(2); }
@@ -105,13 +121,15 @@ if (command === 'beats') {
   } catch (e) { console.error(`storyreel beats: ${e.message}`); process.exit(e.code === 'BEAT_OPTIONS' ? 2 : 1); }
 }
 if (!command || command === 'help' || command === '--help' || !TOOLS[command]) {
-  const lines = [...Object.entries(TOOLS).map(([name, t]) => `  ${name.padEnd(9)}${t.about}\n${Object.entries(t.args).map(([a, d]) => `             --${a}  ${d}`).join('\n')}`), BEATS_HELP, SOUNDS_HELP];
+  const lines = [...Object.entries(TOOLS).map(([name, t]) => `  ${name.padEnd(9)}${t.about}\n${Object.entries(t.args).map(([a, d]) => `             --${a}  ${d}`).join('\n')}`), BEATS_HELP, SHARE_HELP, SOUNDS_HELP];
   (TOOLS[command] || !command || command === 'help' || command === '--help' ? console.log : console.error)(`storyreel <tool> [--flag value …]   (the film is named in ./${CONFIG}; --config another file)\n\n${lines.join('\n')}\n\nRead first, look last: timeline → review → fix → part → still.\nAfter an edit: changes (what it redraws) → changes --render (only those pieces, and a short clip of them).\nstoryreel mcp [--flag value …] serves the same tools over MCP (stdio); the project (--config, --cwd) and the film's own flags are fixed when it starts.\n${BREAKDOWN_USAGE}`);
   process.exit(command && command !== 'help' && command !== '--help' && !TOOLS[command] ? 2 : 0);
 }
 try {
-  // A tool that prepares the film itself (changes: as the full render does) reads the config without compiling it first.
-  const project = await (TOOLS[command].compile === false ? loadInputs : loadProject)(flags), out = await TOOLS[command].run(project, flags);
+  // A tool that prepares the film itself reads the config without compiling it first: changes as the full render does
+  // ('inputs': timed), anchors with its own timing ('config': not yet timed).
+  const load = {config: readInputs, inputs: loadInputs}[TOOLS[command].load] ?? loadProject;
+  const project = await load(flags), out = await TOOLS[command].run(project, flags);
   console.log(typeof out === 'string' ? out : out.text);
   sendPicture(out?.file);   // run by the MCP server for a still or a strip: the picture's path on its own pipe, never read out of the text
 } catch (e) {

@@ -14,11 +14,14 @@ import path from 'node:path';
 import {existsSync, readFileSync} from 'node:fs';
 import {writeOutput, outputFolder} from './files.mjs';
 import {pathToFileURL} from 'node:url';
-import {compileFilm, evenTimings, paceTimings, makeFilm} from './index.mjs';
+import {compileFilm, evenTimings, paceTimings, makeFilm, makeClock} from './index.mjs';
+import {checkPhrase, anchorsText} from './anchors.mjs';
+export {shareCopy, SHARE_DEFAULTS} from './share.mjs';
 import {previewChanges} from './changes.mjs';
 import {castFilm} from './prepare.mjs';
 import {CHANGES_DEFAULTS} from './segments.mjs';
 import {clockOf, clockSeconds} from './clocktext.mjs';
+import {clockTenths} from './clock.mjs';
 import {contactSheet} from './sheet.mjs';
 import {partWindow, partTimeline, timelineText, RENDER_DEFAULTS} from './render.mjs';
 import {formatScale} from './layout.mjs';
@@ -32,23 +35,35 @@ const FULL_KEYS = ['music', 'check', 'expect', 'voiceCheck', 'claims', 'approval
 const pick = (o, keys) => Object.fromEntries(keys.filter(k => o[k] !== undefined).map(k => [k, o[k]]));
 
 /**
- * The project's inputs: its config's film(flags), timed — paced from the voice folder's timings.json when it names one,
- * else evenly — and not compiled (what a tool that prepares the film itself reads: changes).
+ * The project's inputs as its config's film(flags) gives them, not yet timed: {inputs, cwd, said, raw} — `said` the
+ * storyboard with the cast's names in it (prepare.mjs · castFilm), as a voice says it; `raw` its timings before any
+ * pacing (the voice folder's timings.json, else even). What a tool that times the film itself reads (anchors).
  */
-export async function loadInputs({config = CONFIG, cwd = process.cwd(), ...flags} = {}) {
+export async function readInputs({config = CONFIG, cwd = process.cwd(), ...flags} = {}) {
   const file = path.resolve(cwd, config);
   if (!existsSync(file)) throw new Error(`no ${config} in ${cwd}: a project names its film there — export default {film: flags => ({storyboard, recipe, kits, root, narrationDir?, pacing?, layout?, out?})}`);
   const made = (await import(pathToFileURL(file).href)).default;
   if (!made || typeof made.film !== 'function') throw new Error(`${config} must export default {film(flags)}, returning the film's inputs`);
   const inputs = await made.film(flags);
   for (const key of ['storyboard', 'recipe']) if (!inputs?.[key]) throw new Error(`${config}: film() must return the ${key}`);
-  const voiced = inputs.narrationDir && existsSync(path.join(inputs.narrationDir, 'timings.json'));
-  // A film with no voice is timed evenly — and paced, when the config names a pacing, as makeFilm paces given timings —
-  // both from what is said: the storyboard with the cast's names in it (prepare.mjs · castFilm), as a voice said it.
+  const voiced = Boolean(inputs.narrationDir && existsSync(path.join(inputs.narrationDir, 'timings.json')));
   const said = castFilm(inputs).storyboard;
-  const even = () => (inputs.pacing ? paceTimings(said, evenTimings(said), {voiceSpeed: 1, ...inputs.pacing}) : evenTimings(said));
-  const timings = inputs.timings ?? (voiced ? paceTimings(said, JSON.parse(readFileSync(path.join(inputs.narrationDir, 'timings.json'), 'utf8')), {voiceSpeed: 1, ...(inputs.pacing ?? {})}) : even());
-  return {inputs: {...inputs, timings, voiced}, cwd};
+  const raw = inputs.timings ?? (voiced ? JSON.parse(readFileSync(path.join(inputs.narrationDir, 'timings.json'), 'utf8')) : evenTimings(said));
+  return {inputs: {...inputs, voiced}, cwd, said, raw};
+}
+
+/** Timings paced by the config's pacing (holds given, or the config's own), as makeFilm paces them; given timings as they are. */
+const pacedOf = ({inputs, said, raw}, holds = inputs.pacing?.holds) => (inputs.timings ? inputs.timings
+  : inputs.voiced || inputs.pacing ? paceTimings(said, raw, {voiceSpeed: 1, ...(inputs.pacing ?? {}), ...(inputs.pacing ? {holds} : {})}) : raw);
+
+/**
+ * The project's inputs: its config's film(flags), timed — paced from the voice folder's timings.json when it names one,
+ * else evenly (and paced, when the config names a pacing, as makeFilm paces given timings) — and not compiled (what a
+ * tool that prepares the film itself reads: changes).
+ */
+export async function loadInputs(options = {}) {
+  const read = await readInputs(options);
+  return {inputs: {...read.inputs, timings: pacedOf(read)}, cwd: read.cwd};
 }
 
 /** The project: its config's film, compiled once (paced from the voice folder's timings.json when it names one). */
@@ -74,8 +89,11 @@ export function fullRender(project) {
     render: {...(inputs.layout ? {layout: inputs.layout} : {}), ...render}, ...(inputs.code ? {code: inputs.code} : {})};
 }
 
-/** The tools' defaults, as data: a part's handles (seconds either side, a render's), a strip's frames and their rate, a still's width (px). */
-export const TOOL_DEFAULTS = Object.freeze({handles: RENDER_DEFAULTS.handles, frames: 12, fps: 30, width: 1200});
+/**
+ * The tools' defaults, as data: a part's handles (seconds either side, a render's), a strip's frames and their rate, a
+ * still's width (px); a sheet's seconds between frames, frames to a sheet and width (px).
+ */
+export const TOOL_DEFAULTS = Object.freeze({handles: RENDER_DEFAULTS.handles, frames: 12, fps: 30, width: 1200, every: 4, per: 20, sheetWidth: 1600});
 
 /** A flag that is on: true, or 'true' as the command line and MCP hand it. */
 const yes = v => v === true || v === 'true';
@@ -169,6 +187,28 @@ export async function still(project, args = {}) {
 }
 
 /**
+ * The whole film (or its scenes, or a window) at a glance, for a reviewer — a person, or an agent that reads pictures:
+ * a frame every `every` seconds, `per` to a sheet (five across), each labelled with its time and scene. A sheet of
+ * scenes shows them alone (handles 0 unless asked). Returns {text, file, files}: the sheets' paths and the times each spans.
+ */
+export async function sheet(project, args = {}) {
+  const part = partOf({...args, handles: args.handles ?? 0}), w = part ? spanOf(project.film, part) : {from: 0, to: project.film.total};
+  const every = Number(args.every ?? TOOL_DEFAULTS.every), per = Number(args.per ?? TOOL_DEFAULTS.per), width = widthOf({width: args.width ?? TOOL_DEFAULTS.sheetWidth}, 'sheet');
+  if (!(every >= .25 && every <= 60)) throw new Error(`sheet: every is the seconds between frames, 0.25–60, not ${JSON.stringify(args.every)}`);
+  if (!(Number.isInteger(per) && per >= 2 && per <= 60)) throw new Error(`sheet: per is how many frames a sheet holds, a whole number 2–60, not ${JSON.stringify(args.per)}`);
+  const moments = [];
+  for (let k = 0; w.from + k * every < w.to - 1e-6; k++) { const t = +(w.from + k * every).toFixed(3); moments.push({t, label: project.film.clock.locate(t).id}); }
+  const name = (part ? nameOf(part) : 'film').replace(/[^\w+.-]/g, '-'), files = [];
+  for (let k = 0; k * per < moments.length; k++) {
+    const frames = moments.slice(k * per, (k + 1) * per), file = path.join(stillsFolder(project), `sheet-${name}-${k + 1}.png`);
+    writeOutput(file, await contactSheet(project.film, {moments: frames, columns: Math.min(5, frames.length), width}));
+    files.push({file, from: frames[0].t, to: frames.at(-1).t});
+  }
+  return {text: `${head(project.film, part, w)}: ${moments.length} frames, one every ${every} s, ${files.length} sheet${files.length > 1 ? 's' : ''} of up to ${per}\n${files.map(f => `${f.file} · ${clockTenths(f.from)}–${clockTenths(f.to)}`).join('\n')}`,
+    file: files[0].file, files: files.map(f => f.file)};
+}
+
+/**
  * A strip: consecutive frames around one moment, side by side as a PNG — a fast move read frame by frame, so a
  * pop, a jump or two things crossing shows. Returns {text, file}.
  */
@@ -186,6 +226,26 @@ export async function strip(project, args = {}) {
   const file = path.join(stillsFolder(project), `strip-${moment.label.replace(/[^\w+.-]/g, '-')}.png`);
   writeOutput(file, await contactSheet(project.film, {moments, columns: Math.min(6, moments.length), width}));
   return {text: `${file} · ${moments.length} frames at ${fps} fps around ${moment.label} (${moment.t.toFixed(2)} s): frame 0 is the moment`, file};
+}
+
+/**
+ * Every phrase the film is keyed to, checked in one pass (anchors.mjs): the pacing's holds against the voice as it
+ * was said, then the recipe's beats in a compile that notes each phrase not as written instead of stopping at the
+ * first (compileFilm's anchors: 'note'; a hold not said is left out of its pacing). The count, then each phrase not
+ * said (with the nearest words said), each said more than once (with words said only at each place), each nth past
+ * the last place, each unknown scene — where it is named. full: every one (default: the first 10 a kind).
+ */
+export async function anchors(project, args = {}) {
+  const {inputs, cwd, said, raw} = project, holds = inputs.pacing?.holds ?? [], holdRef = h => ({scene: h.scene, phrase: h.after});
+  // (A hold is placed by the voice as said, before pacing; one not said is left out, so the film can still be paced.)
+  const spoken = makeClock(said, raw), keep = holds.filter(h => [null, 'ambiguous'].includes(checkPhrase(spoken, holdRef(h)).problem));
+  let film = null, stopped = null;
+  try { film = await compileFilm({...pick(inputs, FILM_KEYS), timings: pacedOf(project, keep), root: inputs.root ?? cwd, anchors: 'note'}); } catch (e) { stopped = e.message; }
+  // Every place is said on the film's clock (the paced film says the same words), so the report has one clock.
+  const clock = film?.clock ?? spoken, named = new Set((film?.beats ?? []).map(b => b.ref));
+  const held = holds.map((h, i) => ({ref: holdRef(h), path: `pacing.holds[${i}]`, ...checkPhrase(clock, holdRef(h))})).filter(n => n.problem);
+  const notes = [...held, ...(film?.anchors ?? []).map(n => ({...n, path: n.path === null ? null : `recipe.${n.path}`}))];
+  return anchorsText({clock, notes, checked: holds.length + named.size, stopped}, {full: yes(args.full)});
 }
 
 /**
@@ -208,10 +268,15 @@ export const TOOLS = Object.freeze({
     args: {scene: 'scene ids, comma-separated (default: the whole film)', handles: `seconds either side (${TOOL_DEFAULTS.handles})`, loop: 'true when the part is made to loop: the end of its scenes (not the handles) must come round to their start', full: FULL_ARG}},
   part: {run: part, about: `A quick look at scenes, or at a window of the film (from, to): rendered with ${TOOL_DEFAULTS.handles} s of the film either side (both cuts seen), the draft encode (half size when the config names a layout); reviewed first. Prints the video's path.`,
     args: {scene: 'scene ids, comma-separated (or a window: from and to)', from: 'the window\'s start on the film clock: seconds or m:ss (0:12)', to: 'the window\'s end: seconds or m:ss', handles: `seconds either side (${TOOL_DEFAULTS.handles})`, full: FULL_ARG}},
-  changes: {run: changes, compile: false, about: 'What an edit changed, before the full render: each changed stretch of the picture and why ("0:12–0:18 left · its recipe entries changed"), then the count. With render: only those pieces drawn (kept: the full render draws none of them again) and a short clip of them back to back, labelled with their times, the film either side and its voice under them. Compares with the cache of the config\'s full render (render, code) into out.',
+  anchors: {run: anchors, load: 'config', about: 'Every phrase the film is keyed to (the recipe\'s beats, the pacing\'s holds), checked in one pass: each not said (with the nearest words said), each said more than once with no nth (with words said only at each place), where each is named. Run it after any edit to the narration, the recipe or the pacing.',
+    args: {full: 'true for every phrase found (default: the first 10 of each kind)'}},
+  changes: {run: changes, load: 'inputs', about: 'What an edit changed, before the full render: each changed stretch of the picture and why ("0:12–0:18 left · its recipe entries changed"), then the count. With render: only those pieces drawn (kept: the full render draws none of them again) and a short clip of them back to back, labelled with their times, the film either side and its voice under them. Compares with the cache of the config\'s full render (render, code) into out.',
     args: {render: 'true to draw the changed pieces and write the clip, <out>/changes/review.mp4', handles: `seconds of the film either side of each change in the clip (${CHANGES_DEFAULTS.handles})`}},
   still: {run: still, picture: true, about: 'One picture to confirm the look: frames at the moments given, side by side, as a PNG. Look at it last, after the timeline and the review.',
     args: {at: 'moments: scene+seconds (or seconds), comma-separated, at most 30 (required)', width: `the picture's width in pixels, 100–4000 (${TOOL_DEFAULTS.width})`}},
+  sheet: {run: sheet, picture: true, about: `The whole film at a glance, for a reviewer: a frame every ${TOOL_DEFAULTS.every} s, ${TOOL_DEFAULTS.per} to a sheet, each labelled with its time and scene, as PNGs (paths printed). Hand them with the script to someone checking the film.`,
+    args: {scene: 'scene ids, comma-separated (default: the whole film; or a window: from and to)', from: 'the window\'s start on the film clock: seconds or m:ss', to: 'the window\'s end: seconds or m:ss',
+      every: `seconds between frames (${TOOL_DEFAULTS.every})`, per: `frames a sheet (${TOOL_DEFAULTS.per})`, width: `each sheet's width in pixels, 100–4000 (${TOOL_DEFAULTS.sheetWidth})`}},
   strip: {run: strip, picture: true, about: 'A fast move frame by frame: consecutive frames around one moment, side by side, as a PNG — to catch a pop, a jump or two things crossing.',
     args: {at: 'the moment: scene+seconds (or seconds) (required)', frames: `how many frames (${TOOL_DEFAULTS.frames})`, fps: `frames a second (${TOOL_DEFAULTS.fps})`, width: `the picture's width in pixels, 100–4000 (${TOOL_DEFAULTS.width})`}},
 });

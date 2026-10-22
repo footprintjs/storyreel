@@ -5,7 +5,7 @@ import {spawn, spawnSync} from 'node:child_process';
 import {existsSync, readdirSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {loadProject, timeline, review, still, TOOLS, strip} from '../src/tools.mjs';
+import {loadProject, readInputs, timeline, review, still, TOOLS, strip, anchors, sheet} from '../src/tools.mjs';
 import {tempDir} from './tmp.mjs';
 
 const project = fileURLToPath(new URL('./fixtures/tools/', import.meta.url)), cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url));
@@ -24,7 +24,7 @@ test('the tools read the project\'s film: its timeline and its review as text, a
   const s = await still(p, {at: 'one+2.5,two+0'});
   assert.ok(existsSync(s.file) && s.file.endsWith('.png'), s.text);
   await assert.rejects(still(p, {at: 'three+1'}), /"three\+1" is not a moment \(scene\+seconds, or seconds; the scenes are one, two\)/);
-  assert.deepEqual(Object.keys(TOOLS), ['timeline', 'review', 'part', 'changes', 'still', 'strip']);
+  assert.deepEqual(Object.keys(TOOLS), ['timeline', 'review', 'part', 'anchors', 'changes', 'still', 'sheet', 'strip']);
   const st = await strip(p, {at: 'one+2', frames: 6});
   assert.ok(existsSync(st.file) && st.file.endsWith('strip-one+2.png'), st.text);
   assert.match(st.text, /6 frames at 30 fps around one\+2 \([\d.]+ s\): frame 0 is the moment/);
@@ -40,6 +40,48 @@ test('the tools read the project\'s film: its timeline and its review as text, a
   await assert.rejects(strip(p, {at: 'one+1', width: '12.5'}), /^Error: strip: width must be a whole number of pixels 100–4000, not "12\.5"$/);
   await assert.rejects(still(p, {at: Array(31).fill('one+1').join(',')}), /^Error: still: at most 30 moments in one picture, not 31$/);
   assert.match(await review(p, {loop: 'true'}), /review \(.*loop.*\):[\s\S]*the loop jumps: the end is not the start/);
+});
+
+test('anchors: every phrase the film is keyed to, in one pass — the pacing\'s holds and the recipe\'s beats, where each is named', async () => {
+  const text = await anchors(await readInputs({cwd: project, anchors: 'true'}));
+  assert.match(text, /^8 phrases checked: 2 not said, 1 past the last place, 1 no such scene, 1 said more than once\n/);
+  assert.match(text, /\n {2}two "much shorter" → pacing\.holds\[1\] — not said; the nearest words said: "shorter" \([\d.]+ s\)\n {2}one "a lot of words" → recipe\.story\.beats\[1\] — not said; the nearest words said: "words"/, 'a hold not said, then a beat: one clock for both');
+  assert.match(text, /two "scene" → recipe\.story\.beats\[3\] — nth 2, but it is said 1 time \(nth counts from 0\)/);
+  assert.match(text, /three "hello" → recipe\.story\.beats\[4\] — no scene "three"/);
+  assert.match(text, /one "a" → recipe\.story\.beats\[2\] — said 2 times; the first is used \([\d.]+ s\)\. Each alone: "A first" \([\d.]+ s\) · "a few" \([\d.]+ s\)/);
+  assert.match(await anchors(await readInputs({cwd: project})), /^no phrase is named/);
+  const r = run(['anchors', '--anchors', 'true']);
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /^8 phrases checked/, 'the command line, as the tool');
+});
+
+test('sheet: the film at a glance — a frame every few seconds, so many to a sheet, each labelled with its time and scene', async () => {
+  const p = await loadProject({cwd: project, out: tempDir('sheet')}), s = await sheet(p, {every: 1, per: 4});
+  const frames = Math.ceil(p.film.total - 1e-6);
+  assert.equal(s.files.length, Math.ceil(frames / 4)); assert.ok(s.files.every(f => existsSync(f) && /sheet-film-\d+\.png$/.test(f)), s.text);
+  assert.match(s.text, new RegExp(`^the whole film: 0\\.00–[\\d.]+ s of [\\d.]+ s: ${frames} frames, one every 1 s, ${s.files.length} sheets of up to 4\\n`));
+  assert.match(s.text, /sheet-film-1\.png · 0:00\.0–0:03\.0/);
+  const two = await sheet(p, {scene: 'two', every: 2});
+  assert.equal(two.files.length, 1); assert.match(two.text, /^two: [\d.]+–[\d.]+ s of [\d.]+ s: \d+ frames, one every 2 s, 1 sheet of up to 20\n.*sheet-two-1\.png/, 'a scene alone: no handles');
+  await assert.rejects(sheet(p, {every: 0}), /^Error: sheet: every is the seconds between frames, 0\.25–60, not 0$/);
+  await assert.rejects(sheet(p, {per: 1.5}), /^Error: sheet: per is how many frames a sheet holds, a whole number 2–60, not 1\.5$/);
+});
+
+test('share: a small copy of a finished film to send, quick to start on a phone, and its poster', {skip: has('ffmpeg') ? false : 'needs ffmpeg'}, async () => {
+  const {shareCopy, shareText} = await import('../src/share.mjs'), dir = tempDir('share'), film = path.join(dir, 'film.mp4');
+  const made = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=10:duration=3', '-f', 'lavfi', '-i', 'sine=duration=3', '-shortest', '-pix_fmt', 'yuv420p', film]);
+  assert.equal(made.status, 0, String(made.stderr));
+  const s = shareCopy(film, {width: 320, poster: 1});
+  assert.equal(s.video, path.join(dir, 'film.share.mp4')); assert.equal(s.poster, path.join(dir, 'film.poster.jpg'));
+  assert.ok(existsSync(s.video) && existsSync(s.poster)); assert.deepEqual([s.width, s.height], [320, 180]); assert.ok(Math.abs(s.seconds - 3) < .2);
+  assert.match(shareText(s), /film\.share\.mp4 · [\d.]+ MB · 0:0[23] · 320×180 — poster .*film\.poster\.jpg$/);
+  assert.equal(readdirSync(dir).filter(f => f.startsWith('.')).length, 0, 'nothing half-made left beside it');
+  assert.throws(() => shareCopy(film, {width: 321}), /share: width is an even number of pixels 160–3840 \(854 is 480p\), not 321/);
+  assert.throws(() => shareCopy(film, {poster: 9}), /share: poster is the moment its still is taken, 0 to [\d.]+ s \(the film's length\), not 9/);
+  assert.throws(() => shareCopy(path.join(dir, 'none.mp4')), /share: no video at .*none\.mp4/);
+  const r = run(['share', film, '--width', '320', '--out', path.join(dir, 'out')]);
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /out\/film\.share\.mp4 · /);
+  assert.equal(run(['share', film, '--widht', '320']).status, 2, 'a flag share does not take');
+  assert.equal(run(['share']).status, 2, 'no film named');
 });
 
 test('a film with no voice is paced from its config: the even timings take its holds and tails, as makeFilm takes them', async () => {
@@ -59,7 +101,7 @@ test('the command line: each tool by name, its flags to the film too; refusals n
   const none = run(['review'], tempDir('empty'));   // a folder with no project in it (its own, not the shared temp folder)
   assert.equal(none.status, 1); assert.match(none.stderr, /no storyreel\.config\.mjs in .*: a project names its film there/);
   assert.equal(run(['draw']).status, 2, 'an unknown tool is a usage error');
-  for (const command of ['timeline', 'review', 'part', 'changes', 'still', 'strip', 'beats', 'breakdown', 'mcp']) {
+  for (const command of ['timeline', 'review', 'part', 'anchors', 'changes', 'still', 'sheet', 'strip', 'beats', 'share', 'breakdown', 'mcp']) {
     const h = run([command, '--help']);
     assert.equal(h.status, 0, `${command} --help: ${h.stderr}`); assert.match(h.stdout, new RegExp(`^storyreel ${command} `), `${command} --help gives its own usage`);
   }
@@ -100,7 +142,7 @@ test('the same tools over MCP (stdio): the handshake, the list with each tool\'s
     call(5, 'still', {at: 'nowhere+1'}), ask(6, 'resources/list', {}), call(7, 'strip', {at: 'one+2', frames: '4'})]);
   assert.equal(replies.get(1).result.serverInfo.name, 'storyreel'); assert.ok(replies.get(1).result.capabilities.tools);
   const tools = replies.get(2).result.tools;
-  assert.deepEqual(tools.map(t => t.name), ['timeline', 'review', 'part', 'changes', 'still', 'strip']);
+  assert.deepEqual(tools.map(t => t.name), ['timeline', 'review', 'part', 'anchors', 'changes', 'still', 'sheet', 'strip']);
   assert.deepEqual(Object.keys(tools.find(t => t.name === 'part').inputSchema.properties), ['scene', 'from', 'to', 'handles', 'full']);
   assert.equal(tools.find(t => t.name === 'part').inputSchema.required, undefined, 'a part takes its scenes or a window: it says which it lacks');
   assert.deepEqual(Object.keys(tools.find(t => t.name === 'changes').inputSchema.properties), ['render', 'handles']);
