@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.20.1 — anchors reads the holds on the film's clock
 
 - **`storyreel anchors` reads the pacing's holds on the film's clock too:** a hold said more than once now gets its
   fixes (words added before it, so its pause stays where it is) and its time is the paced film's; in 0.20.0 a hold's
