@@ -7,6 +7,7 @@ import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {loadProject, readInputs, timeline, review, still, TOOLS, strip, anchors, sheet} from '../src/tools.mjs';
 import {tempDir} from './tmp.mjs';
+import {makeClock, paceTimings} from '../src/index.mjs';
 
 const project = fileURLToPath(new URL('./fixtures/tools/', import.meta.url)), cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url));
 const run = (args, cwd = project) => spawnSync(process.execPath, [cli, ...args], {cwd, encoding: 'utf8'});
@@ -64,6 +65,15 @@ test('anchors: every phrase the film is keyed to, in one pass — the pacing\'s 
   assert.match(stop, /one "a lot of words in it" → recipe\.story\.beats\[1\] — not said;[\s\S]*two "much shorter" → recipe\.story\.beats\[2\] — not said;[\s\S]*one "a" → recipe\.story\.beats\[3\] — said 2 times/, 'the beats after the stop too');
   assert.match(stop, /\nthe compile stopped: words: the beats come in order: give them as they are said\nfix the phrases above, and run it again$/);
   assert.doesNotMatch(stop, /each said once/);
+});
+
+test('anchors: a hold at a moment its scene does not have stands in after the scene\'s last word, so every other time in the report stays the film\'s', async () => {
+  // The scene's last word ("ten.") is said first as "Ten": by its text alone, the stand-in would hold after the first one.
+  const marked = fileURLToPath(new URL('./fixtures/script/', import.meta.url)), read = await readInputs({cwd: marked, holds: 'true'});
+  const held = makeClock(read.said, paceTimings(read.said, read.raw, {sceneTail: .8, holds: [{scene: 'today', after: '{dots}', seconds: 1.5}]}));
+  const text = await anchors(read);
+  assert.match(text, /^3 phrases checked: 1 not said\n/);
+  assert.match(text, new RegExp(`today "\\{gone\\}" → pacing\\.holds\\[1\\] — no such moment in today; its moments: \\{dots\\} \\(${held.at(['today', '{dots}']).toFixed(2)} s\\) · \\{hop\\} \\(${held.at(['today', '{hop}']).toFixed(2)} s\\)$`), text);
 });
 
 test('sheet: the film at a glance — a frame every few seconds, so many to a sheet, each labelled with its time and scene', async () => {

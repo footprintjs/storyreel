@@ -15,7 +15,7 @@ import {existsSync, readFileSync} from 'node:fs';
 import {writeOutput, outputFolder} from './files.mjs';
 import {pathToFileURL} from 'node:url';
 import {compileFilm, evenTimings, paceTimings, makeFilm, makeClock, withDirections} from './index.mjs';
-import {checkPhrase, anchorsText, phrasesIn} from './anchors.mjs';
+import {checkPhrase, anchorsText, phrasesIn, exactPhrases} from './anchors.mjs';
 export {shareCopy, SHARE_DEFAULTS} from './share.mjs';
 import {previewChanges} from './changes.mjs';
 import {castFilm} from './prepare.mjs';
@@ -232,8 +232,9 @@ export async function strip(project, args = {}) {
 /**
  * Every phrase the film is keyed to, checked in one pass (anchors.mjs): the pacing's holds against the voice as it
  * was said, then the recipe's beats in a compile that notes each phrase not as written instead of stopping at the first
- * (compileFilm's anchors: 'note'). A hold not said is paced at the nearest words said instead (its place in the list
- * kept, so a pacing refusal names the right hold). When the compile stops anyway (a kit refusing a time stood in for),
+ * (compileFilm's anchors: 'note'). A hold not said is paced at the nearest words said instead — with none (a moment its
+ * scene does not have), after the scene's last word (lastWords) — its place in the list kept, so a pacing refusal names
+ * the right hold. When the compile stops anyway (a kit refusing a time stood in for),
  * the recipe's phrases are read from the recipe itself (anchors.mjs · phrasesIn), so none is lost. The count, then
  * each phrase not said (with the nearest words said), said more than once (with words said only at each place), past
  * its nth or in no scene — where it is named. full: every one (default: the first 10 a kind).
@@ -245,7 +246,7 @@ export async function anchors(project, args = {}) {
   const held = holds.map((h, i) => ({ref: holdRef(h), path: `pacing.holds[${i}]`, how: 'pauseAfter', ...checkPhrase(spoken, holdRef(h))}));
   const placed = holds.map((h, i) => {
     if ([null, 'ambiguous'].includes(held[i].problem)) return h;
-    const words = held[i].problem === 'missing' ? (held[i].near?.phrase ?? spoken.words(h.scene).at(-1)?.text) : null;
+    const words = held[i].problem === 'missing' ? (held[i].near?.phrase ?? lastWords(spoken, h.scene)) : null;
     return words ? {...h, after: words} : null;
   });
   let film = null, stopped = null, noted = [];
@@ -264,6 +265,16 @@ export async function anchors(project, args = {}) {
     checked = holds.length + read.length;
   }
   return anchorsText({clock, notes, checked, stopped}, {full: yes(args.full)});
+}
+
+/**
+ * Words that name a scene's last word alone, ending on it (anchors.mjs · exactPhrases, keeping its end): where a hold
+ * with no nearest words stands in, so its pause is after the last word — its text alone would name the first place it
+ * is said. null when no run of words names it alone: the hold is left out.
+ */
+function lastWords(clock, scene) {
+  const last = clock.words(scene).at(-1);
+  return last ? exactPhrases(clock, scene, [last], {keep: 'end'})[0]?.phrase ?? null : null;
 }
 
 /**
