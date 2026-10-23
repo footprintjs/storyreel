@@ -34,7 +34,13 @@ export function review(project: Project, args?: PartArgs & {loop?: boolean | str
 export function part(project: Project, args: PartArgs): Promise<string>;
 /** What an edit changed before the full render (previewChanges on fullRender): one line per changed range, then the count; render: true draws only those pieces (kept) and writes a short clip of them. */
 export function changes(project: ProjectSource, args?: {render?: boolean | string; handles?: number | string}): Promise<string>;
-export function still(project: Project, args: {at: string | string[]; width?: number | string}): Promise<{text: string; file: string}>;
+/**
+ * One picture: frames at the moments named (`at`: scene+seconds, seconds or m:ss on the film clock, scene:phrase or
+ * scene:{moment}, +seconds after either; at most 30), or at every beat of one scene (`beats`; `from` and `to`, moments,
+ * keep the beats between; at most 30 a picture, the rest named in the text) — never both.
+ */
+export function still(project: Project, args: {at: string | string[]; beats?: never; from?: never; to?: never; width?: number | string}
+  | {beats: string; at?: never; from?: string | number; to?: string | number; width?: number | string}): Promise<{text: string; file: string}>;
 /** Every phrase the film is keyed to (the pacing's holds, the recipe's beats), checked in one pass: the count, then each not said, said more than once, past its nth, in no scene or a moment named with nth or edge, where it is named, with what to write instead. full: every one (default: the first 10 a kind). */
 export function anchors(project: ProjectConfig, args?: {full?: boolean | string}): Promise<string>;
 /** The film's script as JSON, one spoken scene a line (silent scenes left out): each a ScriptScene. A mark not as written refuses, naming the scene. */
@@ -47,7 +53,7 @@ export function sheet(project: Project, args?: PartArgs & {every?: number | stri
 export function shareCopy(file: string, options?: {width?: number; crf?: number; poster?: number; out?: string | null; ffmpeg?: string}): {video: string; poster: string; seconds: number; bytes: number; width: number; height: number | null};
 /** The share copy's defaults: width (px), crf (x264's quality), poster (s). */
 export const SHARE_DEFAULTS: Readonly<{width: number; crf: number; poster: number}>;
-/** A fast move frame by frame: `frames` (12) consecutive frames at `fps` (30) around one moment, side by side as a PNG. */
+/** A fast move frame by frame: `frames` (12) consecutive frames at `fps` (30) around one moment (as a still's `at` names one), side by side as a PNG. */
 export function strip(project: Project, args: {at: string; frames?: number | string; fps?: number | string; width?: number | string}): Promise<{text: string; file: string}>;
 /** A tool: what it runs, what it does, what it takes; `picture` when its result is an image (MCP returns it as one); `load`: 'inputs' when it reads the timed inputs and prepares the film itself (changes), 'config' when it reads the config's film untimed (anchors, script); none: the compiled film. */
 export interface Tool {run(project: Project | ProjectSource | ProjectConfig, args: Record<string, unknown>): Promise<string | {text: string; file: string}>; about: string; args: Record<string, string>; picture?: boolean; load?: 'inputs' | 'config'}

@@ -38,9 +38,46 @@
   voice says), and U+2028, U+2029 and U+0085 are written as escapes, so a reader that splits lines at them (Python's
   `splitlines()`) still reads one scene a line. A silent scene is left out. Over MCP too (nine tools).
   `footprint-storyreel/tools` · `script`.
+- **The timeline speaks the still tool's language.** `storyreel timeline --scene X` counted its times from the start
+  of its window, which opens `handles` seconds (1.5) before the scene, while `still --at X+seconds` counts from the
+  scene's own start: every time copied from the timeline landed 1.5 s late, and an agent did the subtraction by hand.
+  Now a scene's timeline prints each time as `scene+seconds` from the start of the scene it falls in, the film clock
+  beside it (`two+2.02 (0:07.3)  "{turn}" → story.beats[2]`); a line in the handles counts from its own scene, the
+  one before or after, so no time is negative and none needs a new form (a time in an earlier scene of an id the
+  storyboard gives twice is said in seconds: that id names its last scene, as everywhere). A window's (`--from`,
+  `--to`) and the whole film's are seconds on the film clock (a window's counted from its own start before). The
+  header says what the times count from. Whatever the timeline prints goes to `still --at` and `strip --at` as
+  written, and `--at` takes m:ss too (`0:07.3`, as the review prints its times). The timeline's help lists `--from`
+  and `--to` (MCP takes them too). In code: `filmTimeline(film, {from, to})` (`footprint-storyreel/render`) gives the
+  rows on the film clock, exactly (`partTimeline` keeps the stretch's own clock), and `timelineText(rows, {time})`
+  says each time your own way.
+- **A moment by what is said.** `still --at` and `strip --at` take `scene:phrase` (`two:a second scene`) and
+  `scene:{moment}` (`today:{hop}`, a moment written in the narration), with `+seconds` after either
+  (`today:{hop}+0.5`): found on the film's clock as a recipe's beat is, with no time to work out first, and labelled
+  on the picture as written. What names no one place refuses, saying why and each place as `scene+seconds`: a phrase
+  not said (with the nearest words said), one said more than once (each place, and words said only there, as
+  `storyreel anchors` suggests them), a moment the scene does not have (with the ones it has), braces that name no
+  moment (the clock's own reason). `--at` is comma-separated, so a phrase's own commas are left out (words match
+  whatever the punctuation). The lookup reads the clock's places, so a still adds nothing to the film's beats.
+  `scene+seconds` and plain seconds read exactly as before.
+- **`storyreel still --beats <scene>`: every beat of a scene in one picture,** instead of reading the timeline and
+  working out a time for each: a frame at each beat the timeline lists for the scene, labelled with its
+  `scene+seconds` and what is said there (`0:07.3  two+2.02 "{turn}"`); beats that land together are one frame. A still
+  holds 30 frames: with more, the text says so (`30 frames of 35`) and how to see the rest (`the same call with --from
+  one+3.31`); `--from` and `--to` (moments, as `--at` takes them) keep the beats between, each to half a hundredth, so
+  a time the timeline printed keeps its own beat. A beat the millisecond rounding put a hair before its scene's start
+  (a voice paces scenes between milliseconds) is that scene's, in the timeline too. `--beats` with `--at` refuses,
+  naming each. Over MCP too: `still` no longer requires `at` (it takes `at` or `beats`, and says which it lacks).
 - **Fix: a hold not said, with no nearest words, stands in after its scene's last word** (`storyreel anchors`): it
   stood in by the last word's text, which names the first place that word is said — so the report's other times moved
   by the hold. Now it is named by words said only there (`exactPhrases`), or left out when none are.
+- **Fix: a still of many moments is written.** A still's file is named after its moments, and 30 short ones
+  (`one+1.10,…`) made a name longer than the 255 bytes a file name holds, so the still failed (`ENAMETOOLONG`). A name
+  past 100 characters is now cut and ends in a hash of the whole (a strip's and a sheet's too), and so does one that
+  lost a letter of another script (`пример` and `привет` named one file); any other name is as it was.
+- **Fix: a still at the start of a scene a voice paced shows that scene.** A still's moment was rounded to the
+  millisecond, and a voice paces scenes between milliseconds: `still --at two+0` could land a hair before `two`, on the
+  last picture of the scene before. The moment is now held to the film, never rounded.
 - **Films without marks do not change:** every reader of their words gives what 0.20.1 gave — the voiced cut's holds
   (`planHolds`) too — pinned by hash from 0.20.1 itself (`test/unmarked.mjs`), beside the pixel pins. Phrases work
   exactly as before.
@@ -48,6 +85,9 @@
   a lone `{` or `}`, refuses, naming the scene and the fix: write the words a voice says. So does a mark-shaped `{…}` in
   a silent scene's direction, and a beat's phrase with a brace that is not one moment alone. A beat whose phrase is
   exactly a mark (`"{dots}"`) names a moment, no longer the word in it.
+- **Breaking:** `storyreel timeline`'s times (above): a scene's are `scene+seconds (m:ss.t)`, a window's are on the film
+  clock, and the header says so (`(times: scene+seconds from that scene's start, then the film clock)`, `(times:
+  seconds from the film's start)`). A script that read the times as counted from the window's start reads them anew.
 
 ## 0.20.1 — anchors reads the holds on the film's clock
 

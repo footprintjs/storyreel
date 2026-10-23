@@ -7,7 +7,9 @@ import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {loadProject, readInputs, timeline, review, still, TOOLS, strip, anchors, sheet} from '../src/tools.mjs';
 import {tempDir} from './tmp.mjs';
-import {makeClock, paceTimings} from '../src/index.mjs';
+import {makeClock, paceTimings, compileFilm, evenTimings} from '../src/index.mjs';
+import {filmTimeline} from '../src/render.mjs';
+import {momentAt, sceneTime, HUNDREDTH} from '../src/momenttext.mjs';
 
 const project = fileURLToPath(new URL('./fixtures/tools/', import.meta.url)), cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url));
 const run = (args, cwd = project) => spawnSync(process.execPath, [cli, ...args], {cwd, encoding: 'utf8'});
@@ -15,7 +17,7 @@ const has = cmd => !spawnSync(cmd, ['-version']).error;
 
 test('the tools read the project\'s film: its timeline and its review as text, a still as one picture', async () => {
   const out = tempDir('tools'), p = await loadProject({cwd: project, out});
-  assert.match(await timeline(p, {scene: 'two', handles: 0}), /^two: [\d.]+–[\d.]+ s of [\d.]+ s \(times from its start\)\n0\.00  ── two$/m);
+  assert.match(await timeline(p, {scene: 'two', handles: 0}), /^two: [\d.]+–[\d.]+ s of [\d.]+ s \(times: scene\+seconds from that scene's start, then the film clock\)\ntwo\+0\.00 \(0:0\d\.\d\)  ── two$/m);
   const read = await review(p, {full: 'true'});
   assert.match(read, /review \(under-captions, words-overlap, cut-off, hook, text-density, stale, still, slideshow, claims\):\n[\s\S]*0:02\.0–0:03\.8 one · words over words: "Alpha" and "Beta"/);
   const short = await review(p);
@@ -24,15 +26,15 @@ test('the tools read the project\'s film: its timeline and its review as text, a
   assert.match(read, /\nverdicts:\nNo slideshow · passed: the shots move inside themselves: most of their running time is never held still for more than 3 s \(0 % of [\d.]+ s dead, \d+ % still\)\nDrawn parts hold together · not run: no kit on screen gives its parts \(parts\(t\)\)\nEvery number has a source · passed: the film shows no number/, 'the verdicts follow the findings, each with why');
   const s = await still(p, {at: 'one+2.5,two+0'});
   assert.ok(existsSync(s.file) && s.file.endsWith('.png'), s.text);
-  await assert.rejects(still(p, {at: 'three+1'}), /"three\+1" is not a moment \(scene\+seconds, or seconds; the scenes are one, two\)/);
+  await assert.rejects(still(p, {at: 'three+1'}), /"three\+1" is not a moment \(scene\+seconds, .*; the scenes are one, two\)/);
   assert.deepEqual(Object.keys(TOOLS), ['timeline', 'review', 'part', 'anchors', 'script', 'changes', 'still', 'sheet', 'strip']);
   const st = await strip(p, {at: 'one+2', frames: 6});
   assert.ok(existsSync(st.file) && st.file.endsWith('strip-one+2.png'), st.text);
   assert.match(st.text, /6 frames at 30 fps around one\+2 \([\d.]+ s\): frame 0 is the moment/);
   await assert.rejects(strip(p, {at: 'one+2,two+0'}), /strip: name one moment \(at: "scene\+seconds"\); a still shows several/);
   await assert.rejects(strip(p, {}), /^Error: strip: name one moment \(at: "scene\+seconds"\)$/, 'a strip\'s refusals name the strip, not the still');
-  await assert.rejects(strip(p, {at: 'three+1'}), /^Error: strip: "three\+1" is not a moment \(scene\+seconds, or seconds; the scenes are one, two\)$/);
-  await assert.rejects(still(p, {}), /^Error: still: name the moments \(at: "scene\+seconds,…"\)$/);
+  await assert.rejects(strip(p, {at: 'three+1'}), /^Error: strip: "three\+1" is not a moment \(scene\+seconds, .*; the scenes are one, two\)$/);
+  await assert.rejects(still(p, {}), /^Error: still: name the moments \(at: "scene\+seconds,…"\) or a scene whose every beat to show \(beats: "scene"\)$/);
   await assert.rejects(strip(p, {at: 'one+2', frames: 1}), /frames must be a whole number 2–30/);
   // A moment is exactly scene+seconds: its words are printed as its label, so nothing may ride after them.
   await assert.rejects(still(p, {at: 'one+2+/elsewhere/secret.png'}), /^Error: still: "one\+2\+\/elsewhere\/secret\.png" is not a moment/);
@@ -41,6 +43,133 @@ test('the tools read the project\'s film: its timeline and its review as text, a
   await assert.rejects(strip(p, {at: 'one+1', width: '12.5'}), /^Error: strip: width must be a whole number of pixels 100–4000, not "12\.5"$/);
   await assert.rejects(still(p, {at: Array(31).fill('one+1').join(',')}), /^Error: still: at most 30 moments in one picture, not 31$/);
   assert.match(await review(p, {loop: 'true'}), /review \(.*loop.*\):[\s\S]*the loop jumps: the end is not the start/);
+});
+
+test('a still of many moments is written: a name too long for a file is cut, with a hash of the whole, so two never meet', async t => {
+  const p = await loadProject({cwd: project, out: tempDir('long-names', t)});
+  // 30 moments of 8 characters named a file of 273 bytes, past the 255 a file name holds: the still failed to write.
+  const many = from => Array.from({length: 30}, (_, k) => `one+1.${from + k}`).join(',');
+  const [a, b] = [await still(p, {at: many(10)}), await still(p, {at: many(11)})];
+  for (const s of [a, b]) assert.ok(existsSync(s.file) && path.basename(s.file).length <= 104, s.file);
+  assert.match(path.basename(a.file), /^one\+1\.10_one\+1\.11_[\w+.-]*-[0-9a-f]{16}\.png$/);
+  assert.notEqual(a.file, b.file, 'two long names that start alike end in their own hash');
+  assert.ok((await still(p, {at: 'one+2.5,two+0'})).file.endsWith(`${path.sep}one+2.5_two+0.png`), 'a short name is as it was');
+});
+
+test('the timeline speaks the still tool\'s language: a scene\'s times are scene+seconds from their own scene\'s start, the film clock beside; a window\'s and the film\'s are seconds on the film clock', async t => {
+  const p = await loadProject({cwd: project, keyed: 'true', out: tempDir('timeline', t)});
+  assert.equal(await timeline(p, {scene: 'two'}), [
+    'two: 3.78–9.04 s of 9.04 s (times: scene+seconds from that scene\'s start, then the film clock)',
+    'one+4.10 (0:04.1)  "slowly" → story.beats[0]',   // in the handles before two: counted from its own scene, never negative
+    'two+0.00 (0:05.3)  ── two',
+    'two+0.68 (0:06.0)  "a second scene" → story.beats[1]',
+    'two+2.02 (0:07.3)  "{turn}" → story.beats[2]',
+    'two+2.58 (0:07.9)  "shorter" → story.beats[3]'].join('\n'));
+  assert.equal(await timeline(p, {from: '0:06', to: '0:08', handles: 0}), [
+    '0:06–0:08: 6.00–8.00 s of 9.04 s (times: seconds from the film\'s start)',
+    '7.30  "{turn}" → story.beats[2]',
+    '7.86  "shorter" → story.beats[3]'].join('\n'), 'a window\'s times are the film\'s, no longer counted from the window');
+  assert.match(await timeline(p), /^the whole film: 0\.00–9\.04 s of 9\.04 s \(times: seconds from the film's start\)\n0\.00 {2}── one\n4\.10 {2}"slowly" → story\.beats\[0\]\n5\.28 {2}── two\n/);
+});
+
+test('every time the timeline prints goes to still --at and strip --at as written, and lands on what it lists', async t => {
+  const out = tempDir('round-trip', t), p = await loadProject({cwd: project, keyed: 'true', out}), {film} = p, rows = filmTimeline(film);
+  // Three listings of the whole film — by scenes, whole, as a window — each a line per row, in order.
+  for (const args of [{scene: 'one,two'}, {}, {from: 0, to: film.total, handles: 0}]) {
+    const lines = (await timeline(p, args)).split('\n').slice(1);
+    assert.equal(lines.length, rows.length, JSON.stringify(args));
+    const times = lines.map(l => /^(\S+)(?: \((\d+:\d\d\.\d)\))? {2}/.exec(l));
+    times.forEach(([, time, clock], k) => {
+      assert.ok(Math.abs(momentAt(film, time, 'still') - rows[k].t) <= .005 + 1e-9, `${time} is ${rows[k].t}`);
+      if (clock) assert.ok(Math.abs(momentAt(film, clock, 'still') - rows[k].t) <= .05 + 1e-9, `${clock} is ${rows[k].t}, to the tenth`);
+    });
+    const s = await still(p, {at: times.map(m => m[1]).join(',')});
+    assert.deepEqual([...s.text.matchAll(/(?:: |, )(\S+) \(([\d.]+) s\)/g)].map(m => [m[1], Math.abs(+m[2] - rows[times.findIndex(x => x[1] === m[1])].t) <= .01]), times.map(m => [m[1], true]), s.text);
+  }
+  const strips = await Promise.all(['two+2.02', '0:07.3', '7.30'].map(at => strip(p, {at, frames: 2})));
+  assert.deepEqual(strips.map(s => /around (\S+) \(([\d.]+) s\)/.exec(s.text).slice(1)), [['two+2.02', '7.30'], ['0:07.3', '7.30'], ['7.30', '7.30']]);
+  // As an agent works: the timeline's line, pasted.
+  const listed = run(['timeline', '--scene', 'two', '--keyed', 'true']), turn = /^(\S+) \S+ {2}"\{turn\}"/m.exec(listed.stdout)?.[1];
+  assert.equal(turn, 'two+2.02', listed.stdout + listed.stderr);
+  const shot = run(['still', '--at', turn, '--keyed', 'true', '--out', out]);
+  assert.equal(shot.status, 0, shot.stderr); assert.match(shot.stdout, /· 1 frame: two\+2\.02 \(7\.30 s\)$/m);
+});
+
+test('a scene id that would not read back as written — given twice (it names its last scene, as on the clock), or with a + or a , — is said on the film clock, so every time reads back as itself', async () => {
+  const film = async ids => { const storyboard = {scenes: ids.map((id, k) => ({id, narration: `Words of scene ${k} here.`}))}; return compileFilm({storyboard, recipe: {story: {kit: 'whiteboard', items: []}}, timings: evenTimings(storyboard)}); };
+  const twice = await film(['a', 'b', 'a']), odd = await film(['a+b', 'c,d', 'e']), [starts, ends] = [twice.clock.offsets, odd.clock.offsets];
+  assert.deepEqual([1, starts[1] + .5, starts[2] + .5].map(t => sceneTime(twice, t)), ['1.00', 'b+0.50', 'a+0.50']);
+  assert.deepEqual([1, ends[1] + .5, ends[2] + .5].map(t => sceneTime(odd, t)), ['1.00', (ends[1] + .5).toFixed(2), 'e+0.50']);
+  for (const f of [twice, odd]) for (const t of [0, 1, ...f.clock.offsets.map(o => o + .5), f.total - .01]) assert.ok(Math.abs(momentAt(f, sceneTime(f, t), 'still') - t) <= HUNDREDTH + 1e-9, `${t} said as ${sceneTime(f, t)}`);
+});
+
+test('a still and a strip take the moments they always took, read exactly as before, and m:ss on the film clock too', async t => {
+  const p = await loadProject({cwd: project, out: tempDir('old-forms', t)}), {film} = p, two = film.clock.start('two').toFixed(2), last = (film.total - .001).toFixed(2);
+  const s = await still(p, {at: 'one+2.5,two+0,3.25,+2,one+-1,two+100'});
+  assert.ok(s.file.endsWith(`${path.sep}one+2.5_two+0_3.25_+2_one+-1_two+100.png`), s.file);
+  assert.match(s.text, new RegExp(`· 6 frames: one\\+2\\.5 \\(2\\.50 s\\), two\\+0 \\(${two} s\\), 3\\.25 \\(3\\.25 s\\), \\+2 \\(2\\.00 s\\), one\\+-1 \\(0\\.00 s\\), two\\+100 \\(${last} s\\)$`), 'held to the film, as ever');
+  assert.match((await still(p, {at: '0:02.5,0:03'})).text, /· 2 frames: 0:02\.5 \(2\.50 s\), 0:03 \(3\.00 s\)$/);
+  assert.match((await strip(p, {at: '0:02', frames: 2})).text, /strip-0-02\.png · 2 frames at 30 fps around 0:02 \(2\.00 s\)/);
+  for (const at of ['0:61', '1:2:3:4', 'one+2+3', 'one+x']) await assert.rejects(still(p, {at}), new RegExp(`^Error: still: ${JSON.stringify(at).replace(/[+]/g, '\\+')} is not a moment \\(`), at);
+});
+
+test('a moment by what is said: scene:phrase or scene:{moment}, +seconds after either, where the film\'s clock says it is — labelled as written', async t => {
+  const p = await loadProject({cwd: project, keyed: 'true', out: tempDir('said', t)}), {film} = p, logged = film.beats.length;
+  const s = await still(p, {at: 'two:a second scene,two:{turn},two:{turn}+0.5,two:a little shorter+0.25,one:said slowly'});
+  assert.ok(s.file.endsWith(`${path.sep}two-a-second-scene_two--turn-_two--turn-+0.5_two-a-little-shorter+0.25_one-said-slowly.png`), s.file);
+  assert.equal(film.beats.length, logged, 'a still looks a moment up without adding it to the film\'s beats (the timeline lists those)');
+  // Each lands where the clock a recipe's beats are read on puts it (its at(), asked last: it logs what it is asked).
+  const asked = [['two', 'a second scene', 0], ['two', '{turn}', 0], ['two', '{turn}', .5], ['two', 'a little shorter', .25], ['one', 'said slowly', 0]];
+  assert.deepEqual([...s.text.matchAll(/(?:: |, )([^,]+) \(([\d.]+) s\)/g)].map(m => [m[1], m[2]]),
+    asked.map(([scene, phrase, plus]) => [`${scene}:${phrase}${plus ? `+${plus}` : ''}`, (film.clock.at([scene, phrase]) + plus).toFixed(2)]));
+  assert.match((await strip(p, {at: 'two:{turn}+0.5', frames: 2})).text, /strip-two--turn-\+0\.5\.png · 2 frames at 30 fps around two:\{turn\}\+0\.5 \(7\.60 s\)/);
+  // What names no one place refuses, saying why and what to write, each place as the timeline says it.
+  const refused = {
+    'two:a': 'said 2 times in two (two+0.68 · two+1.82): name one by its time, or by words said only there, as storyreel anchors suggests them: "a second" (two+0.68) · "a little" (two+1.82)',
+    'two:much shorter': 'not said in two; the nearest words said: "shorter" (two+2.58)',
+    'two:{gone}': 'two has no moment {gone} (its moments: {turn} (two+1.82))',
+    'one:{gone}': 'one has no moment {gone} (it has none)',
+    'two:{@mom}': 'a speaker tag names who says a line, and is no moment: write a moment where the beat lands ({look}{@mom}"…") and name that ("{look}")',
+    'two:a {turn}': 'a moment is named alone ("{ten}"), and a phrase is the words said, with no braces ("a ten"): write one or the other'};
+  for (const [at, why] of Object.entries(refused)) await assert.rejects(still(p, {at}), {message: `still: ${JSON.stringify(at)} — ${why}`});
+  await assert.rejects(strip(p, {at: 'two:much shorter+1'}), {message: 'strip: "two:much shorter+1" — not said in two; the nearest words said: "shorter" (two+2.58)'});
+  await assert.rejects(still(p, {at: 'two:'}), {message: 'still: "two:" names nothing said: write the words after the colon (two:what is said) or a moment (two:{name})'});
+  for (const at of ['three:hello', 'two:{turn}+x', 'two:a+1+2']) await assert.rejects(still(p, {at}), new RegExp(`^Error: still: ".*" is not a moment \\(scene\\+seconds, seconds or m:ss on the film clock, or what is said: scene:phrase or scene:\\{moment\\}, \\+seconds after either; the scenes are one, two\\)$`), at);
+  assert.equal(film.beats.length, logged + asked.length, 'only the at() asked above was logged');
+});
+
+test('still --beats: a frame at each beat the timeline lists for a scene, labelled with its scene+seconds and what is said; at most 30, the rest named with the call that shows them', async t => {
+  const out = tempDir('beats', t), p = await loadProject({cwd: project, keyed: 'true', out});
+  const s = await still(p, {beats: 'two'});
+  assert.ok(existsSync(s.file) && s.file.endsWith(`${path.sep}beats-two.png`), s.file);
+  assert.match(s.text, /· 3 frames, one at each beat in two: two\+0\.68 "a second scene" \(5\.96 s\), two\+2\.02 "\{turn\}" \(7\.30 s\), two\+2\.58 "shorter" \(7\.86 s\)$/);
+  const listed = (await timeline(p, {scene: 'two'})).split('\n').filter(l => /^two\+\S+ \(\S+\) {2}"/.test(l)).map(l => l.split(' ')[0]);
+  assert.deepEqual(listed, ['two+0.68', 'two+2.02', 'two+2.58'], 'the beats the timeline prints against two (the one in its handles counts from one)');
+  assert.match((await still(p, {beats: 'one'})).text, /· 1 frame, one at each beat in one: one\+4\.10 "slowly" \(4\.10 s\)$/);
+  // More than a still holds: the first 30 (two beats landing together are one frame), and the call that shows the rest.
+  // The many beats are 7 ms past a hundredth: each time printed (to the nearest hundredth) keeps its own beat.
+  const many = await loadProject({cwd: project, keyed: 'many', out}), first = await still(many, {beats: 'one'});
+  assert.match(first.text, /· 30 frames of 35, one at each beat in one: one\+0\.31 "A first scene" "A first" \(0\.31 s\), one\+0\.41 "A first" \(0\.41 s\), .*, one\+3\.21 "A first" \(3\.21 s\); the other 5: the same call with --from one\+3\.31$/);
+  const rest = await still(many, {beats: 'one', from: 'one+3.31'});
+  assert.ok(rest.file.endsWith(`${path.sep}beats-one-from-one+3.31.png`) && rest.file !== first.file, 'the rest is a picture of its own');
+  assert.match(rest.text, /· 5 frames, one at each beat in one from one\+3\.31: one\+3\.31 "A first" \(3\.31 s\), one\+3\.41 .*, one\+3\.71 "A first" \(3\.71 s\)$/);
+  assert.match((await still(many, {beats: 'one', from: '1', to: 'one:A first+1.5'})).text, /· 8 frames, one at each beat in one from 1 to one:A first\+1\.5: one\+1\.01 "A first" \(1\.01 s\), .*, one\+1\.71 "A first" \(1\.71 s\)$/);
+  for (const at of ['one+2.41', '2.41']) assert.match((await still(many, {beats: 'one', from: at, to: at})).text, /· 1 frame, .*: one\+2\.41 "A first" \(2\.41 s\)$/, `${at}: a printed time, as from and to, keeps its own beat (2.407 s)`);
+  const refused = [
+    [{beats: 'two', at: 'two+1'}, 'still: give the moments (at) or a scene whose every beat to show (beats), not both'],
+    [{}, 'still: name the moments (at: "scene+seconds,…") or a scene whose every beat to show (beats: "scene")'],
+    [{beats: 'three'}, 'still: no scene called "three" (the scenes are one, two)'],
+    [{beats: 'one,two'}, 'still: beats names one scene, not 2: one still a scene (the scenes are one, two)'],
+    [{beats: 'true'}, 'still: beats names the scene whose every beat to show (the scenes are one, two)'],
+    [{at: 'two+1', from: '1'}, 'still: from and to choose which of a scene\'s beats to show (beats: "scene"); with at, name the moments themselves'],
+    [{beats: 'two', from: 'two+2.9'}, 'still: no beat in two from two+2.9 (its beats: two+0.68 to two+2.58)']];
+  for (const [args, message] of refused) await assert.rejects(still(p, args), {message}, JSON.stringify(args));
+  await assert.rejects(still(p, {beats: 'two', to: 'nowhere'}), /^Error: still \(to\): "nowhere" is not a moment/);
+  await assert.rejects(still(await loadProject({cwd: project, out}), {beats: 'two'}), {message: 'still: two has no beats: the recipe keys nothing to what is said there (name moments instead: at: "two+1.5")'});
+  // From the command line, as an agent calls it.
+  const r = run(['still', '--beats', 'two', '--keyed', 'true', '--out', out]), both = run(['still', '--beats', 'two', '--at', 'two+1', '--keyed', 'true', '--out', out]);
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /beats-two\.png · 3 frames, one at each beat in two: /);
+  assert.equal(both.status, 1); assert.match(both.stderr, /give the moments \(at\) or a scene whose every beat to show \(beats\), not both/);
 });
 
 test('anchors: every phrase the film is keyed to, in one pass — the pacing\'s holds and the recipe\'s beats, where each is named', async () => {
@@ -174,7 +303,9 @@ test('the same tools over MCP (stdio): the handshake, the list with each tool\'s
   assert.equal(tools.find(t => t.name === 'part').inputSchema.required, undefined, 'a part takes its scenes or a window: it says which it lacks');
   assert.deepEqual(Object.keys(tools.find(t => t.name === 'changes').inputSchema.properties), ['render', 'handles']);
   assert.deepEqual(tools.find(t => t.name === 'strip').inputSchema.required, ['at']);
-  assert.deepEqual(tools.find(t => t.name === 'still').inputSchema.required, ['at']);
+  assert.equal(tools.find(t => t.name === 'still').inputSchema.required, undefined, 'a still takes its moments or a scene\'s beats: it says which it lacks');
+  assert.deepEqual(Object.keys(tools.find(t => t.name === 'still').inputSchema.properties), ['at', 'beats', 'from', 'to', 'width']);
+  assert.deepEqual(Object.keys(tools.find(t => t.name === 'timeline').inputSchema.properties), ['scene', 'from', 'to', 'handles']);
   assert.ok(tools.every(t => t.inputSchema.additionalProperties === false), 'a tool takes its own arguments and no others');
   assert.match(replies.get(3).result.content[0].text, /words over words: "Alpha" and "Beta"/);
   const [text, image] = replies.get(4).result.content;
@@ -195,6 +326,58 @@ test('the same tools over MCP (stdio): the handshake, the list with each tool\'s
   assert.equal(noisyImage?.type, 'image', 'and the picture still comes back');
 });
 
+/** A project of its own in `dir`: the tools' project with this storyboard, these timings (or even ones) and these beats. */
+function projectIn(dir, {storyboard, timings = null, beats}) {
+  writeFileSync(path.join(dir, 'storyreel.config.mjs'), [`import project from ${JSON.stringify(pathToFileURL(path.join(project, 'storyreel.config.mjs')).href)};`,
+    `export default {film: flags => ({...project.film(flags), storyboard: ${JSON.stringify(storyboard)}, ${timings ? `timings: ${JSON.stringify(timings)}, ` : ''}recipe: {story: {kit: 'words', beats: ${JSON.stringify(beats)}}}})};`, ''].join('\n'));
+  return dir;
+}
+
+test('a beat on a scene\'s first word that the millisecond rounding put a hair before the scene\'s start is that scene\'s: listed after its start, against it, and in its beats', async t => {
+  // As a voice paces a film: scene one lasts 2.0004 s, and two's first word is said at its very start — so the beat,
+  // kept to the millisecond (2.000), lands 0.4 ms before two begins.
+  const words = (list, from) => list.map((text, k) => ({text, start: from + k * .4, end: from + k * .4 + .35}));
+  const timings = {scenes: [{id: 'one', duration: 2.0004, words: words(['A', 'first', 'scene.'], .3), alignment: {status: 'available'}},
+    {id: 'two', duration: 2, words: words(['Second', 'words', 'here.'], 0), alignment: {status: 'available'}}]};
+  const dir = projectIn(tempDir('hair', t), {storyboard: {scenes: [{id: 'one', narration: 'A first scene.'}, {id: 'two', narration: 'Second words here.'}]}, timings, beats: [['two', 'Second words']]});
+  const p = await loadProject({cwd: dir, out: tempDir('hair-out', t)});
+  assert.equal(p.film.beats[0].t, 2, 'the beat, kept to the millisecond, is before two starts (2.0004 s)');
+  assert.match(await timeline(p, {scene: 'two'}), /\ntwo\+0\.00 \(0:02\.0\) {2}── two\ntwo\+0\.00 \(0:02\.0\) {2}"Second words" → story\.beats\[0\]$/);
+  assert.match((await still(p, {beats: 'two'})).text, /· 1 frame, one at each beat in two: two\+0\.00 "Second words" \(2\.00 s\)$/);
+  await assert.rejects(still(p, {beats: 'one'}), {message: 'still: one has no beats: the recipe keys nothing to what is said there (name moments instead: at: "one+1.5")'});
+});
+
+test('a still\'s name keeps every word it shows apart: words in another script end the name in a hash of the whole, so two phrases never share a file', async t => {
+  const dir = projectIn(tempDir('script', t), {storyboard: {scenes: [{id: 'eins', narration: 'Привет мир. Пример текста.'}]}, beats: []});
+  const p = await loadProject({cwd: dir, out: tempDir('script-out', t)});
+  const [a, b] = [await still(p, {at: 'eins:Привет мир'}), await still(p, {at: 'eins:Пример текста'})];
+  assert.notEqual(a.file, b.file); assert.ok([a, b].every(s => existsSync(s.file) && /eins-[\w+.-]*-[0-9a-f]{16}\.png$/.test(s.file)), `${a.file}\n${b.file}`);
+});
+
+test('a phrase cut at its own comma is refused saying so: the moments are split at commas', async t => {
+  const p = await loadProject({cwd: project, keyed: 'true', out: tempDir('commas', t)});
+  await assert.rejects(still(p, {at: 'two:a second scene, a little shorter'}), {message: 'still: "a little shorter" is not a moment (scene+seconds, seconds or m:ss on the film clock, or what is said: scene:phrase or scene:{moment}, +seconds after either; the scenes are one, two) — words name a moment after their scene (scene:phrase), and a phrase\'s own commas are left out: the moments are split at commas'});
+  await assert.rejects(strip(p, {at: 'two:a second scene, a little shorter'}), {message: 'strip: name one moment (at: "scene+seconds"); a still shows several (a phrase\'s own commas are left out: the moments are split at commas)'});
+  assert.match((await still(p, {at: 'two:a second scene a little shorter'})).text, /· 1 frame: two:a second scene a little shorter \(5\.96 s\)$/, 'written without it, the phrase is found');
+});
+
+test('over MCP the new arguments work as on the command line: a scene\'s beats, a moment by what is said, the timeline\'s scene times and window', async t => {
+  const out = tempDir('mcp-beats', t);
+  const {replies} = await mcpSession(['--out', out, '--keyed', 'true'], [
+    call(1, 'still', {beats: 'two'}), call(2, 'still', {at: 'two:{turn}+0.5'}), call(3, 'strip', {at: 'two:a second scene', frames: '2'}),
+    call(4, 'timeline', {scene: 'two'}), call(5, 'timeline', {from: '0:06', to: '0:08', handles: '0'}),
+    call(6, 'still', {beats: 'two', at: 'two+1'}), call(7, 'still', {at: 'two:a'})]);
+  const text = id => replies.get(id).result.content[0].text;
+  assert.match(text(1), /beats-two\.png · 3 frames, one at each beat in two: two\+0\.68 "a second scene" \(5\.96 s\)/);
+  assert.equal(replies.get(1).result.content[1]?.type, 'image', 'a still of a scene\'s beats comes back as the picture');
+  assert.match(text(2), /two--turn-\+0\.5\.png · 1 frame: two:\{turn\}\+0\.5 \(7\.60 s\)$/); assert.equal(replies.get(2).result.content[1]?.type, 'image');
+  assert.match(text(3), /strip-two-a-second-scene\.png · 2 frames at 30 fps around two:a second scene \(5\.96 s\)/);
+  assert.match(text(4), /^two: [\d.]+–[\d.]+ s of [\d.]+ s \(times: scene\+seconds from that scene's start, then the film clock\)\none\+4\.10 \(0:04\.1\) {2}"slowly"/);
+  assert.match(text(5), /^0:06–0:08: 6\.00–8\.00 s of [\d.]+ s \(times: seconds from the film's start\)\n7\.30 {2}"\{turn\}"/);
+  for (const id of [6, 7]) assert.equal(replies.get(id).result.isError, true);
+  assert.match(text(6), /not both/); assert.match(text(7), /said 2 times in two \(two\+0\.68 · two\+1\.82\)/);
+});
+
 test('over MCP the project is fixed at start: a call that names config or cwd, another argument, or a value read as a flag is refused, runs nothing, and the server answers the next call', async t => {
   const out = tempDir('mcp-fixed', t), elsewhere = tempDir('mcp-elsewhere', t), ran = path.join(elsewhere, 'ran.txt'), secret = path.join(elsewhere, 'secret.png');
   // A config that leaves a mark when it is imported: what a call naming it would run. And a picture outside the project.
@@ -208,7 +391,7 @@ test('over MCP the project is fixed at start: a call that names config or cwd, a
   const said = id => { assert.ok(replies.has(id), `no answer to call ${id}: the server stopped (exit ${code})`); return replies.get(id).result; };
   const rule = 'config and cwd are fixed when the MCP server starts; restart it with --config (or --cwd) to use another';
   for (const id of [1, 2]) assert.deepEqual(said(id), {isError: true, content: [{type: 'text', text: rule}]});
-  assert.equal(said(3).content[0].text, 'still takes no "out" (it takes at, width): the rest — the config, the folder, the film\'s own flags — is fixed when the MCP server starts');
+  assert.equal(said(3).content[0].text, 'still takes no "out" (it takes at, beats, from, to, width): the rest — the config, the folder, the film\'s own flags — is fixed when the MCP server starts');
   assert.equal(said(4).content[0].text, 'timeline: scene "--config" would be read as a flag: a value never starts with --');
   assert.match(said(5).content[0].text, /^no tool called "constructor"/, 'a name every object inherits is not a tool');
   assert.equal(said(6).isError, true, 'a value the command line cannot be given (a NUL byte) is an error, not the server\'s end');
@@ -249,7 +432,7 @@ test('over MCP the project is chosen at start: --cwd is the folder every call ru
   writeFileSync(path.join(folder, 'storyboard.json'), JSON.stringify({title: 'Near', scenes: [{id: 'near', narration: 'A scene read from beside the config.'}]}));
   writeFileSync(path.join(folder, 'storyreel.config.mjs'), `import {readFileSync} from 'node:fs';\nimport project from ${JSON.stringify(pathToFileURL(path.join(project, 'storyreel.config.mjs')).href)};\nexport default {film: flags => ({...project.film(flags), storyboard: JSON.parse(readFileSync('storyboard.json', 'utf8'))})};\n`);
   const {replies} = await mcpSession(['--cwd', folder, '--out', out], [call(1, 'timeline', {})], {cwd: from});
-  assert.match(replies.get(1).result.content?.[0].text ?? JSON.stringify(replies.get(1)), /^the whole film: [\d.]+–[\d.]+ s of [\d.]+ s \(times from its start\)\n0\.00 {2}── near$/m);
+  assert.match(replies.get(1).result.content?.[0].text ?? JSON.stringify(replies.get(1)), /^the whole film: [\d.]+–[\d.]+ s of [\d.]+ s \(times: seconds from the film's start\)\n0\.00 {2}── near$/m);
   const none = spawnSync(process.execPath, [cli, 'mcp', '--cwd', 'nowhere'], {cwd: from, encoding: 'utf8', input: ''});
   assert.equal(none.status, 2); assert.equal(none.stderr.trim(), 'storyreel mcp: --cwd nowhere is not a folder: start the server on the project\'s folder');
 });

@@ -11,8 +11,10 @@ is the scarce thing. Show the least that answers their question, in an order tha
    (`{name}`, [voice.md](../storyreel-cartoon/voice.md#one-script-moments-and-speakers)): a rewording keeps them on
    their words, and the voice reads `npx storyreel script`.
 2. **Pictures before videos.** For each change, find its moments in the timeline (search its text for the recipe
-   entry rather than reading the recipe), and make one `still` an episode holding all of them. Show those. Render only
-   once they agree — and then `changes` first: only the changed pieces are drawn.
+   entry rather than reading the recipe) and make one `still` an episode holding all of them: the timeline's times
+   paste straight into `--at`, as printed — no sums. To see a scene's every beat at once:
+   `npx storyreel still --beats <id>`, each frame labelled with its time and what is said there. Show those. Render
+   only once they agree — and then `changes` first: only the changed pieces are drawn.
 3. **One page they can open on a phone.** Each round: what changed, in plain words; the pictures; then the films.
    `npx storyreel share out/ep1.mp4` makes each film small and quick to start, with a poster. Put one big play button
    on the poster that loads the whole file and then plays it — a bare `<video src>` stays blank where a host does not
@@ -41,6 +43,6 @@ the musts, and say which shoulds are the person's call.
 
 - **The story's facts as tests:** the numbers it counts, the words it must say, what its characters wear — so a later
   edit cannot break them unseen.
-- **One picture a check:** several moments in one still, 1200–1600 px wide; a sheet for a reviewer; a `strip` only for
-  a fast move.
+- **One picture a check:** several moments in one still, 1200–1600 px wide (a scene's beats: `still --beats`); a sheet
+  for a reviewer; a `strip` only for a fast move.
 - **Text before pictures:** the timeline, the review and `anchors` are text; read them first, look last.

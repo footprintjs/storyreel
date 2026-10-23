@@ -19,8 +19,8 @@ Without `timings` the tools time the film from the voice folder's `timings.json`
 After an edit to the narration, recipe or pacing, first `npx storyreel anchors`: each phrase not said, or said twice,
 with its fix. Then:
 
-1. **When does it happen?** `npx storyreel timeline --scene <id>`: every scene start and beat with its time, the
-   phrase it waits for and the recipe entry it moves. Never guess a time.
+1. **When does it happen?** `npx storyreel timeline --scene <id>`: every scene start and beat as `scene+seconds`, the
+   phrase it waits for and the recipe entry it moves. Never guess a time: its times paste straight into `--at`.
 2. **What is wrong?** `npx storyreel review --scene <id>` (or the whole film): the counts, the verdicts that did not
    pass with why, and the first findings with their times and scene; `--full` lists every finding and every
    verdict's why. Findings: words under the captions, over words, cut off, no hook in the first 3 s<!-- REVIEW_DEFAULTS.hook -->, too much to
@@ -32,9 +32,9 @@ with its fix. Then:
 4. **Look again, quickly:** `npx storyreel part --scene <id>`: the scenes with 1.5 s<!-- TOOL_DEFAULTS.handles --> either side (both cuts),
    the draft encode, reviewed first; seconds, not minutes. Half size only when the config names a `layout` (else
    1280×720<!-- RENDER_DEFAULTS.width RENDER_DEFAULTS.height -->); it writes `<out>/parts/<scenes>.mp4` and its `making-of.json`. Repeat 2–4 until nothing is found.
-5. **Confirm the look, once:** `npx storyreel still --at <scene>+<seconds>[,…]` writes one PNG (`<out>/stills/`,
-   path printed): read it last, for what text cannot say (colour, balance, a glyph drawn as a box, motion feel). For a
-   fast move, `npx storyreel strip --at <scene>+<seconds>`: 12<!-- TOOL_DEFAULTS.frames --> frames around it, where a pop or a jump shows.
+5. **Confirm the look, once:** `npx storyreel still --beats <id>` (a frame at each beat) or `--at <time>[,…]` writes one
+   PNG (`<out>/stills/`, path printed): read it last, for what text cannot say (colour, balance, a glyph drawn as a box,
+   motion feel). For a fast move, `npx storyreel strip --at <time>`: 12<!-- TOOL_DEFAULTS.frames --> frames around it, where a pop or a jump shows.
 
 `npx storyreel <command> --help` gives a command's flags. Over MCP (`storyreel mcp`) the project is fixed when the server
 starts (`--config`, `--cwd`, the film's own flags): a call that passes one is refused.

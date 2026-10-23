@@ -15,7 +15,10 @@ export function partWindow(film: import('../index.js').Film, part: {scenes: stri
 /** The scenes and beats in a stretch of the film, on its own clock: text to read instead of frames. */
 export interface TimelineRow {t: number; kind: 'scene' | 'beat'; scene: string | null; phrase?: string | null; entry?: string | null}
 export function partTimeline(film: import('../index.js').Film, window?: {from?: number; to?: number}): TimelineRow[];
-export function timelineText(rows: TimelineRow[]): string;
+/** The same rows with each time on the film clock, exactly (what the review tools name a moment by). */
+export function filmTimeline(film: import('../index.js').Film, window?: {from?: number; to?: number}): TimelineRow[];
+/** The rows as lines; `time` says each row's time (default: its seconds to the hundredth). */
+export function timelineText(rows: TimelineRow[], options?: {time?: (row: TimelineRow) => string}): string;
 /** The end of a render, finished or failed: its working files are removed, unless they are in a `work` folder the caller named (renderFilm and makeFilm call it themselves). */
 export function closeRender(job: {work?: string; keepWork?: boolean} | null | undefined): void;
 /** The captionFiles option, checked: the kinds to write. */

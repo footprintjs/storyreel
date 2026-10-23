@@ -26,7 +26,7 @@ import {TOOLS} from './tools.mjs';
 
 const CLI = fileURLToPath(new URL('./cli.mjs', import.meta.url));
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
-const REQUIRED = {still: ['at'], strip: ['at']};   // part takes its scenes or a window (from, to): it says which it lacks
+const REQUIRED = {strip: ['at']};   // part takes its scenes or a window (from, to), still its moments or a scene's beats: each says which it lacks
 
 /** What only the server's start chooses: the project's config (a module the command line runs) and its folder. */
 export const FIXED_AT_START = Object.freeze(['config', 'cwd']);
@@ -128,7 +128,7 @@ export function serveMcp({defaults = {}, config, cwd = process.cwd(), input = pr
   const lines = createInterface({input}), pending = new Set();
   const reply = async (method, params) => {
     if (method === 'initialize') return {result: {protocolVersion: typeof params.protocolVersion === 'string' ? params.protocolVersion : '2025-06-18', capabilities: {tools: {}}, serverInfo: {name: 'storyreel', version: VERSION},
-      instructions: 'Read first, look last: timeline (when each beat lands) → review (what is wrong, as text) → fix → part (a quick render of the scenes) → one still to confirm the look. After an edit to the narration, recipe or pacing: anchors (every phrase not said, or said twice, with its fix) first. After an edit: changes (what it redraws, and why) → changes with render (only those pieces drawn, and a short clip of them to show); the full render then only joins. For someone checking the whole film: sheet (contact sheets).'}};
+      instructions: 'Read first, look last: timeline (when each beat lands) → review (what is wrong, as text) → fix → part (a quick render of the scenes) → one still to confirm the look (at: a time the timeline printed, as it is; beats: a scene\'s every beat). After an edit to the narration, recipe or pacing: anchors (every phrase not said, or said twice, with its fix) first. After an edit: changes (what it redraws, and why) → changes with render (only those pieces drawn, and a short clip of them to show); the full render then only joins. For someone checking the whole film: sheet (contact sheets).'}};
     if (method === 'ping') return {result: {}};
     if (method === 'tools/list') return {result: {tools: mcpTools()}};
     if (method === 'tools/call') return {result: await callTool(params.name, params.arguments ?? {}, {defaults, config, cwd})};

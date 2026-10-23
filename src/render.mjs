@@ -295,11 +295,13 @@ const withPart = options => {
 
 /**
  * What happens in a stretch of the film, as text to read instead of frames: each scene that starts and each beat
- * that lands — its time on the stretch's own clock, the phrase it waits for, the recipe entry it moves. A reviewer
- * (or a model) finds "when does 'the network does the waiting' land" here, without rendering a still to guess.
- * Returns [{t, kind: 'scene' | 'beat', scene, phrase?, entry?}]; timelineText(rows) is the same as lines.
+ * that lands — its time, the phrase it waits for, the recipe entry it moves. A reviewer (or a model) finds "when does
+ * 'the network does the waiting' land" here, without rendering a still to guess. filmTimeline gives each time on the
+ * film clock, exactly (the review tools name a moment by it: tools.mjs · timeline); partTimeline on the stretch's own
+ * clock, to the hundredth. Returns [{t, kind: 'scene' | 'beat', scene, phrase?, entry?}]; timelineText(rows) is the
+ * same as lines.
  */
-export function partTimeline(film, {from = 0, to = film.total} = {}) {
+export function filmTimeline(film, {from = 0, to = film.total} = {}) {
   const inside = t => t >= from - 1e-6 && t <= to + 1e-6, seen = new Set(), rows = [];
   film.timings.scenes.forEach((s, i) => { const t = film.clock.offsets[i]; if (inside(t)) rows.push({t, kind: 'scene', scene: s.id}); });
   for (const b of film.beats ?? []) {
@@ -308,9 +310,14 @@ export function partTimeline(film, {from = 0, to = film.total} = {}) {
     const key = `${b.t}|${scene}|${phrase}|${b.path}`; if (seen.has(key)) continue; seen.add(key);
     rows.push({t: b.t, kind: 'beat', scene, phrase, entry: b.path ?? null});
   }
-  return rows.sort((a, b) => a.t - b.t || (a.kind === 'scene' ? -1 : b.kind === 'scene' ? 1 : 0)).map(r => ({...r, t: +(r.t - from).toFixed(2)}));
+  // In order of the millisecond (a beat's time is kept to it), a scene's start first: a beat on a scene's first word
+  // that its rounding put a hair before the start is listed after it.
+  const ms = t => Math.round(t * 1000);
+  return rows.sort((a, b) => ms(a.t) - ms(b.t) || (b.kind === 'scene') - (a.kind === 'scene') || a.t - b.t);
 }
-export const timelineText = rows => rows.map(r => r.kind === 'scene' ? `${r.t.toFixed(2)}  ── ${r.scene}` : `${r.t.toFixed(2)}  "${r.phrase}"${r.entry ? ` → ${r.entry}` : ''}`).join('\n');
+export const partTimeline = (film, stretch = {}) => filmTimeline(film, stretch).map(r => ({...r, t: +(r.t - (stretch.from ?? 0)).toFixed(2)}));
+/** The rows as lines: each one's time (`time(row)`: its seconds to the hundredth, by default), then the scene that starts or the phrase and the entry it moves. */
+export const timelineText = (rows, {time = r => r.t.toFixed(2)} = {}) => rows.map(r => `${time(r)}  ${r.kind === 'scene' ? `── ${r.scene}` : `"${r.phrase}"${r.entry ? ` → ${r.entry}` : ''}`}`).join('\n');
 
 /** The render's job from its options; a part ({scenes, handles}) becomes its from/to first (partWindow). Close it with closeRender. */
 export const prepareRender = options => prepareJob(withPart(options));
