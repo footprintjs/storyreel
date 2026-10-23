@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.22.0 — counting on fingers, listeners who react, and Shorts cut from the film
 
 - **Counting on fingers: `fingersAt(keys, t, options?)`** (`footprint-storyreel/acting`). A child taking away holds
   up ten fingers and folds one a word; a child counting back raises one a step. Keys are data —
