@@ -77,14 +77,15 @@ export function blurMoments(t, {subframes: n, shutter}, fps) {
 /**
  * The painter: one output picture at film time t into ctx — the film (in its layout, if any), averaged
  * over the motion-blur subframes, then the layout's bands on top (never blurred). A still (the poster)
- * takes no blur and no caption (a thumbnail shows the picture and the title band). Every call leaves ctx
- * with an identity transform and full alpha.
+ * takes no blur and no caption (a thumbnail shows the picture and the title band); `bands: false` leaves the bands
+ * off (an edit lays its own over: editpaint.mjs). Every call leaves ctx with an identity transform and full alpha.
  */
-export function makePainter({film, framed, blur, width, height, fps, ctx}) {
+export function makePainter({film, framed, blur, width, height, fps, ctx, scratch = null}) {
   const k = width / 1600;
   const picture = (c, t) => { c.resetTransform(); c.globalAlpha = 1; c.clearRect(0, 0, width, height); if (framed) framed.picture(c, t); else { c.scale(k, k); film.frame(c, t); } c.resetTransform(); };
-  const sub = blur ? createCanvas(width, height) : null, subCtx = sub?.getContext('2d');
-  return (t, {still = false} = {}) => {
+  // The canvas a subframe is drawn on: its own, or one shared by painters that draw one after another (`scratch`).
+  const sub = blur ? scratch ?? createCanvas(width, height) : null, subCtx = sub?.getContext('2d');
+  return (t, {still = false, bands = true} = {}) => {
     if (!blur || still) picture(ctx, t);
     else {
       // A running average: subframe i is laid over the first i at 1 / (i + 1), so each counts once.
@@ -94,7 +95,7 @@ export function makePainter({film, framed, blur, width, height, fps, ctx}) {
         picture(subCtx, at); ctx.globalAlpha = 1 / (i + 1); ctx.drawImage(sub, 0, 0); ctx.globalAlpha = 1;
       }
     }
-    if (framed) { framed.overlay(ctx, t, {still}); ctx.resetTransform(); ctx.globalAlpha = 1; }
+    if (framed && bands) { framed.overlay(ctx, t, {still}); ctx.resetTransform(); ctx.globalAlpha = 1; }
   };
 }
 
@@ -118,10 +119,12 @@ export async function stampPicture({stamp, width, height}) {
  * the poster still; stamp: false leaves the draft stamp out (a segmented render burns it once, at the join). Each call
  * has its own canvas and painter, so strategies may encode several parts at once.
  */
-export function frameEncoder({film, framed, blur, width, height, fps, start, frames, intro, poster, posterFrame, stamp, quality, ffmpeg}) {
+export function frameEncoder({film, framed, blur, width, height, fps, start, frames, intro, poster, posterFrame, stamp, quality, ffmpeg, paintEdit = null}) {
   return async ({f0 = 0, f1 = frames, file, withIntro: introHere = false, posterFirst = false, stamp: stamped = true}) => {
     const k = width / 1600, canvas = createCanvas(width, height), ctx = canvas.getContext('2d'), label = stamped ? stamp : null;
     const paint = makePainter({film, framed, blur, width, height, fps, ctx});
+    // An edit's frames are painted by the painter the render was handed (editpaint.mjs): frame f of the output.
+    const editPaint = paintEdit ? paintEdit(ctx) : null;
     const ff = spawn(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pixel_format', 'rgba', '-video_size', `${width}x${height}`, '-framerate', String(fps), '-i', 'pipe:0', '-c:v', 'libx264', ...ENCODE[quality], file], {stdio: ['pipe', 'ignore', 'inherit']});
     // FFmpeg that cannot start, or that stops taking frames, is a refusal (not a crash): every failure lands on `closed`.
     let failed = null;
@@ -138,7 +141,7 @@ export function frameEncoder({film, framed, blur, width, height, fps, start, fra
       const handoff = createCanvas(width, height); { const c = handoff.getContext('2d'); c.scale(k, k); film.frame(c, 0); }
       for (let f = 0; f < Math.round(intro.seconds * fps); f++) await frameOrPoster(() => { ctx.resetTransform(); ctx.globalAlpha = 1; ctx.clearRect(0, 0, width, height); intro.draw(ctx, f / fps, {width, height, handoff}); });
     }
-    for (let f = f0; f < f1; f++) await frameOrPoster(() => paint(start + f / fps));
+    for (let f = f0; f < f1; f++) await frameOrPoster(editPaint ? () => editPaint(f) : () => paint(start + f / fps));
     ff.stdin.end();
     const [code] = await closed;
     if (failed) throw new Error(`ffmpeg (${ffmpeg}) could not encode ${path.basename(file)}: ${failed.message}`);
@@ -153,11 +156,12 @@ export function frameEncoder({film, framed, blur, width, height, fps, start, fra
  * poster still when `poster` — so a spot check sees what the piece shows. Each caller makes its own, so parts checked
  * at once never share a canvas.
  */
-export function frameHasher({film, framed, blur, width, height, fps, start, poster, posterFrame = true, stamp}, {stamp: stamped = true} = {}) {
+export function frameHasher({film, framed, blur, width, height, fps, start, poster, posterFrame = true, stamp, paintEdit = null}, {stamp: stamped = true} = {}) {
   const canvas = createCanvas(width, height), ctx = canvas.getContext('2d'), paint = makePainter({film, framed, blur, width, height, fps, ctx});
+  const editPaint = paintEdit ? paintEdit(ctx) : null;
   return (f, {poster: asPoster = false} = {}) => {
     // The poster is the first frame only when it replaces it (posterFrame): otherwise frame 0 is the film's own.
-    if (asPoster && poster !== null && posterFrame) paint(poster, {still: true}); else paint(start + f / fps);
+    if (asPoster && poster !== null && posterFrame) paint(poster, {still: true}); else if (editPaint) editPaint(f); else paint(start + f / fps);
     drawStamp(ctx, stamped ? stamp : null, width);
     return createHash('sha256').update(canvas.data()).digest('hex').slice(0, 16);
   };

@@ -24,6 +24,42 @@
   the 0.15 s before their turn. Nobody reacts to the narrator. The timing is `REACTING`; numbers given as text or
   null refuse.
 - Types for both (`types/sub/acting.d.ts`); the README's Acting section gains a worked example of each.
+- **A Short cut from the film, as data: cuts, joins, an end card.** A release target takes `cuts: [{from, to,
+  follow?, join?}]` — stretches of the film joined in order into ONE render (one picture, one sound mixed and measured
+  once, caption files and chapters on the Short's clock) — and `end: {lines, seconds}`, a card after them drawn in the
+  film's theme. `from`/`to` are a beat or `{scene}` (seconds the fallback). A cut keeps to its cut points on the frame
+  grid: where rounding would take in the next word (or the one before), it ends (or starts) a frame short, and a cut
+  point where the words touch (no silence) is reported (`snapped.noSilence`). Each join has an editor's three settings (`join: {cut,
+  overlap, pop}`): the cut point (`'silence'`, the default, moves one inside a spoken word to the silence beside it;
+  `'exact'`), a cross-fade of picture and sound in frames (0), and 1–3 frames of the theme's paper over a hard cut (0).
+  A caption never outlives its cut: a frame shows only words said inside its own cut, reset on the join's first frame
+  (pinned frame by frame, and on the decoded video). `renderFilm({…, edit})` and the new `footprint-storyreel/edit`
+  (`placeEdit`, `editFrame`, `snapToSilence`, `captionInCut`, `drawEndCard`) are the same without a release.
+- **A tall picture that fills and follows.** `layout.fill: true` (vertical; a target's `fill`) makes the film 1080×1165,
+  from under the title band to below the captions (they sit over its foot), instead of a fixed 1080×810. Crop keys gain
+  `y`, `cut: true` (a jump) and seconds for `at` (the fallback: a beat or a scene first, Law 2); in a filled picture,
+  and wherever the crop follows, a move never runs across a scene cut (one a cut would fall inside jumps there at the
+  cut). `crop:
+  'focus'` (or a cut's `follow: 'focus'`, or a key `{at, follow: 'focus'}`) follows the film: the speaker's region
+  while someone speaks, else what the focus names (follow.mjs · FOLLOW, a strategy by name). When a crop follows or
+  fills, a key is moved the least it must so its edge never cuts a kept thing (every speaker, or `keep: [names]`) — a
+  key someone wrote at most 15% of the window (`follow.mjs · NUDGE`); one it cannot help is reported (`clipped` on the release's result; `framing` in the making-of record).
+- **An edit's poster** is framed at its own moment (cut 0's follow mode, or its keys read there), kept off every
+  speaker's edge, and reported with the cuts' framing. **A caption file's cue** ends where the next join lands, as the
+  burned captions do in an overlap. **Refused before anything renders:** a release's `check` beside an edit, `keep` on a
+  format with no crop; `segmentedVideo` refuses an edit (its pieces are keyed on the film clock: `wholeVideo()`). A
+  cut's follow that a layout refuses is named as `cuts[i].follow`. An edit's painters are made as each cut is first
+  drawn and share one canvas for the motion blur.
+- **A target's own render settings.** `render: {posterFrame, quality}` on a target goes over the film's: `posterFrame:
+  false` starts that target on the film's own frame. An edit's joins never show the poster (it replaces frame 0 only).
+- Without the new keys every output is as it was: the same frames and crop keys, and the same material in every
+  segment's key (pinned by the golden frames and by a test that compares the crop window with 0.21.0's at every tenth
+  of a second). The drawing fingerprint every key holds changes once — the painter's own code changed (a caption
+  given to the bands, a painter that leaves them off, the filled box) — so each cached segment is drawn once more after
+  the upgrade, to the same pixels. An edit's drawing (its joins, the end card) is kept out of that fingerprint
+  (editpaint.mjs, handed to the frame loop), so changing it later redraws no piece.
+- A refusal changed its words: a crop key's unknown key now lists the new ones (`{at, x, y?, width?, cut?}, or {at,
+  follow, width?}`).
 
 ## 0.21.0 — one script (moments and speakers in the narration), and stills at the beats
 
