@@ -150,6 +150,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   if (voiceCheck !== 'report' && voiceCheck !== 'refuse') throw new Error(`voiceCheck is 'report' (the record lists words the voice check did not hear) or 'refuse' (the film refuses them), not ${JSON.stringify(voiceCheck)}`);
   if (claims !== 'report' && claims !== 'refuse') throw new Error(`claims is 'report' (the record lists the numbers on screen with no source) or 'refuse' (one refuses the film), not ${JSON.stringify(claims)}`);
   checkCode(code);
+  if (check !== null && render.edit) throw new Error("check reads a render on the film's own clock, and an edit joins stretches of it: check each cut's render (from, to), or leave check out");
   if (approval) readApproval(approval);
   const song = music === null ? null : readMusic(music);
   if (song && render.music !== undefined) throw new Error('makeFilm takes the song as music ({file, snap?, dropOn?, …}), which also places it; leave render.music out');
@@ -339,7 +340,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   const record = {
     schemaVersion: 1, made: new Date().toISOString(), out: result.out, seconds: result.seconds, chapters: result.chapters,
     // What part of the film this render shows (an approval is of a render of the whole film).
-    span: {from: job.start, to: +job.to.toFixed(3), total: +film.total.toFixed(3), whole: job.start === 0 && job.to >= film.total - 1e-6, ...(job.withIntro ? {intro: job.intro.seconds} : {})},
+    span: {from: job.start, to: +job.to.toFixed(3), total: +film.total.toFixed(3), whole: !job.edit && job.start === 0 && job.to >= film.total - 1e-6, ...(job.withIntro ? {intro: job.intro.seconds} : {}), ...(result.edit ? {edit: result.edit} : {})},
     // What the film was made from, hashed: approveFilm takes these from this record (approval.mjs).
     inputs,
     // The kits' code the fingerprint covers (segments.mjs · codeFingerprint follows the imports): every file, from the
@@ -353,6 +354,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     // The version made: its format (layout.mjs), its motion blur, sounds placed by their peaks, the caption files beside it.
     ...(result.format || render.motionBlur || result.captions || render.soundAt === 'peak' ? {version: {format: result.format ?? 'frame', ...(render.motionBlur ? {motionBlur: render.motionBlur} : {}), ...(render.soundAt === 'peak' ? {soundAt: 'peak'} : {}),
       ...(result.captions ? {captionFiles: Object.values(result.captions).map(f => path.basename(f))} : {})}} : {}),
+    // How a tall crop was framed when it follows or fills (layout.mjs): its keys, the ones nudged off a kept thing, the ones that could not be.
+    ...(result.framing ? {framing: result.framing} : {}),
     ...(film.reading.length ? {reading: {tooShort: film.reading}} : {}),
     // Every number on screen and where it comes from (claims.mjs), with the verdict and why (check-claims).
     claims: {...(run?.state ?? run?.sharedState ?? {}).claims, saw: SAW, ...(film.lang ? {lang: film.lang} : {}), ...claimsCount(film.claims), unsourced: unsourcedClaims(film.claims).map(c => ({number: c.number, scene: c.scene, path: c.path, at: c.at, fix: claimText(c)}))},

@@ -1,4 +1,4 @@
-import type {MakeFilmOptions} from '../index.js';
+import type {MakeFilmOptions, CropKey, Cut, EndCard, Join, EditRecord} from '../index.js';
 
 /** Who a film is made for: 'kids' (directed at children) or 'general' (anyone; a teaser for parents included). */
 export type Audience = 'kids' | 'general';
@@ -30,10 +30,22 @@ export interface ReleaseAdapter {
 export type TargetName = 'youtube' | 'youtube-shorts' | 'linkedin' | 'tiktok' | 'instagram-reels' | 'x';
 /** Limits overridden: only what changes (a key given as undefined is not given; the platform's value stays). */
 export interface ReleaseLimits {seconds?: {min?: number; max?: number}; text?: Record<string, {max?: number; count?: (text: string) => number}>; frame?: {width: number; height: number}[]}
-/** A target: a built-in name, an adapter, or one with options (a part from/to, a crop for the tall shapes, limits overridden). */
-export type ReleaseTarget = TargetName | ReleaseAdapter | {target: TargetName | ReleaseAdapter; name?: string; from?: number; to?: number; header?: {title: string; sub?: string}; crop?: unknown[]; captions?: boolean | object; limits?: ReleaseLimits; scale?: number};
-/** One target released: `dir` holds what is posted and nothing else; `work` the render's working files and its record. */
-export interface Released {target: string; dir: string; video: string; captions: {srt?: string; vtt?: string} | null; thumbnail: string | null; credits: string; post: Record<string, unknown>; makingOf: string; work: string}
+/** A target's own render settings, over the film's: posterFrame false starts it on the film's own frame. */
+export interface TargetRender {posterFrame?: boolean; quality?: 'standard' | 'draft' | 'high'}
+/**
+ * A target: a built-in name, an adapter, or one with options (a part from/to, a crop for the tall shapes, limits
+ * overridden) — or a Short cut from the film: `cuts` joined in order (each with where its crop looks, `follow`), each
+ * join's `join` (cut point, overlap, pop), an `end` card, the picture filling the tall frame (`fill`), the things the
+ * crop never cuts (`keep`), and its own `render` settings.
+ */
+export type ReleaseTarget = TargetName | ReleaseAdapter | {target: TargetName | ReleaseAdapter; name?: string; from?: number; to?: number; header?: {title: string; sub?: string}; crop?: CropKey[] | 'focus'; captions?: boolean | object; limits?: ReleaseLimits; scale?: number;
+  cuts?: Cut[]; join?: Join; end?: EndCard; fill?: boolean; keep?: string[]; render?: TargetRender};
+/**
+ * One target released: `dir` holds what is posted and nothing else; `work` the render's working files and its record;
+ * `edit` the edit as cut; `clipped` every place the crop's edge cuts a kept thing it could not keep whole.
+ */
+export interface Released {target: string; dir: string; video: string; captions: {srt?: string; vtt?: string} | null; thumbnail: string | null; credits: string; post: Record<string, unknown>; makingOf: string; work: string;
+  edit?: EditRecord; clipped?: {cut?: number; t: number; names: string[]; why: string}[]}
 /** The folder inside a release's `out` that holds each target's working files and record. */
 export const WORK: 'work';
 /** CREDITS.txt: StoryReel and its tools, the found sounds' attribution lines (from the making-of record's foundSounds), the maker's credits. */
@@ -43,7 +55,8 @@ export const TARGETS: Readonly<Record<TargetName, () => Promise<{default: Releas
 export const TARGET_NAMES: readonly TargetName[];
 export const AUDIENCES: readonly Audience[];
 export function checkAdapter(adapter: unknown): ReleaseAdapter;
-export function loadTarget(spec: ReleaseTarget): Promise<{adapter: ReleaseAdapter; options: {name: string; from?: number; to?: number; header?: object; crop?: unknown[]; captions?: unknown; scale?: number}}>;
+export function loadTarget(spec: ReleaseTarget): Promise<{adapter: ReleaseAdapter; options: {name: string; from?: number; to?: number; header?: object; crop?: unknown; captions?: unknown; scale?: number;
+  edit?: {cuts: Cut[]; end?: EndCard; join?: Join}; fill?: true; keep?: string[]; render?: TargetRender}}>;
 export function readPost(post: unknown): ReleasePost & {description: string; tags: string[]; synthetic: string[]};
 export function planProblems(adapter: ReleaseAdapter, post: ReleasePost, options?: {seconds?: number | null; poster?: boolean | null; scale?: number}): {problem: string; fix: string}[];
 /** Release a film to each target: <out>/<target>/ the video in its shape, caption files, thumbnail, post.json + post.txt. */

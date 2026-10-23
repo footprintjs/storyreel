@@ -9,6 +9,8 @@ import {spawn, spawnSync} from 'node:child_process';
 import {once} from 'node:events';
 import {createHash} from 'node:crypto';
 import {createCanvas} from '@napi-rs/canvas';
+import {editFrame, captionInCut} from './edit.mjs';
+import {drawEndCard} from './endcard.mjs';
 
 /**
  * How the frames are encoded. 'standard': quick, fine to watch. 'high', for posting: a slower, finer encode, and the
@@ -77,14 +79,14 @@ export function blurMoments(t, {subframes: n, shutter}, fps) {
 /**
  * The painter: one output picture at film time t into ctx — the film (in its layout, if any), averaged
  * over the motion-blur subframes, then the layout's bands on top (never blurred). A still (the poster)
- * takes no blur and no caption (a thumbnail shows the picture and the title band). Every call leaves ctx
- * with an identity transform and full alpha.
+ * takes no blur and no caption (a thumbnail shows the picture and the title band); `bands: false` leaves the bands
+ * off (an edit lays its own over: makeEditPainter). Every call leaves ctx with an identity transform and full alpha.
  */
 export function makePainter({film, framed, blur, width, height, fps, ctx}) {
   const k = width / 1600;
   const picture = (c, t) => { c.resetTransform(); c.globalAlpha = 1; c.clearRect(0, 0, width, height); if (framed) framed.picture(c, t); else { c.scale(k, k); film.frame(c, t); } c.resetTransform(); };
   const sub = blur ? createCanvas(width, height) : null, subCtx = sub?.getContext('2d');
-  return (t, {still = false} = {}) => {
+  return (t, {still = false, bands = true} = {}) => {
     if (!blur || still) picture(ctx, t);
     else {
       // A running average: subframe i is laid over the first i at 1 / (i + 1), so each counts once.
@@ -94,7 +96,33 @@ export function makePainter({film, framed, blur, width, height, fps, ctx}) {
         picture(subCtx, at); ctx.globalAlpha = 1 / (i + 1); ctx.drawImage(sub, 0, 0); ctx.globalAlpha = 1;
       }
     }
-    if (framed) { framed.overlay(ctx, t, {still}); ctx.resetTransform(); ctx.globalAlpha = 1; }
+    if (framed && bands) { framed.overlay(ctx, t, {still}); ctx.resetTransform(); ctx.globalAlpha = 1; }
+  };
+}
+
+/**
+ * The painter of an edit (edit.mjs): output frame f into ctx. Each cut is painted by its own layout (its crop), its
+ * caption only one its own stretch says (edit.mjs · captionInCut); in an overlap the later side is laid over the
+ * earlier at `a` and its bands are the ones drawn; a pop covers the picture with the paper; the end card is drawn in
+ * the film's theme under the title band. `framedCuts` holds each cut's compiled layout (null without a layout).
+ */
+export function makeEditPainter({film, edit, framedCuts, blur, width, height, fps, ctx}) {
+  const sub = createCanvas(width, height), subCtx = sub.getContext('2d');
+  const on = c => framedCuts.map(framed => makePainter({film, framed, blur, width, height, fps, ctx: c}));
+  const painters = on(ctx), under = on(subCtx), base = framedCuts[0];
+  const box = base ? base.boxes.film : [0, 0, width, height], paper = base?.paper ?? film.theme?.palette?.bg ?? '#f3eee3';
+  const done = c => { c.resetTransform(); c.globalAlpha = 1; };
+  const bands = (i, t) => { const framed = framedCuts[i]; if (!framed) return; framed.overlay(ctx, t, {caption: captionInCut(edit.cuts[i], fps, t, framed.captionAt)}); done(ctx); };
+  const card = c => { drawEndCard(c, {lines: edit.end.lines, box, width, height, theme: film.theme}); done(c); };
+  const pop = () => { ctx.fillStyle = paper; ctx.fillRect(...box); };
+  return f => {
+    const s = editFrame(edit, f);
+    if (s.kind === 'cut') { painters[s.cut](s.t, {bands: false}); if (s.pop) pop(); bands(s.cut, s.t); return; }
+    if (s.kind === 'end') { card(ctx); if (s.pop) pop(); if (base) { base.overlay(ctx, 0, {still: true}); done(ctx); } return; }
+    painters[s.under.cut](s.under.t, {bands: false});
+    if (s.over.end) card(subCtx); else under[s.over.cut](s.over.t, {bands: false});
+    ctx.globalAlpha = s.a; ctx.drawImage(sub, 0, 0); done(ctx);
+    if (s.over.end) { if (base) { base.overlay(ctx, 0, {still: true}); done(ctx); } } else bands(s.over.cut, s.over.t);
   };
 }
 
@@ -118,10 +146,11 @@ export async function stampPicture({stamp, width, height}) {
  * the poster still; stamp: false leaves the draft stamp out (a segmented render burns it once, at the join). Each call
  * has its own canvas and painter, so strategies may encode several parts at once.
  */
-export function frameEncoder({film, framed, blur, width, height, fps, start, frames, intro, poster, posterFrame, stamp, quality, ffmpeg}) {
+export function frameEncoder({film, framed, blur, width, height, fps, start, frames, intro, poster, posterFrame, stamp, quality, ffmpeg, edit = null, framedCuts = null}) {
   return async ({f0 = 0, f1 = frames, file, withIntro: introHere = false, posterFirst = false, stamp: stamped = true}) => {
     const k = width / 1600, canvas = createCanvas(width, height), ctx = canvas.getContext('2d'), label = stamped ? stamp : null;
     const paint = makePainter({film, framed, blur, width, height, fps, ctx});
+    const editPaint = edit ? makeEditPainter({film, edit, framedCuts, blur, width, height, fps, ctx}) : null;
     const ff = spawn(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pixel_format', 'rgba', '-video_size', `${width}x${height}`, '-framerate', String(fps), '-i', 'pipe:0', '-c:v', 'libx264', ...ENCODE[quality], file], {stdio: ['pipe', 'ignore', 'inherit']});
     // FFmpeg that cannot start, or that stops taking frames, is a refusal (not a crash): every failure lands on `closed`.
     let failed = null;
@@ -138,7 +167,7 @@ export function frameEncoder({film, framed, blur, width, height, fps, start, fra
       const handoff = createCanvas(width, height); { const c = handoff.getContext('2d'); c.scale(k, k); film.frame(c, 0); }
       for (let f = 0; f < Math.round(intro.seconds * fps); f++) await frameOrPoster(() => { ctx.resetTransform(); ctx.globalAlpha = 1; ctx.clearRect(0, 0, width, height); intro.draw(ctx, f / fps, {width, height, handoff}); });
     }
-    for (let f = f0; f < f1; f++) await frameOrPoster(() => paint(start + f / fps));
+    for (let f = f0; f < f1; f++) await frameOrPoster(editPaint ? () => editPaint(f) : () => paint(start + f / fps));
     ff.stdin.end();
     const [code] = await closed;
     if (failed) throw new Error(`ffmpeg (${ffmpeg}) could not encode ${path.basename(file)}: ${failed.message}`);
@@ -153,11 +182,12 @@ export function frameEncoder({film, framed, blur, width, height, fps, start, fra
  * poster still when `poster` — so a spot check sees what the piece shows. Each caller makes its own, so parts checked
  * at once never share a canvas.
  */
-export function frameHasher({film, framed, blur, width, height, fps, start, poster, posterFrame = true, stamp}, {stamp: stamped = true} = {}) {
+export function frameHasher({film, framed, blur, width, height, fps, start, poster, posterFrame = true, stamp, edit = null, framedCuts = null}, {stamp: stamped = true} = {}) {
   const canvas = createCanvas(width, height), ctx = canvas.getContext('2d'), paint = makePainter({film, framed, blur, width, height, fps, ctx});
+  const editPaint = edit ? makeEditPainter({film, edit, framedCuts, blur, width, height, fps, ctx}) : null;
   return (f, {poster: asPoster = false} = {}) => {
     // The poster is the first frame only when it replaces it (posterFrame): otherwise frame 0 is the film's own.
-    if (asPoster && poster !== null && posterFrame) paint(poster, {still: true}); else paint(start + f / fps);
+    if (asPoster && poster !== null && posterFrame) paint(poster, {still: true}); else if (editPaint) editPaint(f); else paint(start + f / fps);
     drawStamp(ctx, stamped ? stamp : null, width);
     return createHash('sha256').update(canvas.data()).digest('hex').slice(0, 16);
   };

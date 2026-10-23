@@ -20,6 +20,7 @@ import {effectsUnderVoice, musicUnderVoice} from './listening.mjs';
 import {readSongPlacement, requireOverlap} from './music.mjs';
 import {makeScratch, sweepScratch} from './scratch.mjs';
 import {writeOutput, refuseFolders, securePath, makeFolder} from './files.mjs';
+import {checkEdit, placeEdit, chaptersThrough, chunksThrough, editRecord} from './edit.mjs';
 
 /**
  * Loudness in two passes (FFmpeg's loudnorm): measure the whole mixed film, then set it with ONE fixed
@@ -196,6 +197,10 @@ export {wholeVideo, checkVideoStrategy} from './whole.mjs';
  * @param from,to    render part of the film (seconds on the film clock); the intro plays only when from < 0
  * @param part       instead of from/to: {scenes: [id, …], handles?} — those scenes and `handles` seconds (1.5) of the
  *                   film around them, so both of the part's cuts are seen (render.mjs · partWindow)
+ * @param edit       instead of from/to or a part: {cuts: [{from, to, follow?, join?}], end?, join?} — stretches of the film
+ *                   joined in order into one video, with an end card after them (edit.mjs): one picture, one sound mixed
+ *                   and measured once, caption files and chapters on the edit's clock; the poster replaces the first
+ *                   frame only (posterFrame), never a join's
  * @param poster     the film second to use as the poster (default: the recipe's `poster`, film.posterAt): it is
  *                   written beside the video (poster.jpg) and REPLACES the video's first frame, so every
  *                   platform's thumbnail shows it (the length and the sound's sync are unchanged)
@@ -287,6 +292,7 @@ export function partWindow(film, part) {
   return {from: Math.max(0, +(from - handles).toFixed(3)), to: Math.min(film.total, +(to + handles).toFixed(3))};
 }
 const withPart = options => {
+  if (options.edit !== undefined && options.edit !== null && (options.part != null || options.from !== undefined || options.to !== undefined)) throw new Error('a render takes an edit (its cuts say what it shows) or a part or from/to, not both');
   if (options.part === undefined || options.part === null) return options;
   if (options.from !== undefined || options.to !== undefined) throw new Error('a render takes a part or from/to, not both');
   const {part, ...rest} = options;
@@ -322,6 +328,31 @@ export const timelineText = (rows, {time = r => r.t.toFixed(2)} = {}) => rows.ma
 /** The render's job from its options; a part ({scenes, handles}) becomes its from/to first (partWindow). Close it with closeRender. */
 export const prepareRender = options => prepareJob(withPart(options));
 
+/** A cut's from/to on the film clock: seconds, a beat (clock.at), or {scene} (its start for from, its end for to). */
+export function filmTime(film) {
+  return (v, edge, where) => {
+    if (typeof v === 'number') return v;
+    if (v && typeof v === 'object' && !Array.isArray(v) && typeof v.scene === 'string' && v.phrase === undefined) {
+      if (Object.keys(v).length !== 1) throw new Error(`${where}: a scene is {scene: id} (its ${edge === 'from' ? 'start' : 'end'}); a phrase in it is {scene, phrase, …}`);
+      return edge === 'from' ? film.clock.start(v.scene) : film.clock.end(v.scene);
+    }
+    if (Array.isArray(v) || (v && typeof v === 'object')) { try { return film.clock.at(v); } catch (e) { throw new Error(`${where}: ${e.message}`, {cause: e}); } }
+    throw new Error(`${where} is seconds on the film clock, a beat [scene, phrase], or {scene}, not ${JSON.stringify(v)}`);
+  };
+}
+/** The film's spoken words on its clock, [{start, end}] in order: where an edit's cut points find their silences. */
+const spokenWords = film => spokenTracks(film).flatMap(tr => tr.words.map(w => ({start: tr.offset + w.start, end: tr.offset + w.end}))).sort((a, b) => a.start - b.start);
+
+/** The edit placed on the film and each cut's layout compiled for its own stretch (its crop): {edit, framedCuts}. */
+function prepareEdit(film, given, {layout, fps}) {
+  const placed = placeEdit(checkEdit(given), {time: filmTime(film), words: spokenWords(film), total: film.total, fps});
+  const framedCuts = placed.cuts.map((c, i) => {
+    if (!layout) { if (c.follow !== undefined) throw new Error(`cuts[${i}].follow is where a tall picture's crop looks; give the render a layout (a vertical or portrait format)`); return null; }
+    return compileLayout(film, c.follow !== undefined ? {...layout, crop: c.follow} : layout, {from: c.start, to: c.start + c.frames / fps});
+  });
+  return {edit: placed, framedCuts};
+}
+
 /**
  * The end of a render, finished or failed: its working files are removed — unless they are in a `work` folder the
  * caller named, which is theirs to keep. renderFilm and makeFilm call it in a finally; a strategy of your own that
@@ -333,7 +364,7 @@ export function closeRender(job) {
 
 function prepareJob({film, storyboard, timings, narrationDir = null, out, width: givenWidth, height: givenHeight, fps = RENDER_DEFAULTS.fps, intro = null, stamp = null,
   from = intro ? -intro.seconds : 0, to = film.total, poster = film.posterAt ?? null, posterFrame = true, peakCeilingDBFS = -20, loudness = {I: -16, TP: -1.5}, layout = null, motionBlur = null,
-  captionFiles = false, quality = 'standard', ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', video: _strategy, whole: _whole, segments: _segments, music = null, soundAt = 'start', work = null}) {
+  captionFiles = false, quality = 'standard', ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', video: _strategy, whole: _whole, segments: _segments, music = null, soundAt = 'start', work = null, edit: editGiven = null}) {
   checkLoudnessTarget(loudness);
   if (work !== null && !(typeof work === 'string' && work.trim())) throw new Error(`work is a folder for the render's working files, kept after the render (left out: a hidden folder beside the video, removed when the render ends), not ${JSON.stringify(work)}`);
   if (!SOUND_AT.includes(soundAt)) throw new Error(`soundAt is 'start' (each sound begins on its moment, the default) or 'peak' (its loudest transient lands on it), not ${JSON.stringify(soundAt)}`);
@@ -343,7 +374,9 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   if (typeof posterFrame !== 'boolean') throw new Error('posterFrame must be true (the poster replaces the first frame) or false (written beside the video only)');
   if (!ENCODE[quality]) throw new Error(`quality must be ${QUALITIES.map(q => `'${q}'`).join(' or ')}`);
   const blur = readMotionBlur(motionBlur), captionKinds = readCaptionFiles(captionFiles);
-  const framed = layout ? compileLayout(film, layout) : null;
+  if (editGiven !== null && intro) throw new Error('renderFilm: an edit joins parts of the film; it takes no intro (leave intro out)');
+  const cut = editGiven === null ? null : prepareEdit(film, editGiven, {layout, fps});
+  const framed = cut ? cut.framedCuts[0] : layout ? compileLayout(film, layout) : null;
   // A layout's format sets the size; a size given beside it would be silently ignored, so it refuses.
   if (framed && (givenWidth !== undefined || givenHeight !== undefined)) throw new Error(`renderFilm: the ${framed.format} layout is ${framed.width}×${framed.height}; leave width and height out (they size a render without a layout) and size it with layout.scale: 2/3 makes ${draftSize(framed.format)}, a draft (0.5–2)`);
   const width = framed?.width ?? givenWidth ?? RENDER_DEFAULTS.width, height = framed?.height ?? givenHeight ?? RENDER_DEFAULTS.height;
@@ -360,19 +393,22 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   // after sweeping the ones stopped renders left there.
   const {swept, failed: unswept} = work === null ? sweepScratch(dir, '.storyreel-work') : {swept: [], failed: []};
   const workDir = work === null ? makeScratch(dir, '.storyreel-work') : makeFolder(workReal);
-  to = Math.min(to, film.total);
+  to = cut ? cut.edit.cuts.at(-1).to : Math.min(to, film.total);
+  if (cut) from = cut.edit.cuts[0].from;
   // A render starts on the film's frame grid (a part's window is rounded to the millisecond): frame f shows film second
   // start + f / fps, so a drawing held on twos (motion.mjs · heldTime) pairs the same frames in a part as in the film.
   const withIntro = intro && from < 0, start = Math.floor(Math.max(0, from) * fps + 1e-6) / fps;
   const job = {film, storyboard, timings, narrationDir, out, dir, work: workDir, keepWork: work !== null, swept, unswept, width, height, fps, intro, withIntro, stamp, start, to, poster, posterFrame, peakCeilingDBFS, loudness, layout, framed, blur, captionKinds, ffmpeg, song, soundAt, quality,
-    /** How many frames the film part has (the intro's are extra). */
-    frames: Math.ceil((to - start) * fps),
+    /** An edit (edit.mjs · placeEdit) and each cut's layout, or null. */
+    ...(cut ? {edit: cut.edit, framedCuts: cut.framedCuts} : {}),
+    /** How many frames the film part has (the intro's are extra); an edit's, all of it. */
+    frames: cut ? cut.edit.frames : Math.ceil((to - start) * fps),
     /**
      * What changes a frame's pixels besides the film itself: a cached piece's key includes it, with the FFmpeg that
      * encodes it (segments.mjs · plan: paint.mjs · encoderOf). Never the stamp: a segmented render draws its pieces
      * without it and burns it once at the join (segments/join.mjs), so a new label costs one re-encode, not a redraw.
      */
-    pixels: {width, height, fps, layout: layout ?? null, motionBlur: blur, poster: posterFrame ? poster : null, ...(quality === 'standard' ? {} : {quality})},
+    pixels: {width, height, fps, layout: layout ?? null, motionBlur: blur, poster: posterFrame ? poster : null, ...(quality === 'standard' ? {} : {quality}), ...(cut ? {edit: editRecord(cut.edit)} : {})},
   };
   /**
    * Encode film frames [f0, f1) into `file` (paint.mjs · frameEncoder: frame f shows film second start + f / fps;
@@ -427,7 +463,9 @@ export async function finishRender(job, video) {
     if (intro.wav) writeFileSync(introWav, intro.wav); else run(['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', String(intro.seconds), introWav]);
     run(['-i', introWav, '-ar', '48000', '-ac', '1', path.join(work, 'film-intro48.wav')]); parts.push(path.join(work, 'film-intro48.wav'));
   }
-  run(['-ss', String(start), '-t', String(to - start), '-i', path.join(work, 'film-lesson.wav'), path.join(work, 'film-part.wav')]); parts.push(path.join(work, 'film-part.wav'));
+  if (job.edit) editSound(run, {edit: job.edit, lesson: path.join(work, 'film-lesson.wav'), out: path.join(work, 'film-part.wav')});
+  else run(['-ss', String(start), '-t', String(to - start), '-i', path.join(work, 'film-lesson.wav'), path.join(work, 'film-part.wav')]);
+  parts.push(path.join(work, 'film-part.wav'));
   writeFileSync(path.join(work, 'film-audio.txt'), concatList(parts));
   run(['-f', 'concat', '-safe', '0', '-i', path.join(work, 'film-audio.txt'), '-ar', '48000', '-ac', '1', path.join(work, 'film-audio.wav')]);
   const pictureSeconds = (job.frames + (withIntro ? Math.round(intro.seconds * job.fps) : 0)) / job.fps;
@@ -438,17 +476,49 @@ export async function finishRender(job, video) {
   writeOutput(path.resolve(job.out), {move: muxed});
   // Chapters on the output's clock, for review and YouTube.
   const lead = withIntro ? intro.seconds : 0;
-  const length = lead + to - start;   // a part's chapters are the ones it shows: none before its start or past its end
-  const chapters = [...(withIntro ? [[0, String(intro.title ?? '').trim() || 'Title']] : []), ...sceneChapters(storyboard.scenes, film.clock.offsets).map(([t, name]) => [lead + t - start, name])].filter(([t]) => t >= 0 && t < length);
+  const length = job.edit ? job.edit.seconds : lead + to - start;   // a part's chapters are the ones it shows: none before its start or past its end
+  const chapters = job.edit ? chaptersThrough(job.edit, sceneChapters(storyboard.scenes, film.clock.offsets))
+    : [...(withIntro ? [[0, String(intro.title ?? '').trim() || 'Title']] : []), ...sceneChapters(storyboard.scenes, film.clock.offsets).map(([t, name]) => [lead + t - start, name])].filter(([t]) => t >= 0 && t < length);
   writeOutput(path.join(dir, 'chapters.txt'), chapters.map(([t, n]) => `${clockText(t)} ${n}`).join('\n') + '\n');
   // Caption files on the output's clock too (the same shift as the chapters), for the cues the render covers.
   const captions = {};
   if (captionKinds.length) {
     const chunks = captionChunks(spokenTracks(film), FILE_CHUNKS);
-    for (const kind of captionKinds) captions[kind] = writeOutput(path.join(dir, `captions.${kind}`), captionFile(chunks, kind, {offset: lead - start, from: start, to}));
+    for (const kind of captionKinds) captions[kind] = writeOutput(path.join(dir, `captions.${kind}`), job.edit ? captionFile(chunksThrough(job.edit, chunks), kind) : captionFile(chunks, kind, {offset: lead - start, from: start, to}));
   }
   return {out: path.resolve(job.out), seconds: length, chapters: chapters.map(([t, n]) => `${clockText(t)} ${n}`), loudness: {...loudnessSet, roles}, listening: [tooLoud, musicLoud].filter(Boolean),
-    ...(posterFile ? {poster: posterFile} : {}), ...(framed ? {format: framed.format} : {}), ...(captionKinds.length ? {captions} : {}), ...(video.report ? {video: video.report} : {})};
+    ...(posterFile ? {poster: posterFile} : {}), ...(framed ? {format: framed.format} : {}), ...(captionKinds.length ? {captions} : {}), ...(video.report ? {video: video.report} : {}),
+    ...(job.edit ? {edit: editRecord(job.edit)} : {}), ...framingOf(job)};
+}
+
+/** How the crop was framed, for the record, when it follows or fills: {framing} (an edit's: one per cut), else nothing. */
+function framingOf(job) {
+  if (job.edit) { const each = job.framedCuts.map((f, cut) => (f?.framing ? {cut, ...f.framing} : null)).filter(Boolean); return each.length ? {framing: each} : {}; }
+  return job.framed?.framing ? {framing: job.framed.framing} : {};
+}
+
+/**
+ * An edit's sound (edit.mjs): each cut's stretch of the mixed film sound (`lesson`, on the film clock), joined in order —
+ * a hard join faded over 10 ms either side so it never clicks (the cut points sit in the voice's silences), an overlap
+ * cross-faded over its frames — then the end card's silence; mono at 48 kHz, as long as the edit's picture.
+ */
+export function editSound(run, {edit, lesson, out}) {
+  const {cuts, end, fps} = edit, n = cuts.length, f = v => v.toFixed(6), FADE = .01;
+  const hardBefore = i => i === 0 || !cuts[i].join.overlap, hardAfter = i => (i < n - 1 ? !cuts[i + 1].join.overlap : !end || !end.join.overlap);
+  const filters = [`[0:a]asplit=${n}${cuts.map((_, i) => `[s${i}]`).join('')}`];
+  cuts.forEach((c, i) => {
+    const d = c.frames / fps;
+    filters.push(`[s${i}]atrim=start=${f(c.start)}:end=${f(c.start + d)},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=mono${hardBefore(i) ? `,afade=t=in:d=${FADE}` : ''}${hardAfter(i) ? `,afade=t=out:st=${f(Math.max(0, d - FADE))}:d=${FADE}` : ''}[c${i}]`);
+  });
+  const join = (acc, next, overlap, k) => filters.push(overlap ? `[${acc}][${next}]acrossfade=d=${f(overlap / fps)}:c1=tri:c2=tri[j${k}]` : `[${acc}][${next}]concat=n=2:v=0:a=1[j${k}]`);
+  let acc = 'c0';
+  for (let i = 1; i < n; i++) { join(acc, `c${i}`, cuts[i].join.overlap, i); acc = `j${i}`; }
+  if (end) {
+    filters.push(`anullsrc=r=48000:cl=mono,atrim=duration=${f(end.frames / fps)}[e]`);
+    join(acc, 'e', end.join.overlap, 'e'); acc = 'je';
+  }
+  filters.push(`[${acc}]apad,atrim=duration=${f(edit.frames / fps)}[out]`);
+  run(['-i', lesson, '-filter_complex', filters.join(';'), '-map', '[out]', '-ar', '48000', '-ac', '1', out]);
 }
 
 /** A sound file's length as FFmpeg reports it (its Duration line), or null when it reports none. */

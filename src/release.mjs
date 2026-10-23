@@ -28,6 +28,12 @@
  * The thumbnail may be the film's poster (`post.thumbnail: 'poster'`), drawn at the platform's thumbnail size. What
  * in the film is realistic and made with AI is declared (`post.synthetic: ['voice']` for a synthetic voice
  * narrating), and an adapter whose platform asks for it says so in the post (YouTube: altered or synthetic content).
+ *
+ * A Short cut from an episode: `cuts` (stretches of the film joined in order, each with where its crop looks:
+ * `follow`), `join` (each join's cut point, overlap and pop), `end` (a card after them), `fill` (the picture fills the
+ * tall frame between the title band and below the captions) — an edit (edit.mjs), rendered as one video. A target's
+ * own `render` settings (posterFrame, quality) go over the film's: `render: {posterFrame: false}` starts a target on
+ * the film's own frame; an edit's joins never show the poster.
  */
 import {readChapters} from 'footprint-narration';
 import {readFileSync, statSync} from 'node:fs';
@@ -36,6 +42,8 @@ import {readCaptionFiles} from './render.mjs';
 import path from 'node:path';
 import {makeFilm} from './pipeline.mjs';
 import {FORMAT_NAMES, formatOf, formatScale} from './layout.mjs';
+import {checkEdit} from './edit.mjs';
+import {QUALITIES} from './paint.mjs';
 import {creditLines} from './found/index.mjs';
 
 /** The built-in adapters, each loaded on first use. */
@@ -51,7 +59,9 @@ export const TARGET_NAMES = Object.freeze(Object.keys(TARGETS));
 /** Who a film is made for: 'kids' (directed at children) or 'general' (anyone, a teaser for parents included). */
 export const AUDIENCES = Object.freeze(['kids', 'general']);
 const POST_KEYS = ['title', 'description', 'tags', 'audience', 'thumbnail', 'lang', 'synthetic', 'credits'];
-const TARGET_KEYS = ['target', 'name', 'from', 'to', 'header', 'crop', 'captions', 'limits', 'scale'];
+const TARGET_KEYS = ['target', 'name', 'from', 'to', 'header', 'crop', 'captions', 'limits', 'scale', 'cuts', 'join', 'end', 'fill', 'keep', 'render'];
+/** The render settings a target may give for itself, over the film's (makeRelease's render). */
+const TARGET_RENDER_KEYS = ['posterFrame', 'quality'];
 
 /** The adapter interface: what every platform adapter must say. Returns the adapter; refuses naming what is missing. */
 export function checkAdapter(a) {
@@ -87,7 +97,43 @@ export async function loadTarget(spec) {
   if (given.scale !== undefined) formatScale(adapter.video.format, given.scale);   // known before a frame is drawn
   const limits = given.limits ? mergeLimits(adapter.limits, given.limits) : adapter.limits;
   if (given.limits) checkAdapter({...adapter, limits});   // the limits as overridden answer to the same interface
-  return {adapter: {...adapter, limits}, options: {name: given.name ?? adapter.name, from: given.from, to: given.to, header: given.header, crop: given.crop, captions: given.captions, scale: given.scale}};
+  const where = `release target ${JSON.stringify(given.name ?? adapter.name)}`;
+  return {adapter: {...adapter, limits}, options: {name: given.name ?? adapter.name, from: given.from, to: given.to, header: given.header, crop: given.crop, captions: given.captions, scale: given.scale,
+    ...readEditOptions(given, adapter, where)}};
+}
+
+/**
+ * A target's edit (cuts, join, end) and its own settings (fill, keep, render), checked before anything renders:
+ * {edit?, fill?, keep?, render?}. A target with an end card and no cuts shows its from/to (or the whole film) as one cut.
+ */
+function readEditOptions(given, adapter, where) {
+  const out = {};
+  if (given.render !== undefined) {
+    const r = given.render;
+    if (!r || typeof r !== 'object' || Array.isArray(r)) throw new Error(`${where}: render is the target's own render settings {${TARGET_RENDER_KEYS.join(', ')}}`);
+    for (const key of Object.keys(r)) if (!TARGET_RENDER_KEYS.includes(key)) throw new Error(`${where}: render has unsupported key ${key} (a target's own render settings are ${TARGET_RENDER_KEYS.join(', ')}; the rest are the film's: makeRelease's render)`);
+    if (r.posterFrame !== undefined && typeof r.posterFrame !== 'boolean') throw new Error(`${where}: render.posterFrame is true (the poster replaces the first frame) or false (the video starts on the film's own frame)`);
+    if (r.quality !== undefined && !QUALITIES.includes(r.quality)) throw new Error(`${where}: render.quality must be ${QUALITIES.map(q => `'${q}'`).join(' or ')}`);
+    out.render = r;
+  }
+  if (given.fill !== undefined) {
+    if (given.fill !== true && given.fill !== false) throw new Error(`${where}: fill is true (the picture fills the frame from under the title band to below the captions) or left out`);
+    if (given.fill && !formatOf(adapter.video.format).fill) throw new Error(`${where}: fill: the ${adapter.video.format} format has no filled picture; leave fill out, or use a vertical target (YouTube Shorts, TikTok, Instagram Reels)`);
+    if (given.fill) out.fill = true;
+  }
+  if (given.keep !== undefined) out.keep = given.keep;   // checked with the layout (layout.mjs: the names the crop never cuts)
+  if (given.cuts === undefined && given.end === undefined) {
+    if (given.join !== undefined) throw new Error(`${where}: join says how cuts are joined; give cuts (or an end card), or leave join out`);
+    return out;
+  }
+  if (given.cuts !== undefined && (given.from !== undefined || given.to !== undefined)) throw new Error(`${where}: a target takes cuts or from/to, not both (each cut has its own from and to)`);
+  if (given.cuts !== undefined && given.crop !== undefined) throw new Error(`${where}: with cuts, each cut says where its crop looks (follow): leave the target's crop out`);
+  const cuts = given.cuts ?? [{from: given.from ?? 0, to: given.to ?? null, ...(given.crop !== undefined ? {follow: given.crop} : {})}];
+  const edit = {cuts, ...(given.end !== undefined ? {end: given.end} : {}), ...(given.join !== undefined ? {join: given.join} : {})};
+  // Its shape refuses now (edit.mjs · checkEdit); a cut left to run to the film's end (to: null) is placed at the render.
+  checkEdit({...edit, cuts: Array.isArray(cuts) ? cuts.map(c => (c && c.to === null ? {...c, to: 0} : c)) : cuts});
+  out.edit = edit;
+  return out;
 }
 // A key given as undefined is not given: the platform's value stays ({count: undefined} keeps how X counts).
 const given = o => Object.fromEntries(Object.entries(o ?? {}).filter(([, v]) => v !== undefined));
@@ -176,6 +222,14 @@ export function creditsText(post, tools, sounds = []) {
     ...(post.synthetic?.includes('voice') ? ['', 'The narration is a synthetic voice.'] : []), ''].join('\n');
 }
 
+/** An edit's length when every cut is given in seconds (the overlaps aside), else null: known only once the film is compiled. */
+function editSeconds({cuts, end}) {
+  if (!cuts.every(c => typeof c.from === 'number' && typeof c.to === 'number')) return null;
+  return cuts.reduce((n, c) => n + c.to - c.from, 0) + (end?.seconds ?? 0);
+}
+/** A cut with no `to` (an end card on a whole film or from a second) runs to the film's end: its last scene's. */
+const endOfFilm = (edit, storyboard) => ({...edit, cuts: edit.cuts.map(c => (c.to === null ? {...c, to: {scene: storyboard.scenes.at(-1).id}} : c))});
+
 /** The folder (inside a release's `out`) that holds each target's working files and record, apart from what is posted. */
 export const WORK = 'work';
 
@@ -200,6 +254,12 @@ async function placeThumbnail(adapter, given, poster, dir) {
 /** A render's chapter lines ("1:05 The middle") → [[seconds, name]], as adapters take them (footprint-narration · readChapters). */
 const chaptersOf = lines => readChapters(lines.join('\n')).map(({at, title}) => [at, title]);
 
+/** The places a crop's edge cuts a kept thing it could not keep whole, from the record's framing: {clipped} or nothing. */
+function clippedOf(framing) {
+  const list = (Array.isArray(framing) ? framing : framing ? [framing] : []).flatMap(f => (f.clipped ?? []).map(c => ({...(f.cut !== undefined ? {cut: f.cut} : {}), ...c})));
+  return list.length ? {clipped: list} : {};
+}
+
 /** The text ready to paste, one field after another. */
 const postText = (adapter, fields) => `${adapter.label}\n\n${Object.entries(fields).map(([k, v]) => `## ${k}\n${Array.isArray(v) ? v.join(', ') : typeof v === 'boolean' ? (v ? 'yes' : 'no') : v}`).join('\n\n')}\n`;
 
@@ -220,7 +280,7 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
   // First everything that can be known before a frame is drawn, for every target: nothing renders if any refuses.
   const poster = film.render && 'poster' in film.render ? film.render.poster != null : film.recipe?.poster != null;
   for (const {adapter, options} of loaded) {
-    const part = options.from !== undefined && options.to !== undefined ? options.to - options.from : null;
+    const part = options.edit ? editSeconds(options.edit) : options.from !== undefined && options.to !== undefined ? options.to - options.from : null;
     refuse(adapter, planProblems(adapter, p, {seconds: part, poster, scale: options.scale}));
     if (p.thumbnail !== 'poster') await checkThumbnail(adapter, p.thumbnail);
   }
@@ -240,10 +300,14 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
   for (const [i, {adapter, options}] of loaded.entries()) {
     const {dir, work} = folders[i];
     const layout = {format: adapter.video.format, ...(adapter.video.captions || options.captions ? {captions: options.captions ?? adapter.video.captions} : {}),
-      ...(options.header ? {header: options.header} : adapter.video.header && p.title ? {header: {title: p.title}} : {}), ...(options.crop ? {crop: options.crop} : {}), ...(options.scale !== undefined ? {scale: options.scale} : {})};
+      ...(options.header ? {header: options.header} : adapter.video.header && p.title ? {header: {title: p.title}} : {}), ...(options.crop && !options.edit ? {crop: options.crop} : {}), ...(options.scale !== undefined ? {scale: options.scale} : {}),
+      ...(options.fill ? {fill: true} : {}), ...(options.keep !== undefined ? {keep: options.keep} : {})};
     // A platform that takes an uploaded thumbnail (YouTube) shows no frame of the video as one: it starts on the film's own.
-    const render = {...(adapter.thumbnail && !(film.render && 'posterFrame' in film.render) ? {posterFrame: false} : {}), ...(film.render ?? {}), layout, ...(adapter.video.captionFiles ? {captionFiles: adapter.video.captionFiles} : {}),
-      ...(options.from !== undefined ? {from: options.from} : {}), ...(options.to !== undefined ? {to: options.to} : {})};
+    // The target's own render settings (posterFrame, quality) go over the film's.
+    const own = options.render ?? {}, posterSaid = (film.render && 'posterFrame' in film.render) || 'posterFrame' in own;
+    const render = {...(adapter.thumbnail && !posterSaid ? {posterFrame: false} : {}), ...(film.render ?? {}), ...own, layout, ...(adapter.video.captionFiles ? {captionFiles: adapter.video.captionFiles} : {}),
+      ...(options.edit ? {edit: endOfFilm(options.edit, film.storyboard)} : {}),
+      ...(!options.edit && options.from !== undefined ? {from: options.from} : {}), ...(!options.edit && options.to !== undefined ? {to: options.to} : {})};
     const result = await makeFilm({...film, out: path.join(work, `${stem}.mp4`), render});
     refuse(adapter, lengthProblems(adapter, result.seconds));
     const fields = adapter.post(p, {chapters: chaptersOf(result.chapters ?? []), seconds: result.seconds, limits: adapter.limits});
@@ -256,7 +320,9 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
     writeOutput(path.join(dir, 'post.txt'), postText(adapter, fields));
     const made = JSON.parse(readFileSync(result.makingOf, 'utf8')), sounds = Array.isArray(made.foundSounds) ? made.foundSounds.filter(r => r && typeof r === 'object') : [];
     const credits = writeOutput(path.join(dir, 'CREDITS.txt'), creditsText(p, made.tools ?? [], sounds));
-    released.push({target: options.name, dir, video, captions, thumbnail, credits, post: fields, makingOf: result.makingOf, work});
+    released.push({target: options.name, dir, video, captions, thumbnail, credits, post: fields, makingOf: result.makingOf, work,
+      // An edit as cut (edit.mjs), and every place the crop could not keep a named thing whole (layout.mjs · framing).
+      ...(result.edit ? {edit: result.edit} : {}), ...clippedOf(made.framing)});
   }
   return released;
 }

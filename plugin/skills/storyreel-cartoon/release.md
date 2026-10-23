@@ -119,8 +119,18 @@ band and a caption band where the shape leaves room. `render: {layout: {format, 
 
 `footprint-storyreel/release` · `makeRelease({…film, post, targets, out})` takes everything `makeFilm` takes, plus the
 post and where it goes. Targets: `youtube`, `youtube-shorts`, `linkedin`, `tiktok`, `instagram-reels`, `x`, each as a
-name or `{target, from?, to?, crop?, scale?, header?, captions?, limits?}`. `post` is `{title, description, audience:
-'kids' | 'general', tags?, thumbnail?: 'poster' | an image, synthetic?: ['voice'], credits?}`.
+name or `{target, from?, to?, crop?, scale?, header?, captions?, limits?, cuts?, join?, end?, fill?, keep?, render?}`.
+`post` is `{title, description, audience: 'kids' | 'general', tags?, thumbnail?: 'poster' | an image, synthetic?:
+['voice'], credits?}`.
+
+**A Short cut from the film** is one target: `cuts: [{from, to, follow?, join?}]` (seconds, a beat, or `{scene}`)
+joined in order into one render; `join: {cut: 'silence' | 'exact', overlap: frames, pop: frames}` for every join (a
+cut's own `join` is the one into it); `end: {lines, seconds}`, a card in the film's theme; `fill: true`, the picture
+from under the title band to below the captions; `follow: 'focus'` (the speaker's region while someone speaks, else
+what the focus names) or crop keys `{at, x, y?, width?, cut?}`; `render: {posterFrame: false}` for that target only.
+A key is nudged so its edge never cuts a speaker (or `keep: [names]`); the release's result says where it could not
+(`clipped`). A frame shows only captions said inside its own cut. The README's "A Short cut from the film" has the
+worked example.
 
 ```js
 import {readFileSync} from 'node:fs';

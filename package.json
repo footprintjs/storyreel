@@ -207,6 +207,10 @@
       "types": "./types/sub/layout.d.ts",
       "default": "./src/layout.mjs"
     },
+    "./edit": {
+      "types": "./types/sub/edit.d.ts",
+      "default": "./src/edit.mjs"
+    },
     "./transitions": {
       "types": "./types/sub/transitions.d.ts",
       "default": "./src/transitions.mjs"

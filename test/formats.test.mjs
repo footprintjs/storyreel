@@ -75,7 +75,7 @@ test('layouts: four formats with their sizes; the bands take the film\'s paper; 
   bad({format: 'vertical', crop: [{at: ['end', 'Come'], x: 500}, {at: ['talk', 'Two'], x: 900}]}, /in the order they are spoken/);
   bad({format: 'vertical', crop: [null]}, /layout.crop\[0\] must be \{at: beat, x, width\?\}/);
   bad({format: 'vertical', crop: [{at: ['talk', 'Two searches'], x: 800, width: 2000}]}, /layout.crop\[0\].width must be 400–1600 \(how much of the frame's width the crop shows; 1200 is the format's\)/);
-  bad({format: 'vertical', crop: [{at: ['talk', 'Two searches'], x: 800, zoom: 2}]}, /unsupported key zoom \(a crop key is \{at, x, width\?\}\)/);
+  bad({format: 'vertical', crop: [{at: ['talk', 'Two searches'], x: 800, zoom: 2}]}, /unsupported key zoom \(a crop key is \{at, x, y\?, width\?, cut\?\}, or \{at, follow, width\?\}\)/);
   bad({format: 'vertical', header: {sub: 'no title'}}, /header must be \{title, sub\?, box\?\} with words in the title, or false/);
   assert.equal(compileLayout(film, {format: 'landscape', header: false, captions: false}).boxes.header, undefined, 'false is no band, for a header as for captions');
   bad({format: 'vertical', header: {title: 'T', subtitle: 'x'}}, /layout.header has unsupported key subtitle/);

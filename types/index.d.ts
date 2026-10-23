@@ -623,6 +623,15 @@ export type FormatName = 'landscape' | 'square' | 'portrait' | 'vertical';
 /** A band's box in output pixels: [x, y, width, height]. */
 export type Box = [x: number, y: number, width: number, height: number];
 /**
+ * A crop key (portrait and vertical): the window's centre from `at` (a beat, or seconds on the film clock) — x on the
+ * 1600-wide frame, y on the 900-high frame (only where given; else centred) — its width (400–1600), and `cut: true` to
+ * jump there instead of easing; or `{at, follow: 'focus', width?}`: from there the window follows the film (the
+ * speaker's region while someone speaks, else the thing its focus names; follow.mjs) until the next key.
+ */
+export type CropKey = {at: Beat | number; x: number; y?: number; width?: number; cut?: boolean} | {at: Beat | number; follow: 'focus'; width?: number};
+/** How a tall crop was framed when it follows or fills: the keys used, the ones nudged off a kept thing ([dx, dy]), and where a kept thing could not be kept whole. */
+export interface CropFraming {follow?: Record<string, number>; keep: string[]; keys: {t: number; x: number; y?: number; width: number; jump?: true}[]; nudged: {t: number; by: [number, number]}[]; clipped: {t: number; names: string[]; why: string}[]}
+/**
  * A version of the film for a platform: its format, a title band (not in landscape), captions burned in from
  * the word timings, crop keys that follow the action (portrait and vertical: {at: beat, x, width?}), and the
  * bands' colours (default: the film's paper and ink). Unknown keys refuse.
@@ -631,8 +640,12 @@ export interface Layout {
   format: FormatName;
   header?: {title: string; sub?: string; box?: Box} | false;
   captions?: boolean | {maxWords?: number; size?: number; box?: Box};
-  /** Portrait and vertical: the crop's centre (x on the 1600-wide frame) and, optionally, its width (400–1600; up to the whole frame). */
-  crop?: {at: Beat; x: number; width?: number}[];
+  /** Portrait and vertical: the crop's keys (CropKey), or 'focus' (it follows the film throughout). */
+  crop?: CropKey[] | 'focus';
+  /** Vertical: the film fills the picture from under the title band to below the captions (1080×1165; the captions sit over its foot). */
+  fill?: boolean;
+  /** Portrait and vertical: the named things the crop's edge never cuts when it follows or fills ([] none; left out: every speaker). */
+  keep?: string[];
   background?: string;
   ink?: string;
   /** 0.5–2 (default 1): the same picture at that many times the format's size, redrawn sharp; 2 makes landscape 3840×2160 (4K), 0.5 a quick draft. */
@@ -640,8 +653,14 @@ export interface Layout {
 }
 export const FORMAT_NAMES: readonly FormatName[];
 /** A layout compiled for a film: the output size, where the film and the bands are, and the two drawing passes. */
-export function compileLayout(film: Film, layout: Layout): {width: number; height: number; format: FormatName;
-  boxes: {film: Box; header?: Box; captions?: Box}; picture(ctx: any, t: number): void; overlay(ctx: any, t: number, options?: {still?: boolean}): void;
+export function compileLayout(film: Film, layout: Layout, span?: {from: number; to: number}): {width: number; height: number; format: FormatName;
+  boxes: {film: Box; header?: Box; captions?: Box}; picture(ctx: any, t: number): void;
+  /** The bands at t; `caption` given (an edit's) is drawn instead of the one at t, null for none. */
+  overlay(ctx: any, t: number, options?: {still?: boolean; caption?: unknown | null}): void;
+  /** The bands' paper. */
+  paper: string;
+  /** How the crop was framed, when it follows or fills. */
+  framing?: CropFraming;
   /** The caption shown at t, or null (none showing, or no captions in this layout). */
   captionAt(t: number): unknown | null};
 
@@ -697,7 +716,30 @@ export function renderFilm(options: {
   music?: import('./sub/music.js').SongPlacement | null;
   /** 'start' (the default: each sound begins on its moment) or 'peak' (each sound's loudest transient lands on it). */
   soundAt?: 'start' | 'peak';
-}): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; format?: FormatName; captions?: {vtt?: string; srt?: string}; loudness: Loudness; listening: ListeningFinding[]; video?: SegmentsReport}>;
+  /** Instead of from/to or a part: stretches of the film joined in order into one video, with an end card after them (edit.mjs). */
+  edit?: Edit | null;
+}): Promise<{out: string; seconds: number; chapters: string[]; poster?: string; format?: FormatName; captions?: {vtt?: string; srt?: string}; loudness: Loudness; listening: ListeningFinding[]; video?: SegmentsReport;
+  /** The edit as cut: each cut as given and as used (moved to a silence), where it plays, its join; the end card. */
+  edit?: EditRecord;
+  /** How a tall crop was framed (an edit's: one per cut, with its index). */
+  framing?: CropFraming | (CropFraming & {cut: number})[]}>;
+
+/** A join between two cuts: where the cut point lands ('silence': off a spoken word, the default; 'exact'), frames the two sides cross-fade (0–30, 0), frames of paper over a hard cut (0–3, 0). */
+export interface Join {cut?: 'silence' | 'exact'; overlap?: number; pop?: number}
+/** A cut's edge: seconds on the film clock, a beat, or a scene ({scene}: its start for from, its end for to). */
+export type CutTime = number | Beat | {scene: string};
+/** A stretch of the film in an edit; `follow` is where its tall crop looks (in place of the layout's crop); `join` the join into it. */
+export interface Cut {from: CutTime; to: CutTime; follow?: CropKey[] | 'focus'; join?: Join}
+/** A card after the last cut, in the film's theme: 1–4 lines (the first the biggest), held 0.5–10 s. */
+export interface EndCard {lines: string[]; seconds: number; join?: Join}
+/** An edit: its cuts in order, the end card, and the join every join takes unless a cut gives its own. */
+export interface Edit {cuts: Cut[]; end?: EndCard; join?: Join}
+/** An edit as its record keeps it. */
+export interface EditRecord {
+  cuts: {from: number; to: number; given: [number, number]; snapped?: {from?: [number, number]; to?: [number, number]}; at: number; frames: number; join?: Required<Join>}[];
+  end?: {at: number; seconds: number; lines: string[]; join: Required<Join>};
+  seconds: number;
+}
 
 /** A way to make the picture (segments.mjs): plan the parts, make each one, join them; render runs the three in order. */
 export interface VideoStrategy {

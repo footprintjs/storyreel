@@ -4,7 +4,7 @@
  *
  *   video: <strategy>   the caller's: segmentedVideo({store, …}) or wholeVideo()
  *   whole: true         every frame in one pass (wholeVideo()): to debug the cache, never needed for a final render
- *   a part or an intro  drawn whole (the cache holds whole films)
+ *   a part, an edit or an intro  drawn whole (the cache holds whole films)
  *   otherwise           pieces in <out folder>/.storyreel/segments/<format>-<W>x<H>-<quality>, a cache held to
  *                       `segments.cap` (4 GB), with `segments` options for the rest
  */
@@ -40,7 +40,7 @@ export function pictureStrategy(options, job, {kitsCode = null} = {}) {
   checkPictureOptions(options);
   const {video, whole, segments = {}} = options;
   if (video) return video;
-  if (whole || job.withIntro || job.start !== 0 || job.to < job.film.total - 1e-6) return wholeVideo();
+  if (whole || job.edit || job.withIntro || job.start !== 0 || job.to < job.film.total - 1e-6) return wholeVideo();
   const {dir, cap, code, kitsCode: given, ...rest} = segments ?? {};
   // The default cache: inside the out folder, each level a real folder of ours (a link there is refused, never read),
   // made — and checked again — only when the first piece is kept.

@@ -110,7 +110,8 @@ export function segmentMaterial(film, seg, {recipe, storyboard = null, pixels, c
       focus: focus && {strategy: focus.strategy, feel: focus.feel, safe: focus.safe, code: focus.code ?? null, keys: reaching(focus.keys).map(k => [k.on, k.size ?? null, round(k.cx), round(k.cy), round(k.z), round(k.sx), round(k.sy), k.box.map(round), round(k.w), when(k.t)])},
       emphasis: emphasis && {strategy: emphasis.strategy, feel: emphasis.feel, code: emphasis.code ?? null, words: reaching(emphasis.words).map(w => [w.text, when(w.t), when(w.next)])}} : undefined,
     // The crop of a format that shows part of the frame (layout.mjs · cropKeys): each key near it, and the last before.
-    crop: layout?.cropKeys ? reaching(layout.cropKeys).map(k => [round(k.x), round(k.width), when(k.t)]) : undefined,
+    // (A key's y and jump, layout.mjs · fill and follow, only where a key has them: every other key is keyed as it was.)
+    crop: layout?.cropKeys ? reaching(layout.cropKeys).map(k => [round(k.x), round(k.width), when(k.t), ...(k.y !== undefined ? [round(k.y)] : []), ...(k.jump ? ['jump'] : [])]) : undefined,
     // An example scene's label, while it is up over the piece (claims.mjs · labelSpans).
     labels: (film.claims?.labels ?? []).filter(l => over(l.from, l.to)).map(l => [l.words ?? null, when(l.from), when(l.to)]),
     strings: words, data, theme, files, cast,

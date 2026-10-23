@@ -28,15 +28,21 @@
 import {captionChunks, captionAt} from 'footprint-narration';
 import {spokenTracks, drawCaption} from './captions.mjs';
 import {inOut} from './ease.mjs';
+import {FOLLOW, keepWhole, filmSpeakers} from './follow.mjs';
+export {FOLLOW, followFocus, keepWhole, NUDGE} from './follow.mjs';
 
 const FORMATS = Object.freeze({
   landscape: {width: 1920, height: 1080, film: [0, 0, 1920, 1080], crop: null, header: null, captions: [160, 860, 1600, 160], captionSize: 52, maxWords: 7},
   square: {width: 1080, height: 1080, film: [0, 236, 1080, 608], crop: null, header: [60, 36, 960, 180], captions: [120, 852, 840, 180], captionSize: 50, maxWords: 5},
   portrait: {width: 1080, height: 1350, film: [0, 240, 1080, 810], crop: [1200, 900], header: [60, 40, 960, 180], captions: [120, 1060, 840, 150], captionSize: 50, maxWords: 5},
-  vertical: {width: 1080, height: 1920, film: [0, 480, 1080, 810], crop: [1200, 900], header: [100, 285, 880, 185], captions: [120, 1298, 840, 162], captionSize: 54, maxWords: 4},
+  vertical: {width: 1080, height: 1920, film: [0, 480, 1080, 810], crop: [1200, 900], header: [100, 285, 880, 185], captions: [120, 1298, 840, 162], captionSize: 54, maxWords: 4,
+    // Filled: the film from under the title band to below the captions (they sit over its foot, on their dark pill),
+    // 61% of the height; the crop a window the box's shape, the frame's whole height at its default width.
+    fill: [0, 475, 1080, 1165]},
 });
 export const FORMAT_NAMES = Object.freeze(Object.keys(FORMATS));
-const KEYS = ['format', 'header', 'captions', 'crop', 'background', 'ink', 'scale'];
+const KEYS = ['format', 'header', 'captions', 'crop', 'background', 'ink', 'scale', 'fill', 'keep'];
+const CROP_KEY_KEYS = ['at', 'x', 'y', 'width', 'cut'], FOLLOW_KEY_KEYS = ['at', 'follow', 'width'];
 const MOVE = .8;   // seconds a crop takes to move to its next key
 const SANS = '"Helvetica Neue", Helvetica, Arial, sans-serif';
 
@@ -56,14 +62,15 @@ export function formatOf(name) {
  * size: 2 makes landscape 3840×2160 (4K), every line and word drawn sharp at that size; 0.5, a quick draft to look
  * at while editing (layout.mjs · formatScale).
  */
-export function compileLayout(film, spec) {
+export function compileLayout(film, spec, span = {from: 0, to: film.total}) {
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) throw new Error(`layout must be {format: ${FORMAT_NAMES.join(' | ')}, …}`);
   for (const key of Object.keys(spec)) if (!KEYS.includes(key)) throw new Error(`layout has unsupported key ${key} (the keys are ${KEYS.join(', ')})`);
-  const f = formatOf(spec.format), k = formatScale(spec.format, spec.scale);
+  const f = filled(formatOf(spec.format), spec), k = formatScale(spec.format, spec.scale);
   const header = readHeader(spec.header, f, spec.format), captions = readCaptions(spec.captions, f);
   if (spec.crop !== undefined && !f.crop) throw new Error(`layout.crop: the ${spec.format} format shows the whole frame; a crop applies to portrait and vertical: leave crop out, or use one of those formats`);
   for (const key of ['background', 'ink']) if (spec[key] !== undefined && !(typeof spec[key] === 'string' && spec[key].trim())) throw new Error(`layout.${key} must be a colour (e.g. "#f3eee3")`);
-  const crop = f.crop ? cropKeys(film, spec.crop ?? [], f.crop) : null;
+  if (spec.keep !== undefined && !(f.crop && Array.isArray(spec.keep) && spec.keep.every(n => typeof n === 'string' && n.trim()))) throw new Error(f.crop ? 'layout.keep lists the named things (as the kits name them in their regions) the crop\'s edge never cuts: [] keeps none; left out, every speaker' : `layout.keep: the ${spec.format} format shows the whole frame, so nothing is cut at its edge: leave keep out`);
+  const framing = f.crop ? framingOf(film, spec, f, span) : null, crop = framing?.keys ?? null;
   const chunks = captions ? captionChunks(spokenTracks(film), {maxWords: captions.maxWords}) : null;
   const palette = film.theme?.palette ?? {}, sans = film.theme?.type?.sans ?? SANS;
   const bg = spec.background ?? palette.bg ?? '#f3eee3', ink = spec.ink ?? palette.ink ?? '#23211c';
@@ -71,12 +78,16 @@ export function compileLayout(film, spec) {
   const boxes = Object.freeze({film: sized(f.film), ...(header ? {header: sized(header.box)} : {}), ...(captions ? {captions: sized(captions.box)} : {})});
   return {
     width: f.width * k, height: f.height * k, format: spec.format, boxes,
+    /** The bands' paper (the film's, unless the layout names a background): what an edit's pop covers the picture with. */
+    paper: bg,
     /** The caption shown at t (null when none is, or the layout has no captions). */
     captionAt: t => chunks ? captionAt(chunks, t) : null,
     /** Every caption chunk it burns in, on the film clock (null without captions): a cached piece's key holds the ones near it. */
     captionChunks: chunks,
     /** The crop's keys on the film clock, [{t, x, width}] (null for a format that shows the whole frame): keyed the same way. */
     cropKeys: crop,
+    /** How the crop was framed, when it follows or fills: the keys as used, the keys nudged so no kept thing is cut, the ones that could not be. */
+    ...(framing?.record ? {framing: framing.record} : {}),
     picture(ctx, t) {
       ctx.save(); ctx.scale(k, k); ctx.fillStyle = bg; ctx.fillRect(0, 0, f.width, f.height);
       const [bx, by, bw, bh] = f.film;
@@ -88,11 +99,14 @@ export function compileLayout(film, spec) {
       film.frame(ctx, t, window ? {window} : undefined);
       ctx.restore();
     },
-    /** The bands at t; a still (the poster, a thumbnail) takes the title band without a caption. */
-    overlay(ctx, t, {still = false} = {}) {
+    /**
+     * The bands at t; a still (the poster, a thumbnail) takes the title band without a caption. `caption` given (an edit:
+     * edit.mjs · captionInCut) is the one drawn instead of the one at t — null for none.
+     */
+    overlay(ctx, t, {still = false, ...given} = {}) {
       ctx.save(); ctx.scale(k, k);
       if (header) drawHeader(ctx, header, ink, sans);
-      if (chunks && !still) drawCaption(ctx, captionAt(chunks, t), captions.box, {size: captions.size, font: sans});
+      if (chunks && !still) drawCaption(ctx, 'caption' in given ? given.caption : captionAt(chunks, t), captions.box, {size: captions.size, font: sans});
       ctx.restore();
     },
   };
@@ -142,18 +156,69 @@ function readBox(box, f, where) {
   return box;
 }
 
-/** Crop keys on the film clock: [{t, x, width}] in spoken order; x a centre on the 1600-wide frame, width the crop's (default: the format's). */
-function cropKeys(film, keys, [cw]) {
-  if (!Array.isArray(keys)) throw new Error('layout.crop must be a list of {at: beat, x, width?}');
-  const out = keys.map((k, i) => {
+/** The format filled (layout.fill: the film box from under the title band to below the captions), or as it is. */
+function filled(f, spec) {
+  if (spec.fill === undefined || spec.fill === false) return f;
+  if (spec.fill !== true) throw new Error('layout.fill is true (the film fills the picture from under the title band to below the captions) or left out');
+  if (!f.fill) throw new Error(`layout.fill: the ${spec.format} format has no filled picture; leave fill out, or use the vertical format`);
+  const [, , bw, bh] = f.fill;
+  return {...f, film: f.fill, crop: [900 * bw / bh, 900], filled: true};
+}
+
+/** A key's time: a beat (a phrase that is said), or seconds on the film clock. */
+const keyTime = (film, at, where) => {
+  if (typeof at === 'number') { if (!(at >= 0 && at <= film.total)) throw new Error(`${where}.at is ${at} s, outside the film: give a time from 0 to ${film.total.toFixed(2)} s`); return at; }
+  return film.clock.at(at);
+};
+
+/**
+ * Crop keys on the film clock: [{t, x, width}] in spoken order; x a centre on the 1600-wide frame, width the crop's
+ * (default: the format's); y (a centre on the 900-high frame) and jump (cut: true, or a scene cut in a filled picture)
+ * only where given. `{at, follow: 'focus', width?}` (or crop: 'focus') follows the film from there (follow.mjs) until
+ * the next key; such keys, and every key of a filled picture, are kept off the kept things' edges (keepWhole).
+ */
+function framingOf(film, spec, f, span) {
+  const given = spec.crop === 'focus' ? [{at: span.from, follow: 'focus'}] : spec.crop ?? [];
+  const [cw] = f.crop;
+  if (!Array.isArray(given)) throw new Error("layout.crop must be a list of {at: beat, x, y?, width?, cut?} (or {at, follow: 'focus', width?}), or 'focus'");
+  const out = given.map((k, i) => {
     if (!k || typeof k !== 'object' || Array.isArray(k)) throw new Error(`layout.crop[${i}] must be {at: beat, x, width?}`);
-    for (const key of Object.keys(k)) if (!['at', 'x', 'width'].includes(key)) throw new Error(`layout.crop[${i}] has unsupported key ${key} (a crop key is {at, x, width?})`);
+    const follows = k.follow !== undefined;
+    for (const key of Object.keys(k)) if (!(follows ? FOLLOW_KEY_KEYS : CROP_KEY_KEYS).includes(key)) throw new Error(`layout.crop[${i}] has unsupported key ${key} (a crop key is {at, x, y?, width?, cut?}, or {at, follow, width?})`);
+    if (k.width !== undefined && !(typeof k.width === 'number' && k.width >= 400 && k.width <= 1600)) throw new Error(`layout.crop[${i}].width must be 400–1600 (how much of the frame's width the crop shows; ${Math.round(cw)} is the format's)`);
+    if (follows) {
+      if (!Object.hasOwn(FOLLOW, k.follow)) throw new Error(`layout.crop[${i}].follow is ${Object.keys(FOLLOW).map(n => `'${n}'`).join(', ')} (the crop follows what the film looks at), not ${JSON.stringify(k.follow)}`);
+      return {t: keyTime(film, k.at, `layout.crop[${i}]`), follow: k.follow, width: k.width ?? cw};
+    }
     if (!(typeof k.x === 'number' && k.x >= 0 && k.x <= 1600)) throw new Error(`layout.crop[${i}].x must be a centre on the 1600-wide frame (0–1600)`);
-    if (k.width !== undefined && !(typeof k.width === 'number' && k.width >= 400 && k.width <= 1600)) throw new Error(`layout.crop[${i}].width must be 400–1600 (how much of the frame's width the crop shows; ${cw} is the format's)`);
-    return {t: film.clock.at(k.at), x: k.x, width: k.width ?? cw};
+    if (k.y !== undefined && !(typeof k.y === 'number' && k.y >= 0 && k.y <= 900)) throw new Error(`layout.crop[${i}].y must be a centre on the 900-high frame (0–900)`);
+    if (k.cut !== undefined && typeof k.cut !== 'boolean') throw new Error(`layout.crop[${i}].cut is true (the window jumps there, at a cut in the picture) or left out`);
+    return {t: keyTime(film, k.at, `layout.crop[${i}]`), x: k.x, width: k.width ?? cw, ...(k.y !== undefined ? {y: k.y} : {}), ...(k.cut ? {jump: true} : {}), given: true};
   });
   out.forEach((k, i) => { if (i && k.t < out[i - 1].t) throw new Error(`layout.crop[${i}] comes before the key above it; list crop keys in the order they are spoken`); });
-  return out;
+  const follows = out.some(k => k.follow), keep = spec.keep ?? filmSpeakers(film);
+  if (!follows && !f.filled && spec.keep === undefined) return {keys: out.map(({given: _, ...k}) => k)};   // as it always was
+  // In a filled picture a move never runs across a scene cut: a key whose move a cut would fall inside jumps there at the
+  // cut instead. One with no key at its start opens centred, as any crop does, on a key of its own, so that window too
+  // is kept off a kept thing.
+  const opened = f.filled && !out.some(k => k.t <= span.from + 1e-6) ? [{t: span.from, x: 800, width: cw, jump: true}, ...out] : out;
+  const placed = f.filled ? opened.map((k, i) => {
+    const cut = i && !k.follow && !k.jump ? film.clock.offsets.find(s => s > k.t + 1e-6 && s < k.t + MOVE - 1e-6 && s < (opened[i + 1]?.t ?? Infinity)) : undefined;
+    return cut === undefined ? k : {...k, t: cut, jump: true};
+  }) : out;
+  const why = {}, keys = placed.flatMap((k, i) => {
+    if (!k.follow) return [k];
+    const from = Math.max(k.t, span.from), to = Math.min(placed[i + 1]?.t ?? Infinity, span.to);
+    if (!(to > from)) return [];
+    const made = FOLLOW[k.follow](film, {from, to, crop: f.crop, width: k.width});
+    for (const [n, c] of Object.entries(made.why ?? {})) why[n] = (why[n] ?? 0) + c;
+    return made.keys;
+  });
+  const kept = keepWhole(film, keys, {crop: f.crop, keep, until: span.to});
+  const round = v => +v.toFixed(2);
+  kept.keys = kept.keys.map(({given: _, ...k}) => k);
+  return {keys: kept.keys, record: {...(follows ? {follow: why} : {}), keep, keys: kept.keys.map(k => ({t: round(k.t), x: round(k.x), ...(k.y !== undefined ? {y: round(k.y)} : {}), width: round(k.width), ...(k.jump ? {jump: true} : {})})),
+    nudged: kept.nudged, clipped: kept.clipped}};
 }
 
 /**
@@ -162,10 +227,17 @@ function cropKeys(film, keys, [cw]) {
  * (a wide crop in a tall format) shows the whole height, with the paper above and below.
  */
 export function cropWindow(keys, t, [cw, ch]) {
-  let x = 800, w = cw;
-  for (const k of keys) { if (t < k.t) break; const u = inOut((t - k.t) / MOVE); x += (k.x - x) * u; w += ((k.width ?? cw) - w) * u; }
+  let x = 800, w = cw, y = 450, vertical = false;
+  for (const k of keys) {
+    if (t < k.t) break;
+    const u = k.jump ? 1 : inOut((t - k.t) / MOVE);
+    x += (k.x - x) * u; w += ((k.width ?? cw) - w) * u;
+    if (k.y !== undefined) { vertical = true; y += (k.y - y) * u; }
+  }
   const h = w * ch / cw;
-  return {x0: Math.max(0, Math.min(1600 - w, x - w / 2)), y0: 450 - h / 2, w, h};
+  // Up and down only when a key says where (y): a window shorter than the frame, kept inside it; else centred.
+  const y0 = vertical && h < 900 ? Math.max(0, Math.min(900 - h, y - h / 2)) : 450 - h / 2;
+  return {x0: Math.max(0, Math.min(1600 - w, x - w / 2)), y0, w, h};
 }
 
 /** Words wrapped greedily into lines no wider than `width` (a word wider than that has a line to itself). */
