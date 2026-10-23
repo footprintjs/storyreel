@@ -139,3 +139,8 @@ export function mouthAt(clock, t, who = null, {syllable = .17} = {}) {
 
 /** A value that follows another `delay` seconds behind it: the head follows where the eyes went. */
 export const follows = (f, delay = .15) => t => f(t - delay);
+
+// Counting on fingers and listener reactions: the same contract (pure functions of time, numbers a kit draws), each
+// in a module of its own.
+export {fingersAt, FINGERS, FINGER_NAMES, COUNTING_ORDERS} from './fingers.mjs';
+export {reactionAt, REACTING} from './reactions.mjs';

@@ -2535,6 +2535,79 @@ const headY = y - 185 - 16 * act.take;                         // the take lifts
 eye(ctx, x, headY, act.mood === 'surprised' ? 4.5 + 1.5 * act.u : 4.5, shut);
 ```
 
+**Counting on fingers.** A child taking away holds up ten fingers and folds one on each word; a child counting back
+raises one finger a step to keep track ("nineteen" raises one, "eighteen" raises two). Fingers that snap from up to
+down read as a slideshow, and a kit that works out which finger goes next gets it wrong in a different way each
+time. `fingersAt(keys, t, options?)` says which finger moves and when; the kit draws the hands:
+
+- keys are `[{at, up: n}, {at, fold: k}, {at, raise: k}, …]` in time order. The first key is how many fingers are up
+  from the start; after it each key folds `k`, raises `k`, or sets the count (`up`). Give `at` from the voice
+  (`clock.at(['take', '{f1}'])`), so each finger moves on its word.
+- It returns `up` (how many are up now: the count after the latest key — draw this number), `from` (the count
+  before the latest change; `null` before the first) and `hands: {left, right}`, each finger's extension in
+  `FINGER_NAMES` order (`thumb index middle ring little`): 0 folded … 1 straight.
+- Each finger is timed as an animator times it (`FINGERS`): it winds back a little over the 0.08 s before its
+  word (a finger about to fold lifts by 0.08; one about to rise curls), moves in 0.12 s, passes its end by 0.1 and
+  settles over 0.2 s. A key that moves several fingers moves them 0.06 s apart.
+- The fingers up are always the first ones in the counting order, so a fold takes down the finger raised last.
+  The order is data: `order` names one of `COUNTING_ORDERS` or lists the five fingers, and `first` is the hand that
+  counts first. The default, thumb first and left hand first, is the habit most Western adults report (Lindemann,
+  Alipour & Fischer 2011, "Finger counting habits in Middle Eastern and Western individuals", *Frontiers in
+  Psychology* 2:40; Bender & Beller 2012, "Nature and culture of finger counting", *Cognition* 124). The same
+  surveys find many North Americans start with the index finger (`order: 'index-first'`), and many people in the
+  Middle East with the right hand's little finger (`{order: 'pinky-first', first: 'right'}`).
+- One change at a time: a key comes at least 0.2 s (anticipate + move) after the last finger of the key before it
+  starts, and a finger moves again only once it has settled. Folding more than are up, raising past ten, a count
+  outside 0..10 and keys out of order refuse, naming the key and the fix.
+
+```js
+import {createCanvas} from '@napi-rs/canvas';
+import {fingersAt} from 'footprint-storyreel/acting';
+
+const ctx = createCanvas(1600, 900).getContext('2d'), t = 2.1;          // any moment: a pure function of time
+const keys = [{at: 0, up: 10}, {at: 1, fold: 1}, {at: 1.6, fold: 1}, {at: 2.2, fold: 1}];   // ten, take away three
+const {up, hands} = fingersAt(keys, t);
+for (const [hand, x0] of [['left', 500], ['right', 900]]) hands[hand].forEach((e, k) => {
+  const x = hand === 'left' ? x0 + 40 * k : x0 + 160 - 40 * k;          // thumbs inward, as a child holds them up
+  ctx.fillRect(x, 600 - 160 * e, 28, 160 * e);                          // a finger as long as it is straight
+});
+ctx.font = '700 120px sans-serif'; ctx.fillText(String(up), 760, 300);  // the number changes on the word
+```
+
+**Listeners react.** A character who stands frozen while another talks looks like a cut-out. A listener looks at
+the speaker, nods softly a moment after each sentence, leans in while a question is asked, and brightens when the
+speaker exclaims. `reactionAt(clock, t, who, options?)` reads all of it from the voice's own timings — the clock's
+turns and the punctuation its words carry — so nothing is placed by hand, and a re-voiced line moves the nods
+with it:
+
+- `nod` (head pitch, -1..1: positive dips the chin) — 0.15 to 0.35 s after a sentence ends with a full stop (or a
+  turn ends), the head dips by up to 0.5 and comes back up a little past rest, over 0.6 s; never during the
+  sentence's words, never over another nod, and on about four sentences in five (`chance`), so nobody nods at
+  every one.
+- `lean` (0..1) — in over a question (`?`), held 0.8 s while the answer is awaited (until the listener answers, if
+  sooner), back over 0.5 s.
+- `brighten` (0..1) — a small smile or take after an exclamation (`!`), held a moment, gone in 1.2 s.
+- `look` — `clock.gaze(t, who)`: where to turn the eyes. `cause: {nod, lean, brighten}` — the sentence behind each
+  (`{scene, speaker, start, end, mark, text}`), so a review can say why a head moved.
+
+Each listener has a seed, by default made from their name: it sets how long they take to react to each sentence,
+how big the reaction is and which sentences they let pass, so two listeners never nod in step (`seed` sets your
+own). Nothing reacts while `who` is speaking, and the narrator (a scene with no speaker) is nobody on screen: no
+one reacts to it. The timing is `REACTING`; every number of it is an option. A sentence ends at a word that ends
+with `.`, `!`, `?` or `…` (as the voice's timings write the word) and at the end of a turn.
+
+```js
+import {reactionAt, idleAt} from 'footprint-storyreel/acting';
+
+const r = reactionAt(clock, t, 'amaira'), idle = idleAt(t, {seed: 2});
+const turn = r.look?.at === 'grandpa' ? r.look.amount : 0;             // eyes to the speaker
+ctx.save();
+ctx.translate(x + 12 * r.lean, neckY);                                 // lean toward the question
+ctx.rotate(.12 * r.nod);                                               // a soft nod about the neck
+drawHead(ctx, {eyes: turn, smile: .3 + .7 * r.brighten, blink: idle.blink});
+ctx.restore();
+```
+
 **Sounds.** `tap`, `slide`, `settle`, `question`, `chime`, `door`, `step`, `click`, `whoosh`, `crumble`:
 short, quiet and made by procedural synthesis (no samples). A kit's sound is `{time, type, gain?}`, or a recording
 the film keeps, `{time, type: 'found', name, gain?}` (see *Found sounds*):
@@ -2749,7 +2822,7 @@ the default because it rarely does; there is no swap repair.
 | `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `bezier(x1, y1, x2, y2)` · `overshoots(name)` · `inOut` | the one ease table (`linear in out inOut back walk jump spring bounce outCubic outQuint outExpo outBack inOutCubic standard emphasized`), and four-number curves as CSS writes them |
 | `footprint-storyreel/moves` → `moveAt(move, t, {start, seconds?, feel?, reduced?})` · `stagger(items, gap)` · `movesBy({feel, use, kind})` · `readMove` · `applyMove` · `MOVES` | motion asked for by name: 30 moves as data, by feel and use, with the practitioners' timing rules |
 | `footprint-storyreel/principles` → `anticipate` · `squash` · `envelope` · `burst` · `arc` · `BURSTS` | anticipation, volume-keeping squash and stretch, one-shot events that add, paths that curve like a hand |
-| `footprint-storyreel/acting` → `moodAt(keys, t)` · `idleAt(t, {seed})` · `follows(f, delay?)` · `ACTING` | a mood change acted (anticipation, a take, a cross-fade), an idle layer that never moves in step |
+| `footprint-storyreel/acting` → `moodAt(keys, t)` · `idleAt(t, {seed})` · `follows(f, delay?)` · `mouthAt(clock, t, who)` · `fingersAt(keys, t, options?)` · `reactionAt(clock, t, who, options?)` · `ACTING` · `FINGERS` · `FINGER_NAMES` · `COUNTING_ORDERS` · `REACTING` | a mood change acted (anticipation, a take, a cross-fade), an idle layer that never moves in step, a mouth that moves with its owner's words, fingers counted on a beat, listeners who nod, lean in and brighten |
 | `footprint-storyreel/beats` → `beatMap(file, {bpm?, drop?, range?})` · `beatMapOf(samples, 22050)` · `safeBeats(map)` · `likelyTempi(map)` · `beatMapText(map)` · `peakOf(file)` · `peakOfSamples` · `BEATS` | a song's tempo, beats, bars and drop, with the alternatives and how sure (its record: every verdict with its evidence); the beats an unsure map may be cut on, and the tempi to settle it with (`storyreel beats <song>`); a sound's peak; a bad option throws with `code: 'BEAT_OPTIONS'` |
 | `footprint-storyreel/music` → `fitToMusic({storyboard, timings, beats, snap?, dropOn?, recipe?, kits?})` · `fitVoice(runDir, before, after)` · `MUSIC` | scene starts onto the beat (each scene's length changed by at most a tolerance, never past its words, keys or the next entrance's lead; off unless `snap` is given); the song started so its drop lands on a key moment (`makeFilm({…, music})` runs both) |
 | `footprint-storyreel/pose` → `motionSource({name, poseAt})` · `walkSource(walk)` · `checkPose(pose)` · `POSE_KEYS` · `TORSO_SHARE` | the motion-source port: one pose shape for everything that moves a figure; the planned walk as one adapter |

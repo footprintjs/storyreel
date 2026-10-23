@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+- **Counting on fingers: `fingersAt(keys, t, options?)`** (`footprint-storyreel/acting`). A child taking away holds
+  up ten fingers and folds one a word; a child counting back raises one a step. Keys are data —
+  `[{at, up: 10}, {at, fold: 1}, {at, raise: 1}, …]` — and the answer is numbers a kit draws: `up` (how many are up
+  now, to draw as a number), `from`, and each finger's extension on both hands (`FINGER_NAMES` order). Each finger
+  winds back a little before its word, moves quickly, overshoots and settles (`FINGERS`); a key that moves several
+  staggers them. The fingers up are always the first in the counting order, so a fold takes down the finger raised
+  last; the order is data (`COUNTING_ORDERS`: `thumb-first`, the default with the left hand first, as most Western
+  adults report in the published finger-counting surveys; `index-first`; `pinky-first`; or the five fingers listed;
+  `first: 'left' | 'right'`). One change at a time, like `moodAt`. Refuses folding more than are up, raising past
+  ten, counts outside 0..10, a key with no verb or two, keys out of order, keys closer than a finger takes to move,
+  and a finger moved again before it settles — each naming the key and the fix.
+- **Listener reactions: `reactionAt(clock, t, who, options?)`** (`footprint-storyreel/acting`). While another
+  character speaks, a listener nods softly a moment after each sentence ends (never during its words, never over
+  another nod, not at every sentence), leans in on a question and holds it for the answer, and brightens on an
+  exclamation — all read from the clock's turns and its words' own punctuation, never placed by hand. Returns
+  `{nod, lean, brighten, look, cause}`: `look` is `clock.gaze(t, who)`, and `cause` names the sentence behind each
+  reaction. A seed (by default from the listener's name) sets every delay and size, so two listeners never react in
+  step. Nothing reacts while the listener speaks, and nobody reacts to the narrator. The timing is `REACTING`.
+- Types for both (`types/sub/acting.d.ts`); the README's Acting section gains a worked example of each.
+
 ## 0.21.0 — one script (moments and speakers in the narration), and stills at the beats
 
 - **One script: moments and speakers written in the narration.** A beat keyed to a phrase breaks when its line is

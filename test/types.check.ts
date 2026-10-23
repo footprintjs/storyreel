@@ -242,6 +242,18 @@ export const head: (t: number) => number = follows((t: number) => t * 2, .2);
 // @ts-expect-error a mood key names its mood
 export const noMood = moodAt([{at: 0}], 1);
 
+// Counting on fingers and listener reactions.
+import {fingersAt, reactionAt, FINGERS, COUNTING_ORDERS, REACTING} from '../types/sub/acting.js';
+export const fingersUp: number = fingersAt([{at: 0, up: 10}, {at: 1, fold: 1}, {at: 1.5, raise: 1}], 1.2, {order: 'index-first', first: 'right', stagger: FINGERS.stagger}).up;
+export const littleFinger: number = fingersAt([{at: 0, up: 3}], 0, {order: COUNTING_ORDERS['pinky-first']}).hands.right[4];
+// @ts-expect-error a finger key folds, raises or sets a count
+export const badFingers = fingersAt([{at: 0, wave: 1}], 0);
+// @ts-expect-error the counting orders are named
+export const badOrder = fingersAt([{at: 0, up: 1}], 0, {order: 'thumbs'});
+export const nodNow = (film: Film) => { const r = reactionAt(film.clock, 2, 'amaira', {seed: 4, chance: REACTING.chance}); return [r.nod, r.lean, r.brighten, r.look?.amount ?? 0, r.cause.nod?.end ?? 0]; };
+// @ts-expect-error the listener is a name
+export const badListener = (film: Film) => reactionAt(film.clock, 2, null);
+
 // Through a named thing: the two match transitions, and a kit's own that looks for things in the pictures.
 export const throughs: Enter[] = [{type: 'through', region: 'window'}, {type: 'through', region: 'ring', shape: 'round'}, {type: 'match', region: 'ring', into: 'loop'}];
 export const portal: Transition = {family: 'match', seconds: 1, ease: 'inOut', sound: null, params: {region: {name: true}, into: {name: true, default: null}},
