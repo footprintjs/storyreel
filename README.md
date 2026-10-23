@@ -1141,18 +1141,20 @@ await makeRelease({storyboard, recipe, narrationDir, pacing, kits, theme, out: '
     fill: true,                                          // the picture fills the frame between the title band and below the captions
     render: {posterFrame: false},                        // starts on the film's own frame (YouTube picks a Short's)
     cuts: [
-      {from: 24.78, to: 30.6, follow: 'focus'},          // the window follows the speaker, then what the focus names
-      {from: ['shop', 'Who took it'], to: {scene: 'shop'}, follow: [{at: 170, x: 600}, {at: 182.25, x: 980, y: 420}]},
-      {from: {scene: 'pebbles'}, to: 203, follow: 'focus', join: {overlap: 6}},   // this join cross-fades over 6 frames
+      {from: {scene: 'lend'}, to: ['lend', 'a crayon is missing', 0.4], follow: 'focus'},   // follows the speaker, then what the focus names
+      {from: ['shop', 'Who took it'], to: {scene: 'shop'},
+        follow: [{at: ['shop', 'Who took it'], x: 600}, {at: ['shop', 'the pebble left over'], x: 980, y: 420}]},
+      {from: {scene: 'pebbles'}, to: ['pebbles', 'one pebble for every crayon', 0.6], follow: 'focus', join: {overlap: 6}},   // a 6-frame cross-fade
     ],
     join: {pop: 2},                                      // every other join: a hard cut, 2 frames of paper hiding the seam
     end: {lines: ['Watch the whole story', 'Counting: From Pebbles to 10', 'Little Aha Stories'], seconds: 2.5}}]});
 // release/ep01/youtube-shorts/  the Short, 1080×1920; the release's result and making-of.json keep the edit as cut
 ```
 
-- **Cuts.** `cuts: [{from, to, follow?, join?}]`, joined in order; `from`/`to` are seconds on the film clock, a beat
-  (`[scene, phrase]`) or a scene (`{scene}`: its start for `from`, its end for `to`). An end card on one part is
-  `{from, to, end}` (the part is the one cut).
+- **Cuts.** `cuts: [{from, to, follow?, join?}]`, joined in order; `from`/`to` are a beat (`[scene, phrase, plus?]`,
+  so a reworded line moves the cut with it — Law 2) or a scene (`{scene}`: its start for `from`, its end for `to`);
+  seconds on the film clock are the fallback, for a moment no phrase names. Crop keys' `at` reads the same way. An end
+  card on one part is `{from, to, end}` (the part is the one cut).
 - **A join has the three settings an editor gives one.** `cut`: where the cut point lands — `'silence'` (the default:
   a cut point inside a spoken word moves to the silence beside it, so no word is clipped; the record says where each
   one moved) or `'exact'`; `overlap`: frames the two sides cross-fade, picture and sound (0: a hard cut, faded over
@@ -1166,8 +1168,8 @@ await makeRelease({storyboard, recipe, narrationDir, pacing, kits, theme, out: '
 - **A picture that fills.** `fill: true` (vertical) makes the film 1080×1165, from under the title band to below the
   captions — which sit over its foot on their dark pill — instead of the 1080×810 4:3 box; the crop is a window the
   frame's whole height at its default width (834 of 1600). Crop keys gain `y` (up and down, for a narrower window),
-  `cut: true` (jump there), and seconds for `at`; in a filled picture a move never runs across a scene cut (one a cut
-  would fall inside jumps there at the cut).
+  `cut: true` (jump there), and seconds for `at` (the fallback); in a filled picture, and wherever the crop follows, a
+  move never runs across a scene cut (one a cut would fall inside jumps there at the cut).
 - **A crop that follows.** `follow: 'focus'` (a cut's, or a layout's `crop: 'focus'`, or a key `{at, follow: 'focus'}`)
   frames the speaker's region while someone speaks (the kits name people in their regions; the speakers are the
   script's `{@who}` lines), with the thing the recipe's focus names when both fit, else that thing; it moves only when
@@ -1179,10 +1181,16 @@ await makeRelease({storyboard, recipe, narrationDir, pacing, kits, theme, out: '
   making-of record (with every key as used and every nudge).
 - **The poster stays off the joins.** It replaces frame 0 only (`posterFrame`, the default where the platform takes
   no thumbnail); a target's own `render: {posterFrame: false}` turns it off. A target's `render` takes `posterFrame` and
-  `quality`.
+  `quality`. In an edit the poster is framed at its own moment, the way cut 0 frames (its follow, or its keys read
+  there), and kept off every speaker's edge like any key; its framing is reported with the cuts'.
+- **A cut keeps to its cut points on the frame grid.** Where rounding to whole frames would take in the next word (or
+  the one before), the cut ends (or starts) a frame short; a cut point where the words touch, with no silence to land
+  in, is reported (`snapped.noSilence`), so it can be moved by hand.
 - **Lower down.** `renderFilm({…, edit: {cuts, end, join}})` is the same edit without a release; `footprint-storyreel/edit`
   has its pure parts (`placeEdit`, `editFrame` — what any output frame shows — `snapToSilence`, `captionInCut`).
-  A render with `check` refuses an edit (the checks read the film's own clock): check each cut's render.
+  A render with `check` refuses an edit (the checks read the film's own clock), and so does a release, before any
+  target renders: check each cut's render. An edit is drawn whole: `segmentedVideo` refuses one (its pieces are keyed
+  on the film clock), naming `wholeVideo()`.
 
 ### The cast: one film, another language and place
 

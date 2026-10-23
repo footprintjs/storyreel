@@ -135,6 +135,9 @@ export function segmentedVideo({store, recipe = null, code, kitsCode = null, joi
     /** The pieces, each with its key and its parts. */
     plan(job) {
       if (job.withIntro) throw new Error('segmentedVideo: an intro is not kept in segments; render it with wholeVideo(), or leave the intro out');
+      // A piece is keyed on the film clock, and an edit's frames are not the film's: one kept from an edit would be
+      // stale the moment a cut moved (Law 11). An edit is drawn whole.
+      if (job.edit) throw new Error('segmentedVideo: an edit (cuts joined, an end card) is not kept in segments, which are keyed on the film clock; render it with wholeVideo(), or leave video out (an edit is drawn whole by default)');
       if (job.start !== 0 || job.to < job.film.total - 1e-6) throw new Error('segmentedVideo: segments cover the whole film; render a part (from, to) with wholeVideo()');
       const render = {failed: null, previous: null, keeping: true, pieceCode: null}; renders.set(job, render);
       const {film} = job, keyRecipe = recipe ?? film.recipe;

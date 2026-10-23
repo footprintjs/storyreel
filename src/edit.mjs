@@ -25,6 +25,8 @@ const JOIN_KEYS = Object.keys(JOIN_DEFAULTS), CUT_KEYS = ['from', 'to', 'follow'
 const MAX_CUTS = 20, MAX_OVERLAP = 30, MAX_POP = 3;
 /** How far before a word a cut moved into the silence starts (and after a word one ends), at most: half the gap, when the gap is shorter. */
 export const SILENCE_PAD = .12;
+/** A gap between two words shorter than this is no silence: a cut point there is reported (snapped.noSilence). */
+export const NO_SILENCE = .02;
 
 /** A join as given ({cut?, overlap?, pop?}) over its defaults, checked. `where` names it in a refusal. */
 export function readJoin(given, base = JOIN_DEFAULTS, where = 'join') {
@@ -69,15 +71,31 @@ export function checkEdit(edit) {
 /**
  * A cut point moved off a spoken word into the silence beside it: `words` [{start, end}] on the film clock, in order;
  * side 'from' starts before the word that t falls in, 'to' ends after it — SILENCE_PAD into the silence, or half the
- * gap to the next word when that is shorter. A t already in a silence stays. Returns {t, word?: index of the word moved off}.
+ * gap to the next word when that is shorter. A t already in a silence stays. Returns {t, word?: index of the word moved
+ * off, gap?: the silence it moved into, in seconds}.
  */
 export function snapToSilence(words, t, side) {
   const k = words.findIndex(w => t > w.start + 1e-6 && t < w.end - 1e-6);
   if (k < 0) return {t};
   const w = words[k];
-  if (side === 'from') { const gap = w.start - (words[k - 1]?.end ?? -Infinity); return {t: Math.max(0, w.start - Math.min(SILENCE_PAD, gap / 2)), word: k}; }
-  const gap = (words[k + 1]?.start ?? Infinity) - w.end;
-  return {t: w.end + Math.min(SILENCE_PAD, gap / 2), word: k};
+  if (side === 'from') { const gap = Math.max(0, w.start - (words[k - 1]?.end ?? -Infinity)); return {t: Math.max(0, w.start - Math.min(SILENCE_PAD, gap / 2)), word: k, gap}; }
+  const gap = Math.max(0, (words[k + 1]?.start ?? Infinity) - w.end);
+  return {t: w.end + Math.min(SILENCE_PAD, gap / 2), word: k, gap};
+}
+
+/**
+ * A cut's frames on the film's frame grid: {start, frames}. The grid's first frame at or before `from`, and enough
+ * frames to reach `to` — unless rounding would take in a word the cut point left out: then the first frame after the
+ * word before `from` ends (start), and the last frame before the word after `to` starts (frames). Where words touch
+ * (no silence between them), the grid's 1/fps either way lands on one of them: the cut keeps its own words' side.
+ */
+export function cutFrames(words, from, to, fps) {
+  const before = words.findLast(w => w.end <= from + 1e-6), after = words.find(w => w.start >= to - 1e-6);
+  let start = Math.floor(from * fps + 1e-6) / fps;
+  if (before && start < before.end - 1e-6) start = Math.ceil(from * fps - 1e-6) / fps;
+  let frames = Math.ceil((to - start) * fps - 1e-6);
+  if (after && start + frames / fps > after.start + 1e-6) frames = Math.floor((to - start) * fps + 1e-6);
+  return {start, frames};
 }
 
 /**
@@ -96,8 +114,10 @@ export function placeEdit(checked, {time, words, total, fps}) {
     // The cut point of the join before (the first cut: the edge's) and of the join after (the last: the end card's, or the edge's).
     const before = c.join.cut, after = (given[i + 1]?.join ?? end?.join ?? checked.join).cut;
     const a = before === 'silence' ? snapToSilence(words, from0, 'from') : {t: from0}, b = after === 'silence' ? snapToSilence(words, to0, 'to') : {t: to0};
-    const from = a.t, to = Math.min(total, b.t), start = Math.floor(from * fps + 1e-6) / fps, frames = Math.ceil((to - start) * fps - 1e-6);
-    const snapped = {...(a.word !== undefined ? {from: [+from0.toFixed(3), +from.toFixed(3)]} : {}), ...(b.word !== undefined ? {to: [+to0.toFixed(3), +to.toFixed(3)]} : {})};
+    const from = a.t, to = Math.min(total, b.t), {start, frames} = cutFrames(words, from, to, fps);
+    // A cut point moved where two words touch found no silence: said, so the cut can be moved by hand.
+    const noSilence = [...(a.gap !== undefined && a.gap < NO_SILENCE ? ['from'] : []), ...(b.gap !== undefined && b.gap < NO_SILENCE ? ['to'] : [])];
+    const snapped = {...(a.word !== undefined ? {from: [+from0.toFixed(3), +from.toFixed(3)]} : {}), ...(b.word !== undefined ? {to: [+to0.toFixed(3), +to.toFixed(3)]} : {}), ...(noSilence.length ? {noSilence} : {})};
     return {index: i, from, to, given: [+from0.toFixed(3), +to0.toFixed(3)], ...(Object.keys(snapped).length ? {snapped} : {}), start, frames, join: c.join, ...(c.follow !== undefined ? {follow: c.follow} : {})};
   });
   let at = 0;
@@ -144,17 +164,17 @@ export function editFrame(edit, f) {
  * starts inside the cut — a chunk said before the cut began (a caption lingers 0.6 s past its last word) belongs to
  * the stretch before, never to this one. `captionAt(t)` → {words, active} | null.
  */
-export function captionInCut(cut, fps, t, captionAt) {
+export function captionInCut(cut, t, captionAt) {
   const c = captionAt(t);
   if (!c) return null;
-  const inside = inCut(cut, fps), keep = c.words.map((w, i) => [w, i]).filter(([w]) => inside(w));
+  const inside = inCut(cut), keep = c.words.map((w, i) => [w, i]).filter(([w]) => inside(w));
   if (!keep.length) return null;
   if (keep.length === c.words.length) return c;
   // Only the words said inside the cut: a word said before it began was never heard here.
   return {words: keep.map(([w]) => w), active: keep.findIndex(([, i]) => i === c.active)};
 }
-/** Whether a word starts inside a cut's stretch of the film clock. */
-const inCut = (cut, fps) => w => w.start >= cut.start - 1e-6 && w.start < cut.start + cut.frames / fps - 1e-6;
+/** Whether a word starts inside a cut: at or after its cut point `from`, before its cut point `to` (not its rounded frames). */
+const inCut = cut => w => w.start >= cut.from - 1e-6 && w.start < cut.to - 1e-6;
 
 /** The output frame where each join lands (where the later side's first frame is): [{index, frame}] — cut joins, then the end card's. */
 export const joinFrames = edit => [...edit.cuts.slice(1).map(c => ({index: c.index, frame: c.at})), ...(edit.end ? [{index: 'end', frame: edit.end.at}] : [])];
@@ -162,12 +182,14 @@ export const joinFrames = edit => [...edit.cuts.slice(1).map(c => ({index: c.ind
 /**
  * The film's caption chunks [{start, end, text, words}] on the edit's clock: each chunk with a word starting inside a
  * cut, with only those words (one said before the cut began was never heard there), its times moved to where that cut
- * plays and held inside it (a chunk in two cuts is in both). For caption files.
+ * plays and held inside it — ending where the next join lands, as the burned captions do (in an overlap the frames are
+ * the later side's) — a chunk in two cuts is in both. For caption files.
  */
 export function chunksThrough(edit, chunks) {
-  return edit.cuts.flatMap(c => {
-    const shift = c.at / edit.fps - c.start, end = (c.at + c.frames) / edit.fps, first = c.at / edit.fps;
-    const inside = inCut(c, edit.fps);
+  return edit.cuts.flatMap((c, i) => {
+    const next = edit.cuts[i + 1]?.at ?? edit.end?.at ?? Infinity;
+    const shift = c.at / edit.fps - c.start, end = Math.min(c.at + c.frames, next) / edit.fps, first = c.at / edit.fps;
+    const inside = inCut(c);
     return chunks.map(k => [k, k.words.filter(inside)]).filter(([, words]) => words.length)
       .map(([k, words]) => ({...k, start: Math.max(first, words[0].start + shift), end: Math.min(end, k.end + shift), text: words.map(w => w.text).join(' '), words: words.map(w => ({...w, start: w.start + shift, end: w.end + shift}))}));
   });

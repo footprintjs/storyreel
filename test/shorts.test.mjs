@@ -4,16 +4,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {readFileSync} from 'node:fs';
+import {readFileSync, existsSync} from 'node:fs';
 import path from 'node:path';
 import {createCanvas} from '@napi-rs/canvas';
 import {compileFilm, evenTimings, renderFilm, makeFilm} from '../src/index.mjs';
 import {compileLayout, cropWindow, formatOf} from '../src/layout.mjs';
 import {inOut} from '../src/ease.mjs';
 import {checkEdit, readJoin, placeEdit, editFrame, snapToSilence, captionInCut, chunksThrough, chaptersThrough, joinFrames, JOIN_DEFAULTS, SILENCE_PAD} from '../src/edit.mjs';
+import {segmentedVideo} from '../src/segments.mjs';
+import {folderStore} from '../src/segments/store.mjs';
 import {followFocus, keepWhole, focusTarget, windowAt} from '../src/follow.mjs';
-import {makeEditPainter} from '../src/paint.mjs';
-import {prepareRender, filmTime} from '../src/render.mjs';
+import {makeEditPainter} from '../src/editpaint.mjs';
+import {prepareRender, filmTime, closeRender, editSound} from '../src/render.mjs';
 import {loadTarget, makeRelease} from '../src/release.mjs';
 import {spokenTracks} from '../src/captions.mjs';
 import {tempDir} from './tmp.mjs';
@@ -80,7 +82,8 @@ test('a render takes an edit, or a part or from/to, never both; no intro; a cut 
   assert.throws(() => prepareRender({film, storyboard, timings: film.timings, out, edit, from: 1}), /a render takes an edit .* or a part or from\/to, not both/);
   assert.throws(() => prepareRender({film, storyboard, timings: film.timings, out, edit, intro: {seconds: 1, draw() {}}}), /an edit joins parts of the film; it takes no intro/);
   assert.throws(() => prepareRender({film, storyboard, timings: film.timings, out, edit: {cuts: [{from: 1, to: 3, follow: 'focus'}]}}), /cuts\[0\]\.follow is where a tall picture's crop looks; give the render a layout/);
-  assert.throws(() => prepareRender({film, storyboard, timings: film.timings, out, layout: {format: 'square'}, edit: {cuts: [{from: 1, to: 3, follow: 'focus'}]}}), /a crop applies to portrait and vertical/);
+  assert.throws(() => prepareRender({film, storyboard, timings: film.timings, out, layout: {format: 'square'}, edit: {cuts: [{from: 1, to: 3, follow: 'focus'}]}}), /cuts\[0\]\.follow: the square format shows the whole frame, so there is no crop to follow/);
+  assert.throws(() => prepareRender({film, storyboard, timings: film.timings, out, layout: {format: 'vertical'}, edit: {cuts: [{from: 1, to: 3}, {from: 4, to: 6, follow: [{at: 5, x: 3000}]}]}}), /cuts\[1\]\.follow\[0\]\.x must be a centre on the 1600-wide frame/, 'a follow\'s refusal names the cut\'s follow, not the layout\'s crop');
   await assert.rejects(makeFilm({storyboard, timings, recipe, kits: [slide], out, check: 'report', render: {edit}}), /check reads a render on the film's own clock, and an edit joins stretches of it/);
 });
 
@@ -96,6 +99,7 @@ test('a release target refuses an edit it cannot make before any target renders'
   await bad({target: 'youtube-shorts', render: {quality: 'ultra'}}, /render\.quality must be 'standard' or 'draft' or 'high'/);
   await bad({target: 'youtube-shorts', cuts: [{from: 0, to: 2, join: {overlap: 2}}]}, /the first cut has no join before it/);
   await bad({target: 'youtube-shorts', end: {lines: ['Watch'], seconds: 99}}, /end\.seconds is how long the card holds/);
+  await bad({target: 'youtube', keep: ['mom']}, /keep: the landscape format shows the whole frame, so nothing is cut at its edge/);
   const {options} = await loadTarget({target: 'youtube-shorts', from: 2, to: 9, end: {lines: ['Watch the whole story'], seconds: 2}});
   assert.deepEqual(options.edit, {cuts: [{from: 2, to: 9}], end: {lines: ['Watch the whole story'], seconds: 2}}, 'an end card on a part: the part is the one cut');
 });
@@ -117,10 +121,12 @@ test('the layout refuses a fill, a key or a follow it cannot use', () => {
 
 test('a cut point inside a spoken word moves to the silence beside it; one in a silence stays', () => {
   const w = [{start: 1, end: 1.45}, {start: 1.5, end: 1.95}, {start: 3, end: 3.4}];
-  assert.deepEqual(snapToSilence(w, 1.7, 'from'), {t: 1.475, word: 1}, 'a start goes before the word: half the 0.05 s gap');
-  assert.deepEqual(snapToSilence(w, 1.7, 'to'), {t: 1.95 + SILENCE_PAD, word: 1}, 'an end after it: the pad, the gap being longer');
+  const tw = ({t, word}) => ({t, word});
+  assert.deepEqual(tw(snapToSilence(w, 1.7, 'from')), {t: 1.475, word: 1}, 'a start goes before the word: half the 0.05 s gap');
+  assert.ok(Math.abs(snapToSilence(w, 1.7, 'from').gap - .05) < 1e-9, 'and says how much silence it found');
+  assert.deepEqual(tw(snapToSilence(w, 1.7, 'to')), {t: 1.95 + SILENCE_PAD, word: 1}, 'an end after it: the pad, the gap being longer');
   assert.deepEqual(snapToSilence(w, 2.5, 'from'), {t: 2.5}, 'a silence stays');
-  assert.deepEqual(snapToSilence(w, 1.2, 'from'), {t: 1 - SILENCE_PAD, word: 0}, 'the first word: the pad before it');
+  assert.deepEqual(tw(snapToSilence(w, 1.2, 'from')), {t: 1 - SILENCE_PAD, word: 0}, 'the first word: the pad before it');
   const e = place({cuts: [{from: 4, to: 5.8}]}), x = place({cuts: [{from: 4, to: 5.8}], join: {cut: 'exact'}});
   assert.deepEqual(e.cuts[0].snapped, {from: [4, 3.775]}, 'film second 4 is inside "made" (3.8–4.25): the cut starts in the silence before it');
   assert.equal(x.cuts[0].snapped, undefined, 'cut: exact keeps the cut point');
@@ -166,18 +172,18 @@ test('NO CAPTION FROM THE PREVIOUS CUT shows on any frame after a join — hard,
         assert.equal(drawn.length, 1, `frame ${f}: one set of bands`);
         assert.equal(drawn[0].cut, index, `frame ${f} (join ${JSON.stringify(join)}): the bands are cut ${index}'s, never the cut before`);
         const words = drawn[0].caption?.words ?? [];
-        for (const w of words) assert.ok(w.start >= cut.start - 1e-6 && w.start < cut.start + cut.frames / FPS, `frame ${f}: "${w.text}" (${w.start} s) was said inside cut ${index}`);
+        for (const w of words) assert.ok(w.start >= cut.from - 1e-6 && w.start < cut.to, `frame ${f}: "${w.text}" (${w.start} s) was said inside cut ${index}`);
       }
     }
   }
 });
 
 test('a caption that spans a cut point shows only the words said inside the cut', () => {
-  const cut = {start: 3.775, frames: 60}, chunk = {words: [{text: 'about', start: 3.3, end: 3.75}, {text: 'pebbles', start: 3.8, end: 4.25}, {text: 'and', start: 4.3, end: 4.75}], active: 1};
-  assert.deepEqual(captionInCut(cut, FPS, 4, () => chunk), {words: chunk.words.slice(1), active: 0});
-  assert.equal(captionInCut(cut, FPS, 4, () => ({words: chunk.words.slice(0, 1), active: 0})), null, 'a chunk said wholly before the cut: none');
+  const cut = {from: 3.775, to: 5.8}, chunk = {words: [{text: 'about', start: 3.3, end: 3.75}, {text: 'pebbles', start: 3.8, end: 4.25}, {text: 'and', start: 4.3, end: 4.75}], active: 1};
+  assert.deepEqual(captionInCut(cut, 4, () => chunk), {words: chunk.words.slice(1), active: 0});
+  assert.equal(captionInCut(cut, 4, () => ({words: chunk.words.slice(0, 1), active: 0})), null, 'a chunk said wholly before the cut: none');
   const inside = {words: chunk.words.slice(1), active: 0};
-  assert.equal(captionInCut(cut, FPS, 4, () => inside), inside, 'a chunk wholly inside: as it is');
+  assert.equal(captionInCut(cut, 4, () => inside), inside, 'a chunk wholly inside: as it is');
 });
 
 test('caption files and chapters on the edit\'s clock: each cut\'s words where it plays, its chapter at its start', () => {
@@ -272,6 +278,95 @@ test('keep whole: a key whose window would cut a person moves the least it must;
   assert.equal(opened.cropKeys[0].t, 0); assert.equal(opened.framing.nudged.length, 1, 'the centred window cut both: moved');
 });
 
+test('a release refuses makeFilm\'s check beside an edit before any target renders', async () => {
+  const out = tempDir('pre-check');
+  await assert.rejects(makeRelease({storyboard, timings, recipe, kits: [slide], out, check: 'report', post: {title: 'Pebbles', audience: 'kids'},
+    targets: ['youtube', {target: 'youtube-shorts', cuts: [{from: 1, to: 3}]}]}), /release target "youtube-shorts": check reads a render on the film's own clock, and its cuts join stretches of it/);
+  assert.ok(!existsSync(path.join(out, 'youtube')), 'the target before it rendered nothing');
+});
+
+test('a cut keeps to its cut points on the frame grid: where words touch, no frame of the next (or the one before) gets in — 24, 25 and 30 fps', () => {
+  const words = [{text: 'one', start: .31, end: 1.03}, {text: 'two', start: 1.03, end: 1.77}, {text: 'three', start: 1.77, end: 2.41}, {text: 'four', start: 2.41, end: 3}];
+  for (const fps of [24, 25, 30]) {
+    const e = placeEdit(checkEdit({cuts: [{from: 1.2, to: 2}]}), {time: t => t, words, total: 4, fps}), [c] = e.cuts, end = c.start + c.frames / fps;
+    assert.deepEqual(c.snapped, {from: [1.2, 1.03], to: [2, 2.41], noSilence: ['from', 'to']}, `${fps} fps: both cut points land where words touch, and say so`);
+    assert.ok(c.start >= 1.03 - 1e-9 && c.start < 1.03 + 1 / fps, `${fps} fps: it starts on the first frame after "one" ends (${c.start})`);
+    assert.ok(end <= 2.41 + 1e-9 && end > 2.41 - 1 / fps, `${fps} fps: it ends on the last frame before "four" starts (${end})`);
+    const chunk = {start: 1.03, end: 3, text: 'two three four', words: words.slice(1)};
+    assert.deepEqual(captionInCut(c, end - .001, () => ({words: chunk.words, active: 1})).words.map(w => w.text), ['two', 'three'], `${fps} fps: the burned caption leaves "four" out`);
+    assert.equal(chunksThrough(e, [chunk])[0].text, 'two three', `${fps} fps: so does the caption file`);
+  }
+  const quiet = placeEdit(checkEdit({cuts: [{from: 1, to: 2}]}), {time: t => t, words: [], total: 4, fps: 30}).cuts[0];
+  assert.deepEqual([quiet.start, quiet.frames, quiet.snapped], [1, 30, undefined], 'in a silence the grid rounds as it did');
+});
+
+test('a caption file\'s cue ends where the next join lands, as the burned captions do in an overlap', () => {
+  const e = place({cuts: [{from: 4, to: 5.8}, {from: 6, to: 9, join: {overlap: 6}}]});
+  const chunk = {start: 3.8, end: 6.35, text: 'made for a test.', words: [{text: 'made', start: 3.8, end: 4.25}, {text: 'for', start: 4.3, end: 4.75}, {text: 'a', start: 4.8, end: 5.25}, {text: 'test.', start: 5.3, end: 5.75}]};
+  const [cue] = chunksThrough(e, [chunk]);
+  assert.ok(cue.end <= e.cuts[1].at / FPS + 1e-9, `the cue ends at ${cue.end}, by the join at ${e.cuts[1].at / FPS}`);
+});
+
+test('a focus that pans just before a scene cut jumps at the cut instead (a filled picture never pans across one)', () => {
+  // A scene cut at 5.5 s and Mom's turn at 5.1 s: the window would start easing to her at 5.0 s and run across the cut.
+  const mom = [1100, 300, 1320, 800];
+  const fake = {total: 10, frame() {}, theme: {}, clock: {offsets: [0, 5.5], turns: () => [{speaker: 'mom', start: 5.1, end: 6.5}], at() { throw new Error('no beats here'); }},
+    regionsAt: () => [{name: 'mom', box: mom, path: 'mom'}, {name: 'amaira', box: AMAIRA, path: 'amaira'}]};
+  for (const crop of ['focus', [{at: 0, follow: 'focus'}]]) {
+    const {cropKeys: keys} = compileLayout(fake, {format: 'vertical', fill: true, crop});
+    for (const k of keys) if (!k.jump) assert.ok(!fake.clock.offsets.some(s => s > k.t && s < k.t + .8), `the key at ${k.t} s eases across the cut at 5.5 s`);
+    const atCut = keys.find(k => Math.abs(k.t - 5.5) < 1e-9);
+    assert.ok(atCut?.jump, 'it jumps at the cut'); assert.ok(Math.abs(atCut.x - (mom[0] + mom[2]) / 2) < 1, 'to Mom');
+  }
+});
+
+test('segmentedVideo refuses an edit: its pieces are keyed on the film clock (an edit is drawn whole)', {skip: noFFmpeg}, async () => {
+  const dir = tempDir('seg-edit');
+  await assert.rejects(renderFilm({film, storyboard, timings: film.timings, out: path.join(dir, 'x.mp4'), edit: {cuts: [{from: 1, to: 3}]}, video: segmentedVideo({store: folderStore(path.join(dir, 'cache'))})}),
+    /segmentedVideo: an edit \(cuts joined, an end card\) is not kept in segments, which are keyed on the film clock; render it with wholeVideo\(\)/);
+});
+
+test('an edit\'s poster is framed at its own moment, kept off the people — not by cut 0\'s crop at another time', () => {
+  const crop = [900 * 1080 / 1165, 900], whole = w => [AMAIRA, MOM].every(b => b[2] <= w.x0 + .5 || b[0] >= w.x0 + w.w - .5 || (b[0] >= w.x0 - .5 && b[2] <= w.x0 + w.w + .5));
+  for (const follow of [[{at: 9, x: 1210}], 'focus']) {
+    const out = path.join(tempDir('poster-edit'), 'x.mp4');
+    const job = prepareRender({film, storyboard, timings: film.timings, out, layout: {format: 'vertical', fill: true, header: {title: 'T'}}, edit: {cuts: [{from: 9, to: 12, follow}]}});
+    try {
+      assert.notEqual(job.framed, job.framedCuts[0], 'the poster has its own layout');
+      assert.ok(whole(cropWindow(job.framed.cropKeys, film.posterAt, crop)), `follow ${JSON.stringify(follow)}: the poster's window at ${film.posterAt} s cuts nobody`);
+      assert.ok(job.framed.framing.nudged.length >= 1 && Array.isArray(job.framed.framing.clipped), 'and is kept whole by the same pass, reported in its framing');
+    } finally { closeRender(job); }
+  }
+  // Cut 0's own crop at the poster's moment (centred, before its first key) would cut both of them.
+  const job = prepareRender({film, storyboard, timings: film.timings, out: path.join(tempDir('poster-edit'), 'x.mp4'), layout: {format: 'vertical', fill: true}, edit: {cuts: [{from: 9, to: 12, follow: [{at: 9, x: 1210}]}]}});
+  try { assert.ok(!whole(cropWindow(job.framedCuts[0].cropKeys, film.posterAt, crop))); } finally { closeRender(job); }
+});
+
+test('the joined sound: each cut from its own film second, an overlap cross-faded the right way, hard joins faded, the end card silent', {skip: noFFmpeg}, () => {
+  const dir = tempDir('edit-sound'), lesson = path.join(dir, 'lesson.wav'), out = path.join(dir, 'joined.wav'), R = 48000;
+  const ramp = t => .05 + .09 * t;   // the film's sound says what second it is
+  const run = args => { const r = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', ...args]); if (r.status) throw new Error(String(r.stderr)); };
+  run(['-f', 'lavfi', '-i', 'aevalsrc=0.05+0.09*t:s=48000:d=10', '-ac', '1', '-c:a', 'pcm_f32le', lesson]);
+  const e = placeEdit(checkEdit({cuts: [{from: 1, to: 3}, {from: 6, to: 8, join: {overlap: 6}}, {from: 4, to: 5}], end: {lines: ['x'], seconds: 1}}), {time: t => t, words: [], total: 10, fps: 30});
+  editSound(run, {edit: e, lesson, out});
+  const raw = spawnSync('ffmpeg', ['-v', 'error', '-i', out, '-f', 'f32le', '-ac', '1', '-ar', String(R), '-'], {maxBuffer: 1 << 26}).stdout;
+  const v = new Float32Array(raw.buffer, raw.byteOffset, raw.length / 4), at = s => v[Math.round(s * R)];
+  const [a, b, c] = e.cuts, near2 = (x, y, tol = .003) => Math.abs(x - y) < tol;
+  assert.ok(Math.abs(v.length - e.frames / 30 * R) <= 2, `as long as the picture (${v.length} samples)`);
+  assert.ok(Math.abs(v[0]) < .01, 'the first cut fades in');
+  assert.ok(near2(at(.02), ramp(a.start + .02)), 'cut 0 plays its own film seconds');
+  const O = b.at / 30, A = s => ramp(a.start + (s - a.at / 30)), B = s => ramp(b.start + (s - O));
+  assert.ok(near2(at(O + .1), (A(O + .1) + B(O + .1)) / 2, .006), 'half way through the overlap: half of each side');
+  assert.ok(Math.abs(at(O + .01) - A(O + .01)) < Math.abs(at(O + .01) - B(O + .01)), 'the overlap starts on the earlier side');
+  assert.ok(Math.abs(at(O + .19) - B(O + .19)) < Math.abs(at(O + .19) - A(O + .19)), 'and ends on the later one');
+  assert.ok(near2(at(O + .25), ramp(b.start + .25)), 'then cut 1 plays its own film seconds');
+  const J = c.at / 30;
+  assert.ok(Math.abs(v[Math.round(J * R)]) < .01 && Math.abs(v[Math.round(J * R) - 1]) < .01, 'the hard join is faded out and in: no click');
+  assert.ok(near2(at(J + .02), ramp(c.start + .02)), 'cut 2 from its own film second');
+  const card = v.subarray(Math.round(e.end.at / 30 * R));
+  assert.ok(card.length > R * .9 && card.every(x => Math.abs(x) < 1e-3), 'the end card is silent');
+});
+
 // ── Renders ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 test('an edit renders as one video: three cuts, a pop, an overlap, an end card; the poster only on frame 0, never a join', {skip: noFFmpeg}, async () => {
@@ -284,7 +379,7 @@ test('an edit renders as one video: three cuts, a pop, an overlap, an end card; 
   assert.equal(+ffprobe(out, ['-count_frames', '-select_streams', 'v:0', '-show_entries', 'stream=nb_read_frames']), e.frames, 'every frame of the edit, no more');
   assert.ok(Math.abs(+ffprobe(out, ['-select_streams', 'a:0', '-show_entries', 'stream=duration']) - e.seconds) < .05, 'the sound as long as the picture');
   assert.equal(r.seconds, e.seconds); assert.deepEqual(r.edit.cuts.map(c => c.frames), e.cuts.map(c => c.frames));
-  assert.equal(r.framing.length, 3, 'the framing of each cut: every one fills');
+  assert.deepEqual(r.framing.map(f => f.cut ?? (f.poster ? 'poster' : null)), [0, 1, 2, 'poster'], 'the framing of each cut (every one fills), and of the poster');
   const box = [0, 475, 1080, 1165].map(v => v * S), mid = [box[0] + box[2] / 2, box[1] + 40];
   const paper = [0xf3, 0xee, 0xe3], [, b, c] = e.cuts;
   const at = n => frameOf(out, n, [W, H]);

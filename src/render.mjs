@@ -13,7 +13,8 @@ import {checkVideoStrategy} from './whole.mjs';
 import {pictureStrategy} from './picture.mjs';
 import {createMotionSound, soundsByScene, SOUND_AT, FOUND} from './sound.mjs';
 import {useFound, addCommand, trimOf, AUDIO_ONLY} from './found/index.mjs';
-import {compileLayout, draftSize} from './layout.mjs';
+import {compileLayout, draftSize, formatOf} from './layout.mjs';
+import {filmSpeakers} from './follow.mjs';
 import {captionChunks, captionFile, FILE_CHUNKS, clockText} from 'footprint-narration';
 import {spokenTracks} from './captions.mjs';
 import {effectsUnderVoice, musicUnderVoice} from './listening.mjs';
@@ -21,6 +22,7 @@ import {readSongPlacement, requireOverlap} from './music.mjs';
 import {makeScratch, sweepScratch} from './scratch.mjs';
 import {writeOutput, refuseFolders, securePath, makeFolder} from './files.mjs';
 import {checkEdit, placeEdit, chaptersThrough, chunksThrough, editRecord} from './edit.mjs';
+import {makeEditPainter} from './editpaint.mjs';
 
 /**
  * Loudness in two passes (FFmpeg's loudnorm): measure the whole mixed film, then set it with ONE fixed
@@ -344,13 +346,28 @@ export function filmTime(film) {
 const spokenWords = film => spokenTracks(film).flatMap(tr => tr.words.map(w => ({start: tr.offset + w.start, end: tr.offset + w.end}))).sort((a, b) => a.start - b.start);
 
 /** The edit placed on the film and each cut's layout compiled for its own stretch (its crop): {edit, framedCuts}. */
-function prepareEdit(film, given, {layout, fps}) {
+function prepareEdit(film, given, {layout, fps, poster}) {
   const placed = placeEdit(checkEdit(given), {time: filmTime(film), words: spokenWords(film), total: film.total, fps});
   const framedCuts = placed.cuts.map((c, i) => {
     if (!layout) { if (c.follow !== undefined) throw new Error(`cuts[${i}].follow is where a tall picture's crop looks; give the render a layout (a vertical or portrait format)`); return null; }
-    return compileLayout(film, c.follow !== undefined ? {...layout, crop: c.follow} : layout, {from: c.start, to: c.start + c.frames / fps});
+    if (c.follow === undefined) return compileLayout(film, layout, {from: c.start, to: c.start + c.frames / fps});
+    if (!formatOf(layout.format).crop) throw new Error(`cuts[${i}].follow: the ${layout.format} format shows the whole frame, so there is no crop to follow; leave follow out, or use a vertical or portrait layout`);
+    // A follow is a cut's crop: a refusal of it names the cut's follow, not the layout's crop.
+    try { return compileLayout(film, {...layout, crop: c.follow}, {from: c.start, to: c.start + c.frames / fps}); }
+    catch (e) { throw /layout\.crop/.test(e.message) ? new Error(e.message.replace(/layout\.crop/g, `cuts[${i}].follow`), {cause: e}) : e; }
   });
-  return {edit: placed, framedCuts};
+  return {edit: placed, framedCuts, posterFramed: posterLayout(film, placed, {layout, poster, fallback: framedCuts[0]})};
+}
+
+/**
+ * The layout the poster is drawn with in an edit: cut 0's crop as cut 0 frames it (its follow, else the layout's), but
+ * at the poster's own moment — a 'focus' crop looks there, written keys are read there — and kept off every speaker's
+ * edge (keepWhole, reported in the framing as the poster's). Cut 0's own layout when there is no poster or no crop.
+ */
+function posterLayout(film, edit, {layout, poster, fallback}) {
+  if (!layout || poster === null || poster === undefined || !formatOf(layout.format).crop) return fallback;
+  const crop = edit.cuts[0].follow ?? layout.crop, follows = crop === 'focus' || (Array.isArray(crop) && crop.some(k => k?.follow !== undefined));
+  return compileLayout(film, {...layout, crop: follows ? 'focus' : crop ?? [], keep: layout.keep ?? filmSpeakers(film)}, {from: poster, to: Math.min(film.total, poster + 1)});
 }
 
 /**
@@ -375,8 +392,9 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   if (!ENCODE[quality]) throw new Error(`quality must be ${QUALITIES.map(q => `'${q}'`).join(' or ')}`);
   const blur = readMotionBlur(motionBlur), captionKinds = readCaptionFiles(captionFiles);
   if (editGiven !== null && intro) throw new Error('renderFilm: an edit joins parts of the film; it takes no intro (leave intro out)');
-  const cut = editGiven === null ? null : prepareEdit(film, editGiven, {layout, fps});
-  const framed = cut ? cut.framedCuts[0] : layout ? compileLayout(film, layout) : null;
+  const cut = editGiven === null ? null : prepareEdit(film, editGiven, {layout, fps, poster});
+  // An edit's `framed` is its poster's layout (what the poster is drawn with); each cut draws with its own (framedCuts).
+  const framed = cut ? cut.posterFramed : layout ? compileLayout(film, layout) : null;
   // A layout's format sets the size; a size given beside it would be silently ignored, so it refuses.
   if (framed && (givenWidth !== undefined || givenHeight !== undefined)) throw new Error(`renderFilm: the ${framed.format} layout is ${framed.width}×${framed.height}; leave width and height out (they size a render without a layout) and size it with layout.scale: 2/3 makes ${draftSize(framed.format)}, a draft (0.5–2)`);
   const width = framed?.width ?? givenWidth ?? RENDER_DEFAULTS.width, height = framed?.height ?? givenHeight ?? RENDER_DEFAULTS.height;
@@ -400,7 +418,7 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   const withIntro = intro && from < 0, start = Math.floor(Math.max(0, from) * fps + 1e-6) / fps;
   const job = {film, storyboard, timings, narrationDir, out, dir, work: workDir, keepWork: work !== null, swept, unswept, width, height, fps, intro, withIntro, stamp, start, to, poster, posterFrame, peakCeilingDBFS, loudness, layout, framed, blur, captionKinds, ffmpeg, song, soundAt, quality,
     /** An edit (edit.mjs · placeEdit) and each cut's layout, or null. */
-    ...(cut ? {edit: cut.edit, framedCuts: cut.framedCuts} : {}),
+    ...(cut ? {edit: cut.edit, framedCuts: cut.framedCuts, paintEdit: ctx => makeEditPainter({film, edit: cut.edit, framedCuts: cut.framedCuts, blur, width, height, fps, ctx})} : {}),
     /** How many frames the film part has (the intro's are extra); an edit's, all of it. */
     frames: cut ? cut.edit.frames : Math.ceil((to - start) * fps),
     /**
@@ -493,7 +511,11 @@ export async function finishRender(job, video) {
 
 /** How the crop was framed, for the record, when it follows or fills: {framing} (an edit's: one per cut), else nothing. */
 function framingOf(job) {
-  if (job.edit) { const each = job.framedCuts.map((f, cut) => (f?.framing ? {cut, ...f.framing} : null)).filter(Boolean); return each.length ? {framing: each} : {}; }
+  if (job.edit) {
+    const each = job.framedCuts.map((f, cut) => (f?.framing ? {cut, ...f.framing} : null)).filter(Boolean);
+    const poster = job.framed !== job.framedCuts[0] && job.framed?.framing ? [{poster: true, ...job.framed.framing}] : [];
+    return each.length || poster.length ? {framing: [...each, ...poster]} : {};
+  }
   return job.framed?.framing ? {framing: job.framed.framing} : {};
 }
 

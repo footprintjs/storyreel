@@ -123,7 +123,7 @@ name or `{target, from?, to?, crop?, scale?, header?, captions?, limits?, cuts?,
 `post` is `{title, description, audience: 'kids' | 'general', tags?, thumbnail?: 'poster' | an image, synthetic?:
 ['voice'], credits?}`.
 
-**A Short cut from the film** is one target: `cuts: [{from, to, follow?, join?}]` (seconds, a beat, or `{scene}`)
+**A Short cut from the film** is one target: `cuts: [{from, to, follow?, join?}]` (a beat or `{scene}`; seconds the fallback)
 joined in order into one render; `join: {cut: 'silence' | 'exact', overlap: frames, pop: frames}` for every join (a
 cut's own `join` is the one into it); `end: {lines, seconds}`, a card in the film's theme; `fill: true`, the picture
 from under the title band to below the captions; `follow: 'focus'` (the speaker's region while someone speaks, else

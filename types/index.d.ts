@@ -726,8 +726,8 @@ export function renderFilm(options: {
 
 /** A join between two cuts: where the cut point lands ('silence': off a spoken word, the default; 'exact'), frames the two sides cross-fade (0–30, 0), frames of paper over a hard cut (0–3, 0). */
 export interface Join {cut?: 'silence' | 'exact'; overlap?: number; pop?: number}
-/** A cut's edge: seconds on the film clock, a beat, or a scene ({scene}: its start for from, its end for to). */
-export type CutTime = number | Beat | {scene: string};
+/** A cut's edge: a beat, or a scene ({scene}: its start for from, its end for to) — seconds on the film clock the fallback. */
+export type CutTime = Beat | {scene: string} | number;
 /** A stretch of the film in an edit; `follow` is where its tall crop looks (in place of the layout's crop); `join` the join into it. */
 export interface Cut {from: CutTime; to: CutTime; follow?: CropKey[] | 'focus'; join?: Join}
 /** A card after the last cut, in the film's theme: 1–4 lines (the first the biggest), held 0.5–10 s. */
@@ -736,7 +736,7 @@ export interface EndCard {lines: string[]; seconds: number; join?: Join}
 export interface Edit {cuts: Cut[]; end?: EndCard; join?: Join}
 /** An edit as its record keeps it. */
 export interface EditRecord {
-  cuts: {from: number; to: number; given: [number, number]; snapped?: {from?: [number, number]; to?: [number, number]}; at: number; frames: number; join?: Required<Join>}[];
+  cuts: {from: number; to: number; given: [number, number]; snapped?: {from?: [number, number]; to?: [number, number]; noSilence?: ('from' | 'to')[]}; at: number; frames: number; join?: Required<Join>}[];
   end?: {at: number; seconds: number; lines: string[]; join: Required<Join>};
   seconds: number;
 }

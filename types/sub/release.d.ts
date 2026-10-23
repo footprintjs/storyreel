@@ -56,7 +56,8 @@ export const TARGET_NAMES: readonly TargetName[];
 export const AUDIENCES: readonly Audience[];
 export function checkAdapter(adapter: unknown): ReleaseAdapter;
 export function loadTarget(spec: ReleaseTarget): Promise<{adapter: ReleaseAdapter; options: {name: string; from?: number; to?: number; header?: object; crop?: unknown; captions?: unknown; scale?: number;
-  edit?: {cuts: Cut[]; end?: EndCard; join?: Join}; fill?: true; keep?: string[]; render?: TargetRender}}>;
+  /** A target's edit; a part with an end card and no `to` runs to the film's end (`to: null`, placed at the render). */
+  edit?: {cuts: (Cut | (Omit<Cut, 'to'> & {to: null}))[]; end?: EndCard; join?: Join}; fill?: true; keep?: string[]; render?: TargetRender}}>;
 export function readPost(post: unknown): ReleasePost & {description: string; tags: string[]; synthetic: string[]};
 export function planProblems(adapter: ReleaseAdapter, post: ReleasePost, options?: {seconds?: number | null; poster?: boolean | null; scale?: number}): {problem: string; fix: string}[];
 /** Release a film to each target: <out>/<target>/ the video in its shape, caption files, thumbnail, post.json + post.txt. */

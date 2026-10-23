@@ -563,10 +563,16 @@ import type {Edit, Cut} from '../types/index.js';
 import {placeEdit, checkEdit, editFrame, snapToSilence, JOIN_DEFAULTS} from '../types/sub/edit.js';
 import {FOLLOW, keepWhole} from '../types/sub/layout.js';
 export const shortCut: ReleaseTarget = {target: 'youtube-shorts', fill: true, keep: ['amaira', 'mom'], render: {posterFrame: false},
-  cuts: [{from: 24.8, to: 30.6, follow: 'focus'}, {from: ['shop', 'a crayon is missing'], to: {scene: 'shop'}, follow: [{at: 170, x: 600, y: 400, width: 834}, {at: 182.2, x: 980, cut: true}], join: {overlap: 4}}],
+  cuts: [{from: {scene: 'lend'}, to: ['lend', 'a crayon is missing', 0.4], follow: 'focus'},
+    {from: ['shop', 'Who took it'], to: {scene: 'shop'}, follow: [{at: ['shop', 'Who took it'], x: 600, y: 400, width: 834}, {at: ['shop', 'the pebble left over'], x: 980, cut: true}], join: {overlap: 4}},
+    {from: 163.95, to: 170}],   // seconds: the fallback, for a moment no phrase names
   join: {cut: 'silence', pop: 2}, end: {lines: ['Watch the whole story', 'Counting: From Pebbles to 10'], seconds: 2.5}};
-export const filled: Layout = {format: 'vertical', fill: true, crop: [{at: 3, follow: 'focus', width: 900}, {at: ['a', 'b'], x: 400, y: 300}]};
-export const cutEdit: Edit = {cuts: [{from: 1, to: 4}, {from: {scene: 'two'}, to: 12}], end: {lines: ['Watch'], seconds: 2}};
+export const filled: Layout = {format: 'vertical', fill: true, crop: [{at: ['a', 'b'], follow: 'focus', width: 900}, {at: ['a', 'c'], x: 400, y: 300}, {at: 30, x: 800}]};
+export const cutEdit: Edit = {cuts: [{from: ['one', 'a pebble'], to: {scene: 'one'}}, {from: {scene: 'two'}, to: 12}], end: {lines: ['Watch'], seconds: 2}};
+// The part loadTarget makes of a target with an end card and no `to` runs to the film's end: to: null, internal to the release.
+export const toTheEnd = async (load: typeof import('../types/sub/release.js').loadTarget) => (await load('youtube-shorts')).options.edit?.cuts[0]?.to;
+// @ts-expect-error a cut a caller writes says where it ends
+export const openEnded: Cut = {from: 1, to: null};
 export const editRender = (render: typeof RenderFilm, film: Film, board: Storyboard) => render({film, storyboard: board, timings: film.timings, out: 'x.mp4', edit: cutEdit, layout: filled});
 export const firstFrame = (e: ReturnType<typeof placeEdit>) => { const s = editFrame(e, 0); return s.kind === 'cut' ? s.t : 0; };
 export const snapped: number = snapToSilence([{start: 1, end: 2}], 1.5, 'to').t + JOIN_DEFAULTS.overlap;

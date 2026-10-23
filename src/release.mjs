@@ -121,7 +121,11 @@ function readEditOptions(given, adapter, where) {
     if (given.fill && !formatOf(adapter.video.format).fill) throw new Error(`${where}: fill: the ${adapter.video.format} format has no filled picture; leave fill out, or use a vertical target (YouTube Shorts, TikTok, Instagram Reels)`);
     if (given.fill) out.fill = true;
   }
-  if (given.keep !== undefined) out.keep = given.keep;   // checked with the layout (layout.mjs: the names the crop never cuts)
+  if (given.keep !== undefined) {
+    // Its names are checked with the layout (layout.mjs); a format with no crop, now: nothing there is cut at its edge.
+    if (!formatOf(adapter.video.format).crop) throw new Error(`${where}: keep: the ${adapter.video.format} format shows the whole frame, so nothing is cut at its edge; leave keep out, or use a portrait or vertical target`);
+    out.keep = given.keep;
+  }
   if (given.cuts === undefined && given.end === undefined) {
     if (given.join !== undefined) throw new Error(`${where}: join says how cuts are joined; give cuts (or an end card), or leave join out`);
     return out;
@@ -256,7 +260,7 @@ const chaptersOf = lines => readChapters(lines.join('\n')).map(({at, title}) => 
 
 /** The places a crop's edge cuts a kept thing it could not keep whole, from the record's framing: {clipped} or nothing. */
 function clippedOf(framing) {
-  const list = (Array.isArray(framing) ? framing : framing ? [framing] : []).flatMap(f => (f.clipped ?? []).map(c => ({...(f.cut !== undefined ? {cut: f.cut} : {}), ...c})));
+  const list = (Array.isArray(framing) ? framing : framing ? [framing] : []).flatMap(f => (f.clipped ?? []).map(c => ({...(f.cut !== undefined ? {cut: f.cut} : {}), ...(f.poster ? {poster: true} : {}), ...c})));
   return list.length ? {clipped: list} : {};
 }
 
@@ -280,6 +284,8 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
   // First everything that can be known before a frame is drawn, for every target: nothing renders if any refuses.
   const poster = film.render && 'poster' in film.render ? film.render.poster != null : film.recipe?.poster != null;
   for (const {adapter, options} of loaded) {
+    // makeFilm's check reads a render on the film's own clock: an edit refuses it here, before any target renders.
+    if (options.edit && film.check !== undefined && film.check !== null) throw new Error(`release target ${JSON.stringify(options.name)}: check reads a render on the film's own clock, and its cuts join stretches of it; leave check out of this release, or release each cut's part (from, to) apart to check it`);
     const part = options.edit ? editSeconds(options.edit) : options.from !== undefined && options.to !== undefined ? options.to - options.from : null;
     refuse(adapter, planProblems(adapter, p, {seconds: part, poster, scale: options.scale}));
     if (p.thumbnail !== 'poster') await checkThumbnail(adapter, p.thumbnail);

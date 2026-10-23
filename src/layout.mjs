@@ -198,22 +198,23 @@ function framingOf(film, spec, f, span) {
   out.forEach((k, i) => { if (i && k.t < out[i - 1].t) throw new Error(`layout.crop[${i}] comes before the key above it; list crop keys in the order they are spoken`); });
   const follows = out.some(k => k.follow), keep = spec.keep ?? filmSpeakers(film);
   if (!follows && !f.filled && spec.keep === undefined) return {keys: out.map(({given: _, ...k}) => k)};   // as it always was
-  // In a filled picture a move never runs across a scene cut: a key whose move a cut would fall inside jumps there at the
-  // cut instead. One with no key at its start opens centred, as any crop does, on a key of its own, so that window too
-  // is kept off a kept thing.
-  const opened = f.filled && !out.some(k => k.t <= span.from + 1e-6) ? [{t: span.from, x: 800, width: cw, jump: true}, ...out] : out;
-  const placed = f.filled ? opened.map((k, i) => {
-    const cut = i && !k.follow && !k.jump ? film.clock.offsets.find(s => s > k.t + 1e-6 && s < k.t + MOVE - 1e-6 && s < (opened[i + 1]?.t ?? Infinity)) : undefined;
-    return cut === undefined ? k : {...k, t: cut, jump: true};
-  }) : out;
-  const why = {}, keys = placed.flatMap((k, i) => {
+  // A filled picture (or a crop kept off its people) with no key at its start opens centred, as any crop does, on a key
+  // of its own, so that window too is kept off a kept thing.
+  const opened = (f.filled || spec.keep !== undefined) && !out.some(k => k.t <= span.from + 1e-6) ? [{t: span.from, x: 800, width: cw, jump: true}, ...out] : out;
+  const why = {}, expanded = opened.flatMap((k, i) => {
     if (!k.follow) return [k];
-    const from = Math.max(k.t, span.from), to = Math.min(placed[i + 1]?.t ?? Infinity, span.to);
+    const from = Math.max(k.t, span.from), to = Math.min(opened[i + 1]?.t ?? Infinity, span.to);
     if (!(to > from)) return [];
     const made = FOLLOW[k.follow](film, {from, to, crop: f.crop, width: k.width});
     for (const [n, c] of Object.entries(made.why ?? {})) why[n] = (why[n] ?? 0) + c;
     return made.keys;
   });
+  // In a filled picture, and wherever the crop follows, a move never runs across a scene cut: a key whose move a cut
+  // would fall inside jumps there at the cut instead — the keys written and the keys the film's focus made alike.
+  const keys = f.filled || follows ? expanded.map((k, i) => {
+    const cut = k.jump ? undefined : film.clock.offsets.find(s => s > k.t + 1e-6 && s < k.t + MOVE - 1e-6 && s < (expanded[i + 1]?.t ?? Infinity) - 1e-6);
+    return cut === undefined ? k : {...k, t: cut, jump: true};
+  }) : expanded;
   const kept = keepWhole(film, keys, {crop: f.crop, keep, until: span.to});
   const round = v => +v.toFixed(2);
   kept.keys = kept.keys.map(({given: _, ...k}) => k);
