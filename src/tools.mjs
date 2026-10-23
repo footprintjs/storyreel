@@ -25,7 +25,7 @@ import {clockTenths, checkScene, spokenText, spokenIn} from './clock.mjs';
 import {sceneScript} from './script.mjs';
 import {contactSheet} from './sheet.mjs';
 import {partWindow, filmTimeline, timelineText, RENDER_DEFAULTS} from './render.mjs';
-import {momentAt, sceneTime} from './momenttext.mjs';
+import {momentAt, sceneTime, sceneIds, placeOf, HUNDREDTH} from './momenttext.mjs';
 import {formatScale} from './layout.mjs';
 import {hashOf} from './hash.mjs';
 import {reviewPart, reviewSummary, REVIEW_DEFAULTS, SUMMARY_TOP} from './review.mjs';
@@ -175,8 +175,11 @@ function momentsOf(film, at, tool) {
   const list = scenesOf(at); if (!list.length) throw new Error(`${tool}: name the moments (at: "scene+seconds,…")`);
   return list.map(m => ({t: heldTo(film, momentAt(film, m, tool)), label: m}));
 }
-/** A time held to the film, to the millisecond: a picture is taken at the film's last millisecond at most. */
-const heldTo = (film, t) => +Math.min(film.total - .001, Math.max(0, t)).toFixed(3);
+/**
+ * A time held to the film: a picture is taken at the film's last millisecond at most. Never rounded: a scene a voice
+ * paced starts between milliseconds, and a time rounded down to one would show the scene before.
+ */
+const heldTo = (film, t) => Math.min(film.total - .001, Math.max(0, t));
 /** A still's or a strip's width: whole pixels, 100–4000 (a call names it, and the picture is made that wide). */
 function widthOf(args, tool) {
   const width = Number(args.width ?? TOOL_DEFAULTS.width);
@@ -188,12 +191,13 @@ const stillsFolder = project => outputFolder(path.resolve(project.cwd, project.i
 /** The longest name a picture is given (a file name holds 255 bytes): past it, cut, with a short hash of the whole. */
 const NAME_MOST = 100;
 /**
- * A picture's file name from what it shows: letters, digits, _ + . and - kept, anything else a -. A longer one (a still
- * of many moments) is cut and ends in a hash of the whole, so it can be written and two such names never meet.
+ * A picture's file name from what it shows: letters, digits, _ + . and - kept (ASCII), anything else a -. One that lost
+ * a letter or a digit (words in another script: two phrases would meet in one name) ends in a hash of the whole, and so
+ * does a longer one (a still of many moments), cut first: every name can be written, and two never meet.
  */
 function pictureName(text) {
-  const name = text.replace(/[^\w+.-]/g, '-');
-  return name.length <= NAME_MOST ? name : `${name.slice(0, NAME_MOST - 17)}-${hashOf(text)}`;
+  const name = text.replace(/[^\w+.-]/g, '-'), lost = /[\p{L}\p{N}]/u.test(text.replace(/\w/g, ''));
+  return name.length <= NAME_MOST && !lost ? name : `${name.slice(0, NAME_MOST - 17)}-${hashOf(text)}`;
 }
 
 /** The most frames one still holds. */
@@ -221,31 +225,43 @@ function namedFrames(film, args) {
 }
 
 /**
- * A frame at each beat in one scene: the beats the timeline prints against it (render.mjs · filmTimeline, each where
- * it lands; beats that land together are one frame), labelled with their scene+seconds and what is said there. from
- * and to (moments, as at takes them) keep the beats between. At most MOST_FRAMES: the rest are counted, never dropped
- * unsaid, and the text gives the call that shows them. {moments, name, of, rest}.
+ * A frame at each beat in one scene (beatTimes), labelled with its scene+seconds and what is said there. from and to
+ * (moments, as at takes them) keep the beats between, each to half a hundredth, so a time the timeline printed keeps
+ * its own beat. At most MOST_FRAMES: the rest are counted, never dropped unsaid, and the text says the call that shows
+ * them. {moments, name, of, rest}.
  */
 function sceneBeats(film, {beats, from, to}) {
   const scene = oneScene(film, beats), bound = (v, name) => (v === undefined ? null : momentAt(film, String(v).trim(), `still (${name})`));
-  const lo = bound(from, 'from') ?? -Infinity, hi = bound(to, 'to') ?? Infinity, frames = [];
-  for (const r of filmTimeline(film, {from: film.clock.start(scene), to: film.clock.end(scene)})) {
-    if (r.kind !== 'beat' || film.clock.locate(r.t).id !== scene || r.t < lo - 1e-6 || r.t > hi + 1e-6) continue;
-    const said = `"${r.phrase}"`, last = frames.at(-1);
-    if (last?.t === r.t) { if (!last.said.includes(said)) last.said.push(said); } else frames.push({t: r.t, said: [said]});
-  }
-  const range = `${from !== undefined ? ` from ${from}` : ''}${to !== undefined ? ` to ${to}` : ''}`;
-  if (!frames.length) throw new Error(range ? `still: no beat in ${scene}${range}` : `still: ${scene} has no beats: the recipe keys nothing to what is said there (name moments instead: at: "${scene}+1.5")`);
+  const lo = bound(from, 'from') ?? -Infinity, hi = bound(to, 'to') ?? Infinity, all = beatTimes(film, scene);
+  const frames = all.filter(f => f.t >= lo - HUNDREDTH && f.t <= hi + HUNDREDTH), range = `${from !== undefined ? ` from ${from}` : ''}${to !== undefined ? ` to ${to}` : ''}`;
+  if (!all.length) throw new Error(`still: ${scene} has no beats: the recipe keys nothing to what is said there (name moments instead: at: "${scene}+1.5")`);
+  if (!frames.length) throw new Error(`still: no beat in ${scene}${range} (its beats: ${sceneTime(film, all[0].t)} to ${sceneTime(film, all.at(-1).t)})`);
   const moments = frames.slice(0, MOST_FRAMES).map(f => ({t: heldTo(film, f.t), label: `${sceneTime(film, f.t)} ${f.said.join(' ')}`}));
-  const rest = frames.length - moments.length, next = rest ? sceneTime(film, frames[MOST_FRAMES].t, {down: true}) : null;
+  const rest = frames.length - moments.length;
   return {moments, name: `beats-${scene}${from !== undefined ? `-from-${from}` : ''}${to !== undefined ? `-to-${to}` : ''}`,
     of: `${rest ? ` of ${frames.length}` : ''}, one at each beat in ${scene}${range}`,
-    rest: rest ? `; the other ${rest}: storyreel still --beats ${shellWord(scene)} --from ${shellWord(next)}${to !== undefined ? ` --to ${shellWord(String(to))}` : ''}` : ''};
+    rest: rest ? `; the other ${rest}: the same call with --from ${shellWord(sceneTime(film, frames[MOST_FRAMES].t))}` : ''};
+}
+
+/**
+ * Each time a beat lands in one scene, with what is said there: [{t, said}], in order — the beats the timeline prints
+ * against it (render.mjs · filmTimeline; momenttext.mjs · placeOf), several landing together one time. A scene id given
+ * twice is its last scene, as on the clock. A beat a hair before its scene's start (its time kept to the millisecond)
+ * is taken at the start, so its frame is that scene's.
+ */
+function beatTimes(film, scene) {
+  const index = sceneIds(film).lastIndexOf(scene), start = film.clock.offsets[index], out = [];
+  for (const r of filmTimeline(film)) {
+    if (r.kind !== 'beat' || placeOf(film, r.t).index !== index) continue;
+    const t = Math.max(r.t, start), said = `"${r.phrase}"`, last = out.at(-1);
+    if (last?.t === t) { if (!last.said.includes(said)) last.said.push(said); } else out.push({t, said: [said]});
+  }
+  return out;
 }
 
 /** The one scene a still's beats are of, or a refusal naming the fix. */
 function oneScene(film, beats) {
-  const ids = film.timings.scenes.map(s => s.id), list = scenesOf(beats), scenes = `the scenes are ${ids.join(', ')}`;
+  const ids = sceneIds(film), list = scenesOf(beats), scenes = `the scenes are ${ids.join(', ')}`;
   if (list.length === 1 && ids.includes(list[0])) return list[0];
   if (list.length > 1) throw new Error(`still: beats names one scene, not ${list.length}: one still a scene (${scenes})`);
   throw new Error(list.length && !yes(beats) ? `still: no scene called "${list[0]}" (${scenes})` : `still: beats names the scene whose every beat to show (${scenes})`);
@@ -281,7 +297,7 @@ export async function sheet(project, args = {}) {
  */
 export async function strip(project, args = {}) {
   const named = scenesOf(args.at);
-  if (named.length !== 1) throw new Error(`strip: name one moment (at: "scene+seconds")${named.length ? '; a still shows several' : ''}`);
+  if (named.length !== 1) throw new Error(`strip: name one moment (at: "scene+seconds")${named.length ? '; a still shows several (a phrase\'s own commas are left out: the moments are split at commas)' : ''}`);
   const [moment] = momentsOf(project.film, named, 'strip'), frames = +(args.frames ?? TOOL_DEFAULTS.frames), fps = +(args.fps ?? TOOL_DEFAULTS.fps), width = widthOf(args, 'strip');
   if (!(Number.isInteger(frames) && frames >= 2 && frames <= 30)) throw new Error(`strip: frames must be a whole number 2–30, not ${JSON.stringify(args.frames)}`);
   if (!(Number.isFinite(fps) && fps >= 1 && fps <= 120)) throw new Error(`strip: fps must be 1–120 frames a second, not ${JSON.stringify(args.fps)}`);

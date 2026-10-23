@@ -16,38 +16,75 @@ import {momentOf, shownMark} from './script.mjs';
 
 /** The ways a moment is written, as a refusal names them. */
 export const MOMENT_FORMS = 'scene+seconds, seconds or m:ss on the film clock, or what is said: scene:phrase or scene:{moment}, +seconds after either';
+/** How far a time said to the hundredth may be from what it names: half a hundredth, either way. */
+export const HUNDREDTH = .005;
+/** The film's scene ids, in order (one the storyboard gives twice names its last scene, as the clock's start does). */
+export const sceneIds = film => film.timings.scenes.map(s => s.id);
 
 /**
- * A time on the film clock as scene+seconds: from the start of the scene it falls in (the clock's locate), to the
- * hundredth — rounded down with `down` (where a call to see what follows starts: never past the time itself). A scene
- * id the storyboard gives twice names its last scene (the clock's start), so a time in an earlier one is said in
- * seconds on the film clock: either way, it reads back as the same time.
+ * Where a time falls: {index, id, time}, the scene and the seconds into it (the clock's locate). A beat's time is kept
+ * to the millisecond (film.beats), so one a hair before a scene's start by that rounding is that scene's, at 0.
  */
-export function sceneTime(film, t, {down = false} = {}) {
-  const {index, id, time} = film.clock.locate(t), hundredths = s => (down ? Math.floor(s * 100 + 1e-6) / 100 : s).toFixed(2);
-  return film.clock.start(id) === film.clock.offsets[index] ? `${id}+${hundredths(time)}` : hundredths(t);
+export function placeOf(film, t) {
+  const {index, id} = film.clock.locate(t + 5e-4);
+  return {index, id, time: Math.max(0, t - film.clock.offsets[index])};
+}
+
+/** A scene id scene+seconds can say: not empty, no space at either end, no "+", "," or control character. */
+const sayable = id => id !== '' && id === id.trim() && !/[+,\u0000-\u001f\u007f]/.test(id);
+
+/**
+ * A time on the film clock as scene+seconds, from the start of the scene it falls in (placeOf), to the hundredth. In a
+ * scene whose id would not read back as written — one the storyboard gives twice (it names the last such scene), or
+ * one with a "+" or "," in it — the time is said in seconds on the film clock: either way, it reads back as itself.
+ */
+export function sceneTime(film, t) {
+  const {index, id, time} = placeOf(film, t);
+  return sayable(id) && film.clock.start(id) === film.clock.offsets[index] ? `${id}+${time.toFixed(2)}` : t.toFixed(2);
 }
 
 /**
- * One moment as written → seconds on the film clock (not yet held to the film), or a refusal naming `tool`. The forms
- * the tools have always read come first, read exactly as ever — scene+seconds and plain seconds, the seconds as Number
- * reads them — then m:ss (clocktext.mjs · clockSeconds), then what is said: the longest scene id the text starts with,
- * a colon, the phrase or the moment, and +seconds after it. One "+" at most and no control character: a moment's words
- * are printed as its label.
+ * One moment as written → seconds on the film clock (not yet held to the film), or a refusal naming `tool`: one "+" at
+ * most and no control character (a moment's words are printed as its label), then a time on the film clock
+ * (clockForm), else what is said (saidForm).
  */
 export function momentAt(film, text, tool) {
-  const parts = text.split('+'), ids = film.timings.scenes.map(s => s.id);
+  const parts = text.split('+');
   if (parts.length > 2 || /[\u0000-\u001f\u007f]/.test(text)) throw notAMoment(film, text, tool);
-  const [id, off] = parts.length > 1 ? parts : [null, text];
-  if (!id || ids.includes(id)) { const t = (id ? film.clock.start(id) : 0) + Number(off); if (Number.isFinite(t)) return t; }
-  if (id === null && /^\d+:\d/.test(text)) { try { return clockSeconds(text); } catch { /* no time on the film clock: read on */ } }
-  const [said] = parts, scene = ids.filter(s => said.startsWith(`${s}:`)).sort((a, b) => b.length - a.length)[0], plus = parts.length > 1 ? Number(parts[1]) : 0;
-  if (scene === undefined || !Number.isFinite(plus)) throw notAMoment(film, text, tool);
-  return saidAt(film, scene, said.slice(scene.length + 1), `${tool}: ${JSON.stringify(text)}`) + plus;
+  const t = clockForm(film, parts) ?? saidForm(film, parts, `${tool}: ${JSON.stringify(text)}`);
+  if (t === null) throw notAMoment(film, text, tool);
+  return t;
 }
 
-/** The refusal of what is no moment: the ways one is written, and the film's scenes. */
-const notAMoment = (film, text, tool) => new Error(`${tool}: ${JSON.stringify(text)} is not a moment (${MOMENT_FORMS}; the scenes are ${film.timings.scenes.map(s => s.id).join(', ')})`);
+/**
+ * A moment named on the film clock alone, or null: scene+seconds and plain seconds read exactly as the tools always
+ * read them (the seconds as Number reads them), then m:ss (clocktext.mjs · clockSeconds).
+ */
+function clockForm(film, parts) {
+  const [id, off] = parts.length > 1 ? parts : [null, parts[0]];
+  if (!id || sceneIds(film).includes(id)) { const t = (id ? film.clock.start(id) : 0) + Number(off); if (Number.isFinite(t)) return t; }
+  if (id === null && /^\d+:\d/.test(off)) { try { return clockSeconds(off); } catch { /* no time on the film clock */ } }
+  return null;
+}
+
+/**
+ * A moment named by what is said — the longest scene id the text starts with, a colon, the phrase or the moment — and
+ * +seconds after it: seconds on the film clock, or null when no scene starts it or the seconds are none. What is said
+ * that names no one place refuses after `named` (saidAt).
+ */
+function saidForm(film, [said, plus = '0'], named) {
+  const scene = sceneIds(film).filter(s => said.startsWith(`${s}:`)).sort((a, b) => b.length - a.length)[0], seconds = Number(plus);
+  return scene === undefined || !Number.isFinite(seconds) ? null : saidAt(film, scene, said.slice(scene.length + 1), named) + seconds;
+}
+
+/**
+ * The refusal of what is no moment: the ways one is written, and the film's scenes. Words with no scene before them
+ * are, most often, a phrase cut at its own comma (the moments are split at commas): that is said too.
+ */
+function notAMoment(film, text, tool) {
+  const words = !/[:+]/.test(text) && /\p{L}/u.test(text);
+  return new Error(`${tool}: ${JSON.stringify(text)} is not a moment (${MOMENT_FORMS}; the scenes are ${sceneIds(film).join(', ')})${words ? ' — words name a moment after their scene (scene:phrase), and a phrase\'s own commas are left out: the moments are split at commas' : ''}`);
+}
 
 /**
  * When a phrase, or a moment ("{hop}"), is said in a scene, on the film clock — read as a recipe's beat is read, by

@@ -310,7 +310,10 @@ export function filmTimeline(film, {from = 0, to = film.total} = {}) {
     const key = `${b.t}|${scene}|${phrase}|${b.path}`; if (seen.has(key)) continue; seen.add(key);
     rows.push({t: b.t, kind: 'beat', scene, phrase, entry: b.path ?? null});
   }
-  return rows.sort((a, b) => a.t - b.t || (a.kind === 'scene' ? -1 : b.kind === 'scene' ? 1 : 0));
+  // In order of the millisecond (a beat's time is kept to it), a scene's start first: a beat on a scene's first word
+  // that its rounding put a hair before the start is listed after it.
+  const ms = t => Math.round(t * 1000);
+  return rows.sort((a, b) => ms(a.t) - ms(b.t) || (b.kind === 'scene') - (a.kind === 'scene') || a.t - b.t);
 }
 export const partTimeline = (film, stretch = {}) => filmTimeline(film, stretch).map(r => ({...r, t: +(r.t - (stretch.from ?? 0)).toFixed(2)}));
 /** The rows as lines: each one's time (`time(row)`: its seconds to the hundredth, by default), then the scene that starts or the phrase and the entry it moves. */

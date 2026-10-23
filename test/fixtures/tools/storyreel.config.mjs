@@ -18,10 +18,11 @@ const words = {name: 'words', story: {compile: (spec, clock) => {
 // the beats after it.
 // --keyed: beats each said once — one near the end of scene one (in the handles before scene two), a phrase, a moment
 // written in scene two's narration ({turn}, 0.2 s after it) and a last word; --keyed many: beats at 35 times in scene
-// one, more than a still holds, the first time keyed twice.
+// one, more than a still holds, the first time keyed twice — each 7 ms past a hundredth, as a voice's times are, so a
+// time printed to the hundredth is not the beat's own.
 const beatsOf = flags => (flags.anchors === 'stop' ? {ordered: true, beats: [['two', 'a little shorter'], ['one', 'a lot of words in it'], ['two', 'much shorter'], ['one', 'a']]}
   : flags.anchors && flags.anchors !== 'twice' ? {beats: [['one', 'a few words'], ['one', 'a lot of words'], ['one', 'a'], {scene: 'two', phrase: 'scene', nth: 2}, ['three', 'hello'], ['two', 'a little shorter']]}
-  : flags.keyed === 'many' ? {beats: [['one', 'A first scene'], ...Array.from({length: 35}, (_, k) => ['one', 'A first', k / 10])]}
+  : flags.keyed === 'many' ? {beats: [['one', 'A first scene', .007], ...Array.from({length: 35}, (_, k) => ['one', 'A first', k / 10 + .007])]}
   : flags.keyed ? {beats: [['one', 'slowly'], ['two', 'a second scene'], ['two', '{turn}', .2], ['two', 'shorter']]} : {});
 export default {
   film: flags => ({
