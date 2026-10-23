@@ -12,7 +12,8 @@
  * Alipour & Fischer 2011, "Finger counting habits in Middle Eastern and Western individuals", Frontiers in
  * Psychology 2:40; Bender & Beller 2012, "Nature and culture of finger counting", Cognition 124). The same surveys
  * find many North Americans start with the index finger, and many people in the Middle East with the right hand's
- * little finger: `order: 'index-first'` and `{order: 'pinky-first', first: 'right'}`.
+ * little finger: `order: 'index-first'` and `{order: 'little-first', first: 'right'}`. An order is one hand's: the
+ * other hand counts its fingers in the same order (thumb to thumb, by default), after the first hand's five.
  *
  * Pure functions of time, like every frame: `fingersAt(keys, t)` reads the keys each time and returns the hands.
  */
@@ -24,7 +25,7 @@ export const FINGER_NAMES = Object.freeze(['thumb', 'index', 'middle', 'ring', '
 export const COUNTING_ORDERS = Object.freeze({
   'thumb-first': Object.freeze(['thumb', 'index', 'middle', 'ring', 'little']),
   'index-first': Object.freeze(['index', 'middle', 'ring', 'little', 'thumb']),
-  'pinky-first': Object.freeze(['little', 'ring', 'middle', 'index', 'thumb']),
+  'little-first': Object.freeze(['little', 'ring', 'middle', 'index', 'thumb']),
 });
 
 /**
@@ -48,8 +49,8 @@ const smooth = x => x * x * (3 - 2 * x);
  *          a moving finger passes either end by at most `lift` before it moves and `overshoot` as it arrives
  * One change at a time: a key starts at least anticipate + move after the last finger of the key before it starts
  * moving, and a finger moves again only after it has settled. Options: the timing (FINGERS), `order` (a counting
- * order's name, or the five finger names in the order they count), `first` ('left' or 'right': the hand that counts
- * first).
+ * order's name, or the five finger names in the order they count — on both hands alike: the second hand counts its
+ * fingers in the same order), `first` ('left' or 'right': the hand that counts first).
  */
 export function fingersAt(keys, t, options = {}) {
   const o = readOptions(options ?? {}), plan = readFingerKeys(keys, o);
@@ -82,9 +83,9 @@ function shape(τ, {anticipate, move, settle, lift, overshoot}) {
 function readOptions(options) {
   for (const key of Object.keys(options)) if (!OPTIONS.includes(key)) throw new Error(`fingersAt: unknown option ${key}; it takes ${OPTIONS.join(', ')}`);
   const o = {...FINGERS, ...Object.fromEntries(Object.entries(options).filter(([k, v]) => Object.hasOwn(FINGERS, k) && v !== undefined))};
-  for (const name of ['anticipate', 'move', 'settle']) if (!(Number.isFinite(o[name]) && o[name] > 0)) throw new Error(`fingersAt: ${name} is seconds, above 0`);
-  if (!(Number.isFinite(o.stagger) && o.stagger >= 0)) throw new Error('fingersAt: stagger is the seconds between fingers that one key moves, 0 or more');
-  for (const name of ['lift', 'overshoot']) if (!(o[name] >= 0 && o[name] < .5)) throw new Error(`fingersAt: ${name} is how far a finger passes its end, in extension (0 folded … 1 straight): 0 or more, under 0.5`);
+  for (const name of ['anticipate', 'move', 'settle']) if (!(Number.isFinite(o[name]) && o[name] > 0)) throw new Error(`fingersAt: ${name} is seconds, above 0 (e.g. ${FINGERS[name]}), not ${JSON.stringify(o[name])}`);
+  if (!(Number.isFinite(o.stagger) && o.stagger >= 0)) throw new Error(`fingersAt: stagger is the seconds between fingers that one key moves, 0 or more (e.g. ${FINGERS.stagger}), not ${JSON.stringify(o.stagger)}`);
+  for (const name of ['lift', 'overshoot']) if (!(Number.isFinite(o[name]) && o[name] >= 0 && o[name] < .5)) throw new Error(`fingersAt: ${name} is how far a finger passes its end, in extension (0 folded … 1 straight): a number 0 or more, under 0.5 (e.g. ${FINGERS[name]}), not ${JSON.stringify(o[name])}`);
   const {order = 'thumb-first', first = 'left'} = options;
   const fingers = typeof order === 'string' ? COUNTING_ORDERS[order] : order;
   if (typeof order === 'string' && !Object.hasOwn(COUNTING_ORDERS, order)) throw new Error(`fingersAt: no counting order called "${order}" (the orders are ${Object.keys(COUNTING_ORDERS).join(', ')}, or the five finger names in the order they count)`);

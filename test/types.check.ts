@@ -245,9 +245,11 @@ export const noMood = moodAt([{at: 0}], 1);
 // Counting on fingers and listener reactions.
 import {fingersAt, reactionAt, FINGERS, COUNTING_ORDERS, REACTING} from '../types/sub/acting.js';
 export const fingersUp: number = fingersAt([{at: 0, up: 10}, {at: 1, fold: 1}, {at: 1.5, raise: 1}], 1.2, {order: 'index-first', first: 'right', stagger: FINGERS.stagger}).up;
-export const littleFinger: number = fingersAt([{at: 0, up: 3}], 0, {order: COUNTING_ORDERS['pinky-first']}).hands.right[4];
+export const littleFinger: number = fingersAt([{at: 0, up: 3}], 0, {order: COUNTING_ORDERS['little-first']}).hands.right[4];
 // @ts-expect-error a finger key folds, raises or sets a count
 export const badFingers = fingersAt([{at: 0, wave: 1}], 0);
+// @ts-expect-error a finger key has one verb
+export const twoVerbs = fingersAt([{at: 0, up: 5}, {at: 1, fold: 1, raise: 1}], 0);
 // @ts-expect-error the counting orders are named
 export const badOrder = fingersAt([{at: 0, up: 1}], 0, {order: 'thumbs'});
 export const nodNow = (film: Film) => { const r = reactionAt(film.clock, 2, 'amaira', {seed: 4, chance: REACTING.chance}); return [r.nod, r.lean, r.brighten, r.look?.amount ?? 0, r.cause.nod?.end ?? 0]; };

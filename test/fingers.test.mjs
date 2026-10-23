@@ -62,12 +62,13 @@ test('one key may move several fingers, one after another; up sets the count', (
 
 test('the counting order is data: by name, as five fingers, and either hand first', () => {
   assert.deepEqual(FINGER_NAMES, ['thumb', 'index', 'middle', 'ring', 'little']);
-  assert.deepEqual(Object.keys(COUNTING_ORDERS), ['thumb-first', 'index-first', 'pinky-first']);
+  assert.deepEqual(Object.keys(COUNTING_ORDERS), ['thumb-first', 'index-first', 'little-first']);
   const one = [{at: 0, up: 1}];
   assert.deepEqual(fingersAt(one, 0).hands.left, [1, 0, 0, 0, 0], 'the default: the left thumb counts one');
   assert.deepEqual(fingersAt(one, 0, {order: 'index-first'}).hands.left, [0, 1, 0, 0, 0]);
-  assert.deepEqual(fingersAt(one, 0, {order: 'pinky-first', first: 'right'}).hands, {left: [0, 0, 0, 0, 0], right: [0, 0, 0, 0, 1]});
+  assert.deepEqual(fingersAt(one, 0, {order: 'little-first', first: 'right'}).hands, {left: [0, 0, 0, 0, 0], right: [0, 0, 0, 0, 1]});
   assert.deepEqual(fingersAt([{at: 0, up: 2}], 0, {order: ['middle', 'index', 'thumb', 'ring', 'little']}).hands.left, [0, 1, 1, 0, 0]);
+  assert.deepEqual(fingersAt([{at: 0, up: 7}], 0, {order: ['middle', 'index', 'thumb', 'ring', 'little']}).hands.right, [0, 1, 1, 0, 0], 'a custom order counts on the second hand the same way');
 });
 
 test('impossible keys refuse, naming the problem', () => {
@@ -83,12 +84,18 @@ test('impossible keys refuse, naming the problem', () => {
   refuses([], /keys is a list/);
   refuses([{at: 0, up: 10}, {at: 1, fold: 1}, {at: 1.1, fold: 1}], /key 2 \(fold 1 at 1.1 s\) comes 0.10 s after the last finger of the change before it starts moving; a finger takes 0.2 s/);
   refuses([{at: 0, up: 10}, {at: 1, fold: 1}, {at: 1.25, raise: 1}], /moves a finger at 1.25 s that is still settling until 1.32 s/);
-  refuses([{at: 0, up: 1}], /no counting order called "thumbs" \(the orders are thumb-first, index-first, pinky-first/, {order: 'thumbs'});
+  refuses([{at: 0, up: 1}], /no counting order called "thumbs" \(the orders are thumb-first, index-first, little-first/, {order: 'thumbs'});
   refuses([{at: 0, up: 1}], /order is a counting order's name or the five fingers/, {order: ['thumb', 'thumb', 'index', 'ring', 'little']});
   refuses([{at: 0, up: 1}], /first is the hand that counts first, 'left' or 'right'/, {first: 'top'});
   refuses([{at: 0, up: 1}], /unknown option speed; it takes anticipate, move/, {speed: 2});
   refuses([{at: 0, up: 1}], /move is seconds, above 0/, {move: 0});
   refuses([{at: 0, up: 1}], /overshoot is how far a finger passes its end/, {overshoot: .7});
+  // A number given as text, or null, is no number: it refuses instead of being read as one.
+  refuses([{at: 0, up: 1}], /overshoot is how far a finger passes its end, .*: a number 0 or more, under 0.5 \(e.g. 0.1\), not "0.1"/, {overshoot: '0.1'});
+  refuses([{at: 0, up: 1}], /lift is how far a finger passes its end, .* not null/, {lift: null});
+  refuses([{at: 0, up: 1}], /move is seconds, above 0 \(e.g. 0.12\), not "0.2"/, {move: '0.2'});
+  refuses([{at: 0, up: 1}], /stagger is the seconds between fingers .* not null/, {stagger: null});
+  refuses([{at: 0, up: 1}], /order is a counting order's name or the five fingers/, {order: null});
   assert.throws(() => fingersAt([{at: 0, up: 1}], NaN), /t is a time in seconds/);
   assert.doesNotThrow(() => fingersAt([{at: 0, up: 10}, {at: 1, fold: 1}, {at: 1.2, fold: 1}], 2), 'anticipate + move apart is enough for another finger');
 });

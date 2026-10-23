@@ -2555,7 +2555,8 @@ time. `fingersAt(keys, t, options?)` says which finger moves and when; the kit d
   Alipour & Fischer 2011, "Finger counting habits in Middle Eastern and Western individuals", *Frontiers in
   Psychology* 2:40; Bender & Beller 2012, "Nature and culture of finger counting", *Cognition* 124). The same
   surveys find many North Americans start with the index finger (`order: 'index-first'`), and many people in the
-  Middle East with the right hand's little finger (`{order: 'pinky-first', first: 'right'}`).
+  Middle East with the right hand's little finger (`{order: 'little-first', first: 'right'}`). An order is one hand's: the second hand counts its own fingers in
+  the same order (thumb to thumb, by default) once the first hand's five are up.
 - One change at a time: a key comes at least 0.2 s (anticipate + move) after the last finger of the key before it
   starts, and a finger moves again only once it has settled. Folding more than are up, raising past ten, a count
   outside 0..10 and keys out of order refuse, naming the key and the fix.
@@ -2568,7 +2569,7 @@ const ctx = createCanvas(1600, 900).getContext('2d'), t = 2.1;          // any m
 const keys = [{at: 0, up: 10}, {at: 1, fold: 1}, {at: 1.6, fold: 1}, {at: 2.2, fold: 1}];   // ten, take away three
 const {up, hands} = fingersAt(keys, t);
 for (const [hand, x0] of [['left', 500], ['right', 900]]) hands[hand].forEach((e, k) => {
-  const x = hand === 'left' ? x0 + 40 * k : x0 + 160 - 40 * k;          // thumbs inward, as a child holds them up
+  const x = hand === 'left' ? x0 + 160 - 40 * k : x0 + 40 * k;          // k = 0 is the thumb: thumbs toward the middle
   ctx.fillRect(x, 600 - 160 * e, 28, 160 * e);                          // a finger as long as it is straight
 });
 ctx.font = '700 120px sans-serif'; ctx.fillText(String(up), 760, 300);  // the number changes on the word
@@ -2584,15 +2585,18 @@ with it:
   turn ends), the head dips by up to 0.5 and comes back up a little past rest, over 0.6 s; never during the
   sentence's words, never over another nod, and on about four sentences in five (`chance`), so nobody nods at
   every one.
-- `lean` (0..1) — in over a question (`?`), held 0.8 s while the answer is awaited (until the listener answers, if
-  sooner), back over 0.5 s.
+- `lean` (0..1) — in over a question (`?`), held 0.8 s while the answer is awaited, back over 0.5 s (or let go
+  just before the listener answers, if sooner).
 - `brighten` (0..1) — a small smile or take after an exclamation (`!`), held a moment, gone in 1.2 s.
 - `look` — `clock.gaze(t, who)`: where to turn the eyes. `cause: {nod, lean, brighten}` — the sentence behind each
-  (`{scene, speaker, start, end, mark, text}`), so a review can say why a head moved.
+  (`{scene, speaker, start, end, mark, text, nth}`), so a review can say why a head moved.
 
 Each listener has a seed, by default made from their name: it sets how long they take to react to each sentence,
-how big the reaction is and which sentences they let pass, so two listeners never nod in step (`seed` sets your
-own). Nothing reacts while `who` is speaking, and the narrator (a scene with no speaker) is nobody on screen: no
+how big the reaction is and which sentences they let pass, so two listeners rarely nod in step (`seed` sets your
+own). Each sentence's draw comes from the seed and the sentence itself (its scene, speaker, words, and which time
+those words are said there), never from where it falls in the film: an edit elsewhere leaves its reaction as it
+was, so the segment cache redraws only the pieces near the edit. Nothing reacts while `who` is speaking (a reaction under way lets go over the 0.15 s before their turn starts),
+and the narrator (a scene with no speaker) is nobody on screen: no
 one reacts to it. The timing is `REACTING`; every number of it is an option. A sentence ends at a word that ends
 with `.`, `!`, `?` or `…` (as the voice's timings write the word) and at the end of a turn.
 
