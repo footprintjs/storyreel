@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.21.0 — one script (moments and speakers in the narration), and stills at the beats
 
 - **One script: moments and speakers written in the narration.** A beat keyed to a phrase breaks when its line is
   reworded (the phrase is no longer said, or is said twice), and a line changed meant editing it twice: in the
