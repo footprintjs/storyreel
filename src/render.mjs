@@ -23,6 +23,7 @@ import {makeScratch, sweepScratch} from './scratch.mjs';
 import {writeOutput, refuseFolders, securePath, makeFolder} from './files.mjs';
 import {checkEdit, placeEdit, chaptersThrough, chunksThrough, editRecord} from './edit.mjs';
 import {makeEditPainter} from './editpaint.mjs';
+import {uiReport} from './zones.mjs';
 
 /**
  * Loudness in two passes (FFmpeg's loudnorm): measure the whole mixed film, then set it with ONE fixed
@@ -35,6 +36,8 @@ import {makeEditPainter} from './editpaint.mjs';
  * The type it reports says so, and the making-of record flags it (pipeline.mjs · loudnessRecord).
  */
 const LOUDNESS_FORMAT = 'aformat=channel_layouts=stereo';
+/** The loudness a render is set to when it names none: integrated −16 LUFS, true peak −1.5 dBTP (a release target may name its platform's: release.mjs · targetLoudness). */
+export const DEFAULT_LOUDNESS = Object.freeze({I: -16, TP: -1.5});
 const finite = s => { const n = Number(s); return Number.isFinite(n) ? n : null; };
 const loudnormTarget = ({I, TP, LRA}) => `I=${I}:TP=${TP}${LRA === undefined ? '' : `:LRA=${LRA}`}`;
 
@@ -370,6 +373,22 @@ function posterLayout(film, edit, {layout, poster, fallback}) {
   return compileLayout(film, {...layout, crop: follows ? 'focus' : crop ?? [], keep: layout.keep ?? filmSpeakers(film)}, {from: poster, to: Math.min(film.total, poster + 1)});
 }
 
+/** What of the film is under the app's UI in a render's layouts (zones.mjs · uiReport): an edit's, cut by cut; null without `ui`. */
+const uiOf = (film, {cut, framed, from, to, fps}) => uiReport(film, cut ? cut.edit.cuts.map((c, i) => ({framed: cut.framedCuts[i], from: c.start, to: c.start + c.frames / fps, cut: i}))
+  : [{framed, from: Math.max(0, from), to: Math.min(to, film.total)}]);
+
+/**
+ * What of a compiled film is under the app's UI in a render with these options — its layout (with `ui`), and its part
+ * (from, to) or edit, as renderFilm takes them — without preparing the render: zones.mjs · uiReport's report, or null
+ * when the layout has no `ui`. A layout with covered: 'refuse' and anything under the UI refuses here. renderFilm asks
+ * the same as it is prepared; a release asks it of every refusing target before any target renders (release.mjs).
+ */
+export function renderUi(film, {layout = null, edit = null, from = 0, to = film.total, fps = RENDER_DEFAULTS.fps, poster = film.posterAt ?? null} = {}) {
+  if (!layout?.ui) return null;
+  const cut = edit === null || edit === undefined ? null : prepareEdit(film, edit, {layout, fps, poster});
+  return uiOf(film, {cut, framed: cut ? null : compileLayout(film, layout), from, to, fps});
+}
+
 /**
  * The end of a render, finished or failed: its working files are removed — unless they are in a `work` folder the
  * caller named, which is theirs to keep. renderFilm and makeFilm call it in a finally; a strategy of your own that
@@ -380,7 +399,7 @@ export function closeRender(job) {
 }
 
 function prepareJob({film, storyboard, timings, narrationDir = null, out, width: givenWidth, height: givenHeight, fps = RENDER_DEFAULTS.fps, intro = null, stamp = null,
-  from = intro ? -intro.seconds : 0, to = film.total, poster = film.posterAt ?? null, posterFrame = true, peakCeilingDBFS = -20, loudness = {I: -16, TP: -1.5}, layout = null, motionBlur = null,
+  from = intro ? -intro.seconds : 0, to = film.total, poster = film.posterAt ?? null, posterFrame = true, peakCeilingDBFS = -20, loudness = DEFAULT_LOUDNESS, layout = null, motionBlur = null,
   captionFiles = false, quality = 'standard', ffmpeg = process.env.FFMPEG_BIN || 'ffmpeg', video: _strategy, whole: _whole, segments: _segments, music = null, soundAt = 'start', work = null, edit: editGiven = null}) {
   checkLoudnessTarget(loudness);
   if (work !== null && !(typeof work === 'string' && work.trim())) throw new Error(`work is a folder for the render's working files, kept after the render (left out: a hidden folder beside the video, removed when the render ends), not ${JSON.stringify(work)}`);
@@ -399,6 +418,8 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   if (framed && (givenWidth !== undefined || givenHeight !== undefined)) throw new Error(`renderFilm: the ${framed.format} layout is ${framed.width}×${framed.height}; leave width and height out (they size a render without a layout) and size it with layout.scale: 2/3 makes ${draftSize(framed.format)}, a draft (0.5–2)`);
   const width = framed?.width ?? givenWidth ?? RENDER_DEFAULTS.width, height = framed?.height ?? givenHeight ?? RENDER_DEFAULTS.height;
   if (framed && intro && framed.format !== 'landscape') throw new Error(`renderFilm: an intro is drawn for the landscape frame; the ${framed.format} layout takes none (leave intro out)`);
+  // What of the film is under the app's UI (a layout with `ui`: zones.mjs) — a refusal comes now, before a frame is drawn.
+  const ui = uiOf(film, {cut, framed, from, to, fps});
   // First, the out folder and a `work` named elsewhere: their REAL paths, with no folder on the way another user could
   // rearrange (files.mjs · securePath) — everything is written through these paths only. Then every output's name,
   // before anything is made: a folder at one refuses now, not after the outputs before it.
@@ -416,7 +437,7 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   // A render starts on the film's frame grid (a part's window is rounded to the millisecond): frame f shows film second
   // start + f / fps, so a drawing held on twos (motion.mjs · heldTime) pairs the same frames in a part as in the film.
   const withIntro = intro && from < 0, start = Math.floor(Math.max(0, from) * fps + 1e-6) / fps;
-  const job = {film, storyboard, timings, narrationDir, out, dir, work: workDir, keepWork: work !== null, swept, unswept, width, height, fps, intro, withIntro, stamp, start, to, poster, posterFrame, peakCeilingDBFS, loudness, layout, framed, blur, captionKinds, ffmpeg, song, soundAt, quality,
+  const job = {film, storyboard, timings, narrationDir, out, dir, work: workDir, keepWork: work !== null, swept, unswept, width, height, fps, intro, withIntro, stamp, start, to, poster, posterFrame, peakCeilingDBFS, loudness, layout, framed, blur, captionKinds, ffmpeg, song, soundAt, quality, ui,
     /** An edit (edit.mjs · placeEdit) and each cut's layout, or null. */
     ...(cut ? {edit: cut.edit, framedCuts: cut.framedCuts, paintEdit: ctx => makeEditPainter({film, edit: cut.edit, framedCuts: cut.framedCuts, blur, width, height, fps, ctx})} : {}),
     /** How many frames the film part has (the intro's are extra); an edit's, all of it. */
@@ -506,7 +527,7 @@ export async function finishRender(job, video) {
   }
   return {out: path.resolve(job.out), seconds: length, chapters: chapters.map(([t, n]) => `${clockText(t)} ${n}`), loudness: {...loudnessSet, roles}, listening: [tooLoud, musicLoud].filter(Boolean),
     ...(posterFile ? {poster: posterFile} : {}), ...(framed ? {format: framed.format} : {}), ...(captionKinds.length ? {captions} : {}), ...(video.report ? {video: video.report} : {}),
-    ...(job.edit ? {edit: editRecord(job.edit)} : {}), ...framingOf(job)};
+    ...(job.edit ? {edit: editRecord(job.edit)} : {}), ...framingOf(job), ...(job.ui ? {ui: job.ui} : {})};
 }
 
 /** How the crop was framed, for the record, when it follows or fills: {framing} (an edit's: one per cut), else nothing. */

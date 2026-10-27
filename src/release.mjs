@@ -34,6 +34,17 @@
  * tall frame between the title band and below the captions) — an edit (edit.mjs), rendered as one video. A target's
  * own `render` settings (posterFrame, quality) go over the film's: `render: {posterFrame: false}` starts a target on
  * the film's own frame; an edit's joins never show the poster.
+ *
+ * Where a platform's app draws over the video is its adapter's data too (`ui`: zones.mjs): the bar at the top, the
+ * column of buttons, the strip of name and caption at the foot, each in fractions of the frame, measured off the
+ * platform's own published figure or estimated (each zone says which; `facts.ui` says where and when). The title band
+ * and the captions are laid out clear of it, and what is still under it is reported on the release's result
+ * (`covered`), or refused (`ui: {covered: 'refuse'}`) before anything renders (refuseCoveredFirst: a voiced film, or one
+ * with a song, before that target's frames). A target may give its own
+ * zones, the platform's published ad safe zone (`ui: {zones: 'ads'}`), the named faces to keep clear (`ui.faces`), or
+ * none (`ui: false`). The loudness is the platform's goal where its adapter names one (`loudness`: Shorts, TikTok and
+ * Reels −14 LUFS, −1 dBTP), the render's default elsewhere (targetLoudness). Before anything renders, this machine is
+ * asked what the renders need (doctor.mjs): a missing encoder or filter refuses in seconds.
  */
 import {readChapters} from 'footprint-narration';
 import {readFileSync, statSync} from 'node:fs';
@@ -45,6 +56,10 @@ import {FORMAT_NAMES, formatOf, formatScale} from './layout.mjs';
 import {checkEdit} from './edit.mjs';
 import {QUALITIES} from './paint.mjs';
 import {creditLines} from './found/index.mjs';
+import {readUi, readZones, COVERED} from './zones.mjs';
+import {checkLoudnessTarget, DEFAULT_LOUDNESS, renderUi} from './render.mjs';
+import {castFilm, pacedTimings, compileForRender} from './prepare.mjs';
+import {doctor, requireDoctor} from './doctor.mjs';
 
 /** The built-in adapters, each loaded on first use. */
 export const TARGETS = Object.freeze({
@@ -59,9 +74,15 @@ export const TARGET_NAMES = Object.freeze(Object.keys(TARGETS));
 /** Who a film is made for: 'kids' (directed at children) or 'general' (anyone, a teaser for parents included). */
 export const AUDIENCES = Object.freeze(['kids', 'general']);
 const POST_KEYS = ['title', 'description', 'tags', 'audience', 'thumbnail', 'lang', 'synthetic', 'credits'];
-const TARGET_KEYS = ['target', 'name', 'from', 'to', 'header', 'crop', 'captions', 'limits', 'scale', 'cuts', 'join', 'end', 'fill', 'keep', 'render'];
+const TARGET_KEYS = ['target', 'name', 'from', 'to', 'header', 'crop', 'captions', 'limits', 'scale', 'cuts', 'join', 'end', 'fill', 'keep', 'render', 'ui'];
 /** The render settings a target may give for itself, over the film's (makeRelease's render). */
-const TARGET_RENDER_KEYS = ['posterFrame', 'quality'];
+const TARGET_RENDER_KEYS = ['posterFrame', 'quality', 'loudness'];
+/** What an adapter's `ui` says: the zones its app draws over the video, its published ad safe zone, what to do with something under them. */
+const ADAPTER_UI_KEYS = ['zones', 'ads', 'covered'];
+/** What a target's own `ui` may change over its adapter's. */
+const TARGET_UI_KEYS = ['zones', 'covered', 'faces'];
+/** The loudness a render is set to when neither the target, the film nor the platform names one (render.mjs owns it). */
+export {DEFAULT_LOUDNESS};
 
 /** The adapter interface: what every platform adapter must say. Returns the adapter; refuses naming what is missing. */
 export function checkAdapter(a) {
@@ -80,7 +101,46 @@ export function checkAdapter(a) {
   if (a.thumbnail !== null && !(a.thumbnail && a.thumbnail.width > 0 && a.thumbnail.height > 0)) throw new TypeError(`${where}: thumbnail is {width, height, maxBytes?} or null (the platform picks a frame)`);
   if (!(a.facts?.checked && Array.isArray(a.facts.sources))) throw new TypeError(`${where}: facts {checked: date, sources: [url]} says when its limits were checked`);
   if (typeof a.post !== 'function') throw new TypeError(`${where}: post(post, {chapters, seconds, limits}) composes the text fields`);
+  if (a.ui !== undefined) checkAdapterUi(a.ui, where);
+  if (a.loudness !== undefined) {
+    try { checkLoudnessTarget(a.loudness); } catch (e) { throw new TypeError(`${where}: ${e.message} (an adapter's loudness is the integrated loudness and true peak the release normalises to)`); }
+  }
+  for (const key of ['ui', 'loudness']) {
+    const f = a.facts[key];
+    if (f !== undefined && !(f && f.checked && Array.isArray(f.sources))) throw new TypeError(`${where}: facts.${key}, when given, is {checked: date, sources: [url], note?}: when its ${key === 'ui' ? 'zones' : 'loudness goal'} were checked, and where`);
+  }
   return a;
+}
+
+/** An adapter's `ui`: {zones, ads?, covered?} — where its app draws over the video (zones.mjs · readZones), its published ad safe zone, report or refuse. */
+function checkAdapterUi(ui, where) {
+  if (!ui || typeof ui !== 'object' || Array.isArray(ui)) throw new TypeError(`${where}: ui is {zones, ads?, covered?}: where the platform's app draws over the video, in fractions of the frame`);
+  for (const key of Object.keys(ui)) if (!ADAPTER_UI_KEYS.includes(key)) throw new TypeError(`${where}: ui has unsupported key ${key} (an adapter's ui is {${ADAPTER_UI_KEYS.join(', ')}})`);
+  try {
+    readZones(ui.zones, 'ui.zones');
+    if (ui.ads !== undefined) readZones(ui.ads, 'ui.ads');
+  } catch (e) { throw new TypeError(`${where}: ${e.message}`); }
+  if (ui.covered !== undefined && !COVERED.includes(ui.covered)) throw new TypeError(`${where}: ui.covered is 'report' (the render goes on and says what is under the app's UI) or 'refuse' (it stops before a frame is drawn), not ${JSON.stringify(ui.covered)}`);
+}
+
+/**
+ * A target's app UI: the adapter's (zones, covered), with the target's own over it — zones of its own, or 'ads' (the
+ * platform's published ad safe zone, adapter.ui.ads), covered, the faces to keep clear — checked (zones.mjs · readUi);
+ * false for none (the bands as the format places them). null when neither says any.
+ */
+function readTargetUi(given, adapter, where) {
+  const own = adapter.ui ?? null;
+  if (given === false) return null;
+  if (given === undefined) return own ? readUi({zones: own.zones, covered: own.covered ?? 'report'}, `${where}: ui`) : null;
+  if (!given || typeof given !== 'object' || Array.isArray(given)) throw new Error(`${where}: ui is {zones?, covered?, faces?} over the platform's own, or false (no app UI: the bands as the format places them)`);
+  for (const key of Object.keys(given)) if (!TARGET_UI_KEYS.includes(key)) throw new Error(`${where}: ui has unsupported key ${key} (a target's ui is {${TARGET_UI_KEYS.join(', ')}})`);
+  let zones = given.zones ?? own?.zones;
+  if (given.zones === 'ads') {
+    if (!own?.ads) throw new Error(`${where}: ui.zones 'ads' is the platform's published ad safe zone, and ${adapter.label} declares none (ui.ads): give the zones themselves`);
+    zones = own.ads;
+  }
+  if (!zones) throw new Error(`${where}: ${adapter.label} declares no app UI over its video (ui.zones): give ui.zones yourself, [{name, box: [x, y, width, height] in fractions of the frame}]`);
+  return readUi({zones, covered: given.covered ?? own?.covered ?? 'report', faces: given.faces ?? []}, `${where}: ui`);
 }
 
 /** A target as given (a name, an adapter, or {target, …options}) → {adapter, options}; a built-in loads here, lazily. */
@@ -98,8 +158,9 @@ export async function loadTarget(spec) {
   const limits = given.limits ? mergeLimits(adapter.limits, given.limits) : adapter.limits;
   if (given.limits) checkAdapter({...adapter, limits});   // the limits as overridden answer to the same interface
   const where = `release target ${JSON.stringify(given.name ?? adapter.name)}`;
+  const ui = readTargetUi(given.ui, adapter, where);
   return {adapter: {...adapter, limits}, options: {name: given.name ?? adapter.name, from: given.from, to: given.to, header: given.header, crop: given.crop, captions: given.captions, scale: given.scale,
-    ...readEditOptions(given, adapter, where)}};
+    ...(ui ? {ui} : {}), ...readEditOptions(given, adapter, where)}};
 }
 
 /**
@@ -114,6 +175,9 @@ function readEditOptions(given, adapter, where) {
     for (const key of Object.keys(r)) if (!TARGET_RENDER_KEYS.includes(key)) throw new Error(`${where}: render has unsupported key ${key} (a target's own render settings are ${TARGET_RENDER_KEYS.join(', ')}; the rest are the film's: makeRelease's render)`);
     if (r.posterFrame !== undefined && typeof r.posterFrame !== 'boolean') throw new Error(`${where}: render.posterFrame is true (the poster replaces the first frame) or false (the video starts on the film's own frame)`);
     if (r.quality !== undefined && !QUALITIES.includes(r.quality)) throw new Error(`${where}: render.quality must be ${QUALITIES.map(q => `'${q}'`).join(' or ')}`);
+    if (r.loudness !== undefined) {
+      try { checkLoudnessTarget(r.loudness); } catch (e) { throw new Error(`${where}: render.${e.message} (a target's own loudness goes over its platform's)`); }
+    }
     out.render = r;
   }
   if (given.fill !== undefined) {
@@ -226,6 +290,59 @@ export function creditsText(post, tools, sounds = []) {
     ...(post.synthetic?.includes('voice') ? ['', 'The narration is a synthetic voice.'] : []), ''].join('\n');
 }
 
+/** A target's layout: its format, its title band and captions, its crop, fill and keep, and its app's UI (zones.mjs). */
+function targetLayout(adapter, options, p) {
+  return {format: adapter.video.format, ...(adapter.video.captions || options.captions ? {captions: options.captions ?? adapter.video.captions} : {}),
+    ...(options.header ? {header: options.header} : adapter.video.header && p.title ? {header: {title: p.title}} : {}), ...(options.crop && !options.edit ? {crop: options.crop} : {}), ...(options.scale !== undefined ? {scale: options.scale} : {}),
+    ...(options.fill ? {fill: true} : {}), ...(options.keep !== undefined ? {keep: options.keep} : {}),
+    // Where the platform's app draws over the video (the adapter's zones, the target's over them): the bands are laid out clear of it.
+    ...(options.ui ? {ui: {zones: options.ui.zones, covered: options.ui.covered, ...(options.ui.faces.length ? {faces: options.ui.faces} : {})}} : {})};
+}
+
+/**
+ * Every target that refuses what is under its app's UI (ui.covered: 'refuse'), checked before anything renders: the film
+ * compiled once as makeFilm compiles it — its cast, its timings paced as a silent cut's are (prepare.mjs · pacedTimings),
+ * no file written — and each such target's layout and part (or edit) asked (render.mjs · renderUi), so a refusal comes
+ * before any target renders and before any folder is made. A voiced film (narrationDir: its timings come from pacing its
+ * audio) or one with a song (music: the fit moves its scenes) cannot be timed before its render: its targets refuse as
+ * each render is prepared — before that target's frames, after the targets before it (README: The app's own UI).
+ */
+async function refuseCoveredFirst(film, loaded, p) {
+  const refusing = loaded.filter(l => l.options.ui?.covered === 'refuse');
+  if (!refusing.length || film.narrationDir || !film.timings || film.music) return;
+  const {storyboard, recipe, strings} = castFilm({storyboard: film.storyboard, recipe: film.recipe, strings: film.strings ?? null, cast: film.cast ?? null});
+  const compiled = await compileForRender({...film, storyboard, recipe, strings}, await pacedTimings({storyboard, timings: film.timings, pacing: film.pacing ?? null}));
+  const r = film.render ?? {};
+  for (const {adapter, options} of refusing) {
+    const edit = options.edit ? endOfFilm(options.edit, film.storyboard) : null;
+    try {
+      renderUi(compiled, {layout: targetLayout(adapter, options, p), edit, ...(r.fps ? {fps: r.fps} : {}), ...('poster' in r ? {poster: r.poster} : {}),
+        ...(edit ? {} : {from: options.from ?? r.from ?? 0, to: options.to ?? r.to ?? compiled.total})});
+    } catch (e) { throw new Error(`release to ${adapter.label}: ${e.message}`, {cause: e}); }
+  }
+}
+
+/**
+ * The loudness a target's render is set to: its own (`render.loudness` on the target), else the film's render's (one
+ * value the caller chose for every target), else the platform's goal (adapter.loudness: −14 LUFS, −1 dBTP for Shorts,
+ * TikTok and Reels), else undefined — the render's own default ({I: −16, TP: −1.5}: DEFAULT_LOUDNESS), as before.
+ */
+export function targetLoudness(adapter, own = {}, filmRender = {}) {
+  if (own && own.loudness !== undefined) return own.loudness;
+  if (filmRender && filmRender.loudness !== undefined) return filmRender.loudness;
+  return adapter.loudness;
+}
+
+/**
+ * What the release's renders ask of FFmpeg (doctor.mjs · NEEDS's `when`): the finished-file check, an edit's
+ * cross-fades, the high-quality encode, a stamp.
+ */
+function releaseNeeds(film, loaded) {
+  const r = film.render ?? {}, edits = loaded.filter(l => l.options.edit), qualities = [r.quality, ...loaded.map(l => l.options.render?.quality)];
+  return {check: film.check !== undefined && film.check !== null, edit: edits.length > 0, quality: qualities.includes('high') ? 'high' : r.quality ?? 'standard',
+    stamp: Boolean(r.stamp)};
+}
+
 /** An edit's length when every cut is given in seconds (the overlaps aside), else null: known only once the film is compiled. */
 function editSeconds({cuts, end}) {
   if (!cuts.every(c => typeof c.from === 'number' && typeof c.to === 'number')) return null;
@@ -283,6 +400,8 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
   if (names.includes(WORK)) throw new Error(`a target cannot be called "${WORK}": that folder holds the renders' working files (give the target another name)`);
   // First everything that can be known before a frame is drawn, for every target: nothing renders if any refuses.
   const poster = film.render && 'poster' in film.render ? film.render.poster != null : film.recipe?.poster != null;
+  // This machine asked first (doctor.mjs): an FFmpeg without what these renders need refuses in seconds, not after one renders.
+  const health = requireDoctor(doctor({...(film.render?.ffmpeg ? {ffmpeg: film.render.ffmpeg} : {}), render: releaseNeeds(film, loaded), themes: [film.theme ?? 'paper']}), 'release');
   for (const {adapter, options} of loaded) {
     // makeFilm's check reads a render on the film's own clock: an edit refuses it here, before any target renders.
     if (options.edit && film.check !== undefined && film.check !== null) throw new Error(`release target ${JSON.stringify(options.name)}: check reads a render on the film's own clock, and its cuts join stretches of it; leave check out of this release, or release each cut's part (from, to) apart to check it`);
@@ -290,6 +409,9 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
     refuse(adapter, planProblems(adapter, p, {seconds: part, poster, scale: options.scale}));
     if (p.thumbnail !== 'poster') await checkThumbnail(adapter, p.thumbnail);
   }
+  // A target that refuses what is under its app's UI (ui: {covered: 'refuse'}) is asked now, on the film compiled once:
+  // a refusal comes before any target renders and before any folder is made (refuseCoveredFirst).
+  await refuseCoveredFirst(film, loaded, p);
   const stem = base ?? (String(film.storyboard?.title ?? 'film').toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'film');
   // Then, still before a frame is drawn, every target's folders and the names written in them: each folder inside `out`
   // a real one of the release's own that no one else can change (files.mjs · outputFolder), and no folder at a name a
@@ -305,13 +427,13 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
   const released = [];
   for (const [i, {adapter, options}] of loaded.entries()) {
     const {dir, work} = folders[i];
-    const layout = {format: adapter.video.format, ...(adapter.video.captions || options.captions ? {captions: options.captions ?? adapter.video.captions} : {}),
-      ...(options.header ? {header: options.header} : adapter.video.header && p.title ? {header: {title: p.title}} : {}), ...(options.crop && !options.edit ? {crop: options.crop} : {}), ...(options.scale !== undefined ? {scale: options.scale} : {}),
-      ...(options.fill ? {fill: true} : {}), ...(options.keep !== undefined ? {keep: options.keep} : {})};
+    const layout = targetLayout(adapter, options, p);
     // A platform that takes an uploaded thumbnail (YouTube) shows no frame of the video as one: it starts on the film's own.
     // The target's own render settings (posterFrame, quality) go over the film's.
     const own = options.render ?? {}, posterSaid = (film.render && 'posterFrame' in film.render) || 'posterFrame' in own;
-    const render = {...(adapter.thumbnail && !posterSaid ? {posterFrame: false} : {}), ...(film.render ?? {}), ...own, layout, ...(adapter.video.captionFiles ? {captionFiles: adapter.video.captionFiles} : {}),
+    // The loudness: the target's own, else the film's render's, else the platform's goal, else the render's default (targetLoudness).
+    const loudness = targetLoudness(adapter, own, film.render);
+    const render = {...(adapter.thumbnail && !posterSaid ? {posterFrame: false} : {}), ...(film.render ?? {}), ...own, ...(loudness ? {loudness} : {}), layout, ...(adapter.video.captionFiles ? {captionFiles: adapter.video.captionFiles} : {}),
       ...(options.edit ? {edit: endOfFilm(options.edit, film.storyboard)} : {}),
       ...(!options.edit && options.from !== undefined ? {from: options.from} : {}), ...(!options.edit && options.to !== undefined ? {to: options.to} : {})};
     // A release leaves the house: an open claim the film says or shows refuses it (makeFilm's release; claims.mjs).
@@ -329,7 +451,11 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
     const credits = writeOutput(path.join(dir, 'CREDITS.txt'), creditsText(p, made.tools ?? [], sounds));
     released.push({target: options.name, dir, video, captions, thumbnail, credits, post: fields, makingOf: result.makingOf, work,
       // An edit as cut (edit.mjs), and every place the crop could not keep a named thing whole (layout.mjs · framing).
-      ...(result.edit ? {edit: result.edit} : {}), ...clippedOf(made.framing)});
+      ...(result.edit ? {edit: result.edit} : {}), ...clippedOf(made.framing),
+      // The loudness it was set to, and what is still under the platform's app (zones.mjs · uiReport): its findings, with their fixes.
+      loudness: result.loudness.target, ...(result.ui?.findings.length ? {covered: result.ui.findings} : {}),
+      // What the doctor could not ask, or a font that falls back to another face: said, never refused.
+      ...(health.unknown.length || health.missing.length ? {doctor: {unknown: health.unknown, missing: health.missing}} : {})});
   }
   return released;
 }

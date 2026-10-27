@@ -378,6 +378,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       ...(result.captions ? {captionFiles: Object.values(result.captions).map(f => path.basename(f))} : {})}} : {}),
     // How a tall crop was framed when it follows or fills (layout.mjs): its keys, the ones nudged off a kept thing, the ones that could not be.
     ...(result.framing ? {framing: result.framing} : {}),
+    // What of the film is under the app's UI (zones.mjs · uiReport): the zones, how the bands were fitted clear, what is still under them.
+    ...(result.ui ? {ui: result.ui} : {}),
     ...(film.reading.length ? {reading: {tooShort: film.reading}} : {}),
     // Every number on screen and where it comes from (claims.mjs), with the verdict and why (check-claims).
     claims: {...(run?.state ?? run?.sharedState ?? {}).claims, saw: SAW, ...(film.lang ? {lang: film.lang} : {}), ...claimsCount(film.claims), unsourced: unsourcedClaims(film.claims).map(c => ({number: c.number, scene: c.scene, path: c.path, at: c.at, fix: claimText(c)})),

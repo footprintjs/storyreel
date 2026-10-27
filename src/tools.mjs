@@ -30,6 +30,8 @@ import {formatScale} from './layout.mjs';
 import {hashOf} from './hash.mjs';
 import {reviewPart, reviewSummary, REVIEW_DEFAULTS, SUMMARY_TOP} from './review.mjs';
 import {readRubric, rubricSheet, rubricText, recordScores} from './rubric.mjs';
+import {TARGETS, TARGET_NAMES, loadTarget} from './release.mjs';
+import {phoneSheet, PHONE} from './phone.mjs';
 
 export const CONFIG = 'storyreel.config.mjs';
 export {clockSeconds};
@@ -258,10 +260,37 @@ const MOST_FRAMES = 30;
  */
 export async function still(project, args = {}) {
   if (args.at !== undefined && args.beats !== undefined) throw new Error('still: give the moments (at) or a scene whose every beat to show (beats), not both');
+  if (args.phone !== undefined) return phoneStill(project, args);
+  if (args.title !== undefined) throw new Error('still: title is the title band\'s words in a phone still (--phone <target>)');
   const {film} = project, shot = args.beats === undefined ? namedFrames(film, args) : sceneBeats(film, args), width = widthOf(args, 'still');
   const {moments} = shot, file = path.join(stillsFolder(project), `${pictureName(shot.name)}.png`);
   writeOutput(file, await contactSheet(film, {moments, columns: Math.min(3, moments.length), width}));
   return {text: `${file} · ${moments.length} frame${moments.length > 1 ? 's' : ''}${shot.of ?? ''}: ${moments.map(m => `${m.label} (${m.t.toFixed(2)} s)`).join(', ')}${shot.rest ?? ''}`, file};
+}
+
+/**
+ * A phone still (phone.mjs · phoneSheet): the moments as one platform shows them on a phone — the target's format and
+ * title band, its captions fitted clear of its app's UI, the UI as grey shapes over it, what is still under it in red.
+ * `phone` names the target (a built-in release target); the project's layout lends its crop, fill and keep when it is of
+ * the same format; `title` the band's words (default: the layout's, else the storyboard's title). {text, file}.
+ */
+async function phoneStill(project, args) {
+  const name = String(args.phone);
+  if (!TARGETS[name]) throw new Error(`still: --phone names a release target (${TARGET_NAMES.join(', ')}), not ${JSON.stringify(args.phone === 'true' ? '' : args.phone)}`);
+  const {adapter, options} = await loadTarget(name), {film} = project, own = project.inputs.layout?.format === adapter.video.format ? project.inputs.layout : {};
+  const width = Number(args.width ?? PHONE.width);
+  if (!(Number.isInteger(width) && width >= 200 && width <= 1080)) throw new Error(`still: with --phone, width is each phone's width in pixels, 200–1080 (${PHONE.width}), not ${JSON.stringify(args.width)}`);
+  const title = args.title !== undefined ? String(args.title) : own.header?.title ?? project.inputs.storyboard?.title ?? adapter.label;
+  const layout = {format: adapter.video.format, ...(adapter.video.captions ? {captions: own.captions ?? true} : {}), ...(adapter.video.header ? {header: {...(own.header || {}), title}} : {}),
+    ...Object.fromEntries(['crop', 'fill', 'keep'].filter(k => own[k] !== undefined).map(k => [k, own[k]])),
+    ...(options.ui ? {ui: {zones: options.ui.zones, covered: 'report', ...(own.ui?.faces ? {faces: own.ui.faces} : {})}} : {})};
+  const shot = args.beats === undefined ? namedFrames(film, args) : sceneBeats(film, args);
+  const {png, frames} = await phoneSheet(film, {layout, moments: shot.moments, width});
+  const file = path.join(stillsFolder(project), `${pictureName(`phone-${name}-${shot.name}`)}.png`);
+  writeOutput(file, png);
+  const zones = options.ui ? options.ui.zones.map(z => `${z.name} (${z.basis ?? 'given'})`).join(', ') : 'none declared';
+  const under = frames.flatMap(f => f.covered.map(h => `\n  ${f.label} (${f.t.toFixed(2)} s): the ${h.kind === 'face' ? `face "${h.name}"` : h.kind === 'title' ? 'title band' : 'caption'} is under the ${h.zone}`));
+  return {text: `${file} · ${frames.length} phone${frames.length > 1 ? 's' : ''} (${adapter.label}, ${width} px wide)${shot.of ?? ''}: ${frames.map(f => `${f.label} (${f.t.toFixed(2)} s)`).join(', ')}${shot.rest ?? ''}\nthe app's UI: ${zones}${under.length ? `\nunder the UI, outlined in red:${under.join('')}` : '\nnothing of the title, the captions or the named faces is under the UI'}`, file};
 }
 
 /** The moments a still names (at), at most MOST_FRAMES: {moments, name}. from and to belong to beats. */
@@ -460,10 +489,12 @@ export const TOOLS = Object.freeze({
     args: {}},
   changes: {run: changes, load: 'inputs', about: 'What an edit changed, before the full render: each changed stretch of the picture and why ("0:12–0:18 left · its recipe entries changed"), then the count. With render: only those pieces drawn (kept: the full render draws none of them again) and a short clip of them back to back, labelled with their times, the film either side and its voice under them. Compares with the cache of the config\'s full render (render, code) into out.',
     args: {render: 'true to draw the changed pieces and write the clip, <out>/changes/review.mp4', handles: `seconds of the film either side of each change in the clip (${CHANGES_DEFAULTS.handles})`}},
-  still: {run: still, picture: true, about: 'One picture to confirm the look: frames side by side as a PNG, at the moments given (at) or at every beat of a scene (beats), each labelled. Look at it last, after the timeline and the review.',
+  still: {run: still, picture: true, about: 'One picture to confirm the look: frames side by side as a PNG, at the moments given (at) or at every beat of a scene (beats), each labelled; with phone, each at phone size inside that platform\'s app UI, anything under it outlined in red. Look at it last, after the timeline and the review.',
     args: {at: 'moments: scene+seconds (today+64.70, as the timeline prints a scene\'s times), seconds or m:ss on the film clock, or what is said there — scene:phrase or scene:{moment}, +seconds after either (today:{hop}+0.5); comma-separated (a phrase\'s own commas left out), at most 30 (or beats)',
       beats: `a scene: a frame at each of its beats (the ones the timeline lists for it), labelled with its scene+seconds and what is said there; at most ${MOST_FRAMES} a picture, the rest named with the call that shows them (or at)`,
-      from: 'with beats: the beats from this moment on (a moment as at takes it)', to: 'with beats: the beats up to this moment', width: `the picture's width in pixels, 100–4000 (${TOOL_DEFAULTS.width})`}},
+      from: 'with beats: the beats from this moment on (a moment as at takes it)', to: 'with beats: the beats up to this moment', width: `the picture's width in pixels, 100–4000 (${TOOL_DEFAULTS.width}); with phone, each phone's, 200–1080 (${PHONE.width})`,
+      phone: 'a release target (youtube-shorts, tiktok, instagram-reels, …): each moment at phone size as that platform shows it — its title band and captions fitted clear of its app\'s UI, the UI as grey shapes on top, anything still under it outlined in red',
+      title: 'with phone: the title band\'s words (default: the config layout\'s, else the storyboard\'s title)'}},
   sheet: {run: sheet, picture: true, about: `The whole film at a glance, for a reviewer: a frame every ${TOOL_DEFAULTS.every} s, ${TOOL_DEFAULTS.per} to a sheet, each labelled with its time and scene, as PNGs (paths printed). Hand them with the script to someone checking the film.`,
     args: {scene: 'scene ids, comma-separated (default: the whole film; or a window: from and to)', from: 'the window\'s start on the film clock: seconds or m:ss', to: 'the window\'s end: seconds or m:ss',
       every: `seconds between frames (${TOOL_DEFAULTS.every})`, per: `frames a sheet (${TOOL_DEFAULTS.per})`, width: `each sheet's width in pixels, 100–4000 (${TOOL_DEFAULTS.sheetWidth})`}},

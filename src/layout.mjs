@@ -24,11 +24,18 @@
  * A layout is data: unknown keys refuse. The bands take the film's own paper and ink and its sans type
  * (film.theme) unless the layout names a background or ink; a band's box may be moved (`box`) when an
  * app's controls change.
+ *
+ * Where one app draws over the video is the platform's own data (`ui`: zones.mjs; a release target passes its
+ * adapter's): with it, the captions and the title band are laid out clear of the app's UI — a line that would be
+ * under the buttons is narrowed about its centre, a block under a strip moves out of it — and a line already clear is
+ * drawn exactly as without it. What is still under the UI (and every named face under it) is the check's to report
+ * (zones.mjs · uiFindings).
  */
 import {captionChunks, captionAt} from 'footprint-narration';
-import {spokenTracks, drawCaption} from './captions.mjs';
+import {spokenTracks, drawCaption, captionFit} from './captions.mjs';
 import {inOut} from './ease.mjs';
 import {FOLLOW, keepWhole, filmSpeakers} from './follow.mjs';
+import {readUi, zoneRects, fitBlock, EDGE} from './zones.mjs';
 export {FOLLOW, followFocus, keepWhole, NUDGE} from './follow.mjs';
 
 const FORMATS = Object.freeze({
@@ -41,7 +48,7 @@ const FORMATS = Object.freeze({
     fill: [0, 475, 1080, 1165]},
 });
 export const FORMAT_NAMES = Object.freeze(Object.keys(FORMATS));
-const KEYS = ['format', 'header', 'captions', 'crop', 'background', 'ink', 'scale', 'fill', 'keep'];
+const KEYS = ['format', 'header', 'captions', 'crop', 'background', 'ink', 'scale', 'fill', 'keep', 'ui'];
 const CROP_KEY_KEYS = ['at', 'x', 'y', 'width', 'cut'], FOLLOW_KEY_KEYS = ['at', 'follow', 'width'];
 const MOVE = .8;   // seconds a crop takes to move to its next key
 const SANS = '"Helvetica Neue", Helvetica, Arial, sans-serif';
@@ -76,6 +83,23 @@ export function compileLayout(film, spec, span = {from: 0, to: film.total}) {
   const bg = spec.background ?? palette.bg ?? '#f3eee3', ink = spec.ink ?? palette.ink ?? '#23211c';
   const sized = b => b.map(v => v * k);   // the boxes in output pixels; the bands themselves are drawn in the format's
   const boxes = Object.freeze({film: sized(f.film), ...(header ? {header: sized(header.box)} : {}), ...(captions ? {captions: sized(captions.box)} : {})});
+  // The app's UI over the picture, in the format's pixels: the bands are fitted clear of it (fitted once a title, once a chunk).
+  const ui = spec.ui === undefined ? null : readUi(spec.ui), zones = ui ? zoneRects(ui.zones, f.width, f.height) : null;
+  const fits = new Map(), captionKey = c => c.words.map(w => w.text).join('\u0001');
+  let titleFitted;
+  const titleFit = ctx => {
+    if (!header) return null;
+    if (titleFitted) return titleFitted;
+    ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    try { titleFitted = fitTitle(ctx, header, sans, zones, f.height); } finally { ctx.restore(); }
+    return titleFitted;
+  };
+  const captionStyle = captions ? {size: captions.size, font: sans, zones, height: f.height} : null;
+  const fitCaption = (ctx, caption) => {
+    const key = captionKey(caption);
+    if (!fits.has(key)) fits.set(key, captionFit(ctx, caption, captions.box, captionStyle));
+    return fits.get(key);
+  };
   return {
     width: f.width * k, height: f.height * k, format: spec.format, boxes,
     /** The bands' paper (the film's, unless the layout names a background): what an edit's pop covers the picture with. */
@@ -105,11 +129,34 @@ export function compileLayout(film, spec, span = {from: 0, to: film.total}) {
      */
     overlay(ctx, t, {still = false, ...given} = {}) {
       ctx.save(); ctx.scale(k, k);
-      if (header) drawHeader(ctx, header, ink, sans);
-      if (chunks && !still) drawCaption(ctx, 'caption' in given ? given.caption : captionAt(chunks, t), captions.box, {size: captions.size, font: sans});
+      if (header) drawHeader(ctx, header, ink, sans, zones ? titleFit : null);
+      if (chunks && !still) drawCaption(ctx, 'caption' in given ? given.caption : captionAt(chunks, t), captions.box, zones ? captionStyle : {size: captions.size, font: sans});
       ctx.restore();
     },
+    /**
+     * With `ui` only: the app's UI over the picture — {zones: [{name, basis?, rect}] in the format's pixels, covered,
+     * faces} — and what the check reads (zones.mjs · uiFindings): the title band and a caption as drawn (fitted clear
+     * of the zones; `covered` what is still under one), and a box on the 1600×900 frame at t in the format's pixels
+     * (cut to the film's box: null when none of it shows).
+     */
+    ...(ui ? {
+      ui: Object.freeze({zones, covered: ui.covered, faces: ui.faces}),
+      titleFit,
+      captionFit: (ctx, caption) => (captions ? fitCaption(ctx, caption) : {rects: [], fitted: false, covered: []}),
+      toOutput: (t, box) => toOutput(f, crop, t, box),
+    } : {}),
   };
+}
+
+/**
+ * A box [x0, y0, x1, y1] on the 1600×900 frame at t, in the format's pixels as the picture draws it (through the crop's
+ * window, or the whole frame scaled to the film's box), cut to the film's box; null when none of it shows there.
+ */
+function toOutput(f, crop, t, [x0, y0, x1, y1]) {
+  const [bx, by, bw, bh] = f.film, window = crop ? cropWindow(crop, t, f.crop) : null;
+  const sx = window ? bw / window.w : bw / 1600, sy = window ? bw / window.w : bh / 900, ox = window?.x0 ?? 0, oy = window?.y0 ?? 0;
+  const r = [Math.max(bx, bx + (x0 - ox) * sx), Math.max(by, by + (y0 - oy) * sy), Math.min(bx + bw, bx + (x1 - ox) * sx), Math.min(by + bh, by + (y1 - oy) * sy)];
+  return r[2] - r[0] > EDGE && r[3] - r[1] > EDGE ? r : null;
 }
 
 /**
@@ -256,15 +303,48 @@ function balancedLines(ctx, text, width) {
   return wrap(ctx, words, hi);
 }
 
-/** The title band: the title, bold, wrapped into balanced lines that fit its box, and a smaller line under it. */
-function drawHeader(ctx, {title, sub, box: [x, y, w, h]}, ink, sans) {
+/**
+ * The title band: the title, bold, wrapped into balanced lines that fit its box, and a smaller line under it. `fit`
+ * (with the app's UI: the compiled layout's titleFit) places it clear of the zones; left out, it is placed as always.
+ */
+function drawHeader(ctx, header, ink, sans, fit = null) {
   ctx.save(); ctx.fillStyle = ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const placed = fit ? fit(ctx).placed : titleLines(ctx, header, sans);
+  ctx.font = placed.font;
+  for (const line of placed.lines) ctx.fillText(line.text, placed.x, line.cy);
+  if (placed.sub) { ctx.font = subFont(sans); ctx.globalAlpha *= .7; ctx.fillText(placed.sub.text, placed.x, placed.sub.cy); }
+  ctx.restore();
+}
+const subFont = sans => `600 32px ${sans}`;
+
+/**
+ * The title band laid out in its box (ctx centred, middle baseline): the largest size (64 down to 34) whose balanced
+ * lines fit, {font, x: the centre, lines: [{text, cy}], sub: {text, cy} | null}.
+ */
+function titleLines(ctx, {title, sub, box: [x, y, w, h]}, sans) {
   let size = 64; const font = s => `800 ${s}px ${sans}`;
   const lines = text => balancedLines(ctx, text, w);
   ctx.font = font(size); let wrapped = lines(title);
   while (size > 34 && wrapped.length * size * 1.15 + (sub ? 44 : 0) > h) { size -= 4; ctx.font = font(size); wrapped = lines(title); }
   const total = wrapped.length * size * 1.15 + (sub ? 44 : 0); let cy = y + h / 2 - total / 2 + size * .55;
-  for (const line of wrapped) { ctx.fillText(line, x + w / 2, cy); cy += size * 1.15; }
-  if (sub) { ctx.font = `600 32px ${sans}`; ctx.globalAlpha *= .7; ctx.fillText(sub, x + w / 2, cy + 6); }
-  ctx.restore();
+  const placed = wrapped.map(text => { const at = cy; cy += size * 1.15; return {text, cy: at}; });
+  return {font: font(size), x: x + w / 2, lines: placed, sub: sub ? {text: sub, cy: cy + 6} : null};
+}
+
+/** What a placed title draws: each line's ink, and the line under it, as [x0, y0, x1, y1] (measured with its own font). */
+function titleRects(ctx, placed, sans) {
+  const ink = (text, font, cy) => {
+    ctx.font = font; const m = ctx.measureText(text), half = m.width / 2;
+    const left = Number.isFinite(m.actualBoundingBoxLeft) ? m.actualBoundingBoxLeft : half, right = Number.isFinite(m.actualBoundingBoxRight) ? m.actualBoundingBoxRight : half;
+    const size = parseFloat(/(\d+(?:\.\d+)?)px/.exec(font)[1]), up = Number.isFinite(m.actualBoundingBoxAscent) ? m.actualBoundingBoxAscent : size * .5, down = Number.isFinite(m.actualBoundingBoxDescent) ? m.actualBoundingBoxDescent : size * .5;
+    return [placed.x - left, cy - up, placed.x + right, cy + down];
+  };
+  return [...placed.lines.map(l => ink(l.text, placed.font, l.cy)), ...(placed.sub ? [ink(placed.sub.text, subFont(sans), placed.sub.cy)] : [])];
+}
+
+/** The title band placed clear of the zones (zones.mjs · fitBlock): {placed, fitted, covered}; with no zones, as always. */
+function fitTitle(ctx, header, sans, zones, height) {
+  const [x, y, w, h] = header.box;
+  const place = ([x0, x1], dy) => { const p = titleLines(ctx, {...header, box: [x0, y + dy, x1 - x0, h]}, sans); return {...p, rects: titleRects(ctx, p, sans)}; };
+  return zones?.length ? fitBlock(place, [x, x + w], zones, {height, rows: [y, y + h]}) : {placed: place([x, x + w], 0), fitted: false, covered: []};
 }

@@ -528,6 +528,7 @@ const RUNS = [
   ['render.mjs', "spawnSync(ffmpeg, ['-hide_banner', '-nostdin', ...AUDIO_ONLY", 'FFmpeg measuring a found sound\'s peak (volumedetect), to null'],
   ['sounds/index.mjs', "spawnSync(ffprobe, ['-v', 'error', ...AUDIO_ONLY", 'ffprobe reading a fetched sound (probeAudio), to stdout'],
   ['share.mjs', "spawnSync(ffmpeg, ['-y', '-hide_banner', '-nostdin', '-loglevel', 'error', ...args]", 'FFmpeg making the share copy and its poster in its own scratch folder'],
+  ['doctor.mjs', "spawnSync(command, args, {encoding: 'utf8', timeout: 30000", 'FFmpeg and ffprobe naming their version and their lists (storyreel doctor), to stdout: they write nothing'],
 ];
 const MODULE = String.raw`(?:node:)?(?:fs(?:/promises)?|child_process)`, QUOTED = String.raw`[\x60'"]${MODULE}[\x60'"]`;
 const isFs = spec => /^(?:node:)?fs(?:\/promises)?$/.test(spec), isCp = spec => /^(?:node:)?child_process$/.test(spec);

@@ -581,7 +581,7 @@ export const shapes = [checkEdit, FOLLOW.focus, keepWhole];
 export const nearest: Cut = {from: 1, to: 2, join: {cut: 'nearest'}};
 // @ts-expect-error a follow key follows 'focus'
 export const speakerFollow: Layout = {format: 'vertical', crop: [{at: 1, follow: 'speaker'}]};
-// @ts-expect-error a target's own render settings are posterFrame and quality
+// @ts-expect-error a target's own render settings are posterFrame, quality and loudness
 export const ownLayout: ReleaseTarget = {target: 'youtube-shorts', render: {layout: {format: 'square'}}};
 
 // The five scene questions: one short sentence each, on the story and on a stage; film.shots carries them.
@@ -644,3 +644,24 @@ export const oneBeat: StageAction = {do: 'count', what: 'apples', into: 'bag', a
 export const giveWho: StageAction = {do: 'give', who: 'girl', to: 'keeper', what: 'apples', at: 1};
 // @ts-expect-error a travel is hop, toss, lift, drop or slide
 export const flyIn: StageAction = {do: 'putInto', who: 'girl', what: 'apples', into: 'bag', at: 1, travel: 'fly'};
+
+// Platform safe zones, loudness per target, the doctor (types/sub/zones.d.ts, release.d.ts, doctor.d.ts).
+import type {Zone} from '../types/sub/zones.js';
+import {readZones, uiReport} from '../types/sub/zones.js';
+import {doctor, doctorText, parseList, type DoctorReport} from '../types/sub/doctor.js';
+import {targetLoudness} from '../types/sub/release.js';
+export const column: Zone = {name: 'action column', box: [.72, .44, .28, .56], basis: 'measured'};
+// @ts-expect-error a zone's basis is 'measured' or 'estimate'
+export const guessed: Zone = {name: 'x', box: [0, 0, 1, .1], basis: 'guess'};
+export const zonedLayout: import('../types/index.js').Layout = {format: 'vertical', captions: true, ui: {zones: [column], covered: 'refuse', faces: ['amaira face']}};
+export const zoned: ReleaseTarget = {target: 'tiktok', ui: {zones: 'ads', covered: 'refuse', faces: ['amaira face']}, render: {loudness: {I: -14, TP: -1}}};
+export const unzoned: ReleaseTarget = {target: 'tiktok', ui: false};
+// @ts-expect-error a target's ui zones are a list or 'ads'
+export const zonedWrong: ReleaseTarget = {target: 'tiktok', ui: {zones: 'organic'}};
+export const platformLoud = (a: ReleaseAdapter) => targetLoudness(a, {}, {})?.I;
+export const ownZones: ReleaseAdapter = {...mine, ui: {zones: [column], ads: [column], covered: 'report'}, loudness: {I: -14, TP: -1},
+  facts: {checked: '2026-10-27', sources: [], ui: {checked: '2026-10-27', sources: ['https://example.com'], note: 'estimate'}}};
+export const health = (): boolean => { const r: DoctorReport = doctor({render: {check: true}}); return r.ok && r.items.every(i => i.status !== 'unknown') && doctorText(r).length > 0; };
+export const listed = (text: string): number => parseList('filter', text)?.size ?? 0;
+export const zonesRead = (z: unknown) => readZones(z)[0]?.box[0];
+export const reported = (film: Film) => uiReport(film, [])?.findings.map(f => f.fix);

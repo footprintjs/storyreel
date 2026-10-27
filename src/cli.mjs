@@ -22,6 +22,12 @@ const SHARE_HELP = `  share    <video> — a copy of a finished film to send to 
              --poster  the poster's moment, in seconds (6, or a shorter film's middle)
              --out  the folder to write them in (default: the film's)
              --ffmpeg  the FFmpeg to run`;
+const DOCTOR_HELP = `  doctor   — before a long render: asks the local FFmpeg (its encoders, filters, muxers and demuxers) and ffprobe
+           for what a film needs, and the fonts the themes name; each is available, missing or unknown (a list that
+           could not be read is never taken as available). No project needed; a release asks it first by itself
+             --json  the report as JSON, for agents
+             --ffmpeg  the FFmpeg to ask (FFMPEG_BIN, else ffmpeg on the PATH); --ffprobe  the ffprobe (beside it, else on the PATH)
+             --theme  the theme(s) whose fonts to look up, comma-separated (paper,storybook)`;
 const BREAKDOWN_USAGE = `storyreel breakdown <video.mp4> [--out dir] [--beats [--bpm n]] [--ffmpeg path]   a reference film broken down into a spec to match: shots, cuts, pacing, motion (breakdown.mjs); it needs no project, and FFmpeg 5.1 or later
              --beats  read the sound's beats too (beats.mjs · beatMap): which cuts land on the beat — an unsure tempo says so, and judges cuts only against the beats every candidate shares
              --bpm  the tempo you hear, for the beat map (with --beats): the map is then sure
@@ -69,8 +75,32 @@ async function breakdownCommand(args) {
   }
 }
 
+/**
+ * storyreel doctor [--json] [--ffmpeg path] [--ffprobe path] [--theme a,b]: the doctor's report (doctor.mjs), as text or
+ * JSON. Exit 0 when a render can be made here (unknowns and fonts that fall back are said, not failed), 1 when something
+ * it needs is missing, 2 when the command line is wrong.
+ */
+async function doctorCommand(args) {
+  if (args.includes('--help') || args.includes('help')) { console.log(`storyreel doctor [--json] [--ffmpeg path] [--ffprobe path] [--theme paper,storybook]\n${DOCTOR_HELP}`); return 0; }
+  const options = {}; let json = false;
+  for (let i = 0; i < args.length; i++) {
+    const flag = args[i], value = args[i + 1];
+    if (flag === '--json') { json = true; continue; }
+    if (!['--ffmpeg', '--ffprobe', '--theme'].includes(flag)) { console.error(`storyreel doctor: "${flag}" is not understood (the flags are --json, --ffmpeg, --ffprobe, --theme)`); return 2; }
+    if (value === undefined || value.startsWith('--')) { console.error(`storyreel doctor: ${flag} needs ${flag === '--theme' ? 'theme names, comma-separated' : 'a path'}`); return 2; }
+    if (flag === '--theme') options.themes = value.split(',').map(t => t.trim()).filter(Boolean); else options[flag.slice(2)] = value;
+    i++;
+  }
+  const {doctor, doctorText} = await import('./doctor.mjs');
+  const report = doctor(options);
+  console.log(json ? JSON.stringify(report, null, 2) : doctorText(report));
+  return report.ok ? 0 : 1;
+}
+
 const [command, ...given] = process.argv.slice(2), flags = {};
 if (command === 'breakdown') { await breakdownCommand(given); process.exit(0); }
+// doctor needs no project: what this machine has (doctor.mjs).
+if (command === 'doctor') process.exit(await doctorCommand(given));
 // sounds needs no project: its own usage, flags and exit codes (sounds/cli.mjs; the Openverse adapter loads only for search and add).
 if (command === 'sounds') { const {soundsCommand} = await import('./sounds/cli.mjs'); process.exit(await soundsCommand(given)); }
 // `<command> --help` (or `help <command>`): that command's usage alone, on stdout, exit 0 — every command has one.
@@ -81,11 +111,12 @@ if (asked) {
     : asked === 'beats' ? `storyreel beats <song> [--bpm n] [--ffmpeg path]\n${BEATS_HELP}`
     : asked === 'share' ? `storyreel share <video> [--width 854] [--crf 28] [--poster 6] [--out folder] [--ffmpeg path]\n${SHARE_HELP}`
     : asked === 'breakdown' ? BREAKDOWN_USAGE
+    : asked === 'doctor' ? `storyreel doctor [--json] [--ffmpeg path] [--ffprobe path] [--theme paper,storybook]\n${DOCTOR_HELP}`
     : asked === 'sounds' ? SOUNDS_HELP
     : asked === 'mcp' ? `storyreel mcp [--flag value …]   serves ${Object.keys(TOOLS).join(', ')} over MCP (stdio); the project (--config, --cwd) and the film's own flags (e.g. --out work/out) are fixed here for every call, and a call passes only its tool's arguments`
     : null;
   if (usage) { console.log(usage); process.exit(0); }
-  console.error(`storyreel: "${asked}" is not a command; the commands are ${[...Object.keys(TOOLS), 'beats', 'share', 'sounds', 'breakdown', 'mcp'].join(', ')} (storyreel help lists them all)`); process.exit(2);
+  console.error(`storyreel: "${asked}" is not a command; the commands are ${[...Object.keys(TOOLS), 'beats', 'share', 'sounds', 'breakdown', 'doctor', 'mcp'].join(', ')} (storyreel help lists them all)`); process.exit(2);
 }
 // beats takes the song first, share the video: a path, not a flag.
 const song = (command === 'beats' || command === 'share') && given[0] !== undefined && !given[0].startsWith('--') ? given[0] : null, rest = song === null ? given : given.slice(1);
@@ -126,7 +157,7 @@ if (command === 'beats') {
   } catch (e) { console.error(`storyreel beats: ${e.message}`); process.exit(e.code === 'BEAT_OPTIONS' ? 2 : 1); }
 }
 if (!command || command === 'help' || command === '--help' || !TOOLS[command]) {
-  const lines = [...Object.entries(TOOLS).map(([name, t]) => [`  ${name.padEnd(9)}${t.about}`, ...Object.entries(t.args).map(([a, d]) => `             --${a}  ${d}`)].join('\n')), BEATS_HELP, SHARE_HELP, SOUNDS_HELP];
+  const lines = [...Object.entries(TOOLS).map(([name, t]) => [`  ${name.padEnd(9)}${t.about}`, ...Object.entries(t.args).map(([a, d]) => `             --${a}  ${d}`)].join('\n')), BEATS_HELP, SHARE_HELP, SOUNDS_HELP, DOCTOR_HELP];
   (TOOLS[command] || !command || command === 'help' || command === '--help' ? console.log : console.error)(`storyreel <tool> [--flag value …]   (the film is named in ./${CONFIG}; --config another file)\n\n${lines.join('\n')}\n\nRead first, look last: timeline → review → fix → part → still.\nAfter an edit to the words (narration, recipe, pacing): anchors first.\nAfter an edit: changes (what it redraws) → changes --render (only those pieces, and a short clip of them).\nstoryreel mcp [--flag value …] serves the same tools over MCP (stdio); the project (--config, --cwd) and the film's own flags are fixed when it starts.\n${BREAKDOWN_USAGE}`);
   process.exit(command && command !== 'help' && command !== '--help' && !TOOLS[command] ? 2 : 0);
 }

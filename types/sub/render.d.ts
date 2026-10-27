@@ -26,3 +26,5 @@ export function readCaptionFiles(v: unknown): ('vtt' | 'srt')[];
 
 /** The moments one frame's motion blur averages: `subframes` spread over `shutter` of the frame, always strictly inside it. */
 export function blurMoments(t: number, blur: {subframes: number; shutter: number}, fps: number): number[];
+/** The loudness a render is set to when it names none: integrated −16 LUFS, true peak −1.5 dBTP (a release target may name its platform's). */
+export const DEFAULT_LOUDNESS: Readonly<{I: -16; TP: -1.5}>;

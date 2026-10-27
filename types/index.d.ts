@@ -705,6 +705,24 @@ export type CropKey = {at: Beat | number; x: number; y?: number; width?: number;
 /** How a tall crop was framed when it follows or fills: the keys used, the ones nudged off a kept thing ([dx, dy]), and where a kept thing could not be kept whole. */
 export interface CropFraming {follow?: Record<string, number>; keep: string[]; keys: {t: number; x: number; y?: number; width: number; jump?: true}[]; nudged: {t: number; by: [number, number]}[]; clipped: {t: number; names: string[]; why: string}[]}
 /**
+ * One place a platform's app draws over the video (zones.mjs): a rectangle in fractions of the frame (0–1),
+ * [x, y, width, height], named for what is there; `basis` says where its numbers come from — read off the platform's own
+ * published template or figure ('measured'), or an estimate.
+ */
+export interface Zone {name: string; box: [x: number, y: number, width: number, height: number]; basis?: 'measured' | 'estimate'}
+/**
+ * The app's UI over a layout: the zones, what a render does when something is still under them after the bands are
+ * fitted clear ('report', the default, or 'refuse': before a frame is drawn), and the named things (as the kits name
+ * them in their regions) that must stay clear of them.
+ */
+export interface LayoutUi {zones: Zone[]; covered?: 'report' | 'refuse'; faces?: string[]}
+/** A zone on the picture, in the format's pixels: [x0, y0, x1, y1]. */
+export interface ZoneRect {name: string; basis?: 'measured' | 'estimate'; rect: [number, number, number, number]}
+/** One thing still under the app's UI: the title band (once), a caption chunk (at its start), a named face (a run of samples). */
+export interface UiFinding {kind: 'title' | 'caption' | 'face'; at: number; until?: number; zone: string; name?: string; said?: string; rect: [number, number, number, number]; overlap: [number, number, number, number]; cut?: number; text: string; fix: string}
+/** What a render with `ui` says (renderFilm's result, the making-of record's `ui`): the zones, how the bands were fitted, what is still under them. */
+export interface UiReport {zones: ZoneRect[]; covered: 'report' | 'refuse'; faces: string[]; fitted: {captions: number; title: boolean}; findings: UiFinding[]; ok: boolean}
+/**
  * A version of the film for a platform: its format, a title band (not in landscape), captions burned in from
  * the word timings, crop keys that follow the action (portrait and vertical: {at: beat, x, width?}), and the
  * bands' colours (default: the film's paper and ink). Unknown keys refuse.
@@ -723,6 +741,8 @@ export interface Layout {
   ink?: string;
   /** 0.5–2 (default 1): the same picture at that many times the format's size, redrawn sharp; 2 makes landscape 3840×2160 (4K), 0.5 a quick draft. */
   scale?: number;
+  /** Where the platform's app draws over the video: the title band and the captions are laid out clear of it, and what is still under it is reported (or refused). */
+  ui?: LayoutUi;
 }
 export const FORMAT_NAMES: readonly FormatName[];
 /** A layout compiled for a film: the output size, where the film and the bands are, and the two drawing passes. */
@@ -735,7 +755,15 @@ export function compileLayout(film: Film, layout: Layout, span?: {from: number; 
   /** How the crop was framed, when it follows or fills. */
   framing?: CropFraming;
   /** The caption shown at t, or null (none showing, or no captions in this layout). */
-  captionAt(t: number): unknown | null};
+  captionAt(t: number): unknown | null;
+  /** With `ui` only: the zones in the format's pixels, what to do with something under them, the faces to keep clear. */
+  ui?: {zones: ZoneRect[]; covered: 'report' | 'refuse'; faces: readonly string[]};
+  /** With `ui` only: the title band as drawn, fitted clear of the zones (`covered`: what is still under one). */
+  titleFit?(ctx: any): {fitted: boolean; covered: {rect: number[]; zone: string; overlap: number[]}[]} | null;
+  /** With `ui` only: a caption as drawn, fitted clear of the zones. */
+  captionFit?(ctx: any, caption: {words: {text: string}[]; active: number}): {rects: number[][]; fitted: boolean; covered: {rect: number[]; zone: string; overlap: number[]}[]};
+  /** With `ui` only: a box on the 1600×900 frame at t, in the format's pixels (cut to the film's box; null when none of it shows). */
+  toOutput?(t: number, box: [number, number, number, number]): [number, number, number, number] | null};
 
 /** One row of pictures (Film.rows). */
 export interface FilmRow { from: number; start: number; paths: string[];
@@ -795,7 +823,9 @@ export function renderFilm(options: {
   /** The edit as cut: each cut as given and as used (moved to a silence), where it plays, its join; the end card. */
   edit?: EditRecord;
   /** How a tall crop was framed (an edit's: one per cut, with its index). */
-  framing?: CropFraming | (CropFraming & {cut: number})[]}>;
+  framing?: CropFraming | (CropFraming & {cut: number})[];
+  /** With a layout's `ui`: the zones, how the bands were fitted clear of them, and what is still under them. */
+  ui?: UiReport}>;
 
 /** A join between two cuts: where the cut point lands ('silence': off a spoken word, the default; 'exact'), frames the two sides cross-fade (0–30, 0), frames of paper over a hard cut (0–3, 0). */
 export interface Join {cut?: 'silence' | 'exact'; overlap?: number; pop?: number}
