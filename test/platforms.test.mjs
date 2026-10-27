@@ -2,7 +2,7 @@
 // target (release.mjs · targetLoudness) and the doctor (doctor.mjs, storyreel doctor).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {existsSync, readFileSync} from 'node:fs';
+import {existsSync, readFileSync, readdirSync, writeFileSync, chmodSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -66,16 +66,27 @@ test('the vertical targets declare their app\'s UI as zones, each measured or es
   for (const name of VERTICAL) {
     const {adapter} = await loadTarget(name);
     assert.ok(adapter.ui.zones.length >= 3 && adapter.ui.zones.every(z => ['measured', 'estimate'].includes(z.basis)), `${name}: every zone says where its numbers come from`);
-    assert.ok(adapter.ui.ads.every(z => z.basis === 'measured'), `${name}: the published ad safe zone is measured`);
+    // A side band is a number the platform prints, but not UI it says it draws there: an edge is an estimate, everything else in the ad figure measured.
+    for (const z of [...adapter.ui.zones, ...adapter.ui.ads].filter(q => /edge/.test(q.name))) assert.equal(z.basis, 'estimate', `${name}: ${z.name} is an estimate`);
+    assert.ok(adapter.ui.ads.filter(z => !/edge/.test(z.name)).every(z => z.basis === 'measured'), `${name}: the rest of the published ad safe zone is measured`);
+    assert.match(adapter.facts.ui.note, /edges?\b[^.;]*\bestimates?/, `${name}: the note says the edges are estimates`);
     assert.match(adapter.facts.ui.checked, /^\d{4}-\d{2}-\d{2}$/); assert.ok(adapter.facts.ui.sources.length && adapter.facts.ui.note, name);
     assert.equal(adapter.ui.covered, 'report');
-    // The default bands never sit under the top bar or the foot's strip: only a column or an edge can narrow them.
-    const z = px(adapter.ui.zones);
-    assert.ok(z['top bar'][3] <= 288 && z['caption strip'][1] >= 1460, `${name}: the title band (y 285–470) and the captions (y 1298–1460) are clear of the bars`);
+    // The captions' box (y 1298–1460) is clear of the foot's strip. The title band's BOX starts at y 285, 3 px above
+    // Shorts' top bar (288): its words are drawn lower, so no title of one to three lines, with or without the line under
+    // it, reaches any top bar — and none is moved by one.
+    const z = px(adapter.ui.zones), ctx = createCanvas(2, 2).getContext('2d');
+    assert.ok(z['caption strip'][1] >= 1460 && z['top bar'][3] <= 288, name);
+    const bar = adapter.ui.zones.filter(q => q.name === 'top bar');
+    for (const title of ['Pebbles', 'One pebble for every sheep: how counting began', 'Learn to Count: the missing crayon, the pebbles, and every sheep that walked out of the gate'])
+      for (const sub of [undefined, 'Little Aha Stories']) {
+        const fit = compileLayout(film, {format: 'vertical', header: {title, ...(sub ? {sub} : {})}, ui: {zones: bar}}).titleFit(ctx);
+        assert.deepEqual([fit.fitted, fit.covered], [false, []], `${name}: "${title}"${sub ? ' with its line' : ''} is drawn below the top bar`);
+      }
   }
   // The numbers read off each platform's own figure.
   assert.deepEqual(px((await zonesOf('tiktok')).ads), {'top bar': [0, 0, 1080, 240], 'left edge': [0, 0, 120, 1920], 'right edge': [960, 0, 1080, 1920], 'action column': [780, 840, 1080, 1920], 'caption strip': [0, 1260, 1080, 1920]}, 'TikTok\'s In-Feed template (720×1280: 160, 80, 120 from 720 above the foot, 440)');
-  assert.deepEqual(px((await zonesOf('youtube-shorts')).ads), {'top bar': [0, 0, 1080, 288], 'left edge': [0, 0, 48, 1920], 'right edge': [888, 0, 1080, 1920], 'caption strip': [0, 1248, 1080, 1920]}, 'Google\'s vertical ad figure (288, 48, 192, 672)');
+  assert.deepEqual(px((await zonesOf('youtube-shorts')).ads), {'top bar': [0, 0, 1080, 288], 'left edge': [0, 0, 48, 1920], 'action column': [888, 0, 1080, 1920], 'caption strip': [0, 1248, 1080, 1920]}, 'Google\'s vertical ad figure (288, 48, 192, 672)');
   assert.deepEqual(px((await zonesOf('instagram-reels')).ads)['caption strip'], [0, 1248, 1080, 1920], 'Meta\'s 35% at the foot');
   for (const name of TARGET_NAMES.filter(n => !VERTICAL.includes(n))) assert.equal((await loadTarget(name)).adapter.ui, undefined, `${name} declares no app UI: its outputs are as they were`);
 });
@@ -146,6 +157,27 @@ test('TikTok: a caption that would reach under the buttons is narrowed about its
   for (const t of [1.5, 3]) assert.ok(pixelsOf(c => plain.overlay(c, t, {caption: short})).equals(pixelsOf(c => fitted.overlay(c, t, {caption: short}))), 'the clear one: the same pixels');
 });
 
+test('a column never moves a caption up or down: a word too wide for the clear stretch stays low and is reported', () => {
+  const zones = readUi({zones: [{name: 'action column', box: [.7222, .4375, .2778, .5625]}]}).zones;
+  const plain = compileLayout(film, {format: 'vertical', captions: true, ui: {zones: []}}), fitted = compileLayout(film, {format: 'vertical', captions: true, ui: {zones}});
+  const ctx = createCanvas(2, 2).getContext('2d'), cap = text => ({words: text.split(' ').map(w => ({text: w})), active: 0});
+  const rows = rects => [Math.min(...rects.map(r => r[1])), Math.max(...rects.map(r => r[3]))];
+  const word = fitted.captionFit(ctx, cap('internationalisation'));
+  assert.equal(word.covered.length, 1, 'still under the column: reported');
+  assert.equal(word.covered[0].zone, 'action column');
+  const [top, bottom] = rows(word.rects), box = plain.boxes.captions;
+  assert.ok(top >= box[1] && bottom <= box[1] + box[3], `kept in the captions' band (y ${box[1]}–${box[1] + box[3]}), not moved into the picture: ${top}–${bottom}`);
+  // Narrowing that would take more than two lines (or leave the band's rows) is not done: the caption stays as it was, reported.
+  const crowded = cap('responsibilities and communication');
+  const before = plain.captionFit(ctx, crowded), after = fitted.captionFit(ctx, crowded);
+  assert.equal(before.rects.length, 2, 'two lines as the box wraps it (narrowed to x 300–780 it would take three)');
+  assert.deepEqual([after.fitted, after.rects, after.covered.map(h => h.zone)], [false, before.rects, ['action column']], 'not narrowed: drawn as it was, and what the column covers is reported');
+  const [t2, b2] = rows(after.rects);
+  assert.ok(t2 >= box[1] - .5 && b2 <= box[1] + box[3] + .5, 'inside the band either way');
+  const {findings} = uiFindings(film, compileLayout(film, {format: 'vertical', captions: true, ui: {zones}}), {});
+  assert.ok(findings.every(f => f.kind === 'caption' && f.rect[1] >= box[1] - 1), 'nothing reported has been moved up');
+});
+
 test('the check fires on a caption under the UI, and on a named face; with covered: \'refuse\' the render refuses before a frame is drawn', async t => {
   const everywhere = [{name: 'whole screen', box: [0, 0, 1, 1]}];
   const framed = compileLayout(film, {format: 'vertical', captions: true, header: {title: 'Pebbles'}, ui: {zones: everywhere}});
@@ -206,6 +238,14 @@ const FILTERS = 'Filters:\n  T.. = Timeline support\n  | = Source or sink filter
 const MUXERS9 = 'Formats:\n D.. = Demuxing supported\n .E. = Muxing supported\n ..d = Is a device\n ---\n  E  mp4             MP4 (MPEG-4 Part 14)\n  E  dash            DASH Muxer\n';
 const DEMUXERS9 = 'Formats:\n D.. = Demuxing supported\n ---\n D   concat          Virtual concatenation script\n D d lavfi           Libavfilter virtual input device\n D   mov,mp4,m4a,3gp,3g2,mj2 QuickTime / MOV\n';
 const FORMATS44 = 'File formats:\n D. = Demuxing supported\n .E = Muxing supported\n --\n D  concat          Virtual concatenation script\n  E mp4             MP4 (MPEG-4 Part 14)\n DE avi             AVI (Audio Video Interleaved)\n';
+// FFmpeg 4.4 to 8.0 print no dashed line under the filters' legend (fftools/opt_common.c · show_filters; 4.4: cmdutils.c),
+// three flag columns to 7.1 (" %c%c%c %-17s %-10s %s") and two in 8.0 (" %c%c %-17s %-10s %s"). The legend, verbatim:
+const LEGEND_71 = 'Filters:\n  T.. = Timeline support\n  .S. = Slice threading\n  ..C = Command support\n  A = Audio input/output\n  V = Video input/output\n  N = Dynamic number and/or type of input/output\n  | = Source or sink filter\n';
+const LEGEND_80 = 'Filters:\n  T.. = Timeline support\n  .S. = Slice threading\n  A = Audio input/output\n  V = Video input/output\n  N = Dynamic number and/or type of input/output\n  | = Source or sink filter\n';
+const filterLine = (flags, name, pads, about) => ` ${flags} ${name.padEnd(17)} ${pads.padEnd(10)} ${about}`;
+const FILTERS_71 = LEGEND_71 + [filterLine('...', 'abench', 'A->A', 'Benchmark part of a filtergraph.'), filterLine('..C', 'acrossfade', 'AA->A', 'Cross fade two input audio streams.'),
+  filterLine('...', 'anullsrc', '|->A', 'Null audio source, return empty audio frames.'), filterLine('..C', 'amix', 'N->A', 'Audio mixing.'), filterLine('TSC', 'scale', 'V->V', 'Scale the input video size and/or convert the image format.')].join('\n') + '\n';
+const FILTERS_80 = LEGEND_80 + [filterLine('..', 'loudnorm', 'A->A', 'EBU R128 loudness normalization'), filterLine('TS', 'xfade', 'VV->V', 'Cross fade one video with another video.')].join('\n') + '\n';
 const fake = (lists, version = 'ffmpeg version 7.1.1 Copyright (c) the FFmpeg developers') => (command, args) => (args.at(-1) === '-version' ? {status: 0, stdout: version} : {status: 0, stdout: lists[args.at(-1)] ?? ''});
 
 test('the doctor reads FFmpeg\'s own lists: what each names, in this FFmpeg\'s format and an older one\'s', () => {
@@ -214,7 +254,10 @@ test('the doctor reads FFmpeg\'s own lists: what each names, in this FFmpeg\'s f
   assert.deepEqual([...parseList('muxer', MUXERS9)], ['mp4', 'dash'], 'a name starting with a flag letter is still the name');
   assert.deepEqual([...parseList('demuxer', DEMUXERS9)], ['concat', 'lavfi', 'mov', 'mp4', 'm4a', '3gp', '3g2', 'mj2'], 'a device flag, and a line naming several');
   assert.deepEqual([...parseList('demuxer', FORMATS44)], ['concat', 'mp4', 'avi'], 'FFmpeg 4.4\'s two flag columns');
-  for (const text of ['', 'ffmpeg: unrecognized option', 'Encoders:\n ------\n']) assert.equal(parseList('encoder', text), null, `${JSON.stringify(text)}: not a list — unknown, never missing`);
+  assert.deepEqual([...parseList('filter', FILTERS_71)], ['abench', 'acrossfade', 'anullsrc', 'amix', 'scale'], 'FFmpeg 4.4–7.1: no dashed line, three flag columns');
+  assert.deepEqual([...parseList('filter', FILTERS_80)], ['loudnorm', 'xfade'], 'FFmpeg 8.0: no dashed line, two flag columns');
+  for (const legend of [LEGEND_71, LEGEND_80]) assert.equal(parseList('filter', legend), null, 'a legend alone names no filter: unknown');
+  for (const text of ['', 'ffmpeg: unrecognized option', 'Encoders:\n ------\n', 'Encoders:\n V..... = Video\n A..... = Audio\n']) assert.equal(parseList('encoder', text), null, `${JSON.stringify(text)}: not a list — unknown, never missing`);
   assert.deepEqual(stackFamilies('"Avenir Next", Arial ,sans-serif'), ['Avenir Next', 'Arial', 'sans-serif']);
 });
 
@@ -248,11 +291,29 @@ test('the doctor\'s fonts: the family a stack is drawn in, missing when none is 
   assert.equal(doctor({ffmpeg: 'ff', render: {}, run: fake({}), fonts: null, themes: ['paper']}).items.filter(i => i.kind === 'font').every(i => i.status === 'unknown'), true);
 });
 
-test('a release asks the doctor first: no FFmpeg refuses in seconds, before anything renders', async t => {
+test('a release asks the doctor first: no FFmpeg, or one without loudnorm, refuses in seconds, before anything renders', async t => {
   const out = tempDir('doctor-release', t), started = Date.now();
   await assert.rejects(makeRelease({...inputs, out, render: {ffmpeg: '/nowhere/ffmpeg'}, targets: ['youtube'], post: {title: 'Pebbles', audience: 'kids'}}),
     /^Error: release: this machine cannot make it — missing: program ffmpeg \(every render: the picture, the sound, the mux\)\. there is no \/nowhere\/ffmpeg to run/);
   assert.ok(Date.now() - started < 10000); assert.equal(existsSync(path.join(out, 'youtube')), false, 'nothing rendered');
+  // An FFmpeg as Ubuntu's apt gives it (no dashed line under the filters' legend) built without loudnorm: refused, naming it.
+  const bin = path.join(tempDir('fake-ffmpeg', t), 'ffmpeg'), lists = {'-encoders': ENCODERS, '-filters': FILTERS_71, '-muxers': MUXERS9, '-demuxers': DEMUXERS9};
+  writeFileSync(bin, `#!/usr/bin/env node\nconst lists = ${JSON.stringify(lists)}, flag = process.argv.at(-1);\nprocess.stdout.write(flag === '-version' ? 'ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers\\n' : lists[flag] ?? '');\n`);
+  chmodSync(bin, 0o755);
+  await assert.rejects(makeRelease({...inputs, out, render: {ffmpeg: bin}, targets: ['youtube'], post: {title: 'Pebbles', audience: 'kids'}}),
+    /^Error: release: this machine cannot make it — missing: filter loudnorm \(loudness, in two passes\), filter ebur128 .*has no filter called loudnorm: use an FFmpeg built with it/);
+  assert.equal(existsSync(path.join(out, 'youtube')), false, 'nothing rendered');
+});
+
+test('covered: \'refuse\' in a release refuses before any target renders and before any folder is made', async t => {
+  const out = tempDir('refuse-first', t), everywhere = [{name: 'whole screen', box: [0, 0, 1, 1]}];
+  await assert.rejects(makeRelease({...inputs, out, targets: [{target: 'youtube', to: 1}, {target: 'tiktok', to: 2, ui: {zones: everywhere, covered: 'refuse'}}], post: {title: 'Pebbles', audience: 'general'}}),
+    /^Error: release to TikTok: layout\.ui: \d+ places? (is|are) under the app's UI \(covered: 'refuse'\): the title band at 0\.00 s is under the whole screen/);
+  assert.deepEqual(readdirSync(out), [], 'YouTube, listed first, was not rendered, and no folder was made');
+  // Its part only: a cut whose captions are clear of a zone at the top passes, and the release goes on (checked, not rendered here).
+  const top = [{name: 'top bar', box: [0, 0, 1, .125]}];
+  const {options} = await loadTarget({target: 'tiktok', to: 2, ui: {zones: top, covered: 'refuse'}});
+  assert.equal(options.ui.covered, 'refuse');
 });
 
 const cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url));
@@ -277,7 +338,7 @@ test('a phone still: the frames at phone size, the app\'s UI as grey shapes, wha
   const project = await loadProject({cwd: fileURLToPath(new URL('./fixtures/tools/', import.meta.url)), out: tempDir('phone', t)});
   const s = await still(project, {phone: 'tiktok', at: 'one+2.5,two+0'});
   assert.ok(existsSync(s.file) && path.basename(s.file).startsWith('phone-tiktok-'), s.file);
-  assert.match(s.text, /· 2 phones \(TikTok, 390 px wide\): one\+2\.5 \([\d.]+ s\), two\+0 \([\d.]+ s\)\nthe app's UI: top bar \(measured\), left edge \(measured\), right edge \(measured\), action column \(measured\), caption strip \(estimate\)\n/);
+  assert.match(s.text, /· 2 phones \(TikTok, 390 px wide\): one\+2\.5 \([\d.]+ s\), two\+0 \([\d.]+ s\)\nthe app's UI: top bar \(measured\), left edge \(estimate\), right edge \(estimate\), action column \(measured\), caption strip \(estimate\)\n/);
   await assert.rejects(still(project, {phone: 'myspace', at: 'one+1'}), /still: --phone names a release target \(youtube, youtube-shorts/);
   await assert.rejects(still(project, {phone: 'tiktok', at: 'one+1', width: 50}), /with --phone, width is each phone's width in pixels, 200–1080/);
   await assert.rejects(still(project, {at: 'one+1', title: 'x'}), /title is the title band's words in a phone still/);

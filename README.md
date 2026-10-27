@@ -1205,41 +1205,52 @@ await renderFilm({film, storyboard, timings, out: 'out/tiktok/film.mp4',
 //   fix: 'frame "hero face" off the action column (it covers x 780–1080, y 840–1920): a crop key that moves the window, …'}]}
 ```
 
-- **Fitted, not moved by hand.** A caption line that would reach under a column is narrowed about its centre to what
-  the zones leave clear (wrapped balanced onto two lines when it must, so no word is left alone); a block under a strip
-  moves out of it. A line already clear is drawn
-  exactly as without zones — byte for byte (pinned against 0.22.0's drawing code).
+- **Fitted, not moved by hand.** A block under a **bar or strip** (a zone across the band's whole width) moves out of
+  it. A caption under a **column** is narrowed about its centre to what the zones leave clear, wrapped balanced — but
+  only while that keeps it to two lines (or the lines it already had) inside its band's rows; a column never moves it
+  up or down. A caption that cannot be narrowed so — a word wider than the clear stretch, a chunk that would take three
+  lines — is drawn as it was, and the check reports it. A line already clear is drawn exactly as without zones — byte for
+  byte (pinned against 0.22.0's drawing code).
 - **The check** reports each caption chunk, the title band and each named face (`faces`) still under a zone, with when,
   where and the fix — on renderFilm's result (`ui`), the release's (`covered`) and in `making-of.json` (`ui`). With
-  `covered: 'refuse'` the render refuses before a frame is drawn. A face is a region a kit names (`regionsAt`).
+  `covered: 'refuse'` a render refuses before a frame is drawn, and a release before any target renders or any folder is
+  made (the film compiled once to ask). The exception: a voiced film (`narrationDir`: timed by pacing its audio) or one
+  with a song (`music` moves its scenes) cannot be timed before its render, so its target refuses as its own render is
+  prepared — before that target's frames, after the targets listed before it. A face is a region a kit names
+  (`regionsAt`).
 - **In a release** the target's adapter gives the zones (`{target: 'tiktok'}` needs nothing more). `ui: {zones: 'ads'}`
   checks against the platform's published **ad** safe zone instead (larger at the foot: an ad has its own button there),
   `ui: {covered: 'refuse', faces: [...]}` tightens it, `ui: false` turns it off.
 
 The zones each platform's target declares, at 1080×1920. No platform publishes where its app draws over an
 **organic** post; each publishes a safe zone for **ads**. So a number read off the platform's own ad figure is
-**measured** when the same UI is there in a post (the top bar, the edges, the button column), and the foot's strip —
-where the ad figure also holds the ad's own button — is an **estimate**. Each zone says which (`basis`), and each target
-says where and when in `facts.ui` (checked 2026-10-27).
+**measured** when the same UI is there in a post (the top bar, TikTok's button column), and **estimated** otherwise: the
+foot's strip (the ad figure also holds the ad's own button), the side edges (a margin the figure asks for, or a band it
+does not label — read as what a tall phone crops, not UI the app says it draws), and the columns no figure gives. Each
+zone says which (`basis`), and each target says where and when in `facts.ui` (checked 2026-10-27).
 
 | target | zone | at 1080×1920 | basis | source |
 |---|---|---|---|---|
 | `youtube-shorts` | top bar | y 0–288 | measured | Google Ads Help, vertical video ads safe zone (288 top, 48 left, 192 right, 672 bottom) |
-| | left edge | x 0–48 | measured | the same figure |
+| | left edge | x 0–48 | estimate | the same figure's 48 px margin (not UI drawn there) |
 | | action column | x 888–1080, y 960–1920 | width measured, start estimated | the same figure's 192 px right margin; the buttons sit in the lower half |
 | | caption strip | y 1500–1920 | estimate | the figure's 672 px includes the ad's button |
 | `tiktok` | top bar | y 0–240 | measured | TikTok Ads Manager, In-Feed safe-zone template (720×1280: 160 top, 80 each side, 120-wide column from 720 above the foot, 440 at the foot) |
-| | left / right edge | x 0–120, 960–1080 | measured | the same template |
+| | left / right edge | x 0–120, 960–1080 | estimate | the same template's 80 px side bands (not labelled) |
 | | action column | x 780–1080, y 840–1920 | measured | the same template |
 | | caption strip | y 1500–1920 | estimate | the template's 440 of 1280 includes the ad's button |
 | `instagram-reels` | top bar | y 0–269 | measured | Meta Ads Guide, Reels (14% top, 35% bottom, 6% each side) |
-| | left / right edge | x 0–65, 1015–1080 | measured | the same guide |
+| | left / right edge | x 0–65, 1015–1080 | estimate | the same guide's 6% margin (asked of ads, not UI drawn there) |
 | | action column | x 960–1080, y 960–1920 | estimate | Meta gives no column |
 | | caption strip | y 1500–1920 | estimate | the guide's 35% includes the ad's button |
 
-The published ad zones are each target's `ui.ads` (all measured). With these zones the default vertical bands never
-meet a top bar or a foot strip; TikTok's column (x 780 on) reaches the caption band (x 120–960), so a TikTok caption
-whose line would pass x 780 is narrowed to x 300–780 — its video changes from 0.22.0 there, and only there.
+The published ad zones are each target's `ui.ads` (measured, but for the edges). With these zones the captions' band
+(y 1298–1460) never meets a foot strip, and no title meets a top bar: the title band's box starts at y 285, 3 px above
+Shorts' top bar (288), and its words are drawn lower (a test holds titles of one to three lines, with and without the
+line under them, clear of every target's top bar). The columns reach the caption band (x 120–960), so captions change
+from 0.22.0 where a line would pass under one, and only there: on **TikTok** a line passing x 780 is narrowed to
+x 300–780; on **YouTube Shorts** a line passing x 888 is narrowed to x 192–888; Reels' column (x 960 on) never reaches
+the default captions. A long title may narrow off TikTok's edges (x 120 and 960).
 
 ### A phone-size review still
 
@@ -1251,7 +1262,7 @@ anything still under it outlined in red:
 ```
 $ npx storyreel still --phone tiktok --at one+2.5,two+0
 out/stills/phone-tiktok-one+2.5_two+0.png · 2 phones (TikTok, 390 px wide): one+2.5 (2.50 s), two+0 (5.28 s)
-the app's UI: top bar (measured), left edge (measured), right edge (measured), action column (measured), caption strip (estimate)
+the app's UI: top bar (measured), left edge (estimate), right edge (estimate), action column (measured), caption strip (estimate)
 nothing of the title, the captions or the named faces is under the UI
 ```
 
@@ -2593,7 +2604,9 @@ for every piece a film needs (libx264, aac, mp4, concat, lavfi, loudnorm, ebur12
 cross-fades, setparams for the high-quality encode, overlay for a stamp, showinfo for the finished-file check, …), and
 looks up the fonts the themes name where the pictures are drawn. Each is **available** (the list names it),
 **missing** (the list was read, and does not) or **unknown** (the list could not be read — the program did not run, or
-printed nothing the doctor recognises): never "available" on a guess.
+printed nothing the doctor recognises): never "available" on a guess. It reads the lists of FFmpeg 4.4 to 9 alike
+(before 8.1, `-filters` prints no dashed line under its legend, and three flag columns until 8.0): an Ubuntu or Debian
+FFmpeg without `loudnorm` is found missing, not unknown.
 
 ```
 $ npx storyreel doctor

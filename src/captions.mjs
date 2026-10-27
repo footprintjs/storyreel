@@ -73,9 +73,12 @@ function captionLines(ctx, caption, [x, y, w, h], size, {balance = false} = {}) 
   return {lines: placed, rects: placed.map(l => [l.x - size * .35, l.cy - lineH / 2, l.x + l.lw + size * .35, l.cy + lineH / 2]), widths, space, lineH};
 }
 
-/** The caption laid out clear of the zones (zones.mjs · fitBlock): in a narrower stretch of its box, or moved out of a band. */
+/**
+ * The caption laid out clear of the zones (zones.mjs · fitBlock): moved out of a band, or narrowed off a column — wrapped
+ * balanced, at most two lines, inside its box's rows — else left as it is for the check to report.
+ */
 function fitCaptionLines(ctx, caption, [x, y, w, h], size, zones, height) {
-  return fitBlock(([x0, x1], dy) => captionLines(ctx, caption, [x0, y + dy, x1 - x0, h], size, {balance: x1 - x0 < w - .5}), [x, x + w], zones, {height});
+  return fitBlock(([x0, x1], dy) => captionLines(ctx, caption, [x0, y + dy, x1 - x0, h], size, {balance: x1 - x0 < w - .5}), [x, x + w], zones, {height, rows: [y, y + h]});
 }
 
 /**

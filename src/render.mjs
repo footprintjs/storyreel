@@ -373,6 +373,22 @@ function posterLayout(film, edit, {layout, poster, fallback}) {
   return compileLayout(film, {...layout, crop: follows ? 'focus' : crop ?? [], keep: layout.keep ?? filmSpeakers(film)}, {from: poster, to: Math.min(film.total, poster + 1)});
 }
 
+/** What of the film is under the app's UI in a render's layouts (zones.mjs · uiReport): an edit's, cut by cut; null without `ui`. */
+const uiOf = (film, {cut, framed, from, to, fps}) => uiReport(film, cut ? cut.edit.cuts.map((c, i) => ({framed: cut.framedCuts[i], from: c.start, to: c.start + c.frames / fps, cut: i}))
+  : [{framed, from: Math.max(0, from), to: Math.min(to, film.total)}]);
+
+/**
+ * What of a compiled film is under the app's UI in a render with these options — its layout (with `ui`), and its part
+ * (from, to) or edit, as renderFilm takes them — without preparing the render: zones.mjs · uiReport's report, or null
+ * when the layout has no `ui`. A layout with covered: 'refuse' and anything under the UI refuses here. renderFilm asks
+ * the same as it is prepared; a release asks it of every refusing target before any target renders (release.mjs).
+ */
+export function renderUi(film, {layout = null, edit = null, from = 0, to = film.total, fps = RENDER_DEFAULTS.fps, poster = film.posterAt ?? null} = {}) {
+  if (!layout?.ui) return null;
+  const cut = edit === null || edit === undefined ? null : prepareEdit(film, edit, {layout, fps, poster});
+  return uiOf(film, {cut, framed: cut ? null : compileLayout(film, layout), from, to, fps});
+}
+
 /**
  * The end of a render, finished or failed: its working files are removed — unless they are in a `work` folder the
  * caller named, which is theirs to keep. renderFilm and makeFilm call it in a finally; a strategy of your own that
@@ -403,8 +419,7 @@ function prepareJob({film, storyboard, timings, narrationDir = null, out, width:
   const width = framed?.width ?? givenWidth ?? RENDER_DEFAULTS.width, height = framed?.height ?? givenHeight ?? RENDER_DEFAULTS.height;
   if (framed && intro && framed.format !== 'landscape') throw new Error(`renderFilm: an intro is drawn for the landscape frame; the ${framed.format} layout takes none (leave intro out)`);
   // What of the film is under the app's UI (a layout with `ui`: zones.mjs) — a refusal comes now, before a frame is drawn.
-  const ui = uiReport(film, cut ? cut.edit.cuts.map((c, i) => ({framed: cut.framedCuts[i], from: c.start, to: c.start + c.frames / fps, cut: i}))
-    : [{framed, from: Math.max(0, from), to: Math.min(to, film.total)}]);
+  const ui = uiOf(film, {cut, framed, from, to, fps});
   // First, the out folder and a `work` named elsewhere: their REAL paths, with no folder on the way another user could
   // rearrange (files.mjs · securePath) — everything is written through these paths only. Then every output's name,
   // before anything is made: a folder at one refuses now, not after the outputs before it.

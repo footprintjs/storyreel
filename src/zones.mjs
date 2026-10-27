@@ -93,37 +93,56 @@ export function clearSpan([s0, s1], zones) {
   return 2 * half >= .6 * (w1 - w0) ? [c - half, c + half] : [w0, w1];
 }
 
+/** The most lines a narrowed block may take: past it the block is left as it was, and what the UI covers is reported. */
+export const MOST_LINES = 2;
+
 /**
  * A block of text laid out clear of the zones (rects in the same pixels). `place([x0, x1], dy)` lays it out in the
- * horizontal span x0–x1, moved down by dy pixels (negative: up), and returns {rects, …}: what it draws. The block as
- * given (the whole span, not moved) comes first, and is kept untouched when none of it lies under a zone. Else, at
- * most FITS times: the zones across its rows leave the span's clear stretch (clearSpan), taken when it keeps at least
- * a third of the span; else a zone spans the rows, and the block moves out of it, the shorter way that keeps it inside
- * the picture (0–height). Returns {placed, fitted, covered}: `fitted` whether it was moved or narrowed, `covered` what
- * of it is still under a zone ([{rect, zone, overlap}]: the check reports these).
+ * horizontal span x0–x1, moved down by dy pixels (negative: up), and returns {rects, lines?}: what it draws (its lines,
+ * when it says them: the rects otherwise). The block as given (the whole span, not moved) comes first, and is kept
+ * untouched when none of it lies under a zone. Else, at most FITS times:
+ *   - under a BAND — a zone across the whole span, a bar or a strip — it moves out of it, the shorter way that keeps it
+ *     inside the picture (0–height), toward the band's far side from it;
+ *   - under a COLUMN (a zone across only part of the span) it is narrowed to the span's clear stretch (clearSpan) — only
+ *     while that keeps a third of the span, takes at most MOST_LINES lines (or the lines it had), and stays inside
+ *     `rows` (the band's own rows, or the block's, if taller): a block that cannot be narrowed so stays as it is.
+ * A column never moves a block up or down: what it still covers is the check's to report.
+ * Returns {placed, fitted, covered}: `fitted` whether it was moved or narrowed, `covered` what of it is still under a
+ * zone ([{rect, zone, overlap}]: the check reports these).
  */
-export function fitBlock(place, span, zones, {height}) {
-  let placed = place(span, 0), covered = underZones(placed.rects, zones);
+export function fitBlock(place, span, zones, {height, rows = null}) {
+  const first = place(span, 0);
+  let placed = first, covered = underZones(placed.rects, zones);
   if (!covered.length || !placed.rects.length) return {placed, fitted: false, covered};
-  let at = span, dy = 0;
+  const linesOf = p => p.lines?.length ?? p.rects.length, extent = p => [Math.min(...p.rects.map(r => r[1])), Math.max(...p.rects.map(r => r[3]))];
+  const [top0, bottom0] = extent(first), most = Math.max(MOST_LINES, linesOf(first));
+  const room = rows ? [Math.min(rows[0], top0), Math.max(rows[1], bottom0)] : [top0, bottom0];
+  let at = span, dy = 0, fitted = false;
   for (let i = 0; i < FITS && covered.length; i++) {
-    const top = Math.min(...placed.rects.map(r => r[1])), bottom = Math.max(...placed.rects.map(r => r[3]));
+    const [top, bottom] = extent(placed);
     const across = zones.filter(z => z.rect[1] < bottom - EDGE && z.rect[3] > top + EDGE);
-    const clear = clearSpan(span, across);
-    if (clear && clear[1] - clear[0] >= (span[1] - span[0]) / 3 && (clear[0] !== at[0] || clear[1] !== at[1])) at = clear;
-    else {
-      // A zone spans the block's rows: out of the one it lies under most, toward the picture's middle when both ways fit.
-      const most = covered.reduce((m, h) => (area(h.overlap) > area(m.overlap) ? h : m));
-      const band = zones.find(z => z.name === most.zone && overlapOf(most.rect, z.rect)).rect;
+    const isBand = z => z.rect[0] <= span[0] + EDGE && z.rect[2] >= span[1] - EDGE;
+    const bands = covered.filter(h => across.some(z => z.name === h.zone && isBand(z) && overlapOf(h.rect, z.rect)));
+    if (bands.length) {
+      // Out of the band it lies under most, toward the band's far side from the block when that way keeps it in the picture.
+      const worst = bands.reduce((m, h) => (area(h.overlap) > area(m.overlap) ? h : m));
+      const band = across.find(z => z.name === worst.zone && isBand(z)).rect;
       const up = band[1] - bottom, down = band[3] - top, fits = d => top + d >= 0 && bottom + d <= height;
-      const first = (band[1] + band[3]) / 2 > (top + bottom) / 2 ? up : down, second = first === up ? down : up;
-      const d = fits(first) ? first : fits(second) ? second : null;
+      const toward = (band[1] + band[3]) / 2 > (top + bottom) / 2 ? up : down, other = toward === up ? down : up;
+      const d = fits(toward) ? toward : fits(other) ? other : null;
       if (d === null) break;
       dy += d;
+      placed = place(at, dy); covered = underZones(placed.rects, zones); fitted = true;
+      continue;
     }
-    placed = place(at, dy); covered = underZones(placed.rects, zones);
+    // Only columns over it: narrowed to what they leave clear, when the narrowed block still reads and keeps to its rows.
+    const clear = clearSpan(span, across);
+    if (!clear || clear[1] - clear[0] < (span[1] - span[0]) / 3 || (clear[0] === at[0] && clear[1] === at[1])) break;
+    const narrowed = place(clear, dy), [nTop, nBottom] = extent(narrowed);
+    if (linesOf(narrowed) > most || nTop < room[0] + dy - EDGE || nBottom > room[1] + dy + EDGE) break;
+    at = clear; placed = narrowed; covered = underZones(placed.rects, zones); fitted = true;
   }
-  return {placed, fitted: true, covered};
+  return {placed, fitted, covered};
 }
 const area = r => (r[2] - r[0]) * (r[3] - r[1]);
 

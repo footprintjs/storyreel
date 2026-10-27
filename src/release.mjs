@@ -39,7 +39,8 @@
  * column of buttons, the strip of name and caption at the foot, each in fractions of the frame, measured off the
  * platform's own published figure or estimated (each zone says which; `facts.ui` says where and when). The title band
  * and the captions are laid out clear of it, and what is still under it is reported on the release's result
- * (`covered`), or refused before that target's frames are drawn (`ui: {covered: 'refuse'}`). A target may give its own
+ * (`covered`), or refused (`ui: {covered: 'refuse'}`) before anything renders (refuseCoveredFirst: a voiced film, or one
+ * with a song, before that target's frames). A target may give its own
  * zones, the platform's published ad safe zone (`ui: {zones: 'ads'}`), the named faces to keep clear (`ui.faces`), or
  * none (`ui: false`). The loudness is the platform's goal where its adapter names one (`loudness`: Shorts, TikTok and
  * Reels −14 LUFS, −1 dBTP), the render's default elsewhere (targetLoudness). Before anything renders, this machine is
@@ -56,7 +57,8 @@ import {checkEdit} from './edit.mjs';
 import {QUALITIES} from './paint.mjs';
 import {creditLines} from './found/index.mjs';
 import {readUi, readZones, COVERED} from './zones.mjs';
-import {checkLoudnessTarget, DEFAULT_LOUDNESS} from './render.mjs';
+import {checkLoudnessTarget, DEFAULT_LOUDNESS, renderUi} from './render.mjs';
+import {castFilm, pacedTimings, compileForRender} from './prepare.mjs';
 import {doctor, requireDoctor} from './doctor.mjs';
 
 /** The built-in adapters, each loaded on first use. */
@@ -288,6 +290,38 @@ export function creditsText(post, tools, sounds = []) {
     ...(post.synthetic?.includes('voice') ? ['', 'The narration is a synthetic voice.'] : []), ''].join('\n');
 }
 
+/** A target's layout: its format, its title band and captions, its crop, fill and keep, and its app's UI (zones.mjs). */
+function targetLayout(adapter, options, p) {
+  return {format: adapter.video.format, ...(adapter.video.captions || options.captions ? {captions: options.captions ?? adapter.video.captions} : {}),
+    ...(options.header ? {header: options.header} : adapter.video.header && p.title ? {header: {title: p.title}} : {}), ...(options.crop && !options.edit ? {crop: options.crop} : {}), ...(options.scale !== undefined ? {scale: options.scale} : {}),
+    ...(options.fill ? {fill: true} : {}), ...(options.keep !== undefined ? {keep: options.keep} : {}),
+    // Where the platform's app draws over the video (the adapter's zones, the target's over them): the bands are laid out clear of it.
+    ...(options.ui ? {ui: {zones: options.ui.zones, covered: options.ui.covered, ...(options.ui.faces.length ? {faces: options.ui.faces} : {})}} : {})};
+}
+
+/**
+ * Every target that refuses what is under its app's UI (ui.covered: 'refuse'), checked before anything renders: the film
+ * compiled once as makeFilm compiles it — its cast, its timings paced as a silent cut's are (prepare.mjs · pacedTimings),
+ * no file written — and each such target's layout and part (or edit) asked (render.mjs · renderUi), so a refusal comes
+ * before any target renders and before any folder is made. A voiced film (narrationDir: its timings come from pacing its
+ * audio) or one with a song (music: the fit moves its scenes) cannot be timed before its render: its targets refuse as
+ * each render is prepared — before that target's frames, after the targets before it (README: The app's own UI).
+ */
+async function refuseCoveredFirst(film, loaded, p) {
+  const refusing = loaded.filter(l => l.options.ui?.covered === 'refuse');
+  if (!refusing.length || film.narrationDir || !film.timings || film.music) return;
+  const {storyboard, recipe, strings} = castFilm({storyboard: film.storyboard, recipe: film.recipe, strings: film.strings ?? null, cast: film.cast ?? null});
+  const compiled = await compileForRender({...film, storyboard, recipe, strings}, await pacedTimings({storyboard, timings: film.timings, pacing: film.pacing ?? null}));
+  const r = film.render ?? {};
+  for (const {adapter, options} of refusing) {
+    const edit = options.edit ? endOfFilm(options.edit, film.storyboard) : null;
+    try {
+      renderUi(compiled, {layout: targetLayout(adapter, options, p), edit, ...(r.fps ? {fps: r.fps} : {}), ...('poster' in r ? {poster: r.poster} : {}),
+        ...(edit ? {} : {from: options.from ?? r.from ?? 0, to: options.to ?? r.to ?? compiled.total})});
+    } catch (e) { throw new Error(`release to ${adapter.label}: ${e.message}`, {cause: e}); }
+  }
+}
+
 /**
  * The loudness a target's render is set to: its own (`render.loudness` on the target), else the film's render's (one
  * value the caller chose for every target), else the platform's goal (adapter.loudness: −14 LUFS, −1 dBTP for Shorts,
@@ -375,6 +409,9 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
     refuse(adapter, planProblems(adapter, p, {seconds: part, poster, scale: options.scale}));
     if (p.thumbnail !== 'poster') await checkThumbnail(adapter, p.thumbnail);
   }
+  // A target that refuses what is under its app's UI (ui: {covered: 'refuse'}) is asked now, on the film compiled once:
+  // a refusal comes before any target renders and before any folder is made (refuseCoveredFirst).
+  await refuseCoveredFirst(film, loaded, p);
   const stem = base ?? (String(film.storyboard?.title ?? 'film').toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'film');
   // Then, still before a frame is drawn, every target's folders and the names written in them: each folder inside `out`
   // a real one of the release's own that no one else can change (files.mjs · outputFolder), and no folder at a name a
@@ -390,11 +427,7 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
   const released = [];
   for (const [i, {adapter, options}] of loaded.entries()) {
     const {dir, work} = folders[i];
-    const layout = {format: adapter.video.format, ...(adapter.video.captions || options.captions ? {captions: options.captions ?? adapter.video.captions} : {}),
-      ...(options.header ? {header: options.header} : adapter.video.header && p.title ? {header: {title: p.title}} : {}), ...(options.crop && !options.edit ? {crop: options.crop} : {}), ...(options.scale !== undefined ? {scale: options.scale} : {}),
-      ...(options.fill ? {fill: true} : {}), ...(options.keep !== undefined ? {keep: options.keep} : {}),
-      // Where the platform's app draws over the video (the adapter's zones, the target's over them): the bands are laid out clear of it.
-      ...(options.ui ? {ui: {zones: options.ui.zones, covered: options.ui.covered, ...(options.ui.faces.length ? {faces: options.ui.faces} : {})}} : {})};
+    const layout = targetLayout(adapter, options, p);
     // A platform that takes an uploaded thumbnail (YouTube) shows no frame of the video as one: it starts on the film's own.
     // The target's own render settings (posterFrame, quality) go over the film's.
     const own = options.render ?? {}, posterSaid = (film.render && 'posterFrame' in film.render) || 'posterFrame' in own;

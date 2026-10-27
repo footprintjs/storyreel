@@ -346,5 +346,5 @@ function titleRects(ctx, placed, sans) {
 function fitTitle(ctx, header, sans, zones, height) {
   const [x, y, w, h] = header.box;
   const place = ([x0, x1], dy) => { const p = titleLines(ctx, {...header, box: [x0, y + dy, x1 - x0, h]}, sans); return {...p, rects: titleRects(ctx, p, sans)}; };
-  return zones?.length ? fitBlock(place, [x, x + w], zones, {height}) : {placed: place([x, x + w], 0), fitted: false, covered: []};
+  return zones?.length ? fitBlock(place, [x, x + w], zones, {height, rows: [y, y + h]}) : {placed: place([x, x + w], 0), fitted: false, covered: []};
 }

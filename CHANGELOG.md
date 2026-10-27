@@ -77,15 +77,20 @@
   the frame — and YouTube Shorts, TikTok and Instagram Reels now do: the top bar, the edges, the column of buttons on
   the right and the strip of name and caption at the foot. Each zone says where its numbers come from: **measured** (read
   off the platform's own published figure — Google's vertical-ads safe zone, TikTok's In-Feed template, Meta's Reels ads
-  guide) or **estimated** (no platform publishes the organic post's foot, or YouTube's and Instagram's button column).
+  guide — where an organic post has the same UI: the top bars, TikTok's column) or **estimated** (the organic foot strip,
+  the side edges — margins or unlabelled bands in those figures, not UI they say is drawn — and YouTube's and
+  Instagram's button columns).
   `facts.ui` cites the sources, checked 2026-10-27. Each adapter's `ui.ads` is the platform's published ad safe zone.
-- **The title band and the captions are laid out clear of it** (`layout.ui`, `footprint-storyreel/zones`): a caption line
-  that would reach under a column is narrowed about its centre (wrapped balanced when it must take two lines), a block
-  under a strip moves out of it. A line already clear is drawn exactly as before, byte for byte (pinned against 0.22.0's
-  drawing code).
+- **The title band and the captions are laid out clear of it** (`layout.ui`, `footprint-storyreel/zones`): a block under
+  a bar or strip (a zone across its whole width) moves out of it; a caption under a column is narrowed about its centre,
+  wrapped balanced, only while it keeps to two lines (or the lines it had) inside its band — a column never moves it up or
+  down, and one it cannot narrow so (a word wider than the clear stretch) is drawn as it was and reported. A line already
+  clear is drawn exactly as before, byte for byte (pinned against 0.22.0's drawing code).
 - **A check reports what is still under the UI** — each caption chunk, the title band, each named face (`ui.faces`: regions
   the kits name) — with when, where and the fix: renderFilm's `ui`, the release's `covered`, `making-of.json`'s `ui`.
-  `covered: 'refuse'` refuses before a frame is drawn. A target may give its own zones, `ui: {zones: 'ads'}` (the
+  `covered: 'refuse'` refuses before a frame is drawn — in a release, before any target renders or any folder is made
+  (the film compiled once to ask), except for a voiced film or one with a song, which cannot be timed before its render:
+  there it refuses before that target's own frames. A target may give its own zones, `ui: {zones: 'ads'}` (the
   published ad safe zone), `faces`, `covered`, or `ui: false` (none).
 - **`storyreel still --phone <target>`**: each moment at phone size (390 px across) as that platform shows it, the app's
   UI as grey shapes on top, anything still under it outlined in red and listed (`--title`, `--width`; `src/phone.mjs`).
@@ -96,16 +101,18 @@
   ceiling for lossy streams (`facts.loudness`). A release's result says what each target was set to (`loudness`).
 - **`storyreel doctor`** (`footprint-storyreel/doctor`): asks the local FFmpeg's own lists (encoders, filters, muxers,
   demuxers) and ffprobe for every piece a film needs, and looks up the themes' fonts where pictures are drawn; each is
-  available, missing or unknown — a list that cannot be read is never taken as available. `--json` for agents; exit 1
+  available, missing or unknown — a list that cannot be read is never taken as available; FFmpeg 4.4 to 9 read alike
+  (before 8.1 `-filters` prints no dashed line under its legend). `--json` for agents; exit 1
   when something a render needs is missing. **A release runs it first**, asking only for what its renders need, so a
   missing piece (or no FFmpeg at all) refuses in seconds, naming the fix.
 - **What changes in the outputs.** Without the new keys every output is as it was: YouTube, X and LinkedIn releases and
   a layout with no `ui` render the same bytes (the same loudness, bands and post.json). For the three vertical targets:
   - **YouTube Shorts, TikTok and Instagram Reels are normalised to −14 LUFS / −1 dBTP instead of −16 LUFS / −1.5 dBTP**
     (louder by about 2 LU; set `render: {loudness: {I: -16, TP: -1.5}}` on the target, or on the film, to keep the old level).
-  - **TikTok:** its measured button column (x 780 on, from y 840 down) reaches the caption band, so a caption whose line
-    would pass x 780 is narrowed to x 300–780 (often two lines). Shorts and Reels captions change only where a line would
-    pass x 888 (Shorts) or x 960 (Reels: never at the default box); a long title may narrow off TikTok's edges.
+  - **Captions under a column:** on **TikTok** (its measured button column, x 780 on, from y 840 down) a caption whose line
+    would pass x 780 is narrowed to x 300–780 (often two lines); on **YouTube Shorts** one passing x 888 is narrowed to
+    x 192–888. Reels' estimated column (x 960 on) never reaches the default captions. A long title may narrow off
+    TikTok's edges (x 120 and 960).
   - Their post.json's `facts` gain `ui` and `loudness`, and the making-of record gains `ui`.
   - The drawing fingerprint changes once (layout.mjs and captions.mjs changed, and zones.mjs joins the painter's code),
     and a target's layout now carries its zones, so each cached segment is drawn once more after the upgrade.

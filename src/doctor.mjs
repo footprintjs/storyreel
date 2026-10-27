@@ -59,13 +59,21 @@ export const NEEDS = Object.freeze([
 ]);
 /** FFmpeg's list for each kind of component. */
 const LISTS = Object.freeze({encoder: '-encoders', filter: '-filters', muxer: '-muxers', demuxer: '-demuxers'});
-/** One line of each list: the name after the flags (a format's line may name several, comma-separated). */
+/**
+ * One line of each list: the name after the flags (a format's line may name several, comma-separated) — never a
+ * legend's "=". A filter's line is told by its pads column ("A->A", "|->A", "N->V"), which no legend line has.
+ */
 const LINE = Object.freeze({
-  encoder: /^\s*[VAS][.A-Z]{5}\s+(\S+)/,
-  filter: /^\s*[.A-Z|]{2,3}\s+(\S+)\s+\S*->\S*/,
-  muxer: /^\s*(?:[DEd.]\s?){1,3}\s+(\S+)/,
-  demuxer: /^\s*(?:[DEd.]\s?){1,3}\s+(\S+)/,
+  encoder: /^\s*[VAS][.A-Z]{5}\s+([^=\s]\S*)/,
+  filter: /^\s*[.A-Z]{2,3}\s+([^=\s]\S*)\s+\S*->\S*/,
+  muxer: /^\s*(?:[DEd.]\s?){1,3}\s+([^=\s]\S*)/,
+  demuxer: /^\s*(?:[DEd.]\s?){1,3}\s+([^=\s]\S*)/,
 });
+/**
+ * The lists whose legend ends in a dashed line in every FFmpeg this reads (4.4 on). FFmpeg prints none under the
+ * filters' legend before 8.1 (fftools/opt_common.c · show_filters), so a filter's line is told by its pads column alone.
+ */
+const DASHED = new Set(['encoder', 'muxer', 'demuxer']);
 /** The generic font families a CSS stack may end in: the face drawn for one depends on the machine. */
 const GENERIC = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded', 'emoji', 'math', 'fangsong']);
 /** The font StoryReel brings (fonts/), registered where it is drawn (pen.mjs, the whiteboard). */
@@ -73,14 +81,16 @@ const BUNDLED = Object.freeze({Caveat: fileURLToPath(new URL('../fonts/caveat/Ca
 
 /**
  * The names one of FFmpeg's lists gives (`kind`: encoder, filter, muxer, demuxer), read from its text: a Set, or null
- * when the text is not such a list (no "---" line under its legend, or no line after it that reads as one) — the
- * doctor then says 'unknown', never 'missing'.
+ * when the text is not such a list (an encoder or format list with no dashed line under its legend; no line that reads
+ * as one) — the doctor then says 'unknown', never 'missing'. FFmpeg 4.4 to 9 alike: a filter list is read whole (no
+ * dashed line before 8.1; three flag columns to 7.1, two from 8.0), the others after their dashed line.
  */
 export function parseList(kind, text) {
-  const lines = String(text ?? '').split(/\r?\n/), start = lines.findIndex(l => /^\s*-{2,}\s*$/.test(l));
-  if (start < 0 || !LINE[kind]) return null;
+  if (!LINE[kind]) return null;
+  const lines = String(text ?? '').split(/\r?\n/), dashed = lines.findIndex(l => /^\s*-{2,}\s*$/.test(l));
+  if (dashed < 0 && DASHED.has(kind)) return null;
   const names = new Set();
-  for (const line of lines.slice(start + 1)) { const m = LINE[kind].exec(line); if (m) for (const n of m[1].split(',')) if (n) names.add(n); }
+  for (const line of lines.slice(dashed + 1)) { const m = LINE[kind].exec(line); if (m) for (const n of m[1].split(',')) if (n) names.add(n); }
   return names.size ? names : null;
 }
 
