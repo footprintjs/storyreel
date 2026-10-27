@@ -126,6 +126,10 @@
       "types": "./types/sub/review.d.ts",
       "default": "./src/review.mjs"
     },
+    "./rubric": {
+      "types": "./types/sub/rubric.d.ts",
+      "default": "./src/rubric.mjs"
+    },
     "./motion": {
       "types": "./types/sub/motion.d.ts",
       "default": "./src/motion.mjs"
@@ -182,6 +186,10 @@
     "./shots": {
       "types": "./types/sub/shots.d.ts",
       "default": "./src/shots.mjs"
+    },
+    "./progression": {
+      "types": "./types/sub/progression.d.ts",
+      "default": "./src/progression.mjs"
     },
     "./slideshow": {
       "types": "./types/sub/slideshow.d.ts",

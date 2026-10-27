@@ -26,21 +26,44 @@ export type StoryboardScene = {id: string; title?: string; /** Who says the scen
 
 export interface Storyboard {
   title?: string;
-  /** Where the numbers on screen come from (claims.mjs): a JSON file inside the film's root, or the list itself. */
-  facts?: string | NumberFact[];
+  /** Where the numbers on screen (and the claims in words) come from (claims.mjs): a JSON file inside the film's root, or the list itself. */
+  facts?: string | ClaimFact[];
   scenes: StoryboardScene[];
   [key: string]: unknown;
 }
+/** How a claim is known (claims.mjs · EVIDENCE): a source; a named person said it; grouped from verified facts; carried past what is known; unresolved. */
+export type EvidenceClass = 'verified' | 'reported' | 'derived' | 'extrapolated' | 'open';
+/**
+ * How a fact is known. Unclassed (no `evidence`): its `source` is required. Classed: `checked` says how it was checked
+ * (for an open claim, what is still unresolved); "verified" and "reported" (with `by`, who said it) need a source;
+ * "derived" is grouped from verified facts (`from`, their ids); "extrapolated" names its source or `from`; "open" needs
+ * neither. Once one fact in a list is classed, every fact is. `id` names a fact (for `from`, and recipe.evidence.allowOpen).
+ */
+export type FactKnown =
+  | {source: string; id?: string; evidence?: never; checked?: never; by?: never; from?: never}
+  | {evidence: 'verified'; source: string; checked: string; id?: string; by?: never; from?: never}
+  | {evidence: 'reported'; source: string; by: string; checked: string; id?: string; from?: never}
+  | {evidence: 'derived'; from: readonly string[]; checked: string; source?: string; id?: string; by?: never}
+  | {evidence: 'extrapolated'; checked: string; source?: string; from?: readonly string[]; id?: string; by?: never}
+  | {evidence: 'open'; checked: string; source?: string; id?: string; by?: never; from?: never};
+/** What a source is, as read (claims.mjs · sourceKind): a URL, a file inside the root, or neither — kept, and reported as unverified. */
+export type SourceKind = 'url' | 'file' | 'unverified';
 /** A fact a number on screen comes from: `value` as the screen shows it (16.67, 1000, or "3:15"), `text` the words it is shown with (the line must contain them), `source` a URL, a document or a record pointer. */
-export interface NumberFact { value: number | string; text?: string; source: string;
-  /** What the source is, as read (claims.mjs · sourceKind): a URL, a file inside the root, or neither — kept, and reported as unverified. */
-  readonly kind?: 'url' | 'file' | 'unverified' }
+export type NumberFact = {value: number | string; text?: string; says?: never;
+  /** What the source is, as read (claims.mjs · sourceKind). */
+  readonly kind?: SourceKind} & FactKnown;
+/** A claim in words, with no number (claims.mjs · findStatements): found wherever the film says or shows those words. It is always classed. */
+export type WordsFact = {says: string; value?: never; text?: never; readonly kind?: SourceKind} & Exclude<FactKnown, {evidence?: never}>;
+/** A fact the film's claims come from: a number's, or a claim in words. */
+export type ClaimFact = NumberFact | WordsFact;
+/** How the fact behind a claim is known, carried on the claim (only when the facts are classed). */
+export interface ClaimKnown { id?: string; evidence?: EvidenceClass; checked?: string; by?: string; from?: readonly string[] }
 /**
  * A number the film shows (claims.mjs), with its sign: the line it is in and where (`offset`), from when it is whole on
  * screen (`at`) to when it starts to leave (`to`), its scene and recipe entry (`captions` for the captions, `drawn` for a
  * word the review read off the picture), whether the scene is example data, and the backing fact's source (or null).
  */
-export interface Claim { number: string; line: string; offset: number; at: number; to: number; scene: string | null; path: string; example: boolean; source: string | null; sourceKind: 'url' | 'file' | 'unverified' | null;
+export interface Claim extends ClaimKnown { number: string; line: string; offset: number; at: number; to: number; scene: string | null; path: string; example: boolean; source: string | null; sourceKind: SourceKind | null;
   /** The language it was read by (the film's lang), when the film has one. */
   lang?: string;
   /** Drawn as code (decorative.mjs · code): read as code writes numbers, whatever the film's language. */
@@ -49,8 +72,21 @@ export interface Claim { number: string; line: string; offset: number; at: numbe
   ambiguous?: string }
 /** When the example label is up: over an example scene, and on while any line it shows is still on screen. */
 export interface ExampleLabel { from: number; to: number; words: string; scene: number }
-/** Every number the film shows, with the facts the storyboard names (null: none, so the numbers outside example scenes cannot be checked), each scene's example label (or null) and when a label is up. */
-export interface Claims { facts: readonly NumberFact[] | null; examples: readonly (string | null)[]; labels: readonly ExampleLabel[]; numbers: readonly Claim[] }
+/** A claim in words the film says (path 'captions': when its words are said) or shows (a line's recipe entry), with the fact behind it. */
+export interface WordsClaim extends ClaimKnown { says: string; line: string; offset: number; at: number; to: number; scene: string | null; path: string; example: boolean; source: string | null; sourceKind: SourceKind | null; evidence: EvidenceClass; checked: string }
+/**
+ * Every number the film shows, with the facts the storyboard names (null: none, so the numbers outside example scenes
+ * cannot be checked), each scene's example label (or null) and when a label is up; the claims in words (only when a fact
+ * `says` one); the open claims a release may show anyway, each with its reason (recipe.evidence.allowOpen; only when given).
+ */
+export interface Claims { facts: readonly ClaimFact[] | null; examples: readonly (string | null)[]; labels: readonly ExampleLabel[]; numbers: readonly Claim[];
+  statements?: readonly WordsClaim[]; allowOpen?: Readonly<Record<string, string>> }
+/** Every claim the film says or shows outside example scenes with its class (claims.mjs · evidenceOf; the making-of's `claims.evidence`). `evidence: null`: a number no fact backs. */
+export interface ClaimEvidence {
+  classes: Record<EvidenceClass | 'unclassed', number>;
+  claims: {claim: string; kind: 'number' | 'words'; evidence: EvidenceClass | null; said: 'spoken' | 'shown'; scene: string | null; path: string; at: number; id?: string; source?: string; sourceKind?: SourceKind; checked?: string; by?: string; from?: string[]}[];
+  allowed?: Record<string, string>;
+}
 /**
  * A kit's drawn parts at one moment (geometry.mjs), in its own coordinates: segments by name — `a` the root, `b` the tip,
  * `width`, `mount` (the part `a` lands on: a segment or a region), `ends` ('mounted': `b` lands on it too), `contact`
@@ -111,7 +147,29 @@ export interface ShotPlan {
    * Two at once, one the shot ends before, or one about a thing that is not there are listed in film.reads.
    */
   reads?: Read[];
+  /**
+   * The five scene questions (progression.mjs), one short sentence each: what exists now, what changed, why it changed,
+   * what became possible, what constraint remains. film.shots and the making-of carry them; recipe.progression checks
+   * that the story moves one world on (report by default, or refuse).
+   */
+  exists?: string;
+  changed?: string;
+  why?: string;
+  opens?: string;
+  remains?: string;
 }
+/** The answers a shot gave to the five scene questions (ShotPlan). */
+export interface SceneAnswers { exists?: string; changed?: string; why?: string; opens?: string; remains?: string }
+/** What does not progress (progression.mjs · checkProgression): a scene that changes nothing, a change the next scene's exists does not carry, an opening never used, a constraint never answered. */
+export interface ProgressionFinding { kind: 'changes-nothing' | 'not-carried' | 'opens-unused' | 'remains-unanswered'; path: string; where: string; next?: string; text: string }
+/** A point of a rubric (rubric.mjs): its id, what it is, the question a reviewer answers, what to lay out for it (rubric.mjs · LOOKS). */
+export interface RubricPoint { id: string; label: string; ask?: string; look?: RubricLook }
+/** What a rubric point lays out: the film's opening, its words, its faces, its shots, its sound, or each scene's settled picture. */
+export type RubricLook = 'opening' | 'words' | 'faces' | 'shots' | 'sound' | 'settled';
+/** A rubric as written: a name, a scale (whole scores, lowest first: [1, 10] by default), the least score every point (or some, by id) needs before approval, and its points. */
+export interface RubricSpec { name: string; scale?: [number, number]; least?: number | Record<string, number>; points: RubricPoint[] }
+/** A rubric, checked (rubric.mjs · readRubric). */
+export interface Rubric { readonly name: string; readonly scale: readonly [number, number]; readonly points: readonly Readonly<Required<Pick<RubricPoint, 'id' | 'label' | 'look'>> & {ask?: string}>[]; readonly least: Readonly<Record<string, number>> | null }
 /** One declared read (ShotPlan.reads). */
 export interface Read { what: string; at: Beat; min?: number; region?: string }
 
@@ -150,6 +208,12 @@ export interface Recipe {
   camera?: CameraMove[];
   /** Found sounds (footprint-storyreel/sounds): allowShareAlike lets CC BY-SA ones play, which puts the whole film under CC BY-SA. */
   foundSounds?: {allowShareAlike?: boolean};
+  /** The five scene questions (ShotPlan): 'report' (the default: film.progression lists what does not progress) or 'refuse'. */
+  progression?: 'report' | 'refuse';
+  /** The open claims a release may say or show anyway, each by its fact's id with the reason (claims.mjs · readAllowOpen). */
+  evidence?: {allowOpen: Record<string, string>};
+  /** The rubric a render is scored on before approval (rubric.mjs): `storyreel review --rubric` lays it out, its scores go into the making-of, an approval refuses scores under `least`. */
+  rubric?: RubricSpec;
   [key: string]: unknown;
 }
 
@@ -394,9 +458,13 @@ export interface Film {
   /** Every declared read (ShotPlan.reads), timed, with what is wrong with it if anything (two at once, too late, a region not there). */
   reads: {path: string; what: string; at: number; min: number; region?: string; problem?: string}[];
   /** Every shot — the story, then each stage — on screen from `from` to `to`, with what it says it is for and the facts it starts and ends with (null when it states none). */
-  shots: {path: string; where: string; scene: string; from: number; to: number; intent: string | null; start: Record<string, Fact> | null; end: Record<string, Fact> | null; moments: number}[];
+  shots: ({path: string; where: string; scene: string; from: number; to: number; intent: string | null; start: Record<string, Fact> | null; end: Record<string, Fact> | null; moments: number} & SceneAnswers)[];
   /** Bursts: more than 4 moments in 2 s of one shot — too fast to take in. */
   watching: Watching[];
+  /** What does not progress, read from the shots' answers to the five scene questions (absent when no shot answers one). */
+  progression?: readonly ProgressionFinding[];
+  /** The recipe's rubric, checked (absent when it names none). */
+  rubric?: Rubric;
   /** What the sound asks of the ear: a sound on most changes of picture, or the same cue twice running (listening.mjs). */
   listening: ListeningFinding[];
   /**
@@ -451,7 +519,7 @@ export interface Film {
 /**
  * The compile, recorded with footprintjs (compileFilm's `record: true`). Five stages: read inputs, build worlds
  * and stages, guesses and notes, checks, resolve lines. Scope keys: `recipe`, `lines`, `notes`, `strings`,
- * `world.<path>`, `stage.stages[i]`, `guess.guesses[n]`, `note.notes[i]`, `checks.reading|watching|continuity|sounds|ready`, and
+ * `world.<path>`, `stage.stages[i]`, `guess.guesses[n]`, `note.notes[i]`, `checks.reading|watching|continuity|sounds|ready` (and `checks.progression` when a shot answers a scene question), and
  * `when.<recipe path>` (seconds) for every line resolved. Detached: it survives structuredClone. Read a
  * slice with foottrace: `sliceForKey(snapshot.commitLog, key, keysReadFromExecutionTree(snapshot.executionTree))`.
  */
@@ -891,6 +959,8 @@ export interface MakeFilmOptions<K = Kit | ContextKit> {
   reducedMotion?: boolean;
   /** Every number on screen has a source (a verdict, with its decide() evidence in the record): 'report' (the default: the record's `claims` lists the numbers with no source) or 'refuse' (one refuses the film before it is drawn, and so does a film whose numbers cannot be checked). */
   claims?: 'report' | 'refuse';
+  /** true: this render leaves the house (makeRelease sets it) — a claim it says or shows whose fact is "open" refuses it before anything is drawn, unless the recipe allows that claim with a reason (recipe.evidence.allowOpen). */
+  release?: boolean;
 }
 /** What an edit changed (previewChanges): each planned piece and why the full render would draw it (null: kept), the runs of changed ones on the film clock, and the lines to read. */
 export interface ChangesPreview {

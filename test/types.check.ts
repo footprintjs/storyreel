@@ -583,3 +583,40 @@ export const nearest: Cut = {from: 1, to: 2, join: {cut: 'nearest'}};
 export const speakerFollow: Layout = {format: 'vertical', crop: [{at: 1, follow: 'speaker'}]};
 // @ts-expect-error a target's own render settings are posterFrame and quality
 export const ownLayout: ReleaseTarget = {target: 'youtube-shorts', render: {layout: {format: 'square'}}};
+
+// The five scene questions: one short sentence each, on the story and on a stage; film.shots carries them.
+import {QUESTIONS, readQuestions, checkProgression} from '../types/sub/progression.js';
+export const sceneAnswers: Recipe = {story: {kit: 'whiteboard', items: [], exists: 'The cart holds three items.'}, progression: 'refuse',
+  stages: [{type: 'summary', scene: 'refused', changed: 'The app refuses the offer.', why: 'The price changed.', opens: 'A fresh offer.', remains: 'The seller must approve it.'}]};
+// @ts-expect-error progression is 'report' or 'refuse'
+export const loose: Recipe = {progression: 'warn'};
+export const changedAt = (film: Film): string | undefined => film.shots[1].changed;
+export const notProgressing = (film: Film): string[] => (film.progression ?? []).map(f => `${f.kind}: ${f.text}`);
+export const plan = checkProgression([{path: 'story', where: 'the story', questions: readQuestions({exists: 'x'}, 'the story')}]).length + QUESTIONS.length;
+
+// Evidence classes: each class with what it needs; a claim in words; an open claim allowed in a release with its reason.
+import {readFacts as readClassed, evidenceOf, unallowedOpen, EVIDENCE} from '../types/sub/claims.js';
+import type {ClaimFact} from '../types/index.js';
+export const classed: ClaimFact[] = [
+  {id: 'hours', value: 18, text: '18 hours', evidence: 'verified', source: 'https://example.org/spec', checked: 'the spec sheet'},
+  {says: 'most returns are a loose cable', evidence: 'reported', by: 'Asha Rao', source: 'call notes', checked: 'read back to her'},
+  {value: 200, evidence: 'derived', from: ['march', 'april'], checked: 'added the two months'},
+  {says: 'the battery lasts a full day', id: 'full-day', evidence: 'open', checked: 'not confirmed yet'}];
+// @ts-expect-error a reported claim names who said it
+export const unnamed: ClaimFact = {value: 1, evidence: 'reported', source: 'x', checked: 'y'};
+// @ts-expect-error a derived claim lists what it is grouped from
+export const ungrouped: ClaimFact = {value: 1, evidence: 'derived', checked: 'y'};
+// @ts-expect-error a claim in words is classed
+export const unclassedWords: ClaimFact = {says: 'it lasts', source: 'x'};
+export const allowing: Recipe = {evidence: {allowOpen: {'full-day': 'the vendor confirms it next week'}}};
+export const classes = (film: Film) => [evidenceOf(film.claims)?.classes.open, unallowedOpen(film.claims).length, Object.keys(EVIDENCE).length, readClassed(classed as unknown).length, film.claims.statements?.[0]?.evidence];
+export const releaseFilm = (make: typeof import('../types/index.js').makeFilm, board: Storyboard, recipe: Recipe) => make({storyboard: board, recipe, out: 'x.mp4', release: true});
+
+// A rubric is data: points with their looks, a scale, least scores; the library lays it out and records the scores.
+import {readRubric, rubricSheet, rubricText, readScores, recordScores} from '../types/sub/rubric.js';
+import type {RubricSpec} from '../types/index.js';
+export const rubric: RubricSpec = {name: 'explainer', scale: [1, 10], least: {opening: 9}, points: [{id: 'opening', label: 'The opening', look: 'opening'}, {id: 'idea', label: 'One idea', ask: 'Is it clear?'}]};
+// @ts-expect-error a look is one the library lays out
+export const moody: RubricSpec = {name: 'x', points: [{id: 'a', label: 'b', look: 'mood'}]};
+export const scored = (film: Film) => rubricText(rubricSheet(film, readRubric(rubric))) + readScores('opening=9,idea=8', rubric).opening + recordScores('making-of.json', {rubric, scores: {opening: 9, idea: 8}, by: 'a reviewer'}).met;
+export const recipeRubric: Recipe = {rubric};

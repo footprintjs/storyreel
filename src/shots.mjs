@@ -37,6 +37,16 @@ const SECOND_SENTENCE = /[.!?]["'’”)\]]*\s+[\p{Lu}\p{N}“"‘(]/u;
 const NOT_AN_END = /\b(?:mrs?|ms|dr|st|no|vs?|etc|inc|ltd|jr|sr|fig|vol|approx|e\.g|i\.e|a\.m|p\.m)\.|\b\p{L}\./giu;
 
 /**
+ * Where a text reads as two sentences, or null: the words around the second one's start ("…w the square. Then the
+ * circ…"). Abbreviations and initials are not sentence ends (NOT_AN_END). What a shot's intent and its scene questions
+ * (progression.mjs) are read by: each is one sentence.
+ */
+export function secondSentence(text) {
+  const masked = text.replace(NOT_AN_END, m => m.replaceAll('.', '·')), second = masked.match(SECOND_SENTENCE);
+  return second ? `…${text.slice(Math.max(0, second.index - 12), second.index + second[0].length + 12)}…` : null;
+}
+
+/**
  * A shot's intent: what the shot is for, one sentence of at most INTENT_MAX characters, or null when the
  * shot says none. Anything else refuses, naming the shot.
  */
@@ -45,8 +55,8 @@ export function readIntent(value, where) {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`${where}: intent says what the shot is for, in words (e.g. "Show the app refusing a stale offer."), not ${JSON.stringify(value)}`);
   const text = value.trim();
   if (text.length > INTENT_MAX) throw new Error(`${where}: intent is ${text.length} characters; a shot's purpose fits in ${INTENT_MAX} (one short sentence)`);
-  const masked = text.replace(NOT_AN_END, m => m.replaceAll('.', '·')), second = masked.match(SECOND_SENTENCE);
-  if (second) throw new Error(`${where}: intent reads as two sentences at "…${text.slice(Math.max(0, second.index - 12), second.index + second[0].length + 12)}…"; a shot carries one beat (one sentence) — give the second idea a shot of its own, or, if it is one sentence, spell out the abbreviation`);
+  const second = secondSentence(text);
+  if (second) throw new Error(`${where}: intent reads as two sentences at "${second}"; a shot carries one beat (one sentence) — give the second idea a shot of its own, or, if it is one sentence, spell out the abbreviation`);
   return text;
 }
 

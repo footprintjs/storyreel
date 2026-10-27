@@ -314,7 +314,8 @@ export async function makeRelease({targets, post, out, base = null, ...film}) {
     const render = {...(adapter.thumbnail && !posterSaid ? {posterFrame: false} : {}), ...(film.render ?? {}), ...own, layout, ...(adapter.video.captionFiles ? {captionFiles: adapter.video.captionFiles} : {}),
       ...(options.edit ? {edit: endOfFilm(options.edit, film.storyboard)} : {}),
       ...(!options.edit && options.from !== undefined ? {from: options.from} : {}), ...(!options.edit && options.to !== undefined ? {to: options.to} : {})};
-    const result = await makeFilm({...film, out: path.join(work, `${stem}.mp4`), render});
+    // A release leaves the house: an open claim the film says or shows refuses it (makeFilm's release; claims.mjs).
+    const result = await makeFilm({...film, release: true, out: path.join(work, `${stem}.mp4`), render});
     refuse(adapter, lengthProblems(adapter, result.seconds));
     const fields = adapter.post(p, {chapters: chaptersOf(result.chapters ?? []), seconds: result.seconds, limits: adapter.limits});
     refuse(adapter, textProblems(adapter, fields));

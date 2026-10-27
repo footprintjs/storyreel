@@ -13,6 +13,7 @@ import {readFileSync, existsSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {stableJson} from './hash.mjs';
+import {rubricRefusal} from './rubric.mjs';
 
 export {stableJson};
 
@@ -41,6 +42,9 @@ export function approveFilm({record, by, note = null, at = new Date()} = {}) {
   if (made?.failed) throw new Error(`approveFilm: that render failed (${made.failed.error}); approve the record of a render that finished`);
   if (!made?.inputs?.storyboard || !made.inputs.recipe) throw new Error('approveFilm: give the making-of record of the render that was watched (record: its making-of.json, or the object); it lists what the film was made from');
   if (made.span && !made.span.whole) throw new Error(`approveFilm: that render shows ${made.span.from}–${made.span.to} s of a ${made.span.total} s film; an approval is of the whole film: approve a render of all of it`);
+  // The recipe's rubric (rubric.mjs): a render whose scores fall short of its least scores, or were never given, waits.
+  const why = rubricRefusal(made.rubric);
+  if (why) throw new Error(`approveFilm: ${why}`);
   return {schemaVersion: 2, approved: at.toISOString(), by: by.trim(), ...(note ? {note} : {}), ...(made.out ? {render: path.basename(made.out)} : {}), inputs: made.inputs};
 }
 

@@ -21,11 +21,12 @@ import {readApproval, requireApproval, voiceHash, unlocked} from './approval.mjs
 import {hashOf} from './hash.mjs';
 import {checkVideo, ffmpegProbe} from './finished.mjs';
 import {verdictChart} from './verdict.mjs';
-import {claimsCount, unsourcedClaims, claimText, CLAIMS_VERDICT} from './claims.mjs';
+import {claimsCount, unsourcedClaims, claimText, CLAIMS_VERDICT, evidenceOf, unallowedOpen, openRefusal} from './claims.mjs';
 import {installedVersion, lockedVersions} from './versions.mjs';
 import {codeCover, storyreelCode, MAX_PIECES} from './segments.mjs';
 import {beatMap, likelyTempi} from './beats.mjs';
 import {readMusic, musicHash, fitToMusic, fitVoice} from './music.mjs';
+import {QUESTIONS} from './progression.mjs';
 
 const version = installedVersion;
 /** The code fingerprint with what it covered, for the record: {fingerprint, files?, packages?}. */
@@ -142,13 +143,18 @@ const MAX_PARTS = MAX_PIECES;
  *                     scene), a verdict the record keeps with its decide() evidence: 'report' (the default: the record's
  *                     `claims` lists the numbers with no source) or 'refuse' (one refuses the film before it is drawn,
  *                     and so does a film whose numbers cannot be checked: the storyboard names no facts)
+ * @param release      true: this render leaves the house (makeRelease sets it) — a claim the film says or shows whose
+ *                     fact is "open" (claims.mjs · EVIDENCE: unresolved) refuses it before anything is drawn, unless the
+ *                     recipe allows that claim with a reason (recipe.evidence.allowOpen). false (the default): a draft;
+ *                     the record lists every claim with its class (`claims.evidence`) either way
  */
-export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report', code = null, check = null, expect = {}, cast = null, strategies = null, music = null, reducedMotion = false, claims = 'report'}) {
+export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report', code = null, check = null, expect = {}, cast = null, strategies = null, music = null, reducedMotion = false, claims = 'report', release = false}) {
   // The cast's names into the text before anything reads it: the pacing, the voice check, the chapters (cast.mjs).
   ({storyboard, recipe, strings} = castFilm({storyboard, recipe, strings, cast}));
   if (check !== null && check !== 'report' && check !== 'refuse') throw new Error(`check is 'report' (the record lists what the checks on the finished file found), 'refuse' (a problem refuses the film) or left out, not ${JSON.stringify(check)}`);
   if (voiceCheck !== 'report' && voiceCheck !== 'refuse') throw new Error(`voiceCheck is 'report' (the record lists words the voice check did not hear) or 'refuse' (the film refuses them), not ${JSON.stringify(voiceCheck)}`);
   if (claims !== 'report' && claims !== 'refuse') throw new Error(`claims is 'report' (the record lists the numbers on screen with no source) or 'refuse' (one refuses the film), not ${JSON.stringify(claims)}`);
+  if (typeof release !== 'boolean') throw new Error(`release is true (this render leaves the house: an open claim it says or shows refuses it, unless the recipe allows that claim with a reason) or false (the default: a draft), not ${JSON.stringify(release)}`);
   checkCode(code);
   if (check !== null && render.edit) throw new Error("check reads a render on the film's own clock, and an edit joins stretches of it: check each cut's render (from, to), or leave check out");
   if (approval) readApproval(approval);
@@ -230,6 +236,15 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       if (approval) {
         try { requireApproval(approval, inputs); } catch (e) { if (scope.narration) rmSync(scope.narration, {recursive: true, force: true}); throw e; }
         scope.approvedBy = approval.by;
+      }
+      // How every claim is known (claims.mjs · evidenceOf: only when the facts say), and a release's gate: an open claim the
+      // film says or shows, not allowed by the recipe with a reason, refuses it before anything is drawn.
+      const evidence = evidenceOf(film.claims);
+      if (evidence) scope.evidence = evidence.classes;
+      if (release) {
+        const open = unallowedOpen(film.claims);
+        if (open.length) { if (scope.narration) rmSync(scope.narration, {recursive: true, force: true}); throw new Error(openRefusal(open)); }
+        scope.release = true;
       }
     },
     // The film is made (approved, its claims checked, drawn and checked): the paced voice the render read — its own copy,
@@ -358,7 +373,18 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     ...(result.framing ? {framing: result.framing} : {}),
     ...(film.reading.length ? {reading: {tooShort: film.reading}} : {}),
     // Every number on screen and where it comes from (claims.mjs), with the verdict and why (check-claims).
-    claims: {...(run?.state ?? run?.sharedState ?? {}).claims, saw: SAW, ...(film.lang ? {lang: film.lang} : {}), ...claimsCount(film.claims), unsourced: unsourcedClaims(film.claims).map(c => ({number: c.number, scene: c.scene, path: c.path, at: c.at, fix: claimText(c)}))},
+    claims: {...(run?.state ?? run?.sharedState ?? {}).claims, saw: SAW, ...(film.lang ? {lang: film.lang} : {}), ...claimsCount(film.claims), unsourced: unsourcedClaims(film.claims).map(c => ({number: c.number, scene: c.scene, path: c.path, at: c.at, fix: claimText(c)})),
+      // Every claim the film says or shows, with its class and how it was checked (only when the facts say how they are known).
+      ...(evidenceOf(film.claims) ? {evidence: evidenceOf(film.claims)} : {})},
+    // A render made to leave the house (makeRelease): its open claims were each allowed by the recipe, with a reason.
+    ...(release ? {release: true} : {}),
+    // The story as one evolving world (progression.mjs): each shot's answers to the five scene questions, and what does
+    // not progress — only when a shot answers one. The next reader reads the story here, not from the pictures.
+    ...(film.shots.some(s => QUESTIONS.some(q => s[q])) ? {progression: {shots: film.shots.filter(s => QUESTIONS.some(q => s[q])).map(s => ({where: s.where, scene: s.scene, path: s.path, ...Object.fromEntries(QUESTIONS.filter(q => s[q]).map(q => [q, s[q]]))})),
+      found: (film.progression ?? []).map(({kind, where, text}) => ({kind, where, text}))}} : {}),
+    // The rubric the recipe scores the render on before approval (rubric.mjs): its points and least scores, not yet scored
+    // (storyreel review --rubric lays out what to score; its --scores writes the scores here).
+    ...(film.rubric ? {rubric: {name: film.rubric.name, scale: [...film.rubric.scale], points: film.rubric.points.map(p => p.id), ...(film.rubric.least ? {least: {...film.rubric.least}} : {})}} : {}),
     // Each beat: what was said, when, and the recipe entry that asked for it.
     beats: film.beats.map(({ref, t, path}) => ({said: Array.isArray(ref) ? {scene: ref[0], phrase: ref[1], plus: ref[2] ?? 0} : ref, at: t, ...(path ? {entry: path} : {})})),
     ...(film.notes.length ? {notes: film.notes} : {}),

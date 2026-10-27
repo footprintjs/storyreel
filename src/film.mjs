@@ -35,12 +35,14 @@ import {drawCard, drawStage, drawSummary, drawConnector, cardEdge, PANEL, drawRe
 import {readStepsTrack, drawStepsTrack, stepsTrackBox, stepsTrackLines} from './kits/paper/steps-track.mjs';
 import {tokenize, excerpt} from './kits/paper/code.mjs';
 import {readAttention, chip} from './attention.mjs';
-import {readFacts, exampleScenes, findClaims, labelSpans, numberLocale} from './claims.mjs';
+import {readFacts, exampleScenes, findClaims, findStatements, readAllowOpen, labelSpans, numberLocale} from './claims.mjs';
 import {planCamera} from './camerawork.mjs';
 import {readNotes, placePushes, pushAt} from './notes.mjs';
 import {view, compose, about, through, back} from './regions.mjs';
 import {tooShortToRead, readingMode, readingPace} from './reading.mjs';
 import {readIntent, readContinuity, checkContinuity, tooMuchTooFast, distinctMoments, watchingMode, watchingText, WATCHING, readReads, checkReads} from './shots.mjs';
+import {QUESTIONS, readQuestions, checkProgression, progressionMode, progressionRefusal} from './progression.mjs';
+import {readRubricRule} from './rubric.mjs';
 import {checkSound, soundsByScene, MAX_SOUNDS_PER_SCENE, FOUND} from './sound.mjs';
 import {readLibrary, useFound, trimOf, foundFields} from './found/index.mjs';
 import {listeningMode, changeSounds, listeningText} from './listening.mjs';
@@ -50,9 +52,12 @@ import {readThought, drawThought, thoughtAt, thoughtCamera, THOUGHT_ENTRANCE, TH
 import {SHEET_SHADOW} from './frame.mjs';
 
 /** The recipe's own top-level keys: anything else refuses, unless the host application names it in `hostKeys`. */
-const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'stepsTrack', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle', 'focus', 'emphasis', 'camera', 'foundSounds'];
-/** What every shot may say about itself (shots.mjs): what it is for, and what is true when it starts and ends. */
-const PLAN_KEYS = ['intent', 'continuity', 'reads'];
+const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'stepsTrack', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle', 'focus', 'emphasis', 'camera', 'foundSounds', 'progression', 'evidence', 'rubric'];
+/**
+ * What every shot may say about itself (shots.mjs): what it is for, what is true when it starts and ends, what the
+ * viewer must take in — and its answers to the five scene questions (progression.mjs).
+ */
+const PLAN_KEYS = ['intent', 'continuity', 'reads', ...QUESTIONS];
 const STAGE_KEYS = new Set(['type', 'scene', 'chip', 'chipDark', 'title', 'file', 'label', 'code', 'lh', 'reveal', 'focus', 'glows', 'footer', 'list', 'loop', 'cards', 'closing', 'hero', 'frames', 'keys', 'teaser', 'enter', 'chrome', 'marks', 'columns', 'card', ...PLAN_KEYS]);
 /** What every stage may carry; a stage kit that lists its own `keys` accepts these plus its own. */
 const COMMON_KEYS = ['type', 'scene', 'chip', 'chipDark', 'title', 'enter', 'chrome', 'card', ...PLAN_KEYS];
@@ -284,6 +289,8 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   // Claims (claims.mjs): the facts the storyboard names — from inside the root, hashed for an approval but in no
   // segment's key (they draw nothing) — and the scenes it marks as example data, checked before anything is built.
   const factList = storyFacts(storyboard.facts, root, filmLang), examples = exampleScenes(storyboard);
+  // The open claims a release may show anyway, each with its reason (claims.mjs · readAllowOpen), and the rubric's minimum.
+  const allowOpen = readAllowOpen(recipe.evidence, factList), rubricRule = readRubricRule(recipe.rubric);
   let labels = [];   // when the example label is up (claims.mjs · labelSpans): set once the film's lines are known
   const allKits = [whiteboardKit, ...kits];
   const storyKits = Object.fromEntries(allKits.filter(k => k.story).map(k => [k.name, k.story]));
@@ -317,7 +324,9 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   yield step('read-inputs', () => inputsSummary({recipe, storyboard, clock: base, notes, strings: strings ? [...used] : null}));
 
   // The story: its kit draws the opening world on a sheet (1600×900) that hangs on the paper.
-  const {intent: storyIntent, continuity: storyContinuity, reads: storyReads, frame: storyFrame, ...storySpec} = recipe.story ?? {kit: 'whiteboard', ...recipe.whiteboard};
+  const {intent: storyIntent, continuity: storyContinuity, reads: storyReads, frame: storyFrame, ...storyRest} = recipe.story ?? {kit: 'whiteboard', ...recipe.whiteboard};
+  // Its answers to the five scene questions are the engine's too (progression.mjs): read, then left out of what the kit gets.
+  const storyQuestions = readQuestions(storyRest, 'the story'), storySpec = Object.fromEntries(Object.entries(storyRest).filter(([key]) => !QUESTIONS.includes(key)));
   const story = compileWorld(storySpec, 'the story');
   // A film may be story only (no push-in, no card, no paper stages).
   const push = recipe.pushIn ?? null;
@@ -395,13 +404,16 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const readRefs = new Set();
   const timedReads = (value, where) => readReads(value, where).map((r, k) => { readRefs.add(value[k].at); return {...r, k, t: clock.at(value[k].at)}; });
   const plan = [{path: storyPathName, where: 'the story', scene: storyboard.scenes[0]?.id, from: 0, stage: null,
-    intent: readIntent(storyIntent, 'the story'), continuity: readContinuity(storyContinuity, 'the story'), reads: timedReads(storyReads, 'the story')},
+    intent: readIntent(storyIntent, 'the story'), continuity: readContinuity(storyContinuity, 'the story'), reads: timedReads(storyReads, 'the story'), questions: storyQuestions},
   ...stages.map((st, i) => ({path: `stages[${i}]`, where: `stage ${st.scene}`, scene: st.scene, from: st.start, stage: st,
-    intent: readIntent(st.intent, `stage ${st.scene}`), continuity: readContinuity(st.continuity, `stage ${st.scene}`), reads: timedReads(st.reads, `stage ${st.scene}`)}))];
+    intent: readIntent(st.intent, `stage ${st.scene}`), continuity: readContinuity(st.continuity, `stage ${st.scene}`), reads: timedReads(st.reads, `stage ${st.scene}`), questions: readQuestions(st, `stage ${st.scene}`)}))];
   // Film order is time order: a recipe may list its stages in any order, the plan never does.
   plan.sort((a, b) => a.from - b.from);
   plan.forEach((u, i) => { u.to = plan[i + 1]?.from ?? clock.total; });
   const facts = checkContinuity(plan);
+  // The five scene questions (progression.mjs): one evolving world, read in film order — reported, or refused.
+  const progressionRule = progressionMode(recipe.progression), progression = checkProgression(plan), asked = plan.some(u => u.questions);
+  if (progressionRule === 'refuse' && progression.length) throw new Error(progressionRefusal(progression));
   yield step('build-worlds-and-stages', () => buildSummary(storyPathName, storySpec.kit, stages, stageKitNames, plan));
 
   // Director's cuts: the scene's stage arrives on a hard cut instead of its hand-over or entrance.
@@ -1020,7 +1032,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const watchingRule = watchingMode(recipe.watching);
   const watching = tooMuchTooFast(plan.map(u => ({path: u.path, where: u.where, moments: momentsOf(u)})), WATCHING);
   if (watchingRule === 'refuse' && watching.length) throw new Error(`Too much, too fast (the recipe says watching: "refuse"): ${watching.slice(0, 3).map(watchingText).join('; ')}${watching.length > 3 ? `; and ${watching.length - 3} more` : ''}`);
-  const shotsPlanned = plan.map(u => ({path: u.path, where: u.where, scene: u.scene, from: +u.from.toFixed(3), to: +u.to.toFixed(3), intent: u.intent, start: u.continuity?.start ?? null, end: u.continuity?.end ?? null, moments: distinctMoments(momentsOf(u)).length}));
+  const shotsPlanned = plan.map(u => ({path: u.path, where: u.where, scene: u.scene, from: +u.from.toFixed(3), to: +u.to.toFixed(3), intent: u.intent, start: u.continuity?.start ?? null, end: u.continuity?.end ?? null, moments: distinctMoments(momentsOf(u)).length, ...u.questions}));
 
   // Reading time (reading.mjs): every line meant to be read stays up, whole, long enough to read.
   // What the film shows (claims.mjs): every line meant to be read, the emphasis words and the captions as shown (a
@@ -1168,7 +1180,8 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   for (const [name, ref] of Object.entries(recipe.recalls ?? {})) {
     const c = createCanvas(1600, 900); frame(c.getContext('2d'), clock.at(ref)); recalls[name] = c;
   }
-  yield step('checks', () => checksSummary({readingRule, reading, reads, watchingRule, watching, facts, sounds, byScene: soundsByScene(sounds, clock.offsets, timings.scenes.map(s => s.duration)), worlds: readies.filter(Boolean).length, recalls: Object.keys(recipe.recalls ?? {})}));
+  yield step('checks', () => checksSummary({readingRule, reading, reads, watchingRule, watching, facts, sounds, byScene: soundsByScene(sounds, clock.offsets, timings.scenes.map(s => s.duration)), worlds: readies.filter(Boolean).length, recalls: Object.keys(recipe.recalls ?? {}),
+    ...(asked ? {progression: {rule: progressionRule, found: progression}} : {})}));
   // Every line the build resolved (the clock is a pure function of the paced word times, so the order it was asked in changes no second).
   yield step('resolve-lines', () => linesSummary(beats));
   // What the film was made from, hashed (hash.mjs): an approval locks these (approval.mjs), and every segment's
@@ -1187,8 +1200,12 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const stringHashes = strings ? Object.freeze(Object.fromEntries(Object.keys(strings).map(k => [k, hashOf(strings[k])]))) : null;
   // Claims (claims.mjs): every number the film shows, each with the fact that backs it or the example scene it sits in
   // (an example line is labelled for as long as it is up: labelSpans).
+  // A fact may be a claim in words (`says`): found where the film says or shows those words (claims.mjs · findStatements).
+  // The open claims the recipe lets a release show, each with its reason (recipe.evidence.allowOpen), ride along.
   const claims = Object.freeze({facts: factList, examples: Object.freeze([...examples]), labels: Object.freeze(labels.map(l => Object.freeze({...l}))),
-    numbers: Object.freeze(findClaims(shown, {facts: factList, examples, scenes: storyboard.scenes.map(sc => sc.id), lang: filmLang}).map(Object.freeze))});
+    numbers: Object.freeze(findClaims(shown, {facts: factList, examples, scenes: storyboard.scenes.map(sc => sc.id), lang: filmLang}).map(Object.freeze)),
+    ...(factList?.some(f => f.says !== undefined) ? {statements: Object.freeze(findStatements(shown, {facts: factList, examples, scenes: storyboard.scenes.map(sc => sc.id)}).map(Object.freeze))} : {}),
+    ...(allowOpen ? {allowOpen} : {})});
   // What is drawn over every shot for a while: the guess cards, from their question to the card gone.
   const overlays = Object.freeze([...guesses.map((g, n) => Object.freeze({path: `guesses[${n}]`, from: g.start, to: g.until + .5})),
     ...(stepsTrack ? [Object.freeze({path: 'stepsTrack', from: stepsTrack.from, to: stepsTrack.until + .5})] : [])]);
@@ -1202,6 +1219,10 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   return {total: clock.total, clock, timings, sounds, foundSounds: foundUsed, listening, frame, beats, anchors: noted, strings: [...used], notes: notesApplied, attention: attention?.record ?? null, focusAt: attention?.focus?.viewAt ?? null,
     attentionFrames: attention?.frames ?? null,
     camera: camerawork?.record ?? null, cameraAt: camerawork?.viewAt ?? null, reading, reads, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching,
+    // What does not progress (progression.mjs), only when a shot answers one of the five scene questions.
+    ...(asked ? {progression: Object.freeze(progression.map(Object.freeze))} : {}),
+    // The recipe's rubric (rubric.mjs): the scores a render needs before it is approved; absent when it names none.
+    ...(rubricRule ? {rubric: rubricRule} : {}),
     rows: Object.freeze(rows().map(Object.freeze)), overlays, replays, inputs, stringHashes, mouthsAt, partsAt, pictureAt: pictureClock,
     lines: Object.freeze(lines.map(l => Object.freeze({...l}))), changes: Object.freeze(pictureChanges().map(c => Object.freeze({...c}))), claims, lang: filmLang,
     // What it was compiled from, kept for the cache's keys (segments.mjs): the recipe as given (its strings unresolved), frozen.
@@ -1220,7 +1241,7 @@ function inputsSummary({recipe, storyboard, clock, notes, strings}) {
 function buildSummary(storyPath, storyKit, stages, stageKitNames, plan) {
   // A shot's intent and its facts ride with it (absent when it states none), so a slice from a stage says what it was for.
   // The plan is in film order; each entry is found by its recipe path, so a recipe that lists its stages out of order still records each stage's own.
-  const said = path => { const u = plan.find(x => x.path === path); return {...(u?.intent ? {intent: u.intent} : {}), ...(u?.continuity ? {continuity: u.continuity} : {})}; };
+  const said = path => { const u = plan.find(x => x.path === path); return {...(u?.intent ? {intent: u.intent} : {}), ...(u?.continuity ? {continuity: u.continuity} : {}), ...(u?.questions ? {questions: u.questions} : {})}; };
   const writes = {[`world.${storyPath}`]: {kit: storyKit, path: storyPath, ...said(storyPath)}};
   stages.forEach((st, i) => { writes[`stage.stages[${i}]`] = {type: st.type, kit: st.world?.kit ?? stageKitNames[st.type] ?? 'paper', scene: st.scene, path: `stages[${i}]`, ...said(`stages[${i}]`)}; });
   return {reads: ['recipe', 'lines'], writes};
@@ -1234,11 +1255,13 @@ function notesSummary(guesses, notesApplied, camera = null) {
   return {reads: ['lines', 'notes', 'stage.'], writes};
 }
 /** What the checks found: the reading rule and the lines too short to read, the busiest scene's sounds, the worlds waited for. */
-function checksSummary({readingRule, reading, reads = [], watchingRule, watching, facts, sounds, byScene, worlds, recalls}) {
+function checksSummary({readingRule, reading, reads = [], watchingRule, watching, facts, sounds, byScene, worlds, recalls, progression = null}) {
   return {reads: ['world.', 'stage.', 'guess.', 'note.'], writes: {
     'checks.reading': {rule: readingRule, tooShort: reading.map(l => l.path), ...(reads.length ? {reads: reads.length, readProblems: reads.filter(r => r.problem).map(r => r.path)} : {})},
     'checks.watching': {rule: watchingRule, found: watching.map(w => ({kind: w.kind, path: w.path, at: w.at, moments: w.moments}))},
     'checks.continuity': {facts},
+    // The five scene questions, only when a shot answers one: the rule and what does not progress.
+    ...(progression ? {'checks.progression': {rule: progression.rule, found: progression.found.map(f => ({kind: f.kind, path: f.path}))}} : {}),
     'checks.sounds': {count: sounds.length, busiest: Math.max(0, ...byScene.map(l => l.length)), limit: MAX_SOUNDS_PER_SCENE},
     'checks.ready': {worlds, recalls}}};
 }

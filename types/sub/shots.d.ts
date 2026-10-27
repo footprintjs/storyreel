@@ -6,6 +6,8 @@ export const INTENT_MAX: number;
 export const WATCHING: {readonly together: number; readonly burst: {readonly most: number; readonly seconds: number}};
 /** A shot's moments, merged: a time closer than `together` s to the last kept one is the same moment. */
 export function distinctMoments(times: number[], rule?: typeof WATCHING): number[];
+/** Where a text reads as two sentences (the words around the second one's start), or null; abbreviations and initials are not sentence ends. */
+export function secondSentence(text: string): string | null;
 /** A shot's intent, checked: one sentence, at most INTENT_MAX characters; null when none is given. */
 export function readIntent(value: unknown, where: string): string | null;
 /** A shot's continuity, checked: {start, end} (each a flat list of facts); null when none is given. */

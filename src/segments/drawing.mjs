@@ -45,6 +45,8 @@ export const NOT_DRAWING = Object.freeze({
   'record.mjs': 'the compile\'s footprintjs record',
   'reading.mjs': 'the reading check: a line on screen too short to read refuses or is reported, never drawn',
   'shots.mjs': 'the shot plan\'s checks (intent, continuity, reads, too much too fast): they refuse or report, never draw',
+  'progression.mjs': 'the five scene questions and their check: words that ride on film.shots and the record, never drawn',
+  'rubric.mjs': 'a rubric read from the recipe, laid out and scored after the film is drawn: it never decides a pixel',
   'anchors.mjs': 'the anchors check (compileFilm anchors: \'note\'): it reports phrases and stands in times, never draws; a time it stands in is a beat\'s, in every piece\'s key',
 });
 /** Packages the painter's modules import that draw nothing (every other one must be in versions.mjs · DRAWING). */

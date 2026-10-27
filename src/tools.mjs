@@ -12,7 +12,7 @@
  */
 import path from 'node:path';
 import {existsSync, readFileSync} from 'node:fs';
-import {writeOutput, outputFolder} from './files.mjs';
+import {writeOutput, outputFolder, insideRoot} from './files.mjs';
 import {pathToFileURL} from 'node:url';
 import {compileFilm, evenTimings, paceTimings, makeFilm, makeClock, withDirections} from './index.mjs';
 import {checkPhrase, anchorsText, phrasesIn, exactPhrases} from './anchors.mjs';
@@ -29,6 +29,7 @@ import {momentAt, sceneTime, sceneIds, placeOf, HUNDREDTH} from './momenttext.mj
 import {formatScale} from './layout.mjs';
 import {hashOf} from './hash.mjs';
 import {reviewPart, reviewSummary, REVIEW_DEFAULTS, SUMMARY_TOP} from './review.mjs';
+import {readRubric, rubricSheet, rubricText, recordScores} from './rubric.mjs';
 
 export const CONFIG = 'storyreel.config.mjs';
 export {clockSeconds};
@@ -147,10 +148,57 @@ export async function timeline(project, args = {}) {
  * the end of its own scenes (the handles are not the part) must come round to their start.
  */
 export async function review(project, args = {}) {
+  if (args.rubric !== undefined && args.rubric !== false && args.rubric !== 'false') return rubricReview(project, args);
+  if (args.scores !== undefined || args.by !== undefined) throw new Error(`review: ${args.scores !== undefined ? 'scores' : 'by'} goes with a rubric: add --rubric (--rubric --scores ${args.scores ?? 'id=8,…'} --by "<who scored>")`);
   const part = partOf(args), loop = yes(args.loop);
   const r = await reviewPart(project.film, {...(part?.window ? spanOf(project.film, part) : part ? {part} : {}), layout: project.inputs.layout ?? null, loop});
   const said = yes(args.full) ? `${r.text || 'nothing found'}${r.verdicts?.length ? `\nverdicts:\n${r.verdictText}` : ''}` : reviewSummary(r, {more: FULL_HINT});
   return `${head(project.film, part, r.window)} — review (${r.ran.join(', ') || 'no check fits'}):\n${said}`;
+}
+
+/** The full render's making-of record: beside film.mp4 in the project's out folder (fullRender), where the scores go. */
+const makingOfOf = project => path.join(path.resolve(project.cwd, project.inputs.out ?? 'out'), 'making-of.json');
+/**
+ * The rubric a review scores on (rubric.mjs): the recipe's (rubric: 'true'), or a JSON file inside the project (rubric:
+ * its path) — read, never run.
+ */
+function rubricOf(project, given) {
+  if (yes(given)) {
+    if (!project.film.rubric) throw new Error('review --rubric: the recipe names no rubric — give it one ("rubric": {"name", "scale"?, "least"?, "points": [{"id", "label", "ask"?, "look"?}]}), or name a rubric file: --rubric rubric.json');
+    return project.film.rubric;
+  }
+  let file; try { file = insideRoot(project.cwd, String(given)); } catch (e) { throw new Error(`review --rubric: ${JSON.stringify(given)} is not a file inside the project (${e.message}): give the recipe's rubric (--rubric alone) or a rubric file in the project`); }
+  let value; try { value = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new Error(`review --rubric: ${given} is not a rubric file (${e.message}); it holds {"name", "points": […]}`); }
+  return readRubric(value, String(given));
+}
+
+/**
+ * A scored self-review (rubric.mjs). Without scores: the review, then for each point of the rubric its stills (one
+ * picture each, <out>/stills/rubric-<id>.png) and its evidence, in one stable layout — what a person or a model needs to
+ * score it; the library scores nothing. With scores ("id=8,…") and by (who scored): the scores written into the full
+ * render's making-of record (<out>/making-of.json), where an approval reads them. The rubric is of the whole film.
+ */
+async function rubricReview(project, args) {
+  if (['scene', 'scenes', 'from', 'to'].some(k => args[k] !== undefined)) throw new Error('review --rubric scores the whole film: leave scene, from and to out');
+  const rubric = rubricOf(project, args.rubric), makingOf = makingOfOf(project), record = existsSync(makingOf) ? (() => { try { return JSON.parse(readFileSync(makingOf, 'utf8')); } catch { return null; } })() : null;
+  if (args.scores !== undefined) {
+    if (args.by === undefined || yes(args.by)) throw new Error('review --rubric --scores: say who scored it: --by "<a name, or the model that scored it>"');
+    if (!existsSync(makingOf)) throw new Error(`review --rubric --scores: no making-of.json in ${path.dirname(makingOf)}: render the film first (the scores are kept in the render's record, beside film.mp4), then score it`);
+    const rec = recordScores(makingOf, {rubric, scores: args.scores, by: String(args.by)});
+    const met = rec.least ? (rec.met ? `; every least score met (${Object.entries(rec.least).map(([id, n]) => `${id} ${n}`).join(', ')})` : `; under the least score: ${rec.short.map(s => `${s.id} ${s.score} (at least ${s.least})`).join(', ')} — an approval refuses it until it is fixed, rendered and scored again`) : '';
+    return `rubric "${rec.name}" scored by ${rec.by}, recorded in ${makingOf}: ${rec.points.map(id => `${id} ${rec.scores[id]}`).join(', ')}${met}`;
+  }
+  if (args.by !== undefined) throw new Error('review --rubric: by goes with the scores: add --scores id=8,… (and --by "<who scored>")');
+  const {film} = project, r = await reviewPart(film, {layout: project.inputs.layout ?? null});
+  const sheet = rubricSheet(film, rubric, {review: r, record, opening: REVIEW_DEFAULTS.hook}), files = {};
+  for (const p of sheet.points) {
+    if (!p.stills.length) continue;
+    files[p.id] = path.join(stillsFolder(project), `rubric-${pictureName(p.id)}.png`);
+    writeOutput(files[p.id], await contactSheet(film, {moments: p.stills, columns: Math.min(3, p.stills.length), width: TOOL_DEFAULTS.width}));
+  }
+  const scoreLine = `\nRecord the scores (into ${makingOf}${record ? '' : ', once the film is rendered'}): storyreel review --rubric${yes(args.rubric) ? '' : ` ${shellWord(String(args.rubric))}`} --scores ${sheet.points.map(p => `${p.id}=N`).join(',')} --by "<who scored>"`;
+  const text = `${head(film, null, r.window)} — review (${r.ran.join(', ') || 'no check fits'}):\n${reviewSummary(r, {more: FULL_HINT})}\n\n${rubricText(sheet, {files})}\n${scoreLine}`;
+  return {text, files: Object.values(files), file: Object.values(files)[0]};
 }
 
 /** A quick look: the scenes (or a window: from, to) with their handles, half size where the format allows, the draft encode; reviewed first. */
@@ -399,8 +447,10 @@ export const TOOLS = Object.freeze({
   timeline: {run: timeline, about: 'When each scene starts and each beat lands, as text. For scenes, each time is scene+seconds from the start of the scene it falls in (today+64.70), the film clock beside it; for a window or the whole film, seconds on the film clock. Either goes to still --at or strip --at as it is. Read it before choosing a moment to look at.',
     args: {scene: 'scene ids, comma-separated (default: the whole film; or a window: from and to)', from: 'the window\'s start on the film clock: seconds or m:ss (0:12)', to: 'the window\'s end: seconds or m:ss',
       handles: `seconds of the film shown either side of the scenes or the window (${TOOL_DEFAULTS.handles})`}},
-  review: {run: review, about: `What is wrong, read from the picture as text: words under the captions, over each other, cut off at the edge, the picture frozen for ${REVIEW_DEFAULTS.stillFor} s, nothing new for ${REVIEW_DEFAULTS.newEvery} s while it moves. Times on the film clock. Then three verdicts (passed, failed, or not run): no slideshow, drawn parts hold together, every number on screen has a source.`,
-    args: {scene: 'scene ids, comma-separated (default: the whole film)', handles: `seconds either side (${TOOL_DEFAULTS.handles})`, loop: 'true when the part is made to loop: the end of its scenes (not the handles) must come round to their start', full: FULL_ARG}},
+  review: {run: review, about: `What is wrong, read from the picture as text: words under the captions, over each other, cut off at the edge, the picture frozen for ${REVIEW_DEFAULTS.stillFor} s, nothing new for ${REVIEW_DEFAULTS.newEvery} s while it moves. Times on the film clock. Then three verdicts (passed, failed, or not run): no slideshow, drawn parts hold together, every number on screen has a source. With rubric: each point of a rubric laid out with its stills and evidence, to score; with scores and by, the scores recorded in the render's making-of.json.`,
+    args: {scene: 'scene ids, comma-separated (default: the whole film)', handles: `seconds either side (${TOOL_DEFAULTS.handles})`, loop: 'true when the part is made to loop: the end of its scenes (not the handles) must come round to their start', full: FULL_ARG,
+      rubric: 'true to lay out the recipe\'s rubric (or a rubric file in the project): each point with its stills (a picture each) and its evidence, to score — the library scores nothing',
+      scores: 'with rubric: each point\'s score, "id=8,id=7,…", recorded in the full render\'s making-of.json (an approval reads them)', by: 'with scores: who scored it (a name, or the model)'}},
   part: {run: part, about: `A quick look at scenes, or at a window of the film (from, to): rendered with ${TOOL_DEFAULTS.handles} s of the film either side (both cuts seen), the draft encode (half size when the config names a layout); reviewed first. Prints the video's path.`,
     args: {scene: 'scene ids, comma-separated (or a window: from and to)', from: 'the window\'s start on the film clock: seconds or m:ss (0:12)', to: 'the window\'s end: seconds or m:ss', handles: `seconds either side (${TOOL_DEFAULTS.handles})`, full: FULL_ARG}},
   anchors: {run: anchors, load: 'config', about: 'Every phrase the film is keyed to (the recipe\'s beats, the pacing\'s holds), checked in one pass: each not said (with the nearest words said), each said more than once with no nth (with words said only at each place), where each is named. Run it after any edit to the narration, the recipe or the pacing.',

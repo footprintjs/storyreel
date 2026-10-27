@@ -654,6 +654,60 @@ ends before one lands (lengthen the scene's tail), or when its region is not dra
 `"reading": {"pace": "letters"}`: 1.5 s to find the line, then a fifteenth of a second a letter
 ("change the picture": 2.6 s instead of 1 s).
 
+### The five scene questions: one world, scene by scene
+
+An intent says what one shot is for. It does not say how the shots add up. A film that teaches or explains
+something is one world that changes, scene by scene: each scene starts where the last one left it and moves it on
+by one change. Each shot may say so in five short answers, one sentence each:
+
+- **`exists`**: what exists now;
+- **`changed`**: what changed;
+- **`why`**: why it changed;
+- **`opens`**: what became possible;
+- **`remains`**: what constraint remains.
+
+**Why.** The answers are the story as data. `film.shots` and the making-of record carry them, so the next reader
+(a person, or the next AI) reads five sentences a scene instead of working the story out again from the stills and
+the script. That costs fewer tokens and gives fewer wrong guesses. The answers draw nothing: every frame is the same with
+or without them, and the module that reads them is in no piece's drawing code.
+
+The "refused" scene of an explainer about a checkout:
+
+```json
+{"type": "world", "scene": "refused", "intent": "Show the app refusing a stale offer.",
+ "exists": "The cart holds three items and an offer made yesterday.",
+ "changed": "The app refuses the offer at checkout.",
+ "why": "The price changed after the offer was made.",
+ "opens": "The person can ask for a fresh offer.",
+ "remains": "A fresh offer still needs the seller's approval.",
+ "world": {"kit": "shop", …}}
+```
+
+The film reads the answers in film order and lists what does not progress (`film.progression`, the making-of's
+`progression`), each with its fix:
+
+- **a scene that changes nothing**: a scene after the first that says no `changed`;
+- **a change not carried**: a scene's `changed` that the next scene's `exists` shares no word with, or a next scene
+  that does not say what exists;
+- **an opening never used**: an `opens` that no later scene's `changed` picks up;
+- **a constraint never answered**: a `remains` that no later scene's `changed` answers. The story ends with it;
+  when the last scene leaves one, nothing can answer it.
+
+It is reported by default; `"progression": "refuse"` refuses, as `watching` and `reading` do. Only the shots that
+answer a question take part (a title card that answers none is passed over), and the first of them sets the world up.
+The check reads **words**, never the pictures and never the meaning. Two answers agree when they share a word that
+names something: the little words ("the", "is", "now") are left out, a number word is its digits ("two items" is
+"2 items"), and a plural or a tense is its stem ("refused" is "refuse"). So it catches a scene that jumps to a world
+the last change never mentioned, and a missing answer. It cannot tell a change carried in other words ("the offer is
+refused", then "checkout stops"), and a name used in every answer always agrees. The words it leaves out are
+English; in another language every word counts.
+
+```js
+const film = await compileFilm({storyboard, timings, recipe, kits});
+film.shots.map(s => `${s.where}: ${s.changed ?? '(no change)'}`);   // the story, scene by scene
+film.progression;   // [{kind: 'not-carried', where: 'stage refused', next: 'stage fresh', text: '… shares no word with it: say what exists now that it changed'}]
+```
+
 ## Checking a film
 
 - **Reading time.** Every line meant to be read — titles, footers, list lines, captions, the board's
@@ -1006,6 +1060,67 @@ await makeFilm({storyboard, recipe, timings, out: 'out/film.mp4', claims: 'refus
 The pipeline's check sees **declared lines only** — it draws no frame — and its refusal and record say so (`"saw":
 "declared lines only (the review also reads what the picture draws)"`); a number only the picture shows (a card's row,
 a kit's own words, code) is caught by the review.
+
+### How each claim is known: evidence classes
+
+A source says where a fact comes from. It does not say how sure the film can be of it. A figure read off a spec
+sheet, a sentence someone said on a call, a total added up from two reports and a trend carried on to 2030 all read
+the same on screen. **Why:** a viewer cannot tell them apart, so the film's record must. Then a claim nobody has
+settled yet cannot slip into a release, and anyone who reads the record can see how each claim was checked.
+
+A fact may say how it is known, with `evidence`, one of five classes, and `checked`, how it was checked:
+
+| `evidence` | means | needs |
+|---|---|---|
+| `verified` | a source says so | `source`, `checked` |
+| `reported` | a named person said it | `by` (who), `source` (where they said it), `checked` |
+| `derived` | grouped from verified facts | `from` (their `id`s: verified or derived, never itself), `checked` (how it was grouped) |
+| `extrapolated` | carried past what is known | `from` or `source`, `checked` (the method) |
+| `open` | unresolved | `checked` (what is still unresolved) |
+
+A claim in words, with no number, is a fact with `says` in place of `value`. It is found wherever the film says
+those words (its captions, timed by the words) or shows them (a line on screen): case and the marks between words
+are ignored, but the words must stand together and never inside a longer word. Once one fact says how it is known,
+every fact does (an unclassed one refuses, naming the fix), and a fact that says nothing is read exactly as before.
+A product explainer's `facts.json`:
+
+```json
+[{"id": "battery-hours", "value": 18, "text": "18 hours", "evidence": "verified", "source": "https://example.org/spec", "checked": "the spec sheet, 2026-10-20"},
+ {"id": "support-quote", "says": "most returns are a loose cable", "evidence": "reported", "by": "Asha Rao, head of support", "source": "call notes, 2026-10-18", "checked": "read back to her by email"},
+ {"id": "sales-march", "value": 120, "evidence": "verified", "source": "https://example.org/q1", "checked": "the quarterly report"},
+ {"id": "sales-april", "value": 80, "evidence": "verified", "source": "https://example.org/q2", "checked": "the quarterly report"},
+ {"id": "sales-spring", "value": 200, "text": "200 sold", "evidence": "derived", "from": ["sales-march", "sales-april"], "checked": "added the two months"},
+ {"id": "full-day", "says": "the battery lasts a full day", "evidence": "open", "checked": "the vendor has not confirmed it yet"}]
+```
+
+- **Every claim carries its class.** `film.claims.numbers[i]` and `film.claims.statements[i]` (the claims in words,
+  when a fact `says` one) carry the fact's `evidence`, `checked`, `by`, `from` and `id`. A derived number is sourced by
+  what it is grouped from, so the "every number has a source" verdict passes it. A number whose open fact gives no
+  source has none yet, and its fix says to settle it.
+- **The making-of lists every claim with its class**: `claims.evidence` is `{classes: {verified, reported, derived,
+  extrapolated, open, unclassed}, claims: [{claim, kind: 'number' | 'words', evidence, said: 'spoken' | 'shown', scene,
+  path, at, source?, checked?, by?, from?, id?}]}`. `unclassed` is a number no fact backs. Example scenes are left
+  out, because they say so on screen.
+- **A release refuses an open claim** the film says or shows, before anything is drawn. A release is `makeRelease`, or
+  `makeFilm({…, release: true})`; a draft only lists the claim. The refusal names each open claim and the fix:
+  settle it, cut it, or allow it in the recipe with a reason:
+
+  ```json
+  "evidence": {"allowOpen": {"full-day": "the vendor confirms it next week, and the film says so on screen"}}
+  ```
+
+  ```js
+  await makeRelease({storyboard, recipe, timings, out: 'release', targets: ['youtube'], post});
+  // This release says or shows 1 open claim (unresolved): "the battery lasts a full day" (said in scene spec;
+  // fact "full-day"; open: the vendor has not confirmed it yet). Settle each one (…) or cut it from the film; to
+  // release it unresolved, allow it in the recipe with a reason: "evidence": {"allowOpen": {"full-day": "…"}}
+  ```
+
+  Only an open fact can be allowed, by its `id`, with a reason in words; the record keeps the reason
+  (`claims.evidence.allowed`) and says the render was a release (`"release": true`).
+
+The classes are the author's words, as the sources are: the film checks that each class has what it needs, and that a
+derived claim rests on verified facts. It never checks a claim against the world.
 
 ## One film, every platform
 
@@ -1900,6 +2015,62 @@ nothing; a changed word, phrase, number, file or take does. The check runs once 
 a frame is drawn. `making-of.json` keeps the approval it was rendered under, and says what an approval does
 not lock: the render settings (the same approved film is made for every platform) and, without a code
 fingerprint, the kits' code. A draft is rendered without one.
+
+### A scored self-review: a rubric
+
+The checks catch what can be measured. Whether the opening holds attention or the one idea comes across has to be
+judged, by a person or by a model looking at the film. **Why a rubric:** a judgement asked the same way each time, on
+the same stills and evidence, can be compared between drafts and recorded. And "good enough to approve" becomes a
+number the recipe sets, not a mood. The library ships the mechanism only. A rubric is data that you write: a name,
+a scale, points, and the least score each point needs before approval. The library lays out what to look at for each
+point and records the scores. It never scores anything, and it calls no model.
+
+```json
+"rubric": {"name": "explainer", "scale": [1, 10], "least": 8, "points": [
+  {"id": "opening", "label": "The opening holds attention", "ask": "Do the first seconds give a reason to keep watching?", "look": "opening"},
+  {"id": "words", "label": "Words and numbers read easily", "look": "words"},
+  {"id": "idea", "label": "The one idea is clear", "look": "shots"},
+  {"id": "sound", "label": "Sound lands on what it marks", "look": "sound"}]}
+```
+
+A point's **`look`** says what to lay out for it, from what the film already knows. Each look gives up to six stills
+and the evidence beside them:
+
+| look | stills | evidence |
+|---|---|---|
+| `opening` | across the first 3 s (the review's hook) | the words said then, the review's hook check, what the first shot is for |
+| `words` | the lines meant to be read as they settle, the ones too short first | lines too short to read, the review's findings on words, the numbers and their sources |
+| `faces` | moments where a kit draws a mouth (or each scene's settled picture) | who speaks; when no kit draws a mouth, it says so |
+| `shots` | each scene's settled picture | each shot's intent and its answers to the five scene questions, what does not progress |
+| `sound` | at the effect sounds | each sound against the beat nearest it, what the sound asks of the ear, the voice check |
+| `settled` (the default) | each scene's settled picture | none |
+
+`least` is the least score every point needs (a number), or some points' (`{"opening": 9}`); without it the scores
+are recorded and nothing is required. The `scale` is `[1, 10]` unless it names another.
+
+```sh
+npx storyreel review --rubric            # the review, then each point: its picture (stills/rubric-<id>.png) and its evidence
+npx storyreel review --rubric --scores opening=9,words=7,idea=8,sound=8 --by "a reviewer"
+# rubric "explainer" scored by a reviewer, recorded in out/making-of.json: opening 9, words 7, idea 8, sound 8;
+# under the least score: words 7 (at least 8) — an approval refuses it until it is fixed, rendered and scored again
+```
+
+The layout is the same every time: the rubric and what it requires, then each point with its id, label and look, its
+question, its stills and its evidence, and the line that records the scores. `--rubric rubric.json` reads a rubric
+file inside the project instead of the recipe's. The scores go into the full render's `making-of.json` (`rubric:
+{name, scale, points, least?, scores, by, scored, met?, short?}`). The render writes the recipe's rubric there unscored
+(`{name, scale, points, least}`), and `approveFilm` refuses a record whose recipe asks for least scores while they are
+missing or one is under its least, naming the point:
+
+```js
+approveFilm({record: 'out/making-of.json', by: 'Sam'});
+// approveFilm: the recipe's rubric "explainer" asks for least scores before approval (opening 8, words 8, idea 8,
+// sound 8), and words scored 7 (by a reviewer): fix it, render again and score it again
+```
+
+The same as code (`footprint-storyreel/rubric`): `readRubric(spec)`, `rubricSheet(film, rubric, {review?, record?})`
+(the points with their stills and evidence, as data), `rubricText(sheet, {files?})`, `readScores`,
+`recordScores(makingOf, {rubric, scores, by})` and `rubricRefusal(record)`.
 
 ## Listening
 
@@ -2863,7 +3034,7 @@ the default because it rarely does; there is no swap repair.
 
 | import | what it does |
 |---|---|
-| `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?, hostKeys?, record?, reducedMotion?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `camera` and `cameraAt(t)` (the camera moves as played), `reading`, `lines` (every line meant to be read), `shots` (each shot's intent, facts and moments), `changes` (every change of picture), `watching`, `claims` (every number shown, with its source), `rows` (the rows of pictures segments are planned from), `moments()`, `regionsAt(t)`, `partsAt(t)`, `pictureAt(t)`, `mouthsAt(t)`, `pointAt(t, x, y)`, `posterAt`, `theme`; with `record: true`, `record` (the compile as a footprintjs run) |
+| `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?, hostKeys?, record?, reducedMotion?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `camera` and `cameraAt(t)` (the camera moves as played), `reading`, `lines` (every line meant to be read), `shots` (each shot's intent, facts and moments), `changes` (every change of picture), `watching`, `progression` (what does not progress, when a shot answers the five scene questions), `claims` (every number shown, with its source; claims in words), `rows` (the rows of pictures segments are planned from), `moments()`, `regionsAt(t)`, `partsAt(t)`, `pictureAt(t)`, `mouthsAt(t)`, `pointAt(t, x, y)`, `posterAt`, `theme`; with `record: true`, `record` (the compile as a footprintjs run) |
 | `renderFilm({film, storyboard, timings, narrationDir?, out, width?, height?, fps?, intro?, stamp?, from?, to?, poster?, loudness?, layout?, motionBlur?, captionFiles?, quality?, video?})` | the MP4 (FFmpeg), its chapters (one per titled scene), its poster, its loudness (two passes); a version for a platform, motion blur, caption files; the picture in one pass or in cached segments |
 | `compileLayout(film, layout)` · `FORMAT_NAMES` | a format's picture and bands, drawn at any t (`footprint-storyreel/layout` adds `formatOf`, `cropWindow`) |
 | `spokenTracks(film)` | the film's speech as tracks: chunk them with footprint-narration's `captionChunks`, write files with its `captionFile` (`footprint-storyreel/captions` adds `drawCaption`) |
@@ -2871,7 +3042,7 @@ the default because it rarely does; there is no swap repair.
 | `footprint-storyreel/sounds/openverse`: `openverse({token?, fetch?})` | the Openverse sound source (the only module that talks to Openverse; nothing that draws or renders imports it) |
 | `TRANSITIONS` · `TRANSITION_NAMES` · `transitionCatalog(kits)` · `transitionSheet({catalog?, moments?, width?})` | the transitions a shot can enter with, a kit's own added, on one PNG (`footprint-storyreel/transitions` adds `readEntrance`, `ghostPainter`) |
 | `CAMERA_MOVES` · `CAMERA_MOVE_NAMES` | the camera moves a recipe's `camera` names (`footprint-storyreel/camera` adds `readCameraMove`, `coverZoom`, `covered`, `viewOf`, `aimAt`, `speedRamp`, `handheldAt`, `layersAt`, `REST`, `MAX_ZOOM`) |
-| `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?, claims?})` | compile + render as a footprintjs pipeline, with `making-of.json` (a segmented render: one subflow per segment; the claims verdict, `check-claims`) |
+| `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?, claims?, release?})` | compile + render as a footprintjs pipeline, with `making-of.json` (a segmented render: one subflow per segment; the claims verdict, `check-claims`; `release: true` refuses an open claim) |
 | `approveFilm({record, by, note?})` · `checkApproval(approval, inputs)` | the approval lock: approve a watched render from its making-of.json, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
 | `checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})` · `FINISHED_CHECK_NAMES` | checks on the finished file: lengths, blank runs, flash frames, hand-overs and joins, the voice, captions (`footprint-storyreel/finished` adds `ffmpegProbe`, `FINISHED_CHECKS`, `FINISHED`) |
 | `footprint-storyreel/breakdown` → `breakdown(videoFile, {out?, beatMap?, beatOptions?, thresholds?, ffmpeg?, probe?, hints?})` · `breakdownText(spec)` · `BREAKDOWN` | a reference film as a spec to match: cuts, fades and dissolves, shots, pacing, motion, lettering (a heuristic), cuts on the beat (`beatMap(video, {ffmpeg})`: the reader reads the video's sound itself; `storyreel breakdown --beats`), judged by `safeBeats`; every verdict with its evidence |
@@ -2884,10 +3055,12 @@ the default because it rarely does; there is no swap repair.
 | `said(narration)` · `momentsOf` · `linesOf` · `sceneScript(scene)` · `momentOf(phrase)` | one script: what is said (the marks out), its moments (`{name}`) and its speakers' lines (`{@who}`); `footprint-storyreel/script` |
 | `makeClock(storyboard, timings)` | phrases and moments → seconds; `moments(scene)`, `speaking(t)`, `turns()`, `gaze(t, who)` |
 | `footprint-storyreel/shots` → `readIntent` · `readContinuity` · `checkContinuity` · `tooMuchTooFast` · `distinctMoments` · `WATCHING` | the shot plan's checks, on their own |
+| `footprint-storyreel/progression` → `QUESTIONS` · `readQuestions` · `checkProgression` · `progressionMode` · `contentWords` · `sharedWords` | the five scene questions (exists, changed, why, opens, remains) and the check that the story moves one world on |
+| `footprint-storyreel/rubric` → `readRubric` · `rubricSheet` · `rubricText` · `readScores` · `scoresRecord` · `recordScores` · `rubricShort` · `rubricRefusal` · `LOOKS` | a scored self-review: a rubric as data, each point's stills and evidence laid out, the scores recorded in the making-of, an approval that waits for them |
 | `footprint-storyreel/review` → `reviewPart(film, {part?, layout?, checks?, …})` · `REVIEW_DEFAULTS` · `REVIEW_CHECKS` · `findingsText` · `verdictsText` · `wordsAt` | a part reviewed by reading it: findings with times, and three verdicts (passed, failed, not run) with their `decide()` evidence |
 | `footprint-storyreel/slideshow` → `slideshowOf(film, {from?, to?, every?, rule?})` · `shotMotion` · `shotInsides` · `moved` · `SLIDESHOW` · `SLIDESHOW_VERDICT` | no slideshow: how much each shot moves in its middle, and whether most of the running time is dead (held still more than 3 s) |
 | `footprint-storyreel/geometry` → `geometryOf(film, {from?, to?, rule?})` · `auditParts` · `readParts` · `crosses` · `breakText` · `GEOMETRY` · `GEOMETRY_VERDICT` | a kit's drawn parts audited: mounted ends stay on, pairs kept apart never cross, a planted end stays where it was planted |
-| `footprint-storyreel/claims` → `numbersIn` · `numberValue` · `numberLocale` · `CODE_READING` · `readFacts` · `sourceKind` · `exampleScenes` · `labelSpans` · `findClaims` · `drawnLines` · `DRAWN` · `HOLD` · `drawnClaims` · `lingeringExamples` · `claimsCount` · `unsourcedClaims` · `claimText` · `CLAIMS_VERDICT` | every number on screen with its source: a fact the storyboard names, or an example scene (`film.claims`; the review adds what the picture draws) |
+| `footprint-storyreel/claims` → `numbersIn` · `numberValue` · `numberLocale` · `CODE_READING` · `readFacts` · `sourceKind` · `exampleScenes` · `labelSpans` · `findClaims` · `drawnLines` · `DRAWN` · `HOLD` · `drawnClaims` · `lingeringExamples` · `claimsCount` · `unsourcedClaims` · `claimText` · `CLAIMS_VERDICT` · `EVIDENCE` · `findStatements` · `readAllowOpen` · `evidenceOf` · `unallowedOpen` · `openRefusal` | every number on screen with its source: a fact the storyboard names, or an example scene (`film.claims`; the review adds what the picture draws); how each claim is known (its evidence class), claims in words, and the open claims a release refuses |
 | `footprint-storyreel/decorative` → `decorative` · `code` · `isDecorative` · `isCode` · `DECORATIVE` · `CODE` | text a kit draws but the film does not say (line numbers, badges): read by every review check but the claims check |
 | `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `bezier(x1, y1, x2, y2)` · `overshoots(name)` · `inOut` | the one ease table (`linear in out inOut back walk jump spring bounce outCubic outQuint outExpo outBack inOutCubic standard emphasized`), and four-number curves as CSS writes them |
 | `footprint-storyreel/moves` → `moveAt(move, t, {start, seconds?, feel?, reduced?})` · `stagger(items, gap)` · `movesBy({feel, use, kind})` · `readMove` · `applyMove` · `MOVES` | motion asked for by name: 30 moves as data, by feel and use, with the practitioners' timing rules |
@@ -2903,7 +3076,7 @@ the default because it rarely does; there is no swap repair.
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/script`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/review`, `/slideshow`, `/geometry`, `/claims`, `/decorative`, `/regions`, `/captions`, `/layout`, `/transitions`, `/breakdown`, `/sounds`, `/sounds/openverse`, `/camera`, `/beats`, `/music`, `/kits/whiteboard`, `/kits/cartoon`, `/kits/paper/steps-track`, `/pose`, `/mocap`, `/kits/cartoon/figure`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/script`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/progression`, `/review`, `/rubric`, `/slideshow`, `/geometry`, `/claims`, `/decorative`, `/regions`, `/captions`, `/layout`, `/transitions`, `/breakdown`, `/sounds`, `/sounds/openverse`, `/camera`, `/beats`, `/music`, `/kits/whiteboard`, `/kits/cartoon`, `/kits/paper/steps-track`, `/pose`, `/mocap`, `/kits/cartoon/figure`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws
