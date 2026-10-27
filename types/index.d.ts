@@ -204,7 +204,7 @@ export interface Recipe {
   /** What the sound asks of the ear (listening.mjs): 'report' (the default: film.listening lists it) or 'refuse'. */
   listening?: 'report' | 'refuse';
   /** Where the viewer looks (attention.mjs): keys name a thing in the picture (or "wide") on a beat; the strategy shows it (camera, spotlight, dim, none, or your own). */
-  focus?: {strategy: string | string[]; feel?: string | {k: number; d: number}; safe?: [number, number, number, number]; keys: {at: Beat; on: string; size?: 'medium' | 'close' | 'insert'}[]};
+  focus?: {strategy: string | string[]; feel?: string | {k: number; d: number}; safe?: [number, number, number, number]; keys: {at: Beat; /** A named thing, several (the box round all of them), or "wide". */ on: string | string[]; size?: 'medium' | 'close' | 'insert'}[]};
   /** Words put in front of the viewer on their beat (pop: big, then a label in the corner; corner; none; or your own). */
   emphasis?: {strategy: string; feel?: string | {k: number; d: number}; words: {at: Beat; text: string; until?: Beat}[]};
   /** Camera moves by name (camera.mjs · CAMERA_MOVES), in the order they start: one picture each, one camera (they take turns with a moving focus and the pushes). */
@@ -217,6 +217,8 @@ export interface Recipe {
   evidence?: {allowOpen: Record<string, string>};
   /** The rubric a render is scored on before approval (rubric.mjs): `storyreel review --rubric` lays it out, its scores go into the making-of, an approval refuses scores under `least`. */
   rubric?: RubricSpec;
+  /** The automatic director (footprint-storyreel/director): "on" proposes framing and moods as keys where they land (explicit keys win); "off" or absent, the film as without it. */
+  director?: import('./sub/director.js').DirectorSpec;
   [key: string]: unknown;
 }
 
@@ -449,7 +451,7 @@ export interface Film {
   /** The director's notes as applied, in the order written. */
   notes: Record<string, unknown>[];
   /** The recipe's focus and emphasis as placed on the clock (strategy, keys/words with their times), or null. */
-  attention: {focus?: {strategy: string; keys: {t: number; on: string; size?: string}[]}; emphasis?: {strategy: string; words: {t: number; text: string}[]}} | null;
+  attention: {focus?: {strategy: string; keys: {t: number; on: string | string[]; size?: string}[]}; emphasis?: {strategy: string; words: {t: number; text: string}[]}} | null;
   /** Where the focus is at t (the camera's point and zoom, the named thing's box, how focused 0–1), or null without a focus. */
   focusAt: ((t: number) => {cx: number; cy: number; z: number; box: [number, number, number, number]; w: number}) | null;
   /** The recipe's camera moves as played (camerawork.mjs), or null without them. */
@@ -486,8 +488,10 @@ export interface Film {
   stringHashes: Readonly<Record<string, string>> | null;
   /** The moments that replay earlier pictures (a teaser's rewind, a steps track's rewind cue): played at–until, showing from–to. A cached piece's key holds what it replays. */
   replays: readonly {at: number; until: number; from: number; to: number}[];
-  /** The recipe it was compiled from, as given (its strings unresolved), frozen: the default cache keys each piece's entries from it. */
+  /** The recipe it was compiled from, as given (its strings unresolved) with the director's keys where they landed, frozen: the default cache keys each piece's entries from it. */
   recipe: Readonly<Recipe>;
+  /** What the director proposed, where each key landed and why (only when the recipe asks for the director). */
+  director?: import('./sub/director.js').DirectorRecord;
   /** Its kits by name (the built-in whiteboard too): the default cache keys a piece by the code of the kits that draw it (Kit.sources). */
   kits: Readonly<Record<string, Kit | ContextKit>>;
   /** Which kit draws each recipe entry, by path ('story', 'stages[2]'); a built-in stage, drawn by the engine itself, is absent. */
@@ -620,6 +624,8 @@ export interface Kit {
     motion?: string[];
     /** Today's contract: compile(spec, clock, motion). `context: true` is the other contract (ContextKit). */
     context?: false;
+    /** What it takes from the director (footprint-storyreel/director): the spec keys for framing and mood keys, for every world or per spec (null: none). */
+    direction?: import('./sub/director.js').KitDirection | ((spec: any) => import('./sub/director.js').KitDirection | null);
     compile(spec: any, clock: Clock, motion: {cameraSpeed: number}): StoryWorld;
   };
   stages?: Record<string, {
@@ -642,6 +648,8 @@ export interface ContextKit extends Omit<Kit, 'story'> {
   story: {
     motion?: string[];
     context: true;
+    /** What it takes from the director (footprint-storyreel/director): the spec keys for framing and mood keys, for every world or per spec (null: none). */
+    direction?: import('./sub/director.js').KitDirection | ((spec: any) => import('./sub/director.js').KitDirection | null);
     compile(spec: any, context: KitContext): StoryWorld;
   };
 }
@@ -660,8 +668,9 @@ export interface CompileFilmOptions<K = Kit | ContextKit> {
   record?: boolean;
   /** true: the recipe's camera moves are cut to their end framing, handheld off, a speed ramp in step (default false). Only those: a focus, push notes, a kit's camera and transitions play as written. */
   reducedMotion?: boolean;
-  /** Strategies of your own for the recipe's focus and emphasis (attention.mjs), by name. */
-  strategies?: {focus?: Record<string, {show(ctx: any, view: import('./sub/attention.js').FocusView, paint: (ctx: any) => void, theme: unknown): void}>; emphasis?: Record<string, {draw(ctx: any, t: number, word: {t: number; text: string; next: number}, theme: unknown): void}>} | null;
+  /** Strategies of your own for the recipe's focus and emphasis (attention.mjs), by name; and the director's rule tables by language (director: {en: table}), read after the recipe's rules and before the neutral ones. */
+  strategies?: {focus?: Record<string, {show(ctx: any, view: import('./sub/attention.js').FocusView, paint: (ctx: any) => void, theme: unknown): void}>; emphasis?: Record<string, {draw(ctx: any, t: number, word: {t: number; text: string; next: number}, theme: unknown): void}>;
+    director?: Record<string, import('./sub/director.js').DirectorRules>} | null;
   /**
    * 'refuse' (default): a phrase the recipe names that its scene does not say stops the compile. 'note': each phrase
    * not as written is noted in film.anchors (a missing one stands at the nearest words said), so all are checked in one pass.
@@ -942,7 +951,9 @@ export interface FilmInputs { storyboard: string; timings: string; recipe: strin
   /** The facts the storyboard names (storyboard.facts), hashed on their own: an approval locks them; they are in no segment's key (they draw nothing). */
   facts?: string;
   /** The language the film's numbers are read by, when it has one: an approval of the film in one language is not of it in another. */
-  lang?: string }
+  lang?: string;
+  /** The keys the director placed, hashed (present only when it placed some): an approval of a directed film covers what it chose. */
+  director?: string }
 /** What a person approved: who, when, the render they watched, and what it was made from. */
 export interface Approval { schemaVersion: 2; approved: string; by: string; note?: string; render?: string; inputs: FilmInputs }
 /** Approve a render as it was watched, from its making-of record (the path of its making-of.json, or the object). A failed render's record refuses. */

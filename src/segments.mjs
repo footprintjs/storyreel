@@ -29,6 +29,7 @@ import {stampPicture, encoderOf} from './paint.mjs';
 import {codeCover} from './segments/code.mjs';
 import {ownDrawingCode} from './segments/drawing.mjs';
 import {planPieces, sampleOffsets, PIECE_DEFAULTS} from './segments/plan.mjs';
+import {asDirected} from './director/land.mjs';
 import {pieceKey, whyDrawn} from './segments/material.mjs';
 import {ffmpegJoin} from './segments/join.mjs';
 import {kitCode, unkeyedKits} from './segments/kitcode.mjs';
@@ -63,8 +64,8 @@ const filmId = film => createHash('sha256').update(JSON.stringify(film.timings.s
  * The segmented strategy: plan the pieces, reuse each one whose key and spot check match, draw the rest, and join
  * them. `force` names pieces to draw again whatever their key says (a piece index, or a scene id it covers).
  * @param store        where pieces are kept (folderStore(dir)) — required
- * @param recipe       the film's recipe (each piece's entries are part of its key); left out, the one the film was
- *                     compiled from (film.recipe)
+ * @param recipe       the film's recipe (each piece's entries are part of its key), keyed with the director's keys where
+ *                     they landed (film.director); left out, the one the film was compiled from (film.recipe)
  * @param code         the kits' code in each key: a fingerprint (codeFingerprint([kitsFolder]): in every key), code per
  *                     piece (sourceCode(sources)), null (none: only the spot check sees a kit change), or left out — each
  *                     kit's own `sources` (segments/kitcode.mjs), and `kitsCode` for the kits that declare none
@@ -140,7 +141,8 @@ export function segmentedVideo({store, recipe = null, code, kitsCode = null, joi
       if (job.edit) throw new Error('segmentedVideo: an edit (cuts joined, an end card) is not kept in segments, which are keyed on the film clock; render it with wholeVideo(), or leave video out (an edit is drawn whole by default)');
       if (job.start !== 0 || job.to < job.film.total - 1e-6) throw new Error('segmentedVideo: segments cover the whole film; render a part (from, to) with wholeVideo()');
       const render = {failed: null, previous: null, keeping: true, pieceCode: null}; renders.set(job, render);
-      const {film} = job, keyRecipe = recipe ?? film.recipe;
+      // An explicit recipe is keyed as the film was compiled: with the director's keys where they landed (film.director).
+      const {film} = job, keyRecipe = recipe ? asDirected(recipe, film.director) : film.recipe;
       if (!keyRecipe) throw new Error('segmentedVideo: give the recipe (this film was not compiled with one StoryReel keeps: compile it with StoryReel 0.18 or later)');
       const recallTimes = [...new Set(film.beats.filter(b => b.path?.startsWith('recalls')).map(b => b.t))];
       // The poster (frame 0 of the first piece, which the spot check paints anyway) and the recalls (the film's own frames

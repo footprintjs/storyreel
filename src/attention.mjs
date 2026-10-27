@@ -5,7 +5,8 @@
  *
  *   "focus": {"strategy": "camera", "feel": "heavy", "keys": [
  *     {"at": ["leak", "leaves the building"], "on": "database", "size": "medium"},
- *     {"at": ["turn", "the front door"], "on": "wide"}]}
+ *     {"at": ["turn", "the front door"], "on": "wide"},
+ *     {"at": ["talk", "Is it late"], "on": ["mia", "sam"]}]}     several things together: the box round all of them
  *   "emphasis": {"strategy": "pop", "words": [{"at": ["rules", "acts as"], "text": "YOUR RULES"}]}
  *
  * Focus (FOCUS): `camera` eases the camera to frame the named thing (sizes as a director's push: medium, close,
@@ -152,6 +153,8 @@ function pick(kind, name, builtIn, mine, needs) {
   const custom = Boolean(mine && Object.hasOwn(mine, name));
   return {...all[name], name, ...(custom ? {code: String(all[name][needs])} : {})};
 }
+/** The box round several boxes. */
+const around = boxes => [Math.min(...boxes.map(b => b[0])), Math.min(...boxes.map(b => b[1])), Math.max(...boxes.map(b => b[2])), Math.max(...boxes.map(b => b[3]))];
 const inOrder = (list, kind) => list.forEach((k, i) => { if (i && k.t < list[i - 1].t) throw new Error(`${kind}[${i}] comes before the one above it; list them in the order they are spoken`); });
 
 /** The focus as written, checked and placed on the clock: {strategy, viewAt(t), show(ctx, t, paint), record}. */
@@ -174,14 +177,17 @@ function readFocus(spec, {clock, named, strategies, pushes, theme}) {
   const keys = spec.keys.map((k, i) => {
     if (!k || typeof k !== 'object' || Array.isArray(k)) throw new Error(`focus.keys[${i}] must be {at, on, size?}`);
     for (const key of Object.keys(k)) if (!KEY_KEYS.includes(key)) throw new Error(`focus.keys[${i}] has unsupported key ${key} (a key is {at, on, size?})`);
-    if (typeof k.on !== 'string' || !k.on) throw new Error(`focus.keys[${i}].on names a thing in the picture (a kit names things in regionsAt), or "wide"`);
+    const names = Array.isArray(k.on) ? k.on : [k.on];
+    if (!names.length || !names.every(n => typeof n === 'string' && n)) throw new Error(`focus.keys[${i}].on names a thing in the picture (a kit names things in regionsAt), several of them (a list: the box round all of them), or "wide"`);
+    if (Array.isArray(k.on) && names.includes('wide')) throw new Error(`focus.keys[${i}].on lists "wide", which is the whole frame, not a thing: write "on": "wide" alone, or list the things to frame`);
+    const on = names.length === 1 ? names[0] : [...names];   // a list of one is its one name
     const t = clock.at(k.at);
-    if (k.on === 'wide') { if (k.size !== undefined) throw new Error(`focus.keys[${i}]: "wide" is the whole frame; leave the size out`); return {t, on: 'wide', cx: W / 2, cy: H / 2, z: 1, box: [0, 0, W, H], w: 0}; }
+    if (on === 'wide') { if (k.size !== undefined) throw new Error(`focus.keys[${i}]: "wide" is the whole frame; leave the size out`); return {t, on: 'wide', cx: W / 2, cy: H / 2, z: 1, box: [0, 0, W, H], w: 0}; }
     const size = k.size ?? 'medium';
-    if (!Object.hasOwn(FRAMINGS, size)) throw new Error(`focus.keys[${i}].size is ${Object.keys(FRAMINGS).join(', ')} (how much of the frame "${k.on}" fills), not ${JSON.stringify(size)}`);
-    let box; try { box = named(k.on, t); } catch (e) { throw new Error(`focus.keys[${i}]: ${e.message}`, {cause: e}); }
+    if (!Object.hasOwn(FRAMINGS, size)) throw new Error(`focus.keys[${i}].size is ${Object.keys(FRAMINGS).join(', ')} (how much of the frame "${names.join('" + "')}" fills), not ${JSON.stringify(size)}`);
+    let box; try { box = around(names.map(n => named(n, t))); } catch (e) { throw new Error(`focus.keys[${i}]: ${e.message}`, {cause: e}); }
     const [x0, y0, x1, y1] = box, share = Math.max((x1 - x0) / sw, (y1 - y0) / sh);
-    return {t, on: k.on, size, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, z: Math.max(1, Math.min(3, FRAMINGS[size] / share)), box: [...box], w: 1};
+    return {t, on, size, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, z: Math.max(1, Math.min(3, FRAMINGS[size] / share)), box: [...box], w: 1};
   });
   inOrder(keys, 'focus.keys');
   // A wide key sits at the frame's centre; a framed thing at the safe area's centre.
@@ -195,7 +201,7 @@ function readFocus(spec, {clock, named, strategies, pushes, theme}) {
       box: tracks.box.map(b => track(t, b, feel)), w: clamp01(track(t, tracks.w, feel)), on: key?.on ?? null, thing: key ? key.box : null, since: key ? t - key.t : null};
   };
   // While it moves the camera: from each key until its spring settles (the camera's moves take turns with it: camerawork.mjs).
-  const moving = strategy.moves ? keys.map((k, key) => ({from: k.t, to: k.t + settleTime(feel), key, on: k.on})) : [];
+  const moving = strategy.moves ? keys.map((k, key) => ({from: k.t, to: k.t + settleTime(feel), key, on: [k.on].flat().join('" + "')})) : [];
   return {strategy: strategy.name, moves: Boolean(strategy.moves), moving, viewAt, show: (ctx, t, paint) => strategy.show(ctx, viewAt(t), paint, theme),
     record: {strategy: strategy.name, ...(spec.safe ? {safe} : {}), keys: keys.map(k => ({t: +k.t.toFixed(3), on: k.on, ...(k.size ? {size: k.size} : {})}))},
     // Each key as it frames the picture (where the camera points, how close, the box it holds): what a cached piece's key holds.

@@ -3,7 +3,7 @@
  * to it, how focused (0 wide … 1); the current key's thing — its name ("wide" too) and its box at the key, not eased —
  * and the seconds since that key (on, thing and since are null before the first key).
  */
-export interface FocusView {cx: number; cy: number; z: number; sx: number; sy: number; box: [number, number, number, number]; w: number; on: string | null; thing: [number, number, number, number] | null; since: number | null}
+export interface FocusView {cx: number; cy: number; z: number; sx: number; sy: number; box: [number, number, number, number]; w: number; on: string | string[] | null; thing: [number, number, number, number] | null; since: number | null}
 /** A focus strategy: shows the picture (paint) for a view. */
 export interface FocusStrategy {name?: string; moves?: boolean; show(ctx: any, view: FocusView, paint: (ctx: any) => void, theme: unknown): void}
 /** An emphasis strategy: draws the current words. */

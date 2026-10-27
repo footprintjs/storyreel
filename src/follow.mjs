@@ -41,13 +41,14 @@ const union = boxes => [Math.min(...boxes.map(b => b[0])), Math.min(...boxes.map
 
 /**
  * What the focus strategy looks at, at t: {x, y, why: 'speaker' | 'focus' | 'both'} or null (nothing named to look at).
- * `turns` [{speaker, start, end}]; `focusKeys` [{t, on}]; w the window's width.
+ * `turns` [{speaker, start, end}]; `focusKeys` [{t, on}] (on: a name, several, or "wide"); w the window's width.
  */
 export function focusTarget(film, t, {turns, focusKeys, w}) {
   const names = namedAt(film, t);
   const turn = turns.findLast(g => t >= g.start - LISTEN[0] && t <= g.end + LISTEN[1]);
   const speaker = turn && names.get(turn.speaker), on = focusKeys.findLast(k => t >= k.t)?.on;
-  const thing = on && on !== 'wide' ? names.get(on) : null;
+  // A key may frame several things (on: [a, b]): the box round the ones named here.
+  const boxes = on && on !== 'wide' ? [on].flat().map(n => names.get(n)).filter(Boolean) : [], thing = boxes.length ? union(boxes) : null;
   const pick = speaker && thing && union([speaker, thing])[2] - union([speaker, thing])[0] <= w * .9 ? ['both', union([speaker, thing])] : speaker ? ['speaker', speaker] : thing ? ['focus', thing] : null;
   if (!pick) return null;
   const [why, b] = pick;
