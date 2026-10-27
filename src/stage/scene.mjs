@@ -14,6 +14,7 @@ import {fingersAt} from '../fingers.mjs';
 import {mouthAt} from '../acting.mjs';
 import {STAGE, swing, armAmount, smooth} from './timing.mjs';
 import {principlesAt} from './travel.mjs';
+import {own} from './own.mjs';
 import {personX, walkPoseAt, facingAt, presentAt, headAt, itemPoint, itemShown, tripAt, stayAt, tripEnds} from './positions.mjs';
 
 const lastAt = (list, t) => { let found = null; for (const e of list) { if (e.at <= t) found = e; else break; } return found; };
@@ -31,9 +32,9 @@ export function targetPoint(plan, on, t) {
     if (pts.length) return [pts.reduce((s, p) => s + p[0], 0) / pts.length, pts.reduce((s, p) => s + p[1], 0) / pts.length];
     return null;
   }
-  const spots = plan.stage.place.adapter.spots ?? {}, regions = plan.stage.place.adapter.regions ?? {};
-  if (spots[on]) return [...spots[on]];
-  if (regions[on]) { const [x0, y0, x1, y1] = regions[on]; return [(x0 + x1) / 2, (y0 + y1) / 2]; }
+  const spot = own(plan.stage.place.adapter.spots, on), region = own(plan.stage.place.adapter.regions, on);
+  if (spot) return [...spot];
+  if (region) { const [x0, y0, x1, y1] = region; return [(x0 + x1) / 2, (y0 + y1) / 2]; }
   return null;
 }
 

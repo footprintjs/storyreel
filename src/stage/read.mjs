@@ -6,14 +6,18 @@
  *    aside?, sounds?}
  */
 import {readAction} from './vocabulary.mjs';
+import {own} from './own.mjs';
 
 export const STAGE_KEYS = Object.freeze(['place', 'cast', 'props', 'actions', 'aside', 'sounds']);
 const CAST_KEYS = ['as', 'x', 'facing'], PROP_KEYS = ['kind', 'count', 'at', 'in', 'with', 'slots', 'open'];
 const shown = v => JSON.stringify(v) ?? String(v);
 /** A name a person or a prop goes by: it is a camera name and a fact's name, so a word, never a path or 'viewer'. */
 const NAME = /^[\p{L}\p{N}_-]+$/u;
+/** The names every JavaScript object already has: never an id, so no record keyed by a name can reach Object.prototype. */
+const RESERVED = new Set(['__proto__', 'constructor', 'prototype']);
 
 function checkName(id, what, where) {
+  if (RESERVED.has(id)) throw new Error(`${where}: ${what} "${id}" has a name every JavaScript object already has: give it another name, such as "${id.replace(/_/g, '')}1"`);
   if (!NAME.test(id) || id === 'viewer') throw new Error(`${where}: ${what} "${id}" needs a name of letters, digits, _ or - (no spaces or dots; "viewer" is taken)`);
 }
 const isPoint = p => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite);
@@ -54,7 +58,7 @@ function readProps(props, adapters, place, castIds, where) {
     if (places.length !== 1) throw new Error(`${at}: give exactly one of at (a place: [x, y] or a spot), in (a container) or with (a cast member)`);
     let start;
     if (p.at !== undefined) {
-      const spot = typeof p.at === 'string' ? place.adapter.spots?.[p.at] : null;
+      const spot = typeof p.at === 'string' ? own(place.adapter.spots, p.at) : null;
       if (typeof p.at === 'string' && !spot) throw new Error(`${at}: the place "${place.name}" has no spot "${p.at}" (its spots are ${Object.keys(place.adapter.spots ?? {}).join(', ') || 'none: give [x, y]'})`);
       if (!spot && !isPoint(p.at)) throw new Error(`${at}: at is [x, y] (the bottom of the thing) or a spot name, not ${shown(p.at)}`);
       start = {type: 'ground', at: spot ?? p.at};

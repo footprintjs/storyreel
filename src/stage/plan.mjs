@@ -17,6 +17,7 @@ import {STAGE, swingSeconds} from './timing.mjs';
 import {TRAVELS, readTravel} from './travel.mjs';
 import {BADGE_NAMES} from './vocabulary.mjs';
 import {personX, presentAt, itemPoint, holderPoint, headAt, itemShown} from './positions.mjs';
+import {own, plain} from './own.mjs';
 
 const shown = v => JSON.stringify(v) ?? String(v);
 const s2 = t => `${t.toFixed(2)} s`;
@@ -91,30 +92,31 @@ export function planStage(stage) {
   }
 
   // ── the state the story is in, and its record ───────────────────────────────────────────────────────────────────
+  // Records keyed by names the recipe wrote are Maps until they are handed out (own.mjs · plain).
   const snapshot = () => {
-    const whereNow = {}, holds = {};
+    const whereNow = new Map(), holds = new Map(), add = (map, key) => map.set(key, (map.get(key) ?? 0) + 1);
     for (const [prop, keys] of plan.groups) {
-      const counts = {};
+      const counts = new Map();
       for (const key of keys) {
-        const I = plan.items.get(key), h = I.on || I.now.type === 'gone' ? I.now : {type: 'off'}, k = holderKey(h);
-        counts[k] = (counts[k] ?? 0) + 1;
-        if (h.type === 'with') (holds[h.id] ??= {})[prop] = (holds[h.id][prop] ?? 0) + 1;
+        const I = plan.items.get(key), h = I.on || I.now.type === 'gone' ? I.now : {type: 'off'};
+        add(counts, holderKey(h));
+        if (h.type === 'with') { if (!holds.has(h.id)) holds.set(h.id, new Map()); add(holds.get(h.id), prop); }
       }
-      whereNow[prop] = counts;
+      whereNow.set(prop, counts);
     }
-    return {where: whereNow, holds, on: [...plan.people.values()].filter(P => P.on).map(P => P.id)};
+    return {where: plain(whereNow), holds: plain(holds), on: [...plan.people.values()].filter(P => P.on).map(P => P.id)};
   };
   const facts = () => {
-    const out = {}, people = [...plan.people.keys()], conts = [...plan.containers.keys()];
+    const out = new Map(), people = [...plan.people.keys()], conts = [...plan.containers.keys()];
     for (const [prop, keys] of plan.groups) {
       const items = keys.map(k => plan.items.get(k)), now = I => (I.on || I.now.type === 'gone' ? I.now : {type: 'off'});
-      if (keys.length === 1) { out[prop] = holderName(now(items[0])); continue; }
+      if (keys.length === 1) { out.set(prop, holderName(now(items[0]))); continue; }
       const count = test => items.filter(I => test(now(I))).length;
-      for (const c of conts) if (c !== prop) out[`${prop} in ${c}`] = count(h => h.type === 'in' && h.id === c);
-      for (const p of people) out[`${prop} with ${p}`] = count(h => h.type === 'with' && h.id === p);
-      out[`${prop} on the ground`] = count(h => h.type === 'ground');
+      for (const c of conts) if (c !== prop) out.set(`${prop} in ${c}`, count(h => h.type === 'in' && h.id === c));
+      for (const p of people) out.set(`${prop} with ${p}`, count(h => h.type === 'with' && h.id === p));
+      out.set(`${prop} on the ground`, count(h => h.type === 'ground'));
     }
-    return out;
+    return plain(out);
   };
   const record = (at, a, said, extra = {}) => plan.ledger.push({at: +at.toFixed(3), path: a.path.slice(where.length + 2), do: a.do, said, ...snapshot(), ...extra});
   const startFacts = facts();
@@ -176,14 +178,14 @@ export function planStage(stage) {
     if (viewer && on === 'viewer') return null;
     if (plan.people.has(on)) { if (!plan.people.get(on).on) throw new Error(`${path}: ${on} is off stage at ${s2(t)}: give them an enter before this, or name someone on stage`); return on; }
     if (plan.groups.has(on)) { if (!group(on, path).some(I => I.on && I.now.type !== 'gone')) throw new Error(`${path}: no ${on} is on stage at ${s2(t)}: give it an enter before this, or name a thing on stage`); return on; }
-    if (place.adapter.spots?.[on] || place.adapter.regions?.[on]) return on;
+    if (own(place.adapter.spots, on) || own(place.adapter.regions, on)) return on;
     throw new Error(`${path}: on is a cast member, a prop, a spot or a region of the place${viewer ? ', or "viewer"' : ''} (${[...plan.people.keys(), ...plan.groups.keys(), ...Object.keys(place.adapter.spots ?? {}), ...Object.keys(place.adapter.regions ?? {})].join(', ')}), not ${shown(on)}`);
   };
   const xOf = (on, t) => {
     if (plan.people.has(on)) return personX(plan.people.get(on), t);
     if (plan.groups.has(on)) { const xs = group(on, '').filter(I => I.on && I.now.type !== 'gone').map(I => itemPoint(plan, I, t)[0]); return xs.reduce((a, b) => a + b, 0) / xs.length; }
-    const s = place.adapter.spots?.[on]; if (s) return s[0];
-    const r = place.adapter.regions[on]; return (r[0] + r[2]) / 2;
+    const s = own(place.adapter.spots, on); if (s) return s[0];
+    const r = own(place.adapter.regions, on); return (r[0] + r[2]) / 2;
   };
   const arm = (P, start, end, on, why, track = null) => P.arms.push({start, end, on, why, ...(track ? {track} : {})});
 
@@ -205,7 +207,7 @@ export function planStage(stage) {
       if (Number.isFinite(a.to)) to = a.to;
       else if (typeof a.to === 'string') {
         const thing = target(a.to, t, `${path}.to`), x = xOf(thing, t), dir = Math.sign(x - x0) || 1;
-        to = place.adapter.spots?.[a.to] ? x : x - dir * (plan.people.has(a.to) ? (lead.size + plan.people.get(a.to).size) * .3 : lead.reach * .55);
+        to = own(place.adapter.spots, a.to) ? x : x - dir * (plan.people.has(a.to) ? (lead.size + plan.people.get(a.to).size) * .3 : lead.reach * .55);
       } else throw new Error(`${path}: to is an x on the floor, a spot, a prop or a cast member, not ${shown(a.to)}`);
       for (const P of who) { const w = walkTo(P, personX(P, t), to + personX(P, t) - x0, t, a.style, path); occupy(P, t, w.end, a); }
       record(t, a, `${who.map(P => P.id).join(' and ')} walk${who.length > 1 ? '' : 's'} to ${typeof a.to === 'string' ? a.to : `x ${Math.round(to)}`}`);

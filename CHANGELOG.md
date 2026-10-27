@@ -50,7 +50,9 @@
   impossible sequences when the film compiles, each naming the action and the fix. It names every person and prop
   for the camera, and it keeps a continuity ledger: after every beat, who holds what and how many are where. A kit
   supplies only drawings, through three adapters (`stageKit({name, places, people, props, badge?})`). An unknown
-  place, person or prop refuses, listing what the kit has. `compileStage` plays a stage without a film; `demoKit` is
+  place, person or prop refuses, listing what the kit has. An id named `__proto__`, `constructor` or `prototype`
+  refuses, and every record keyed by a recipe's names is built from Maps, so no name reaches `Object.prototype`.
+  `compileStage` plays a stage without a film; `demoKit` is
   a tiny kit of plain shapes. Measured on a real series, a shop and a walk home written as 343 lines of world code are
   28 lines of stage data (`test/stage-measure.test.mjs`). Design: `docs/design/2026-10-stage.md`. Types in
   `types/sub/stage.d.ts`; the README has a section with a worked example.

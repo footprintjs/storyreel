@@ -272,3 +272,28 @@ test('every frame is a pure function of time: the same numbers and pixels in any
   assert.deepEqual(forward, backward);
   assert.ok(new Set(forward).size > 6, 'the frames differ: the stage moves');
 });
+
+test('a name every JavaScript object already has is refused wherever a recipe writes one, and nothing reaches Object.prototype', () => {
+  const before = Object.getOwnPropertyNames(Object.prototype).sort();
+  for (const name of ['__proto__', 'constructor', 'prototype']) {
+    // As an id (JSON.parse makes "__proto__" an own key, as a recipe file would): refused, with the fix.
+    assert.throws(() => stage(JSON.parse(`{"place": "shop", "cast": {"${name}": {"as": "adult", "x": 400}}}`)), new RegExp(`a cast member "${name}" has a name every JavaScript object already has: give it another name, such as "${name.replace(/_/g, '')}1"`));
+    assert.throws(() => stage(JSON.parse(`{"place": "shop", "props": {"${name}": {"kind": "apple", "at": [400, 860]}}}`)), new RegExp(`a prop "${name}" has a name every JavaScript object already has`));
+    // As a spot, a target, a place, a kind or an action's key: looked up among own keys only, and refused.
+    assert.throws(() => stage(JSON.parse(`{"place": "shop", "props": {"a": {"kind": "apple", "at": "${name}"}}}`)), /the place "shop" has no spot/);
+    assert.throws(() => stage({place: 'shop', cast: {kid: {as: 'child', x: 400}}, actions: [{do: 'point', who: 'kid', on: name, at: 1}]}), /on is a cast member, a prop, a spot or a region of the place/);
+    assert.throws(() => stage({place: 'shop', cast: {kid: {as: 'child', x: 400}}, actions: [{do: 'walkTo', who: 'kid', to: name, at: 1}]}), /actions\[0\]\.to: on is a cast member/);
+    assert.throws(() => stage({place: name}), /has no place called/);
+    assert.throws(() => stage({place: 'shop', props: {a: {kind: name, at: [1, 1]}}}), /has no prop called/);
+    assert.throws(() => stage({place: 'shop', cast: {a: {as: name, x: 1}}}), /has no people called/);
+    assert.throws(() => stage(JSON.parse(`{"place": "shop", "actions": [{"do": "fade", "what": "a", "at": 1, "${name}": {"polluted": true}}]}`)), new RegExp(`fade has no key "${name}"`));
+  }
+  // A name an object only inherits (toString, hasOwnProperty) is an ordinary name: its records hold it as their own key.
+  const s = stage({place: 'shop', cast: {hasOwnProperty: {as: 'child', x: 600}}, props: {toString: {kind: 'apple', count: 2, at: [700, 860]}, valueOf: {kind: 'bag', at: 'table'}},
+    actions: [{do: 'pickUp', who: 'hasOwnProperty', what: 'toString', at: 1}, {do: 'putInto', who: 'hasOwnProperty', what: 'toString', into: 'valueOf', at: 2}]});
+  assert.deepEqual(s.ledger.at(-1).where, {toString: {ground: 1, valueOf: 1}, valueOf: {ground: 1}});
+  assert.ok(Object.hasOwn(s.ledger[0].holds, 'hasOwnProperty') && Object.hasOwn(s.facts.end, 'valueOf'));
+  assert.throws(() => stage({place: 'shop', props: {a: {kind: 'apple', at: 'toString'}}}), /the place "shop" has no spot "toString"/);
+  assert.deepEqual(Object.getOwnPropertyNames(Object.prototype).sort(), before, 'Object.prototype gained or lost nothing');
+  assert.equal(({}).polluted, undefined);
+});
