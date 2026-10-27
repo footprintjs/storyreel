@@ -1,5 +1,5 @@
-import type {Claim, Claims, ExampleLabel, NumberFact, Storyboard, VerdictRules} from '../index.js';
-export type {Claim, Claims, ExampleLabel, NumberFact} from '../index.js';
+import type {Claim, Claims, ClaimEvidence, ClaimFact, EvidenceClass, ExampleLabel, NumberFact, Storyboard, VerdictRules, WordsClaim} from '../index.js';
+export type {Claim, Claims, ClaimEvidence, ClaimFact, ClaimKnown, EvidenceClass, ExampleLabel, FactKnown, NumberFact, SourceKind, WordsClaim, WordsFact} from '../index.js';
 /** The numbers a text shows, in order, each with its sign (a minus, the minus sign or an en dash on its own): footprint-narration's digit runs, less a run that is part of a name (right after a cased letter, or after a hyphen after one — H2O, MP4, COVID-19, ISO-8601, A-1000 — unless a year, 1000–2199, after a lower-case word or mid-, pre-, post-, early-, late-: "mid-2024"). */
 export function numbersIn(text: string, options?: {lang?: string | null}): string[];
 /** The value a number stands for, by the film's language when it has one (de "2,5" → 2.5, fr "1 299,99" → 1299.99, en-IN "1,00,000" → 100000); without one, what every language reads alike ("1,000,000" → 1000000, "16.67" → 16.67, "−5" → −5), and as written — ambiguous — what they read apart ("1,000", "2,5", "1,00,000"). A time "3:15" or a version "1.2.3" stays as written. */
@@ -10,12 +10,33 @@ export function numberLocale(lang: string | null | undefined): Readonly<{lang: s
 export const CODE_READING: Readonly<{lang: 'code'; code: true; group: null; decimal: '.'; primary: number; secondary: number; cut: ','; join: '_'}>;
 /** What a fact's source is: an http(s) URL, a file inside `root` that is there ('#' a pointer into it), or anything else — unverified ("/r/science thread" too). Only a path that is there, outside the root, refuses. */
 export function sourceKind(source: string, options?: {root?: string | null; where?: string}): 'url' | 'file' | 'unverified';
-/** A facts list, checked: [{value, text?, source}], each with its source's kind; anything else refuses, naming the fix. */
-export function readFacts(list: unknown, where?: string, options?: {root?: string | null; lang?: string | null}): NumberFact[];
+/**
+ * A facts list, checked: [{value, text?, source}] — or, saying how each is known, with `evidence` (EVIDENCE), `checked`,
+ * `by` (reported), `from` (derived, extrapolated: ids) and `id`, and a claim in words as `says` in place of `value` —
+ * each with its source's kind; anything else refuses, naming the fix. Once one fact is classed, every fact is.
+ */
+export function readFacts(list: readonly NumberFact[], where?: string, options?: {root?: string | null; lang?: string | null}): NumberFact[];
+export function readFacts(list: unknown, where?: string, options?: {root?: string | null; lang?: string | null}): ClaimFact[];
+/** How a claim is known, each class with what it means: verified (a source), reported (a named person said it), derived (grouped from verified facts, directly or through derived ones), extrapolated (carried past what is known), open (unresolved). */
+export const EVIDENCE: Readonly<Record<EvidenceClass, string>>;
+/** The claims in words the film says or shows: every place a fact's `says` stands in a line or a scene's spoken words (case and the marks between words ignored, never inside a word), in time order. */
+export function findStatements(shown: {text: string; line?: string; offset?: number; at: number; to: number; scene: number; path: string}[], options?: {facts?: readonly ClaimFact[] | null; examples?: readonly (string | null)[]; scenes?: string[]}): WordsClaim[];
+/** A recipe's `evidence`, checked against the facts: {allowOpen: {"<an open fact's id>": "why it may go out unresolved"}} → {id: reason}, or null when none is allowed. */
+export function readAllowOpen(value: unknown, facts: readonly ClaimFact[] | null): Readonly<Record<string, string>> | null;
+/** Every claim the film says or shows outside example scenes, with its class — or null when the facts are not classed. */
+export function evidenceOf(claims: Claims): ClaimEvidence | null;
+/** An open claim a release refuses, with the open facts it rests on (its own, or the ones its `from` leads to). */
+export type OpenClaim = (Claim | WordsClaim) & {rests: {id?: string; checked: string}[]};
+/** The open claims the film says or shows outside example scenes (in `ranges` of the film clock, when given: a render's part or cuts) that the recipe does not allow — a claim made from an open fact counts as open: what a release refuses. */
+export function unallowedOpen(claims: Claims, options?: {ranges?: [number, number][] | null}): OpenClaim[];
+/** One open claim in words, with where it is and what is unresolved. */
+export function openText(claim: Claim | WordsClaim | OpenClaim): string;
+/** A release's refusal of open claims: each one, then the fix — settle it, cut it, or allow it in the recipe with a reason. */
+export function openRefusal(open: (Claim | WordsClaim | OpenClaim)[]): string;
 /** Each scene's example label ("Example data", or the scene's own words), or null for a scene that is not example data. */
 export function exampleScenes(storyboard: Storyboard): (string | null)[];
 /** The numbers shown, each with the fact that backs it or the example scene it sits in, in time order. */
-export function findClaims(shown: {text: string; line?: string; offset?: number; at: number; to: number; scene: number; path: string}[], options?: {facts?: readonly NumberFact[] | null; examples?: readonly (string | null)[]; scenes?: string[]; lang?: string | null}): Claim[];
+export function findClaims(shown: {text: string; line?: string; offset?: number; at: number; to: number; scene: number; path: string}[], options?: {facts?: readonly ClaimFact[] | null; examples?: readonly (string | null)[]; scenes?: string[]; lang?: string | null}): Claim[];
 /** When the example label is up: over each example scene, and on while any line it shows is still on screen — to its last ink (`gone`, an eraser's end). */
 export function labelSpans(shown: {text: string; at: number; to: number; gone?: number; scene: number}[], options?: {examples?: readonly (string | null)[]; scenes?: {from: number; to: number}[]}): ExampleLabel[];
 /** Whether the label is up over all of [from, to]. */
@@ -34,7 +55,7 @@ export function lingeringExamples(claims: {labels?: readonly ExampleLabel[]; num
 export function lingerText(stretch: {scene: string | null; numbers: readonly Claim[]}): string;
 /** What the claims add up to, for the verdict. */
 export function claimsCount(claims: Claims): {numbers: number; examples: number; sourced: number; open: number; unsourced: number; unverified: number; factsGiven: boolean};
-/** The numbers with no source, outside example scenes (none without facts: then the check cannot run). */
+/** The numbers with no source, outside example scenes (none without facts: then the check cannot run); a derived one rests on its `from`. */
 export function unsourcedClaims(claims: Claims): Claim[];
 /** The fix for a number with no source, in words. */
 export function claimFix(claim: Claim): string;
