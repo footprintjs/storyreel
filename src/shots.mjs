@@ -83,6 +83,25 @@ export function readContinuity(value, where) {
 }
 
 /**
+ * A shot's continuity joined with what its world says about itself: a world may give `continuity` {start, end} — the
+ * facts it starts and ends with, worked out from its own record (the stage: "apples in bag": 10) — and they join the
+ * facts the recipe declares for the shot. A fact both state must agree, or the recipe is refused, naming the fact.
+ * `declared` is readContinuity's (or null); `world` the world's own (or undefined). Returns the joined continuity, or
+ * `declared` as it is when the world states none (so a film without such a world is exactly as before).
+ */
+export function joinContinuity(declared, world, where) {
+  if (world === undefined || world === null) return declared;
+  const own = readContinuity(world, `${where}: its world's continuity`);
+  if (!declared) return own;
+  const joined = {start: {...own.start}, end: {...own.end}};
+  for (const side of ['start', 'end']) for (const [name, fact] of Object.entries(declared[side])) {
+    if (Object.hasOwn(joined[side], name) && joined[side][name] !== fact) throw new Error(`Continuity: ${where} declares ${side} ${name} = ${JSON.stringify(fact)}, but its world ${side === 'start' ? 'starts' : 'ends'} with ${name} = ${JSON.stringify(joined[side][name])} (its own record): change the declared fact, or the world`);
+    joined[side][name] = fact;
+  }
+  return joined;
+}
+
+/**
  * Walk the shots in film order, carrying every fact forward: a fact a shot STARTS with must agree with
  * what the shots before it left (or not be known yet); what a shot ENDS with is carried on. A shot may
  * change anything between its own start and end — that is what it shows. Refuses at the first shot that

@@ -41,6 +41,36 @@
   are missing or one falls short, naming the point. `--rubric rubric.json` reads a rubric file in the project.
 - Types for all three (`types/sub/progression.d.ts`, `types/sub/rubric.d.ts`, `types/sub/claims.d.ts`, the recipe,
   the film and `makeFilm`'s `release`); README sections with an example each.
+- **The stage: places, props and actions as data** (`footprint-storyreel/stage`). A scene is a place, a cast, props
+  and actions from a small fixed vocabulary: `walkTo`, `enter`/`exit`, `pickUp`, `give`, `putInto`, `takeOutOf`,
+  `count`, `fade`, `point`, `open`/`close`, `lookAt` and `countOnFingers`. The library owns the timing and motion of
+  every action as pure functions of time.
+  - Things travel on arcs by a strategy (`TRAVELS`: `hop`, `toss`, `lift`, `drop`, `slide`), wind back before they go
+    and squash as they land. Arms, hands and doors share one swing (`swing.mjs`, now also `fingersAt`'s): wind back,
+    swing past the end, settle. An arm that starts while the last is still coming down carries on from where it is,
+    and turns to its new target over the time a look takes, so nothing jumps between frames. Walks are `walk`'s,
+    fingers are `fingersAt`'s, and props pop in and out with `moves`. A prop that goes may come back.
+  - The actions run as events in time order: each action on its beat, each beat of a count or a count on fingers on
+    its own. Each event is checked against the story as it stands at that moment, and impossible ones refuse when the
+    film compiles, naming the action and the fix (a thing not held, an 11th thing into 10 slots, a shut lid, out of
+    reach, off stage, busy). After every event a continuity ledger says who holds what and how many are where.
+  - The stage names every person and prop for the camera.
+  - The drawings come from three adapters (`stageDrawings({name, places, people, props, badge?})`, a kit a film
+    takes). An unknown place, person or prop refuses, listing what the drawings have. An id named `__proto__`,
+    `constructor` or `prototype` refuses, and every record keyed by a recipe's names is built from Maps, so no name
+    reaches `Object.prototype`. `compileStage` plays a stage without a film; `demoDrawings` are tiny drawings of plain
+    shapes.
+  - Measured on a real series: a shop and a walk home are 28 lines of stage data (`test/stage-measure.test.mjs`). The
+    same two places took 343 lines of world code in that series' own repository, counted by hand there and not checked
+    here. Design: `docs/design/2026-10-stage.md`. Types in `types/sub/stage.d.ts`; the README has a section with a
+    worked example.
+- **The kit context names its world's recipe entry.** A story kit with `context: true` also gets `where` (`the story`,
+  or `stage <scene>`), so its own refusals can say which world they are about.
+- **A world can state its own continuity.** A story-kit world may return `continuity: {start, end}`, the facts it
+  starts and ends with, and `ledger`, its record beat by beat. The film joins those facts with the shot's declared
+  continuity, and a fact both state must agree, or the recipe refuses (`shots.mjs · joinContinuity`). It then carries
+  them across shots like declared facts. The ledger is kept in `film.shots[i].ledger` and in the making-of record. A
+  world that returns neither, which is every world before this one, leaves the film exactly as it was.
 
 ## 0.22.0 — counting on fingers, listeners who react, and Shorts cut from the film
 

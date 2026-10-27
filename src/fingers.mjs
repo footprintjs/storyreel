@@ -17,6 +17,7 @@
  *
  * Pure functions of time, like every frame: `fingersAt(keys, t)` reads the keys each time and returns the hands.
  */
+import {swing} from './swing.mjs';
 
 /** The fingers of one hand, in the order every hand's numbers are returned in. */
 export const FINGER_NAMES = Object.freeze(['thumb', 'index', 'middle', 'ring', 'little']);
@@ -37,7 +38,6 @@ export const FINGERS = Object.freeze({anticipate: .08, move: .12, settle: .2, li
 
 const OPTIONS = [...Object.keys(FINGERS), 'order', 'first'];
 const VERBS = ['up', 'fold', 'raise'];
-const smooth = x => x * x * (3 - 2 * x);
 
 /**
  * The hands at t. keys: [{at, up: n}, {at, fold: k}, {at, raise: k}, …] in time order (at: seconds). The first key
@@ -59,25 +59,13 @@ export function fingersAt(keys, t, options = {}) {
   const left = [0, 0, 0, 0, 0], right = [0, 0, 0, 0, 0];
   for (let slot = 0; slot < 10; slot++) {
     let e = slot < plan.counts[0].up ? 1 : 0;
-    for (const m of plan.moves[slot]) e += m.dir * shape(t - m.at, o);
+    for (const m of plan.moves[slot]) e += m.dir * swing(t - m.at, o);   // swing.mjs: wind back, move past, settle
     const {hand, finger} = o.slots[slot];
     (hand === 'left' ? left : right)[finger] = e;
   }
   return {up: plan.counts[i].up, from: i ? plan.counts[i - 1].up : null, hands: {left, right}};
 }
 
-/**
- * One finger's way from where it was (0) to where it goes (1), τ seconds after its move starts: a wind-back of
- * `lift` over `anticipate` before it, a quick move past the end by `overshoot` over `move`, and a settle back over
- * `settle`. Smooth everywhere (the speed is 0 at every join), exactly 0 before and 1 after.
- */
-function shape(τ, {anticipate, move, settle, lift, overshoot}) {
-  if (τ < -anticipate) return 0;
-  if (τ < 0) return -lift * smooth((τ + anticipate) / anticipate);
-  if (τ < move) { const c = Math.cos(Math.PI * τ / move); return -lift * (1 + c) / 2 + (1 + overshoot) * (1 - c) / 2; }
-  if (τ < move + settle) return 1 + overshoot * (1 - smooth((τ - move) / settle));
-  return 1;
-}
 
 /** The options, checked: the timing, the counting order and the first hand → the timing plus each count's {hand, finger}. */
 function readOptions(options) {

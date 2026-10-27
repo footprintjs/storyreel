@@ -40,7 +40,7 @@ import {planCamera} from './camerawork.mjs';
 import {readNotes, placePushes, pushAt} from './notes.mjs';
 import {view, compose, about, through, back} from './regions.mjs';
 import {tooShortToRead, readingMode, readingPace} from './reading.mjs';
-import {readIntent, readContinuity, checkContinuity, tooMuchTooFast, distinctMoments, watchingMode, watchingText, WATCHING, readReads, checkReads} from './shots.mjs';
+import {readIntent, readContinuity, joinContinuity, checkContinuity, tooMuchTooFast, distinctMoments, watchingMode, watchingText, WATCHING, readReads, checkReads} from './shots.mjs';
 import {QUESTIONS, readQuestions, checkProgression, progressionMode, progressionRefusal} from './progression.mjs';
 import {readRubricRule} from './rubric.mjs';
 import {checkSound, soundsByScene, MAX_SOUNDS_PER_SCENE, FOUND} from './sound.mjs';
@@ -181,6 +181,14 @@ function usesContext(storyKit, name) {
   return asked;
 }
 
+/** A world's optional `ledger` (its continuity record, beat by beat: the stage's), checked and kept for the shot: {ledger} or {}. */
+function ledgerOf(instance, where) {
+  const ledger = instance?.ledger;
+  if (ledger === undefined) return {};
+  if (!Array.isArray(ledger) || !ledger.every(e => e && typeof e === 'object' && Number.isFinite(e.at))) throw new Error(`${where}: its world's ledger is a list of {at, …} (its continuity record, beat by beat), not ${JSON.stringify(ledger)?.slice(0, 80)}`);
+  return {ledger};
+}
+
 /** A world's optional `cameraMoves` (when its kit's own camera moves: [{from, to}] in seconds), checked. */
 function checkCameraMoves(instance, name, where) {
   const moves = instance?.cameraMoves;
@@ -307,7 +315,8 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     // A camera speed covers EVERY camera move, so a world whose kit cannot follow it refuses the note.
     if (notes.speed !== 1 && !kit.motion?.includes('cameraSpeed')) throw new Error(`note "${notes.speedNote.note}": ${where} is drawn by the kit "${spec.kit}", which does not take a camera speed (a story kit that does lists motion: ['cameraSpeed'] and divides its camera moves' seconds by motion.cameraSpeed)`);
     worldKits.add(spec.kit);
-    const instance = usesContext(kit, spec.kit) ? kit.compile(spec, context) : kit.compile(spec, clock, motion);
+    // A context kit's context also says which recipe entry the world is for (`where`: the story, or stage <scene>).
+    const instance = usesContext(kit, spec.kit) ? kit.compile(spec, Object.freeze({...context, where})) : kit.compile(spec, clock, motion);
     checkCameraMoves(instance, spec.kit, where);
     readies.push(readyOf(instance, spec.kit, where));
     return instance;
@@ -404,9 +413,9 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const readRefs = new Set();
   const timedReads = (value, where) => readReads(value, where).map((r, k) => { readRefs.add(value[k].at); return {...r, k, t: clock.at(value[k].at)}; });
   const plan = [{path: storyPathName, where: 'the story', scene: storyboard.scenes[0]?.id, from: 0, stage: null,
-    intent: readIntent(storyIntent, 'the story'), continuity: readContinuity(storyContinuity, 'the story'), reads: timedReads(storyReads, 'the story'), questions: storyQuestions},
+    intent: readIntent(storyIntent, 'the story'), continuity: joinContinuity(readContinuity(storyContinuity, 'the story'), story.continuity, 'the story'), reads: timedReads(storyReads, 'the story'), questions: storyQuestions, ...ledgerOf(story, 'the story')},
   ...stages.map((st, i) => ({path: `stages[${i}]`, where: `stage ${st.scene}`, scene: st.scene, from: st.start, stage: st,
-    intent: readIntent(st.intent, `stage ${st.scene}`), continuity: readContinuity(st.continuity, `stage ${st.scene}`), reads: timedReads(st.reads, `stage ${st.scene}`), questions: readQuestions(st, `stage ${st.scene}`)}))];
+    intent: readIntent(st.intent, `stage ${st.scene}`), continuity: joinContinuity(readContinuity(st.continuity, `stage ${st.scene}`), st.world?.instance.continuity, `stage ${st.scene}`), reads: timedReads(st.reads, `stage ${st.scene}`), questions: readQuestions(st, `stage ${st.scene}`), ...ledgerOf(st.world?.instance, `stage ${st.scene}`)}))];
   // Film order is time order: a recipe may list its stages in any order, the plan never does.
   plan.sort((a, b) => a.from - b.from);
   plan.forEach((u, i) => { u.to = plan[i + 1]?.from ?? clock.total; });
@@ -1033,7 +1042,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const watchingRule = watchingMode(recipe.watching);
   const watching = tooMuchTooFast(plan.map(u => ({path: u.path, where: u.where, moments: momentsOf(u)})), WATCHING);
   if (watchingRule === 'refuse' && watching.length) throw new Error(`Too much, too fast (the recipe says watching: "refuse"): ${watching.slice(0, 3).map(watchingText).join('; ')}${watching.length > 3 ? `; and ${watching.length - 3} more` : ''}`);
-  const shotsPlanned = plan.map(u => ({path: u.path, where: u.where, scene: u.scene, from: +u.from.toFixed(3), to: +u.to.toFixed(3), intent: u.intent, start: u.continuity?.start ?? null, end: u.continuity?.end ?? null, moments: distinctMoments(momentsOf(u)).length, ...u.questions}));
+  const shotsPlanned = plan.map(u => ({path: u.path, where: u.where, scene: u.scene, from: +u.from.toFixed(3), to: +u.to.toFixed(3), intent: u.intent, start: u.continuity?.start ?? null, end: u.continuity?.end ?? null, moments: distinctMoments(momentsOf(u)).length, ...u.questions, ...(u.ledger ? {ledger: u.ledger} : {})}));
 
   // Reading time (reading.mjs): every line meant to be read stays up, whole, long enough to read.
   // What the film shows (claims.mjs): every line meant to be read, the emphasis words and the captions as shown (a
@@ -1242,7 +1251,7 @@ function inputsSummary({recipe, storyboard, clock, notes, strings}) {
 function buildSummary(storyPath, storyKit, stages, stageKitNames, plan) {
   // A shot's intent and its facts ride with it (absent when it states none), so a slice from a stage says what it was for.
   // The plan is in film order; each entry is found by its recipe path, so a recipe that lists its stages out of order still records each stage's own.
-  const said = path => { const u = plan.find(x => x.path === path); return {...(u?.intent ? {intent: u.intent} : {}), ...(u?.continuity ? {continuity: u.continuity} : {}), ...(u?.questions ? {questions: u.questions} : {})}; };
+  const said = path => { const u = plan.find(x => x.path === path); return {...(u?.intent ? {intent: u.intent} : {}), ...(u?.continuity ? {continuity: u.continuity} : {}), ...(u?.questions ? {questions: u.questions} : {}), ...(u?.ledger ? {ledger: u.ledger} : {})}; };
   const writes = {[`world.${storyPath}`]: {kit: storyKit, path: storyPath, ...said(storyPath)}};
   stages.forEach((st, i) => { writes[`stage.stages[${i}]`] = {type: st.type, kit: st.world?.kit ?? stageKitNames[st.type] ?? 'paper', scene: st.scene, path: `stages[${i}]`, ...said(`stages[${i}]`)}; });
   return {reads: ['recipe', 'lines'], writes};

@@ -624,3 +624,23 @@ export const recipeRubric: Recipe = {rubric};
 export const fromNothing: ClaimFact = {value: 1, evidence: 'extrapolated', checked: 'a trend'};
 export const fromFacts: ClaimFact = {value: 1, evidence: 'extrapolated', checked: 'a trend', from: ['march']};
 export const inSpan = (film: Film) => unallowedOpen(film.claims, {ranges: [[0, 12]]}).map(c => c.rests.length);
+
+// The stage (stage.ts): a scene as data, played by the library, drawn by a kit's adapters.
+import {compileStage, stageDrawings, DEMO, demoDrawings, ACTION_NAMES, TRAVELS, STAGE, type StageSpec, type StageAction, type LedgerEntry, type PersonPose} from '../types/sub/stage.js';
+export const shopStage: StageSpec = {place: 'shop',
+  cast: {keeper: {as: 'adult', x: 1300, facing: 'left'}, girl: {as: 'child', x: 380}},
+  props: {bag: {kind: 'bag', at: 'table'}, apples: {kind: 'apple', count: 10, in: 'crate'}, crate: {kind: 'crate', at: [1280, 596]}},
+  actions: [{do: 'count', what: 'apples', into: 'bag', who: 'keeper', at: [['shop', '{a1}'], ['shop', '{a2}']], badge: 'each'},
+    {do: 'pickUp', who: 'girl', what: 'bag', at: ['shop', '{take}', .4]}, {do: 'exit', who: ['girl'], at: ['shop', '{bye}'], to: 'left'},
+    {do: 'countOnFingers', who: 'girl', at: ['shop', '{ten}'], up: 10, fold: [['shop', '{one}']]}]};
+export const stagePlayed = compileStage({...shopStage, actions: [{do: 'enter', who: 'girl', at: 1}]}, {adapters: DEMO});
+export const lastEntry: LedgerEntry | undefined = stagePlayed.ledger.at(-1);
+export const facts: string | number | undefined = stagePlayed.facts.end['apples in bag'];
+export const ownKit = stageDrawings({name: 'mine', places: {lane: {floor: 860, draw: () => {}}}, people: {walker: {size: 400, walk: 'brisk', draw: (_c: unknown, p: PersonPose) => { void p.arm?.amount; }}}, props: {ball: {size: [30, 30], draw: () => {}}}});
+export const stageBits = [demoDrawings.name, ACTION_NAMES.length, TRAVELS.hop.seconds, STAGE.reach];
+// @ts-expect-error count takes a list of beats, one per thing
+export const oneBeat: StageAction = {do: 'count', what: 'apples', into: 'bag', at: ['shop', '{a1}']};
+// @ts-expect-error give names who gives (from) and who takes (to)
+export const giveWho: StageAction = {do: 'give', who: 'girl', to: 'keeper', what: 'apples', at: 1};
+// @ts-expect-error a travel is hop, toss, lift, drop or slide
+export const flyIn: StageAction = {do: 'putInto', who: 'girl', what: 'apples', into: 'bag', at: 1, travel: 'fly'};

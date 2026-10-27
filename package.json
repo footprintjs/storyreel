@@ -235,6 +235,10 @@
       "types": "./types/sub/breakdown.d.ts",
       "default": "./src/breakdown.mjs"
     },
+    "./stage": {
+      "types": "./types/sub/stage.d.ts",
+      "default": "./src/stage/index.mjs"
+    },
     "./sounds": {
       "types": "./types/sub/sounds.d.ts",
       "default": "./src/sounds/index.mjs"

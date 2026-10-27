@@ -461,7 +461,9 @@ export interface Film {
   /** Every declared read (ShotPlan.reads), timed, with what is wrong with it if anything (two at once, too late, a region not there). */
   reads: {path: string; what: string; at: number; min: number; region?: string; problem?: string}[];
   /** Every shot — the story, then each stage — on screen from `from` to `to`, with what it says it is for and the facts it starts and ends with (null when it states none). */
-  shots: ({path: string; where: string; scene: string; from: number; to: number; intent: string | null; start: Record<string, Fact> | null; end: Record<string, Fact> | null; moments: number} & SceneAnswers)[];
+  shots: ({path: string; where: string; scene: string; from: number; to: number; intent: string | null; start: Record<string, Fact> | null; end: Record<string, Fact> | null; moments: number;
+    /** The world's own continuity record, beat by beat, when its kit keeps one (the stage: footprint-storyreel/stage · LedgerEntry). */
+    ledger?: readonly {readonly at: number; readonly [key: string]: unknown}[]} & SceneAnswers)[];
   /** Bursts: more than 4 moments in 2 s of one shot — too fast to take in. */
   watching: Watching[];
   /** What does not progress, read from the shots' answers to the five scene questions (absent when no shot answers one). */
