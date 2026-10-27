@@ -31,20 +31,21 @@ export interface Storyboard {
   scenes: StoryboardScene[];
   [key: string]: unknown;
 }
-/** How a claim is known (claims.mjs · EVIDENCE): a source; a named person said it; grouped from verified facts; carried past what is known; unresolved. */
+/** How a claim is known (claims.mjs · EVIDENCE): a source; a named person said it; grouped from verified facts, directly or through derived ones; carried past what is known; unresolved. */
 export type EvidenceClass = 'verified' | 'reported' | 'derived' | 'extrapolated' | 'open';
 /**
  * How a fact is known. Unclassed (no `evidence`): its `source` is required. Classed: `checked` says how it was checked
  * (for an open claim, what is still unresolved); "verified" and "reported" (with `by`, who said it) need a source;
- * "derived" is grouped from verified facts (`from`, their ids); "extrapolated" names its source or `from`; "open" needs
- * neither. Once one fact in a list is classed, every fact is. `id` names a fact (for `from`, and recipe.evidence.allowOpen).
+ * "derived" is grouped from verified facts, directly or through derived ones (`from`, their ids); "extrapolated" names
+ * its source or `from` (or both); "open" needs neither. A claim made from an open fact is as open as it, in a release. Once one fact in a list is classed, every fact is. `id` names a fact (for `from`, and recipe.evidence.allowOpen).
  */
 export type FactKnown =
   | {source: string; id?: string; evidence?: never; checked?: never; by?: never; from?: never}
   | {evidence: 'verified'; source: string; checked: string; id?: string; by?: never; from?: never}
   | {evidence: 'reported'; source: string; by: string; checked: string; id?: string; from?: never}
   | {evidence: 'derived'; from: readonly string[]; checked: string; source?: string; id?: string; by?: never}
-  | {evidence: 'extrapolated'; checked: string; source?: string; from?: readonly string[]; id?: string; by?: never}
+  | {evidence: 'extrapolated'; checked: string; from: readonly string[]; source?: string; id?: string; by?: never}
+  | {evidence: 'extrapolated'; checked: string; source: string; from?: readonly string[]; id?: string; by?: never}
   | {evidence: 'open'; checked: string; source?: string; id?: string; by?: never; from?: never};
 /** What a source is, as read (claims.mjs · sourceKind): a URL, a file inside the root, or neither — kept, and reported as unverified. */
 export type SourceKind = 'url' | 'file' | 'unverified';
@@ -84,7 +85,9 @@ export interface Claims { facts: readonly ClaimFact[] | null; examples: readonly
 /** Every claim the film says or shows outside example scenes with its class (claims.mjs · evidenceOf; the making-of's `claims.evidence`). `evidence: null`: a number no fact backs. */
 export interface ClaimEvidence {
   classes: Record<EvidenceClass | 'unclassed', number>;
-  claims: {claim: string; kind: 'number' | 'words'; evidence: EvidenceClass | null; said: 'spoken' | 'shown'; scene: string | null; path: string; at: number; id?: string; source?: string; sourceKind?: SourceKind; checked?: string; by?: string; from?: string[]}[];
+  claims: {claim: string; kind: 'number' | 'words'; evidence: EvidenceClass | null; said: 'spoken' | 'shown'; scene: string | null; path: string; at: number; id?: string; source?: string; sourceKind?: SourceKind; checked?: string; by?: string; from?: string[];
+    /** The ids of the open facts a claim's `from` leads to: a release treats it as open. */
+    restsOnOpen?: string[]}[];
   allowed?: Record<string, string>;
 }
 /**
@@ -959,7 +962,7 @@ export interface MakeFilmOptions<K = Kit | ContextKit> {
   reducedMotion?: boolean;
   /** Every number on screen has a source (a verdict, with its decide() evidence in the record): 'report' (the default: the record's `claims` lists the numbers with no source) or 'refuse' (one refuses the film before it is drawn, and so does a film whose numbers cannot be checked). */
   claims?: 'report' | 'refuse';
-  /** true: this render leaves the house (makeRelease sets it) — a claim it says or shows whose fact is "open" refuses it before anything is drawn, unless the recipe allows that claim with a reason (recipe.evidence.allowOpen). */
+  /** true: this render leaves the house (makeRelease sets it) — a claim it says or shows (in its part, or its edit's cuts) whose fact is "open", or made from one, refuses it before a frame is drawn, unless the recipe allows that open fact with a reason (recipe.evidence.allowOpen). */
   release?: boolean;
 }
 /** What an edit changed (previewChanges): each planned piece and why the full render would draw it (null: kept), the runs of changed ones on the film clock, and the lines to read. */

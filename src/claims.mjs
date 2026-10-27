@@ -19,11 +19,12 @@
  * and only a fact that writes it the same way sources it.
  *
  * A fact may also say HOW it is known (EVIDENCE): `evidence` — "verified" (a source), "reported" (a named person said
- * it: `by`), "derived" (grouped from verified facts: `from`, their ids), "extrapolated" (carried past what is known) or
- * "open" (unresolved) — with `checked`, how it was checked (or, for an open one, what is still unresolved). A claim in
+ * it: `by`), "derived" (grouped from verified facts, directly or through derived ones: `from`, their ids), "extrapolated"
+ * (carried past what is known: a `source`, or `from`) or "open" (unresolved) — with `checked`, how it was checked (or,
+ * for an open one, what is still unresolved). A claim in
  * words, with no number, is a fact with `says` in place of `value`: found wherever the film says or shows those words
- * (findStatements). A release refuses an open claim the film says or shows, unless the recipe allows it with a reason
- * (readAllowOpen, unallowedOpen):
+ * (findStatements). A claim made from an open fact is open too. A release refuses an open claim it says or shows,
+ * unless the recipe allows that open fact with a reason (readAllowOpen, unallowedOpen):
  *
  *   facts.json   [{"id": "battery-hours", "value": 18, "text": "18 hours", "evidence": "verified", "source": "https://example.org/spec", "checked": "the spec sheet, 2026-10-20"},
  *                 {"id": "battery-day", "says": "the battery lasts a full day", "evidence": "open", "checked": "the vendor has not confirmed it yet"}]
@@ -37,7 +38,7 @@ const FACT_KEYS = ['value', 'text', 'source'];
 /** The keys that say how a claim is known (readFacts · readEvidence): its id, a claim in words, its class, how it was checked, who said it, what it is made from. */
 const EVIDENCE_KEYS = ['id', 'says', 'evidence', 'checked', 'by', 'from'];
 /** How a claim is known: its evidence class, each with what it means. */
-export const EVIDENCE = Object.freeze({verified: 'a source', reported: 'a named person said it', derived: 'grouped from verified facts', extrapolated: 'carried past what is known', open: 'unresolved'});
+export const EVIDENCE = Object.freeze({verified: 'a source', reported: 'a named person said it', derived: 'grouped from verified facts, directly or through derived ones', extrapolated: 'carried past what is known', open: 'unresolved'});
 /** The classes, in words, for a refusal. */
 const CLASSES = Object.entries(EVIDENCE).map(([k, means], i, all) => `${i === all.length - 1 ? 'or ' : ''}"${k}" (${means})`).join(', ');
 /** How a claim of each class might have been checked: the example a refusal shows. */
@@ -287,7 +288,8 @@ function readEvidence(f, name) {
 
 /**
  * The facts as one list: once one fact says how it is known, every fact does; each id is its own; every id a `from`
- * names is a fact's; a derived claim is grouped from verified (or derived) facts only, and never from itself.
+ * names is a fact's; a derived claim is grouped from verified or derived facts only; and no claim's `from` leads back to
+ * itself (derived or extrapolated).
  */
 function checkEvidenceList(facts, where) {
   const classed = facts.findIndex(f => f.evidence), bare = facts.findIndex(f => !f.evidence);
@@ -302,14 +304,14 @@ function checkEvidenceList(facts, where) {
     for (const ref of f.from ?? []) {
       if (!ids.has(ref)) throw new Error(`${where}[${i}]: from names "${ref}", which is no fact's id${ids.size ? ` (the ids: ${[...ids.keys()].join(', ')})` : ' (no fact has an id: give the ones it is made from "id")'}`);
       const base = facts[ids.get(ref)];
-      if (f.evidence === 'derived' && base.evidence !== 'verified' && base.evidence !== 'derived') throw new Error(`${where}[${i}]: a derived claim is grouped from verified facts, and "${ref}" is ${base.evidence}: verify "${ref}" first (evidence "verified", with its source), or class this claim "extrapolated"`);
+      if (f.evidence === 'derived' && base.evidence !== 'verified' && base.evidence !== 'derived') throw new Error(`${where}[${i}]: a derived claim is grouped from verified or derived facts, and "${ref}" is ${base.evidence}: verify "${ref}" first (evidence "verified", with its source)${base.evidence === 'open' ? `; until then this claim is open too: class it "open"` : ''}`);
     }
   });
-  // A derived claim that leads back to itself rests on nothing.
-  const leadsBack = (start, at, seen = new Set()) => (facts[at].evidence === 'derived' ? facts[at].from : []).some(ref => {
+  // A claim whose `from` leads back to itself rests on nothing, derived or extrapolated.
+  const leadsBack = (start, at, seen = new Set()) => (facts[at].from ?? []).some(ref => {
     const k = ids.get(ref); if (k === start) return true; if (seen.has(k)) return false; seen.add(k); return leadsBack(start, k, seen);
   });
-  facts.forEach((f, i) => { if (f.evidence === 'derived' && leadsBack(i, i)) throw new Error(`${where}[${i}]: a derived claim cannot rest on itself (from leads back to "${f.id ?? `${where}[${i}]`}"): ground it in verified facts`); });
+  facts.forEach((f, i) => { if (f.from && leadsBack(i, i)) throw new Error(`${where}[${i}]: ${f.evidence === 'derived' ? 'a derived' : 'an extrapolated'} claim cannot rest on itself (from leads back to "${f.id ?? `${where}[${i}]`}"): ground it in sourced facts`); });
 }
 
 /**
@@ -436,6 +438,7 @@ const knownBy = fact => (fact?.evidence ? {...(fact.id ? {id: fact.id} : {}), ev
  * in time order — said aloud when `path` is 'captions' (at–to: when its words are said), shown otherwise.
  */
 export function findStatements(shown, {facts = null, examples = [], scenes = []} = {}) {
+  // A word's letters, its marks (the vowel signs of Devanagari, Tamil, Telugu, Bengali, Thai …) and its digits.
   const said = (facts ?? []).filter(f => f.says !== undefined);
   if (!said.length) return [];
   // Each line once per scene and entry, with its words' times (a caption's words) or its own (a line on screen).
@@ -448,10 +451,11 @@ export function findStatements(shown, {facts = null, examples = [], scenes = []}
   }
   const out = [];
   for (const fact of said) {
-    const words = fact.says.split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    const pattern = new RegExp(`(?<![\\p{L}\\p{N}])${words.join('[^\\p{L}\\p{N}]+')}(?![\\p{L}\\p{N}])`, 'giu');
-    for (const l of lines.values()) for (const m of l.line.matchAll(pattern)) {
-      const a = m.index, b = a + m[0].length, inside = l.words.filter(w => w.offset < b && w.offset + w.length > a);
+    const words = fact.says.normalize('NFC').split(/[^\p{L}\p{M}\p{N}]+/u).filter(Boolean).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const pattern = new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])${words.join('[^\\p{L}\\p{M}\\p{N}]+')}(?![\\p{L}\\p{M}\\p{N}])`, 'giu');
+    for (const l of lines.values()) for (const m of nfc(l.line).matchAll(pattern)) {
+      // The place as the line is written (NFC can join a letter and its mark into one): its offsets in the line.
+      const a = nfcAt(l.line, m.index), b = nfcAt(l.line, m.index + m[0].length), inside = l.words.filter(w => w.offset < b && w.offset + w.length > a);
       if (l.words.length && !inside.length) continue;
       const at = inside.length ? Math.min(...inside.map(w => w.at)) : l.at, to = inside.length ? Math.max(...inside.map(w => w.to)) : l.to;
       out.push({says: fact.says, line: l.line, offset: a, at: +at.toFixed(3), to: +Math.max(at, to).toFixed(3), scene: scenes[l.scene] ?? null, path: l.path, example: Boolean(examples[l.scene]),
@@ -459,6 +463,27 @@ export function findStatements(shown, {facts = null, examples = [], scenes = []}
     }
   }
   return out.sort((a, b) => a.at - b.at || a.path.localeCompare(b.path) || a.offset - b.offset);
+}
+
+/** A line in NFC (each run between spaces normalised alone: NFC never joins across a space), cached. */
+const NFC = new Map();
+function nfcOf(line) {
+  if (!NFC.has(line)) {
+    if (NFC.size > 2000) NFC.clear();
+    const parts = line.split(/(\s+)/), map = [];   // map: [normalised start, written start, written length] per run
+    let text = '', at = 0;
+    for (const part of parts) { const n = part.normalize('NFC'); map.push([text.length, at, part.length, n.length]); text += n; at += part.length; }
+    NFC.set(line, {text, map});
+  }
+  return NFC.get(line);
+}
+const nfc = line => nfcOf(line).text;
+/** An offset in the NFC line → the offset in the line as written: the start of its run, plus as far into it as the run allows. */
+function nfcAt(line, i) {
+  const {map} = nfcOf(line);
+  let k = map.length - 1; while (k > 0 && map[k][0] > i) k--;
+  const [start, written, length, normal] = map[k];
+  return written + Math.min(length, i - start === normal ? length : i - start);
 }
 
 /**
@@ -484,35 +509,78 @@ export function readAllowOpen(value, facts) {
   return entries.length ? Object.freeze(Object.fromEntries(entries.map(([id, r]) => [id, r.trim()]))) : null;
 }
 
+/** The facts by id. */
+const byId = facts => new Map((facts ?? []).filter(f => f.id !== undefined).map(f => [f.id, f]));
+/**
+ * Whether a fact leads back to a source: not open, and with a source of its own, or made from facts (`from`) that all do.
+ * A derived or extrapolated claim made from an open fact is not grounded, however many steps away the open one is.
+ */
+function grounded(fact, ids, seen = new Set()) {
+  if (!fact || fact.evidence === 'open' || seen.has(fact)) return false;
+  if (fact.source) return true;
+  seen.add(fact);
+  return Boolean(fact.from?.length) && fact.from.every(ref => grounded(ids.get(ref), ids, seen));
+}
+/** Whether a claim has a source: its own, or (made from facts) a `from` that leads back to sources (grounded). */
+const backed = (c, ids) => Boolean(c.source) || (c.evidence !== 'open' && Boolean(c.from?.length) && c.from.every(ref => grounded(ids.get(ref), ids)));
+/** The open facts a claim rests on: its own fact when it is open, and every open fact its `from` leads to — [{id?, checked}]. */
+function openRoots(c, ids) {
+  const out = c.evidence === 'open' ? [{id: c.id, checked: c.checked}] : [], seen = new Set();
+  const walk = ref => { const f = ids.get(ref); if (!f || seen.has(f)) return; seen.add(f); if (f.evidence === 'open') out.push({id: f.id, checked: f.checked}); (f.from ?? []).forEach(walk); };
+  (c.from ?? []).forEach(walk);
+  return out;
+}
+
 /** One claim as the evidence list keeps it: what it claims, a number or words, said aloud or shown, where, and how it is known. */
-const asEvidence = (c, kind) => ({claim: kind === 'number' ? c.number : c.says, kind, evidence: c.evidence ?? null, said: c.path === 'captions' ? 'spoken' : 'shown', scene: c.scene, path: c.path, at: c.at,
-  ...(c.id ? {id: c.id} : {}), ...(c.source ? {source: c.source, sourceKind: c.sourceKind} : {}), ...(c.checked ? {checked: c.checked} : {}), ...(c.by ? {by: c.by} : {}), ...(c.from ? {from: [...c.from]} : {})});
+const asEvidence = (c, kind, ids) => {
+  const open = c.evidence === 'open' ? [] : openRoots(c, ids).map(r => r.id);
+  return {claim: kind === 'number' ? c.number : c.says, kind, evidence: c.evidence ?? null, said: c.path === 'captions' ? 'spoken' : 'shown', scene: c.scene, path: c.path, at: c.at,
+    ...(c.id ? {id: c.id} : {}), ...(c.source ? {source: c.source, sourceKind: c.sourceKind} : {}), ...(c.checked ? {checked: c.checked} : {}), ...(c.by ? {by: c.by} : {}), ...(c.from ? {from: [...c.from]} : {}),
+    ...(open.length ? {restsOnOpen: open} : {})};
+};
 /**
  * Every claim the film says or shows outside example scenes, with its class — the making-of's `claims.evidence` — or null
  * when no fact says how it is known (the facts are not classed). {classes: {verified, reported, derived, extrapolated,
  * open, unclassed}, claims: [{claim, kind: 'number' | 'words', evidence, said: 'spoken' | 'shown', scene, path, at, id?,
- * source?, sourceKind?, checked?, by?, from?}], allowed?: {id: reason}} — `unclassed` and `evidence: null` a number no
- * fact backs (its fix is in the claims' unsourced list).
+ * source?, sourceKind?, checked?, by?, from?, restsOnOpen?}], allowed?: {id: reason}} — `unclassed` and `evidence: null`
+ * a number no fact backs (its fix is in the claims' unsourced list); `restsOnOpen` the ids of the open facts a claim's
+ * `from` leads to (a release treats it as open).
  */
 export function evidenceOf(claims) {
   if (!(claims?.facts ?? []).some(f => f.evidence)) return null;
-  const list = [...(claims.numbers ?? []).filter(c => !c.example).map(c => asEvidence(c, 'number')), ...(claims.statements ?? []).filter(c => !c.example).map(c => asEvidence(c, 'words'))]
+  const ids = byId(claims.facts), list = [...(claims.numbers ?? []).filter(c => !c.example).map(c => asEvidence(c, 'number', ids)), ...(claims.statements ?? []).filter(c => !c.example).map(c => asEvidence(c, 'words', ids))]
     .sort((a, b) => a.at - b.at || a.path.localeCompare(b.path));
   const classes = Object.fromEntries([...Object.keys(EVIDENCE), 'unclassed'].map(k => [k, list.filter(c => (c.evidence ?? 'unclassed') === k).length]));
   return {classes, claims: list, ...(claims.allowOpen ? {allowed: {...claims.allowOpen}} : {})};
 }
 
-/** The open claims the film says or shows outside example scenes that the recipe does not allow (claims.allowOpen): what a release refuses. */
-export const unallowedOpen = claims => [...(claims?.numbers ?? []), ...(claims?.statements ?? [])].filter(c => !c.example && c.evidence === 'open' && !(c.id && claims.allowOpen?.[c.id]))
-  .sort((a, b) => a.at - b.at || a.path.localeCompare(b.path));
-/** One open claim in words, with what is unresolved: "\"the battery lasts a full day\" (said in scene battery; fact \"battery-day\"; open: …)". */
-export const openText = c => `"${c.number ?? c.says}" (${c.path === 'captions' ? 'said' : `shown (${c.path})`} in scene ${c.scene}${c.id ? `; fact "${c.id}"` : ''}; open: ${c.checked})`;
+/**
+ * The open claims the film says or shows outside example scenes that the recipe does not allow (claims.allowOpen): what a
+ * release refuses. A claim is open when its fact is, and when its `from` leads to an open fact (a week extrapolated from
+ * an open day is as open as the day); it is allowed only when every open fact it rests on is. `ranges`: the stretches of
+ * the film a render shows ([[from, to]] on the film clock: a part, or an edit's cuts) — a claim outside all of them is
+ * not shown, so not refused; null: the whole film. Each comes back with `rests`, the open facts it rests on ([{id?, checked}]).
+ */
+export function unallowedOpen(claims, {ranges = null} = {}) {
+  const ids = byId(claims?.facts), shown = c => !ranges || ranges.some(([from, to]) => c.at < to - 1e-6 && Math.max(c.at, c.to) > from + 1e-6);
+  return [...(claims?.numbers ?? []), ...(claims?.statements ?? [])].filter(c => !c.example && shown(c))
+    .map(c => ({...c, rests: openRoots(c, ids)})).filter(c => c.rests.some(r => !(r.id && claims.allowOpen?.[r.id])))
+    .sort((a, b) => a.at - b.at || a.path.localeCompare(b.path));
+}
+/**
+ * One open claim in words, with what is unresolved: "\"the battery lasts a full day\" (said in scene battery; fact
+ * \"battery-day\"; open: …)", or, for a claim made from an open fact, what it rests on ("…; rests on open \"day\": …").
+ */
+export const openText = c => {
+  const self = c.evidence === 'open', via = (c.rests ?? []).filter(r => !self || r.id !== c.id);
+  return `"${c.number ?? c.says}" (${c.path === 'captions' ? 'said' : `shown (${c.path})`} in scene ${c.scene}${c.id ? `; fact "${c.id}"` : ''}${self ? `; open: ${c.checked}` : ''}${via.length ? `; rests on open ${via.map(r => `${r.id ? `"${r.id}"` : 'a fact with no id'}: ${r.checked}`).join(', ')}` : ''})`;
+};
 /** What a release says when it refuses open claims: each one, then the fix — settle it, cut it, or allow it with a reason. */
 export function openRefusal(open) {
-  const named = open.find(c => c.id)?.id;
+  const named = open.flatMap(c => c.rests ?? (c.evidence === 'open' ? [{id: c.id}] : [])).find(r => r.id)?.id;
   return `This release says or shows ${open.length} open claim${open.length > 1 ? 's' : ''} (unresolved): ${open.slice(0, 3).map(openText).join('; ')}${open.length > 3 ? `; and ${open.length - 3} more` : ''}. `
     + 'Settle each one (find its source and class it "verified", or "reported" by a named person) or cut it from the film; '
-    + `to release it unresolved, allow it in the recipe with a reason: "evidence": {"allowOpen": {"${named ?? '<the fact\'s id>'}": "why it may go out unresolved"}}${open.some(c => !c.id) ? ' (a fact allowed this way needs an "id")' : ''}`;
+    + `to release it unresolved, allow the open fact in the recipe with a reason: "evidence": {"allowOpen": {"${named ?? '<the fact\'s id>'}": "why it may go out unresolved"}}${open.some(c => (c.rests ?? [c]).some(r => !r.id)) ? ' (a fact allowed this way needs an "id")' : ''}`;
 }
 
 /**
@@ -683,17 +751,20 @@ export function drawnClaims(samples, {claims, sceneOf, scenes = [], wordsAt = nu
  */
 export function claimsCount(claims) {
   const numbers = claims?.numbers ?? [], open = numbers.filter(c => !c.example), factsGiven = Array.isArray(claims?.facts);
-  // A derived claim rests on the facts it is grouped from (`from`): sourced by them.
-  return {numbers: numbers.length, examples: numbers.length - open.length, sourced: open.filter(c => c.source || c.from).length, open: open.length,
-    unsourced: factsGiven ? open.filter(c => !c.source && !c.from).length : 0, unverified: open.filter(c => c.source && c.sourceKind === 'unverified').length, factsGiven};
+  // A claim made from facts (`from`) is sourced only when they lead back to sources (backed: never through an open one).
+  const ids = byId(claims?.facts);
+  return {numbers: numbers.length, examples: numbers.length - open.length, sourced: open.filter(c => backed(c, ids)).length, open: open.length,
+    unsourced: factsGiven ? open.filter(c => !backed(c, ids)).length : 0, unverified: open.filter(c => c.source && c.sourceKind === 'unverified').length, factsGiven};
 }
 
-/** The numbers with no source, outside example scenes (none without facts: then the check cannot run). A derived one rests on its `from`. */
-export const unsourcedClaims = claims => (Array.isArray(claims?.facts) ? (claims.numbers ?? []).filter(c => !c.example && !c.source && !c.from) : []);
+/** The numbers with no source, outside example scenes (none without facts: then the check cannot run). One made from facts is sourced when they lead back to sources. */
+export const unsourcedClaims = claims => (Array.isArray(claims?.facts) ? (claims.numbers ?? []).filter(c => !c.example && !backed(c, byId(claims.facts))) : []);
 
 /** The fix for a number with no source, in words (one an open fact backs: settle it). */
 export const claimFix = c => (c.evidence === 'open'
   ? `it rests on an open claim${c.id ? ` ("${c.id}")` : ''} — ${c.checked}: settle it (find its source and class it "verified"), or mark scene ${c.scene} "example": true`
+  : c.from?.length
+    ? `it is made from ${c.from.map(ref => `"${ref}"`).join(', ')}, which do not lead back to a source (an open fact, or one with no source): settle them (a source, evidence "verified"), or mark scene ${c.scene} "example": true`
   : c.ambiguous === 'no language'
   ? `"${c.number}" reads one way in one language and another in the next, and the film has no language: give it one (lang: "de" reads "2,5" as 2.5; "en-IN" reads "1,00,000" as 100000) and source the number, or add {"value": "${c.number}", "source": "…"} to the facts as written, or mark scene ${c.scene} "example": true`
   : c.ambiguous

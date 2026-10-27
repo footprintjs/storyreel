@@ -82,9 +82,13 @@ function stem(word) {
   const undouble = s => (s && s.length >= 4 && /([^aeiouylsz])\1$/.test(s) ? s.slice(0, -1) : s);   // "stopp" → "stop"; "add" stays
   return cut('ies', 'y') ?? cut('ied', 'y') ?? undouble(cut('ing')) ?? undouble(cut('ed')) ?? (/(ss|us|is)$/.test(w) ? null : cut('s')) ?? w;
 }
-/** The words of a sentence that name something: its words less FUNCTION_WORDS and single letters, each as it is compared (stem). */
+/**
+ * The words of a sentence that name something: its words (in NFC; a word is its letters, its marks — the vowel signs of
+ * Devanagari, Tamil, Telugu, Bengali, Thai … — and its digits) less FUNCTION_WORDS and single letters, each as it is
+ * compared (stem).
+ */
 export function contentWords(text) {
-  return [...new Set(String(text).split(/[^\p{L}\p{N}]+/u).filter(Boolean).filter(w => !FUNCTION_WORDS.has(w.toLowerCase())).map(stem).filter(w => w.length > 1 || /\p{N}/u.test(w)))];
+  return [...new Set(String(text).normalize('NFC').split(/[^\p{L}\p{M}\p{N}]+/u).filter(Boolean).filter(w => !FUNCTION_WORDS.has(w.toLowerCase())).map(stem).filter(w => w.length > 1 || /\p{N}/u.test(w)))];
 }
 /** Two compared words are one: the same, or one starts the other and the shorter has four letters or more ("price", "priced"). */
 const sameWord = (a, b) => a === b || (Math.min(a.length, b.length) >= 4 && (a.startsWith(b) || b.startsWith(a)));

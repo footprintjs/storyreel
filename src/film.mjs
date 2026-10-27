@@ -413,6 +413,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const facts = checkContinuity(plan);
   // The five scene questions (progression.mjs): one evolving world, read in film order — reported, or refused.
   const progressionRule = progressionMode(recipe.progression), progression = checkProgression(plan), asked = plan.some(u => u.questions);
+  if (progressionRule === 'refuse' && !asked) throw new Error('progression: "refuse" checks the shots\' answers to the five scene questions, and no shot gives one: answer them on the story and the stages ("exists", "changed", "why", "opens", "remains"), or leave progression out');
   if (progressionRule === 'refuse' && progression.length) throw new Error(progressionRefusal(progression));
   yield step('build-worlds-and-stages', () => buildSummary(storyPathName, storySpec.kit, stages, stageKitNames, plan));
 

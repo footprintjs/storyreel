@@ -11,28 +11,34 @@
   them in film order and lists what does not progress (`film.progression`): a scene after the first that changes
   nothing, a `changed` the next scene's `exists` does not carry, an `opens` no later `changed` picks up, a `remains` no
   later `changed` answers (the last scene's too). Each finding names its fix. It is reported by default;
-  `"progression": "refuse"` refuses. The check compares words, never meaning: the README says what it can and cannot
-  tell. A film without answers is as it was: the same frames, keys and records.
+  `"progression": "refuse"` refuses, and refuses a film whose shots answer nothing. The check compares words, never
+  meaning: a word keeps its marks (Devanagari, Tamil, Telugu vowel signs) and is read in NFC, and the README says what
+  it can and cannot tell. A film without answers is as it was: the same frames, keys and records.
 - **Evidence classes for claims** (`footprint-storyreel/claims`). A fact may say how it is known: `evidence`
   `"verified"` (a source), `"reported"` (a named person said it: `by`), `"derived"` (grouped from verified facts:
   `from`, their ids), `"extrapolated"` (carried past what is known) or `"open"` (unresolved), with `checked` (how it was
   checked, or what is still unresolved) and an `id`. A claim in words with no number is a fact with `says`: found
-  where the film says it (its captions, timed by the words) or shows it (`film.claims.statements`). Once one fact is
-  classed, every fact is; each class asks for what it needs; a derived claim rests on verified facts only, never on
-  itself. Each refusal names the fix. Claims carry their fact's class; a derived number counts as sourced. The
-  making-of's `claims.evidence` lists every claim the film says or shows, with its class and how it was checked.
-  **A release refuses an open claim** it says or shows, before anything is drawn, unless the recipe allows it by id
-  with a reason (`"evidence": {"allowOpen": {"<id>": "why"}}`). `makeRelease` is a release; `makeFilm` takes
-  `release: true`. Unclassed facts are read exactly as before.
+  where the film says it (its captions, timed by the words) or shows it (`film.claims.statements`), matched whole
+  words only (a vowel sign is part of its word) in NFC. Once one fact is classed, every fact is; each class asks for
+  what it needs; a derived claim rests on verified facts, directly or through derived ones; no `from` chain, derived or
+  extrapolated, leads back to itself. Each refusal names the fix. Claims carry their fact's class. A number made from
+  facts counts as sourced only when its `from` leads back to sources, never through an open fact. The making-of's
+  `claims.evidence` lists every claim the film says or shows, with its class, how it was checked and any open fact it
+  rests on. **A release refuses an open claim** it says or shows (its fact open, or made from an open fact), unless
+  the recipe allows that open fact by id with a reason (`"evidence": {"allowOpen": {"<id>": "why"}}`). It reads only
+  what the render shows, its part or its edit's cuts, once the render is planned and before a frame is drawn.
+  `makeRelease` is a release; `makeFilm` takes `release: true`. The record says `"release": true` only when the facts
+  are classed (the check had something to read). Unclassed facts are read exactly as before.
 - **A scored self-review: a rubric** (`footprint-storyreel/rubric`). A rubric is data: a name, a scale (`[1, 10]` by
   default), points (`{id, label, ask?, look?}`), and `least` (the least score every point, or some, needs before
   approval). No rubric is built in. `storyreel review --rubric` runs the review, then lays out each point in one
   stable layout: its stills (a picture each, `stills/rubric-<id>.png`) and its evidence, chosen by its `look`
   (`opening`, `words`, `faces`, `shots`, `sound`, `settled`) from what the film and the review already know. The
   library scores nothing and calls no model. `--scores id=8,… --by "<who>"` records the scores in the full render's
-  `making-of.json`; a render writes its recipe's rubric there unscored. `approveFilm` refuses a record whose recipe
-  asks for least scores while they are missing or one falls short, naming the point. `--rubric rubric.json` reads a
-  rubric file in the project.
+  `making-of.json`; a render writes its recipe's rubric there unscored. Scores are refused for a rubric that differs
+  from the render's (its name, scale, points or least scores), a render of a part, or a record of another film than the
+  one laid out (render again, then score). `approveFilm` refuses a record whose recipe asks for least scores while they
+  are missing or one falls short, naming the point. `--rubric rubric.json` reads a rubric file in the project.
 - Types for all three (`types/sub/progression.d.ts`, `types/sub/rubric.d.ts`, `types/sub/claims.d.ts`, the recipe,
   the film and `makeFilm`'s `release`); README sections with an example each.
 

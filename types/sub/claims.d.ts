@@ -17,7 +17,7 @@ export function sourceKind(source: string, options?: {root?: string | null; wher
  */
 export function readFacts(list: readonly NumberFact[], where?: string, options?: {root?: string | null; lang?: string | null}): NumberFact[];
 export function readFacts(list: unknown, where?: string, options?: {root?: string | null; lang?: string | null}): ClaimFact[];
-/** How a claim is known, each class with what it means: verified (a source), reported (a named person said it), derived (grouped from verified facts), extrapolated (carried past what is known), open (unresolved). */
+/** How a claim is known, each class with what it means: verified (a source), reported (a named person said it), derived (grouped from verified facts, directly or through derived ones), extrapolated (carried past what is known), open (unresolved). */
 export const EVIDENCE: Readonly<Record<EvidenceClass, string>>;
 /** The claims in words the film says or shows: every place a fact's `says` stands in a line or a scene's spoken words (case and the marks between words ignored, never inside a word), in time order. */
 export function findStatements(shown: {text: string; line?: string; offset?: number; at: number; to: number; scene: number; path: string}[], options?: {facts?: readonly ClaimFact[] | null; examples?: readonly (string | null)[]; scenes?: string[]}): WordsClaim[];
@@ -25,12 +25,14 @@ export function findStatements(shown: {text: string; line?: string; offset?: num
 export function readAllowOpen(value: unknown, facts: readonly ClaimFact[] | null): Readonly<Record<string, string>> | null;
 /** Every claim the film says or shows outside example scenes, with its class — or null when the facts are not classed. */
 export function evidenceOf(claims: Claims): ClaimEvidence | null;
-/** The open claims the film says or shows outside example scenes that the recipe does not allow: what a release refuses. */
-export function unallowedOpen(claims: Claims): (Claim | WordsClaim)[];
+/** An open claim a release refuses, with the open facts it rests on (its own, or the ones its `from` leads to). */
+export type OpenClaim = (Claim | WordsClaim) & {rests: {id?: string; checked: string}[]};
+/** The open claims the film says or shows outside example scenes (in `ranges` of the film clock, when given: a render's part or cuts) that the recipe does not allow — a claim made from an open fact counts as open: what a release refuses. */
+export function unallowedOpen(claims: Claims, options?: {ranges?: [number, number][] | null}): OpenClaim[];
 /** One open claim in words, with where it is and what is unresolved. */
-export function openText(claim: Claim | WordsClaim): string;
+export function openText(claim: Claim | WordsClaim | OpenClaim): string;
 /** A release's refusal of open claims: each one, then the fix — settle it, cut it, or allow it in the recipe with a reason. */
-export function openRefusal(open: (Claim | WordsClaim)[]): string;
+export function openRefusal(open: (Claim | WordsClaim | OpenClaim)[]): string;
 /** Each scene's example label ("Example data", or the scene's own words), or null for a scene that is not example data. */
 export function exampleScenes(storyboard: Storyboard): (string | null)[];
 /** The numbers shown, each with the fact that backs it or the example scene it sits in, in time order. */

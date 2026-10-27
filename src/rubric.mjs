@@ -16,6 +16,7 @@
 import {readFileSync} from 'node:fs';
 import {writeOutput} from './files.mjs';
 import {claimsCount} from './claims.mjs';
+import {stableJson} from './hash.mjs';
 
 /** What each look lays out for a point: its stills, and the evidence beside them. */
 export const LOOKS = Object.freeze({
@@ -35,7 +36,7 @@ export const OPENING_SECONDS = 3;
 
 const RUBRIC_KEYS = ['name', 'scale', 'least', 'points'], POINT_KEYS = ['id', 'label', 'ask', 'look'];
 const SHAPE = '{"name", "scale"?: [1, 10], "least"?: 8 or {"<point id>": 8}, "points": [{"id", "label", "ask"?, "look"?}]}';
-const words = v => typeof v === 'string' && /[\p{L}\p{N}]/u.test(v);
+const words = v => typeof v === 'string' && /[\p{L}\p{M}\p{N}]/u.test(v);
 /** The rubrics readRubric made: taken as they are; anything else is read first. */
 const READ = new WeakSet(), asRubric = r => (READ.has(r) ? r : readRubric(r));
 
@@ -57,7 +58,7 @@ export function readRubric(value, where = 'rubric') {
     const at = `${where}.points[${i}]`;
     if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error(`${at} is {"id", "label", "ask"?, "look"?}`);
     for (const key of Object.keys(p)) if (!POINT_KEYS.includes(key)) throw new Error(`${at} has ${key}; a point takes ${POINT_KEYS.join(', ')}`);
-    if (!(typeof p.id === 'string' && /^[\p{L}\p{N}_-]+$/u.test(p.id))) throw new Error(`${at}: id names the point, one word ("opening"), not ${JSON.stringify(p.id)}`);
+    if (!(typeof p.id === 'string' && /^[\p{L}\p{M}\p{N}_-]+$/u.test(p.id))) throw new Error(`${at}: id names the point, one word ("opening"), not ${JSON.stringify(p.id)}`);
     if (ids.has(p.id)) throw new Error(`${at}: id "${p.id}" is another point's too: give each point an id of its own`);
     ids.add(p.id);
     if (!words(p.label)) throw new Error(`${at}: label says what the point is, in words ("The opening holds attention")`);
@@ -212,17 +213,34 @@ export function scoresRecord({rubric, scores, by, at = new Date()}) {
   return {...rec, ...(r.least ? {met: short.length === 0, short} : {})};
 }
 
+/** What the film is made from that a person sees (film.inputs): a record whose own differ from these is of another film. */
+export const SEEN_INPUTS = Object.freeze(['storyboard', 'recipe', 'facts', 'strings', 'data', 'files', 'theme', 'cast', 'lang']);
+/** What a rubric asks, as the record keeps it: its name, scale, points (ids) and least scores. */
+const asked = r => ({name: r.name, scale: [...r.scale], points: [...r.points], least: r.least ?? null});
+
 /**
  * Record a render's scores in its making-of record (making-of.json, rewritten whole): the rubric's scores, who scored and
- * when. A failed render's record refuses (score a render that finished), and so does a rubric other than the one the
- * render's recipe names (the record's `rubric`). Returns the rubric's record as written.
+ * when. Refused: a failed render's record (score a render that finished); a render of a part (score a render of the
+ * whole film); a record of another film — `inputs`, what the film laid out to score is made from now (film.inputs), when
+ * given, must be the record's (SEEN_INPUTS): render again, then score; and a rubric that is not the one the render's
+ * recipe names — its name, scale, points and least scores all as the record keeps them, so no rubric of the same name
+ * with fewer points, a lower least or a wider scale can pass. Returns the rubric's record as written.
  */
-export function recordScores(makingOf, {rubric, scores, by, at = new Date()}) {
+export function recordScores(makingOf, {rubric, scores, by, at = new Date(), inputs = null}) {
   let made; try { made = JSON.parse(readFileSync(makingOf, 'utf8')); } catch (e) { throw new Error(`the scores go into the render's making-of record, and ${makingOf} cannot be read (${e.code ?? e.message}): render the film first, then score it`); }
   if (made?.failed) throw new Error(`${makingOf} is the record of a render that failed (${made.failed.error}): score a render that finished`);
   if (!made?.inputs) throw new Error(`${makingOf} is not a render's making-of record (it lists no inputs): give the making-of.json a render wrote`);
+  if (made.span && !made.span.whole) throw new Error(`${makingOf} is the record of a render of ${made.span.from}–${made.span.to} s of a ${made.span.total} s film: render the whole film, then score it`);
+  if (inputs) {
+    const changed = SEEN_INPUTS.filter(k => stableJson(made.inputs[k] ?? null) !== stableJson(inputs[k] ?? null));
+    if (changed.length) throw new Error(`${makingOf} is the record of another film than the one laid out to score (its ${changed.join(', ')} changed since that render): render again, then score`);
+  }
   const rec = scoresRecord({rubric, scores, by, at});
-  if (made.rubric?.name && made.rubric.name !== rec.name) throw new Error(`the render was made with the rubric "${made.rubric.name}" (its recipe's), not "${rec.name}": score it on that one`);
+  if (made.rubric) {
+    const was = asked({...made.rubric, least: made.rubric.least ?? null}), now = asked(rec);
+    const differ = Object.keys(was).filter(k => stableJson(was[k]) !== stableJson(now[k]));
+    if (differ.length) throw new Error(`the render was made with its recipe's rubric "${was.name}" (points ${was.points.join(', ')}; scale ${was.scale.join('–')}; least ${was.least ? Object.entries(was.least).map(([id, n]) => `${id} ${n}`).join(', ') : 'none'}), and this one differs in its ${differ.join(', ')}: score it with the recipe's rubric (render again if the recipe changed)`);
+  }
   writeOutput(makingOf, JSON.stringify({...made, rubric: rec}, null, 2));
   return rec;
 }

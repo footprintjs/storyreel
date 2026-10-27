@@ -693,14 +693,16 @@ The film reads the answers in film order and lists what does not progress (`film
 - **a constraint never answered**: a `remains` that no later scene's `changed` answers. The story ends with it;
   when the last scene leaves one, nothing can answer it.
 
-It is reported by default; `"progression": "refuse"` refuses, as `watching` and `reading` do. Only the shots that
-answer a question take part (a title card that answers none is passed over), and the first of them sets the world up.
+It is reported by default; `"progression": "refuse"` refuses, as `watching` and `reading` do. A refusing recipe whose
+shots answer no question at all refuses too: nothing checked is never a pass. Only the shots that answer a question
+take part (a title card that answers none is passed over), and the first of them sets the world up.
 The check reads **words**, never the pictures and never the meaning. Two answers agree when they share a word that
 names something: the little words ("the", "is", "now") are left out, a number word is its digits ("two items" is
 "2 items"), and a plural or a tense is its stem ("refused" is "refuse"). So it catches a scene that jumps to a world
 the last change never mentioned, and a missing answer. It cannot tell a change carried in other words ("the offer is
-refused", then "checkout stops"), and a name used in every answer always agrees. The words it leaves out are
-English; in another language every word counts.
+refused", then "checkout stops"), and a name used in every answer always agrees. A word is its letters, its marks
+(the vowel signs of Devanagari, Tamil, Telugu, Bengali, Thai) and its digits, read in NFC. The words it leaves out
+are English; in another language every word counts.
 
 ```js
 const film = await compileFilm({storyboard, timings, recipe, kits});
@@ -1074,13 +1076,15 @@ A fact may say how it is known, with `evidence`, one of five classes, and `check
 |---|---|---|
 | `verified` | a source says so | `source`, `checked` |
 | `reported` | a named person said it | `by` (who), `source` (where they said it), `checked` |
-| `derived` | grouped from verified facts | `from` (their `id`s: verified or derived, never itself), `checked` (how it was grouped) |
+| `derived` | grouped from verified facts, directly or through derived ones | `from` (their `id`s: verified or derived), `checked` (how it was grouped) |
 | `extrapolated` | carried past what is known | `from` or `source`, `checked` (the method) |
 | `open` | unresolved | `checked` (what is still unresolved) |
 
 A claim in words, with no number, is a fact with `says` in place of `value`. It is found wherever the film says
 those words (its captions, timed by the words) or shows them (a line on screen): case and the marks between words
-are ignored, but the words must stand together and never inside a longer word. Once one fact says how it is known,
+are ignored, but the words must stand together and never inside a longer word. A word is its letters, its marks (a
+vowel sign is part of its word in Devanagari, Tamil, Telugu) and its digits, and both sides are compared in NFC. No
+`from` chain, derived or extrapolated, may lead back to itself. Once one fact says how it is known,
 every fact does (an unclassed one refuses, naming the fix), and a fact that says nothing is read exactly as before.
 A product explainer's `facts.json`:
 
@@ -1094,16 +1098,20 @@ A product explainer's `facts.json`:
 ```
 
 - **Every claim carries its class.** `film.claims.numbers[i]` and `film.claims.statements[i]` (the claims in words,
-  when a fact `says` one) carry the fact's `evidence`, `checked`, `by`, `from` and `id`. A derived number is sourced by
-  what it is grouped from, so the "every number has a source" verdict passes it. A number whose open fact gives no
-  source has none yet, and its fix says to settle it.
+  when a fact `says` one) carry the fact's `evidence`, `checked`, `by`, `from` and `id`. A number made from facts
+  (derived or extrapolated) is sourced when its `from` leads back to sources, so the "every number has a source"
+  verdict passes it. One made from an open fact, however many steps away, is not: a week extrapolated from an open
+  day is as open as the day. A number whose open fact gives no source has none yet, and its fix says to settle it.
 - **The making-of lists every claim with its class**: `claims.evidence` is `{classes: {verified, reported, derived,
   extrapolated, open, unclassed}, claims: [{claim, kind: 'number' | 'words', evidence, said: 'spoken' | 'shown', scene,
-  path, at, source?, checked?, by?, from?, id?}]}`. `unclassed` is a number no fact backs. Example scenes are left
-  out, because they say so on screen.
-- **A release refuses an open claim** the film says or shows, before anything is drawn. A release is `makeRelease`, or
-  `makeFilm({…, release: true})`; a draft only lists the claim. The refusal names each open claim and the fix:
-  settle it, cut it, or allow it in the recipe with a reason:
+  path, at, source?, checked?, by?, from?, id?, restsOnOpen?}]}`. `unclassed` is a number no fact backs;
+  `restsOnOpen` names the open facts a claim's `from` leads to. Example scenes are left out, because they say so on
+  screen.
+- **A release refuses an open claim** it says or shows: one whose fact is open, or made from an open fact. A release is
+  `makeRelease`, or `makeFilm({…, release: true})`; a draft only lists the claim. The check runs once the render is
+  planned, before a frame is drawn, and reads only what the render shows: its part (`from`, `to`) or its edit's cuts.
+  A Short that cuts the claim away passes. The refusal names each open claim and the fix: settle it, cut it, or allow
+  the open fact in the recipe with a reason:
 
   ```json
   "evidence": {"allowOpen": {"full-day": "the vendor confirms it next week, and the film says so on screen"}}
@@ -1113,14 +1121,16 @@ A product explainer's `facts.json`:
   await makeRelease({storyboard, recipe, timings, out: 'release', targets: ['youtube'], post});
   // This release says or shows 1 open claim (unresolved): "the battery lasts a full day" (said in scene spec;
   // fact "full-day"; open: the vendor has not confirmed it yet). Settle each one (…) or cut it from the film; to
-  // release it unresolved, allow it in the recipe with a reason: "evidence": {"allowOpen": {"full-day": "…"}}
+  // release it unresolved, allow the open fact in the recipe with a reason: "evidence": {"allowOpen": {"full-day": "…"}}
   ```
 
-  Only an open fact can be allowed, by its `id`, with a reason in words; the record keeps the reason
-  (`claims.evidence.allowed`) and says the render was a release (`"release": true`).
+  Only an open fact can be allowed, by its `id`, with a reason in words. Allowing it lets what is made from it go out
+  too. The record keeps the reason (`claims.evidence.allowed`), and says the render was a release (`"release": true`)
+  only when its facts are classed, because only then did the check have something to read.
 
-The classes are the author's words, as the sources are: the film checks that each class has what it needs, and that a
-derived claim rests on verified facts. It never checks a claim against the world.
+The classes are the author's words, as the sources are. The film checks that each class has what it needs, that a
+derived claim rests on verified facts (directly or through derived ones), and that nothing rests on itself. It never
+checks a claim against the world.
 
 ## One film, every platform
 
@@ -2059,8 +2069,11 @@ The layout is the same every time: the rubric and what it requires, then each po
 question, its stills and its evidence, and the line that records the scores. `--rubric rubric.json` reads a rubric
 file inside the project instead of the recipe's. The scores go into the full render's `making-of.json` (`rubric:
 {name, scale, points, least?, scores, by, scored, met?, short?}`). The render writes the recipe's rubric there unscored
-(`{name, scale, points, least}`), and `approveFilm` refuses a record whose recipe asks for least scores while they are
-missing or one is under its least, naming the point:
+(`{name, scale, points, least}`). Scores are recorded only against that rubric (the same name, scale, points and least
+scores: one of the same name that asks less refuses), only for a render of the whole film, and, from `storyreel review`,
+only when the record is of the film just laid out (its storyboard, recipe, facts, strings, data, files, theme, cast and
+language: `SEEN_INPUTS`); otherwise it says to render again, then score. `approveFilm` refuses a record whose recipe asks
+for least scores while they are missing or one is under its least, naming the point:
 
 ```js
 approveFilm({record: 'out/making-of.json', by: 'Sam'});
@@ -3055,12 +3068,12 @@ the default because it rarely does; there is no swap repair.
 | `said(narration)` · `momentsOf` · `linesOf` · `sceneScript(scene)` · `momentOf(phrase)` | one script: what is said (the marks out), its moments (`{name}`) and its speakers' lines (`{@who}`); `footprint-storyreel/script` |
 | `makeClock(storyboard, timings)` | phrases and moments → seconds; `moments(scene)`, `speaking(t)`, `turns()`, `gaze(t, who)` |
 | `footprint-storyreel/shots` → `readIntent` · `readContinuity` · `checkContinuity` · `tooMuchTooFast` · `distinctMoments` · `WATCHING` | the shot plan's checks, on their own |
-| `footprint-storyreel/progression` → `QUESTIONS` · `readQuestions` · `checkProgression` · `progressionMode` · `contentWords` · `sharedWords` | the five scene questions (exists, changed, why, opens, remains) and the check that the story moves one world on |
-| `footprint-storyreel/rubric` → `readRubric` · `rubricSheet` · `rubricText` · `readScores` · `scoresRecord` · `recordScores` · `rubricShort` · `rubricRefusal` · `LOOKS` | a scored self-review: a rubric as data, each point's stills and evidence laid out, the scores recorded in the making-of, an approval that waits for them |
+| `footprint-storyreel/progression` → `QUESTIONS` · `QUESTION_ASKS` · `ANSWER_MAX` · `readQuestions` · `checkProgression` · `progressionMode` · `progressionRefusal` · `contentWords` · `sharedWords` | the five scene questions (exists, changed, why, opens, remains) and the check that the story moves one world on |
+| `footprint-storyreel/rubric` → `readRubric` · `rubricSheet` · `rubricText` · `readScores` · `scoresRecord` · `recordScores` · `rubricShort` · `rubricRefusal` · `LOOKS` · `SEEN_INPUTS` | a scored self-review: a rubric as data, each point's stills and evidence laid out, the scores recorded in the making-of, an approval that waits for them |
 | `footprint-storyreel/review` → `reviewPart(film, {part?, layout?, checks?, …})` · `REVIEW_DEFAULTS` · `REVIEW_CHECKS` · `findingsText` · `verdictsText` · `wordsAt` | a part reviewed by reading it: findings with times, and three verdicts (passed, failed, not run) with their `decide()` evidence |
 | `footprint-storyreel/slideshow` → `slideshowOf(film, {from?, to?, every?, rule?})` · `shotMotion` · `shotInsides` · `moved` · `SLIDESHOW` · `SLIDESHOW_VERDICT` | no slideshow: how much each shot moves in its middle, and whether most of the running time is dead (held still more than 3 s) |
 | `footprint-storyreel/geometry` → `geometryOf(film, {from?, to?, rule?})` · `auditParts` · `readParts` · `crosses` · `breakText` · `GEOMETRY` · `GEOMETRY_VERDICT` | a kit's drawn parts audited: mounted ends stay on, pairs kept apart never cross, a planted end stays where it was planted |
-| `footprint-storyreel/claims` → `numbersIn` · `numberValue` · `numberLocale` · `CODE_READING` · `readFacts` · `sourceKind` · `exampleScenes` · `labelSpans` · `findClaims` · `drawnLines` · `DRAWN` · `HOLD` · `drawnClaims` · `lingeringExamples` · `claimsCount` · `unsourcedClaims` · `claimText` · `CLAIMS_VERDICT` · `EVIDENCE` · `findStatements` · `readAllowOpen` · `evidenceOf` · `unallowedOpen` · `openRefusal` | every number on screen with its source: a fact the storyboard names, or an example scene (`film.claims`; the review adds what the picture draws); how each claim is known (its evidence class), claims in words, and the open claims a release refuses |
+| `footprint-storyreel/claims` → `numbersIn` · `numberValue` · `numberLocale` · `CODE_READING` · `readFacts` · `sourceKind` · `exampleScenes` · `labelSpans` · `findClaims` · `drawnLines` · `DRAWN` · `HOLD` · `drawnClaims` · `lingeringExamples` · `claimsCount` · `unsourcedClaims` · `claimText` · `CLAIMS_VERDICT` · `EVIDENCE` · `findStatements` · `readAllowOpen` · `evidenceOf` · `unallowedOpen` · `openText` · `openRefusal` | every number on screen with its source: a fact the storyboard names, or an example scene (`film.claims`; the review adds what the picture draws); how each claim is known (its evidence class), claims in words, and the open claims a release refuses |
 | `footprint-storyreel/decorative` → `decorative` · `code` · `isDecorative` · `isCode` · `DECORATIVE` · `CODE` | text a kit draws but the film does not say (line numbers, badges): read by every review check but the claims check |
 | `footprint-storyreel/ease` → `EASES` · `easeNamed(name, where?)` · `bezier(x1, y1, x2, y2)` · `overshoots(name)` · `inOut` | the one ease table (`linear in out inOut back walk jump spring bounce outCubic outQuint outExpo outBack inOutCubic standard emphasized`), and four-number curves as CSS writes them |
 | `footprint-storyreel/moves` → `moveAt(move, t, {start, seconds?, feel?, reduced?})` · `stagger(items, gap)` · `movesBy({feel, use, kind})` · `readMove` · `applyMove` · `MOVES` | motion asked for by name: 30 moves as data, by feel and use, with the practitioners' timing rules |

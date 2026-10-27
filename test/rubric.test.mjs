@@ -10,7 +10,8 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 import {compileFilm, evenTimings, approveFilm} from '../src/index.mjs';
 import {readRubric, readRubricRule, rubricSheet, rubricText, readScores, scoresRecord, recordScores, rubricShort, rubricRefusal, LOOKS, RUBRIC_SCALE, OPENING_SECONDS} from '../src/rubric.mjs';
 import {REVIEW_DEFAULTS} from '../src/review.mjs';
-import {loadProject, review} from '../src/tools.mjs';
+import {loadProject, review, fullRender} from '../src/tools.mjs';
+import {makeFilm} from '../src/index.mjs';
 import {tempDir} from './tmp.mjs';
 
 const explainer = {name: 'explainer', least: 8, points: [
@@ -58,6 +59,7 @@ test('a rubric is data: a name, a scale, points and their looks, least scores �
 test('the sheet lays out each point\'s stills and evidence, from what the film knows, in one stable layout', async () => {
   const film = await compileFilm({storyboard, recipe, timings});
   assert.deepEqual(film.rubric, readRubric(explainer), 'the recipe\'s rubric, checked');
+  assert.ok(!('rubric' in await compileFilm({storyboard, recipe: {...recipe, rubric: undefined}, timings})), 'a recipe with no rubric: the film has none');
   await assert.rejects(compileFilm({storyboard, recipe: {...recipe, rubric: {...explainer, least: 0}}, timings}), /recipe\.rubric: least is a whole score 1–10, not 0/);
   const sheet = rubricSheet(film, film.rubric);
   const point = id => sheet.points.find(p => p.id === id);
@@ -123,12 +125,40 @@ test('the scores go into the render\'s making-of record, and an approval waits f
   recordScores(file, {rubric: explainer, scores: 'opening=9,words=8,idea=8,sound=8,faces=8,look=8', by: 'a reviewer'});
   assert.equal(approveFilm({record: file, by: 'Sam'}).by, 'Sam', 'met: approved');
   assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).inputs, made.inputs, 'the rest of the record is as it was');
-  assert.throws(() => recordScores(file, {rubric: {...explainer, name: 'other'}, scores: 'opening=9,words=8,idea=8,sound=8,faces=8,look=8', by: 'x'}), /the render was made with the rubric "explainer" \(its recipe's\), not "other": score it on that one/);
+  assert.throws(() => recordScores(file, {rubric: {...explainer, name: 'other'}, scores: 'opening=9,words=8,idea=8,sound=8,faces=8,look=8', by: 'x'}), /the render was made with its recipe's rubric "explainer" \(points opening, words, idea, sound, faces, look; .*\), and this one differs in its name: score it with the recipe's rubric/);
   writeFileSync(file, JSON.stringify({...made, failed: {error: 'boom'}}));
   assert.throws(() => recordScores(file, {rubric: explainer, scores: 'opening=9,words=8,idea=8,sound=8,faces=8,look=8', by: 'x'}), /is the record of a render that failed \(boom\): score a render that finished/);
   assert.throws(() => recordScores(path.join(dir, 'none.json'), {rubric: explainer, scores: 'opening=9', by: 'x'}), /cannot be read \(ENOENT\): render the film first, then score it/);
   assert.equal(rubricRefusal(undefined), null, 'a recipe without a rubric: nothing waits');
   assert.equal(approveFilm({record: {inputs: {storyboard: 'a', recipe: 'b'}}, by: 'Sam'}).by, 'Sam');
+});
+
+test('the scores are of the render\'s own rubric and of the whole film it shows: a lookalike rubric, a part or another film refuses', t => {
+  const dir = tempDir('rubric-guard', t), file = path.join(dir, 'making-of.json'), r = readRubric(explainer), all8 = 'opening=8,words=8,idea=8,sound=8,faces=8,look=8';
+  const inputs = {storyboard: 'a', recipe: 'b', files: {'kit.mjs': 'c'}};
+  const made = {inputs, span: {from: 0, to: 9, total: 9, whole: true}, rubric: {name: 'explainer', scale: [1, 10], points: r.points.map(p => p.id), least: r.least}};
+  const fresh = (more = {}) => writeFileSync(file, JSON.stringify({...made, ...more}));
+  // A rubric of the same name that asks less: fewer points, a lower least, a wider scale.
+  for (const [lookalike, scores, differs] of [
+    [{...explainer, points: explainer.points.slice(0, 2)}, 'opening=9,words=9', 'points, least'],
+    [{...explainer, least: 1}, all8, 'least'],
+    [{...explainer, scale: [1, 100]}, all8, 'scale'],
+  ]) {
+    fresh();
+    assert.throws(() => recordScores(file, {rubric: lookalike, scores, by: 'x'}), new RegExp(`the render was made with its recipe's rubric "explainer" \\(points opening, words, idea, sound, faces, look; scale 1–10; least opening 8, .*\\), and this one differs in its ${differs}: score it with the recipe's rubric \\(render again if the recipe changed\\)$`));
+    assert.equal(JSON.parse(readFileSync(file, 'utf8')).rubric.scores, undefined, `nothing recorded (${differs})`);
+  }
+  fresh();
+  assert.equal(recordScores(file, {rubric: explainer, scores: all8, by: 'x', inputs}).met, true, 'the recipe\'s own rubric, the same film: recorded');
+  assert.equal(recordScores(file, {rubric: explainer, scores: all8, by: 'y'}).by, 'y', 'scored again on the same rubric (the record keeps its scores beside it)');
+  fresh({span: {from: 2, to: 5, total: 9, whole: false}});
+  assert.throws(() => recordScores(file, {rubric: explainer, scores: all8, by: 'x'}), /is the record of a render of 2–5 s of a 9 s film: render the whole film, then score it/);
+  fresh();
+  assert.throws(() => recordScores(file, {rubric: explainer, scores: all8, by: 'x', inputs: {...inputs, recipe: 'changed', files: {'kit.mjs': 'd'}}}),
+    /is the record of another film than the one laid out to score \(its recipe, files changed since that render\): render again, then score/);
+  // No rubric in the record (the recipe named none): a rubric file's scores are recorded as asked.
+  fresh({rubric: undefined});
+  assert.equal(recordScores(file, {rubric: {name: 'quick', points: [{id: 'look', label: 'It looks finished'}]}, scores: 'look=3', by: 'x'}).name, 'quick');
 });
 
 const fixture = fileURLToPath(new URL('./fixtures/tools/storyreel.config.mjs', import.meta.url));
@@ -151,7 +181,10 @@ test('storyreel review --rubric: the review, then each point with its picture an
   assert.match(laid.text, /\n2\. words — Words and numbers read easily \(look: words\)\n   stills: none\n   evidence:\n   - 0 lines meant to be read; 0 up too briefly to read\n/, 'a kit that lists no lines: nothing to show, and the evidence says so');
   await assert.rejects(review(p, {rubric: 'true', scores: 'opening=8,words=8,idea=8'}), /review --rubric --scores: say who scored it: --by/);
   await assert.rejects(review(p, {rubric: 'true', scores: 'opening=8,words=8,idea=8', by: 'a reviewer'}), /no making-of\.json in .*out: render the film first \(the scores are kept in the render's record, beside film\.mp4\), then score it/);
-  writeFileSync(path.join(out, 'making-of.json'), JSON.stringify({inputs: {storyboard: 'a', recipe: 'b'}, rubric: {name: 'explainer'}}));
+  // A record of another film (another recipe) is never scored from this layout.
+  writeFileSync(path.join(out, 'making-of.json'), JSON.stringify({inputs: {...p.film.inputs, recipe: 'another'}}));
+  await assert.rejects(review(p, {rubric: 'true', scores: 'opening=9,words=7,idea=8', by: 'a reviewer'}), /is the record of another film than the one laid out to score \(its recipe changed since that render\): render again, then score/);
+  writeFileSync(path.join(out, 'making-of.json'), JSON.stringify({inputs: p.film.inputs, rubric: {name: 'explainer', scale: [1, 10], points: ['opening', 'words', 'idea'], least: {opening: 8, words: 8, idea: 8}}}));
   assert.match(await review(p, {rubric: 'true', scores: 'opening=9,words=7,idea=8', by: 'a reviewer'}),
     /^rubric "explainer" scored by a reviewer, recorded in .*making-of\.json: opening 9, words 7, idea 8; under the least score: words 7 \(at least 8\) — an approval refuses it until it is fixed, rendered and scored again$/);
   assert.deepEqual(JSON.parse(readFileSync(path.join(out, 'making-of.json'), 'utf8')).rubric.scores, {opening: 9, words: 7, idea: 8});
@@ -173,4 +206,14 @@ test('the command line: storyreel review --rubric prints the layout and its pict
   const r = spawnSync(process.execPath, [cli, 'review', '--rubric', '--out', path.join(dir, 'out')], {cwd: dir, encoding: 'utf8'});
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /1\. opening — The opening \(look: opening\)\n   stills: .*rubric-opening\.png · 0\.00 s, 0\.75 s/);
+});
+
+test('a real render\'s record is the film laid out: review --rubric --scores records into it, and the approval reads them', {skip: spawnSync('ffmpeg', ['-version']).error ? 'needs ffmpeg' : false, timeout: 120_000}, async t => {
+  const dir = projectWith(tempDir('rubric-real', t), {name: 'quick', least: 7, points: [{id: 'opening', label: 'The opening', look: 'opening'}]}), out = path.join(dir, 'out');
+  const p = await loadProject({cwd: dir, out}), full = fullRender(p);
+  const made = await makeFilm({...full, render: {...full.render, layout: {...full.render.layout, scale: .5}, quality: 'draft'}});
+  assert.deepEqual(JSON.parse(readFileSync(made.makingOf, 'utf8')).rubric, {name: 'quick', scale: [1, 10], points: ['opening'], least: {opening: 7}}, 'the render writes its recipe\'s rubric, unscored');
+  assert.throws(() => approveFilm({record: made.makingOf, by: 'Sam'}), /has not been scored/);
+  assert.match(await review(p, {rubric: 'true', scores: 'opening=7', by: 'a reviewer'}), /^rubric "quick" scored by a reviewer, recorded in .*making-of\.json: opening 7; every least score met \(opening 7\)$/);
+  assert.equal(approveFilm({record: made.makingOf, by: 'Sam'}).by, 'Sam');
 });

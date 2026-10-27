@@ -184,7 +184,8 @@ async function rubricReview(project, args) {
   if (args.scores !== undefined) {
     if (args.by === undefined || yes(args.by)) throw new Error('review --rubric --scores: say who scored it: --by "<a name, or the model that scored it>"');
     if (!existsSync(makingOf)) throw new Error(`review --rubric --scores: no making-of.json in ${path.dirname(makingOf)}: render the film first (the scores are kept in the render's record, beside film.mp4), then score it`);
-    const rec = recordScores(makingOf, {rubric, scores: args.scores, by: String(args.by)});
+    // Only a record of the film laid out now: the one the reviewer looked at (rubric.mjs · SEEN_INPUTS).
+    const rec = recordScores(makingOf, {rubric, scores: args.scores, by: String(args.by), inputs: project.film.inputs});
     const met = rec.least ? (rec.met ? `; every least score met (${Object.entries(rec.least).map(([id, n]) => `${id} ${n}`).join(', ')})` : `; under the least score: ${rec.short.map(s => `${s.id} ${s.score} (at least ${s.least})`).join(', ')} — an approval refuses it until it is fixed, rendered and scored again`) : '';
     return `rubric "${rec.name}" scored by ${rec.by}, recorded in ${makingOf}: ${rec.points.map(id => `${id} ${rec.scores[id]}`).join(', ')}${met}`;
   }

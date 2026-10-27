@@ -46,7 +46,7 @@ test('a fact says how it is known: its class, how it was checked, who said it, w
 test('each class asks for what it needs, and every refusal names the fix', () => {
   const one = f => () => readFacts([f], 'storyboard.facts');
   for (const [fact, message] of [
-    [{value: 1, source: 'x', evidence: 'sure', checked: 'y'}, /storyboard\.facts\[0\]: evidence is how the claim is known — "verified" \(a source\), "reported" \(a named person said it\), "derived" \(grouped from verified facts\), "extrapolated" \(carried past what is known\), or "open" \(unresolved\) — not "sure"/],
+    [{value: 1, source: 'x', evidence: 'sure', checked: 'y'}, /storyboard\.facts\[0\]: evidence is how the claim is known — "verified" \(a source\), "reported" \(a named person said it\), "derived" \(grouped from verified facts, directly or through derived ones\), "extrapolated" \(carried past what is known\), or "open" \(unresolved\) — not "sure"/],
     [{value: 1, source: 'x', evidence: 'verified'}, /checked says how the claim was checked, in words \(e\.g\. "read on the vendor's spec sheet, 2026-10-20"\)/],
     [{value: 1, evidence: 'open'}, /an open claim says what is still unresolved in checked/],
     [{value: 1, evidence: 'verified', checked: 'read'}, /source says where 1 comes from: a URL, a document or a record pointer/],
@@ -67,8 +67,12 @@ test('each class asks for what it needs, and every refusal names the fix', () =>
   assert.throws(list([{value: 1, source: 'x', evidence: 'verified', checked: 'y'}, {value: 2, source: 'x'}]), /storyboard\.facts\[1\] says no evidence, and storyboard\.facts\[0\] does: once one fact says how it is known, every fact does/);
   assert.throws(list([{id: 'a', value: 1, source: 'x'}, {id: 'a', value: 2, source: 'x'}]), /storyboard\.facts\[1\]: id "a" is storyboard\.facts\[0\]'s too: give each fact an id of its own/);
   assert.throws(list([{id: 'a', value: 1, evidence: 'derived', from: ['b'], checked: 'y'}]), /from names "b", which is no fact's id \(the ids: a\)/);
-  assert.throws(list([{id: 'a', value: 1, evidence: 'open', checked: 'y'}, {value: 2, evidence: 'derived', from: ['a'], checked: 'y'}]), /a derived claim is grouped from verified facts, and "a" is open: verify "a" first/);
+  assert.throws(list([{id: 'a', value: 1, evidence: 'open', checked: 'y'}, {value: 2, evidence: 'derived', from: ['a'], checked: 'y'}]), /a derived claim is grouped from verified or derived facts, and "a" is open: verify "a" first \(evidence "verified", with its source\); until then this claim is open too: class it "open"$/);
+  assert.throws(list([{id: 'a', value: 1, source: 'x', evidence: 'reported', by: 'Asha', checked: 'y'}, {value: 2, evidence: 'derived', from: ['a'], checked: 'y'}]), /and "a" is reported: verify "a" first \(evidence "verified", with its source\)$/, 'no class suggested that would let an open claim through');
   assert.throws(list([{id: 'a', value: 1, evidence: 'derived', from: ['b'], checked: 'y'}, {id: 'b', value: 2, evidence: 'derived', from: ['a'], checked: 'y'}]), /a derived claim cannot rest on itself \(from leads back to "a"\)/);
+  // Every `from` chain, extrapolated ones too: a trend carried from itself rests on nothing.
+  assert.throws(list([{id: 'w', value: 1, evidence: 'extrapolated', from: ['w'], checked: 'a trend'}]), /storyboard\.facts\[0\]: an extrapolated claim cannot rest on itself \(from leads back to "w"\): ground it in sourced facts/);
+  assert.throws(list([{id: 'a', value: 1, evidence: 'extrapolated', from: ['b'], checked: 'y'}, {id: 'b', value: 2, evidence: 'extrapolated', from: ['a'], checked: 'y'}]), /an extrapolated claim cannot rest on itself \(from leads back to "a"\)/);
 });
 
 test('the film lists every claim with its class: numbers it shows and says, and claims in words it says or shows', async () => {
@@ -100,6 +104,63 @@ test('the film lists every claim with its class: numbers it shows and says, and 
     scenes: [{id: 'spec', narration: 'It lasts 500 cycles.'}]}, recipe: {story: {kit: 'whiteboard', items: []}}, timings: evenTimings({scenes: [{id: 'spec', narration: 'It lasts 500 cycles.'}]})});
   assert.equal(claimText(unsourcedClaims(open.claims)[0]), '"500" (scene spec, captions) has no source: it rests on an open claim ("cycles") — two sources disagree: settle it (find its source and class it "verified"), or mark scene spec "example": true');
   assert.equal(evidenceOf((await compileFilm({storyboard: {...storyboard, facts: [{value: 18, source: 'x'}]}, recipe: recipe(), timings})).claims), null, 'unclassed facts: no evidence list');
+});
+
+test('a claim made from an open fact is open too: never sourced, and a release refuses it unless the open fact is allowed', async () => {
+  const chain = [
+    {id: 'day', value: 18, text: '18 hours', evidence: 'open', checked: 'the vendor has not confirmed it yet'},
+    {id: 'week', value: 126, text: '126 hours', evidence: 'extrapolated', from: ['day'], checked: 'seven days of it'},
+    {id: 'month', value: 540, text: '540 hours', evidence: 'extrapolated', from: ['week'], checked: 'a month of weeks'},
+    {id: 'spec', value: 12, text: '12 hours', evidence: 'verified', source: 'https://example.org/spec', checked: 'the spec sheet'},
+    {id: 'year', value: 4380, text: '4380 hours', evidence: 'extrapolated', from: ['spec'], checked: 'a year of it'}];
+  const board = {title: 'Chain', facts: chain, scenes: [{id: 'a', narration: 'A week is 126 hours, a month 540 hours, a year 4380 hours.'}]};
+  const film = await compileFilm({storyboard: board, recipe: {story: {kit: 'whiteboard', items: []}}, timings: evenTimings(board)});
+  assert.deepEqual(claimsCount(film.claims), {numbers: 3, examples: 0, sourced: 1, open: 3, unsourced: 2, unverified: 0, factsGiven: true}, 'only the year leads back to a source');
+  assert.deepEqual(unsourcedClaims(film.claims).map(c => c.number), ['126', '540']);
+  assert.equal(claimText(unsourcedClaims(film.claims)[0]), '"126" (scene a, captions) has no source: it is made from "day", which do not lead back to a source (an open fact, or one with no source): settle them (a source, evidence "verified"), or mark scene a "example": true');
+  const open = unallowedOpen(film.claims);
+  assert.deepEqual(open.map(c => [c.number, c.rests.map(r => r.id)]), [['126', ['day']], ['540', ['day']]], 'a month extrapolated from a week extrapolated from an open day is open');
+  assert.match(openRefusal(open), /^This release says or shows 2 open claims \(unresolved\): "126" \(said in scene a; fact "week"; rests on open "day": the vendor has not confirmed it yet\); "540" .* allow the open fact in the recipe with a reason: "evidence": \{"allowOpen": \{"day": "why it may go out unresolved"\}\}$/);
+  assert.deepEqual(evidenceOf(film.claims).claims.map(c => [c.claim, c.restsOnOpen ?? null]), [['126', ['day']], ['540', ['day']], ['4380', null]]);
+  const allowed = await compileFilm({storyboard: board, recipe: {story: {kit: 'whiteboard', items: []}, evidence: {allowOpen: {day: 'the vendor confirms it next week'}}}, timings: evenTimings(board)});
+  assert.deepEqual(unallowedOpen(allowed.claims), [], 'the open fact allowed: what is made from it may go out too');
+});
+
+test('a release is refused only for what it shows: a part or a Short that cuts the open claim away passes the gate', async t => {
+  const film = await compileFilm({storyboard, recipe: recipe(), timings});
+  const spoken = film.claims.statements[0], spec = {from: film.clock.offsets[0], to: film.clock.offsets[1]}, sales = {from: film.clock.offsets[1], to: film.clock.offsets[2]};
+  assert.ok(spoken.at >= spec.from && spoken.to <= spec.to, 'the open claim is said in scene spec');
+  assert.equal(unallowedOpen(film.claims, {ranges: [[spec.from, spec.to]]}).length, 1);
+  assert.deepEqual(unallowedOpen(film.claims, {ranges: [[sales.from, sales.to]]}), [], 'a part without it');
+  assert.deepEqual(unallowedOpen(film.claims, {ranges: [[0, spoken.at - .5], [sales.from, sales.to]]}), [], 'cuts that leave it out');
+  // makeFilm: the render's own span decides. With no FFmpeg to encode, a render that passes the gate fails at its first
+  // frame instead — after the gate, which its failed run's record shows.
+  const dir = tempDir('evidence-span', t), noEncoder = {width: 320, height: 180, fps: 6, whole: true, ffmpeg: path.join(dir, 'no-ffmpeg')};
+  await assert.rejects(makeFilm({storyboard, recipe: recipe(), timings, out: path.join(dir, 'a', 'film.mp4'), release: true, render: {...noEncoder, from: sales.from, to: sales.to}}), /could not encode/);
+  await assert.rejects(makeFilm({storyboard, recipe: recipe(), timings, out: path.join(dir, 'b', 'film.mp4'), release: true, render: {...noEncoder, from: spec.from, to: spec.to}}), /^Error: This release says or shows 1 open claim/);
+});
+
+test('an allowed open claim passes the release gate, and the record says the gate ran — checked without FFmpeg', async t => {
+  const dir = tempDir('evidence-allowed', t), out = path.join(dir, 'film.mp4');
+  await assert.rejects(makeFilm({storyboard, recipe: recipe({evidence: {allowOpen: {'full-day': 'the vendor confirms it next week'}}}), timings, out, release: true,
+    render: {width: 320, height: 180, fps: 6, whole: true, ffmpeg: path.join(dir, 'no-ffmpeg')}}), /could not encode/, 'past the gate: it fails only for want of an encoder');
+  const failed = JSON.parse(readFileSync(path.join(dir, 'making-of.failed.json'), 'utf8'));
+  assert.ok(failed.pipeline.some(e => e.stageName === 'plan-picture' && e.key === 'release' && e.rawValue === true), 'the gate ran and passed, in plan-picture');
+  // Unclassed facts: nothing for the gate to check, so the record says nothing of a release.
+  const plain = path.join(dir, 'plain', 'film.mp4');
+  await assert.rejects(makeFilm({storyboard: {...storyboard, facts: [{value: 18, source: 'x'}]}, recipe: recipe(), timings, out: plain, release: true, render: {width: 320, height: 180, fps: 6, whole: true, ffmpeg: path.join(dir, 'no-ffmpeg')}}), /could not encode/);
+  assert.ok(!JSON.parse(readFileSync(path.join(dir, 'plain', 'making-of.failed.json'), 'utf8')).pipeline.some(e => e.key === 'release'), 'no gate, no release in the record');
+});
+
+test('a claim in words is found in any script: a word\'s marks are part of it (Tamil, Devanagari), and the two sides are compared in NFC', () => {
+  const read = readFacts([{id: 'milk', says: 'பால்', evidence: 'open', checked: 'y'}, {id: 'seven', says: 'सात सेब', evidence: 'open', checked: 'y'}]);
+  const shown = text => [{text, at: 1, to: 3, scene: 0, path: 'stages[0].title'}];
+  assert.deepEqual(findStatements(shown('தம்பி பால் குடித்தான்'), {facts: read, scenes: ['a']}).map(c => [c.says, c.offset]), [['பால்', 6]]);
+  assert.deepEqual(findStatements(shown('அன்பால் வென்றான்'), {facts: read, scenes: ['a']}), [], 'never inside a word: the ் before it is part of the word');
+  assert.deepEqual(findStatements(shown('मेज़ पर सात सेब हैं'), {facts: read, scenes: ['a']}).map(c => [c.says, c.offset]), [['सात सेब', 8]]);
+  assert.deepEqual(findStatements(shown('सात सेबों'), {facts: read, scenes: ['a']}), [], 'the vowel sign ों is part of the word');
+  const nfd = readFacts([{says: 'café open', evidence: 'open', checked: 'y'}]);
+  assert.deepEqual(findStatements(shown('The cafe\u0301 open late'), {facts: nfd, scenes: ['a']}).map(c => c.offset), [4], 'NFD on screen, NFC in the fact: the same words, at their place as written');
 });
 
 test('a claim in words is found where its words stand together — case and marks between them ignored, never inside a word', () => {
@@ -134,7 +195,7 @@ test('a release refuses an open claim it says or shows, before anything is drawn
   const open = unallowedOpen(film.claims);
   assert.deepEqual(open.map(c => [c.says, c.scene]), [['the battery lasts a full day', 'spec']], 'the example scene\'s says so on screen: not refused');
   const refusal = 'This release says or shows 1 open claim (unresolved): "the battery lasts a full day" (said in scene spec; fact "full-day"; open: the vendor has not confirmed it yet). '
-    + 'Settle each one (find its source and class it "verified", or "reported" by a named person) or cut it from the film; to release it unresolved, allow it in the recipe with a reason: "evidence": {"allowOpen": {"full-day": "why it may go out unresolved"}}';
+    + 'Settle each one (find its source and class it "verified", or "reported" by a named person) or cut it from the film; to release it unresolved, allow the open fact in the recipe with a reason: "evidence": {"allowOpen": {"full-day": "why it may go out unresolved"}}';
   assert.equal(openRefusal(open), refusal);
   await assert.rejects(makeFilm({storyboard, recipe: recipe(), timings, out: path.join(dir, 'r', 'film.mp4'), release: true}), {message: refusal});
   assert.ok(!existsSync(path.join(dir, 'r', 'film.mp4')) && !existsSync(path.join(dir, 'r', 'making-of.json')), 'nothing drawn, nothing written but the failed run\'s record');
@@ -155,4 +216,7 @@ test('makeFilm records every claim with its class; an allowed open claim reaches
   assert.deepEqual(released.claims.evidence.allowed, {'full-day': 'the vendor confirms it next week, and the film says so'});
   const plain = JSON.parse(readFileSync((await makeFilm({storyboard: {...storyboard, facts: [{value: 18, source: 'x'}]}, recipe: recipe(), timings, out: path.join(dir, 'plain', 'film.mp4'), render})).makingOf, 'utf8'));
   assert.equal(plain.claims.evidence, undefined, 'facts that say nothing of how they are known: the record is as it was');
+  const plainRelease = JSON.parse(readFileSync((await makeFilm({storyboard: {...storyboard, facts: [{value: 18, source: 'x'}]}, recipe: recipe(), timings, out: path.join(dir, 'plain-release', 'film.mp4'), render, release: true})).makingOf, 'utf8'));
+  assert.equal(plainRelease.release, undefined, 'a release with nothing for the gate to check: no release in the record');
+  assert.equal(plainRelease.rubric, undefined, 'a recipe with no rubric: none in the record');
 });

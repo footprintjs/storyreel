@@ -620,3 +620,7 @@ export const rubric: RubricSpec = {name: 'explainer', scale: [1, 10], least: {op
 export const moody: RubricSpec = {name: 'x', points: [{id: 'a', label: 'b', look: 'mood'}]};
 export const scored = (film: Film) => rubricText(rubricSheet(film, readRubric(rubric))) + readScores('opening=9,idea=8', rubric).opening + recordScores('making-of.json', {rubric, scores: {opening: 9, idea: 8}, by: 'a reviewer'}).met;
 export const recipeRubric: Recipe = {rubric};
+// @ts-expect-error an extrapolated claim says what it is carried from: from or source
+export const fromNothing: ClaimFact = {value: 1, evidence: 'extrapolated', checked: 'a trend'};
+export const fromFacts: ClaimFact = {value: 1, evidence: 'extrapolated', checked: 'a trend', from: ['march']};
+export const inSpan = (film: Film) => unallowedOpen(film.claims, {ranges: [[0, 12]]}).map(c => c.rests.length);

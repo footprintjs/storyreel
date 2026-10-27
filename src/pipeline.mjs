@@ -143,10 +143,12 @@ const MAX_PARTS = MAX_PIECES;
  *                     scene), a verdict the record keeps with its decide() evidence: 'report' (the default: the record's
  *                     `claims` lists the numbers with no source) or 'refuse' (one refuses the film before it is drawn,
  *                     and so does a film whose numbers cannot be checked: the storyboard names no facts)
- * @param release      true: this render leaves the house (makeRelease sets it) — a claim the film says or shows whose
- *                     fact is "open" (claims.mjs · EVIDENCE: unresolved) refuses it before anything is drawn, unless the
- *                     recipe allows that claim with a reason (recipe.evidence.allowOpen). false (the default): a draft;
- *                     the record lists every claim with its class (`claims.evidence`) either way
+ * @param release      true: this render leaves the house (makeRelease sets it) — a claim the render says or shows (in
+ *                     its part, or its edit's cuts) whose fact is "open" (claims.mjs · EVIDENCE: unresolved), or made from
+ *                     one, refuses it before a frame is drawn, unless the recipe allows that open fact with a reason
+ *                     (recipe.evidence.allowOpen); the record then says `"release": true`. Only a film whose facts are
+ *                     classed has anything to check. false (the default): a draft; the record lists every claim with
+ *                     its class (`claims.evidence`) either way
  */
 export async function makeFilm({storyboard, recipe, data = null, kits = [], theme, root = process.cwd(), hostKeys = [], narrationDir = null, timings = null, pacing = null, strings = null, lang = null, out, render = {}, approval = null, voiceCheck = 'report', code = null, check = null, expect = {}, cast = null, strategies = null, music = null, reducedMotion = false, claims = 'report', release = false}) {
   // The cast's names into the text before anything reads it: the pacing, the voice check, the chapters (cast.mjs).
@@ -180,6 +182,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   checkPictureOptions(render);
   let video = null;
   const done = [];
+  // Whether this render is a release with a gate to pass: set once the film is compiled (its facts classed, or not).
+  let gated = false;
   const stages = {
     'check-inputs': scope => {
       // A silent cut has no voice speed to check; its holds and tails are checked the same way (prepare.mjs · checkInputs).
@@ -237,15 +241,10 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
         try { requireApproval(approval, inputs); } catch (e) { if (scope.narration) rmSync(scope.narration, {recursive: true, force: true}); throw e; }
         scope.approvedBy = approval.by;
       }
-      // How every claim is known (claims.mjs · evidenceOf: only when the facts say), and a release's gate: an open claim the
-      // film says or shows, not allowed by the recipe with a reason, refuses it before anything is drawn.
+      // How every claim is known (claims.mjs · evidenceOf: only when the facts say how they are known).
       const evidence = evidenceOf(film.claims);
       if (evidence) scope.evidence = evidence.classes;
-      if (release) {
-        const open = unallowedOpen(film.claims);
-        if (open.length) { if (scope.narration) rmSync(scope.narration, {recursive: true, force: true}); throw new Error(openRefusal(open)); }
-        scope.release = true;
-      }
+      gated = release && Boolean(evidence);
     },
     // The film is made (approved, its claims checked, drawn and checked): the paced voice the render read — its own copy,
     // never a folder another run could replace — becomes <out dir>/narration. The last stage, so a film refused or
@@ -263,6 +262,14 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
       // The job is held as soon as it is made: a refusal after it still records what its sweep removed (sweptRecord).
       ({video} = planPicture({film, storyboard, timings: paced, narrationDir: scope.narration, out, render, code,
         music: song ? {file: song.file, start: fit.start, gain: song.gain, fadeOut: song.fadeOut} : null}, made => { job = made; }));
+      // A release's gate (claims.mjs · unallowedOpen), once the render's span is known and before a frame is drawn: an open
+      // claim the render says or shows — in its part, or in its edit's cuts — not allowed by the recipe with a reason,
+      // refuses it. Only a film whose facts say how they are known has anything for it to check.
+      if (gated) {
+        const open = unallowedOpen(film.claims, {ranges: job.edit ? job.edit.cuts.map(c => [c.from, c.to]) : [[Math.max(0, job.start), job.to]]});
+        if (open.length) throw new Error(openRefusal(open));
+        scope.release = true;
+      }
       plan = video.plan(job);
       if (plan.length > MAX_PARTS) throw new Error(`The picture is planned in ${plan.length} parts; at most ${MAX_PARTS} can be drawn (segments.mjs · planPieces: give the segments a larger minSeconds)`);
       scope.picture = {strategy: video.name, parts: plan.length};
@@ -376,8 +383,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     claims: {...(run?.state ?? run?.sharedState ?? {}).claims, saw: SAW, ...(film.lang ? {lang: film.lang} : {}), ...claimsCount(film.claims), unsourced: unsourcedClaims(film.claims).map(c => ({number: c.number, scene: c.scene, path: c.path, at: c.at, fix: claimText(c)})),
       // Every claim the film says or shows, with its class and how it was checked (only when the facts say how they are known).
       ...(evidenceOf(film.claims) ? {evidence: evidenceOf(film.claims)} : {})},
-    // A render made to leave the house (makeRelease): its open claims were each allowed by the recipe, with a reason.
-    ...(release ? {release: true} : {}),
+    // A release whose facts say how they are known: every open claim it says or shows was allowed by the recipe, with a reason.
+    ...(gated ? {release: true} : {}),
     // The story as one evolving world (progression.mjs): each shot's answers to the five scene questions, and what does
     // not progress — only when a shot answers one. The next reader reads the story here, not from the pictures.
     ...(film.shots.some(s => QUESTIONS.some(q => s[q])) ? {progression: {shots: film.shots.filter(s => QUESTIONS.some(q => s[q])).map(s => ({where: s.where, scene: s.scene, path: s.path, ...Object.fromEntries(QUESTIONS.filter(q => s[q]).map(q => [q, s[q]]))})),

@@ -93,6 +93,7 @@ test('progression: "refuse" refuses what does not progress, naming the fix; anyt
   await assert.rejects(film({story: {exists: 'Three items.'}, refused: {exists: 'Three items.'}, fresh: {exists: 'Three items.', changed: 'One is bought.'}}, {progression: 'refuse'}),
     /^Error: The story does not progress \(the recipe says progression: "refuse"\): stage refused changes nothing \(it says no "changed"\)/);
   await film(told, {progression: 'refuse'});
+  await assert.rejects(film({}, {progression: 'refuse'}), /^Error: progression: "refuse" checks the shots' answers to the five scene questions, and no shot gives one: answer them on the story and the stages \("exists", "changed", "why", "opens", "remains"\), or leave progression out$/, 'nothing to check is no pass');
   assert.throws(() => progressionMode('strict'), /progression must be "report" \(the default: film\.progression lists a scene that changes nothing/);
   await assert.rejects(film(told, {progression: true}), /progression must be "report"/);
 });
@@ -104,6 +105,17 @@ test('the words compared: names of things, never the little words; a number word
   assert.deepEqual(sharedWords('It stopped.', 'Then it stops.'), ['stop']);
   assert.deepEqual(sharedWords('The price was set.', 'It is priced again.'), ['price'], 'one word starts the other, four letters or more');
   assert.deepEqual(sharedWords('It is here now.', 'It was there then.'), [], 'the little words carry nothing');
+});
+
+test('answers in any script are read as words: Devanagari and Tamil keep their vowel signs, and both sides are compared in NFC', async () => {
+  assert.deepEqual(contentWords('राम के पास सात सेब हैं।'), ['राम', 'के', 'पास', 'सात', 'सेब', 'हैं']);
+  assert.deepEqual(contentWords('அம்மா நான்கு பழங்கள் வாங்கினாள்.'), ['அம்மா', 'நான்கு', 'பழங்கள்', 'வாங்கினாள்']);
+  assert.deepEqual(sharedWords('राम ने दो सेब खाए।', 'अब राम के पास पाँच सेब हैं।'), ['राम', 'सेब']);
+  assert.deepEqual(sharedWords('அம்மா பழங்கள் வாங்கினாள்.'.normalize('NFD'), 'பழங்கள் மேசையில் உள்ளன.'), ['பழங்கள்'], 'NFD on one side, NFC on the other');
+  // A Hindi story told in order passes a refusing check (before, every Hindi answer read as no words at all).
+  const hindi = {story: {exists: 'मेज़ पर सात सेब हैं।'}, refused: {exists: 'मेज़ पर सात सेब हैं।', changed: 'राम दो सेब खाता है।'}, fresh: {exists: 'अब राम के पास पाँच सेब हैं।', changed: 'राम बचे हुए सेब गिनता है।'}};
+  assert.deepEqual((await film(hindi, {progression: 'refuse'})).progression, []);
+  assert.deepEqual(checkProgression([{path: 'a', where: 'A', questions: {changed: 'அம்மா பழங்கள் வாங்கினாள்.'}}, {path: 'b', where: 'B', questions: {exists: 'பழங்கள் மேசையில் உள்ளன.', changed: 'அம்மா ஒரு பழம் சாப்பிட்டாள்.'}}]), []);
 });
 
 test('makeFilm: the making-of keeps each shot\'s answers and what does not progress — and nothing of the kind without answers', {skip: spawnSync('ffmpeg', ['-version']).error ? 'needs ffmpeg' : false}, async t => {

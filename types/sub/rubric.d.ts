@@ -25,7 +25,9 @@ export interface RubricRecord { name: string; scale: [number, number]; points: s
 export function scoresRecord(options: {rubric: Rubric | RubricSpec; scores: string | Record<string, number>; by: string; at?: Date}): RubricRecord;
 /** The points scored under their least (none when nothing is required, or all are met). */
 export function rubricShort(record: RubricRecord | null | undefined): {id: string; score: number | null; least: number}[];
-/** Record a render's scores in its making-of.json (rewritten whole); a failed render's record, or another rubric than its recipe's, refuses. */
-export function recordScores(makingOf: string, options: {rubric: Rubric | RubricSpec; scores: string | Record<string, number>; by: string; at?: Date}): RubricRecord;
+/** What the film is made from that a person sees: a record whose own (film.inputs) differ is of another film. */
+export const SEEN_INPUTS: readonly string[];
+/** Record a render's scores in its making-of.json (rewritten whole). Refused: a failed render's record, a render of a part, a record of another film than `inputs` (film.inputs, when given), and a rubric that is not the recipe's (name, scale, points and least, as the record keeps them). */
+export function recordScores(makingOf: string, options: {rubric: Rubric | RubricSpec; scores: string | Record<string, number>; by: string; at?: Date; inputs?: Record<string, unknown> | null}): RubricRecord;
 /** Why a render's record may not be approved yet (no scores, or one under its least), or null. */
 export function rubricRefusal(record: RubricRecord | null | undefined): string | null;
