@@ -219,6 +219,14 @@
       "types": "./types/sub/edit.d.ts",
       "default": "./src/edit.mjs"
     },
+    "./zones": {
+      "types": "./types/sub/zones.d.ts",
+      "default": "./src/zones.mjs"
+    },
+    "./doctor": {
+      "types": "./types/sub/doctor.d.ts",
+      "default": "./src/doctor.mjs"
+    },
     "./transitions": {
       "types": "./types/sub/transitions.d.ts",
       "default": "./src/transitions.mjs"

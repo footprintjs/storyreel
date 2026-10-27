@@ -304,7 +304,7 @@ test('the same tools over MCP (stdio): the handshake, the list with each tool\'s
   assert.deepEqual(Object.keys(tools.find(t => t.name === 'changes').inputSchema.properties), ['render', 'handles']);
   assert.deepEqual(tools.find(t => t.name === 'strip').inputSchema.required, ['at']);
   assert.equal(tools.find(t => t.name === 'still').inputSchema.required, undefined, 'a still takes its moments or a scene\'s beats: it says which it lacks');
-  assert.deepEqual(Object.keys(tools.find(t => t.name === 'still').inputSchema.properties), ['at', 'beats', 'from', 'to', 'width']);
+  assert.deepEqual(Object.keys(tools.find(t => t.name === 'still').inputSchema.properties), ['at', 'beats', 'from', 'to', 'width', 'phone', 'title']);
   assert.deepEqual(Object.keys(tools.find(t => t.name === 'timeline').inputSchema.properties), ['scene', 'from', 'to', 'handles']);
   assert.ok(tools.every(t => t.inputSchema.additionalProperties === false), 'a tool takes its own arguments and no others');
   assert.match(replies.get(3).result.content[0].text, /words over words: "Alpha" and "Beta"/);
@@ -391,7 +391,7 @@ test('over MCP the project is fixed at start: a call that names config or cwd, a
   const said = id => { assert.ok(replies.has(id), `no answer to call ${id}: the server stopped (exit ${code})`); return replies.get(id).result; };
   const rule = 'config and cwd are fixed when the MCP server starts; restart it with --config (or --cwd) to use another';
   for (const id of [1, 2]) assert.deepEqual(said(id), {isError: true, content: [{type: 'text', text: rule}]});
-  assert.equal(said(3).content[0].text, 'still takes no "out" (it takes at, beats, from, to, width): the rest — the config, the folder, the film\'s own flags — is fixed when the MCP server starts');
+  assert.equal(said(3).content[0].text, 'still takes no "out" (it takes at, beats, from, to, width, phone, title): the rest — the config, the folder, the film\'s own flags — is fixed when the MCP server starts');
   assert.equal(said(4).content[0].text, 'timeline: scene "--config" would be read as a flag: a value never starts with --');
   assert.match(said(5).content[0].text, /^no tool called "constructor"/, 'a name every object inherits is not a tool');
   assert.equal(said(6).isError, true, 'a value the command line cannot be given (a NUL byte) is an error, not the server\'s end');

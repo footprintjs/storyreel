@@ -1158,13 +1158,12 @@ await renderFilm({film, storyboard, timings, narrationDir, out: 'out/shorts/teas
   so they say exactly what is spoken, when: short chunks broken after punctuation (a chunk takes one word
   more rather than leave a word alone), the word being said in yellow. A silent scene's directions are
   never captioned, and the poster (the thumbnail) shows the title band without a caption. `captions: {maxWords, size, box}` changes the chunk length, the type size and the band.
-- **The bands sit where the apps leave room.** A phone's full-screen player covers its top ~250 px with
-  its own bar, the bottom ~420 px with the account name and the post's text, and the right ~120 px from
-  the middle down with its buttons; Instagram shows a vertical video in its feed cut to 4:5. So in the
-  vertical format the title, the film and the captions all sit between y 285 and 1460, inside what Shorts,
-  Reels and TikTok leave clear: the film is a 4:3 crop, so the captions fit under it and never cover the
-  picture — a teaching film's picture has words in it too (the players as they were laid out in 2026; a
-  band's `box` moves it when an app changes).
+- **The bands sit where the apps leave room.** A phone's full-screen player covers its top with its own
+  bar, its foot with the account name and the post's text, and its right side with a column of buttons;
+  Instagram shows a vertical video in its feed cut to 4:5. So in the vertical format the title, the film and
+  the captions all sit between y 285 and 1460: the film is a 4:3 crop, so the captions fit under it and
+  never cover the picture — a teaching film's picture has words in it too. Where each app draws is that
+  platform's own data (`ui`, [below](#the-apps-own-ui-safe-zones-as-data)); a band's `box` moves it by hand.
 - **A crop follows the action**: `crop` keys tie the crop's centre (an x on the 1600-wide frame) to spoken
   phrases, like every other key, and it eases from one to the next (centred until the first). A key's
   `width` (400–1600; the format's is 1200) shows more — `{"at": [...], "x": 800, "width": 1600}` is the whole
@@ -1186,6 +1185,79 @@ await renderFilm({film, storyboard, timings, narrationDir, out: 'out/shorts/teas
 A layout is data, checked like a recipe: an unknown key refuses, a header in the landscape format
 refuses (it has no band), a crop key out of spoken order refuses. Only the landscape format takes an
 `intro`.
+
+### The app's own UI: safe zones, as data
+
+A Short is watched inside an app that draws over it: a bar at the top, a strip with the channel's name and the post's
+text at the foot, a column of like-comment-share buttons on the right. A caption under the buttons loses its last word,
+and nobody sees it until the post is up. So each vertical target says where its app draws, in fractions of the frame
+(`ui.zones`, `footprint-storyreel/zones`), and the layout uses it: the title band and the captions are laid out clear
+of it, and the render says what is still under it.
+
+```js
+await renderFilm({film, storyboard, timings, out: 'out/tiktok/film.mp4',
+  layout: {format: 'vertical', header: {title: 'One sheep, one pebble'}, captions: true,
+    ui: {zones: [{name: 'action column', box: [0.7222, 0.4375, 0.2778, 0.5625]}],   // [x, y, width, height], 0–1
+      faces: ['hero face'],                                                           // named regions to keep clear (the kits name them)
+      covered: 'report'}}});                                                          // or 'refuse': stop before a frame is drawn
+// result.ui: {zones, fitted: {captions, title}, ok: false, findings: [{kind: 'face', name: 'hero face', zone: 'action column', at: 0, until: 2,
+//   text: '"hero face" at 0.00 s–2.00 s is under the action column (x 810–900, y 1020–1110)',
+//   fix: 'frame "hero face" off the action column (it covers x 780–1080, y 840–1920): a crop key that moves the window, …'}]}
+```
+
+- **Fitted, not moved by hand.** A caption line that would reach under a column is narrowed about its centre to what
+  the zones leave clear (wrapped balanced onto two lines when it must, so no word is left alone); a block under a strip
+  moves out of it. A line already clear is drawn
+  exactly as without zones — byte for byte (pinned against 0.22.0's drawing code).
+- **The check** reports each caption chunk, the title band and each named face (`faces`) still under a zone, with when,
+  where and the fix — on renderFilm's result (`ui`), the release's (`covered`) and in `making-of.json` (`ui`). With
+  `covered: 'refuse'` the render refuses before a frame is drawn. A face is a region a kit names (`regionsAt`).
+- **In a release** the target's adapter gives the zones (`{target: 'tiktok'}` needs nothing more). `ui: {zones: 'ads'}`
+  checks against the platform's published **ad** safe zone instead (larger at the foot: an ad has its own button there),
+  `ui: {covered: 'refuse', faces: [...]}` tightens it, `ui: false` turns it off.
+
+The zones each platform's target declares, at 1080×1920. No platform publishes where its app draws over an
+**organic** post; each publishes a safe zone for **ads**. So a number read off the platform's own ad figure is
+**measured** when the same UI is there in a post (the top bar, the edges, the button column), and the foot's strip —
+where the ad figure also holds the ad's own button — is an **estimate**. Each zone says which (`basis`), and each target
+says where and when in `facts.ui` (checked 2026-10-27).
+
+| target | zone | at 1080×1920 | basis | source |
+|---|---|---|---|---|
+| `youtube-shorts` | top bar | y 0–288 | measured | Google Ads Help, vertical video ads safe zone (288 top, 48 left, 192 right, 672 bottom) |
+| | left edge | x 0–48 | measured | the same figure |
+| | action column | x 888–1080, y 960–1920 | width measured, start estimated | the same figure's 192 px right margin; the buttons sit in the lower half |
+| | caption strip | y 1500–1920 | estimate | the figure's 672 px includes the ad's button |
+| `tiktok` | top bar | y 0–240 | measured | TikTok Ads Manager, In-Feed safe-zone template (720×1280: 160 top, 80 each side, 120-wide column from 720 above the foot, 440 at the foot) |
+| | left / right edge | x 0–120, 960–1080 | measured | the same template |
+| | action column | x 780–1080, y 840–1920 | measured | the same template |
+| | caption strip | y 1500–1920 | estimate | the template's 440 of 1280 includes the ad's button |
+| `instagram-reels` | top bar | y 0–269 | measured | Meta Ads Guide, Reels (14% top, 35% bottom, 6% each side) |
+| | left / right edge | x 0–65, 1015–1080 | measured | the same guide |
+| | action column | x 960–1080, y 960–1920 | estimate | Meta gives no column |
+| | caption strip | y 1500–1920 | estimate | the guide's 35% includes the ad's button |
+
+The published ad zones are each target's `ui.ads` (all measured). With these zones the default vertical bands never
+meet a top bar or a foot strip; TikTok's column (x 780 on) reaches the caption band (x 120–960), so a TikTok caption
+whose line would pass x 780 is narrowed to x 300–780 — its video changes from 0.22.0 there, and only there.
+
+### A phone-size review still
+
+A still at 1600 px wide on a monitor tells you nothing about a caption read on a phone in the hand. `storyreel still
+--phone <target>` draws each moment as that platform shows it — its format, its title band, its captions fitted clear
+of its app's UI — 390 px across (about the points a phone measures), with the app's UI on top as plain grey shapes, and
+anything still under it outlined in red:
+
+```
+$ npx storyreel still --phone tiktok --at one+2.5,two+0
+out/stills/phone-tiktok-one+2.5_two+0.png · 2 phones (TikTok, 390 px wide): one+2.5 (2.50 s), two+0 (5.28 s)
+the app's UI: top bar (measured), left edge (measured), right edge (measured), action column (measured), caption strip (estimate)
+nothing of the title, the captions or the named faces is under the UI
+```
+
+It takes the moments as `still` does (`--at`, or `--beats <scene>`); `--width` is each phone's (200–1080); `--title` the
+band's words (default: the config layout's, else the storyboard's title). The config's layout lends its crop, fill and
+keep when it is of the same format, and its `ui.faces`. Lower down: `phoneSheet(film, {layout, moments})` (`src/phone.mjs`).
 
 ### Release: one call, every platform
 
@@ -1250,6 +1322,20 @@ await makeRelease({storyboard, recipe, narrationDir, pacing, out: 'release/ep01'
   tick "Altered or synthetic content" when you upload.
 - **Chapters come from titled scenes.** A titled scene starts a chapter and an untitled one goes on with the one
   before it; a storyboard with no titles at all makes every scene a chapter, named by its id.
+- **Loudness per platform.** Short-video apps turn a loud post down and a quiet one stays quiet, so one level for every
+  place is wrong for some. A target whose adapter names a goal is normalised to it: YouTube Shorts, TikTok and Instagram
+  Reels −14 LUFS integrated, −1 dBTP true peak (`adapter.loudness`); YouTube, X and LinkedIn name none and keep the
+  render's −16 LUFS, −1.5 dBTP. None of these platforms publishes its target: −14 LUFS is the level they are widely
+  measured to turn louder videos down to (an estimate), −1 dBTP the AES TD1008 ceiling for lossy streams (`facts.loudness`
+  says so, with sources). The film's own `render.loudness` (one value for every target) or a target's
+  `render: {loudness: {I, TP}}` goes over it; the release's result says what each was set to (`loudness`).
+
+  ```js
+  await makeRelease({...film, out: 'release/ep01', post, targets: ['youtube', 'tiktok', {target: 'youtube-shorts', render: {loudness: {I: -16, TP: -1.5}}}]});
+  // youtube −16/−1.5 (the default) · tiktok −14/−1 (its goal) · youtube-shorts −16/−1.5 (its own)
+  ```
+- **This machine is asked first.** Before anything renders, the release runs the doctor ([Before a long render](#before-a-long-render-storyreel-doctor))
+  for what its renders need: an FFmpeg without `loudnorm`, or no FFmpeg at all, refuses in seconds, naming the fix.
 
 ### A Short cut from the film: cuts, joins, an end card, a picture that fills and follows
 
@@ -1982,7 +2068,9 @@ run it.
   package ships the skill that teaches the order — timeline, review, fix, part, one still last — `storyreel-review`,
   beside the skills that build a film ([Skills for AI agents](#skills-for-ai-agents)). `footprint-storyreel/tools` is the one core both use.
   `npx storyreel beats <song>` needs no project: it prints a song's beat map for settling its tempo (see Music: cut on
-  the beat); neither does `npx storyreel share <video>` ([a copy to send](#showing-a-film-to-a-person)). **Short by default:** `review` and `part` print a summary an agent can afford to read — the counts, the
+  the beat); neither does `npx storyreel share <video>` ([a copy to send](#showing-a-film-to-a-person)), nor `npx storyreel doctor`
+  ([what this machine has](#before-a-long-render-storyreel-doctor)). `still --phone tiktok` shows the moments at phone size inside
+  that app's UI ([a phone-size review still](#a-phone-size-review-still)). **Short by default:** `review` and `part` print a summary an agent can afford to read — the counts, the
   verdicts that did not pass with why, the first 5 findings (errors before advice), the rest counted
   (`footprint-storyreel/review` · `reviewSummary`); `--full` prints every finding and every verdict's why. Every
   command takes `--help` (`npx storyreel still --help`). A config's `pacing` paces a film with no voice too (its even
@@ -2496,6 +2584,36 @@ sound}`), and each check a strategy (`footprint-storyreel/finished` · `FINISHED
 first run of these checks found a bug in the renderer itself: FFmpeg's `-shortest` stopped the picture a few
 frames early, so the last frames of every film were lost; the sound is now padded to the picture's exact
 length instead.
+
+## Before a long render: storyreel doctor
+
+A long render that dies at the mux because this FFmpeg has no `loudnorm` wastes the render. `storyreel doctor` asks the
+local FFmpeg itself — its own lists (`ffmpeg -encoders`, `-filters`, `-muxers`, `-demuxers`) and ffprobe's version —
+for every piece a film needs (libx264, aac, mp4, concat, lavfi, loudnorm, ebur128, amix, acrossfade for an edit's
+cross-fades, setparams for the high-quality encode, overlay for a stamp, showinfo for the finished-file check, …), and
+looks up the fonts the themes name where the pictures are drawn. Each is **available** (the list names it),
+**missing** (the list was read, and does not) or **unknown** (the list could not be read — the program did not run, or
+printed nothing the doctor recognises): never "available" on a guess.
+
+```
+$ npx storyreel doctor
+ffmpeg 9.0.2 (ffmpeg): available
+ffprobe 9.0.2 (ffprobe): available
+
+available program ffmpeg                   every render: the picture, the sound, the mux
+available filter  loudnorm                 loudness, in two passes
+…
+available font    "Avenir Next",Arial,sans-serif the theme's sans type (paper)
+          → drawn in Avenir Next
+
+Ready: everything a render needs is there.
+```
+
+`--json` prints the report for agents (`{ffmpeg, ffprobe, items: [{kind, name, for, status, why?}], missing, unknown, ok,
+sure}`); `--ffmpeg`, `--ffprobe` and `--theme paper,storybook` choose what to ask. It exits 1 when something a render
+needs is missing (a font that falls back to another face is said, not failed), 0 otherwise. A release runs it by itself
+first, asking only for what its renders need. Lower down: `footprint-storyreel/doctor` (`doctor`, `doctorText`,
+`parseList`, `requireDoctor`, `NEEDS`; a test hands in its own `run`).
 
 ## Break down a reference film
 
@@ -3124,7 +3242,9 @@ the default because it rarely does; there is no swap repair.
 | `footprint-storyreel/breakdown` → `breakdown(videoFile, {out?, beatMap?, beatOptions?, thresholds?, ffmpeg?, probe?, hints?})` · `breakdownText(spec)` · `BREAKDOWN` | a reference film as a spec to match: cuts, fades and dissolves, shots, pacing, motion, lettering (a heuristic), cuts on the beat (`beatMap(video, {ffmpeg})`: the reader reads the video's sound itself; `storyreel breakdown --beats`), judged by `safeBeats`; every verdict with its evidence |
 | `previewChanges(makeFilmOptions, {render?, handles?, clip?})` | what an edit changed before the full render: the changed pieces as ranges and why (`text`); `render: true` draws only those into the cache and writes a review clip ([The chat edit loop](#the-chat-edit-loop)) |
 | `segmentedVideo({store, recipe?, code?, kitsCode?, chunkSeconds?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir, {cap})` · `ffmpegJoin()` · `planSegments(film, {fps})` · `planPieces(film, {fps, chunkSeconds})` · `segmentKey(…)` · `pictureLine(report)` · `codeFingerprint(paths)` · `codeCover(fingerprint)` | re-render only what changed: every render's picture in cached pieces, joined (the default; `renderFilm({…, segments, whole, video})`) |
-| `footprint-storyreel/release` → `makeRelease({targets, post, out, …})` · `loadTarget` · `checkAdapter` · `planProblems` · `TARGET_NAMES` | the post for each platform: the video in its shape, captions, thumbnail, the text to paste, checked against the platform's limits and audience |
+| `footprint-storyreel/release` → `makeRelease({targets, post, out, …})` · `loadTarget` · `checkAdapter` · `planProblems` · `targetLoudness` · `TARGET_NAMES` | the post for each platform: the video in its shape, captions, thumbnail, the text to paste, checked against the platform's limits and audience; its app's UI kept clear, its loudness goal |
+| `footprint-storyreel/zones` → `readZones` · `readUi` · `zoneRects` · `fitBlock` · `clearSpan` · `uiFindings` · `uiReport` · `COVERED` | where a platform's app draws over the video, as data: the bands fitted clear of it, and what is still under it |
+| `footprint-storyreel/doctor` → `doctor({ffmpeg?, ffprobe?, render?, themes?, run?})` · `doctorText` · `parseList` · `requireDoctor` · `NEEDS` | what this machine's FFmpeg, ffprobe and fonts have of what a render needs: available, missing or unknown (`storyreel doctor`) |
 | `readCast(cast)` · `castText(text, cast)` · `withCast(value, cast)` | the cast: `{{role}}` in any text becomes the role's name; kits read the rest from `context.cast` |
 | `evenTimings(storyboard)` · `paceTimings(storyboard, timings, pacing)` · `applyPacing(…)` | word times without a voice; pacing for a silent or a voiced cut |
 | `directionTimings(scene, {tail?})` · `withDirections(storyboard, timings)` · `sceneText(scene)` · `spokenText(scene)` · `unsaidNumbers(storyboard)` | a silent scene's timing; a voice's timings completed with the silent scenes; a scene's text as spoken (number slots in words); digits without a slot |
@@ -3153,7 +3273,7 @@ the default because it rarely does; there is no swap repair.
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/script`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/progression`, `/review`, `/rubric`, `/slideshow`, `/geometry`, `/claims`, `/decorative`, `/regions`, `/captions`, `/layout`, `/transitions`, `/breakdown`, `/sounds`, `/sounds/openverse`, `/camera`, `/beats`, `/music`, `/kits/whiteboard`, `/kits/cartoon`, `/kits/paper/steps-track`, `/pose`, `/mocap`, `/kits/cartoon/figure`, `/stage`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/script`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/progression`, `/review`, `/rubric`, `/slideshow`, `/geometry`, `/claims`, `/decorative`, `/regions`, `/captions`, `/layout`, `/zones`, `/doctor`, `/transitions`, `/breakdown`, `/sounds`, `/sounds/openverse`, `/camera`, `/beats`, `/music`, `/kits/whiteboard`, `/kits/cartoon`, `/kits/paper/steps-track`, `/pose`, `/mocap`, `/kits/cartoon/figure`, `/stage`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws

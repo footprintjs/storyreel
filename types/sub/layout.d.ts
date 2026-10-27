@@ -1,5 +1,5 @@
 export {compileLayout, FORMAT_NAMES} from '../index.js';
-export type {Layout, FormatName, Box, CropKey, CropFraming} from '../index.js';
+export type {Layout, FormatName, Box, CropKey, CropFraming, Zone, LayoutUi, ZoneRect, UiFinding, UiReport} from '../index.js';
 import type {Box, FormatName, Film} from '../index.js';
 /** A layout's scale, checked: 1 (the default) to 2, keeping the format's size whole and even; refuses naming the sizes it would make. */
 export function formatScale(format: FormatName, scale?: number): number;

@@ -72,6 +72,46 @@
   them across shots like declared facts. The ledger is kept in `film.shots[i].ledger` and in the making-of record. A
   world that returns neither, which is every world before this one, leaves the film exactly as it was.
 
+- **Where each app draws over the video, as data.** A release target's adapter may say where its platform's app draws
+  its own UI over the video — `ui: {zones: [{name, box: [x, y, width, height], basis}], ads?, covered?}`, in fractions of
+  the frame — and YouTube Shorts, TikTok and Instagram Reels now do: the top bar, the edges, the column of buttons on
+  the right and the strip of name and caption at the foot. Each zone says where its numbers come from: **measured** (read
+  off the platform's own published figure — Google's vertical-ads safe zone, TikTok's In-Feed template, Meta's Reels ads
+  guide) or **estimated** (no platform publishes the organic post's foot, or YouTube's and Instagram's button column).
+  `facts.ui` cites the sources, checked 2026-10-27. Each adapter's `ui.ads` is the platform's published ad safe zone.
+- **The title band and the captions are laid out clear of it** (`layout.ui`, `footprint-storyreel/zones`): a caption line
+  that would reach under a column is narrowed about its centre (wrapped balanced when it must take two lines), a block
+  under a strip moves out of it. A line already clear is drawn exactly as before, byte for byte (pinned against 0.22.0's
+  drawing code).
+- **A check reports what is still under the UI** — each caption chunk, the title band, each named face (`ui.faces`: regions
+  the kits name) — with when, where and the fix: renderFilm's `ui`, the release's `covered`, `making-of.json`'s `ui`.
+  `covered: 'refuse'` refuses before a frame is drawn. A target may give its own zones, `ui: {zones: 'ads'}` (the
+  published ad safe zone), `faces`, `covered`, or `ui: false` (none).
+- **`storyreel still --phone <target>`**: each moment at phone size (390 px across) as that platform shows it, the app's
+  UI as grey shapes on top, anything still under it outlined in red and listed (`--title`, `--width`; `src/phone.mjs`).
+- **Loudness per platform.** An adapter may name its loudness goal (`loudness: {I, TP}`); Shorts, TikTok and Reels name
+  −14 LUFS integrated, −1 dBTP true peak, and a release normalises each of them to it (`targetLoudness`: a target's own
+  `render.loudness` first, then the film's `render.loudness`, then the platform's goal). No platform publishes its target:
+  −14 LUFS is the level they are widely measured to turn louder videos down to (an estimate), −1 dBTP the AES TD1008
+  ceiling for lossy streams (`facts.loudness`). A release's result says what each target was set to (`loudness`).
+- **`storyreel doctor`** (`footprint-storyreel/doctor`): asks the local FFmpeg's own lists (encoders, filters, muxers,
+  demuxers) and ffprobe for every piece a film needs, and looks up the themes' fonts where pictures are drawn; each is
+  available, missing or unknown — a list that cannot be read is never taken as available. `--json` for agents; exit 1
+  when something a render needs is missing. **A release runs it first**, asking only for what its renders need, so a
+  missing piece (or no FFmpeg at all) refuses in seconds, naming the fix.
+- **What changes in the outputs.** Without the new keys every output is as it was: YouTube, X and LinkedIn releases and
+  a layout with no `ui` render the same bytes (the same loudness, bands and post.json). For the three vertical targets:
+  - **YouTube Shorts, TikTok and Instagram Reels are normalised to −14 LUFS / −1 dBTP instead of −16 LUFS / −1.5 dBTP**
+    (louder by about 2 LU; set `render: {loudness: {I: -16, TP: -1.5}}` on the target, or on the film, to keep the old level).
+  - **TikTok:** its measured button column (x 780 on, from y 840 down) reaches the caption band, so a caption whose line
+    would pass x 780 is narrowed to x 300–780 (often two lines). Shorts and Reels captions change only where a line would
+    pass x 888 (Shorts) or x 960 (Reels: never at the default box); a long title may narrow off TikTok's edges.
+  - Their post.json's `facts` gain `ui` and `loudness`, and the making-of record gains `ui`.
+  - The drawing fingerprint changes once (layout.mjs and captions.mjs changed, and zones.mjs joins the painter's code),
+    and a target's layout now carries its zones, so each cached segment is drawn once more after the upgrade.
+- Types: `types/sub/zones.d.ts`, `types/sub/doctor.d.ts`; `Layout.ui`, `ReleaseAdapter.ui`/`loudness`, `TargetRender.loudness`,
+  `ReleaseTarget.ui`, `Released.loudness`/`covered`/`doctor`; renderFilm's result `ui`.
+
 ## 0.22.0 — counting on fingers, listeners who react, and Shorts cut from the film
 
 - **Counting on fingers: `fingersAt(keys, t, options?)`** (`footprint-storyreel/acting`). A child taking away holds
