@@ -13,6 +13,8 @@ export function readIntent(value: unknown, where: string): string | null;
 /** A shot's continuity, checked: {start, end} (each a flat list of facts); null when none is given. */
 export function readContinuity(value: unknown, where: string): {start: Record<string, Fact>; end: Record<string, Fact>} | null;
 /** Walk the shots in film order, carrying facts forward; refuses the first contradiction. Returns the facts at the end. */
+/** A shot's declared continuity joined with its world's own ({start, end}, or none): a fact both state must agree, or it refuses. */
+export function joinContinuity(declared: {start: Record<string, Fact>; end: Record<string, Fact>} | null, world: unknown, where: string): {start: Record<string, Fact>; end: Record<string, Fact>} | null;
 export function checkContinuity(plan: {where: string; continuity: {start: Record<string, Fact>; end: Record<string, Fact>} | null}[]): Record<string, Fact>;
 /** The shots that ask too much, too fast. */
 export function tooMuchTooFast(shots: {path: string; where: string; moments: number[]}[], rule?: typeof WATCHING): Watching[];

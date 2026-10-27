@@ -1654,6 +1654,62 @@ ctx.fillStyle = `rgb(${Math.round(180 + 75 * Math.min(1, glow))}, 80, 60)`;
 ctx.beginPath(); ctx.arc(0, -40, 40, 0, Math.PI * 2); ctx.fill(); ctx.restore();
 ```
 
+## The stage: places, props and actions as data
+
+A cartoon spends most of its code on choreography, not drawing. Someone walks in, a bag pops onto a table, things
+hop into it one per word with a count over it, someone picks it up and walks out, a door swings open. Written by hand,
+every new place repeats all of it: the walk, the arcs, the landing, the badge, the camera's names, and the checks that
+nothing impossible happens. `footprint-storyreel/stage` makes the choreography data. A scene is a **place**, a
+**cast**, **props** and **actions** from a small fixed vocabulary. The library times every action and refuses an
+impossible one. It names everything for the camera and keeps a continuity record. The kit only draws, through three
+adapters. Measured on a real series, a shop and a walk home that took 343 lines of world code (about 100 of them
+drawing the places and props, which a kit still draws once) are 28 lines of stage data (`test/stage-measure.test.mjs`).
+
+```js
+import {compileFilm, evenTimings} from 'footprint-storyreel';
+import {demoKit} from 'footprint-storyreel/stage';
+
+const storyboard = {scenes: [{id: 'shop', narration: 'The shopkeeper counts the apples. {a1}One, {a2}two, {a3}three! {full}The bag is full, and the girl comes to take it. {take}She picks it up, {bye}and off she goes.'}]};
+const recipe = {story: {kit: 'demo', place: 'shop',                        // a place the kit draws
+  cast: {shopkeeper: {as: 'adult', x: 1300, facing: 'left'}, girl: {as: 'child', x: 380}},
+  props: {crate: {kind: 'crate', at: 'counter'}, bag: {kind: 'bag', at: 'table'}, apples: {kind: 'apple', count: 3, in: 'crate'}},
+  actions: [                                                                // in the order they start; every time a beat
+    {do: 'count', what: 'apples', into: 'bag', who: 'shopkeeper', at: [['shop', '{a1}'], ['shop', '{a2}'], ['shop', '{a3}']]},
+    {do: 'walkTo', who: 'girl', to: 'bag', at: ['shop', '{full}']},
+    {do: 'pickUp', who: 'girl', what: 'bag', at: ['shop', '{take}']},
+    {do: 'exit', who: 'girl', at: ['shop', '{bye}']}]}};
+const film = await compileFilm({storyboard, timings: evenTimings(storyboard), recipe, kits: [demoKit]});
+film.shots[0].end;                     // {crate: 'on the ground', bag: 'with girl', 'apples in bag': 3, …}
+film.shots[0].ledger.map(e => e.said); // ['apples: 1 of 3 into bag', …, 'girl picks up bag', 'girl goes out']
+// {do: 'pickUp', who: 'shopkeeper', what: 'bag', …} → shopkeeper (at x 1300) is 600 px from bag (at x 700) … give shopkeeper a walkTo to it first
+```
+
+- **The vocabulary** (`ACTIONS`): `walkTo`, `enter`/`exit` (a person walks on or off; a prop pops in or out),
+  `pickUp`, `give` (`from` → `to`), `putInto`, `takeOutOf`, `count` (one thing a beat hops into a container, with a
+  badge), `fade` (n things are gone), `point` (`on` a thing), `open`/`close` (a door or lid), `lookAt`, and
+  `countOnFingers` (`fingersAt`'s fingers on the beats). A thing travels by a strategy (`TRAVELS`: `hop`, `toss`,
+  `lift`, `drop`, `slide`), and a count's badge is one too (`total`, `each`, `none`). A person walks by their kit's
+  walk style unless an action names one.
+- **The motion is the library's**, as pure functions of time. Things fly on arcs, wind back before they go and squash
+  as they land, then settle (`principles`). Arms and doors wind back, swing past their end and settle. Walks are
+  `walk`'s, and props pop in and out with `moves`. The numbers are in `STAGE` and `TRAVELS`.
+- **Impossible sequences refuse** when the film compiles, naming the action and the fix: giving or putting away what
+  you do not hold, taking more than a container has, an 11th thing into 10 slots, a shut lid, picking up a container
+  still being filled, someone out of reach or off stage, one person doing two things at once, and actions out of order.
+  An unknown place, person or prop refuses, listing what the kit has.
+- **Names for the camera**: each person and each prop by its id (a group is the box round all its things), and the
+  place's own regions. A push, a focus or a camera move frames them by name.
+- **Continuity.** After every beat the stage's ledger says who holds what, how many are where and who is on stage
+  (`film.shots[i].ledger`, also in the making-of record). The facts it starts and ends with join the shot's declared
+  continuity, so a park that starts with 9 apples in the bag, after a shop that ended with 10, refuses by name.
+  `aside: true` keeps a flash-forward or a memory out of that check.
+- **What a kit supplies:** `stageKit({name, places, people, props, badge?})`. A place gives `{floor, spots?,
+  regions?, draw, front?}`, a person `{size, reach?, hand?, mouth?, walk?, draw(ctx, pose)}`, and a prop `{size,
+  slots?, slotAt?, opens?, draw(ctx, look), front?}`. A prop draws with its bottom centre at (0, 0); the stage places,
+  scales and fades it. `compileStage(spec, {adapters})` plays a stage without a film, with times in seconds.
+  `demoKit` is a tiny kit of plain shapes. Faces, clothes, the look and anything outside the vocabulary stay in kits.
+  See docs/design/2026-10-stage.md.
+
 ## Where StoryReel writes, and what it cleans
 
 A render writes only where you point it, and leaves only what you asked for. The system's temp folder holds only
@@ -3083,13 +3139,14 @@ the default because it rarely does; there is no swap repair.
 | `footprint-storyreel/music` → `fitToMusic({storyboard, timings, beats, snap?, dropOn?, recipe?, kits?})` · `fitVoice(runDir, before, after)` · `MUSIC` | scene starts onto the beat (each scene's length changed by at most a tolerance, never past its words, keys or the next entrance's lead; off unless `snap` is given); the song started so its drop lands on a key moment (`makeFilm({…, music})` runs both) |
 | `footprint-storyreel/pose` → `motionSource({name, poseAt})` · `walkSource(walk)` · `checkPose(pose)` · `POSE_KEYS` · `TORSO_SHARE` | the motion-source port: one pose shape for everything that moves a figure; the planned walk as one adapter |
 | `footprint-storyreel/mocap` → `fromPose(keypoints, {x, size, …})` · `MOCAP` · `SCHEMES` · `RIG_JOINTS` | motion copied from a video's 2D keypoints (COCO-17, MediaPipe-33), as a motion source with its record |
+| `footprint-storyreel/stage` → `compileStage(spec, {adapters, at?, clock?})` · `stageKit({name, places, people, props, badge?})` · `demoKit` · `DEMO` · `readAdapters` · `ACTIONS` · `TRAVELS` · `BADGES` · `STAGE` | a scene as data: a place, a cast, props and actions from a small fixed vocabulary, timed and checked by the library, drawn by a kit's adapters; its continuity ledger and facts reach `film.shots` and the record |
 | `footprint-storyreel/kits/cartoon/figure` → `drawFigure(ctx, pose, {floor, size})` · `figureAt` · `FIGURE_COLORS` | a cartoon figure any motion source moves; planted feet stay put |
 | `contactSheet(film, {moments?, columns?, width?})` | a PNG of stills |
 | `frameHashes(film, {count?, width?, times?, each?})` · `changedFrames(pinned, now)` | pixel pins (`each(t, ctx)` sees every frame drawn) |
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/script`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/progression`, `/review`, `/rubric`, `/slideshow`, `/geometry`, `/claims`, `/decorative`, `/regions`, `/captions`, `/layout`, `/transitions`, `/breakdown`, `/sounds`, `/sounds/openverse`, `/camera`, `/beats`, `/music`, `/kits/whiteboard`, `/kits/cartoon`, `/kits/paper/steps-track`, `/pose`, `/mocap`, `/kits/cartoon/figure`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/script`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/progression`, `/review`, `/rubric`, `/slideshow`, `/geometry`, `/claims`, `/decorative`, `/regions`, `/captions`, `/layout`, `/transitions`, `/breakdown`, `/sounds`, `/sounds/openverse`, `/camera`, `/beats`, `/music`, `/kits/whiteboard`, `/kits/cartoon`, `/kits/paper/steps-track`, `/pose`, `/mocap`, `/kits/cartoon/figure`, `/stage`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws

@@ -41,6 +41,24 @@
   are missing or one falls short, naming the point. `--rubric rubric.json` reads a rubric file in the project.
 - Types for all three (`types/sub/progression.d.ts`, `types/sub/rubric.d.ts`, `types/sub/claims.d.ts`, the recipe,
   the film and `makeFilm`'s `release`); README sections with an example each.
+- **The stage: places, props and actions as data** (`footprint-storyreel/stage`). A scene is a place, a cast, props
+  and actions from a small fixed vocabulary: `walkTo`, `enter`/`exit`, `pickUp`, `give`, `putInto`, `takeOutOf`,
+  `count`, `fade`, `point`, `open`/`close`, `lookAt` and `countOnFingers`. The library owns the timing and motion of
+  every action as pure functions of time. Things travel on arcs by a strategy (`TRAVELS`: `hop`, `toss`, `lift`,
+  `drop`, `slide`), wind back before they go and squash as they land. Arms and doors wind back, swing past their end
+  and settle. Walks are `walk`'s, fingers are `fingersAt`'s, and props pop in and out with `moves`. It refuses
+  impossible sequences when the film compiles, each naming the action and the fix. It names every person and prop
+  for the camera, and it keeps a continuity ledger: after every beat, who holds what and how many are where. A kit
+  supplies only drawings, through three adapters (`stageKit({name, places, people, props, badge?})`). An unknown
+  place, person or prop refuses, listing what the kit has. `compileStage` plays a stage without a film; `demoKit` is
+  a tiny kit of plain shapes. Measured on a real series, a shop and a walk home written as 343 lines of world code are
+  28 lines of stage data (`test/stage-measure.test.mjs`). Design: `docs/design/2026-10-stage.md`. Types in
+  `types/sub/stage.d.ts`; the README has a section with a worked example.
+- **A world can state its own continuity.** A story-kit world may return `continuity: {start, end}`, the facts it
+  starts and ends with, and `ledger`, its record beat by beat. The film joins those facts with the shot's declared
+  continuity, and a fact both state must agree, or the recipe refuses (`shots.mjs · joinContinuity`). It then carries
+  them across shots like declared facts. The ledger is kept in `film.shots[i].ledger` and in the making-of record. A
+  world that returns neither, which is every world before this one, leaves the film exactly as it was.
 
 ## 0.22.0 — counting on fingers, listeners who react, and Shorts cut from the film
 
