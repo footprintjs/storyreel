@@ -62,6 +62,21 @@ test('zone geometry: an overlap needs more than a shared edge; the clear stretch
   assert.equal(nowhere.covered.length, 1, 'no room anywhere: what is still covered is said');
 });
 
+test('fitBlock narrows off a column only while the block keeps to two lines inside its rows: else it stays as it was, reported', () => {
+  // A block that wraps by its span's width: one line from 700 px, two from 400, three below — no font involved.
+  const place = lines => ([x0, x1], dy) => {
+    const n = lines(x1 - x0), rects = Array.from({length: n}, (_, i) => [x0 + 20, 1300 + dy + i * 60, x1 - 20, 1360 + dy + i * 60]);
+    return {lines: rects.map((_, i) => i), rects};
+  };
+  const column = [{name: 'column', rect: [780, 840, 1080, 1920]}], span = [120, 960], rows = [1290, 1470];
+  const twoLines = fitBlock(place(w => (w >= 700 ? 1 : w >= 400 ? 2 : 3)), span, column, {height: 1920, rows});
+  assert.deepEqual([twoLines.fitted, twoLines.placed.rects.length, twoLines.covered], [true, 2, []], 'x 300–780 (480 wide): two lines, clear');
+  const threeLines = fitBlock(place(w => (w >= 700 ? 1 : 3)), span, column, {height: 1920, rows});
+  assert.deepEqual([threeLines.fitted, threeLines.placed.rects, threeLines.covered.length], [false, [[140, 1300, 940, 1360]], 1], 'three lines would be needed: as it was, and reported');
+  const tall = fitBlock(place(w => (w >= 700 ? 1 : 2)), span, column, {height: 1920, rows: [1300, 1360]});
+  assert.equal(tall.fitted, false, 'two lines would leave the band\'s rows (a one-line band): as it was');
+});
+
 test('the vertical targets declare their app\'s UI as zones, each measured or estimated, with its source and date', async () => {
   for (const name of VERTICAL) {
     const {adapter} = await loadTarget(name);
@@ -167,13 +182,14 @@ test('a column never moves a caption up or down: a word too wide for the clear s
   assert.equal(word.covered[0].zone, 'action column');
   const [top, bottom] = rows(word.rects), box = plain.boxes.captions;
   assert.ok(top >= box[1] && bottom <= box[1] + box[3], `kept in the captions' band (y ${box[1]}–${box[1] + box[3]}), not moved into the picture: ${top}–${bottom}`);
-  // Narrowing that would take more than two lines (or leave the band's rows) is not done: the caption stays as it was, reported.
-  const crowded = cap('responsibilities and communication');
-  const before = plain.captionFit(ctx, crowded), after = fitted.captionFit(ctx, crowded);
-  assert.equal(before.rects.length, 2, 'two lines as the box wraps it (narrowed to x 300–780 it would take three)');
-  assert.deepEqual([after.fitted, after.rects, after.covered.map(h => h.zone)], [false, before.rects, ['action column']], 'not narrowed: drawn as it was, and what the column covers is reported');
-  const [t2, b2] = rows(after.rects);
-  assert.ok(t2 >= box[1] - .5 && b2 <= box[1] + box[3] + .5, 'inside the band either way');
+  // Whatever the machine's face measures, a caption under a column ends one of two ways: narrowed to at most two lines
+  // inside its band and clear, or drawn exactly as it was and reported.
+  for (const text of ['responsibilities and communication', 'pebbles and sheep, made', 'understanding responsibilities together']) {
+    const before = plain.captionFit(ctx, cap(text)), after = fitted.captionFit(ctx, cap(text)), [t2, b2] = rows(after.rects);
+    assert.ok(t2 >= box[1] - .5 && b2 <= box[1] + box[3] + .5, `${text}: inside the band`);
+    if (after.fitted) assert.deepEqual([after.rects.length <= 2, after.covered], [true, []], `${text}: narrowed, two lines at most, clear`);
+    else assert.deepEqual([after.rects, [...new Set(after.covered.map(h => h.zone))]], [before.rects, before.rects.some(r => r[2] > 780.5) ? ['action column'] : []], `${text}: as it was, and reported`);
+  }
   const {findings} = uiFindings(film, compileLayout(film, {format: 'vertical', captions: true, ui: {zones}}), {});
   assert.ok(findings.every(f => f.kind === 'caption' && f.rect[1] >= box[1] - 1), 'nothing reported has been moved up');
 });
