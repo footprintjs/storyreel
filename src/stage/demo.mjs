@@ -1,14 +1,14 @@
 /**
- * The demo kit: a tiny stage kit of plain shapes, to try the stage with and to show what a kit supplies. Its people
+ * The demo drawings: a tiny set of plain shapes, to try the stage with and to show what drawings supply. Their people
  * are the cartoon figure (kits/cartoon/figure.mjs) with arms bent toward what they reach for and a face that looks
- * and talks; its places and props are a few filled shapes. A real kit draws its own look; the stage is the same.
+ * and talks; their places and props are a few filled shapes. Real drawings have their own look; the stage is the same.
  *
  *   places  shop (spots: table, counter; regions: shelves) · park (spots: bench; regions: trees) · room (spots: table)
  *   people  adult · child · pet
  *   props   apple · bag (holds 10) · crate (holds 20) · box (holds 8, has a lid)
  */
 import {drawFigure, figureAt} from '../kits/cartoon/figure.mjs';
-import {stageKit} from './kit.mjs';
+import {stageDrawings} from './drawings.mjs';
 
 const INK = '#2e2c38', FLOOR = 860;
 const fill = (ctx, color, path) => { ctx.fillStyle = color; ctx.beginPath(); path(); ctx.fill(); };
@@ -97,10 +97,10 @@ const box = {size: [160, 120], slots: 8, opens: true, draw: ctx => rect(ctx, '#6
     ctx.translate(-80, -120); ctx.rotate(-Math.PI * .55 * look.open); rect(ctx, '#5b7ca3', 0, -10, 160, 12);   // the lid, hinged at its back edge
   }};
 
-/** The demo kit's adapters (stageKit's input), and the kit itself. */
+/** The demo drawings' adapters (stageDrawings' input), and the drawings themselves, a kit a film takes. */
 export const DEMO = Object.freeze({
   places: Object.freeze({shop, park, room}),
   people: Object.freeze({adult: person({shirt: '#3a8f8a'}, 470), child: person({shirt: '#e2a03f', legs: '#5b4a8b'}, 330), pet}),
   props: Object.freeze({apple, bag, crate, box}),
 });
-export const demoKit = stageKit({name: 'demo', ...DEMO});
+export const demoDrawings = stageDrawings({name: 'demo', ...DEMO});

@@ -1,14 +1,13 @@
 /**
- * The stage's timing: every number an action moves by, in one table, and the one shape arms and doors swing with.
- * Pure functions of time, like every frame.
+ * The stage's timing: every number an action moves by, in one table, and the held swing arms and hands move with.
+ * The swing itself is swing.mjs's (the shape fingers.mjs times a finger with). Pure functions of time.
  *
  *   STAGE.arm    a reach or a point: winds back a little, swings out, passes its end and settles (seconds, and how far)
  *   STAGE.door   a door or a lid, the same shape, a little slower
- *   swing(τ, s)  that shape, τ seconds after the move starts: 0 before the wind-back, 1 once it has settled
- *
- * The shape is the one fingers.mjs times a finger with (a wind-back, a quick move, an overshoot, a settle): an arm or
- * a door that snaps from rest to its end reads as a slideshow, one that anticipates and settles reads as acted.
+ *   heldAt(w, t) an arm (or a pair of hands) held out over a window {start, end, a0}: it swings out from a0 — where the
+ *                window before left it — winding back first only when it starts from rest, and lowers after `end`
  */
+import {swing, smooth} from '../swing.mjs';
 
 export const STAGE = Object.freeze({
   arm: Object.freeze({anticipate: .08, move: .2, settle: .2, lift: .1, overshoot: .1}),
@@ -19,7 +18,7 @@ export const STAGE = Object.freeze({
   lower: .3,
   /** A thing that fades away (eaten, used up): seconds. */
   fade: .5,
-  /** Eyes turning to a new thing: seconds. */
+  /** Eyes, or an arm, turning from one thing to the next: seconds. */
   look: .35,
   /** A count badge's pop as each thing lands: seconds. */
   badge: .3,
@@ -31,33 +30,35 @@ export const STAGE = Object.freeze({
   offstage: 60,
 });
 
-const smooth = x => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+/** Below this an arm counts as at rest: the next swing winds back first; above it, the next one carries on from there. */
+const REST = .05;
+const ARM_ON = Object.freeze({...STAGE.arm, lift: 0});
+
+/** When a held window starts to move (its wind-back): the moment the window before it hands over. */
+export const heldFrom = w => w.start - STAGE.arm.anticipate;
 
 /**
- * The swing shape, τ seconds after the move starts: a wind-back of `lift` over `anticipate` before it, a quick move
- * past the end by `overshoot` over `move`, a settle back over `settle`. Exactly 0 before and 1 after; smooth at every
- * join (the speed is 0 at each).
+ * A window held out at t: from `a0` (0 at rest) it swings to 1 — winding back first only from rest, so an arm already
+ * out carries on without a dip — stays out, and lowers over STAGE.lower after `end`. Continuous everywhere: at
+ * heldFrom(w) it is a0, at `end` the lowering starts from where it is.
  */
-export function swing(τ, {anticipate, move, settle, lift, overshoot}) {
-  if (τ < -anticipate) return 0;
-  if (τ < 0) return -lift * smooth((τ + anticipate) / anticipate);
-  if (τ < move) { const c = Math.cos(Math.PI * τ / move); return -lift * (1 + c) / 2 + (1 + overshoot) * (1 - c) / 2; }
-  if (τ < move + settle) return 1 + overshoot * (1 - smooth((τ - move) / settle));
-  return 1;
+export function heldAt(w, t) {
+  const a0 = w.a0 ?? 0, out = a0 + (1 - a0) * swing(t - w.start, a0 < REST ? STAGE.arm : ARM_ON);
+  return t <= w.end ? out : out * (1 - smooth((t - w.end) / STAGE.lower));
 }
 
-/** How long the swing takes from its wind-back to settled (seconds). */
+/** Whether a held window still shows at t (it has started, and has not finished lowering). */
+export const heldShows = (w, t) => t >= heldFrom(w) && t <= w.end + STAGE.lower;
+
+/**
+ * Each window's a0 — where the one before it (same person, same kind) leaves the arm when this one starts — so a
+ * window that starts while the last is still lowering carries on from there. Windows in start order.
+ */
+export function chainHeld(windows) {
+  windows.forEach((w, i) => { const prev = windows[i - 1]; w.a0 = prev && heldShows(prev, heldFrom(w)) ? heldAt(prev, heldFrom(w)) : 0; });
+}
+
+/** How long a swing takes from its wind-back to settled (seconds). */
 export const swingSeconds = s => s.anticipate + s.move + s.settle;
 
-/**
- * An arm held out for an action from `start` to `end` (seconds): it swings out from `start` (winding back just
- * before), stays out, and comes back down over STAGE.lower after `end`. 0 at rest, about 1 out (it passes 1 a little
- * as it arrives).
- */
-export function armAmount(t, start, end) {
-  if (t < start - STAGE.arm.anticipate || t > end + STAGE.lower) return 0;
-  const out = swing(t - start, STAGE.arm);
-  return t <= end ? out : out * (1 - smooth((t - end) / STAGE.lower));
-}
-
-export {smooth};
+export {swing, smooth};

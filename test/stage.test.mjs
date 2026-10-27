@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {createCanvas} from '@napi-rs/canvas';
-import {compileStage, readAdapters, DEMO, demoKit, ACTIONS, ACTION_NAMES, TRAVELS, STAGE, BADGE_NAMES} from '../src/stage/index.mjs';
+import {compileStage, readAdapters, DEMO, demoDrawings, ACTIONS, ACTION_NAMES, TRAVELS, STAGE, BADGE_NAMES} from '../src/stage/index.mjs';
 import {walk} from '../src/walk.mjs';
 import {fingersAt} from '../src/fingers.mjs';
 
@@ -23,8 +23,8 @@ test('the vocabulary is the small fixed list, as data, with its travels and badg
   assert.deepEqual(Object.keys(TRAVELS), ['hop', 'toss', 'lift', 'drop', 'slide']);
   assert.deepEqual(BADGE_NAMES, ['total', 'each', 'none']);
   for (const [verb, rule] of Object.entries(ACTIONS)) for (const k of rule.needs) assert.ok(rule.keys.includes(k), `${verb} needs ${k} and takes it`);
-  assert.equal(demoKit.name, 'demo');
-  assert.deepEqual([...demoKit.adapters.places, ...demoKit.adapters.people, ...demoKit.adapters.props], ['shop', 'park', 'room', 'adult', 'child', 'pet', 'apple', 'bag', 'crate', 'box']);
+  assert.equal(demoDrawings.name, 'demo');
+  assert.deepEqual([...demoDrawings.adapters.places, ...demoDrawings.adapters.people, ...demoDrawings.adapters.props], ['shop', 'park', 'room', 'adult', 'child', 'pet', 'apple', 'bag', 'crate', 'box']);
 });
 
 test('count: one thing a beat hops from where it is into the container on an arc, winds back first, lands and settles; the badge counts on landing', () => {
@@ -193,8 +193,8 @@ test('impossible sequences refuse, naming the action and the fix', () => {
   // A thing you do not hold; more than a container has; an 11th thing into 10 slots.
   refuses([{do: 'give', from: 'girl', to: 'keeper', what: 'apples', at: 1}], /actions\[0\]: girl gives 1 of apples at 1\.00 s but holds 0 \(apples: 10 in crate\): take it out of its container first/);
   refuses([{do: 'takeOutOf', who: 'keeper', what: 'apples', from: 'crate', n: 11, at: 1}], /takes 11 of apples out of crate at 1\.00 s, and crate has 10/);
-  refuses([{do: 'count', what: 'apples', into: 'bag', at: tenBeats}], /bag holds 10 and has 1 in it: counting 10 into it makes 11 \(count at most 9, or give bag more slots\)/, {extra: {kind: 'apple', in: 'bag'}});
-  refuses([{do: 'count', what: 'apples', into: 'bag', at: [...tenBeats, 7]}], /count names 11 beats, one per thing, but 10 of apples are there to count/);
+  refuses([{do: 'count', what: 'apples', into: 'bag', at: tenBeats}], /actions\[0\]\.at\[9\]: bag holds 10 and has 10 in it at 6\.50 s, so the count's 10th thing does not fit: count at most 9 into it, or give bag more slots/, {extra: {kind: 'apple', in: 'bag'}});
+  refuses([{do: 'count', what: 'apples', into: 'bag', at: [...tenBeats, 7]}], /actions\[0\]\.at\[10\]: the count's 11th beat \(7\.00 s\) finds no apples left to count \(apples: 10 in bag\): count at most 10/);
   refuses([{do: 'takeOutOf', who: 'keeper', what: 'apples', from: 'crate', at: 1}, {do: 'putInto', who: 'keeper', what: 'apples', into: 'crate', n: 2, at: 2}], /keeper puts 2 of apples into crate at 2\.00 s but holds 1/);
   // A container still filling when it is picked up; someone out of reach; one action at a time; off stage.
   refuses([{do: 'count', what: 'apples', into: 'bag', at: tenBeats}, {do: 'walkTo', who: 'girl', to: 'bag', at: 2}, {do: 'pickUp', who: 'girl', what: 'bag', at: 6.5}], /bag is still being filled or emptied until 6\.95 s; move it once the last thing has landed/);
@@ -218,9 +218,9 @@ test('impossible sequences refuse, naming the action and the fix', () => {
 
 test('names and data refuse: an unknown verb, key, id, place, person or prop kind (listing what the kit has), and two things with one name', () => {
   const refuses = (spec, pattern) => assert.throws(() => stage(spec), pattern);
-  refuses({place: 'beach'}, /place: the stage kit "stage" has no place called "beach" \(its places are shop, park, room\)/);
-  refuses({place: 'shop', cast: {a: {as: 'giant', x: 1}}}, /cast\.a: the stage kit "stage" has no people called "giant" \(its people are adult, child, pet\)/);
-  refuses({place: 'shop', props: {a: {kind: 'pear', at: [1, 1]}}}, /props\.a: the stage kit "stage" has no prop called "pear" \(its props are apple, bag, crate, box\)/);
+  refuses({place: 'beach'}, /place: the drawings "stage" have no place called "beach" \(the places they have are shop, park, room\)/);
+  refuses({place: 'shop', cast: {a: {as: 'giant', x: 1}}}, /cast\.a: the drawings "stage" have no person called "giant" \(the people they have are adult, child, pet\)/);
+  refuses({place: 'shop', props: {a: {kind: 'pear', at: [1, 1]}}}, /props\.a: the drawings "stage" have no prop called "pear" \(the props they have are apple, bag, crate, box\)/);
   refuses({place: 'shop', actions: [{do: 'jump', at: 1}]}, /actions\[0\]: "do" is one of walkTo, enter, exit, pickUp, give, putInto, takeOutOf, count, fade, point, open, close, lookAt, countOnFingers, not "jump"/);
   refuses({place: 'shop', cast: {a: {as: 'adult', x: 1}}, actions: [{do: 'point', who: 'a', on: 'a', at: 1, how: 'fast'}]}, /point has no key "how" \(it takes who, on, at, until\)/);
   refuses({place: 'shop', actions: [{do: 'give', from: 'a', to: 'b', at: 1}]}, /give needs what/);
@@ -236,7 +236,7 @@ test('names and data refuse: an unknown verb, key, id, place, person or prop kin
   refuses({place: 'shop', actions: [{do: 'count', what: 'a', into: 'b', at: ['shop', '{a1}']}]}, /at is a list of beats, one per thing/);
   assert.throws(() => compileStage({place: 'shop', actions: [{do: 'enter', what: 'x', at: ['shop', 'hello']}]}, {adapters: DEMO}), /without a clock a beat is seconds/);
   // The adapters are checked once, by name.
-  assert.throws(() => readAdapters({places: {}, people: {}, props: {}}, 'mine'), /the stage kit "mine" has no places: give at least one/);
+  assert.throws(() => readAdapters({places: {}, people: {}, props: {}}, 'mine'), /the drawings "mine" have no places: give at least one/);
   assert.throws(() => readAdapters({...DEMO, people: {x: {size: 0, draw() {}}}}, 'mine'), /people\.x: size is the standing height in px/);
   assert.throws(() => readAdapters({...DEMO, people: {x: {size: 300, walk: 'skip', draw() {}}}}, 'mine'), /people\.x: no walk called "skip"/);
   assert.throws(() => readAdapters({...DEMO, props: {x: {size: [1, 1], slots: 2.5, draw() {}}}}, 'mine'), /slots is how many things it holds/);
@@ -283,9 +283,9 @@ test('a name every JavaScript object already has is refused wherever a recipe wr
     assert.throws(() => stage(JSON.parse(`{"place": "shop", "props": {"a": {"kind": "apple", "at": "${name}"}}}`)), /the place "shop" has no spot/);
     assert.throws(() => stage({place: 'shop', cast: {kid: {as: 'child', x: 400}}, actions: [{do: 'point', who: 'kid', on: name, at: 1}]}), /on is a cast member, a prop, a spot or a region of the place/);
     assert.throws(() => stage({place: 'shop', cast: {kid: {as: 'child', x: 400}}, actions: [{do: 'walkTo', who: 'kid', to: name, at: 1}]}), /actions\[0\]\.to: on is a cast member/);
-    assert.throws(() => stage({place: name}), /has no place called/);
-    assert.throws(() => stage({place: 'shop', props: {a: {kind: name, at: [1, 1]}}}), /has no prop called/);
-    assert.throws(() => stage({place: 'shop', cast: {a: {as: name, x: 1}}}), /has no people called/);
+    assert.throws(() => stage({place: name}), /have no place called/);
+    assert.throws(() => stage({place: 'shop', props: {a: {kind: name, at: [1, 1]}}}), /have no prop called/);
+    assert.throws(() => stage({place: 'shop', cast: {a: {as: name, x: 1}}}), /have no person called/);
     assert.throws(() => stage(JSON.parse(`{"place": "shop", "actions": [{"do": "fade", "what": "a", "at": 1, "${name}": {"polluted": true}}]}`)), new RegExp(`fade has no key "${name}"`));
   }
   // A name an object only inherits (toString, hasOwnProperty) is an ordinary name: its records hold it as their own key.
@@ -296,4 +296,88 @@ test('a name every JavaScript object already has is refused wherever a recipe wr
   assert.throws(() => stage({place: 'shop', props: {a: {kind: 'apple', at: 'toString'}}}), /the place "shop" has no spot "toString"/);
   assert.deepEqual(Object.getOwnPropertyNames(Object.prototype).sort(), before, 'Object.prototype gained or lost nothing');
   assert.equal(({}).polluted, undefined);
+});
+
+/** How many of each prop the frame shows where (a thing on its way counts where it is going), as the ledger keeps it. */
+const drawnWhere = (s, t) => {
+  const out = {};
+  for (const i of s.stateAt(t).items) { out[i.prop] ??= {}; out[i.prop][i.holder] = (out[i.prop][i.holder] ?? 0) + 1; }
+  return out;
+};
+
+test('events run in time order: an action between a count\'s beats sees the story as it stands, and every ledger entry matches the drawing', () => {
+  const s = shop([
+    {do: 'walkTo', who: 'girl', to: 'bag', at: 0},
+    {do: 'count', what: 'apples', into: 'bag', who: 'keeper', at: tenBeats},          // 2.0 … 6.5, half a second apart
+    {do: 'takeOutOf', who: 'girl', what: 'apples', from: 'bag', at: 3.2},             // two have landed; the third is on its way
+    {do: 'putInto', who: 'girl', what: 'apples', into: 'bag', at: 5.1},               // and back in, between two beats
+  ]);
+  const ats = s.ledger.map(e => e.at);
+  assert.deepEqual(ats, [...ats].sort((a, b) => a - b), 'the ledger is in time order');
+  assert.deepEqual(s.ledger.map(e => e.path).slice(0, 6), ['actions[0]', 'actions[1].at[0]', 'actions[1].at[1]', 'actions[1].at[2]', 'actions[2]', 'actions[1].at[3]']);
+  // At 3.2 s three have set off for the bag (one still on its way), and she takes one that has landed.
+  assert.deepEqual(s.ledger[4].where.apples, {crate: 7, bag: 2, girl: 1});
+  assert.equal(s.ledger.at(-1).where.apples.bag, 10);
+  // Each entry is what the frame shows once its event has set things off, before the next event.
+  s.ledger.forEach((e, i) => {
+    const t = (s.ledger[i + 1]?.at ?? e.at + 1) - 1e-3;
+    assert.deepEqual(drawnWhere(s, t).apples, e.where.apples, `${e.path} at ${e.at} s: the ledger says what is drawn at ${t.toFixed(3)} s`);
+  });
+});
+
+test('ten slots hold ten: a thing put in during a count fills a slot, and the count\'s tenth beat refuses, by name', () => {
+  const spare = {kind: 'apple', with: 'girl'};
+  const actions = put => [{do: 'walkTo', who: 'girl', to: 'bag', at: 0}, {do: 'count', what: 'apples', into: 'bag', at: tenBeats}, ...put];
+  assert.throws(() => shop(actions([{do: 'putInto', who: 'girl', what: 'spare', into: 'bag', at: 4.1}]), {spare}),
+    /actions\[1\]\.at\[9\]: bag holds 10 and has 10 in it at 6\.50 s, so the count's 10th thing does not fit: count at most 9 into it, or give bag more slots/);
+  // Taken out again before the last beat, the tenth fits.
+  const fits = shop(actions([{do: 'putInto', who: 'girl', what: 'spare', into: 'bag', at: 4.1}, {do: 'takeOutOf', who: 'girl', what: 'spare', from: 'bag', at: 5.2}]), {spare});
+  assert.deepEqual(fits.ledger.at(-1).where, {crate: {ground: 1}, bag: {ground: 1}, apples: {bag: 10}, spare: {girl: 1}});
+  // A put that would make eleven refuses at its own beat.
+  assert.throws(() => shop([...actions([]), {do: 'putInto', who: 'girl', what: 'spare', into: 'bag', at: 7}], {spare}), /bag holds 10 and has 10 in it at 7\.00 s: putting 1 more makes 11 \(put at most 0, or give bag more slots\)/);
+});
+
+test('a prop that goes may come back: drawn before it goes, gone between, drawn again after; someone may go and come back too', () => {
+  const s = stage({place: 'shop', cast: {girl: {as: 'child', x: 400}}, props: {bag: {kind: 'bag', at: 'table'}},
+    actions: [{do: 'exit', what: 'bag', at: 2}, {do: 'exit', who: 'girl', at: 3}, {do: 'enter', what: 'bag', at: 4}, {do: 'enter', who: 'girl', at: 9}]});
+  const bag = t => item(s, t, 'bag');
+  assert.equal(bag(1).opacity, 1, 'drawn before it goes');
+  assert.ok(bag(2.1).scale < 1, 'popping out');
+  assert.equal(bag(3), undefined, 'gone between');
+  assert.ok(bag(4.1).scale < 1 && bag(6).scale === 1, 'popping in, then whole');
+  assert.deepEqual(s.ledger.map(e => [e.at, e.where.bag]), [[2, {offstage: 1}], [3, {offstage: 1}], [4, {ground: 1}], [9, {ground: 1}]]);
+  assert.deepEqual([who(s, 2.9, 'girl') !== undefined, who(s, 8.9, 'girl'), who(s, 20, 'girl')?.x], [true, undefined, 400]);
+  assert.throws(() => stage({place: 'shop', props: {bag: {kind: 'bag', at: 'table'}}, actions: [{do: 'exit', what: 'bag', at: 2}, {do: 'enter', what: 'bag', at: 2.1}]}),
+    /actions\[1\]: bag is still going until 2\.\d+ s: give its enter at 2\.\d+ s or later/);
+  assert.throws(() => stage({place: 'shop', props: {bag: {kind: 'bag', at: 'table'}}, actions: [{do: 'exit', what: 'bag', at: 1}, {do: 'enter', what: 'bag', at: 3}, {do: 'enter', what: 'bag', at: 5}]}), /actions\[2\]: bag is already on stage at 5\.00 s: leave this enter out, or give it an exit before it/);
+});
+
+test('nothing jumps between frames: at 60 fps an arm\'s amount and aim, and the hands, move a little each frame, across every hand-over', () => {
+  const s = shop([
+    {do: 'count', what: 'apples', into: 'bag', who: 'keeper', at: tenBeats.slice(0, 4)},     // the arm follows each apple
+    {do: 'walkTo', who: 'girl', to: 'bag', at: 2},
+    {do: 'takeOutOf', who: 'keeper', what: 'apples', from: 'crate', at: 4},                    // starts as the count's arm comes down
+    {do: 'give', from: 'keeper', to: 'girl', what: 'apples', at: 4.6},
+    {do: 'point', who: 'keeper', on: 'bag', at: 5.2, until: 5.8},
+    {do: 'countOnFingers', who: 'girl', at: 6, up: 10, fold: [6.5, 7.1], until: 7.6},
+    {do: 'countOnFingers', who: 'girl', at: 7.7, up: 3, raise: [8.2], until: 8.8},               // starts as the last hands come down
+  ]);
+  const worst = {amount: 0, aim: 0, shown: 0, finger: 0};
+  let last = null;
+  for (let f = 0; f <= 60 * 10; f++) {
+    const t = f / 60, now = Object.fromEntries(s.stateAt(t).people.map(p => [p.who, p]));
+    if (last) for (const id of ['keeper', 'girl']) {
+      const [a, b] = [last[id], now[id]];
+      const arm = x => x.arm ?? {amount: 0, to: null}, fingers = x => x.fingers ?? {shown: 0, hands: null};
+      worst.amount = Math.max(worst.amount, Math.abs(arm(b).amount - arm(a).amount));
+      if (a.arm && b.arm) worst.aim = Math.max(worst.aim, Math.hypot(b.arm.to[0] - a.arm.to[0], b.arm.to[1] - a.arm.to[1]));
+      worst.shown = Math.max(worst.shown, Math.abs(fingers(b).shown - fingers(a).shown));
+      if (a.fingers && b.fingers) for (const side of ['left', 'right']) a.fingers.hands[side].forEach((e, k) => { worst.finger = Math.max(worst.finger, Math.abs(b.fingers.hands[side][k] - e)); });
+    }
+    last = now;
+  }
+  assert.ok(worst.amount < .2, `arm amount moves at most ${worst.amount.toFixed(3)} a frame`);
+  assert.ok(worst.aim < 60, `arm aim moves at most ${worst.aim.toFixed(1)} px a frame`);
+  assert.ok(worst.shown < .2, `hands come up or down at most ${worst.shown.toFixed(3)} a frame`);
+  assert.ok(worst.finger < .3, `a finger moves at most ${worst.finger.toFixed(3)} a frame`);
 });

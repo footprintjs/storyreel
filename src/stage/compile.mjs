@@ -1,6 +1,6 @@
 /**
  * compileStage: a stage spec → the stage, compiled (the one composition: read, plan, then the frame as a pure
- * function of time). index.mjs is the public door; kit.mjs wraps this for a film.
+ * function of time). index.mjs is the public door; drawings.mjs wraps this for a film.
  */
 import {readAdapters} from './adapters.mjs';
 import {readStage} from './read.mjs';
@@ -9,10 +9,10 @@ import {stateAt} from './scene.mjs';
 import {paintStage} from './paint.mjs';
 import {regionsOf} from './names.mjs';
 
-/** Standalone, a beat is seconds; in a film the stage kit hands the clock's own `at` (phrases, Law 2). */
+/** Standalone, a beat is seconds; in a film the stage's drawings hand the clock's own `at` (phrases, Law 2). */
 const seconds = ref => {
   if (Number.isFinite(ref)) return ref;
-  throw new Error(`without a clock a beat is seconds (a number), not ${JSON.stringify(ref)}; in a film the stage kit reads phrases`);
+  throw new Error(`without a clock a beat is seconds (a number), not ${JSON.stringify(ref)}; in a film the stage reads phrases`);
 };
 
 /**

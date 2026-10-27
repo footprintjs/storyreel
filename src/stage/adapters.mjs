@@ -1,7 +1,7 @@
 /**
- * The stage's adapter port: how a kit hands the stage its drawings. The kit supplies three tables — places, people,
- * props — and the stage asks them by name. An unknown name refuses, listing what the kit has. The stage never draws a
- * place, a person or a prop itself; the kit never times or places one.
+ * The stage's adapter port: the drawings a stage uses, in three tables — places, people, props — that the stage asks
+ * by name. An unknown name refuses, listing what the drawings have. The stage never draws a place, a person or a prop
+ * itself; the drawings never time or place one.
  *
  *   places[name]  {floor, spots?, regions?, draw(ctx, t), front?(ctx, t)}
  *                   floor: the floor's y (px); spots: {name: [x, y]} where props may stand; regions: {name: box} the
@@ -57,16 +57,18 @@ function checkProp(p, where) {
   if (typeof p.draw !== 'function') throw new Error(`${where}: draw(ctx, look) draws the thing with its bottom centre at (0, 0)`);
 }
 
+const ONE = {places: 'place', people: 'person', props: 'prop'};
+
 /** A table of adapters by name, checked, as a lookup that refuses an unknown name listing the names it has. */
 function table(given, what, check, kit) {
-  if (!given || typeof given !== 'object' || Array.isArray(given)) throw new Error(`the stage kit "${kit}": ${what} is {name: adapter}, not ${shown(given)}`);
+  if (!given || typeof given !== 'object' || Array.isArray(given)) throw new Error(`the drawings "${kit}": ${what} is {name: adapter}, not ${shown(given)}`);
   const names = Object.keys(given);
-  if (!names.length) throw new Error(`the stage kit "${kit}" has no ${what}: give at least one`);
-  for (const name of names) check(given[name], `the stage kit "${kit}": ${what}.${name}`);
+  if (!names.length) throw new Error(`the drawings "${kit}" have no ${what}: give at least one`);
+  for (const name of names) check(given[name], `the drawings "${kit}": ${what}.${name}`);
   const frozen = Object.freeze({...given});
   return {names: Object.freeze(names), get(name, where) {
     if (typeof name === 'string' && Object.hasOwn(frozen, name)) return frozen[name];
-    throw new Error(`${where}: the stage kit "${kit}" has no ${what.replace(/s$/, '')} called ${shown(name)} (its ${what} are ${names.join(', ')})`);
+    throw new Error(`${where}: the drawings "${kit}" have no ${ONE[what]} called ${shown(name)} (the ${what} they have are ${names.join(', ')})`);
   }};
 }
 
@@ -75,7 +77,7 @@ function table(given, what, check, kit) {
  * place(name, where), person(kind, where), prop(kind, where), badge, and the names each table has.
  */
 export function readAdapters({places, people, props, badge} = {}, kit = 'stage') {
-  if (badge !== undefined && typeof badge !== 'function') throw new Error(`the stage kit "${kit}": badge(ctx, {x, y, n, pop, done}) is optional, a function`);
+  if (badge !== undefined && typeof badge !== 'function') throw new Error(`the drawings "${kit}": badge(ctx, {x, y, n, pop, done}) draws a count's number: give it as a function, or leave it out`);
   const P = table(places, 'places', checkPlace, kit), H = table(people, 'people', checkPerson, kit), T = table(props, 'props', checkProp, kit);
   return Object.freeze({kit, place: P.get, person: H.get, prop: T.get, badge: badge ?? null, places: P.names, people: H.names, props: T.names});
 }

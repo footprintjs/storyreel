@@ -1661,16 +1661,18 @@ hop into it one per word with a count over it, someone picks it up and walks out
 every new place repeats all of it: the walk, the arcs, the landing, the badge, the camera's names, and the checks that
 nothing impossible happens. `footprint-storyreel/stage` makes the choreography data. A scene is a **place**, a
 **cast**, **props** and **actions** from a small fixed vocabulary. The library times every action and refuses an
-impossible one. It names everything for the camera and keeps a continuity record. The kit only draws, through three
-adapters. Measured on a real series, a shop and a walk home that took 343 lines of world code (about 100 of them
-drawing the places and props, which a kit still draws once) are 28 lines of stage data (`test/stage-measure.test.mjs`).
+impossible one. It names everything for the camera and keeps a continuity record. The kit only supplies the drawings,
+through three adapters. Measured on a real series, a shop and a walk home are 28 lines of stage data
+(`test/stage-measure.test.mjs` holds the data and checks it plays). The same two places took 343 lines of world code
+in that series' own repository, counted by hand there and not checked here; about 100 of those lines draw the places
+and props, which drawings still draw once.
 
 ```js
 import {compileFilm, evenTimings} from 'footprint-storyreel';
-import {demoKit} from 'footprint-storyreel/stage';
+import {demoDrawings} from 'footprint-storyreel/stage';
 
 const storyboard = {scenes: [{id: 'shop', narration: 'The shopkeeper counts the apples. {a1}One, {a2}two, {a3}three! {full}The bag is full, and the girl comes to take it. {take}She picks it up, {bye}and off she goes.'}]};
-const recipe = {story: {kit: 'demo', place: 'shop',                        // a place the kit draws
+const recipe = {story: {kit: 'demo', place: 'shop',                        // a place the drawings have
   cast: {shopkeeper: {as: 'adult', x: 1300, facing: 'left'}, girl: {as: 'child', x: 380}},
   props: {crate: {kind: 'crate', at: 'counter'}, bag: {kind: 'bag', at: 'table'}, apples: {kind: 'apple', count: 3, in: 'crate'}},
   actions: [                                                                // in the order they start; every time a beat
@@ -1678,7 +1680,7 @@ const recipe = {story: {kit: 'demo', place: 'shop',                        // a 
     {do: 'walkTo', who: 'girl', to: 'bag', at: ['shop', '{full}']},
     {do: 'pickUp', who: 'girl', what: 'bag', at: ['shop', '{take}']},
     {do: 'exit', who: 'girl', at: ['shop', '{bye}']}]}};
-const film = await compileFilm({storyboard, timings: evenTimings(storyboard), recipe, kits: [demoKit]});
+const film = await compileFilm({storyboard, timings: evenTimings(storyboard), recipe, kits: [demoDrawings]});
 film.shots[0].end;                     // {crate: 'on the ground', bag: 'with girl', 'apples in bag': 3, …}
 film.shots[0].ledger.map(e => e.said); // ['apples: 1 of 3 into bag', …, 'girl picks up bag', 'girl goes out']
 // {do: 'pickUp', who: 'shopkeeper', what: 'bag', …} → shopkeeper (at x 1300) is 600 px from bag (at x 700) … give shopkeeper a walkTo to it first
@@ -1699,15 +1701,19 @@ film.shots[0].ledger.map(e => e.said); // ['apples: 1 of 3 into bag', …, 'girl
   An unknown place, person or prop refuses, listing what the kit has.
 - **Names for the camera**: each person and each prop by its id (a group is the box round all its things), and the
   place's own regions. A push, a focus or a camera move frames them by name.
-- **Continuity.** After every beat the stage's ledger says who holds what, how many are where and who is on stage
-  (`film.shots[i].ledger`, also in the making-of record). The facts it starts and ends with join the shot's declared
+- **Continuity.** The actions run as events in time order: each action on its beat, and each beat of a count or a count
+  on fingers on its own. After every event the stage's ledger says who holds what, how many are where (a thing on its
+  way counts where it is going) and who is on stage (`film.shots[i].ledger`, also in the making-of record), and every
+  refusal sees the story as it stands at that moment. The facts it starts and ends with join the shot's declared
   continuity, so a park that starts with 9 apples in the bag, after a shop that ended with 10, refuses by name.
   `aside: true` keeps a flash-forward or a memory out of that check.
-- **What a kit supplies:** `stageKit({name, places, people, props, badge?})`. A place gives `{floor, spots?,
+- **What the drawings supply:** `stageDrawings({name, places, people, props, badge?})`, a kit a film takes. A place gives `{floor, spots?,
   regions?, draw, front?}`, a person `{size, reach?, hand?, mouth?, walk?, draw(ctx, pose)}`, and a prop `{size,
   slots?, slotAt?, opens?, draw(ctx, look), front?}`. A prop draws with its bottom centre at (0, 0); the stage places,
   scales and fades it. `compileStage(spec, {adapters})` plays a stage without a film, with times in seconds.
-  `demoKit` is a tiny kit of plain shapes. Faces, clothes, the look and anything outside the vocabulary stay in kits.
+  `demoDrawings` are tiny drawings of plain shapes. Faces, clothes, the look and anything outside the vocabulary stay in
+  kits. A prop that goes may come back (`exit`, then `enter`); an arm or a pair of hands that starts while the last is
+  still coming down carries on from there, turning to its new target over the time a look takes.
   See docs/design/2026-10-stage.md.
 
 ## Where StoryReel writes, and what it cleans
@@ -2732,8 +2738,9 @@ the context (a property of your own, a map keyed by it) and never compare contex
 over from the frame before.
 
 **The kit context.** A story kit that declares `context: true` is compiled as `compile(spec, context)`
-instead: one frozen object `{clock, motion, theme, root, library, labels, insideRoot, readFile}`. `theme`
-is the film's theme; `library` and `labels` are the recipe's (empty until a recipe carries them). Files go
+instead: one frozen object `{clock, motion, theme, root, cast, library, labels, insideRoot, readFile, where}`. `theme`
+is the film's theme; `where` names the recipe entry the world is compiled for (`the story`, or `stage <scene>`), for
+the kit's own refusals; `library` and `labels` are the recipe's (empty until a recipe carries them). Files go
 through `readFile(path)` (or `insideRoot(path)`, the real path), which loads only from inside the film's
 root folder, the same rule as the recipe's own files: a sibling folder or a link out refuses. The context
 has no way to draw the film. A kit that does not declare it keeps `compile(spec, clock, motion)`, and the
@@ -3139,7 +3146,7 @@ the default because it rarely does; there is no swap repair.
 | `footprint-storyreel/music` → `fitToMusic({storyboard, timings, beats, snap?, dropOn?, recipe?, kits?})` · `fitVoice(runDir, before, after)` · `MUSIC` | scene starts onto the beat (each scene's length changed by at most a tolerance, never past its words, keys or the next entrance's lead; off unless `snap` is given); the song started so its drop lands on a key moment (`makeFilm({…, music})` runs both) |
 | `footprint-storyreel/pose` → `motionSource({name, poseAt})` · `walkSource(walk)` · `checkPose(pose)` · `POSE_KEYS` · `TORSO_SHARE` | the motion-source port: one pose shape for everything that moves a figure; the planned walk as one adapter |
 | `footprint-storyreel/mocap` → `fromPose(keypoints, {x, size, …})` · `MOCAP` · `SCHEMES` · `RIG_JOINTS` | motion copied from a video's 2D keypoints (COCO-17, MediaPipe-33), as a motion source with its record |
-| `footprint-storyreel/stage` → `compileStage(spec, {adapters, at?, clock?})` · `stageKit({name, places, people, props, badge?})` · `demoKit` · `DEMO` · `readAdapters` · `ACTIONS` · `TRAVELS` · `BADGES` · `STAGE` | a scene as data: a place, a cast, props and actions from a small fixed vocabulary, timed and checked by the library, drawn by a kit's adapters; its continuity ledger and facts reach `film.shots` and the record |
+| `footprint-storyreel/stage` → `compileStage(spec, {adapters, at?, clock?})` · `stageDrawings({name, places, people, props, badge?})` · `demoDrawings` · `DEMO` · `readAdapters` · `ACTIONS` · `TRAVELS` · `BADGES` · `STAGE` | a scene as data: a place, a cast, props and actions from a small fixed vocabulary, timed and checked by the library, drawn by a kit's adapters; its continuity ledger and facts reach `film.shots` and the record |
 | `footprint-storyreel/kits/cartoon/figure` → `drawFigure(ctx, pose, {floor, size})` · `figureAt` · `FIGURE_COLORS` | a cartoon figure any motion source moves; planted feet stay put |
 | `contactSheet(film, {moments?, columns?, width?})` | a PNG of stills |
 | `frameHashes(film, {count?, width?, times?, each?})` · `changedFrames(pinned, now)` | pixel pins (`each(t, ctx)` sees every frame drawn) |

@@ -169,7 +169,10 @@ export interface LedgerEntry {
 export interface StageState {
   t: number;
   people: PersonPose[];
-  items: Array<PropLook & {key: string; prop: string; kind: string; layer: string}>;
+  /** Each thing on stage (its look without t; the frame's t is the state's). */
+  items: Array<Omit<PropLook, 't'> & {key: string; prop: string; kind: string; layer: string;
+    /** Where it is, or where it is going: a container's or person's id, ground, gone, offstage. */
+    holder: string}>;
   badges: Badge[];
 }
 export interface StageRegion { box: Box; path: string; label: string; name: string }
@@ -187,7 +190,8 @@ export interface Stage {
   readonly end: number;
 }
 export function compileStage(spec: StageSpec, options: {adapters: StageAdapters | AdapterPort; at?: (beat: Beat) => number; clock?: unknown; where?: string}): Stage;
-export function stageKit(kit: StageAdapters & {name: string}): {readonly name: string; readonly adapters: AdapterPort; readonly story: {readonly context: true; compile(spec: StageWorld, context: unknown): unknown}};
+/** The drawings a stage uses, as a kit a film takes (kits: [...]); a recipe names them {"kit": name, …}. */
+export function stageDrawings(drawings: StageAdapters & {name: string}): {readonly name: string; readonly adapters: AdapterPort; readonly story: {readonly context: true; compile(spec: StageWorld, context: unknown): unknown}};
 export function readAdapters(adapters: StageAdapters, kit?: string): AdapterPort;
 export function plainBadge(ctx: CanvasContext, badge: Badge): void;
 
@@ -202,6 +206,6 @@ export const TRAVEL_NAMES: readonly TravelName[];
 interface Swing { readonly anticipate: number; readonly move: number; readonly settle: number; readonly lift: number; readonly overshoot: number }
 export const STAGE: Readonly<{arm: Swing; door: Swing; hold: number; lower: number; fade: number; look: number; badge: number; fingers: number; reach: number; offstage: number}>;
 export const STAGE_KEYS: readonly string[];
-/** The demo kit's adapters: places shop, park, room; people adult, child, pet; props apple, bag, crate, box. */
+/** The demo drawings' adapters: places shop, park, room; people adult, child, pet; props apple, bag, crate, box. */
 export const DEMO: Readonly<StageAdapters>;
-export const demoKit: ReturnType<typeof stageKit>;
+export const demoDrawings: ReturnType<typeof stageDrawings>;

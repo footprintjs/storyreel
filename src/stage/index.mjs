@@ -6,8 +6,9 @@
  *
  *   const stage = compileStage(spec, {adapters, at?, clock?})   at: a beat → seconds (standalone: seconds as numbers)
  *   stage.draw(ctx, t) · stage.stateAt(t) · stage.regionsAt(t) · stage.ledger · stage.facts · stage.sounds · stage.end
- *   stageKit({name, places, people, props, badge?})             a story kit a film's recipe names: {"kit": name, …}
- *   demoKit                                                     a tiny built-in kit of plain shapes, to try it with
+ *   stageDrawings({name, places, people, props, badge?})        the drawings a stage uses, as a kit a film takes:
+ *                                                               a recipe names them {"kit": name, …}
+ *   demoDrawings                                                tiny built-in drawings of plain shapes, to try it with
  */
 export {compileStage} from './compile.mjs';
 export {ACTIONS, ACTION_NAMES, BADGES, BADGE_NAMES} from './vocabulary.mjs';
@@ -16,5 +17,5 @@ export {STAGE} from './timing.mjs';
 export {STAGE_KEYS} from './read.mjs';
 export {readAdapters} from './adapters.mjs';
 export {plainBadge} from './paint.mjs';
-export {stageKit} from './kit.mjs';
-export {demoKit, DEMO} from './demo.mjs';
+export {stageDrawings} from './drawings.mjs';
+export {demoDrawings, DEMO} from './demo.mjs';

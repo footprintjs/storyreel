@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCanvas} from '@napi-rs/canvas';
 import {compileFilm, evenTimings} from '../src/index.mjs';
-import {demoKit} from '../src/stage/index.mjs';
+import {demoDrawings} from '../src/stage/index.mjs';
 
 const storyboard = {scenes: [
   {id: 'shop', narration: 'At the shop, the shopkeeper counts apples into a bag. {a1}One, {a2}two, {a3}three, {a4}four, {a5}five, {a6}six, {a7}seven, {a8}eight, {a9}nine, {a10}ten! {full}The bag is full, and the girl comes over to take it. {take}She picks it up, says thank you very much, {bye}and off she goes with her apples.'},
@@ -32,7 +32,7 @@ const parkStage = (apples = 10, extra = {}) => ({kit: 'demo', place: 'park', ...
     {do: 'takeOutOf', who: 'girl', what: 'apples', from: 'bag', at: ['park', '{give2}']},
     {do: 'give', from: 'girl', to: 'pet2', what: 'apples', at: ['park', '{give2}', .6]}]});
 const recipe = (park = parkStage(), stage = {}) => ({story: shopStage, stages: [{type: 'world', scene: 'park', ...stage, world: park}]});
-const film = (r, options = {}) => compileFilm({storyboard, timings: evenTimings(storyboard), recipe: r, kits: [demoKit], ...options});
+const film = (r, options = {}) => compileFilm({storyboard, timings: evenTimings(storyboard), recipe: r, kits: [demoDrawings], ...options});
 
 test('a stage plays on the voice: two places, ten apples into a bag, one eaten, two given, seven left; each shot carries its facts and ledger', async () => {
   const f = await film(recipe(), {record: true});
@@ -74,9 +74,9 @@ test('a shot\'s declared continuity joins its world\'s: both kept, a disagreemen
   await assert.rejects(film(recipe(parkStage(), {continuity: {end: {'apples in bag': 6}}})), /Continuity: stage park declares end apples in bag = 6, but its world ends with apples in bag = 7 \(its own record\)/);
 });
 
-test('in a film, a beat is a phrase (Law 2): seconds refuse, and every refusal names the stage', async () => {
+test('in a film, a beat is a phrase (Law 2): seconds refuse, and every refusal names the recipe entry and the place', async () => {
   const bad = {...shopStage, actions: [{do: 'walkTo', who: 'girl', to: 'bag', at: 3}]};
-  await assert.rejects(film({story: bad}), /the "shop" stage: actions\[0\]\.at: /);
+  await assert.rejects(film({story: bad}), /the story \(the "shop" stage\): actions\[0\]\.at: /);
   const busy = {...shopStage, actions: [{do: 'walkTo', who: 'girl', to: 900, at: ['shop', '{a1}']}, {do: 'point', who: 'girl', on: 'bag', at: ['shop', '{a2}']}]};
-  await assert.rejects(film({story: busy}), /the "shop" stage: actions\[1\] \(point\): girl is still busy with actions\[0\] \(walkTo\)/);
+  await assert.rejects(film({story: busy}), /the story \(the "shop" stage\): actions\[1\] \(point\): girl is still busy with actions\[0\] \(walkTo\)/);
 });

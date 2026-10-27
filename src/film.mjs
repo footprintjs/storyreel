@@ -315,7 +315,8 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     // A camera speed covers EVERY camera move, so a world whose kit cannot follow it refuses the note.
     if (notes.speed !== 1 && !kit.motion?.includes('cameraSpeed')) throw new Error(`note "${notes.speedNote.note}": ${where} is drawn by the kit "${spec.kit}", which does not take a camera speed (a story kit that does lists motion: ['cameraSpeed'] and divides its camera moves' seconds by motion.cameraSpeed)`);
     worldKits.add(spec.kit);
-    const instance = usesContext(kit, spec.kit) ? kit.compile(spec, context) : kit.compile(spec, clock, motion);
+    // A context kit's context also says which recipe entry the world is for (`where`: the story, or stage <scene>).
+    const instance = usesContext(kit, spec.kit) ? kit.compile(spec, Object.freeze({...context, where})) : kit.compile(spec, clock, motion);
     checkCameraMoves(instance, spec.kit, where);
     readies.push(readyOf(instance, spec.kit, where));
     return instance;

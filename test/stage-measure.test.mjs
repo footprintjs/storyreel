@@ -5,12 +5,12 @@
 // the library. The narration is the series' own two scenes, with one line added for the walk out.
 //
 // Its hand-written world code for these two places is 343 lines (a shop, 193; the walk home, 150; plus 35 lines of
-// helpers they share), of which about 100 draw the backdrops and props: those become place and prop adapters, drawn
+// helpers they share; counted by hand in that series' own repository, so this file does not check it), of which about 100 draw the backdrops and props: those become place and prop adapters, drawn
 // once and reused. The data below is 28 lines (asserted), and plays the same story with the same continuity.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {compileFilm, evenTimings} from '../src/index.mjs';
-import {stageKit, DEMO} from '../src/stage/index.mjs';
+import {stageDrawings, DEMO} from '../src/stage/index.mjs';
 
 const storyboard = {scenes: [
   {id: 'shop', narration: "Amaira's birthday party is coming! Today, Grandad takes her to the fruit shop. {ask}'Ten oranges, please!' {count}Amaira counts them into the bag. '{o1}One, {o2}two, {o3}three, {o4}four, {o5}five, {o6}six, {o7}seven, {o8}eight, {o9}nine, {o10}ten!' {full}'Ten oranges for your party,' says Grandad. {take}Grandad picks up the bag, {home}and off they go."},
@@ -48,8 +48,8 @@ const DATA = `[
 ]`;
 const DATA_LINES = 28;
 
-// The test's kit: the demo drawings under the series' names, and an orange.
-const kit = stageKit({name: 'series',
+// The test's drawings: the demo drawings under the series' names, and an orange.
+const kit = stageDrawings({name: 'series',
   places: {fruitshop: DEMO.places.shop, walkhome: DEMO.places.park},
   people: {grandad: DEMO.people.adult, amaira: DEMO.people.child, seller: DEMO.people.adult, squirrel: DEMO.people.pet},
   props: {...DEMO.props, orange: {size: [36, 36], draw(ctx) { ctx.fillStyle = '#f39a2b'; ctx.beginPath(); ctx.arc(0, -18, 18, 0, Math.PI * 2); ctx.fill(); }}}});

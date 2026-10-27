@@ -20,7 +20,7 @@ export const personX = (P, t) => { const w = walkOf(P, t); return w ? w.plan.at(
 export const walkPoseAt = (P, t) => { const w = walkOf(P, t); return w && t <= w.end ? w.plan.at(t) : null; };
 /** The way a person faces at t: 1 (right) or -1 (left). */
 export const facingAt = (P, t) => last(P.facings, t).facing;
-/** Whether a person is on stage at t. */
+/** Whether a person (or a thing) is present at t, by its presence list. */
 export const presentAt = (P, t) => last(P.presence, t).on;
 
 /** Where a person's hands hold things at t ([x, y] on the sheet): the kit's `hand`, mirrored by the way they face. */
@@ -83,10 +83,12 @@ export function holderShown(plan, holder, t) {
   return false;
 }
 
-/** Whether a thing is on stage at t: popped in and not out, not faded away, and its holder shown. */
+/**
+ * Whether a thing is on stage at t: present (its presence list: on from each enter, off once each exit's pop is done,
+ * so a prop may go and come back), not faded away, and its holder shown.
+ */
 export function itemShown(plan, I, t) {
-  if (I.pops.in !== null && t < I.pops.in) return false;
-  if (I.pops.out !== null && t >= I.pops.out + plan.popOut) return false;
+  if (!last(I.presence, t).on) return false;
   if (I.fade && t >= I.fade.end) return false;
   const trip = tripAt(I, t);
   return trip ? true : holderShown(plan, stayAt(I, t), t);

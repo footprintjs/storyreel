@@ -6,13 +6,15 @@
  *             walk: walk.mjs's pose while walking (null standing); arm: {to: [x, y], amount, why} (amount 0 rest … 1 out,
  *             passing 1 a little as it arrives) or null; look: {to: [x, y], amount} or null (the kit's own look);
  *             fingers: fingersAt's {up, from, hands} plus `shown` (0..1, the hands coming up) or null; holding: prop ids
- *   items   [{key, prop, kind, k, x, y, sx, sy, scale, opacity, layer, open, count}] (x, y: its bottom centre)
+ *   items   [{key, prop, kind, k, x, y, sx, sy, scale, opacity, layer, holder, open, count}] (x, y: its bottom centre;
+ *             holder: where it is, or where it is going — a container's or person's id, ground, gone, offstage)
  *   badges  [{x, y, n, pop, done, opacity}]
  */
 import {MOVES, moveAt} from '../moves.mjs';
 import {fingersAt} from '../fingers.mjs';
 import {mouthAt} from '../acting.mjs';
-import {STAGE, swing, armAmount, smooth} from './timing.mjs';
+import {STAGE, swing, smooth, heldAt, heldFrom, heldShows} from './timing.mjs';
+import {holderKey} from './say.mjs';
 import {principlesAt} from './travel.mjs';
 import {own} from './own.mjs';
 import {personX, walkPoseAt, facingAt, presentAt, headAt, itemPoint, itemShown, tripAt, stayAt, tripEnds} from './positions.mjs';
@@ -25,7 +27,7 @@ export function targetPoint(plan, on, t) {
   const P = plan.people.get(on);
   if (P) return headAt(plan, P, t);
   const I = plan.items.get(on);
-  if (I) { const [x, y] = itemPoint(plan, I, t) ?? [0, 0]; return [x, y - I.size[1] / 2]; }
+  if (I) { const p = itemPoint(plan, I, t) ?? (I.fade ? itemPoint(plan, I, I.fade.start) : null); return p ? [p[0], p[1] - I.size[1] / 2] : null; }
   const keys = plan.groups.get(on);
   if (keys) {
     const pts = keys.map(k => plan.items.get(k)).filter(J => itemShown(plan, J, t)).map(J => { const [x, y] = itemPoint(plan, J, t); return [x, y - J.size[1] / 2]; });
@@ -38,12 +40,30 @@ export function targetPoint(plan, on, t) {
   return null;
 }
 
+/** The window under way at t (an arm's or the hands'): the latest whose swing has begun, or -1. */
+function currentOf(windows, t) { let i = -1; for (let j = 0; j < windows.length; j++) if (t >= heldFrom(windows[j])) i = j; return i; }
+
+/** Where an arm window aims at t: its target, or a count's track, moving from thing to thing over STAGE.look. */
+function aimOf(plan, w, t) {
+  if (!w.track) return targetPoint(plan, w.on, t);
+  let j = 0; for (let m = 0; m < w.track.length; m++) if (w.track[m].at <= t) j = m;
+  const to = targetPoint(plan, w.track[j].on, t), since = t - w.track[j].at;
+  if (j === 0 || since >= STAGE.look) return to;
+  const from = targetPoint(plan, w.track[j - 1].on, t);
+  return from && to ? lerp(from, to, smooth(since / STAGE.look)) : to;
+}
+
+/**
+ * The arm at t: held out over its window (timing.mjs · heldAt — carrying on from where the window before left it), and
+ * aimed at its target, turning from the last window's over STAGE.look, so neither its amount nor its aim jumps.
+ */
 function armOf(plan, P, t) {
-  let best = null;
-  for (const a of P.arms) if (t >= a.start - STAGE.arm.anticipate && t <= a.end + STAGE.lower) best = a;
-  if (!best) return null;
-  const on = best.track ? (lastAt(best.track, t) ?? best.track[0]).on : best.on, to = targetPoint(plan, on, t);
-  return to ? {to, amount: armAmount(t, best.start, best.end), why: best.why} : null;
+  const i = currentOf(P.arms, t), w = P.arms[i];
+  if (!w || !heldShows(w, t)) return null;
+  let to = aimOf(plan, w, t);
+  const prev = P.arms[i - 1], since = t - heldFrom(w);
+  if (prev && since < STAGE.look) { const from = aimOf(plan, prev, t); if (from && to) to = lerp(from, to, smooth(since / STAGE.look)); }
+  return to ? {to, amount: heldAt(w, t), why: w.why} : null;
 }
 
 function lookOf(plan, P, t) {
@@ -56,9 +76,17 @@ function lookOf(plan, P, t) {
   return a && u < 1 ? {to: a, amount: 1 - u} : null;
 }
 
+/** The hands counting on fingers at t: held up over their window, and blending from the last count's over STAGE.look. */
 function fingersOf(P, t) {
-  const f = P.fingers.find(x => t >= x.from - STAGE.arm.anticipate && t <= x.until + STAGE.lower);
-  return f ? {...fingersAt(f.keys, t), shown: armAmount(t, f.from, f.until)} : null;
+  const i = currentOf(P.fingers, t), f = P.fingers[i];
+  if (!f || !heldShows(f, t)) return null;
+  const now = fingersAt(f.keys, t), prev = P.fingers[i - 1], since = t - heldFrom(f);
+  let hands = now.hands;
+  if (prev && since < STAGE.look) {
+    const was = fingersAt(prev.keys, t).hands, u = smooth(since / STAGE.look), mix = side => was[side].map((e, k) => e + (now.hands[side][k] - e) * u);
+    hands = {left: mix('left'), right: mix('right')};
+  }
+  return {...now, hands, shown: heldAt(f, t)};
 }
 
 /** A door's openness at t: 0 shut … 1 open, swinging past a little and settling (timing.mjs · swing). */
@@ -80,11 +108,13 @@ function itemState(plan, I, t) {
   const {dx, dy, sx, sy} = principlesAt(near, t);
   let opacity = 1, scale = 1, rise = 0;
   if (I.fade && t >= I.fade.start) { const u = smooth((t - I.fade.start) / STAGE.fade); opacity = 1 - u; scale = 1 - .3 * u; rise = -16 * u; }
-  if (Number.isFinite(I.pops.in) && t < I.pops.in + MOVES.pop.seconds) { const v = moveAt('pop', t, {start: I.pops.in}); opacity *= v.opacity; scale *= v.scale; rise += v.y; }
-  if (I.pops.out !== null) { const v = moveAt('pop-out', t, {start: I.pops.out}); opacity *= v.opacity; scale *= v.scale; rise += v.y; }
+  const pop = I.pops.findLast(p => p.at <= t);
+  if (pop?.kind === 'in' && t < pop.at + MOVES.pop.seconds) { const v = moveAt('pop', t, {start: pop.at}); opacity *= v.opacity; scale *= v.scale; rise += v.y; }
+  if (pop?.kind === 'out') { const v = moveAt('pop-out', t, {start: pop.at}); opacity *= v.opacity; scale *= v.scale; rise += v.y; }
+  const holder = pop?.kind === 'out' ? 'offstage' : I.fade && t >= I.fade.start ? 'gone' : holderKey(trip ? trip.to : stayAt(I, t));
   const D = plan.doors.get(I.key), C = plan.containers.get(I.key);
   const count = C ? [...plan.items.values()].filter(J => !tripAt(J, t) && stayAt(J, t).type === 'in' && stayAt(J, t).id === I.key && itemShown(plan, J, t)).length : null;
-  return {key: I.key, prop: I.prop, kind: I.kind, k: I.k, x: point[0] + dx, y: point[1] + dy + rise, sx, sy, scale, opacity, layer, open: D ? doorAt(D, t) : null, count};
+  return {key: I.key, prop: I.prop, kind: I.kind, k: I.k, x: point[0] + dx, y: point[1] + dy + rise, sx, sy, scale, opacity, layer, holder, open: D ? doorAt(D, t) : null, count};
 }
 
 function badgeState(plan, b, t) {
