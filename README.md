@@ -2931,6 +2931,22 @@ recipe's coordinates); every `film.beats[i].path` names the entry that asked for
   "camera": [{"at": ["morning", "A shepherd had sheep"], "to": [560, 640], "zoom": 1.35}]}}
 ```
 
+- **kinetic** (story or world stage) — kinetic type, a launch film's grammar: words that slam in as the voice says them.
+  Each word lands on its spoken word — the next said word of its scene that matches (any case, its punctuation aside,
+  a vowel sign part of its word), one said word per entry — enters with an entrance a whole word makes from the shared
+  move table (`slam` by default; a wipe or an iris uncovers the word itself), and holds until the next lands: one word at
+  a time as big as it fits (`style: "slam"`), or building up line under line (`"stack"`, its lines sized and placed from
+  all its words, so none jumps). `flip` swaps the ground and the ink at every word, `colors` names them, `sound` plays
+  one (tap, click, whoosh …) as each lands. Nothing is guessed: a word the voice does not say (a number it says in words,
+  a mark, a phrase as one) needs a time of its own (`{"text": "NOW", "at": ["beat", "lands on"]}`) inside its scene, or
+  it refuses naming the fix. Its words reach the reading check from when they can be read (0.2 s after landing);
+  `world.words` lists when each lands. `import {kineticKit} from 'footprint-storyreel/kits/kinetic'`.
+
+```json
+{"type": "world", "scene": "beat", "enter": "cut",
+ "world": {"kit": "kinetic", "scene": "beat", "words": ["Every", "beat", "lands", "cut"], "flip": true, "sound": "tap"}}
+```
+
 ## Kits
 
 ```js
