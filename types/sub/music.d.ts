@@ -33,7 +33,7 @@ export interface SongPlacement { file: string; start?: number; gain?: number; fa
 export interface MusicCut { scene: string; verdict: 'moved' | 'on-beat' | 'held' | 'kept'; by: number; beat: number | null; drift: number; why: string; at: number }
 
 /** The music's rules: the default tolerance, the silence kept after a shortened scene's last word or key, a page hand-over's lead, the gain, the fade, on-beat closeness. */
-export const MUSIC: Readonly<{tolerance: number; clear: number; handOver: number; gain: number; fadeOut: number; onBeat: number}>;
+export const MUSIC: Readonly<{tolerance: number; clear: number; handOver: number; gain: number; fadeOut: number; onBeat: number; /** music first: the most bars a scene lasts (64) */ mostBars: number; /** the most beats between two words (8) */ mostEvery: number}>;
 /** The grid a fit cut on (beats.mjs · safeBeats): every beat of a sure map, or only the beats every candidate of an unsure one shares (`beats` of `of` kept), or none when a candidate is unsure of its phase. */
 export interface MusicCutOn { grid: 'every beat' | 'shared' | 'none: a candidate is unsure of its phase'; beats: number; of: number; tempi: readonly number[]; unsure?: readonly number[] }
 /** Music first: timings from a song — each scene whole bars, its words on its beats, its beats carried for clock.beats; start places the song for renderFilm. */

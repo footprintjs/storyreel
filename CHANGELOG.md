@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **Make one like it: `remakePlan` (`footprint-storyreel/breakdown`, `storyreel remake`).** A breakdown's spec read as a
+  draft plan for a film made like the reference, for a person to approve before anything is made. Its shots are grouped
+  into scenes (a run of quick shots joined by hard cuts is one: kinetic type when half or more are lettered, a word a
+  shot, else a montage; any other shot plain ground, a title, a still, a camera move or a moving picture), and each
+  choice says why from the breakdown's numbers: the pace (`promo` or `lesson`), each scene's entrance as a stage's
+  `enter` names it (a dissolve quicker than any transition is a cut), and whether the song times the film (music first,
+  with each scene's bars for `beatTimings` and a kinetic scene's beats between words; an unsure tempo is settled first,
+  unread beats read first). What a breakdown cannot know — the words, the pictures, the song — is listed as still to
+  give. `remakePlanText` says it in words; `storyreel remake <folder | breakdown.json> [--quick s] [--json]` prints it.
+  Every choice is a `decide()` decision in the plan's record, and the thresholds are `REMAKE`. The breakdown's own
+  decision helpers moved into one module (`decisions.mjs`) the plan shares; the breakdown is unchanged. `MUSIC` names
+  music first's limits (`mostBars` 64, `mostEvery` 8), which `beatTimings` and the plan read.
+
 - **Music first: `beatTimings` (`footprint-storyreel/music`).** A film the song carries — kinetic type, a montage,
   captions over a track — timed from the song's beat map: each scene whole bars from the first downbeat at or after
   `from`, its words one per beat (`every` beats apart), its beats carried on the clock (`clock.beats(scene)`, new), and

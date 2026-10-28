@@ -107,3 +107,49 @@ export function breakdown(videoFile: string, options?: BreakdownOptions): Promis
   files: {json: string; md: string; record: string; overview: string; sheets: string[]}}>;
 /** The spec in plain words, as breakdown.md holds it. */
 export function breakdownText(spec: BreakdownSpec): string;
+
+/** The thresholds the remake plan's choices use. */
+export interface RemakeThresholds {
+  /** seconds: a shot shorter than this is quick; quick shots joined by hard cuts are one scene (1) */ quick: number;
+  /** a scene with this share of its shots lettered, or more, is words: kinetic type or a title (0.5) */ lettered: number;
+  /** seconds: half the shots shorter than this cut at a promo's pace (1.5) */ promoMedian: number;
+  /** cuts a minute: this many or more is a promo's pace (30) */ promoCuts: number;
+  /** this share of the judged cuts on a beat, or more: the film is cut to its song (0.5) */ onBeat: number;
+}
+export const REMAKE: Readonly<RemakeThresholds>;
+/** What a scene is: kinetic type (a word a shot), a montage (a picture a shot), plain ground, a title, a still, a camera move, a moving picture. */
+export type SceneKind = 'kinetic' | 'montage' | 'blank' | 'title' | 'still' | 'camera' | 'moving';
+export const SCENE_KINDS: readonly SceneKind[];
+/** How a scene comes in, as a stage's `enter` names it: a transition's name, or one with its seconds. */
+export type RemakeEntrance = 'cut' | 'fade' | 'dip' | {type: 'fade' | 'dip'; seconds: number};
+export interface RemakeScene {
+  id: string; from: number; to: number; seconds: number;
+  /** the reference's shots it stands for (their index) */ shots: number[];
+  kind: SceneKind; why: Why;
+  /** how the reference's first shot of it comes in */ in: ShotEdge['kind'];
+  /** null: the first scene, which a film starts on */ enter: RemakeEntrance | null; enterWhy: string;
+  /** the flashes inside it (seconds) */ flashes?: number[];
+  /** music first: the scene's whole bars (beatTimings' bars, at most 64), and a kinetic scene's beats between words (at most 8) */ bars?: number; every?: number;
+  /** music first: the bars it would last, past the 64 a scene takes (its bars are cut to 64; the to-do says to split it) */ longer?: number;
+}
+export interface RemakePlan {
+  from: {file: string; seconds: number; shots: number};
+  pace: {name: 'promo' | 'lesson'; why: Why};
+  /** music-first: the song times it (bpm, and seconds the bars run); song-under: its words time it; unsure: settle the tempo; not-read: the breakdown's why */
+  music: {verdict: 'music-first' | 'song-under' | 'unsure' | 'not-read'; why: Why; bpm?: number; seconds?: number; notRead?: string};
+  /** the entrance most scenes after the first come in by, and how many do (null: one scene) */
+  enter: {type: string; scenes: number; of: number} | null;
+  scenes: RemakeScene[];
+  /** what a breakdown cannot know: each scene's words or pictures, then the song, its tempo, or what times the words */
+  todo: {scene?: string; give: 'words' | 'pictures' | 'split' | 'song' | 'tempo' | 'beats' | 'timing'; what: string}[];
+  thresholds: RemakeThresholds;
+  /** the plan's footprintjs record: every choice a decision with its evidence */ record: unknown[];
+}
+/**
+ * Make one like it: a draft plan for a film made like the reference, read from its breakdown's spec — scenes (a run of
+ * quick shots joined by hard cuts is one), pace, entrances, music — every choice with its why. Nothing is made: a person
+ * approves it first.
+ */
+export function remakePlan(breakdown: BreakdownSpec, options?: {thresholds?: Partial<RemakeThresholds>}): Promise<RemakePlan>;
+/** The plan in plain words (markdown): the choices, the scenes, the entrances and flashes, and what is still to give. */
+export function remakePlanText(plan: RemakePlan): string;
