@@ -36,7 +36,7 @@ will load it from inside the film's root folder, through `files.mjs · insideRoo
 polished product shots, HTML scenes. Use a launch-video tool such as `/brag`. An `explainer` teaches
 what a library does; it does not sell it.
 
-## From the 2026-10 tool scan (owner approved 2026-10-27)
+## From the 2026-10 tool scan (owner approved 2026-10-27) — all five shipped in 0.23.0
 
 1. **Platform safe zones.** Each vertical target (youtube-shorts, tiktok, reels) declares, as data, where the app draws its own UI: the title/channel strip at the bottom and the action column on the right. Captions and the title band stay inside the safe area, and a check refuses a frame where they would be covered. Borrowed from ffmpeg-skill's delivery templates.
 2. **Loudness per platform.** Each target names its integrated-loudness goal (Shorts and TikTok −14 LUFS), instead of one −16 for all.

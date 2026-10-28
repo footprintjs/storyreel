@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.23.0 — the automatic director, the stage (places, props and actions as data), scene questions and claim evidence, platform safe zones and doctor
 
 - **The five scene questions** (`footprint-storyreel/progression`). Besides `intent` and `continuity`, a shot (the
   story, or a stage) may answer `exists` (what exists now), `changed` (what changed), `why` (why it changed), `opens`
