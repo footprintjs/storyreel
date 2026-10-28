@@ -1446,7 +1446,8 @@ strategy says HOW, so the same film can be shown another way by changing one wor
 ```
 
 - **Focus strategies** (`footprint-storyreel/attention` · `FOCUS`): `camera` eases the camera to frame the named
-  thing (medium, close, insert — as a director's push; `"wide"` is the whole frame), `spotlight` darkens the rest,
+  thing (medium, close, insert — as a director's push; `"wide"` is the whole frame; `"on": ["mia", "sam"]` frames the
+  box round several), `spotlight` darkens the rest,
   `dim` veils the rest in the paper, `circle` draws a teacher's marker loop round the named thing as the voice names it
   (it draws itself at each key and is gone at `"wide"`; the theme's `palette.marker`, else a bright pink), `none`. A camera focus and the director's push notes cannot share the camera,
   and the recipe's camera moves take turns with a moving focus ([Camera moves by name](#camera-moves-by-name)).
@@ -1635,6 +1636,105 @@ console.log(film.camera.moves.map(m => `${m.move} at ${m.at} s: ${m.played}`)); 
 writeFileSync('camera.png', await contactSheet(film, {moments: [1, 2.5, 4.5, 6.5].map(t => ({t, label: `${t} s`}))}));
 // reducedMotion: true → each move a cut on its first moment: film.camera.motion === 'cuts'
 ```
+
+## The automatic director: direction proposed from the script
+
+Placing every close-up and every face by hand makes a recipe long, and each rewording means placing them again. Most
+of it follows from the script itself: a question or an exclamation is a moment for the speaker's face, two people
+talking are framed together, a new scene opens wide, a thing the narrator names is worth a look, and whoever answers
+a pause and guess is thinking. Say `"director": "on"` and the film proposes that direction as the recipe keys a person
+would write, records each one with the rule behind it, and lets every key you write yourself win — so a person or an
+AI writes only the exceptions. It is restrained by default: a camera that cuts on every line is the director you have
+to correct.
+
+```json
+{"scenes": [{"id": "hall", "narration": "Mia waits in the hall. {ask}{@sam}\"Where did you put the key?\" {@mia}\"I have no idea!\" {look}The lamp is on. {found}{@sam}\"Oh, here it is!\""}]}
+```
+
+```json
+{"story": {"kit": "room"}, "director": "on"}
+```
+
+With the voice's timings, a room that names `mia`, `mia.face`, `sam`, `sam.face` and `lamp` (and frames several names
+together) gets these framing keys in its spec, as if they had been written there — the first sentence keeps the
+establishing wide shot, Sam's question is his close-up, Mia's answer frames the two of them:
+
+```json
+"camera": [{"at": ["hall", "{ask}", -0.2], "on": "sam.face", "size": "close"},
+           {"at": ["hall", "I", -0.2], "on": ["sam", "mia"], "size": "medium"},
+           {"at": ["hall", "{look}", -0.2], "on": "lamp", "size": "insert"},
+           {"at": ["hall", "{found}", -0.2], "on": ["mia", "sam"], "size": "medium"}]
+```
+
+- **What it reads.** The narration's sentences, who says each (the voice's word speakers, else `{@who}` lines, else
+  the scene's `speaker`), how each ends, the moments written in it (a key names the moment right before its sentence,
+  else the fewest words said only there), the recipe's `guesses`, and what each picture names (its kit's
+  `regionsAt`). A face is the region `<who>.face`, else `<who>`. Every key lands on a sentence, `lead` seconds (0.2)
+  before its words — and only where the picture names what it frames at that moment (a thing first drawn on its own
+  sentence is framed on its words, with no lead).
+- **The shot grammar** (`director/framing.mjs`):
+  - **wide** — a new scene in the same picture opens wide. A world's own camera starts each world wide and keeps
+    that establishing shot through its first sentence; the film's focus, which spans every picture, goes back to wide
+    for each new picture (arriving as it comes: a key no gap leaves out).
+  - **close on a speaker** — a line a shot rule names (by default a question or an exclamation), within the
+    **close-up budget**: only the first such line of a turn that follows someone else (another speaker or the
+    narrator), at most `closeUps.perTurn` (1) in a turn and `closeUps.perScene` (2) in a scene. A line the budget holds
+    back changes nothing when the camera already holds its speaker (so a run of one speaker's exclamations keeps their
+    shot); otherwise the rules below decide. A rule's key moment (`"key": true`) is framed whatever the budget says.
+  - **a two-shot** — when the other speaker answers within `exchange` seconds (4), the two are framed together
+    (`on: [a, b]`, medium) and held while they go back and forth, with no close-ups between but key moments.
+  - **an insert** — a narrated sentence that names a thing the picture names (by its region name, or an alias)
+    frames it; named again once the camera has looked elsewhere, it is framed again.
+  - **a person** — a narrated sentence that names someone the picture draws frames them medium, the first time in the
+    scene — not when a thing is named too (the thing is what to look at), nor on an attribution (`"…," says Mia`).
+  - **back** — medium after a close-up, wide after a thing, wide when someone else speaks while the camera holds
+    people who are not them. One move at a time: a key less than `gap` seconds (2) after the last is left out, unless
+    it is a line's or an exchange's own framing, which takes the place of a lower key.
+- **The acting** (`director/moods.mjs`): a line a mood rule names gives its speaker the first of the rule's moods the
+  kit can act; whoever answers a pause and guess thinks from the question until they answer; a held mood goes back to
+  the kit's rest mood when someone else speaks, or a new scene opens in the same picture. Listeners get no keys: they
+  react through `reactionAt` (above), read from the same voice.
+- **The rules are a strategy, as data** (`director/rules.mjs`). The library's own are neutral, end marks only, so they
+  work in any language: a question or an exclamation is a close-up line; a pause and guess is `thinking`. Rules with
+  words are the film's own — the recipe's `director.rules`, then an application's tables by language,
+  `compileFilm({…, lang: 'en', strategies: {director: {en: table}}})` — read before the neutral ones; the first rule
+  that matches wins, and a rule whose `shot` or `mood` is `null` takes its lines out of the later rules' hands. A
+  pattern is the line as said, with `…` for any words: `"Oh…!"` (starts with Oh, exclaimed), `"…of course…"`,
+  `"Why…?"`, `"Yes!"` (exactly). Case, commas and quotes never count. A mood may be a list in order of preference.
+  `aliases` let the narration name a thing however it likes — a word → the region name, or `{on, size}`; the recipe's
+  win over the application's, and none are built in.
+  ```json
+  {"lang": "en", "shots": [{"name": "found", "when": ["Got it…!"], "shot": "close", "key": true}],
+   "moods": [{"name": "surprise", "when": ["Oh!", "Oh…!"], "mood": "surprised"}],
+   "aliases": {"sacks": "row", "clay": {"on": "tablet", "size": "close"}}, "guess": "thinking"}
+  ```
+- **Where the keys land, picture by picture** (`director/land.mjs`). A story kit says what it takes — `direction:
+  {camera: 'camera', acting: 'acting', moods: [...], rest: 'calm', groups: true}` beside its `compile`, or a function
+  of the world's spec — and each of its worlds gets framing keys `[{at, on, size?}]` and mood keys `{who: [{at, mood}]}`
+  in those spec keys; `groups: true` says its camera frames several names (a two-shot), otherwise the other speaker
+  gets their own shot. Before the worlds are built, each directed world is built once to read what it names (its beats
+  are not logged twice). Every other picture is framed by the film's own `focus` (`"strategy": "camera"`, which frames
+  a list of names as the box round them). `"camera"`: `"auto"` (that, the default), `"worlds"` (only the worlds that
+  take keys; the rest recorded as not framed, with why), `"focus"` (every picture through the focus), `"off"`. With
+  `"acting": "worlds" | "off"`, `"lang"`, `"rules"`, `"gap"`, `"lead"`, `"closeUps": {"perScene", "perTurn"}` (`null`:
+  no limit) and `"exchange"` (`0`: no two-shots).
+- **One camera, and explicit keys always win** (`land.mjs · cameraTaken`, asked by both landings). A world whose spec
+  has its camera key keeps it and takes none (`"camera": []` keeps it still); acting is kept person by person; push
+  notes or the recipe's `camera` moves take the camera from the director everywhere; the recipe's own `focus` from the
+  focus (and, when it moves the camera, from the worlds); a world whose own camera moves (its `cameraMoves`) takes
+  nothing from the focus. What did not land is still recorded, `placed: false` with why.
+- **The record.** `film.director` and the making-of record's `director`: the rules read (`rules`), the settings, each
+  picture and how it was framed (`pictures`: by its world, by the focus, or not, with why), where keys landed
+  (`placed`, in recipe shape, ready to copy), every proposal with its rule, sentence, time and
+  `placed`/`why`, what the grammar left out or held back (`dropped`, each with why: the budget, the gap, the
+  establishing shot) and who listens where. Each directed key's beat names the entry it landed in
+  (`story.camera[1].at`), the recipe as compiled is what the segment cache keys on (an explicit `segmentedVideo({recipe})`
+  is keyed with the director's keys placed in it too), and `film.inputs.director` hashes
+  what the director chose, so an approval covers it. **Off** — `"director": "off"`, or no director — reads nothing
+  and changes nothing: the same frames, beats and keys.
+- **Outside a film.** `direct({storyboard, timings?, guesses?, names?, director?, lang?, rules?, moods?, rest?,
+  groups?})` (`footprint-storyreel/director`) returns the proposals for one picture, planned as a world's camera plans
+  them, with nothing compiled: `{focus, acting, proposals, dropped, listeners}`. `matchLine(line, readRules({lang, rules, tables}))` says which rules a line hits.
 
 ## Perspective: a room with depth
 
@@ -3275,6 +3375,7 @@ the default because it rarely does; there is no swap repair.
 | `footprint-storyreel/moves` → `moveAt(move, t, {start, seconds?, feel?, reduced?})` · `stagger(items, gap)` · `movesBy({feel, use, kind})` · `readMove` · `applyMove` · `MOVES` | motion asked for by name: 30 moves as data, by feel and use, with the practitioners' timing rules |
 | `footprint-storyreel/principles` → `anticipate` · `squash` · `envelope` · `burst` · `arc` · `BURSTS` | anticipation, volume-keeping squash and stretch, one-shot events that add, paths that curve like a hand |
 | `footprint-storyreel/acting` → `moodAt(keys, t)` · `idleAt(t, {seed})` · `follows(f, delay?)` · `mouthAt(clock, t, who)` · `fingersAt(keys, t, options?)` · `reactionAt(clock, t, who, options?)` · `ACTING` · `FINGERS` · `FINGER_NAMES` · `COUNTING_ORDERS` · `REACTING` | a mood change acted (anticipation, a take, a cross-fade), an idle layer that never moves in step, a mouth that moves with its owner's words, fingers counted on a beat, listeners who nod, lean in and brighten |
+| `footprint-storyreel/director` → `direct({storyboard, timings?, guesses?, names?, director?, lang?, rules?, moods?, rest?, groups?})` · `readRules({lang, rules, tables})` · `matchLine(line, table)` · `readDirector(spec)` · `NEUTRAL_RULES` · `FRAMING` | the automatic director: framing keys and moods proposed from the script, each with its rule; the recipe's `"director": "on"` lands them where a kit takes them (explicit keys win) |
 | `footprint-storyreel/beats` → `beatMap(file, {bpm?, drop?, range?})` · `beatMapOf(samples, 22050)` · `safeBeats(map)` · `likelyTempi(map)` · `beatMapText(map)` · `peakOf(file)` · `peakOfSamples` · `BEATS` | a song's tempo, beats, bars and drop, with the alternatives and how sure (its record: every verdict with its evidence); the beats an unsure map may be cut on, and the tempi to settle it with (`storyreel beats <song>`); a sound's peak; a bad option throws with `code: 'BEAT_OPTIONS'` |
 | `footprint-storyreel/music` → `fitToMusic({storyboard, timings, beats, snap?, dropOn?, recipe?, kits?})` · `fitVoice(runDir, before, after)` · `MUSIC` | scene starts onto the beat (each scene's length changed by at most a tolerance, never past its words, keys or the next entrance's lead; off unless `snap` is given); the song started so its drop lands on a key moment (`makeFilm({…, music})` runs both) |
 | `footprint-storyreel/pose` → `motionSource({name, poseAt})` · `walkSource(walk)` · `checkPose(pose)` · `POSE_KEYS` · `TORSO_SHARE` | the motion-source port: one pose shape for everything that moves a figure; the planned walk as one adapter |
@@ -3286,7 +3387,7 @@ the default because it rarely does; there is no swap repair.
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/script`, `/ease`, `/moves`, `/principles`, `/acting`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/progression`, `/review`, `/rubric`, `/slideshow`, `/geometry`, `/claims`, `/decorative`, `/regions`, `/captions`, `/layout`, `/zones`, `/doctor`, `/transitions`, `/breakdown`, `/sounds`, `/sounds/openverse`, `/camera`, `/beats`, `/music`, `/kits/whiteboard`, `/kits/cartoon`, `/kits/paper/steps-track`, `/pose`, `/mocap`, `/kits/cartoon/figure`, `/stage`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/script`, `/ease`, `/moves`, `/principles`, `/acting`, `/director`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/progression`, `/review`, `/rubric`, `/slideshow`, `/geometry`, `/claims`, `/decorative`, `/regions`, `/captions`, `/layout`, `/zones`, `/doctor`, `/transitions`, `/breakdown`, `/sounds`, `/sounds/openverse`, `/camera`, `/beats`, `/music`, `/kits/whiteboard`, `/kits/cartoon`, `/kits/paper/steps-track`, `/pose`, `/mocap`, `/kits/cartoon/figure`, `/stage`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws

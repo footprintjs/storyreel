@@ -71,6 +71,53 @@
   continuity, and a fact both state must agree, or the recipe refuses (`shots.mjs · joinContinuity`). It then carries
   them across shots like declared facts. The ledger is kept in `film.shots[i].ledger` and in the making-of record. A
   world that returns neither, which is every world before this one, leaves the film exactly as it was.
+- **The automatic director: `"director": "on"`** (`footprint-storyreel/director`). Placing every close-up and every
+  face by hand made recipes long. The director reads the script — the narration's sentences, who says each (the
+  voice's word speakers, `{@who}` lines, a scene's `speaker`), how each ends, the moments written in it — the recipe's
+  pauses and guesses, and what each picture names (`regionsAt`), and proposes direction as the keys a person would
+  write: framing keys `{at, on, size?}` and mood keys `{who: [{at, mood}]}`. Listeners get no keys: `reactionAt`
+  reacts for them.
+- **Restrained by default.** A new picture keeps its establishing wide shot through its first sentence; a new scene in
+  the same picture opens wide. A speaker's face is framed close (`<who>.face`) only for the first question or
+  exclamation of a turn that follows someone else, at most one a turn and two a scene (`"closeUps": {"perScene": 2,
+  "perTurn": 1}`, `null` for no limit); a run of exclamations keeps the shot that is up; a rule's key moment
+  (`"key": true`) is framed whatever the budget says. When the other speaker answers within `exchange` seconds (4),
+  the two are framed together (`on: [a, b]`, medium) and held while they go back and forth. A narrated sentence that
+  names a thing frames it (again once the camera has looked elsewhere); one that names a person frames them medium
+  (not when a thing is named too, nor on an attribution). Back to medium after a close-up, wide after a thing; one move
+  at a time (`gap` 2 s). Everything held back is recorded with why.
+- **Aliases, as the film's data.** A rule table's `aliases` map a word the narration says to the region name the
+  picture gives it, or `{on, size}` (`{"sacks": "row", "clay": {"on": "tablet", "size": "close"}}`); the recipe's win
+  over the application's. None are built in.
+- **The film's focus frames several names**: a focus key's `on` may be a list (`["mia", "sam"]`), the box round all
+  of them (a list of one is its name; `"wide"` in a list refuses), and a Short's `follow: "focus"` crop follows the box
+  round them all. A kit says its own camera does with `direction.groups: true`.
+- **Its rules are data, and the library's are neutral.** The built-in table reads only end marks, so it works in any
+  language: a question or an exclamation frames the speaker close, a pause and guess is `thinking`. Rules with words
+  are the film's own: the recipe's `director.rules`, then the application's tables by language
+  (`compileFilm({…, strategies: {director: {en: table}}})`), read before the neutral ones; the first match wins, and a
+  rule with `shot`/`mood` null takes its lines out. A pattern is the line as said with `…` for any words (`"Oh…!"`,
+  `"Why…?"`, `"Yes!"`). `readRules`, `matchLine`, `NEUTRAL_RULES`.
+- **Where the keys land, picture by picture, one camera.** A story kit says what it takes: `story.direction` —
+  `{camera, acting, moods, rest, groups}`, or a function of the world's spec — and each of its worlds gets the
+  director's keys in those spec keys (each directed world is built once first to read what it names; its beats are not
+  logged twice). Every other picture is framed by the film's `focus` (`"strategy": "camera"`), which goes back to wide
+  for each new picture, arriving as it comes (a key no gap leaves out). `"camera": "auto"` (that), `"worlds"` (only the
+  worlds; the rest recorded as not framed, with why), `"focus"`, `"off"`. One check for both (`cameraTaken`): a world
+  spec with its own camera key keeps it (`[]` keeps it still); push notes and the recipe's camera moves take the camera
+  from the director; the recipe's focus takes it from the focus (and from the worlds when it moves the camera); a world
+  whose own camera moves takes nothing from the focus; acting is kept person by person. A key lands only where the
+  picture names what it frames at that moment (a thing first drawn on its own sentence is framed on its words, no lead).
+- **Recorded.** `film.director` and the making-of record's `director`: the rules read, each picture and how it was
+  framed (`pictures`), what landed where (in recipe shape), every proposal with its rule, sentence and time, and why
+  one did not land or was left out. A directed key's beat names its own entry (`story.camera[1].at`); `film.recipe`
+  (what the segment cache keys on) holds the keys where they landed, and an explicit `segmentedVideo({recipe})` is keyed
+  with them placed too; `film.inputs.director` hashes what was placed, so an approval covers it.
+- **Off is the film as before.** `"director": "off"`, or no director, reads nothing and changes nothing: the same
+  frames, beats, regions and inputs (only the recipe's own hash, since its text says "off").
+- `direct({storyboard, timings?, guesses?, names?, …})`: the same proposals outside a film, nothing compiled. Types in
+  `types/sub/director.d.ts`; `Recipe.director`, `Kit.story.direction`, `Film.director`, `FilmInputs.director` and
+  `strategies.director` in the main types.
 
 - **Where each app draws over the video, as data.** A release target's adapter may say where its platform's app draws
   its own UI over the video — `ui: {zones: [{name, box: [x, y, width, height], basis}], ads?, covered?}`, in fractions of

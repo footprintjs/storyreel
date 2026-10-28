@@ -116,4 +116,12 @@ The plan is a footprintjs flowchart, so `film.camera` says how the film was play
   beside its `compile`); one that does not refuses the note.
 - **Focus** (`"focus": {"strategy": "camera", "keys": [{"at": [scene, phrase], "on": "walker", "size": "medium"}]}`)
   moves the camera to whatever the voice is about; `spotlight`, `dim` and `none` show it other ways.
+- **The automatic director** (`"director": "on"`) proposes the framing and the moods from the script itself, so you
+  write only the exceptions — restrained: the establishing shot first, a close-up for the first question or exclamation
+  of a turn (two a scene: `closeUps`), a two-shot when the other answers, an insert on a thing the narrator names
+  (`aliases` map the narration's words to region names). A kit takes the keys by saying where (`direction: {camera:
+  'camera', acting: 'acting', moods, rest, groups}` beside its `compile`); otherwise they land in the film's `focus`. Keys you
+  write always win; `film.director` lists every proposal with its rule and why it did or did not land. Rules with
+  words are data you pass (`strategies: {director: {en: table}}`); `footprint-storyreel/director` · `direct` shows the
+  proposals without compiling.
 - **Transitions** between shots: a stage's `enter` (see [kits.md](kits.md#three-ways-a-kit-draws)).

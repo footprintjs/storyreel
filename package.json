@@ -162,6 +162,10 @@
       "types": "./types/sub/attention.d.ts",
       "default": "./src/attention.mjs"
     },
+    "./director": {
+      "types": "./types/sub/director.d.ts",
+      "default": "./src/director.mjs"
+    },
     "./camera": {
       "types": "./types/sub/camera.d.ts",
       "default": "./src/camera.mjs"

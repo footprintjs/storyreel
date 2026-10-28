@@ -402,6 +402,9 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     ...(placed ? {narration: {placedAgain: placed}} : {}),
     // The camera's moves as played (camerawork.mjs): moves, or cuts for reduced motion, and why; each move placed.
     ...(film.camera ? {camera: {motion: film.camera.motion, decision: film.camera.decision, moves: film.camera.moves}} : {}),
+    // The director's proposals (director.mjs): where each key landed, the ones that did not and why — so a person or an
+    // AI edits only the exceptions. Only when the recipe asks for the director.
+    ...(film.director ? {director: film.director} : {}),
     sounds: film.sounds.length,
     // The found sounds it plays (found/): each one's record — source, id, licence, attribution, sha256 — for the credits
     // (release.mjs · creditsText reads them from here) and for anyone asking where a sound came from.

@@ -665,3 +665,23 @@ export const health = (): boolean => { const r: DoctorReport = doctor({render: {
 export const listed = (text: string): number => parseList('filter', text)?.size ?? 0;
 export const zonesRead = (z: unknown) => readZones(z)[0]?.box[0];
 export const reported = (film: Film) => uiReport(film, [])?.findings.map(f => f.fix);
+
+// The automatic director (types/sub/director.d.ts): a recipe asks for it; its rules are data; a kit says what it takes.
+import {direct, readRules, matchLine, NEUTRAL_RULES, FRAMING} from '../types/sub/director.js';
+import type {DirectorRules, KitDirection} from '../types/sub/director.js';
+export const directedRecipe: Recipe = {story: {kit: 'room'}, director: {lang: 'en', camera: 'auto', acting: 'worlds', gap: FRAMING.gap, rules: {moods: [{name: 'surprise', when: ['Oh…!'], mood: 'surprised'}]}}};
+export const offRecipe: Recipe = {story: {kit: 'room'}, director: 'off'};
+export const appRules: Record<string, DirectorRules> = {en: {lang: 'en', shots: [{name: 'aside', when: 'By the way…', shot: null}], guess: 'thinking'}};
+export const roomDirection: KitDirection = {camera: 'camera', acting: 'acting', moods: {mia: ['calm', 'surprised']}, rest: 'calm'};
+export const proposed = (board: Storyboard) => direct({storyboard: board, names: {hall: ['mia', 'mia.face']}, rules: appRules, lang: 'en'}).focus.keys.map(k => k.on);
+export const hits = matchLine('Oh, look!', readRules({lang: 'en', tables: appRules})).mood?.name ?? NEUTRAL_RULES.guess;
+export const why = (film: Film) => film.director?.proposals.filter(p => p.placed === false).map(p => p.why) ?? [];
+export const restrained: Recipe = {director: {closeUps: {perScene: 1, perTurn: null}, exchange: 3, rules: {shots: [{name: 'found', when: 'I know!', shot: 'close', key: true}], aliases: {sacks: 'row', clay: {on: 'tablet', size: 'close'}}}}};
+export const twoShot: Recipe = {focus: {strategy: 'camera', keys: [{at: ['talk', 'Is it late'], on: ['mia', 'sam']}]}};
+export const groupKit: KitDirection = {camera: 'camera', groups: true};
+// @ts-expect-error the close-up budget is counts
+export const looseBudget: Recipe = {director: {closeUps: {perScene: 'few'}}};
+// @ts-expect-error the director is on, off or its settings
+export const maybeDirector: Recipe = {director: 'maybe'};
+// @ts-expect-error a shot rule frames medium, close or insert
+export const hugeShot: DirectorRules = {shots: [{name: 'x', when: 'Oh!', shot: 'huge'}]};

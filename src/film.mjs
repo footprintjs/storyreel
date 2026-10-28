@@ -35,6 +35,9 @@ import {drawCard, drawStage, drawSummary, drawConnector, cardEdge, PANEL, drawRe
 import {readStepsTrack, drawStepsTrack, stepsTrackBox, stepsTrackLines} from './kits/paper/steps-track.mjs';
 import {tokenize, excerpt} from './kits/paper/code.mjs';
 import {readAttention, chip} from './attention.mjs';
+import {readDirector} from './director/settings.mjs';
+import {directWorlds, directFocus, directorRecord} from './director/film.mjs';
+import {applyPlacements} from './director/land.mjs';
 import {readFacts, exampleScenes, findClaims, findStatements, readAllowOpen, labelSpans, numberLocale} from './claims.mjs';
 import {planCamera} from './camerawork.mjs';
 import {readNotes, placePushes, pushAt} from './notes.mjs';
@@ -52,7 +55,7 @@ import {readThought, drawThought, thoughtAt, thoughtCamera, THOUGHT_ENTRANCE, TH
 import {SHEET_SHADOW} from './frame.mjs';
 
 /** The recipe's own top-level keys: anything else refuses, unless the host application names it in `hostKeys`. */
-const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'stepsTrack', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle', 'focus', 'emphasis', 'camera', 'foundSounds', 'progression', 'evidence', 'rubric'];
+const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'stepsTrack', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle', 'focus', 'emphasis', 'camera', 'foundSounds', 'progression', 'evidence', 'rubric', 'director'];
 /**
  * What every shot may say about itself (shots.mjs): what it is for, what is true when it starts and ends, what the
  * viewer must take in — and its answers to the five scene questions (progression.mjs).
@@ -272,7 +275,10 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const castGiven = cast; cast = readCast(cast);
   storyboard = withCast(storyboard, cast, 'storyboard'); recipe = withCast(recipe, cast, 'recipe'); strings = strings === null ? null : withCast(strings, cast, 'strings');
   const given = recipe, used = new Set(); recipe = withStrings(recipe, strings, used);
-  const entries = recipePaths(recipe);
+  let entries = recipePaths(recipe), directed = given;
+  // The director (director.mjs): off (no "director", or "off") reads nothing and changes nothing. On, its rules are
+  // the recipe's, the application's for the film's language (strategies.director), then the neutral ones.
+  const directing = readDirector(recipe.director, {lang: filmLang, tables: strategies?.director ?? null});
   // The director's notes: one camera speed for the film (story kits take it as motion.cameraSpeed), cuts, pushes.
   const notes = readNotes(recipe.notes), motion = Object.freeze({cameraSpeed: notes.speed});
   // Every phrase the recipe names is logged as it is resolved: the film's making-of record says which
@@ -321,6 +327,16 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     readies.push(readyOf(instance, spec.kit, where));
     return instance;
   };
+  // The director's keys land in each world whose kit takes direction, before the worlds are built: each such world is
+  // built once first to read what it names (its regionsAt) — its beats are not logged, its ready not awaited — and
+  // explicit keys win (director/land.mjs). The recipe as compiled (`directed`) is what the cache keys on.
+  const probeWorld = (spec, path) => {
+    const b = beats.length, r = readies.length, story = path === 'story' || path === 'whiteboard';
+    const world = story ? Object.fromEntries(Object.entries(spec).filter(([key]) => !PLAN_KEYS.includes(key) && key !== 'frame')) : spec;
+    try { return compileWorld(world, story ? 'the story' : `stage ${recipe.stages[+path.slice(7, -1)].scene}`); } finally { beats.length = b; readies.length = r; }
+  };
+  const direction = directing && directWorlds(directing, {storyboard, timings, clock: base, recipe, storyKits, probe: probeWorld});
+  if (direction?.placements.length) { directed = applyPlacements(given, direction.placements); recipe = applyPlacements(recipe, direction.placements); entries = recipePaths(recipe); }
   /**
    * A world on its sheet: hung on the paper at scale S (`hang`, or the kit's own, or 0.9; 1 = full frame), or, with a
    * thought frame (thought/ · readThought), in its cloud: the sheet at the cloud's scale and place, the cloud's entrance
@@ -1006,6 +1022,11 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (!(w >= 4 && h >= 4)) throw new Error(`${where}: the ${type} goes through "${name}" in ${picture}, which is not on the frame at ${t.toFixed(2)} s (its box is [${box.map(n => Math.round(n)).join(', ')}])`);
     return Object.freeze([...box]);
   }
+  // The director's framing in the film's focus (when its keys land there): what the picture names at each moment.
+  // A world whose own camera moves (its kit's cameraMoves) takes no framing from the focus (one camera).
+  const ownCamera = path => Boolean((path === storyPathName ? story : stages[+path.slice(7, -1)]?.world?.instance)?.cameraMoves?.length);
+  const focusPlaced = direction ? directFocus(direction, {recipe, storyboard, names: t => onlyNames(regionsUnder(t)), ownCamera}) : null;
+  if (focusPlaced) { directed = applyPlacements(directed, [focusPlaced]); recipe = applyPlacements(recipe, [focusPlaced]); for (const [value, path] of recipePaths({focus: recipe.focus})) entries.set(value, path); }
   const pushes = placePushes(notes.pushes, {clock, speed: notes.speed, changes: pictureChanges(), spotlight: spotlightAt, kitCamera: kitCameraIn, total: clock.total, named});
   // Where the viewer looks (attention.mjs): the recipe's focus and emphasis, each shown by a strategy.
   const attention = readAttention(recipe, {clock, named, strategies, pushes, theme: paper});
@@ -1204,7 +1225,9 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     ...(factList ? {facts: hashOf(factList.map(({kind, ...written}) => written))} : {}),   // the facts as written
     // The found sounds it plays, by name, file hash and licence: an approval locks them (none: the key is left out).
     ...(foundUsed.length ? {sounds: hashOf(foundUsed.map(f => ({name: f.name, sha256: f.record.sha256, license: f.record.license})))} : {}),
-    ...(filmLang ? {lang: filmLang} : {})});   // the language its numbers are read by: an approval of the film in one is not of it in another
+    ...(filmLang ? {lang: filmLang} : {}),   // the language its numbers are read by: an approval of the film in one is not of it in another
+    // The keys the director placed (none: the key is left out): an approval of a directed film covers what it chose.
+    ...(direction?.placements.length ? {director: hashOf(direction.placements)} : {})});
   // Each string's own hash (segments.mjs): a segment's key holds only the strings its entries name, so changing one
   // word redraws the segments that show it, not the whole film. Not part of `inputs` (the table's hash is).
   const stringHashes = strings ? Object.freeze(Object.fromEntries(Object.keys(strings).map(k => [k, hashOf(strings[k])]))) : null;
@@ -1235,8 +1258,18 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     ...(rubricRule ? {rubric: rubricRule} : {}),
     rows: Object.freeze(rows().map(Object.freeze)), overlays, replays, inputs, stringHashes, mouthsAt, partsAt, pictureAt: pictureClock,
     lines: Object.freeze(lines.map(l => Object.freeze({...l}))), changes: Object.freeze(pictureChanges().map(c => Object.freeze({...c}))), claims, lang: filmLang,
-    // What it was compiled from, kept for the cache's keys (segments.mjs): the recipe as given (its strings unresolved), frozen.
-    recipe: deepFreeze(structuredClone(given)), kits: Object.freeze(Object.fromEntries(allKits.map(k => [k.name, k]))), drawnBy};
+    // What it was compiled from, kept for the cache's keys (segments.mjs): the recipe as given (its strings unresolved), with
+    // the director's keys where they landed, frozen.
+    recipe: deepFreeze(structuredClone(directed)), kits: Object.freeze(Object.fromEntries(allKits.map(k => [k.name, k]))), drawnBy,
+    // What the director proposed, where each key landed, and why (director.mjs): only when the recipe asks for it.
+    ...(direction ? {director: directorRecord(direction)} : {})};
+}
+
+/** The names a picture gives once each at a moment (a name two things share frames neither): a Set. */
+function onlyNames(regions) {
+  const count = new Map();
+  for (const r of regions) if (r.name) count.set(r.name, (count.get(r.name) ?? 0) + 1);
+  return new Set([...count].filter(([, n]) => n === 1).map(([name]) => name));
 }
 
 /** A value frozen all the way down (a copy the caller cannot change under the film's keys). */
