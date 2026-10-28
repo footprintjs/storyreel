@@ -23,8 +23,10 @@ export const KINETIC = Object.freeze({size: 480, colors: Object.freeze(['#f3eee3
 const STYLES = Object.freeze(['slam', 'stack']);
 const KEYS = Object.freeze(['kit', 'scene', 'words', 'style', 'move', 'flip', 'colors', 'sound', 'size']);
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
-/** A word as a reader and the voice compare it: its letters and digits, lower case. */
-const bare = (s) => String(s).normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+/** A word as a reader and the voice compare it: its letters, their marks (a vowel sign is part of its word) and digits, lower case. */
+const bare = (s) => String(s).normalize('NFC').toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, '');
+/** Seconds after a word lands before it can be read (a slam is blurred and faint that long): its text counts from then. */
+const LEGIBLE = .2;
 
 /** The spec, checked: each refusal names the fix. */
 function readSpec(spec, where) {
@@ -34,7 +36,10 @@ function readSpec(spec, where) {
   const style = spec.style ?? 'slam';
   if (!STYLES.includes(style)) throw new Error(`${where}: kinetic style is ${STYLES.join(' or ')}, not ${JSON.stringify(spec.style)}`);
   const move = readMove(spec.move ?? 'slam', `${where}: kinetic move`);
-  if (move.kind !== 'entrance' || !move.uses.includes('text')) throw new Error(`${where}: kinetic move "${move.name}" is not an entrance for text — name one that is (slam, pop, blur-in, drop-in, scale-in, fade-slide …)`);
+  // a word enters whole: a move that splits it into words or letters, or counts a number up, is not one a whole word makes
+  if (move.kind !== 'entrance' || !move.uses.includes('text') || move.split !== undefined || move.props.progress !== undefined) {
+    throw new Error(`${where}: kinetic move "${move.name}" is not an entrance a whole word makes — name one that is (slam, pop, blur-in, drop-in, scale-in, fade-slide, mask-wipe …)`);
+  }
   const colors = spec.colors ?? KINETIC.colors;
   if (!Array.isArray(colors) || colors.length !== 2 || !colors.every((c) => HEX.test(c))) throw new Error(`${where}: kinetic colors is [ground, ink], two hex colours ("#f3eee3"), not ${JSON.stringify(spec.colors)}`);
   if (spec.sound !== undefined && spec.sound !== null && !SOUND_NAMES.includes(spec.sound)) throw new Error(`${where}: kinetic sound is one of ${SOUND_NAMES.join(', ')}, or none — not ${JSON.stringify(spec.sound)}`);
@@ -48,18 +53,28 @@ function readSpec(spec, where) {
  * When each word lands: the next said word of the scene that matches it (letters and digits, any case), in order; a word
  * written {text, at} at its anchor (clock.at). A word the voice does not say, without an at, refuses — naming what is said.
  */
+/** An at as an anchor is written: [scene, phrase, plus?] or {scene, phrase, …}. */
+const anchorLike = (a) => (Array.isArray(a) ? a.length >= 2 && a.length <= 3 && typeof a[0] === 'string' && typeof a[1] === 'string'
+  : a && typeof a === 'object' && typeof a.scene === 'string' && typeof a.phrase === 'string');
+
 function landings(s, clock, where) {
   const said = s.scene === null ? [] : clock.words(s.scene);
   let from = 0;
   return s.words.map((w, i) => {
     const text = typeof w === 'string' ? w : w?.text;
     if (typeof text !== 'string' || !text.trim()) throw new Error(`${where}: kinetic words[${i}] is "text" or {text, at}, not ${JSON.stringify(w)}`);
-    if (typeof w === 'object' && w.at !== undefined) return {text: text.trim(), at: clock.at(w.at)};
+    if (typeof w === 'object' && w.at !== undefined) {
+      if (!anchorLike(w.at)) throw new Error(`${where}: kinetic word "${text}": at is an anchor, ["scene", "phrase"] (or ["scene", "phrase", seconds after]) — not ${JSON.stringify(w.at)}`);
+      return {text: text.trim(), at: clock.at(w.at)};
+    }
     if (s.scene === null) throw new Error(`${where}: kinetic word "${text}" has no time — name the scene whose voice the words follow (scene), or give it {text, at}`);
+    if (!said.length) throw new Error(`${where}: kinetic word "${text}": scene "${s.scene}" says no words — give each word {text, at}`);
+    if (!bare(text)) throw new Error(`${where}: kinetic word "${text}" has no letter or digit for the voice to say — give it {text, at}`);
+    if (/\s/.test(text.trim())) throw new Error(`${where}: kinetic word "${text}" is several words — one said word per entry ("Every", "beat"), or give it {text, at} to land them as one`);
     const k = said.findIndex((x, j) => j >= from && bare(x.text) === bare(text));
     if (k < 0) {
       const left = said.slice(from).map((x) => x.text).join(' ');
-      throw new Error(`${where}: kinetic word "${text}" is not said in scene "${s.scene}" after the words before it${left ? ` (still to come: "${left.slice(0, 80)}")` : ''} — write it as the voice says it, or give it {text, at}`);
+      throw new Error(`${where}: kinetic word "${text}" is not said in scene "${s.scene}" after the words before it${left ? ` (still to come: "${left.slice(0, 80)}")` : ''} — write it as the voice says it (a number said in words is written as it is said), or give it {text, at}`);
     }
     from = k + 1;
     return {text: text.trim(), at: said[k].start};
@@ -70,8 +85,15 @@ function landings(s, clock, where) {
 export function compileKinetic(spec, clock) {
   const where = spec?.scene ? `kinetic in scene "${spec.scene}"` : 'kinetic';
   const s = readSpec(spec ?? {}, where), lands = landings(s, clock, where);
-  for (let i = 1; i < lands.length; i++) if (lands[i].at < lands[i - 1].at) throw new Error(`${where}: kinetic word "${lands[i].text}" lands before "${lands[i - 1].text}" — the words land in the order written: write them in the order they are said, or give "${lands[i].text}" a later at`);
+  for (let i = 1; i < lands.length; i++) {
+    if (lands[i].at < lands[i - 1].at) throw new Error(`${where}: kinetic word "${lands[i].text}" lands before "${lands[i - 1].text}" — the words land in the order written: write them in the order they are said, or give "${lands[i].text}" a later at`);
+    if (s.style === 'slam' && lands[i].at === lands[i - 1].at) throw new Error(`${where}: kinetic words "${lands[i - 1].text}" and "${lands[i].text}" land at once — one word at a time shows only the later: give one of them another at, or stack them (style "stack")`);
+  }
   const end = s.scene === null ? clock.total : clock.end(s.scene);
+  for (const w of lands) {
+    if (s.scene !== null && w.at < clock.start(s.scene)) throw new Error(`${where}: kinetic word "${w.text}" lands before scene "${s.scene}" starts — give it an at inside the scene`);
+    if (w.at >= end) throw new Error(`${where}: kinetic word "${w.text}" lands after ${s.scene === null ? 'the film' : `scene "${s.scene}"`} ends — give it an at inside the scene`);
+  }
   const shown = (t) => { let k = -1; for (let i = 0; i < lands.length; i++) if (lands[i].at <= t + 1e-9) k = i; return k; };
   const fontAt = (px) => `800 ${px.toFixed(1)}px ${KINETIC.font}`;
   /** A word's size: as big as `size`, or as wide as the frame allows. */
@@ -82,15 +104,18 @@ export function compileKinetic(spec, clock) {
     c.fillStyle = ground; c.fillRect(0, 0, 1600, 900);
     c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = ink;
     const one = (i, x, y, px, alpha) => {
-      const v = moveAt(s.move, t, {start: lands[i].at}), box = [x - 800, y - px / 2, x + 800, y + px / 2];
+      c.font = fontAt(px);
+      // the move acts on the word's own box (a wipe or an iris uncovers the word, not the frame's width)
+      const w = c.measureText(lands[i].text).width, v = moveAt(s.move, t, {start: lands[i].at}), box = [x - w / 2, y - px / 2, x + w / 2, y + px / 2];
       c.save();
-      c.globalAlpha = alpha;
-      if (applyMove(c, v, {box})) { c.font = fontAt(px); c.fillText(lands[i].text, x, y); }
+      c.globalAlpha *= alpha;
+      if (applyMove(c, v, {box})) c.fillText(lands[i].text, x, y);
       c.restore();
     };
     if (k >= 0 && s.style === 'slam') one(k, 800, 450, sized(c, lands[k].text, s.size), 1);
     if (k >= 0 && s.style === 'stack') {
-      const px = Math.min(...lands.slice(0, k + 1).map((w) => sized(c, w.text, s.size)), 900 / ((k + 1) * KINETIC.line)), top = 450 - ((k + 1) * px * KINETIC.line) / 2;
+      // one size for the whole stack, from all its words: an earlier line never jumps when a new one lands
+      const n = lands.length, px = Math.min(...lands.map((w) => sized(c, w.text, s.size)), 900 / (n * KINETIC.line)), top = 450 - (n * px * KINETIC.line) / 2;
       for (let i = 0; i <= k; i++) one(i, 800, top + (i + .5) * px * KINETIC.line, px, i === k ? 1 : KINETIC.dim);
     }
     c.restore();
@@ -98,9 +123,11 @@ export function compileKinetic(spec, clock) {
   const until = (i) => (i + 1 < lands.length ? lands[i + 1].at : end);
   return {
     hang: 1,
+    /** The words and when each lands, on the film's clock: what the kit read. */
+    words: Object.freeze(lands.map((w) => Object.freeze({...w}))),
     draw,
-    /** For the reading check: each word from its landing until the next lands (in a stack, until the stack ends). */
-    texts: () => lands.map((w, i) => ({text: w.text, from: w.at, to: s.style === 'stack' ? end : until(i), path: `words[${i}]`})),
+    /** For the reading check: each word from when it can be read (LEGIBLE after it lands) until the next lands (in a stack, until the stack ends). */
+    texts: () => lands.map((w, i) => { const to = s.style === 'stack' ? end : until(i); return {text: w.text, from: Math.min(w.at + LEGIBLE, to), to, path: `words[${i}]`}; }),
     sounds: s.sound ? lands.map((w) => ({time: w.at, type: s.sound})) : [],
   };
 }

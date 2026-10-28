@@ -24,7 +24,7 @@ export interface KineticSpec {
 }
 /** The kit's numbers: the largest a word is drawn, the default colours, the face, how much of the frame's width a word may fill, line height, an earlier stacked word's dimness, the most words. */
 export const KINETIC: Readonly<{size: number; colors: readonly [string, string]; font: string; fit: number; line: number; dim: number; most: number}>;
-/** The words compiled against the film's clock: a world (draw, texts for the reading check, sounds). */
-export function compileKinetic(spec: KineticSpec, clock: Clock): StoryWorld;
+/** The words compiled against the film's clock: a world (draw, texts for the reading check — each from when it can be read, 0.2 s after it lands — sounds), and the words with when each lands. */
+export function compileKinetic(spec: KineticSpec, clock: Clock): StoryWorld & {words: readonly {readonly text: string; readonly at: number}[]};
 /** The kinetic kit: words that slam in as the voice says them. Pass it in `kits`; a world stage or the story names it (`kit: 'kinetic'`). */
 export const kineticKit: Kit;
