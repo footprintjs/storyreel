@@ -49,7 +49,7 @@ function pacingLines(spec) {
   return ['## Pacing', '', `${plural(p.shots, 'shot')} in ${secondsText(spec.video.seconds)}: median ${secondsText(p.median)}, mean ${secondsText(p.mean)}; shortest ${secondsText(p.shortest.seconds)} (#${p.shortest.shot}), longest ${secondsText(p.longest.seconds)} (#${p.longest.shot}); ${p.cutsPerMinute} cuts a minute.`,
     kinds.length ? `Between the shots: ${kinds.join(', ')}.` : 'One shot: no cut.',
     ...(edges.length ? [`The film ${edges.join(' and ')}.`] : []),
-    ...(spec.flashes.length ? [`Flash frames (one frame unlike the frames either side): ${spec.flashes.map(x => clockTenths(x.at)).join(', ')}.`] : [])];
+    ...(spec.flashes.length ? [`Flashes (a moment unlike the frames either side, back within 0.1 s): ${spec.flashes.map(x => clockTenths(x.at)).join(', ')}.`] : [])];
 }
 
 /** Where the motion lives: the verdicts counted, each moving shot in words, the whole film's grid as text. */

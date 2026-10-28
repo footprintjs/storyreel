@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+- **A film's pace: `"pace": "promo"`.** The slideshow check held every film to a lesson's pace (a still stretch is dead
+  past 3 s; a film fails when more than half its shots' time is dead, or 85 % is still). A recipe may now name its pace
+  — `lesson` (the default), `promo` (footprint-story/motion's `PACES`: nothing still past 0.6 s, at most 40 % still, its
+  last shot spare, Scenario's numbers for a fast launch film), or its own `{hold, most, still, spare}` — and the check,
+  its findings and its verdict use it (`the shots hold still for more than 0.6 s at a time: too slow for its pace`). A
+  film that names none is checked, worded and recorded exactly as before. `slideshowVerdict(pace)` and `pacedRule(film)`
+  are exported from `footprint-storyreel/slideshow`; `shotMotion`/`slideshowOf` take `spare`. `REVIEW_CHECKS.slideshow.verdict`
+  is now a function of the film (a check's verdict may be one: reviewPart reads it for the film), so code that read
+  its `.rules` calls `slideshowVerdict()` instead. Naming a pace — even `"lesson"` — changes the recipe, so a film's
+  segments are drawn again once, though the pace draws nothing.
+- **A flash of a few frames is one flash.** `breakdown` called a moment a flash only when it was one frame unlike its
+  neighbours; a flash of two to six frames (a white frame held, a glitch) read as two cuts with a sliver of a shot
+  between. A flash is now any moment of at most `maxFlash` (0.1 s, a new threshold) after which the picture comes back
+  as it was: decided from either side, listed once with its length in `frames`, splitting no shot. A longer insert is a
+  shot of its own, as before, and a one-frame flash is read exactly as before. A flash longer than one frame must
+  start and end with a jump (a picture that drifts away and is cut back from is a cut), its 0.1 s is time whatever
+  the frame rate, and every frame of it breaks, so no gradual change is read inside one. The flash rule's words in a
+  breakdown's record now say "a moment unlike the frames on both sides". On Scenario's launch film the cuts go
+  from 98 to 88 and 10 flashes are named. The README now says what a cut counts: a **picture jump** — a kinetic-type
+  film that slams a new word in every few frames jumps far more often than its editor counts shots (its makers count
+  about 44), so `cutsPerMinute` is how often the picture jumps. (The earlier reading of that gap, as flashes taken for
+  cuts, was wrong: measured, flashes explain 10 of the 54.)
+
 ## 0.24.0 — motion and narration come from footprint-story
 
 - **footprint-narration is now footprint-story, and the motion words live there.** StoryReel's narration code comes

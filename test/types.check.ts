@@ -693,3 +693,12 @@ const place: TransitionSetting = {point: true, default: [400, 300]};
 // @ts-expect-error a point's default is 'centre' or [x, y], never another word
 const elsewhere: TransitionSetting = {point: true, default: 'left'};
 void [middle, place, elsewhere];
+
+// a film's pace (slideshow.mjs · pacedRule): a name, or its own
+import {pacedRule, slideshowVerdict} from 'footprint-storyreel/slideshow';
+const pacedRecipe: import('footprint-storyreel').Recipe = {pace: 'promo'};
+const ownPace: import('footprint-storyreel').Recipe = {pace: {hold: 2, most: 0.5, still: 0.9}};
+declare const pacedFilm: import('footprint-storyreel').Film;
+const paced: number = pacedRule(pacedFilm).rule.hold + pacedRule(pacedFilm).spare + (pacedFilm.pace?.hold ?? 0);
+const promoVerdict = slideshowVerdict({hold: 0.6, most: 0, still: 0.4, spare: 1}).passed;
+void pacedRecipe; void ownPace; void paced; void promoVerdict;

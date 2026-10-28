@@ -45,6 +45,7 @@ import {view, compose, about, through, back} from './regions.mjs';
 import {tooShortToRead, readingMode, readingPace} from './reading.mjs';
 import {readIntent, readContinuity, joinContinuity, checkContinuity, tooMuchTooFast, distinctMoments, watchingMode, watchingText, WATCHING, readReads, checkReads} from './shots.mjs';
 import {QUESTIONS, readQuestions, checkProgression, progressionMode, progressionRefusal} from './progression.mjs';
+import {readPace} from 'footprint-story/motion';
 import {readRubricRule} from './rubric.mjs';
 import {checkSound, soundsByScene, MAX_SOUNDS_PER_SCENE, FOUND} from './sound.mjs';
 import {readLibrary, useFound, trimOf, foundFields} from './found/index.mjs';
@@ -55,7 +56,7 @@ import {readThought, drawThought, thoughtAt, thoughtCamera, THOUGHT_ENTRANCE, TH
 import {SHEET_SHADOW} from './frame.mjs';
 
 /** The recipe's own top-level keys: anything else refuses, unless the host application names it in `hostKeys`. */
-const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'stepsTrack', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle', 'focus', 'emphasis', 'camera', 'foundSounds', 'progression', 'evidence', 'rubric', 'director'];
+const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'stepsTrack', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle', 'focus', 'emphasis', 'camera', 'foundSounds', 'progression', 'evidence', 'rubric', 'director', 'pace'];
 /**
  * What every shot may say about itself (shots.mjs): what it is for, what is true when it starts and ends, what the
  * viewer must take in — and its answers to the five scene questions (progression.mjs).
@@ -305,6 +306,8 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const factList = storyFacts(storyboard.facts, root, filmLang), examples = exampleScenes(storyboard);
   // The open claims a release may show anyway, each with its reason (claims.mjs · readAllowOpen), and the rubric's minimum.
   const allowOpen = readAllowOpen(recipe.evidence, factList), rubricRule = readRubricRule(recipe.rubric);
+  // How long its picture may sit still (footprint-story/motion · PACES): a lesson may pause, a promo may not — the slideshow check reads it.
+  const pace = recipe.pace === undefined ? null : readPace(recipe.pace, 'recipe pace');
   let labels = [];   // when the example label is up (claims.mjs · labelSpans): set once the film's lines are known
   const allKits = [whiteboardKit, ...kits];
   const storyKits = Object.fromEntries(allKits.filter(k => k.story).map(k => [k.name, k.story]));
@@ -1256,6 +1259,8 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     ...(asked ? {progression: Object.freeze(progression.map(Object.freeze))} : {}),
     // The recipe's rubric (rubric.mjs): the scores a render needs before it is approved; absent when it names none.
     ...(rubricRule ? {rubric: rubricRule} : {}),
+    // Its pace, when the recipe names one (the slideshow check holds it to it; a lesson's, when absent).
+    ...(pace ? {pace} : {}),
     rows: Object.freeze(rows().map(Object.freeze)), overlays, replays, inputs, stringHashes, mouthsAt, partsAt, pictureAt: pictureClock,
     lines: Object.freeze(lines.map(l => Object.freeze({...l}))), changes: Object.freeze(pictureChanges().map(c => Object.freeze({...c}))), claims, lang: filmLang,
     // What it was compiled from, kept for the cache's keys (segments.mjs): the recipe as given (its strings unresolved), with

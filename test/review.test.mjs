@@ -55,7 +55,7 @@ test('a check that does not fit is not picked (no caption band, no caption check
   assert.deepEqual([...r.ran].sort(), ['claims', 'cut-off', 'text-density', 'titled', 'words-overlap'], 'no captions without a layout, no hook after the start, and 3 s is too short to stand still (or to hold a shot)');
   assert.deepEqual(r.verdicts.map(v => [v.check, v.verdict]), [['slideshow', 'not run'], ['geometry', 'not run'], ['claims', 'passed']], 'a verdict check that does not fit is not run, never passed');
   assert.equal(r.findings.filter(f => f.kind === 'no-title').length, 0);
-  await assert.rejects(reviewPart(film, {checks: {broken: {label: 'x'}}}), /review check "broken" must be \{label, why\?, when\(scope\), find\(review\)\} — or, answering with a verdict, \{label, why\?, notRun\?, when\(scope\), measure\(review\), verdict: \{rules, passed\}\}/);
+  await assert.rejects(reviewPart(film, {checks: {broken: {label: 'x'}}}), /review check "broken" must be \{label, why\?, when\(scope\), find\(review\)\} — or, answering with a verdict, \{label, why\?, notRun\?, when\(scope\), measure\(review\), verdict: \{rules, passed\} or verdict\(film\) giving them\}/);
   assert.equal(findingsText([{kind: 'still', from: 61.25, to: 67, scene: 'end', what: 'the picture does not change'}]), '1:01.3–1:07.0 end · nothing changes: the picture does not change');
   assert.equal(findingsText([{kind: 'loop', from: 59.96, to: 119.97, scene: 'end', what: 'x'}]), '1:00.0–2:00.0 end · the loop jumps: x', 'rounded to the tenth before the minutes: never 0:60.0');
 });

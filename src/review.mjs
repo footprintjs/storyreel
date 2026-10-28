@@ -35,7 +35,7 @@ import {greyOf} from './finished.mjs';
 import {partScenes, partWindow, partTimeline, timelineText} from './render.mjs';
 import {clockTenths} from './clock.mjs';
 import {verdictChart, verdictsText, readVerdict} from './verdict.mjs';
-import {slideshowOf, SLIDESHOW, SLIDESHOW_VERDICT} from './slideshow.mjs';
+import {slideshowOf, pacedRule, slideshowVerdict} from './slideshow.mjs';
 import {geometryOf, breakText, GEOMETRY_VERDICT} from './geometry.mjs';
 import {claimsCount, unsourcedClaims, claimText, drawnClaims, drawnLines, lingeringExamples, lingerText, HOLD, CLAIMS_VERDICT} from './claims.mjs';
 import {wordsIn} from './reading.mjs';
@@ -322,16 +322,18 @@ export const REVIEW_CHECKS = Object.freeze({
   slideshow: {label: 'No slideshow', why: 'the part is long enough to hold a shot', notRun: 'the part is too short to hold a shot (stillFor)',
     when: s => s.facts.seconds >= s.facts.stillFor,
     measure: ({film, window, every, samples, greys, frozen, picked}) => {
-      const m = slideshowOf(film, {from: window.from, to: window.to, every, times: samples.map(x => x.t), frameAt: t => greys.get(t)});
+      // held to the film's pace (its recipe's: a lesson's when it names none)
+      const {rule, spare} = pacedRule(film);
+      const m = slideshowOf(film, {from: window.from, to: window.to, every, rule, spare, times: samples.map(x => x.t), frameAt: t => greys.get(t)});
       const left = picked.includes('still') ? frozen : [], named = t => left.some(r => t >= r.from - 1e-9 && t < r.to - 1e-9);
-      const dead = m.deadShots.flatMap(s => s.deadAt.filter(t => !named(t)).map(t => ({kind: 'slideshow', t, what: `${s.where} holds still: ${pct(s.deadShare)} of its ${s.seconds.toFixed(1)} s is dead (still for more than ${SLIDESHOW.hold} s at a time)`})));
+      const dead = m.deadShots.flatMap(s => s.deadAt.filter(t => !named(t)).map(t => ({kind: 'slideshow', t, what: `${s.where} holds still: ${pct(s.deadShare)} of its ${s.seconds.toFixed(1)} s is dead (still for more than ${rule.hold} s at a time)`})));
       // A deck (slides swapped every few seconds) holds no stretch past `hold`: its findings are its still steps.
-      const deck = m.stillShare > SLIDESHOW.still ? m.stillShots.flatMap(s => s.stillAt.filter(t => !named(t) && !s.deadAt.includes(t)).map(t => ({kind: 'slideshow', t, what: `${s.where} is still ${pct(s.stillShare)} of its ${s.seconds.toFixed(1)} s, in stretches of ${SLIDESHOW.hold} s or less (a deck of slides)`}))) : [];
+      const deck = m.stillShare > rule.still ? m.stillShots.flatMap(s => s.stillAt.filter(t => !named(t) && !s.deadAt.includes(t)).map(t => ({kind: 'slideshow', t, what: `${s.where} is still ${pct(s.stillShare)} of its ${s.seconds.toFixed(1)} s, in stretches of ${rule.hold} s or less (a deck of slides)`}))) : [];
       return {measured: {shots: m.shots, seconds: m.seconds, still: m.still, stillShare: m.stillShare, dead: m.dead, deadShare: m.deadShare,
         deadShots: m.deadShots.map(({where, scene, seconds, dead, deadShare}) => ({where, scene, seconds, dead, deadShare}))}, hits: [...dead, ...deck]};
     },
     summary: m => `${pct(m.deadShare)} of ${m.seconds.toFixed(1)} s dead, ${pct(m.stillShare)} still${m.deadShots.length ? `; held still: ${m.deadShots.map(s => `${s.where} ${pct(s.deadShare)}`).join(', ')}` : ''}`,
-    verdict: SLIDESHOW_VERDICT},
+    verdict: film => slideshowVerdict(pacedRule(film).pace)},
   // The drawn parts hold together (geometry.mjs): for a kit that gives its parts, a mounted end stays on, a pair kept
   // apart never crosses, a planted part does not slide.
   geometry: {label: 'Drawn parts hold together', why: 'a kit on screen gives its parts', notRun: 'no kit on screen gives its parts (parts(t))',
@@ -482,9 +484,11 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
   const own = part ? partScenes(film, part) : window;
   const framed = layout ? compileLayout(film, (({scale, ...rest}) => rest)(layout)) : null;
   for (const [id, c] of Object.entries(checks)) {
-    if (!c || typeof c.when !== 'function' || typeof c.label !== 'string' || (typeof c.find !== 'function' && !(typeof c.measure === 'function' && c.verdict))) throw new Error(`review check "${id}" must be {label, why?, when(scope), find(review)} — or, answering with a verdict, {label, why?, notRun?, when(scope), measure(review), verdict: {rules, passed}}`);
-    if (typeof c.find !== 'function') readVerdict(c.verdict, `review check "${id}": verdict`);
+    if (!c || typeof c.when !== 'function' || typeof c.label !== 'string' || (typeof c.find !== 'function' && !(typeof c.measure === 'function' && c.verdict))) throw new Error(`review check "${id}" must be {label, why?, when(scope), find(review)} — or, answering with a verdict, {label, why?, notRun?, when(scope), measure(review), verdict: {rules, passed} or verdict(film) giving them}`);
   }
+  // a verdict may depend on the film (the slideshow's on its pace): read for this film, once
+  checks = Object.fromEntries(Object.entries(checks).map(([id, c]) => [id, typeof c.verdict === 'function' ? {...c, verdict: c.verdict(film)} : c]));
+  for (const [id, c] of Object.entries(checks)) if (typeof c.find !== 'function') readVerdict(c.verdict, `review check "${id}": verdict`);
   const review = {film, window, part: own, layout: framed, width: framed?.width ?? 1600, height: framed?.height ?? 900, every, stillFor, maxWords, minSilence, newEvery, minAlpha, samples: [], hashes: {}, greys: new Map(), frozen: [], drawn: [], lingers: [], picked: []};
   let findings = [];
   const read = async s => {
