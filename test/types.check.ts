@@ -702,3 +702,12 @@ declare const pacedFilm: import('footprint-storyreel').Film;
 const paced: number = pacedRule(pacedFilm).rule.hold + pacedRule(pacedFilm).spare + (pacedFilm.pace?.hold ?? 0);
 const promoVerdict = slideshowVerdict({hold: 0.6, most: 0, still: 0.4, spare: 1}).passed;
 void pacedRecipe; void ownPace; void paced; void promoVerdict;
+
+// the kinetic kit: words that slam in as the voice says them
+import {kineticKit, compileKinetic, KINETIC} from 'footprint-storyreel/kits/kinetic';
+import type {KineticSpec} from 'footprint-storyreel/kits/kinetic';
+const kineticSpec: KineticSpec = {scene: 'beat', words: ['Every', {text: 'NOW', at: ['beat', 'lands on']}], style: 'stack', flip: true, move: 'slam', sound: 'tap', size: KINETIC.size};
+declare const kineticClock: import('footprint-storyreel').Clock;
+const kineticWorld = compileKinetic(kineticSpec, kineticClock).texts?.();
+const kits: import('footprint-storyreel').Kit[] = [kineticKit];
+void kineticWorld; void kits;

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Kinetic type: `footprint-storyreel/kits/kinetic`.** A world kit (the story, or a world stage) for a launch film's
+  grammar: words that slam in as the voice says them. Each listed word lands on the next matching said word of its
+  scene (any case, its marks aside), enters with a text entrance from the shared move table (`slam` by default — the
+  same moves StoryDeck plays), and holds until the next: one word at a time, as big as it fits (`slam`), or building up
+  line under line (`stack`). `flip` swaps ground and ink at every word, `colors` names them, `sound` plays one as each
+  lands, `size` caps a word (480 px). A word the voice does not say needs `{text, at}`, or it refuses naming what is
+  still said; words out of order refuse. Its words reach the reading check and its sounds the mix.
+
 - **A film's pace: `"pace": "promo"`.** The slideshow check held every film to a lesson's pace (a still stretch is dead
   past 3 s; a film fails when more than half its shots' time is dead, or 85 % is still). A recipe may now name its pace
   — `lesson` (the default), `promo` (footprint-story/motion's `PACES`: nothing still past 0.6 s, at most 40 % still, its

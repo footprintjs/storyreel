@@ -114,6 +114,10 @@
       "types": "./types/sub/cartoon.d.ts",
       "default": "./src/kits/cartoon/index.mjs"
     },
+    "./kits/kinetic": {
+      "types": "./types/sub/kinetic.d.ts",
+      "default": "./src/kits/kinetic/index.mjs"
+    },
     "./kits/cartoon/figure": {
       "types": "./types/sub/figure.d.ts",
       "default": "./src/kits/cartoon/figure.mjs"
