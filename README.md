@@ -2887,6 +2887,53 @@ film's runs past what one argument may hold: `-/filter:v` from FFmpeg 7, `-filte
   colour, so the dip can be missed (and read as motion). A synthetic texture that moves (a scrolling pattern) has no
   stable picture to compare, so its cuts and dissolves are less sure than a filmed scene's.
 
+### Make one like it: a plan from the breakdown
+
+A breakdown says what the reference is; `remakePlan(spec)` (`footprint-storyreel/breakdown`) says what a film made like
+it would be, as a draft a person approves before anything is made. It groups the shots into scenes — a run of quick
+shots joined by hard cuts is one scene, one word or one picture a shot; any other shot is a scene of its own — and
+chooses, each with its reason read from the breakdown's numbers: what each scene is (kinetic type, a montage, plain
+ground, a title, a still, a camera move, a moving picture), the film's pace (`promo` or `lesson`, as a recipe names it),
+how each scene comes in (as a stage's `enter` names it), and whether the song times the film (music first, with each
+scene's bars for `beatTimings`). What a breakdown cannot know — the words, the pictures, the song — it lists as still
+to give.
+
+```js
+import {remakePlan, remakePlanText} from 'footprint-storyreel/breakdown';
+const plan = await remakePlan(spec);          // spec: breakdown.json, or breakdown(file).spec
+console.log(remakePlanText(plan));
+// **Pace: promo.** Half its shots last less than 1.5 s: a promo's pace (median 0.333 < 1.5 ✓).
+// | scene-31 | 0:44.3 | 0:48.4 | 4.05 s | 72–92 | kinetic type, 21 words | a cut | a run of quick shots, 50 % or more of them lettered: kinetic type, a word a shot |
+// - scene-02 comes in by a cut: the reference dissolves to it in 0.07 s, quicker than any transition takes (0.2 s): a cut.
+plan.scenes[30].why.rules[0].checks;          // ['shots 21 ≥ 2 ✓', 'lettered 0.571 ≥ 0.5 ✓']
+```
+
+`npx storyreel remake work/reference` prints the same from the folder `storyreel breakdown` wrote (or its
+`breakdown.json`); `--quick 1.5` changes what counts as a quick shot, and `--json` prints the plan for an agent, its
+record left out. It needs no project and writes nothing.
+
+- **The scenes.** A shot shorter than `quick` (1 s) is quick; quick shots joined by hard cuts are one scene. A dissolve,
+  a dip or a held shot ends a run. Half or more of a run lettered is kinetic type, a word a shot; less is a montage. A
+  lone shot is plain ground (one colour), a title (lettered), a still, a camera move (the whole picture moves), or a
+  moving picture. Each scene carries the reference's shots it stands for, the flashes inside it, and its `why`.
+- **The pace.** `promo` when half the shots last less than `promoMedian` (1.5 s) or the film cuts `promoCuts` (30)
+  times a minute or more, else `lesson`: the names a recipe's `"pace"` takes.
+- **The entrances.** A hard cut is `"cut"`, a dissolve a `fade`, a dip or a fade in from one colour a `dip`, with the
+  reference's seconds (kept within the 0.2–4 s a transition takes); a change quicker than 0.2 s is a cut. The first
+  scene has none — a film starts on its first picture, so a reference that opens with a fade in says so instead. The
+  entrance most scenes take is said once: a stage left without `enter` fades in, so a film of hard cuts writes
+  `"enter": "cut"`.
+- **The music.** With the beats read (`storyreel breakdown --beats`): when `onBeat` (half) or more of the cuts judged
+  against the beats land on one, the song times the film — each scene the whole bars nearest its length at the song's
+  tempo (4 beats a bar), a kinetic scene enough for a beat a word, its words `every` beats apart (`"on": "beats"`),
+  inside what `beatTimings` and the kinetic kit take (`MUSIC.mostBars`, 64 bars a scene — a longer one is kept at 64
+  and listed to split — and `MUSIC.mostEvery`, 8 beats between words). Fewer, and the words time it, with any song under. An unsure tempo is settled first (`--bpm`); beats not read are
+  read first, when the film has sound.
+- **Every choice says why.** The plan is a footprintjs flowchart (read → pace → beats → music → each scene → plan), and
+  each choice is decided with `decide()`: the why names the rule, its checks and the numbers it read, and `plan.record`
+  keeps the run's narrative, each scene's decision named ("scene 3 at 4.2 s: …").
+- **The thresholds** are `REMAKE`: `remakePlan(spec, {thresholds: {quick: 1.5}})` changes one; an unknown name refuses.
+
 ## The compile record
 
 `compileFilm({…, record: true})` runs the compile as a footprintjs flowchart and returns the film with
@@ -3412,7 +3459,7 @@ the default because it rarely does; there is no swap repair.
 | `makeFilm({storyboard, recipe, timings \| narrationDir, pacing?, strings?, out, render?, claims?, release?})` | compile + render as a footprintjs pipeline, with `making-of.json` (a segmented render: one subflow per segment; the claims verdict, `check-claims`; `release: true` refuses an open claim) |
 | `approveFilm({record, by, note?})` · `checkApproval(approval, inputs)` | the approval lock: approve a watched render from its making-of.json, and whether the film is still it (`makeFilm({…, approval})` refuses otherwise) |
 | `checkVideo({file, film?, captions?, voiced?, joins?, intro?, expect?, checks?, probe?})` · `FINISHED_CHECK_NAMES` | checks on the finished file: lengths, blank runs, flash frames, hand-overs and joins, the voice, captions (`footprint-storyreel/finished` adds `ffmpegProbe`, `FINISHED_CHECKS`, `FINISHED`) |
-| `footprint-storyreel/breakdown` → `breakdown(videoFile, {out?, beatMap?, beatOptions?, thresholds?, ffmpeg?, probe?, hints?})` · `breakdownText(spec)` · `BREAKDOWN` | a reference film as a spec to match: cuts, fades and dissolves, shots, pacing, motion, lettering (a heuristic), cuts on the beat (`beatMap(video, {ffmpeg})`: the reader reads the video's sound itself; `storyreel breakdown --beats`), judged by `safeBeats`; every verdict with its evidence |
+| `footprint-storyreel/breakdown` → `breakdown(videoFile, {out?, beatMap?, beatOptions?, thresholds?, ffmpeg?, probe?, hints?})` · `breakdownText(spec)` · `BREAKDOWN` · `remakePlan(spec, {thresholds?})` · `remakePlanText(plan)` · `REMAKE` · `SCENE_KINDS` | a reference film as a spec to match: cuts, fades and dissolves, shots, pacing, motion, lettering (a heuristic), cuts on the beat (`beatMap(video, {ffmpeg})`: the reader reads the video's sound itself; `storyreel breakdown --beats`), judged by `safeBeats`; every verdict with its evidence |
 | `previewChanges(makeFilmOptions, {render?, handles?, clip?})` | what an edit changed before the full render: the changed pieces as ranges and why (`text`); `render: true` draws only those into the cache and writes a review clip ([The chat edit loop](#the-chat-edit-loop)) |
 | `segmentedVideo({store, recipe?, code?, kitsCode?, chunkSeconds?, force?, samples?, parallel?})` · `wholeVideo()` · `folderStore(dir, {cap})` · `ffmpegJoin()` · `planSegments(film, {fps})` · `planPieces(film, {fps, chunkSeconds})` · `segmentKey(…)` · `pictureLine(report)` · `codeFingerprint(paths)` · `codeCover(fingerprint)` | re-render only what changed: every render's picture in cached pieces, joined (the default; `renderFilm({…, segments, whole, video})`) |
 | `footprint-storyreel/release` → `makeRelease({targets, post, out, …})` · `loadTarget` · `checkAdapter` · `planProblems` · `targetLoudness` · `TARGET_NAMES` | the post for each platform: the video in its shape, captions, thumbnail, the text to paste, checked against the platform's limits and audience; its app's UI kept clear, its loudness goal |

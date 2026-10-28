@@ -8,6 +8,7 @@
 import path from 'node:path';
 import {TOOLS, CONFIG, loadProject, loadInputs, readInputs} from './tools.mjs';
 import {SOUNDS_HELP} from './sounds/cli.mjs';
+import {REMAKE_USAGE} from './remake-cli.mjs';
 // Loaded first, so the picture's channel is taken from the environment before any project code runs (mcp.mjs · sendPicture).
 import {serveMcp, startOf, sendPicture} from './mcp.mjs';
 
@@ -99,6 +100,8 @@ async function doctorCommand(args) {
 
 const [command, ...given] = process.argv.slice(2), flags = {};
 if (command === 'breakdown') { await breakdownCommand(given); process.exit(0); }
+// remake needs no project: a plan read from a breakdown (remake-cli.mjs).
+if (command === 'remake') { const {remakeCommand} = await import('./remake-cli.mjs'); process.exit(await remakeCommand(given)); }
 // doctor needs no project: what this machine has (doctor.mjs).
 if (command === 'doctor') process.exit(await doctorCommand(given));
 // sounds needs no project: its own usage, flags and exit codes (sounds/cli.mjs; the Openverse adapter loads only for search and add).
@@ -111,12 +114,13 @@ if (asked) {
     : asked === 'beats' ? `storyreel beats <song> [--bpm n] [--ffmpeg path]\n${BEATS_HELP}`
     : asked === 'share' ? `storyreel share <video> [--width 854] [--crf 28] [--poster 6] [--out folder] [--ffmpeg path]\n${SHARE_HELP}`
     : asked === 'breakdown' ? BREAKDOWN_USAGE
+    : asked === 'remake' ? REMAKE_USAGE
     : asked === 'doctor' ? `storyreel doctor [--json] [--ffmpeg path] [--ffprobe path] [--theme paper,storybook]\n${DOCTOR_HELP}`
     : asked === 'sounds' ? SOUNDS_HELP
     : asked === 'mcp' ? `storyreel mcp [--flag value …]   serves ${Object.keys(TOOLS).join(', ')} over MCP (stdio); the project (--config, --cwd) and the film's own flags (e.g. --out work/out) are fixed here for every call, and a call passes only its tool's arguments`
     : null;
   if (usage) { console.log(usage); process.exit(0); }
-  console.error(`storyreel: "${asked}" is not a command; the commands are ${[...Object.keys(TOOLS), 'beats', 'share', 'sounds', 'breakdown', 'doctor', 'mcp'].join(', ')} (storyreel help lists them all)`); process.exit(2);
+  console.error(`storyreel: "${asked}" is not a command; the commands are ${[...Object.keys(TOOLS), 'beats', 'share', 'sounds', 'breakdown', 'remake', 'doctor', 'mcp'].join(', ')} (storyreel help lists them all)`); process.exit(2);
 }
 // beats takes the song first, share the video: a path, not a flag.
 const song = (command === 'beats' || command === 'share') && given[0] !== undefined && !given[0].startsWith('--') ? given[0] : null, rest = song === null ? given : given.slice(1);
@@ -158,7 +162,7 @@ if (command === 'beats') {
 }
 if (!command || command === 'help' || command === '--help' || !TOOLS[command]) {
   const lines = [...Object.entries(TOOLS).map(([name, t]) => [`  ${name.padEnd(9)}${t.about}`, ...Object.entries(t.args).map(([a, d]) => `             --${a}  ${d}`)].join('\n')), BEATS_HELP, SHARE_HELP, SOUNDS_HELP, DOCTOR_HELP];
-  (TOOLS[command] || !command || command === 'help' || command === '--help' ? console.log : console.error)(`storyreel <tool> [--flag value …]   (the film is named in ./${CONFIG}; --config another file)\n\n${lines.join('\n')}\n\nRead first, look last: timeline → review → fix → part → still.\nAfter an edit to the words (narration, recipe, pacing): anchors first.\nAfter an edit: changes (what it redraws) → changes --render (only those pieces, and a short clip of them).\nstoryreel mcp [--flag value …] serves the same tools over MCP (stdio); the project (--config, --cwd) and the film's own flags are fixed when it starts.\n${BREAKDOWN_USAGE}`);
+  (TOOLS[command] || !command || command === 'help' || command === '--help' ? console.log : console.error)(`storyreel <tool> [--flag value …]   (the film is named in ./${CONFIG}; --config another file)\n\n${lines.join('\n')}\n\nRead first, look last: timeline → review → fix → part → still.\nAfter an edit to the words (narration, recipe, pacing): anchors first.\nAfter an edit: changes (what it redraws) → changes --render (only those pieces, and a short clip of them).\nstoryreel mcp [--flag value …] serves the same tools over MCP (stdio); the project (--config, --cwd) and the film's own flags are fixed when it starts.\n${BREAKDOWN_USAGE}\n${REMAKE_USAGE}`);
   process.exit(command && command !== 'help' && command !== '--help' && !TOOLS[command] ? 2 : 0);
 }
 try {

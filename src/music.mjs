@@ -28,7 +28,8 @@ import {readEntrance, transitionCatalog} from './transitions.mjs';
  * page begins (film.mjs · into: the old stage leaves 0.65 s ahead). gain: the song's level under the voice (0..1 of its
  * own). fadeOut: the seconds the song fades over at the film's end. onBeat: closer than this, a cut is already on its beat.
  */
-export const MUSIC = Object.freeze({tolerance: .15, clear: .1, handOver: .65, gain: .2, fadeOut: 1.5, onBeat: .001});
+export const MUSIC = Object.freeze({tolerance: .15, clear: .1, handOver: .65, gain: .2, fadeOut: 1.5, onBeat: .001,
+  mostBars: 64, mostEvery: 8});   // music first: a scene lasts 1–mostBars bars, its words 1–mostEvery beats apart
 const MUSIC_KEYS = ['file', 'gain', 'snap', 'dropOn', 'bpm', 'drop', 'fadeOut'];
 const PLACE_KEYS = ['file', 'start', 'gain', 'fadeOut'];
 
@@ -340,11 +341,11 @@ export function beatTimings(storyboard, beats, {bars = 2, from = 0, every = 1} =
   if (!Array.isArray(beats?.beats) || !Array.isArray(beats?.bars)) throw new Error(`${who}: beats is the song's beat map (beatMap(file)), with its beats and bars in seconds`);
   if (beats.sure === false) throw new Error(`${who}: the song's beat is unsure (${beats.verdict ?? 'two tempi close'}) — give its tempo (music.bpm) when you map it, or choose a song with a clearer beat`);
   if (!(Number.isFinite(from) && from >= 0)) throw new Error(`${who}: from is the song second to start at, 0 or more, not ${JSON.stringify(from)}`);
-  if (!(Number.isInteger(every) && every >= 1 && every <= 8)) throw new Error(`${who}: every is the beats between two words, a whole number 1–8, not ${JSON.stringify(every)}`);
+  if (!(Number.isInteger(every) && every >= 1 && every <= MUSIC.mostEvery)) throw new Error(`${who}: every is the beats between two words, a whole number 1–${MUSIC.mostEvery}, not ${JSON.stringify(every)}`);
   const scenes = storyboard?.scenes ?? [];
   const barsOf = id => {
     const n = typeof bars === 'number' ? bars : bars?.[id] ?? bars?.default;
-    if (!(Number.isInteger(n) && n >= 1 && n <= 64)) throw new Error(`${who}: scene "${id}" lasts a whole number of bars, 1–64 (bars: 2, or {"${id}": 4, "default": 2}), not ${JSON.stringify(n)}`);
+    if (!(Number.isInteger(n) && n >= 1 && n <= MUSIC.mostBars)) throw new Error(`${who}: scene "${id}" lasts a whole number of bars, 1–${MUSIC.mostBars} (bars: 2, or {"${id}": 4, "default": 2}), not ${JSON.stringify(n)}`);
     return n;
   };
   let bar = beats.bars.findIndex(t => t >= from - 1e-9 && musicAt(beats, t));

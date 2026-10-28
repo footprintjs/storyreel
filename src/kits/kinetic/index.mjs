@@ -50,6 +50,7 @@ function readSpec(spec, where) {
   if (spec.flip !== undefined && typeof spec.flip !== 'boolean') throw new Error(`${where}: kinetic flip is true or false`);
   const on = spec.on ?? 'voice', every = spec.every ?? 1;
   if (on !== 'voice' && on !== 'beats') throw new Error(`${where}: kinetic on is "voice" (each word as it is said) or "beats" (word after word on the scene's beats), not ${JSON.stringify(spec.on)}`);
+  // 8 is music.mjs · MUSIC.mostEvery (not imported: a kit stays off the song's I/O); a test pins the two equal.
   if (!(Number.isInteger(every) && every >= 1 && every <= 8)) throw new Error(`${where}: kinetic every is the beats between two words, a whole number 1–8, not ${JSON.stringify(spec.every)}`);
   if (spec.every !== undefined && on !== 'beats') throw new Error(`${where}: kinetic every counts beats — set on: "beats" too, or leave every out`);
   return {words, on, every, style, move, colors, flip: spec.flip === true, sound: spec.sound ?? null, size, scene: spec.scene ?? null};

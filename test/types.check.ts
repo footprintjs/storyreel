@@ -383,6 +383,13 @@ export const bare = breakdown('ref.mp4', {beatMap: beats, beatOptions: 120});
 export const onBeat = (spec: BreakdownSpec): number => (spec.audio.beats.ran ? spec.audio.beats.onBeat + (spec.audio.beats.close?.score ?? 0) : 0) + BREAKDOWN.onBeat + spec.warnings.length;
 // @ts-expect-error a threshold is a number
 export const wordy = breakdown('ref.mp4', {thresholds: {cutJump: 'high'}});
+// Make one like it (remakePlan): a plan from the spec, each scene with its kind, entrance and why; music first gives bars.
+import {remakePlan, remakePlanText, REMAKE, SCENE_KINDS} from '../types/sub/breakdown.js';
+export const remade = (spec: BreakdownSpec) => remakePlan(spec, {thresholds: {quick: 1.5}}).then(p => `${remakePlanText(p)} ${p.pace.name} ${p.music.bpm ?? p.music.notRead} ${p.scenes.map(x => `${x.kind} ${x.bars ?? ''} ${typeof x.enter === 'object' && x.enter ? x.enter.seconds : x.enter}`).join()} ${p.todo.map(t => t.give).join()} ${REMAKE.quick} ${SCENE_KINDS.length}`);
+// @ts-expect-error a remake threshold is a number
+export const slowPlan = (spec: BreakdownSpec) => remakePlan(spec, {thresholds: {quick: 'slow'}});
+// @ts-expect-error the plan reads a breakdown's spec, not its file
+export const filePlan = remakePlan('ref.mp4');
 // @ts-expect-error a beat reader answers its beats
 export const noBeats: BeatReader = () => ({bpm: 120});
 
