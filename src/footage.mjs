@@ -139,15 +139,24 @@ function distinctFrames(f) {
 }
 
 /**
- * How much of a one-frame change lasts (frames as `seq` lists them, seq[i] the change's): the frame after it against the
- * frame before it (a cut: about 1; a flash, the picture back as it was: near 0). Both ways round, since the flash may be
- * either side of the biggest change: `frame` is the frame that would be the flash, `end` the frame the picture comes back on.
+ * How much of a change lasts (frames as `seq` lists them, seq[i] the change's): the frames up to `most` after it against
+ * the frame before it (a cut: about 1; a flash, the picture back as it was: near 0) — the least of them. Both ways round,
+ * since the change may be the flash's start or its end (a flash of several frames is a change in and a change out):
+ * `frame` is the flash's first frame, `end` the frame the picture comes back on. `most` 1 reads a one-frame flash only.
  */
-function lasting(f, seq, i) {
-  const after = i + 1 < seq.length ? thumbDiff(f, seq[i - 1], seq[i + 1]) / Math.max(thumbDiff(f, seq[i - 1], seq[i]), 1) : Infinity;
-  const before = i >= 2 ? thumbDiff(f, seq[i - 2], seq[i]) / Math.max(thumbDiff(f, seq[i - 2], seq[i - 1]), 1) : Infinity;
-  const least = Math.min(after, before), back = before < after;
-  return {value: Number.isFinite(least) ? least : 1, frame: back ? seq[i - 1] : seq[i], end: back ? seq[i] : seq[i + 1] ?? seq[i] + 1};
+function lasting(f, seq, i, most = 1) {
+  let least = Infinity, frame = seq[i], end = seq[i + 1] ?? seq[i] + 1;
+  for (let j = 1; j <= most; j++) {
+    if (i + j < seq.length) {   // the change starts a flash j frames long: frame i + j is the picture before it
+      const v = thumbDiff(f, seq[i - 1], seq[i + j]) / Math.max(thumbDiff(f, seq[i - 1], seq[i]), 1);
+      if (v < least) { least = v; frame = seq[i]; end = seq[i + j]; }
+    }
+    if (i - 1 - j >= 0) {       // the change ends one: frame i is the picture before it began
+      const v = thumbDiff(f, seq[i - 1 - j], seq[i]) / Math.max(thumbDiff(f, seq[i - 1 - j], seq[i - 1]), 1);
+      if (v < least) { least = v; frame = seq[i - j]; end = seq[i]; }
+    }
+  }
+  return {value: Number.isFinite(least) ? least : 1, frame, end};
 }
 
 /** Every frame (of `seq`) whose change is a peak at least half a cut's, with its jump, the median change around it, and their ratio. */
@@ -237,8 +246,9 @@ function fadeHolding(fades, k, fps) {
 export function cutsAndFades(f, t) {
   const seq = distinctFrames(f), found = peaks(f, seq, t), between = ({k}) => f.spread[k - 1] >= t.blank && f.spread[k] >= t.blank;
   const fades = fadesOf(f, found.filter(p => p.jump >= t.cutJump && p.ratio >= t.cutRatio && between(p)).map(p => p.k), t);
+  const most = Math.max(1, Math.round((t.maxFlash ?? 0) * f.fps));   // a flash's frames, at most
   const cuts = found.map(({k, i, jump, around, ratio}) => {
-    const last = lasting(f, seq, i);
+    const last = lasting(f, seq, i, most);
     return {kind: 'cut', at: round(k / f.fps, 3), frames: [k - 1, k], flashFrame: last.frame, flashEnd: last.end,
       measures: {jump, around, ratio, lasting: last.value, fade: fadeHolding(fades, k, f.fps)}};
   });

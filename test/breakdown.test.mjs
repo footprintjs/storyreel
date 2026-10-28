@@ -276,6 +276,16 @@ test('read faster than the file\'s average rate, a repeated frame takes no part:
   assert.deepEqual(spec.transitions, []); assert.equal(spec.shots.length, 1);
 });
 
+test('a flash of a few frames — the picture back as it was within 0.1 s — is one flash, not two cuts; a longer insert is a shot', {skip}, async () => {
+  // 60 a second: grey 90 with a white flash of frames 60–64 (5 frames, 83 ms), and one of frames 120–131 (12, 200 ms)
+  const file = path.join(dir, 'flashes.mp4');
+  ffmpeg(['-f', 'lavfi', '-i', `nullsrc=s=320x180:r=60:d=3,geq=lum='if(between(N\,60\,64)+between(N\,120\,131)\,235\,90)+20*sin(X/7)':cb=128:cr=128`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
+  const {spec} = await breakdown(file, {out: path.join(dir, 'flashes')});
+  assert.deepEqual(spec.flashes.map(x => [x.frame, x.frames]), [[60, 5]], 'the short one: one flash, listed once, its frames counted');
+  assert.match(spec.flashes[0].why.because, /a flash/);
+  assert.deepEqual(spec.transitions.filter(t => t.kind === 'cut').map(t => t.frame), [120, 132], 'the long one: a shot of its own, cut in and out');
+});
+
 test('variable-rate cut times land on the frame shown at that time — after a dropped frame, and when the picture starts late', {skip}, async () => {
   // 30 a second with every third frame dropped (nominal 30, average 20): the new picture's first frame is at 1.833 s.
   const dropped = path.join(dir, 'dropped.mp4'), late = path.join(dir, 'late.mp4');

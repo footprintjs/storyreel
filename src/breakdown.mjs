@@ -45,7 +45,8 @@ export const BREAKDOWN = Object.freeze({
   width: 160,          // frames are read this wide, grey
   cutJump: 12,         // a cut: one frame changes by at least this much …
   cutRatio: 3,         // … and at least this many times the change of the frames around it
-  flashLasting: .4,    // a flash: less than this share of a one-frame change lasts into the next frame
+  flashLasting: .4,    // a flash: less than this share of a change lasts past it — the picture comes back …
+  maxFlash: .1,        // … within this many seconds (a frame, at 10 frames a second or fewer); longer is a shot
   blank: 1.5,          // a frame whose grey levels spread less than this is one colour (finished.mjs · FINISHED.blank)
   minFade: .2,         // seconds: a fade to or from one colour takes at least this long (a quicker one is a cut) …
   maxFade: 4,          // … and is followed at most this far from its colour
@@ -74,7 +75,7 @@ export const BREAKDOWN = Object.freeze({
 
 /** What a candidate for a cut can be. */
 const CUT = t => ({key: 'verdict', noun: 'cut candidate', rules: [
-  {when: {lasting: {lt: t.flashLasting}}, then: 'flash', label: 'one frame unlike the frames on both sides, which are alike: a flash'},
+  {when: {lasting: {lt: t.flashLasting}}, then: 'flash', label: 'a moment unlike the frames on both sides, which are alike: a flash'},
   {when: {fade: {gte: t.minFade}}, then: 'fade-step', label: 'a step of a fade through one colour (its last into the colour, or its first out of it): part of the fade, not a cut'},
   {when: {jump: {gte: t.cutJump}, ratio: {gte: t.cutRatio}}, then: 'cut', label: 'the picture jumps in one frame, far more than the frames around it change'}],
 fallback: {branch: 'change', label: 'a change, but not one frame\'s jump above the frames around it: motion, not a cut'}});
@@ -313,6 +314,21 @@ function transitionsOf(run) {
   return [...cuts, ...changes].sort((a, b) => a.at - b.at);
 }
 const splits = tr => !tr.opens && !tr.closes;
+
+/**
+ * The flashes, each once: a flash of several frames is a change in and a change out, both decided a flash, and the two
+ * may find its start a frame apart — flashes that overlap are one, from its first frame to its last.
+ */
+function flashesOf(cuts, fps) {
+  const spans = cuts.filter(c => c.verdict === 'flash').map(c => ({frame: c.flashFrame, end: c.flashEnd, why: c.verdictWhy})).sort((a, b) => a.frame - b.frame || a.end - b.end);
+  const out = [];
+  for (const x of spans) {
+    const last = out.at(-1);
+    if (last && x.frame < last.end) last.end = Math.max(last.end, x.end);
+    else out.push({...x});
+  }
+  return out.map(x => ({at: round(x.frame / fps, 3), frame: x.frame, frames: x.end - x.frame, why: x.why}));
+}
 
 /** Which transition names a boundary when several fall on one frame (a fade out to black, then a cut to white): the cut first. */
 const FIRST = ['cut', 'dissolve', 'dip', 'fade-out', 'fade-in'];
@@ -635,7 +651,7 @@ function specOf(run, s) {
     warnings: run.warnings,
     shots: run.shots.map((_, i) => shotSpec(run, i)),
     transitions: run.transitions.map(({frames, ...tr}) => tr),
-    flashes: run.cuts.filter(c => c.verdict === 'flash').map(c => ({at: round(c.flashFrame / f.fps, 3), frame: c.flashFrame, why: c.verdictWhy})),
+    flashes: flashesOf(run.cuts, f.fps),
     pacing: run.pacing,
     motion: {shots: {still: count('still'), camera: count('camera'), inside: count('inside')}, grid: filmGrid(run.shots, run.moves), curve: energyCurve(f, run.breaks)},
     text: {heuristic: 'rows of sharp strokes, as lettering makes, leaving out a mark that stays in a corner (a logo); it never reads the words (no OCR)', shots: run.verdicts.flatMap((v, i) => (v.text === 'text' ? [run.shots[i].index] : []))},

@@ -6,7 +6,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {compileFilm, evenTimings} from '../src/index.mjs';
 import {compileExample} from './golden.mjs';
-import {SLIDESHOW, shotInsides, moved, shotMotion, slideshowOf, SLIDESHOW_VERDICT} from '../src/slideshow.mjs';
+import {SLIDESHOW, shotInsides, moved, shotMotion, slideshowOf, SLIDESHOW_VERDICT, slideshowVerdict, pacedRule} from '../src/slideshow.mjs';
+import {PACES} from 'footprint-story/motion';
 import {reviewPart, REVIEW_CHECKS} from '../src/review.mjs';
 
 // A card world: its title, and — when it moves — a dot circling; `every` turns to a new page name every that many
@@ -160,4 +161,24 @@ test('the example films\' verdicts, as the README gives them', async () => {
 test('a part too short to hold a shot is not run, never passed', async () => {
   const r = await reviewPart(still, {from: 1, to: 3});
   assert.deepEqual(r.verdicts.find(x => x.check === 'slideshow'), {check: 'slideshow', label: 'No slideshow', verdict: 'not run', why: 'the part is too short to hold a shot (stillFor)', measured: {}});
+});
+
+test('a film\'s pace (its recipe\'s): a lesson\'s rule and words are the ones it always had; a promo may not hold still past 0.6 s', async () => {
+  assert.equal(SLIDESHOW_VERDICT.rules[1].label, 'most of the running time inside the shots is dead (held still for more than 3 s at a time): a slideshow');
+  assert.equal(SLIDESHOW_VERDICT.passed, 'the shots move inside themselves: most of their running time is never held still for more than 3 s');
+  assert.deepEqual(slideshowVerdict(PACES.lesson), SLIDESHOW_VERDICT);
+  assert.deepEqual(pacedRule(still), {pace: PACES.lesson, rule: SLIDESHOW, spare: 0}, 'a film that names no pace is a lesson');
+  // a new page every 1.5 s: no stretch reaches a lesson's 3 s, every one passes a promo's 0.6 s
+  const recipe = cards([], {every: 1.5}), lesson = await filmOf([], {every: 1.5});
+  const promo = await compileFilm({storyboard, timings, recipe: {...recipe, pace: 'promo'}, kits: [card]});
+  assert.deepEqual(promo.pace, PACES.promo);
+  assert.equal(slideshowOf(lesson).deadShare, 0);
+  const {rule, spare} = pacedRule(promo);
+  assert.deepEqual([rule.hold, rule.most, rule.still, spare], [0.6, 0, 0.4, 1]);
+  const v = (await reviewPart(promo)).verdicts.find(x => x.check === 'slideshow');
+  assert.deepEqual([v.verdict, v.why], ['failed', 'the shots hold still for more than 0.6 s at a time: too slow for its pace']);
+  assert.ok(!v.measured.deadShots.some(s => s.where === 'stage three'), 'its last shot is spare (an end card may sit): not measured');
+  const own = await compileFilm({storyboard, timings, recipe: {...recipe, pace: {hold: 2, most: 0.5, still: 0.9}}, kits: [card]});
+  assert.deepEqual(own.pace, {hold: 2, most: 0.5, still: 0.9, spare: 0});
+  await assert.rejects(compileFilm({storyboard, timings, recipe: {...recipe, pace: 'fast'}, kits: [card]}), /recipe pace/);
 });

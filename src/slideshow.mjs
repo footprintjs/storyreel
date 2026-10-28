@@ -50,6 +50,16 @@ import {filmPainter} from './finished.mjs';
 const {hold, most, still} = PACES.lesson;
 export const SLIDESHOW = Object.freeze({width: 160, level: 4, area: .0002, hold, most, cover: .0025, still});
 
+/**
+ * The film's pace (its recipe's `pace`: footprint-story/motion's lesson, the default, or promo, or one of its own) and the
+ * rule it makes: SLIDESHOW with its hold, most and still — {pace, rule, spare}, `spare` the shots at its end not held to
+ * it (a promo's end card may sit).
+ */
+export function pacedRule(film) {
+  const pace = film.pace ?? PACES.lesson;
+  return {pace, rule: Object.freeze({...SLIDESHOW, hold: pace.hold, most: pace.most, still: pace.still}), spare: pace.spare ?? 0};
+}
+
 /** [a, b) less the change [c0, c1]: a cut (c0 = c1) splits it there, so no step crosses it. */
 const cut = ([a, b], [c0, c1]) => (c1 < a || c0 >= b ? [[a, b]] : [[a, Math.min(b, c0)], [Math.max(a, c1), b]].filter(([x, y]) => y - x > 1e-6));
 
@@ -57,9 +67,10 @@ const cut = ([a, b], [c0, c1]) => (c1 < a || c0 >= b ? [[a, b]] : [[a, Math.min(
  * Each shot's middle: [{path, where, scene, pieces: [[from, to)]}] — its time inside [from, to) with every change of
  * picture cut out (film.changes). A shot with nothing left is left out.
  */
-export function shotInsides(film, {from = 0, to = film.total} = {}) {
-  const changes = film.changes ?? [];
-  return (film.shots ?? []).map(shot => {
+export function shotInsides(film, {from = 0, to = film.total, spare = 0} = {}) {
+  const changes = film.changes ?? [], shots = film.shots ?? [];
+  // the last `spare` shots are not measured (a pace's end card)
+  return shots.slice(0, Math.max(0, shots.length - spare)).map(shot => {
     let pieces = [[Math.max(shot.from, from), Math.min(shot.to, to)]].filter(([a, b]) => b - a > 1e-6);
     for (const c of changes) pieces = pieces.flatMap(p => cut(p, [c.from, c.to]));
     return {path: shot.path, where: shot.where, scene: shot.scene, pieces};
@@ -85,12 +96,12 @@ export function moved(before, after, rule = SLIDESHOW, seen = null) {
  * seconds from each piece's start, drawn small (filmPainter); or, given `times` (moments `every` apart) and `frameAt(t)`
  * (the grey frame drawn at each), at those moments inside each piece — the review reads the picture once for all its checks.
  */
-export function shotMotion(film, {from = 0, to = film.total, every = .25, rule = SLIDESHOW, times = null, frameAt = null} = {}) {
+export function shotMotion(film, {from = 0, to = film.total, every = .25, rule = SLIDESHOW, spare = 0, times = null, frameAt = null} = {}) {
   if (!(Number.isFinite(every) && every > 0)) throw new Error(`slideshow: every is seconds between the frames read, more than 0, not ${JSON.stringify(every)}`);
   if (frameAt && !times) throw new Error('slideshow: frameAt gives the frames drawn at the moments in times: give both, or neither (the frames are then drawn here)');
   const paint = frameAt ?? filmPainter(film, rule.width);
   const moments = (a, b) => (times ? times.filter(t => t >= a - 1e-9 && t < b - 1e-9) : Array.from({length: Math.ceil((b - a) / every - 1e-9)}, (_, k) => a + k * every));
-  return shotInsides(film, {from, to}).map(shot => {
+  return shotInsides(film, {from, to, spare}).map(shot => {
     let steps = 0, seen = null; const stepAt = [], stillAt = [], runs = [];   // runs: the still stretches, each the start of its still steps
     for (const [a, b] of shot.pieces) {
       let before = null, last = null, run = null;
@@ -129,12 +140,20 @@ export function slideshowOf(film, options = {}) {
     stillShots: shots.filter(s => share(s.still, s.seconds) > (options.rule ?? SLIDESHOW).still).map(s => ({...s, stillShare: share(s.still, s.seconds)}))};
 }
 
-/** The verdict (verdict.mjs): not run with no middle to measure; failed when most of the shots' running time is dead, or nearly all of it still. */
-export const SLIDESHOW_VERDICT = Object.freeze({
-  rules: Object.freeze([
-    Object.freeze({when: Object.freeze({shots: Object.freeze({eq: 0})}), then: 'not run', label: 'no shot has a middle to measure (every moment is a change of picture)'}),
-    Object.freeze({when: Object.freeze({deadShare: Object.freeze({gt: SLIDESHOW.most})}), then: 'failed', label: 'most of the running time inside the shots is dead (held still for more than 3 s at a time): a slideshow'}),
-    Object.freeze({when: Object.freeze({stillShare: Object.freeze({gt: SLIDESHOW.still})}), then: 'failed', label: 'the shots are still nearly all of the time, in stretches of 3 s or less: a deck of slides'}),
-  ]),
-  passed: 'the shots move inside themselves: most of their running time is never held still for more than 3 s',
-});
+/**
+ * The verdict at a pace (verdict.mjs): not run with no middle to measure; failed when more of the shots' running time is
+ * dead than the pace allows (most), or more of it still (still). A lesson's words are the ones it always had.
+ */
+export function slideshowVerdict(pace = PACES.lesson) {
+  const s = `${pace.hold} s`, none = pace.most === 0;
+  return Object.freeze({
+    rules: Object.freeze([
+      Object.freeze({when: Object.freeze({shots: Object.freeze({eq: 0})}), then: 'not run', label: 'no shot has a middle to measure (every moment is a change of picture)'}),
+      Object.freeze({when: Object.freeze({deadShare: Object.freeze({gt: pace.most})}), then: 'failed', label: none ? `the shots hold still for more than ${s} at a time: too slow for its pace` : `most of the running time inside the shots is dead (held still for more than ${s} at a time): a slideshow`}),
+      Object.freeze({when: Object.freeze({stillShare: Object.freeze({gt: pace.still})}), then: 'failed', label: `the shots are still nearly all of the time, in stretches of ${s} or less: a deck of slides`}),
+    ]),
+    passed: none ? `the shots never hold still for more than ${s}` : `the shots move inside themselves: most of their running time is never held still for more than ${s}`,
+  });
+}
+/** The verdict at a lesson's pace: every film without a pace of its own. */
+export const SLIDESHOW_VERDICT = slideshowVerdict();

@@ -837,6 +837,13 @@ measured, not guessed (`footprint-storyreel/slideshow`):
   cover 1.1 % of the frame, and the still cap fails it; where it is the same width (tabular digits) only the glyph
   changes, under 0.25 %, and the shot never moves — all of it dead. The verdict is the same; the reason differs, and the
   record says which.
+- **A film's pace.** The numbers above are a lesson's pace — `hold` 3 s, `most` a half, `still` 85 % — the pace a
+  children's film or a course needs, where a pause is part of teaching. A recipe may name another (`"pace": "promo"`,
+  or its own `{hold, most, still, spare}`): footprint-story/motion's `PACES`, the one table StoryReel's check and
+  StoryDeck share. A promo may not hold still past 0.6 s at all (`most` 0), is still at most 40 % of the time, and its
+  last shot (`spare` 1: an end card) is not measured — Scenario's published numbers for a fast launch film. The verdict
+  says the pace's numbers (`the shots hold still for more than 0.6 s at a time: too slow for its pace`); a film that
+  names none is held to a lesson's, with the words it always had.
 
 It is not the **stale** check, and does not repeat it: stale asks whether anything *new* comes (a scene, a beat, a
 word not on screen a moment before) while the picture moves; this asks whether the picture *moves* between the new
@@ -2671,7 +2678,7 @@ picture as small grey frames, the sound as samples — and reports what a person
 |---|---|
 | `duration` | picture and sound of different lengths; a picture longer or shorter than the film; a length outside the brief (`expect: {seconds, tolerance?}`) |
 | `blank` | a run of one-colour frames the film does not mean (a dip to black is meant) |
-| `flash` | a frame unlike both its neighbours, which are alike — a one-frame glitch |
+| `flash` | a moment (at most `maxFlash`, 0.1 s) unlike the frames on both sides, which are alike — a glitch, a flash frame |
 | `handovers` | a cut that lands a frame early or late; a frame repeated where two segments join |
 | `voice` | words the film times that are not heard in a voiced render (quieter than −50 dBFS) |
 | `lipsync` | mouths that lead or trail the voice beyond what the eye forgives (sound 45 ms ahead or 125 ms behind, ITU-R BT.1359); a mouth moving while nothing is heard; a speaker heard with the mouth shut |
@@ -2772,8 +2779,12 @@ film's runs past what one argument may hold: `-/filter:v` from FFmpeg 7, `-filte
   from the frames read). A picture stored on its side is read as it is shown: `video.width` and `video.height` are the
   shown size, with its `rotation`. A file with sound only refuses: there is no picture to break down.
 - **Cuts, and their kinds.** A hard cut is one frame whose change is a peak: 12 grey levels or more, and 3 times the
-  change of the frames around it. A flash (one frame unlike the frames either side, which are alike) is reported apart
-  and splits no shot. **Fades** are found first, from every run of one colour: the picture fading into it and out of it,
+  change of the frames around it. A flash (a moment of at most 0.1 s, `maxFlash`, unlike the frames either side, which
+  are alike: the picture comes back as it was) is reported apart, once, with its length in frames, and splits no shot;
+  a longer insert is a shot of its own. A cut here is a **picture jump**: the whole frame changes in one frame. In a
+  kinetic-type film that slams a new word in, or flips its background colour, every few frames, each slam is a jump, so
+  it counts far more cuts than its editor would name shots (Scenario's 52 s launch film: 87 jumps, where its makers count
+  about 44 cuts) — read `cutsPerMinute` as how often the picture jumps, not how many shots were edited. **Fades** are found first, from every run of one colour: the picture fading into it and out of it,
   followed as a trend (an eased fade moves too little in a frame to rise every frame), at least 0.2 s long, and covering
   most of the way before its last step (the picture at that step has at most half its spread): so a fade's own last step
   into black, however sudden, is a step of the fade (`fade-step` in the record), never a cut — and a picture that dims a

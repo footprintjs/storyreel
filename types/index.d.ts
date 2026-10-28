@@ -219,6 +219,8 @@ export interface Recipe {
   rubric?: RubricSpec;
   /** The automatic director (footprint-storyreel/director): "on" proposes framing and moods as keys where they land (explicit keys win); "off" or absent, the film as without it. */
   director?: import('./sub/director.js').DirectorSpec;
+  /** How long its picture may sit still (footprint-story/motion · PACES): 'lesson' (the default), 'promo', or its own; the slideshow check holds it to it. */
+  pace?: import('footprint-story/motion').PaceName | {hold: number; most: number; still: number; spare?: number};
   [key: string]: unknown;
 }
 
@@ -472,6 +474,8 @@ export interface Film {
   progression?: readonly ProgressionFinding[];
   /** The recipe's rubric, checked (absent when it names none). */
   rubric?: Rubric;
+  /** The recipe's pace, read (absent when it names none: a lesson's). */
+  pace?: import('footprint-story/motion').Pace;
   /** What the sound asks of the ear: a sound on most changes of picture, or the same cue twice running (listening.mjs). */
   listening: ListeningFinding[];
   /**
