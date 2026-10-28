@@ -13,72 +13,13 @@
  *   lag(body, t, {from})                it lags as the body sets off, swings past as it stops, and settles
  */
 
-/** The named feels. snappy: buttons, leading edges; default: cards, containers; heavy: big type, cameras; playful: pops, stickers. */
-export const FEELS = Object.freeze({
-  snappy: Object.freeze({k: 320, d: 30}),
-  default: Object.freeze({k: 170, d: 26}),
-  heavy: Object.freeze({k: 90, d: 20}),
-  playful: Object.freeze({k: 220, d: 14}),
-});
-export const FEEL_NAMES = Object.freeze(Object.keys(FEELS));
+// The springs themselves — the feels, a spring, its settling time, a pop and a track — are footprint-story/motion's, the
+// one copy a film and a deck share; the cartoon's habits below are StoryReel's own.
+import {readFeel} from 'footprint-story/motion';
+export {FEELS, FEEL_NAMES, readFeel, spring, settleTime, pop, track} from 'footprint-story/motion';
 
 /** A value as a message shows it: a number as itself (NaN, Infinity), anything else as JSON. */
 const shown = v => (typeof v === 'number' ? String(v) : JSON.stringify(v));
-
-/** A feel as given (a name, or {k, d}) → {k, d}; anything else refuses, naming the feels. */
-export function readFeel(feel = 'default') {
-  if (typeof feel === 'string') {
-    if (!Object.hasOwn(FEELS, feel)) throw new Error(`no feel called "${feel}" (the feels are ${FEEL_NAMES.join(', ')}, or {k, d} of your own)`);
-    return FEELS[feel];
-  }
-  if (!(feel && Number.isFinite(feel.k) && Number.isFinite(feel.d) && feel.k > 0 && feel.d > 0)) throw new Error(`a feel is a name (${FEEL_NAMES.join(', ')}) or {k, d}: a stiffness and a damping, both above 0`);
-  return feel;
-}
-
-/** A damped spring from 0 to 1, `t` seconds after it starts (0 before). Under-damped feels overshoot. */
-export function spring(t, feel = 'default') {
-  if (!(t > 0)) return 0;
-  const {k, d} = readFeel(feel), w0 = Math.sqrt(k), zeta = d / (2 * w0);
-  if (zeta < 1) {
-    const wd = w0 * Math.sqrt(1 - zeta * zeta);
-    return 1 - Math.exp(-zeta * w0 * t) * (Math.cos(wd * t) + (zeta * w0 / wd) * Math.sin(wd * t));
-  }
-  return 1 - Math.exp(-w0 * t) * (1 + w0 * t);   // critically damped (and heavier): no overshoot
-}
-
-// settleTime keeps each feel's answer: it scans the spring once, at 1/240 s steps.
-const SETTLE_STEP = 1 / 240, SETTLE_LIMIT = 30, settled = new Map();
-
-/**
- * How long a feel's spring takes to come within `within` of its end and stay there (seconds, to 1/240 s): snappy
- * about 0.4 s, heavy and playful about 0.8 s. What "still moving" means for a spring, which never quite arrives — a
- * camera that eases on a feel is moving until then (attention.mjs, camerawork.mjs).
- */
-export function settleTime(feel = 'default', {within = .005} = {}) {
-  const f = readFeel(feel);
-  if (!(Number.isFinite(within) && within > 0 && within < 1)) throw new Error(`settleTime: within is how near the end counts as arrived, above 0 and below 1 (0.005: half a percent), not ${shown(within)}`);
-  const key = `${f.k}|${f.d}|${within}`;
-  if (!settled.has(key)) {
-    let last = 0;
-    for (let i = 1; i * SETTLE_STEP <= SETTLE_LIMIT; i++) if (Math.abs(1 - spring(i * SETTLE_STEP, f)) > within) last = i;
-    settled.set(key, (last + 1) * SETTLE_STEP);
-  }
-  return settled.get(key);
-}
-
-/** A pop: the scale of something arriving at `at`, 0 → 1 with the feel's overshoot (playful by default). */
-export const pop = (t, at, feel = 'playful') => spring(t - at, feel);
-
-/**
- * A value with several targets, [[time, value], …] in time order: the first value, plus one spring per change
- * starting at its own time — continuous however close the changes come, and still a pure function of t.
- */
-export function track(t, keys, feel = 'default') {
-  if (!Array.isArray(keys) || !keys.length || !keys.every(k => Array.isArray(k) && Number.isFinite(k[0]) && Number.isFinite(k[1]))) throw new Error('track: keys are [[time, value], …] (numbers), at least one');
-  let v = keys[0][1];
-  for (let i = 1; i < keys.length; i++) v += (keys[i][1] - keys[i - 1][1]) * spring(t - keys[i][0], feel);
-  return v;
-}
 
 /**
  * How many frames each drawing holds (a TIMING is a strategy, by name or a number of frames): ones, a new drawing on

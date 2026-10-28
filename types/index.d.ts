@@ -783,10 +783,10 @@ export interface FilmRow { from: number; start: number; paths: string[];
   rewinds?: {from: number; to: number; at: number; until: number} }
 
 /**
- * The film's speech as tracks, for footprint-narration's captionChunks: each spoken scene at its offset on the film clock, its words as
- * shown (number slots in digits); a silent scene has none. Chunk them, and write caption files, with footprint-narration.
+ * The film's speech as tracks, for footprint-story's captionChunks: each spoken scene at its offset on the film clock, its words as
+ * shown (number slots in digits); a silent scene has none. Chunk them, and write caption files, with footprint-story.
  */
-export function spokenTracks(film: Film): import('footprint-narration').Track[];
+export function spokenTracks(film: Film): import('footprint-story').Track[];
 
 export function renderFilm(options: {
   film: Film; storyboard: Storyboard; timings: Timings; narrationDir?: string | null; out: string;

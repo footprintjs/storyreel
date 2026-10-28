@@ -3,7 +3,7 @@
 // word speakers, nothing changes. And captions end a sentence that ends inside a quote.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {captionChunks} from 'footprint-narration';
+import {captionChunks} from 'footprint-story';
 import {makeClock, evenTimings, compileFilm, spokenTracks} from '../src/index.mjs';
 import {mouthAt} from '../src/acting.mjs';
 

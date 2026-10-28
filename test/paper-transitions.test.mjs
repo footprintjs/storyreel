@@ -315,7 +315,7 @@ test('the README\'s table is the catalog: every transition, in order, with its f
     for (const [setting, spec] of Object.entries(tr.params)) {
       assert.ok(settings.includes(`\`${setting}\``), `${name}'s setting ${setting} is in its row`);
       if (spec.name) continue;   // a thing in the picture: required, or "left out"
-      const d = spec.default, want = d === null ? 'null' : spec.point && d[0] === 800 && d[1] === 450 ? 'the centre' : `\`${Array.isArray(d) ? `[${d.join(', ')}]` : d}\``;
+      const d = spec.default, want = d === null ? 'null' : spec.point && (d === 'centre' || (d[0] === 800 && d[1] === 450)) ? 'the centre' : `\`${Array.isArray(d) ? `[${d.join(', ')}]` : d}\``;
       assert.ok(settings.includes(want), `${name}'s ${setting} default, ${want}, is in its row`);
     }
   }

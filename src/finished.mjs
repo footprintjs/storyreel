@@ -19,7 +19,7 @@ import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {createCanvas} from '@napi-rs/canvas';
 import {spawned, startError, ffprobeBeside} from './spawned.mjs';
-import {normSpeech, readCaptions} from 'footprint-narration';
+import {normSpeech, readCaptions} from 'footprint-story';
 import {spokenTracks} from './captions.mjs';
 
 /** The thresholds the checks use, on the mean grey level difference between frames (0–255) and on loudness. */

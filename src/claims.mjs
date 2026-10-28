@@ -11,7 +11,7 @@
  * What the film shows: every line meant to be read (film.lines: titles, footers, list lines, a world's words, guess
  * cards, the push-in caption), the emphasis words, and the captions' shown words (number slots in digits) — and, in
  * the review, every word the picture draws (drawnClaims: a kit's own words, a card's rows, code). The numbers in them
- * are found the way the voice tools find digits (footprint-narration · unsaidDigits, over the text as written), with
+ * are found the way the voice tools find digits (footprint-story · unsaidDigits, over the text as written), with
  * their sign; a digit run right after a cased letter, or after a hyphen that follows one, is part of a name (H2O, MP4,
  * COVID-19, ISO-8601), not a number — but a year after a lower-case word or a time prefix is one ("mid-2024"). Each is
  * read by the language the film is shown in (`film.lang`, numberLocale: de "2,5" is 2.5, en-IN "1,00,000" is 100000);
@@ -31,7 +31,7 @@
  */
 import {existsSync, statSync} from 'node:fs';
 import path from 'node:path';
-import {spokenMap, unsaidDigits, normSpeech} from 'footprint-narration';
+import {spokenMap, unsaidDigits, normSpeech} from 'footprint-story';
 import {insideRoot} from './files.mjs';
 
 const FACT_KEYS = ['value', 'text', 'source'];
@@ -51,7 +51,7 @@ const SIGNS = new Set(['-', '\u2212', '\u2013', '\uff0d']), HYPHENS = new Set(['
 
 /**
  * The numbers a text shows, in order ("One frame takes 16.67 ms at 60 Hz." → ["16.67", "60"]; "−5 °C" → ["−5"]):
- * footprint-narration's digit runs, each with its sign when a minus (or an en dash) stands right before it on its own,
+ * footprint-story's digit runs, each with its sign when a minus (or an en dash) stands right before it on its own,
  * less a run that is part of a name (namedRun) — right after a cased letter (H2O, MP4, v2), or after a hyphen right after
  * one (COVID-19, B-52, ISO-8601, A-1000, UTF-8) unless it is a year after a lower-case word or a time prefix ("mid-2024",
  * "pre-2020", "post-1990" are years, and need a source). A unit written onto a number stays a number ("60Hz", "5km",

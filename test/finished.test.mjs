@@ -8,7 +8,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {createCanvas} from '@napi-rs/canvas';
-import {captionChunks as chunksOf, captionFile, readCaptions} from 'footprint-narration';
+import {captionChunks as chunksOf, captionFile, readCaptions} from 'footprint-story';
 import {compileFilm, evenTimings, paceTimings, renderFilm, makeFilm, cartoonKit, spokenTracks} from '../src/index.mjs';
 import {checkVideo, FINISHED_CHECK_NAMES, FINISHED} from '../src/finished.mjs';
 

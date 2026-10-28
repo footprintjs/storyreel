@@ -3,16 +3,16 @@
  * already has (the voice's forced alignment, or even timings in a silent cut), so they say exactly what
  * is spoken, when it is spoken. A silent scene's directions are never captioned (they are not spoken).
  *
- * Two uses, one set of chunks — footprint-narration's (captionChunks over the film's spoken tracks):
+ * Two uses, one set of chunks — footprint-story's (captionChunks over the film's spoken tracks):
  *   burned in  — short chunks (a few words, broken after punctuation), the word being said highlighted
  *                (layout.mjs draws them through drawCaption)
- *   a file     — WebVTT or SRT beside the video (footprint-narration · captionFile), for players that show their
+ *   a file     — WebVTT or SRT beside the video (footprint-story · captionFile), for players that show their
  *                own captions (YouTube, LinkedIn and X take a file): longer cues, broken at sentences, two lines at most
  */
 import {fitBlock} from './zones.mjs';
 
 /**
- * The film's speech as tracks, for footprint-narration's captionChunks: each spoken scene at its offset on the film
+ * The film's speech as tracks, for footprint-story's captionChunks: each spoken scene at its offset on the film
  * clock, its words as shown (number slots in digits: clock.mjs · makeClock · shownWords). A silent scene is not
  * spoken, so it has no track.
  */

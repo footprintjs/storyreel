@@ -129,7 +129,7 @@ beat may name a phrase either way (`["frame", "takes 16.67 ms"]` and `["frame", 
 seven milliseconds"]` are the same moment); the captions and caption files show `16.67 ms`, timed from the
 first spoken word of the slot to its last. Each `shown` must appear in the narration, in order, and
 `spoken` is words only. `unsaidNumbers(storyboard)` lists digits left without a slot, so a voice tool can
-refuse them before it speaks. The slots are [footprint-narration](https://github.com/footprintjs/footprint-narration)'s
+refuse them before it speaks. The slots are [footprint-story](https://github.com/footprintjs/footprint-story)'s
 (`spokenMap`, `checkSlots`, `shownWords`, `normSpeech`), the package StoryReel shares with StoryDeck — which
 also says, automatically, what a voice should read for the text nobody marked (`autoRules`).
 
@@ -937,7 +937,7 @@ storyboard names, or sit in a scene marked as **example data** (`footprint-story
   every segment that shows it. Beside a real number, a lingering label seems to cover that number too, so the review
   says so (**example data over real numbers**: `an example line lingers into scene real beside real numbers (60):
   erase it before the scene`) — erase the example line before the next scene starts.
-- **The numbers** are found the way the voice tools find digits (footprint-narration's `unsaidDigits`), with their
+- **The numbers** are found the way the voice tools find digits (footprint-story's `unsaidDigits`), with their
   sign — a minus, the minus sign or an en dash standing on its own: "−5 °C" and "–5 °C" are −5, which a fact for `5`
   does not source — less a digit run that is part of a name: right after a cased letter (H2O, MP4, v2), or after a
   hyphen after one (COVID-19, B-52, ISO-8601, A-1000, UTF-8) — unless it is a year (1000–2199) after a lower-case word
@@ -1174,7 +1174,7 @@ await renderFilm({film, storyboard, timings, narrationDir, out: 'out/shorts/teas
 - **Caption files.** `captionFiles: true` writes `captions.vtt` and `captions.srt` beside the video, on
   its clock (a partial render or an intro moves them), in cues of whole sentences on at most two lines —
   YouTube, LinkedIn and X play their own captions from a file, so a landscape version can carry a file
-  instead of burned-in words. The chunks and the files are footprint-narration's (`captionChunks` over the
+  instead of burned-in words. The chunks and the files are footprint-story's (`captionChunks` over the
   film's `spokenTracks(film)`, `captionFile`, `readCaptions`).
 - **Motion blur.** `motionBlur: 4` (or `{subframes, shutter}`) makes each frame the average of that many
   moments over half the frame's time, so a fast push or a whip streaks as a camera's would. It costs one
@@ -3344,7 +3344,7 @@ the default because it rarely does; there is no swap repair.
 | `compileFilm({storyboard, timings, recipe, data?, kits?, theme?, root?, strings?, hostKeys?, record?, reducedMotion?})` | the film: `frame(ctx, t)`, `total`, `clock`, `beats`, `sounds`, `notes`, `camera` and `cameraAt(t)` (the camera moves as played), `reading`, `lines` (every line meant to be read), `shots` (each shot's intent, facts and moments), `changes` (every change of picture), `watching`, `progression` (what does not progress, when a shot answers the five scene questions), `claims` (every number shown, with its source; claims in words), `rows` (the rows of pictures segments are planned from), `moments()`, `regionsAt(t)`, `partsAt(t)`, `pictureAt(t)`, `mouthsAt(t)`, `pointAt(t, x, y)`, `posterAt`, `theme`; with `record: true`, `record` (the compile as a footprintjs run) |
 | `renderFilm({film, storyboard, timings, narrationDir?, out, width?, height?, fps?, intro?, stamp?, from?, to?, poster?, loudness?, layout?, motionBlur?, captionFiles?, quality?, video?})` | the MP4 (FFmpeg), its chapters (one per titled scene), its poster, its loudness (two passes); a version for a platform, motion blur, caption files; the picture in one pass or in cached segments |
 | `compileLayout(film, layout)` · `FORMAT_NAMES` | a format's picture and bands, drawn at any t (`footprint-storyreel/layout` adds `formatOf`, `cropWindow`) |
-| `spokenTracks(film)` | the film's speech as tracks: chunk them with footprint-narration's `captionChunks`, write files with its `captionFile` (`footprint-storyreel/captions` adds `drawCaption`) |
+| `spokenTracks(film)` | the film's speech as tracks: chunk them with footprint-story's `captionChunks`, write files with its `captionFile` (`footprint-storyreel/captions` adds `drawCaption`) |
 | `footprint-storyreel/sounds`: `searchSounds` · `addSound` · `listSounds` · `LICENCES` · `licenceVerdict` · `readLibrary` · `useFound` | found sounds: search a source, fetch one once into the film's sounds/ folder, check what is there; the licence gate's one table |
 | `footprint-storyreel/sounds/openverse`: `openverse({token?, fetch?})` | the Openverse sound source (the only module that talks to Openverse; nothing that draws or renders imports it) |
 | `TRANSITIONS` · `TRANSITION_NAMES` · `transitionCatalog(kits)` · `transitionSheet({catalog?, moments?, width?})` | the transitions a shot can enter with, a kit's own added, on one PNG (`footprint-storyreel/transitions` adds `readEntrance`, `ghostPainter`) |
@@ -3423,7 +3423,7 @@ in [BACKLOG.md](BACKLOG.md).
 | perfect-freehand | MIT | marker strokes |
 | roughjs | MIT | sketched shapes |
 | shiki | MIT | code tokens |
-| footprint-narration | MIT | the spoken text and the captions |
+| footprint-story | MIT | the spoken text and the captions |
 | Caveat (font, bundled) | SIL OFL 1.1 | handwriting |
 | twitter-text 3.1.0 (ported, bundled) | Apache-2.0 | X's count of a post |
 | twemoji-parser 11.0.2 (its emoji list, bundled) | MIT | the emoji X counts as 2 |

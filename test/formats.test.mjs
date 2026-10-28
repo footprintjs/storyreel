@@ -5,10 +5,10 @@ import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {createCanvas} from '@napi-rs/canvas';
 import {compileFilm, evenTimings, renderFilm, makeFilm} from '../src/index.mjs';
-import {captionChunks as chunksOf, captionAt, captionFile, FILE_CHUNKS} from 'footprint-narration';
+import {captionChunks as chunksOf, captionAt, captionFile, FILE_CHUNKS} from 'footprint-story';
 import {spokenTracks} from '../src/captions.mjs';
 
-/** A film's caption chunks: footprint-narration's chunker over the film's spoken tracks. */
+/** A film's caption chunks: footprint-story's chunker over the film's spoken tracks. */
 const captionChunks = (film, options) => chunksOf(spokenTracks(film), options);
 import {compileLayout, cropWindow, formatOf, FORMAT_NAMES} from '../src/layout.mjs';
 import {makePainter, readMotionBlur, readCaptionFiles, partWindow, partTimeline, filmTimeline, timelineText, prepareRender} from '../src/render.mjs';

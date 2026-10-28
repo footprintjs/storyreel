@@ -51,14 +51,13 @@
  * the way a card or a logo would — "enter": {"move": "soft-rise"} — with the move's own seconds and curve.
  */
 import {createCanvas} from '@napi-rs/canvas';
-import {easeNamed, overshoots, EASES} from './ease.mjs';
+import {easeNamed, EASES} from './ease.mjs';
 import {SOUND_NAMES, readSoundChoice} from './sound.mjs';
 import {readMove, moveAt, applyMove, MOVES, MOVE_NAMES, REST} from './moves.mjs';
 import {PAPER_TRANSITIONS as PAPER} from './transitions/paper/index.mjs';
 import {W, H, clamp, smooth, farthest} from './frame.mjs';
-import {readSettings} from './settings.mjs';
+import {TRANSITIONS as SHARED, SECONDS, readTransition, checkTransition as checkShared} from 'footprint-story/motion';
 
-const DIRECTIONS = Object.freeze(['left', 'right', 'top', 'bottom']);
 /** Where a picture that comes FROM a side starts, as a unit offset. */
 const FROM = {left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1]};
 const SHADE = 'rgba(40,32,20,.22)', SHADE_CLEAR = 'rgba(40,32,20,0)', EDGE = 'rgba(40,32,20,.28)';
@@ -241,45 +240,37 @@ function matchCut(ctx, {e, from, to, p, ghost, boxes}) {
   else { drawWith(ctx, arriving, to); if (shown < 1) ghost(1 - shown, c => drawWith(c, leaving, from)); }
 }
 
-const side = fallback => ({oneOf: DIRECTIONS, default: fallback});
-const centre = {point: true, default: [800, 450]};
+/** A shared transition (footprint-story/motion: what it is) with StoryReel's painter for it (how it is drawn on a canvas). */
+const drawn = (name, draw) => ({...SHARED[name], draw});
 
 /** The built-in collection, in the order a browser shows it: by family, the paper ones (transitions/paper/index.mjs) in theirs. */
 export const TRANSITIONS = deepFreeze({
-  cut: {family: 'cut', seconds: 0, ease: 'jump', sound: null, params: {}, draw: null},
-  fade: {family: 'dissolve', seconds: .8, ease: 'inOut', sound: null, params: {}, draw: fade},
-  dip: {family: 'dissolve', seconds: 1, ease: 'inOut', sound: null, params: {color: {color: true, default: '#000000'}}, draw: dip},
+  cut: drawn('cut', null),
+  fade: drawn('fade', fade),
+  dip: drawn('dip', dip),
   cloudBurst: PAPER.cloudBurst,
-  wipe: {family: 'wipe', seconds: .8, ease: 'inOut', sound: 'slide', params: {from: side('left')}, draw: wipe},
-  split: {family: 'wipe', seconds: .8, ease: 'inOut', sound: 'slide', params: {line: {oneOf: ['vertical', 'horizontal'], default: 'vertical'}}, draw: split},
-  clock: {family: 'wipe', seconds: .9, ease: 'inOut', sound: 'slide', params: {}, draw: clockWipe},
+  wipe: drawn('wipe', wipe),
+  split: drawn('split', split),
+  clock: drawn('clock', clockWipe),
   torn: PAPER.torn,
   eraser: PAPER.eraser,
-  iris: {family: 'iris', seconds: .8, ease: 'inOut', sound: 'slide', params: {at: centre}, draw: iris},
+  iris: drawn('iris', iris),
   inkBleed: PAPER.inkBleed,
   ringIris: PAPER.ringIris,
-  push: {family: 'motion', seconds: .7, ease: 'inOut', sound: 'slide', params: {from: side('right')}, draw: push},
-  slide: {family: 'motion', seconds: .7, ease: 'out', sound: 'slide', overshoot: true, params: {from: side('right')}, draw: slide},
-  whip: {family: 'motion', seconds: .4, ease: 'inOut', sound: 'whoosh', params: {from: side('right')}, draw: whip},
+  push: drawn('push', push),
+  slide: drawn('slide', slide),
+  whip: drawn('whip', whip),
   glassSheet: PAPER.glassSheet,
-  zoom: {family: 'zoom', seconds: .6, ease: 'inOut', sound: 'whoosh', params: {at: centre}, draw: zoom},
-  page: {family: 'page', seconds: 1.1, ease: 'inOut', sound: 'slide', params: {}, draw: page},
+  zoom: drawn('zoom', zoom),
+  page: drawn('page', page),
   curl: PAPER.curl,
   fold: PAPER.fold,
-  through: {family: 'match', seconds: 1.2, ease: 'inOut', sound: 'whoosh', params: {region: {name: true}, shape: {oneOf: ['box', 'round'], default: 'box'}}, regions: p => ({from: [p.region]}), draw: goThrough},
-  match: {family: 'match', seconds: 1, ease: 'inOut', sound: null, params: {region: {name: true}, into: {name: true, default: null}}, regions: p => ({from: [p.region], to: [p.into ?? p.region]}), draw: matchCut},
+  through: drawn('through', goThrough),
+  match: drawn('match', matchCut),
   morph: PAPER.morph,
 });
 export const TRANSITION_NAMES = Object.freeze(Object.keys(TRANSITIONS));
-const COMMON = ['type', 'seconds', 'ease', 'sound'];
-/** How long a change of picture may take, in seconds: the one range (an entrance's, a move entrance's, a kit transition's). */
-const SECONDS = Object.freeze([.2, 4]);
 const inRange = s => typeof s === 'number' && s >= SECONDS[0] && s <= SECONDS[1];
-/** The names no setting may take: every entrance's own keys, and `move` (an entrance with a move is a move entrance). */
-const RESERVED = [...COMMON, 'move'];
-/** The setting kinds written as a flag ({point: true}); the others carry their choices or range. */
-const FLAGS = ['point', 'color', 'box', 'name'];
-const DEF_KEYS = ['family', 'seconds', 'ease', 'sound', 'hitAt', 'overshoot', 'params', 'regions', 'draw'];
 
 /** A hard cut: the new shot is there, whole, on the scene's first frame. */
 export const CUT = Object.freeze({type: 'cut', seconds: 0, lead: 0, sound: null, p: Object.freeze({}), at: Object.freeze([800, 450])});
@@ -293,25 +284,13 @@ export const CUT = Object.freeze({type: 'cut', seconds: 0, lead: 0, sound: null,
 export function readEntrance(enter, where, catalog = TRANSITIONS) {
   const e = typeof enter === 'string' ? {type: enter} : enter ?? {type: 'fade'};
   if (e && typeof e === 'object' && !Array.isArray(e) && e.move !== undefined) return readMoveEntrance(e, where);
-  if (!e || typeof e !== 'object' || Array.isArray(e) || typeof e.type !== 'string' || !Object.hasOwn(catalog, e.type)) {
-    const named = typeof e === 'object' && e && typeof e.type === 'string' ? ` (not "${e.type}")` : '';
-    throw new Error(`${where}: enter must be a transition: ${Object.keys(catalog).join(', ')}${named}; or {"move": …}, a move a whole picture can make: ${PICTURE_MOVES.join(', ')}`);
-  }
-  const tr = catalog[e.type], params = tr.params ?? {};
-  if (e.type === 'cut') {
-    if (Object.keys(e).length > 1) throw new Error(`${where}: a cut takes no seconds and no centre`);
-    return CUT;
-  }
-  const allowed = [...COMMON, ...Object.keys(params)];
-  for (const key of Object.keys(e)) if (!allowed.includes(key)) throw new Error(`${where}: enter has unsupported key ${key} (a ${e.type} takes ${allowed.slice(1).join(', ')})`);
-  const seconds = e.seconds ?? tr.seconds;
-  if (!inRange(seconds)) throw new Error(`${where}: enter.seconds must be between ${SECONDS[0]} and ${SECONDS[1]}`);
-  const easeName = e.ease ?? tr.ease, ease = easeNamed(easeName, `${where}: enter.ease`);
-  if (overshoots(easeName) && !tr.overshoot) throw new Error(`${where}: a ${e.type} cannot take the ease "${easeName}" (it goes past the end, and the frame's edge would show); ${Object.entries(catalog).filter(([, t]) => t.overshoot).map(([n]) => n).join(', ')} can`);
+  // What the change is, checked as footprint-story reads it (type, keys, seconds, ease, settings); then what a film adds.
+  const t = readTransition(e, where, {catalog, more: `; or {"move": …}, a move a whole picture can make: ${PICTURE_MOVES.join(', ')}`});
+  if (t.type === 'cut') return CUT;
+  const tr = catalog[t.type], params = tr.params ?? {}, ease = easeNamed(t.ease, `${where}: enter.ease`);
   const sound = entranceSound(e.sound, tr.sound, where);
-  const p = readSettings(params, e, where);
   // Most of the change happens in the silence before the scene's first word.
-  return {type: e.type, seconds, lead: seconds * .75, ease, sound, hitAfter: seconds * reached(ease, tr.hitAt ?? 0), p, draw: tr.draw, regions: tr.regions ?? null, names: Object.keys(params).filter(k => params[k]?.name), at: p.at ?? [800, 450]};
+  return {type: t.type, seconds: t.seconds, lead: t.seconds * .75, ease, sound, hitAfter: t.seconds * reached(ease, tr.hitAt ?? 0), p: t.p, draw: tr.draw, regions: tr.regions ?? null, names: Object.keys(params).filter(k => params[k]?.name), at: t.p.at ?? [800, 450]};
 }
 
 /**
@@ -496,30 +475,16 @@ export function transitionCatalog(kits = []) {
   return catalog;
 }
 
-/** A kit's transition, checked: {family, seconds, ease, sound, hitAt?, overshoot?, params?, draw}. */
+/**
+ * A kit's transition, checked: footprint-story's check of what a transition is ({family, seconds, ease, sound, hitAt?,
+ * overshoot?, params?, regions?}), plus what a film asks of it: a draw, and a sound from the film's sounds.
+ */
 function checkTransition(def, who) {
-  if (!def || typeof def !== 'object' || Array.isArray(def)) throw new Error(`${who} must be {family, seconds, ease, sound, params?, draw}`);
-  for (const key of Object.keys(def)) if (!DEF_KEYS.includes(key)) throw new Error(`${who} has unsupported key ${key} (a transition has ${DEF_KEYS.join(', ')})`);
-  if (typeof def.family !== 'string' || !def.family.trim()) throw new Error(`${who} needs a family (e.g. "wipe"; a browser groups by it)`);
+  const plain = def && typeof def === 'object' && !Array.isArray(def);
+  if (plain && def.sound !== null && !SOUND_NAMES.includes(def.sound)) throw new Error(`${who}: sound must be null or a sound: ${SOUND_NAMES.join(', ')}`);
+  const checked = checkShared(def, who, {extra: ['draw']});
   if (typeof def.draw !== 'function') throw new Error(`${who} needs draw(ctx, {e, from, to, p, ghost, theme, boxes})`);
-  if (!inRange(def.seconds)) throw new Error(`${who}: seconds must be between ${SECONDS[0]} and ${SECONDS[1]}`);
-  easeNamed(def.ease, `${who}: ease`);
-  if (def.sound !== null && !SOUND_NAMES.includes(def.sound)) throw new Error(`${who}: sound must be null or a sound: ${SOUND_NAMES.join(', ')}`);
-  if (def.hitAt !== undefined && !(typeof def.hitAt === 'number' && def.hitAt >= 0 && def.hitAt < 1)) throw new Error(`${who}: hitAt is where in the change its sound hits, the e its draw reaches it at, from 0 (its first moment, the default) to below 1 (e.g. 0.3 for a pop three tenths of the way in)`);
-  if (def.overshoot !== undefined && typeof def.overshoot !== 'boolean') throw new Error(`${who}: overshoot must be true or false`);
-  if (def.regions !== undefined && typeof def.regions !== 'function') throw new Error(`${who}: regions must be p => ({from?: [names], to?: [names]}): the things it looks for in the picture it leaves and the one it arrives at`);
-  if (def.regions === undefined && Object.values(def.params ?? {}).some(spec => spec?.name)) throw new Error(`${who} has a setting that names a thing in the picture, and no regions(p) to look it up: add regions: p => ({from: [p.yourSetting]}) (or to: …)`);
-  const params = def.params ?? {};
-  if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error(`${who}: params must be {name: {oneOf | point | color | number | box, default}}`);
-  for (const [name, spec] of Object.entries(params)) {
-    if (RESERVED.includes(name)) throw new Error(`${who}: a setting may not be called "${name}" (${name === 'move' ? 'an entrance that names a move is a move entrance' : 'every entrance has it'})`);
-    const kinds = ['oneOf', 'point', 'color', 'number', 'box', 'name'].filter(k => spec?.[k] !== undefined);
-    if (kinds.length !== 1 || (FLAGS.includes(kinds[0]) && spec[kinds[0]] !== true) || !(spec.name === true || 'default' in spec)) throw new Error(`${who}: the setting "${name}" must be one of {oneOf: [...]}, {point: true}, {color: true}, {number: [min, max]}, {box: true}, with a default (a colour's may be null: your draw picks one, e.g. the theme's); or {name: true} (a thing in the picture; default: null when it may be left out)`);
-    if (spec.oneOf && !(Array.isArray(spec.oneOf) && spec.oneOf.length && spec.oneOf.every(v => typeof v === 'string'))) throw new Error(`${who}: the setting "${name}" lists its choices as words`);
-    if (spec.number && !(Array.isArray(spec.number) && spec.number.length === 2 && spec.number.every(Number.isFinite) && spec.number[0] < spec.number[1])) throw new Error(`${who}: the setting "${name}" gives number as [min, max]`);
-    if (!(spec.name && spec.default === undefined)) readSettings({[name]: spec}, {type: 'transition'}, who);   // the default must pass its own check
-  }
-  return Object.freeze({...def, params});
+  return checked;
 }
 
 /**

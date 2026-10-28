@@ -7,7 +7,7 @@
  * written in the narration instead ("{hop}": script.mjs): the clock reads what is said — the
  * narration without its marks — and finds each moment by the letters said before it.
  */
-import {normSpeech, checkSlots, findSlot, spokenMap, spokenOffset, shownWords, unsaidDigits} from 'footprint-narration';
+import {normSpeech, checkSlots, findSlot, spokenMap, spokenOffset, shownWords, unsaidDigits} from 'footprint-story';
 import {sceneScript, momentOf, momentFix, shownMark} from './script.mjs';
 
 /** How long one direction may last, in seconds: long enough to see, short enough to stay a beat. */
@@ -27,7 +27,7 @@ export function checkScene(scene, i = 0) {
   if (spoken) {
     if (typeof scene.narration !== 'string') throw new TypeError(`${name}: narration must be the words said, as one string`);
     const script = sceneScript(scene, i);   // its marks (script.mjs): one not as written refuses
-    if (scene.say !== undefined) checkSlotsSaid(script, scene.say, name);   // number slots (footprint-narration), in what is said
+    if (scene.say !== undefined) checkSlotsSaid(script, scene.say, name);   // number slots (footprint-story), in what is said
     return 'spoken';
   }
   if (scene.say !== undefined) throw new Error(`${name}: say is for a spoken scene (what the voice says for a word the captions show); a silent scene says nothing`);
@@ -45,7 +45,7 @@ export function checkScene(scene, i = 0) {
 
 /**
  * A spoken scene's number slots, in what is said (script.mjs · said: its marks out): each shown text whole and in
- * order (footprint-narration · checkSlots), and no moment inside one — the voice says a slot as one run of words, so a
+ * order (footprint-story · checkSlots), and no moment inside one — the voice says a slot as one run of words, so a
  * moment has no word to stand before there. A moment is inside a slot when something the voice says of the slot comes
  * before it: one before "$5", "(16.67 ms)" or "−3 °C" stands before the slot's first word.
  */
@@ -63,7 +63,7 @@ function checkSlotsSaid(script, say, name) {
 /**
  * Number slots: `say: [[shown, spoken], …]` — the captions show `shown` ("16.67 ms"), the voice says `spoken`
  * ("sixteen point six seven milliseconds"). A voice drops or garbles digits, so a number is written for the voice
- * in words and shown on screen in digits. The slots are footprint-narration's (spokenMap, checkSlots): a slot is a
+ * in words and shown on screen in digits. The slots are footprint-story's (spokenMap, checkSlots): a slot is a
  * POSITION — each shown text where it stands whole, in order — and a scene's map is made from them.
  */
 /** What a spoken scene says (script.mjs · said): its narration without its marks — as written when it has none. */

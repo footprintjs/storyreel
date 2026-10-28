@@ -33,7 +33,7 @@ const recipe = {story: {kit: 'whiteboard', items: [
 const timings = evenTimings(storyboard, {wordSeconds: .4, tail: 1});
 const film = await compileFilm({storyboard, recipe, timings, root});
 
-test('the numbers a text shows: footprint-narration\'s digit runs, with their sign, less a digit inside a name', () => {
+test('the numbers a text shows: footprint-story\'s digit runs, with their sign, less a digit inside a name', () => {
   assert.deepEqual(numbersIn('One frame takes 16.67 ms at 60 Hz.'), ['16.67', '60']);
   assert.deepEqual(numbersIn('1,000 sheep by 3:15, (2024)'), ['1,000', '3:15', '2024']);
   assert.deepEqual(numbersIn('H2O, MP4 and v2 are names; 60Hz and 4K are numbers'), ['60', '4'], 'a run right after a cased letter is part of a name; a unit written on stays a number');

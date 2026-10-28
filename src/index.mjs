@@ -20,7 +20,7 @@ export {cartoonKit} from './kits/cartoon/index.mjs';
 export {frameHashes, changedFrames} from './pins.mjs';
 export {contactSheet, transitionSheet} from './sheet.mjs';
 export {compileLayout, FORMAT_NAMES} from './layout.mjs';
-export {spokenTracks} from './captions.mjs';   // chunk them, and write caption files, with footprint-narration
+export {spokenTracks} from './captions.mjs';   // chunk them, and write caption files, with footprint-story
 export {TRANSITIONS, TRANSITION_NAMES, transitionCatalog} from './transitions.mjs';
 export {CAMERA_MOVES, CAMERA_MOVE_NAMES} from './camera.mjs';
 export {readCast, castText, withCast} from './cast.mjs';

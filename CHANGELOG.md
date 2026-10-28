@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **footprint-narration is now footprint-story, and the motion words live there.** StoryReel's narration code comes
+  from `footprint-story` 0.3.0, the same package under its new name — what StoryReel and StoryDeck share. Its new
+  `/motion` door now holds the one copy of the ease table, the springs, the moves, the settings reader and the
+  transitions as data (family, length, ease, sound, settings), so a deck can move the way a film does. StoryReel keeps
+  what draws: every transition's painter, `applyMove`, the paper transitions, and the cartoon's habits (`heldTime`,
+  `follow`, `turnaround`). `footprint-storyreel/ease`, `/moves` and `/motion` export what they did. The slideshow
+  check's hold (3 s), dead share (a half) and still share (0.85) are now read from footprint-story's `lesson` pace — the
+  same numbers. Two refusal texts gain words: a kit transition's setting of the wrong kind now also says a point's
+  default may be `'centre'` (the frame's middle; `iris` and `zoom` use it), and when a kit transition has several
+  faults, which one is named first may differ.
+
 ## 0.23.0 — the automatic director, the stage (places, props and actions as data), scene questions and claim evidence, platform safe zones and doctor
 
 - **The five scene questions** (`footprint-storyreel/progression`). Besides `intent` and `continuity`, a shot (the

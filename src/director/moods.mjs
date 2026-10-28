@@ -15,7 +15,7 @@
  */
 import {ACTING} from '../acting.mjs';
 import {momentOf} from '../script.mjs';
-import {normSpeech} from 'footprint-narration';
+import {normSpeech} from 'footprint-story';
 import {matchLine} from './rules.mjs';
 
 /** The least seconds between two of one person's changes: what a change takes to act (moodAt refuses closer). */

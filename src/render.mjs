@@ -15,7 +15,7 @@ import {createMotionSound, soundsByScene, SOUND_AT, FOUND} from './sound.mjs';
 import {useFound, addCommand, trimOf, AUDIO_ONLY} from './found/index.mjs';
 import {compileLayout, draftSize, formatOf} from './layout.mjs';
 import {filmSpeakers} from './follow.mjs';
-import {captionChunks, captionFile, FILE_CHUNKS, clockText} from 'footprint-narration';
+import {captionChunks, captionFile, FILE_CHUNKS, clockText} from 'footprint-story';
 import {spokenTracks} from './captions.mjs';
 import {effectsUnderVoice, musicUnderVoice} from './listening.mjs';
 import {readSongPlacement, requireOverlap} from './music.mjs';
@@ -217,7 +217,7 @@ export {wholeVideo, checkVideoStrategy} from './whole.mjs';
  * @param motionBlur {subframes, shutter?} (or a number of subframes): each frame is the average of that many moments
  *                   spread over `shutter` (0.5 by default) of the frame's time, so fast moves blur as a camera's would
  * @param captionFiles true (both) or a list of 'vtt' / 'srt': caption files beside the video (captions.vtt,
- *                   captions.srt) on the video's clock, for players that show their own captions (footprint-narration · captionFile)
+ *                   captions.srt) on the video's clock, for players that show their own captions (footprint-story · captionFile)
  * @param video      how the picture is made (a strategy): left out, the film is drawn in pieces kept in a cache beside
  *                   the video (picture.mjs · pictureStrategy: <out folder>/.storyreel/segments/…), and a piece nothing
  *                   that draws it changed is reused; a part (from, to) or an intro is drawn whole. segmentedVideo({...})
