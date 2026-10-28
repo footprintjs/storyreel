@@ -5,7 +5,7 @@
  * or synthetic content" set when the post declares something realistic made with AI (YouTube asks, e.g. for a
  * synthetic voice narrating).
  */
-import {youtubeChapters} from 'footprint-narration';
+import {youtubeChapters} from 'footprint-story';
 
 export default {
   name: 'youtube', label: 'YouTube',
@@ -16,7 +16,7 @@ export default {
   facts: {checked: '2026-10-02', sources: ['https://support.google.com/youtube/answer/9884579', 'https://developers.google.com/youtube/v3/docs/videos#snippet.title', 'https://blog.youtube/news-and-events/disclosing-ai-generated-content']},
   post(post, {chapters, seconds}) {
     const length = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;   // (a part too short is the release's own refusal)
-    const {lines} = youtubeChapters(chapters.map(([at, title]) => ({at, title})), {length});   // footprint-narration's rule
+    const {lines} = youtubeChapters(chapters.map(([at, title]) => ({at, title})), {length});   // footprint-story's rule
     return {title: post.title, description: [post.description, lines.join('\n')].filter(Boolean).join('\n\n'), tags: post.tags, madeForKids: post.audience === 'kids', alteredOrSynthetic: (post.synthetic ?? []).length > 0};
   },
 };

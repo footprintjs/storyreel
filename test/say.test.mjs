@@ -2,12 +2,12 @@
 // is spoken; a beat may name a phrase as shown or as spoken; numbers left as digits are listed.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {captionChunks, captionFile} from 'footprint-narration';
+import {captionChunks, captionFile} from 'footprint-story';
 import {checkScene, spokenText, unsaidNumbers, makeClock, evenTimings, sceneText} from '../src/clock.mjs';
 import {compileFilm, spokenTracks} from '../src/index.mjs';
 import {tempDir} from './tmp.mjs';
 
-/** The words a caption shows for one scene, through the clock (footprint-narration's shownWords over the scene's slots). */
+/** The words a caption shows for one scene, through the clock (footprint-story's shownWords over the scene's slots). */
 const shownWords = (scene, words) => makeClock({scenes: [scene]}, {scenes: [{...evenTimings({scenes: [scene]}).scenes[0], words}]}).shownWords(0);
 
 const scene = {id: 'frame', narration: 'One frame takes 16.67 ms, at 60 Hz.', say: [['16.67 ms', 'sixteen point six seven milliseconds'], ['60 Hz', 'sixty hertz']]};
@@ -119,7 +119,7 @@ test('two slots in one spoken word both show, and the slots after them still col
   assert.equal(capt({id: 'a', narration: 'Score 3-4 then 5 more.', say: [['3', 'three'], ['4', 'four'], ['5', 'five']]}), 'Score 3-4 then 5 more.');
 });
 
-// Review 2026-10-08 (footprint-narration): a scene's own slots, named as the storyboard names them.
+// Review 2026-10-08 (footprint-story): a scene's own slots, named as the storyboard names them.
 test('two scenes with one id each show their own digits', () => {
   const board = {scenes: [{id: 'x', narration: 'At 60 Hz.', say: [['60 Hz', 'sixty hertz']]}, {id: 'x', narration: 'Wait 2 s.', say: [['2 s', 'two seconds']]}]};
   const clock = makeClock(board, evenTimings(board));

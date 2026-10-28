@@ -31,7 +31,7 @@
  * drawn exactly as without it. What is still under the UI (and every named face under it) is the check's to report
  * (zones.mjs · uiFindings).
  */
-import {captionChunks, captionAt} from 'footprint-narration';
+import {captionChunks, captionAt} from 'footprint-story';
 import {spokenTracks, drawCaption, captionFit} from './captions.mjs';
 import {inOut} from './ease.mjs';
 import {FOLLOW, keepWhole, filmSpeakers} from './follow.mjs';

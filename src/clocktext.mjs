@@ -3,7 +3,7 @@
  * for both ways — read from a command's flags (clockSeconds: storyreel part --from 0:12 --to 0:18) and said in a line
  * to read (clockOf: storyreel changes) — so a time a line says can be handed back as a flag.
  */
-import {clockText} from 'footprint-narration';
+import {clockText} from 'footprint-story';
 
 /**
  * Seconds on the film clock as m:ss (h:mm:ss past an hour): rounded down ('floor', the default), up ('ceil'), to the

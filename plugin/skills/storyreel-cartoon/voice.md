@@ -21,7 +21,7 @@ narration as written (they differ where a number is said in words, and where the
 silent scene needs no entry: its directions are timed for you.
 
 `makeFilm` never writes into the voice folder: it paces a copy and leaves it as `<out folder>/narration`, so an out
-folder that overlaps the voice folder is refused. `footprint-narration/voice` (installed with StoryReel) is a
+folder that overlaps the voice folder is refused. `footprint-story/voice` (installed with StoryReel) is a
 voice port with a clip cache keyed by what is said; any engine fits it.
 
 ## Pacing: room for the pictures to land

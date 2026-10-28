@@ -15,6 +15,7 @@
  * that reveals a line every few seconds is never stale and can still be a slide; a world that drifts for ten seconds
  * with nothing new is stale and moves.
  */
+import {PACES} from 'footprint-story/motion';
 import {filmPainter} from './finished.mjs';
 
 /**
@@ -45,7 +46,9 @@ import {filmPainter} from './finished.mjs';
  * font: a glyph of another width shifts the rest of the line (macOS's proportional digits: 1.1 % of the frame — the
  * still cap); one of the same width does not (tabular digits: under `cover` — never moving, all dead). Same verdict.
  */
-export const SLIDESHOW = Object.freeze({width: 160, level: 4, area: .0002, hold: 3, most: .5, cover: .0025, still: .85});
+// hold, most and still are the `lesson` pace of footprint-story/motion (PACES): the one table a film's check and a deck's share.
+const {hold, most, still} = PACES.lesson;
+export const SLIDESHOW = Object.freeze({width: 160, level: 4, area: .0002, hold, most, cover: .0025, still});
 
 /** [a, b) less the change [c0, c1]: a cut (c0 = c1) splits it there, so no step crosses it. */
 const cut = ([a, b], [c0, c1]) => (c1 < a || c0 >= b ? [[a, b]] : [[a, Math.min(b, c0)], [Math.max(a, c1), b]].filter(([x, y]) => y - x > 1e-6));

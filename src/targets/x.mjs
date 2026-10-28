@@ -14,7 +14,7 @@
  * 50 in a post — so the film's chapters go in when there are at most 50 and the post has room for them. X is for
  * people aged 13 and over: a film made for kids goes as a teaser for parents (audience 'general').
  */
-import {clockText} from 'footprint-narration';
+import {clockText} from 'footprint-story';
 import {weightedLength} from './x-count/count.mjs';
 
 /** A post's length as twitter-text 3.1.0 counts it (X's published counter; its TLD list is from 2019): its weighted length (x-count/count.mjs). */

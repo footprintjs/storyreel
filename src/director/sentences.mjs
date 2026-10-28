@@ -10,7 +10,7 @@
  * sentence's first words, as few as name one place in the scene ("Grandad, can you"); words said more than once there
  * are named with nth. A silent scene's sentences are its directions, each named by its words. Pure.
  */
-import {normSpeech, spokenOffset} from 'footprint-narration';
+import {normSpeech, spokenOffset} from 'footprint-story';
 import {sceneScript} from '../script.mjs';
 import {speechIndex, directionTimings} from '../clock.mjs';
 import {wordsOf, endOf} from './rules.mjs';

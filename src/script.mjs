@@ -26,7 +26,7 @@ import {ROLE_TOKEN} from './cast.mjs';
 
 /** A moment's or a speaker's name: a letter, then letters, digits, - or _. */
 const NAME = /^\p{L}[\p{L}\p{M}\p{Nd}_-]*$/u;
-/** What a voice says: letters, their marks and digits (footprint-narration · normSpeech keeps these). */
+/** What a voice says: letters, their marks and digits (footprint-story · normSpeech keeps these). */
 const WORD = /[\p{L}\p{M}\p{N}]/u, ENDS_WORD = /[\p{L}\p{M}\p{N}]$/u, STARTS_WORD = /^[\p{L}\p{M}\p{N}]/u;
 /** The cast's {{role}}, read where it starts (cast.mjs owns its shape). */
 const ROLE = new RegExp(ROLE_TOKEN.source, 'y');

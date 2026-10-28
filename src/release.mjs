@@ -46,7 +46,7 @@
  * Reels −14 LUFS, −1 dBTP), the render's default elsewhere (targetLoudness). Before anything renders, this machine is
  * asked what the renders need (doctor.mjs): a missing encoder or filter refuses in seconds.
  */
-import {readChapters} from 'footprint-narration';
+import {readChapters} from 'footprint-story';
 import {readFileSync, statSync} from 'node:fs';
 import {writeOutput, outputFolder, refuseFolders, securePath} from './files.mjs';
 import {readCaptionFiles} from './render.mjs';
@@ -372,7 +372,7 @@ async function placeThumbnail(adapter, given, poster, dir) {
   refuse(adapter, [{problem: `the poster is over ${(maxBytes / 1e6).toFixed(1)} MB even as a plainer JPEG`, fix: 'give post.thumbnail an image file'}]);
 }
 
-/** A render's chapter lines ("1:05 The middle") → [[seconds, name]], as adapters take them (footprint-narration · readChapters). */
+/** A render's chapter lines ("1:05 The middle") → [[seconds, name]], as adapters take them (footprint-story · readChapters). */
 const chaptersOf = lines => readChapters(lines.join('\n')).map(({at, title}) => [at, title]);
 
 /** The places a crop's edge cuts a kept thing it could not keep whole, from the record's framing: {clipped} or nothing. */

@@ -332,10 +332,10 @@ export type Enter = TransitionName | (string & {}) | ({type: TransitionName | (s
   | {move: MoveName | (string & {}) | Move; seconds?: number; feel?: MoveFeelName | FeelName | Feel; sound?: SoundType | FoundSoundChoice | false; type?: never};
 /**
  * A transition's setting: one of some words, a point, a colour, a number or a box, each with its default (a colour's
- * may be null: the draw picks it, e.g. the theme's); or the name of a thing in the picture (no default: the recipe
- * must give it; default null: it may be left out).
+ * may be null: the draw picks it, e.g. the theme's; a point's may be 'centre': the frame's middle); or the name of a
+ * thing in the picture (no default: the recipe must give it; default null: it may be left out).
  */
-export type TransitionSetting = {oneOf: readonly string[]; default: string} | {point: true; default: readonly [number, number]}
+export type TransitionSetting = {oneOf: readonly string[]; default: string} | {point: true; default: readonly [number, number] | 'centre'}
   | {color: true; default: string | null} | {number: readonly [number, number]; default: number} | {box: true; default: FrameBox}
   | {name: true; default?: string | null};
 /** A box on the 1600×900 frame: [x0, y0, x1, y1]. */
@@ -783,10 +783,10 @@ export interface FilmRow { from: number; start: number; paths: string[];
   rewinds?: {from: number; to: number; at: number; until: number} }
 
 /**
- * The film's speech as tracks, for footprint-narration's captionChunks: each spoken scene at its offset on the film clock, its words as
- * shown (number slots in digits); a silent scene has none. Chunk them, and write caption files, with footprint-narration.
+ * The film's speech as tracks, for footprint-story's captionChunks: each spoken scene at its offset on the film clock, its words as
+ * shown (number slots in digits); a silent scene has none. Chunk them, and write caption files, with footprint-story.
  */
-export function spokenTracks(film: Film): import('footprint-narration').Track[];
+export function spokenTracks(film: Film): import('footprint-story').Track[];
 
 export function renderFilm(options: {
   film: Film; storyboard: Storyboard; timings: Timings; narrationDir?: string | null; out: string;

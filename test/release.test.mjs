@@ -7,7 +7,7 @@ import {loadImage} from '@napi-rs/canvas';
 import {evenTimings} from '../src/index.mjs';
 import {makeRelease, loadTarget, checkAdapter, planProblems, readPost, TARGETS, TARGET_NAMES} from '../src/release.mjs';
 import {xLength} from '../src/targets/x.mjs';
-import {youtubeChapters as chaptersOf} from 'footprint-narration';
+import {youtubeChapters as chaptersOf} from 'footprint-story';
 
 /** YouTube's chapter lines for [[seconds, name]] (the adapter's input) over a video of `length` s. */
 const youtubeChapters = (pairs, length) => chaptersOf(pairs.map(([at, title]) => ({at, title})), {length}).lines;
