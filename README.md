@@ -2668,6 +2668,38 @@ await makeFilm({storyboard, recipe, narrationDir, pacing, out: 'out/film.mp4',
   0.32 s in, a whoosh swells to its middle, a click is at once), never before its scene starts; left out, every sound
   begins on its moment as before. `peakOf(file)` gives the same for a sound file of your own.
 
+### Music first: a film the song carries
+
+`fitToMusic` moves a voiced film's cuts onto the beat; a film with no voice to follow — kinetic type, a montage, captions
+over a track — can be timed by the song instead. `beatTimings` makes its timings from the beat map: each scene lasts
+whole bars (`bars`: 2, or `{"drop": 4, "default": 2}`), the first starting on the song's first downbeat at or after
+`from`; its words (a spoken scene's, or a silent scene's directions) land one per beat in order, `every` beats apart, each
+holding until the next; and each scene's timing carries its beats, which the clock answers (`clock.beats(scene)`). It
+returns where the song starts for the render (`start`, renderFilm's `music.start`). Only what is heard counts — the
+rule `fitToMusic` reads (`musicAt`): the film starts on the first downbeat the song plays, and a word lands only on a
+beat it plays, so a silent intro, a fade-out or a quiet break carries the tracker's grid but never a word. No voice is
+timed this way (a voice cannot hit beats), and pacing such timings refuses: a hold or a tail would take every later
+scene off the beat — give a scene more bars to let it breathe. A silent scene's directions land on beats too, seen and
+never captioned; a mark with no letter is no word. The song's last downbeat closes the last scene, never starts one.
+
+```js
+import {beatMap} from 'footprint-storyreel/beats';
+import {beatTimings} from 'footprint-storyreel/music';
+import {kineticKit} from 'footprint-storyreel/kits/kinetic';
+
+const map = await beatMap('track.wav');                             // 120 BPM, sure; bars every 2 s from 1.0 s
+const {timings, start} = beatTimings(storyboard, map, {bars: 2});   // scenes of two bars; words on beats; start -1.0
+const film = await compileFilm({storyboard, timings, kits: [kineticKit], recipe: {stages: [
+  {type: 'world', scene: 'drop', enter: 'cut', world: {kit: 'kinetic', scene: 'drop', on: 'beats', words: ['LANDS', 'ON', 'THE', 'CUT'], flip: true}}]}});
+await renderFilm({film, storyboard, timings, out: 'out/beat.mp4', music: {file: 'track.wav', start}});   // no voice: silence under the song
+```
+
+A kinetic stage's `on: "beats"` lands its words on its scene's beats, word after word (`every` beats apart; a word with
+its own `at` in among them, the next on the beat after it). Measured on a click track mapped by `beatMap`: every word
+within half a millisecond of a beat. Refused, each naming the fix: an unsure beat map (give `music.bpm`), no bar after
+`from`, a song with too few bars for the scenes, a scene with more words than beats, a kinetic stage on beats in a
+scene with none.
+
 ## Check the finished file
 
 A render can pass every check before it and still come out wrong: a segment joined a frame off, a voice
@@ -2939,7 +2971,8 @@ recipe's coordinates); every `film.beats[i].path` names the entry that asked for
   all its words, so none jumps). `flip` swaps the ground and the ink at every word, `colors` names them, `sound` plays
   one (tap, click, whoosh …) as each lands. Nothing is guessed: a word the voice does not say (a number it says in words,
   a mark, a phrase as one) needs a time of its own (`{"text": "NOW", "at": ["beat", "lands on"]}`) inside its scene, or
-  it refuses naming the fix. Its words reach the reading check from when they can be read (0.2 s after landing);
+  it refuses naming the fix. `"on": "beats"` lands them on the scene's beats instead, in a film timed by its song
+  (Music first, below). Its words reach the reading check from when they can be read (0.2 s after landing);
   `world.words` lists when each lands. `import {kineticKit} from 'footprint-storyreel/kits/kinetic'`.
 
 ```json

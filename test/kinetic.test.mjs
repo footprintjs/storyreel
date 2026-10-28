@@ -41,7 +41,7 @@ test('a word the voice does not say needs a time of its own: {text, at} at its a
 
 test('its spec is checked, each refusal naming the fix', async () => {
   const clock = await clockOf(), bad = (extra) => () => compileKinetic({scene: 'beat', words: ['Every'], ...extra}, clock);
-  assert.throws(bad({styles: 'x'}), /kinetic takes scene, words, style, move, flip, colors, sound, size — not "styles"/);
+  assert.throws(bad({styles: 'x'}), /kinetic takes scene, words, on, every, style, move, flip, colors, sound, size — not "styles"/);
   assert.throws(bad({words: []}), /kinetic words is a list of 1 to 40 words/);
   assert.throws(bad({style: 'bounce'}), /kinetic style is slam or stack/);
   assert.throws(bad({move: 'shake'}), /kinetic move "shake" is not an entrance a whole word makes — name one that is \(slam, pop/);

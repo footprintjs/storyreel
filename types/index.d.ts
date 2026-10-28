@@ -386,6 +386,8 @@ export function transitionSheet(options?: {catalog?: Record<string, Readonly<Bui
 
 export interface Clock {
   total: number;
+  /** A scene's beats on the whole-lesson clock, when its timing carries them (footprint-storyreel/music · beatTimings); none otherwise. */
+  beats(scene: string): readonly number[];
   offsets: number[];
   start(scene: string): number;
   end(scene: string): number;

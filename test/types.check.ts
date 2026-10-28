@@ -711,3 +711,14 @@ declare const kineticClock: import('footprint-storyreel').Clock;
 const kineticWorld = compileKinetic(kineticSpec, kineticClock).texts?.();
 const kits: import('footprint-storyreel').Kit[] = [kineticKit];
 void kineticWorld; void kits;
+
+// music first: timings from a song, words on its beats
+import {beatTimings} from 'footprint-storyreel/music';
+declare const songMap: {beats: number[]; bars: number[]; sure: boolean};
+declare const beatBoard: import('footprint-storyreel').Storyboard;
+const musicFirst = beatTimings(beatBoard, songMap, {bars: {drop: 4, default: 2}, from: 0, every: 1});
+const songStart: number = musicFirst.start;
+declare const beatClock: import('footprint-storyreel').Clock;
+const firstBeats: readonly number[] = beatClock.beats('drop');
+const onBeatsSpec: import('footprint-storyreel/kits/kinetic').KineticSpec = {scene: 'drop', on: 'beats', every: 2, words: ['LANDS']};
+void songStart; void firstBeats; void onBeatsSpec;

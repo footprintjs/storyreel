@@ -9,6 +9,10 @@ export interface KineticSpec {
   /** the scene whose voice the words follow (each lands when it is said, in order) */
   scene?: string;
   words: KineticWord[];
+  /** each word on its spoken word (voice, the default), or word after word on the scene's beats (a film timed by its song: beatTimings) */
+  on?: 'voice' | 'beats';
+  /** with on: "beats", the beats between two words (1) */
+  every?: number;
   /** one word at a time (slam, the default), or building up line under line (stack) */
   style?: 'slam' | 'stack';
   /** the entrance each word makes: a text entrance from the shared table (slam) */

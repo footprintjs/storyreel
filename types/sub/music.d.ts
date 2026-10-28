@@ -36,6 +36,9 @@ export interface MusicCut { scene: string; verdict: 'moved' | 'on-beat' | 'held'
 export const MUSIC: Readonly<{tolerance: number; clear: number; handOver: number; gain: number; fadeOut: number; onBeat: number}>;
 /** The grid a fit cut on (beats.mjs · safeBeats): every beat of a sure map, or only the beats every candidate of an unsure one shares (`beats` of `of` kept), or none when a candidate is unsure of its phase. */
 export interface MusicCutOn { grid: 'every beat' | 'shared' | 'none: a candidate is unsure of its phase'; beats: number; of: number; tempi: readonly number[]; unsure?: readonly number[] }
+/** Music first: timings from a song — each scene whole bars, its words on its beats, its beats carried for clock.beats; start places the song for renderFilm. */
+export function beatTimings(storyboard: Storyboard, beats: {beats: readonly number[]; bars: readonly number[]; sure?: boolean; verdict?: string},
+  options?: {bars?: number | Record<string, number>; from?: number; every?: number}): {timings: Timings; start: number; from: number; bars: {scene: string; bars: number; seconds: number}[]};
 /**
  * Fit a film to a song: scene starts onto a beat within the tolerance — each scene's length changed by at most it, and
  * never below its last word, its latest keyed moment or the lead of the entrance after it (give the recipe and kits) —

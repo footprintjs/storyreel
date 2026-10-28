@@ -324,6 +324,8 @@ export function makeClock(board, timings) {
     shownWords: i => shownWords(maps[i], timings.scenes[i].words ?? []),
     /** The words said in scene `id`, on the whole-lesson clock: [{text, start, end}] (none in a silent scene). */
     words: id => said[sceneIndex(id)].map(({text, start, end, speaker, own}) => Object.freeze({text, start, end, ...(own ? {speaker} : {})})),
+    /** Scene `id`'s beats on the whole-lesson clock, when its timing carries them (music.mjs · beatTimings): none otherwise. */
+    beats: id => { const i = sceneIndex(id); return Object.freeze((timings.scenes[i].beats ?? []).map(b => offsets[i] + b)); },
     /**
      * Who is saying a word at t: {scene, speaker, word, start, end} (speaker: the storyboard scene's `speaker`,
      * or null; start/end: the word's, on the whole-lesson clock), or null between words and in silent scenes —
