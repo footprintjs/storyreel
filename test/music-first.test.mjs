@@ -33,9 +33,9 @@ test('the clock knows a scene\'s beats on the film\'s clock; timings without bea
 
 test('refusals name the fix: an unsure beat, no bar left, too many words, bars and every out of range', () => {
   assert.throws(() => beatTimings(storyboard, {...song, sure: false, verdict: 'tempo-close'}), /the song's beat is unsure \(tempo-close\) — give its tempo \(music\.bpm\) when you map it, or choose a song with a clearer beat/);
-  assert.throws(() => beatTimings(storyboard, song, {from: 40}), /the song has no bar at or after 40 s \(its last starts at 31\.00 s\) — start earlier \(from\)/);
+  assert.throws(() => beatTimings(storyboard, song, {from: 40}), /the song plays no bar at or after 40 s \(its last starts at 31\.00 s\) — start earlier \(from\)/);
   assert.throws(() => beatTimings(storyboard, song, {bars: 8}), /the song runs out of bars at scene "drop" \(\d+ left, it asks 8\) — give the scenes fewer bars, or start earlier \(from\)/);
-  assert.throws(() => beatTimings(storyboard, song, {bars: 1, every: 2}), /scene "drop" has 6 words and 2 beats to land them on \(1 bar, a word every 2 beats\) — give it more bars, or fewer words/);
+  assert.throws(() => beatTimings(storyboard, song, {bars: 1, every: 2}), /scene "drop" has 6 words and 2 beats the song plays to land them on \(1 bar, a word every 2 beats\) — give it more bars, or fewer words/);
   assert.throws(() => beatTimings(storyboard, song, {bars: {open: 1}}), /scene "drop" lasts a whole number of bars, 1–64/);
   assert.throws(() => beatTimings(storyboard, song, {every: 0}), /every is the beats between two words, a whole number 1–8/);
   assert.throws(() => beatTimings(storyboard, {beats: []}), /beats is the song's beat map \(beatMap\(file\)\), with its beats and bars/);
@@ -55,4 +55,38 @@ test('a kinetic stage lands its words on the beats: word after word, every N bea
   assert.throws(() => compileKinetic({scene: 'drop', on: 'beats', words: ['A']}, voiced), /scene "drop" has no beats — time the film by its song \(footprint-storyreel\/music · beatTimings\), or land the words on the voice \(on: "voice"\)/);
   assert.throws(() => compileKinetic({scene: 'drop', every: 2, words: ['lands']}, voiced), /kinetic every counts beats — set on: "beats" too, or leave every out/);
   assert.throws(() => compileKinetic({scene: 'drop', on: 'drums', words: ['lands']}, voiced), /kinetic on is "voice" \(each word as it is said\) or "beats"/);
+});
+
+test('only what is heard counts: the film starts on the first downbeat the song plays; a word never lands in a quiet break', async () => {
+  // the song is silent before 5 s and in 9–12 s: its hits (what is heard) say so, though the tracker's grid runs on. A
+  // beat within one beat of a hit still counts as heard (beats.mjs · musicAt, as fitToMusic reads it): the break's first
+  // beat still rings, its middle is silent
+  const hits = song.beats.filter((t) => t >= 5 && !(t >= 9 && t < 12));
+  const heard = {...song, hits};
+  const r = beatTimings(storyboard, heard, {bars: {open: 1, drop: 3, default: 2}});
+  assert.equal(r.from, 5, 'not the silent bars at 1 and 3 s');
+  assert.equal(r.start, -5);
+  const drop = r.timings.scenes[1];   // 7–13 s on the song: its beats from 9.5 s to 11 s are quiet
+  assert.deepEqual(drop.beats, [0, .5, 1, 1.5, 2, 4.5, 5, 5.5], 'the quiet beats carry no word, and are not the scene\'s beats');
+  assert.deepEqual(drop.words.map((w) => w.start), [0, .5, 1, 1.5, 2, 4.5], 'the sixth word waits for the song to come back');
+  assert.throws(() => beatTimings(storyboard, heard, {bars: 1}), /scene "drop" has 6 words and 4 beats the song plays to land them on/);
+});
+
+test('a mark with no letter is no word; a silent scene\'s words are directions, never captioned; pacing refuses', async () => {
+  const board = {title: 'M', scenes: [{id: 'open', narration: 'Every — beat'}, {id: 'card', silent: [['the logo', 1]]}]};
+  const {timings} = beatTimings(board, song, {bars: 1});
+  assert.deepEqual(timings.scenes[0].words.map((w) => w.text), ['Every', 'beat']);
+  assert.equal(timings.scenes[1].alignment.method, 'directions');
+  const {spokenTracks} = await import('../src/captions.mjs');
+  const film = await compileFilm({storyboard: board, timings, recipe: {story: {kit: 'kinetic', scene: 'open', on: 'beats', words: ['EVERY']}}, kits: [kineticKit]});
+  assert.equal(spokenTracks(film).length, 1, 'the silent card makes no caption');
+  const {paceTimings} = await import('../src/pacing.mjs');
+  assert.throws(() => paceTimings(board, timings, {holds: [], sceneTail: .8}), /pacing: these timings are the song's \(beatTimings\): each scene is whole bars, and a hold or a tail would take the film off the beat — leave pacing out/);
+});
+
+test('no rounding adds up: a hundred scenes later, a scene still starts on its bar', () => {
+  const odd = {sure: true, beats: Array.from({length: 404}, (_, i) => 1 + i * .2500833), bars: Array.from({length: 101}, (_, i) => 1 + i * 1.0003333)};
+  const board = {title: 'Long', scenes: Array.from({length: 100}, (_, i) => ({id: `s${i}`, narration: 'beat'}))};
+  const clock = makeClock(board, beatTimings(board, odd, {bars: 1}).timings);
+  assert.ok(Math.abs(clock.start('s99') - (odd.bars[99] - odd.bars[0])) < .0006, `scene 99 starts ${clock.start('s99')} s in, its bar ${odd.bars[99] - odd.bars[0]}`);
 });

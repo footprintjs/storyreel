@@ -164,7 +164,13 @@ export function shiftWords(words, plan) {
  * film read from a voice folder without touching its audio (the review tools) has the rendered film's
  * clock. Pure.
  */
+/** Timings made from a song (music.mjs · beatTimings) are whole bars: a hold or a tail would take the film off the beat. */
+function refuseBeatTimings(timings) {
+  if (timings?.provider === 'beats') throw new Error('pacing: these timings are the song\'s (beatTimings): each scene is whole bars, and a hold or a tail would take the film off the beat — leave pacing out, and give a scene more bars to let it breathe');
+}
+
 export function paceTimings(board, timings, pacing) {
+  refuseBeatTimings(timings);
   validatePacing({voiceSpeed: 1, ...pacing}, board);
   timings = withDirections(board, timings);
   const scenes = board.scenes.map((scene, index) => {
@@ -217,6 +223,7 @@ async function silentAudio(runDir, scene, timing, rate) {
  */
 export async function applyPacing({runDir, board, timings, pacing}) {
   runDir = securePath(runDir);   // the voice folder's REAL path, nothing on the way another user could rearrange (files.mjs · securePath)
+  refuseBeatTimings(timings);
   validatePacing(pacing, board);
   timings.scenes = withDirections(board, timings).scenes;
   const records = [], rate = await voiceRate(runDir, board, timings);

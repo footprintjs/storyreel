@@ -2675,8 +2675,12 @@ over a track — can be timed by the song instead. `beatTimings` makes its timin
 whole bars (`bars`: 2, or `{"drop": 4, "default": 2}`), the first starting on the song's first downbeat at or after
 `from`; its words (a spoken scene's, or a silent scene's directions) land one per beat in order, `every` beats apart, each
 holding until the next; and each scene's timing carries its beats, which the clock answers (`clock.beats(scene)`). It
-returns where the song starts for the render (`start`, renderFilm's `music.start`). No voice is timed this way: a
-voice cannot hit beats.
+returns where the song starts for the render (`start`, renderFilm's `music.start`). Only what is heard counts — the
+rule `fitToMusic` reads (`musicAt`): the film starts on the first downbeat the song plays, and a word lands only on a
+beat it plays, so a silent intro, a fade-out or a quiet break carries the tracker's grid but never a word. No voice is
+timed this way (a voice cannot hit beats), and pacing such timings refuses: a hold or a tail would take every later
+scene off the beat — give a scene more bars to let it breathe. A silent scene's directions land on beats too, seen and
+never captioned; a mark with no letter is no word. The song's last downbeat closes the last scene, never starts one.
 
 ```js
 import {beatMap} from 'footprint-storyreel/beats';
