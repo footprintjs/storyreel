@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.24.0 — motion and narration come from footprint-story
 
 - **footprint-narration is now footprint-story, and the motion words live there.** StoryReel's narration code comes
   from `footprint-story` 0.3.0, the same package under its new name — what StoryReel and StoryDeck share. Its new
