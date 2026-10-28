@@ -2,7 +2,7 @@ import type {VideoProbe} from '../index.js';
 
 /** The thresholds the verdicts use (grey differences and spreads are mean grey levels, 0–255, on frames read `width` wide). */
 export interface BreakdownThresholds {
-  width: number; cutJump: number; cutRatio: number; flashLasting: number; blank: number; minFade: number; maxFade: number; maxHold: number;
+  width: number; cutJump: number; cutRatio: number; flashLasting: number; /** a flash lasts at most this long (s, 0.1) */ maxFlash: number; blank: number; minFade: number; maxFade: number; maxHold: number;
   gradualFloor: number; gradualFrames: number; minChange: number; coherence: number; mix: number; moved: number; maxGradual: number;
   stillCell: number; minPan: number; explained: number; share: number; textArea: number; logoShots: number; logoShare: number; onBeat: number; closeTempo: number; stillWidth: number; maxCandidates: number;
 }
@@ -75,7 +75,8 @@ export interface BreakdownSpec {
   /** what the reader should know before trusting the times (a varying frame rate) */ warnings: string[];
   shots: BreakdownShot[];
   transitions: BreakdownTransition[];
-  flashes: {at: number; frame: number; why: Why}[];
+  /** each flash once: its first frame, and how long it lasts in frames of the rate read */
+  flashes: {at: number; frame: number; frames: number; why: Why}[];
   pacing: {shots: number; median: number; mean: number; shortest: {seconds: number; shot: number}; longest: {seconds: number; shot: number}; cutsPerMinute: number; transitions: Partial<Record<TransitionKind, number>>};
   motion: {shots: {still: number; camera: number; inside: number}; grid: number[][]; curve: {t: number; energy: number}[]};
   text: {heuristic: string; shots: number[]};

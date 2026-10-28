@@ -34,7 +34,8 @@ export interface FindingCheck {label: string; why?: string; when(scope: any): bo
  */
 export interface VerdictCheck {label: string; why?: string; notRun?: string; when(scope: any): boolean;
   measure(review: Review): {measured: Record<string, unknown>; hits?: {kind: string; t: number; what: string}[]};
-  verdict: VerdictRules; summary?(measured: any): string}
+  /** its rules — or a function of the film giving them (the slideshow's follow the film's pace) */
+  verdict: VerdictRules | ((film: import('../index.js').Film) => VerdictRules); summary?(measured: any): string}
 export type ReviewCheck = FindingCheck | VerdictCheck;
 /** The built-in checks; slideshow, geometry and claims answer with a verdict. */
 /**

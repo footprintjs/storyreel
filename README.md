@@ -2678,7 +2678,7 @@ picture as small grey frames, the sound as samples — and reports what a person
 |---|---|
 | `duration` | picture and sound of different lengths; a picture longer or shorter than the film; a length outside the brief (`expect: {seconds, tolerance?}`) |
 | `blank` | a run of one-colour frames the film does not mean (a dip to black is meant) |
-| `flash` | a moment (at most `maxFlash`, 0.1 s) unlike the frames on both sides, which are alike — a glitch, a flash frame |
+| `flash` | a frame unlike both its neighbours, which are alike — a one-frame glitch |
 | `handovers` | a cut that lands a frame early or late; a frame repeated where two segments join |
 | `voice` | words the film times that are not heard in a voiced render (quieter than −50 dBFS) |
 | `lipsync` | mouths that lead or trail the voice beyond what the eye forgives (sound 45 ms ahead or 125 ms behind, ITU-R BT.1359); a mouth moving while nothing is heard; a speaker heard with the mouth shut |
@@ -2783,7 +2783,7 @@ film's runs past what one argument may hold: `-/filter:v` from FFmpeg 7, `-filte
   are alike: the picture comes back as it was) is reported apart, once, with its length in frames, and splits no shot;
   a longer insert is a shot of its own. A cut here is a **picture jump**: the whole frame changes in one frame. In a
   kinetic-type film that slams a new word in, or flips its background colour, every few frames, each slam is a jump, so
-  it counts far more cuts than its editor would name shots (Scenario's 52 s launch film: 87 jumps, where its makers count
+  it counts far more cuts than its editor would name shots (Scenario's 52 s launch film: 88 jumps, where its makers count
   about 44 cuts) — read `cutsPerMinute` as how often the picture jumps, not how many shots were edited. **Fades** are found first, from every run of one colour: the picture fading into it and out of it,
   followed as a trend (an eased fade moves too little in a frame to rise every frame), at least 0.2 s long, and covering
   most of the way before its last step (the picture at that step has at most half its spread): so a fade's own last step

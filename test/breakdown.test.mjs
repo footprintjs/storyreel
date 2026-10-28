@@ -286,6 +286,16 @@ test('a flash of a few frames — the picture back as it was within 0.1 s — is
   assert.deepEqual(spec.transitions.filter(t => t.kind === 'cut').map(t => t.frame), [120, 132], 'the long one: a shot of its own, cut in and out');
 });
 
+test('a picture that drifts away and is cut back from is a cut, not a flash: a flash starts and ends with a jump', {skip}, async () => {
+  // 60 a second: a bar grows across the frame, a little each frame (about 9 grey levels: no frame's change a cut's 12), for 0.1 s, then the
+  // picture cuts back to how it was before the bar — read by the picture alone a flash; it never jumped in
+  const file = path.join(dir, 'drift.mp4');
+  ffmpeg(['-f', 'lavfi', '-i', `nullsrc=s=320x180:r=60:d=2,geq=lum='if(between(N\\,54\\,59)*lt(X\\,W*0.05*(N-53))\\,235\\,90)+20*sin(X/7)':cb=128:cr=128`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file]);
+  const {spec} = await breakdown(file, {out: path.join(dir, 'drift')});
+  assert.deepEqual(spec.flashes, []);
+  assert.deepEqual(spec.transitions.filter(t => t.kind === 'cut').map(t => t.frame), [60]);
+});
+
 test('variable-rate cut times land on the frame shown at that time — after a dropped frame, and when the picture starts late', {skip}, async () => {
   // 30 a second with every third frame dropped (nominal 30, average 20): the new picture's first frame is at 1.833 s.
   const dropped = path.join(dir, 'dropped.mp4'), late = path.join(dir, 'late.mp4');

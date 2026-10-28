@@ -298,7 +298,8 @@ const findCutsStage = run => s => {
 const findGradualStage = run => s => {
   run.cuts = decided(s, 'cutVerdicts', ['verdict']);
   run.breaks = new Set();
-  for (const c of run.cuts) { if (c.verdict === 'cut') run.breaks.add(c.frames[1]); if (c.verdict === 'flash') [c.flashFrame, c.flashEnd].forEach(x => run.breaks.add(x)); }
+  // a flash breaks at every frame of it, its own and the one the picture comes back on: no gradual change is read inside one
+  for (const c of run.cuts) { if (c.verdict === 'cut') run.breaks.add(c.frames[1]); if (c.verdict === 'flash') for (let x = c.flashFrame; x <= c.flashEnd; x++) run.breaks.add(x); }
   s.breaks = run.breaks.size;
   s.gradualCandidates = bounded(gradualCandidates(run.footage, run.breaks, run.fades, run.o.t), 'stretches could be gradual changes', 'thresholds.gradualFloor', run.o.t.maxCandidates);
 };
