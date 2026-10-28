@@ -13,7 +13,7 @@ import {readFileSync, existsSync} from 'node:fs';
 import {writeOutput, securePath} from './files.mjs';
 import path from 'node:path';
 import {flowChart, narrative, decide} from 'footprintjs';
-import {makeClock} from './clock.mjs';
+import {makeClock, checkScene, spokenText} from './clock.mjs';
 import {phrasesIn} from './anchors.mjs';
 import {firstAtOrAfter} from './dsp.mjs';
 import {hashOf, hashBytes} from './hash.mjs';
@@ -315,4 +315,46 @@ export function fitVoice(runDir, before, after) {
     writeOutput(file, writeWav(wav, out));   // renamed onto its name: a link there is replaced, never written through (files.mjs · writeOutput)
     return {...t, duration: round(was.duration + (keep - frames) / wav.rate)};
   })};
+}
+
+/**
+ * Music first: a film timed by its song. Each scene lasts whole bars (`bars`: a number for every scene, or {scene: n,
+ * default?}), the first starting on the song's first downbeat at or after `from` (song seconds), the next where the
+ * last one's bars end; each word — a spoken scene's, or a silent one's directions — lands on a beat of its scene, one
+ * per beat in order (`every` beats apart), and holds until the next. Each scene's timing carries its beats (scene
+ * seconds), for clock.beats(scene): what a kinetic stage lands its words on ("on": "beats"). No voice is timed this way
+ * — a voice cannot hit beats — so it is for a film the song carries: kinetic type, captions, a montage.
+ *
+ * beats: the song's beat map (beats.mjs · beatMap): its beats and bars, on the song's clock; an unsure map refuses (give
+ * music.bpm, or a song with a clearer beat). Returns {timings, start: the film second the song's first second plays at
+ * (renderFilm's music.start), from: the song second the film starts at, bars: [{scene, bars, seconds}]}.
+ */
+export function beatTimings(storyboard, beats, {bars = 2, from = 0, every = 1} = {}) {
+  const who = 'beatTimings';
+  if (!Array.isArray(beats?.beats) || !Array.isArray(beats?.bars)) throw new Error(`${who}: beats is the song's beat map (beatMap(file)), with its beats and bars in seconds`);
+  if (beats.sure === false) throw new Error(`${who}: the song's beat is unsure (${beats.verdict ?? 'two tempi close'}) — give its tempo (music.bpm) when you map it, or choose a song with a clearer beat`);
+  if (!(Number.isFinite(from) && from >= 0)) throw new Error(`${who}: from is the song second to start at, 0 or more, not ${JSON.stringify(from)}`);
+  if (!(Number.isInteger(every) && every >= 1 && every <= 8)) throw new Error(`${who}: every is the beats between two words, a whole number 1–8, not ${JSON.stringify(every)}`);
+  const scenes = storyboard?.scenes ?? [];
+  const barsOf = id => {
+    const n = typeof bars === 'number' ? bars : bars?.[id] ?? bars?.default;
+    if (!(Number.isInteger(n) && n >= 1 && n <= 64)) throw new Error(`${who}: scene "${id}" lasts a whole number of bars, 1–64 (bars: 2, or {"${id}": 4, "default": 2}), not ${JSON.stringify(n)}`);
+    return n;
+  };
+  let bar = beats.bars.findIndex(t => t >= from - 1e-9);
+  if (bar < 0) throw new Error(`${who}: the song has no bar at or after ${from} s (its last starts at ${beats.bars.at(-1)?.toFixed(2) ?? '—'} s) — start earlier (from)`);
+  const filmStart = beats.bars[bar], out = [], made = [];
+  for (const scene of scenes) {
+    const kind = checkScene(scene), n = barsOf(scene.id);
+    if (bar + n >= beats.bars.length) throw new Error(`${who}: the song runs out of bars at scene "${scene.id}" (${beats.bars.length - 1 - bar} left, it asks ${n}) — give the scenes fewer bars, or start earlier (from)`);
+    const a = beats.bars[bar], b = beats.bars[bar + n], inside = beats.beats.filter(t => t >= a - 1e-9 && t < b - 1e-9).map(t => +(t - a).toFixed(3));
+    const texts = (kind === 'silent' ? scene.silent.map(([text]) => text).join(' ') : spokenText(scene)).split(/\s+/).filter(Boolean);
+    const slots = inside.filter((_, k) => k % every === 0), duration = +(b - a).toFixed(3);
+    if (texts.length > slots.length) throw new Error(`${who}: scene "${scene.id}" has ${texts.length} words and ${slots.length} beats to land them on (${n} bar${n === 1 ? '' : 's'}${every > 1 ? `, a word every ${every} beats` : ''}) — give it more bars, or fewer words`);
+    const words = texts.map((text, k) => ({text, start: slots[k], end: k + 1 < texts.length ? slots[k + 1] : duration}));
+    out.push({id: scene.id, duration, words, beats: inside, alignment: {status: 'available', method: 'beats'}});
+    made.push({scene: scene.id, bars: n, seconds: duration});
+    bar += n;
+  }
+  return {timings: {provider: 'beats', scenes: out}, start: +(-filmStart).toFixed(3), from: filmStart, bars: made};
 }

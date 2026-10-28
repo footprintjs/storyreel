@@ -7,6 +7,8 @@
  *   {"type": "world", "scene": "beat", "world": {"kit": "kinetic", "scene": "beat", "words": ["Every", "beat", "on", "cut"]}}
  *   {"kit": "kinetic", "scene": "beat", "words": ["Every", {"text": "BEAT", "at": ["beat", "on the beat"]}], "style": "stack", "flip": true}
  *
+ * on      "voice" (the default): each word on its spoken word; "beats": word after word on the scene's beats (a film timed
+ *         by its song: footprint-storyreel/music · beatTimings), `every` beats apart (1)
  * style   "slam" (the default): one word at a time, as big as it fits; "stack": the words build up, line under line,
  *         the earlier ones a little dimmer
  * move    the entrance each word makes (slam): a move from the shared table whose kind is entrance and use is text
@@ -21,7 +23,7 @@ import {SOUND_NAMES} from '../../sound.mjs';
 
 export const KINETIC = Object.freeze({size: 480, colors: Object.freeze(['#f3eee3', '#1a1a1a']), font: '"Avenir Next", Arial, sans-serif', fit: .86, line: 1.02, dim: .45, most: 40});
 const STYLES = Object.freeze(['slam', 'stack']);
-const KEYS = Object.freeze(['kit', 'scene', 'words', 'style', 'move', 'flip', 'colors', 'sound', 'size']);
+const KEYS = Object.freeze(['kit', 'scene', 'words', 'on', 'every', 'style', 'move', 'flip', 'colors', 'sound', 'size']);
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 /** A word as a reader and the voice compare it: its letters, their marks (a vowel sign is part of its word) and digits, lower case. */
 const bare = (s) => String(s).normalize('NFC').toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, '');
@@ -46,7 +48,11 @@ function readSpec(spec, where) {
   const size = spec.size ?? KINETIC.size;
   if (!(Number.isFinite(size) && size >= 24 && size <= 600)) throw new Error(`${where}: kinetic size is the largest a word is drawn, 24 to 600 px, not ${JSON.stringify(spec.size)}`);
   if (spec.flip !== undefined && typeof spec.flip !== 'boolean') throw new Error(`${where}: kinetic flip is true or false`);
-  return {words, style, move, colors, flip: spec.flip === true, sound: spec.sound ?? null, size, scene: spec.scene ?? null};
+  const on = spec.on ?? 'voice', every = spec.every ?? 1;
+  if (on !== 'voice' && on !== 'beats') throw new Error(`${where}: kinetic on is "voice" (each word as it is said) or "beats" (word after word on the scene's beats), not ${JSON.stringify(spec.on)}`);
+  if (!(Number.isInteger(every) && every >= 1 && every <= 8)) throw new Error(`${where}: kinetic every is the beats between two words, a whole number 1–8, not ${JSON.stringify(spec.every)}`);
+  if (spec.every !== undefined && on !== 'beats') throw new Error(`${where}: kinetic every counts beats — set on: "beats" too, or leave every out`);
+  return {words, on, every, style, move, colors, flip: spec.flip === true, sound: spec.sound ?? null, size, scene: spec.scene ?? null};
 }
 
 /**
@@ -58,6 +64,7 @@ const anchorLike = (a) => (Array.isArray(a) ? a.length >= 2 && a.length <= 3 && 
   : a && typeof a === 'object' && typeof a.scene === 'string' && typeof a.phrase === 'string');
 
 function landings(s, clock, where) {
+  if (s.on === 'beats') return onBeats(s, clock, where);
   const said = s.scene === null ? [] : clock.words(s.scene);
   let from = 0;
   return s.words.map((w, i) => {
@@ -78,6 +85,31 @@ function landings(s, clock, where) {
     }
     from = k + 1;
     return {text: text.trim(), at: said[k].start};
+  });
+}
+
+/**
+ * When each word lands on the scene's beats (clock.beats: a film timed by its song): word after word, `every` beats
+ * apart; a word written {text, at} at its anchor, the words after it on the beats after that.
+ */
+function onBeats(s, clock, where) {
+  if (s.scene === null) throw new Error(`${where}: kinetic on "beats" lands the words on a scene's beats — name the scene (scene)`);
+  const beats = typeof clock.beats === 'function' ? clock.beats(s.scene) : [];
+  if (!beats.length) throw new Error(`${where}: kinetic on "beats": scene "${s.scene}" has no beats — time the film by its song (footprint-storyreel/music · beatTimings), or land the words on the voice (on: "voice")`);
+  let next = 0;
+  return s.words.map((w, i) => {
+    const text = typeof w === 'string' ? w : w?.text;
+    if (typeof text !== 'string' || !text.trim()) throw new Error(`${where}: kinetic words[${i}] is "text" or {text, at}, not ${JSON.stringify(w)}`);
+    if (typeof w === 'object' && w.at !== undefined) {
+      if (!anchorLike(w.at)) throw new Error(`${where}: kinetic word "${text}": at is an anchor, ["scene", "phrase"] (or ["scene", "phrase", seconds after]) — not ${JSON.stringify(w.at)}`);
+      const at = clock.at(w.at);
+      next = beats.findIndex(b => b > at + 1e-9); if (next < 0) next = beats.length;
+      return {text: text.trim(), at};
+    }
+    if (next >= beats.length) throw new Error(`${where}: kinetic word "${text}" has no beat left in scene "${s.scene}" (${beats.length} beats, a word every ${s.every}) — give the scene more bars, or fewer words`);
+    const at = beats[next];
+    next += s.every;
+    return {text: text.trim(), at};
   });
 }
 

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Music first: `beatTimings` (`footprint-storyreel/music`).** A film the song carries — kinetic type, a montage,
+  captions over a track — timed from the song's beat map: each scene whole bars from the first downbeat at or after
+  `from`, its words one per beat (`every` beats apart), its beats carried on the clock (`clock.beats(scene)`, new), and
+  `start` returned for renderFilm's music. A kinetic stage's `"on": "beats"` (with `every`) lands its words on its
+  scene's beats. Measured end to end on a click track mapped by `beatMap`: every word within half a millisecond of a
+  beat. Refusals name the fix: an unsure map, no bar after `from`, too few bars, more words than beats, a stage on
+  beats in a scene with none. `fitToMusic` (a voiced film's cuts snapped to beats) is unchanged.
+
 - **Kinetic type: `footprint-storyreel/kits/kinetic`.** A world kit (the story, or a world stage) for a launch film's
   grammar: words that slam in as the voice says them. Each listed word lands on the next matching said word of its
   scene (any case, punctuation aside, a vowel sign part of its word — Tamil, Telugu, Hindi), enters with an entrance a
