@@ -10,8 +10,13 @@
   `follow`, `turnaround`). `footprint-storyreel/ease`, `/moves` and `/motion` export what they did. The slideshow
   check's hold (3 s), dead share (a half) and still share (0.85) are now read from footprint-story's `lesson` pace — the
   same numbers. Two refusal texts gain words: a kit transition's setting of the wrong kind now also says a point's
-  default may be `'centre'` (the frame's middle; `iris` and `zoom` use it), and when a kit transition has several
-  faults, which one is named first may differ.
+  default may be `'centre'` (the frame's middle; `iris` and `zoom` use it — `TRANSITIONS.iris.params.at.default` is now
+  `'centre'`, and the types say so). When a recipe's entrance or a kit transition has two faults or more, which one is
+  named first may differ (a recipe entrance's settings are now checked before its sound); one fault is named as
+  before. A one-off comparison of 40,000 generated entrances and 40,000 generated kit transitions against 0.23.0 found
+  no other difference.
+- **Cached segments redraw once.** The packages a segment's drawing depends on are part of its cache key, and that list
+  now names `footprint-story`, so every cached segment is drawn again once after the upgrade, as after 0.11.
 
 ## 0.23.0 — the automatic director, the stage (places, props and actions as data), scene questions and claim evidence, platform safe zones and doctor
 

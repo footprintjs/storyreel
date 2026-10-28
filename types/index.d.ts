@@ -332,10 +332,10 @@ export type Enter = TransitionName | (string & {}) | ({type: TransitionName | (s
   | {move: MoveName | (string & {}) | Move; seconds?: number; feel?: MoveFeelName | FeelName | Feel; sound?: SoundType | FoundSoundChoice | false; type?: never};
 /**
  * A transition's setting: one of some words, a point, a colour, a number or a box, each with its default (a colour's
- * may be null: the draw picks it, e.g. the theme's); or the name of a thing in the picture (no default: the recipe
- * must give it; default null: it may be left out).
+ * may be null: the draw picks it, e.g. the theme's; a point's may be 'centre': the frame's middle); or the name of a
+ * thing in the picture (no default: the recipe must give it; default null: it may be left out).
  */
-export type TransitionSetting = {oneOf: readonly string[]; default: string} | {point: true; default: readonly [number, number]}
+export type TransitionSetting = {oneOf: readonly string[]; default: string} | {point: true; default: readonly [number, number] | 'centre'}
   | {color: true; default: string | null} | {number: readonly [number, number]; default: number} | {box: true; default: FrameBox}
   | {name: true; default?: string | null};
 /** A box on the 1600×900 frame: [x0, y0, x1, y1]. */

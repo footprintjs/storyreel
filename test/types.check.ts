@@ -685,3 +685,11 @@ export const looseBudget: Recipe = {director: {closeUps: {perScene: 'few'}}};
 export const maybeDirector: Recipe = {director: 'maybe'};
 // @ts-expect-error a shot rule frames medium, close or insert
 export const hugeShot: DirectorRules = {shots: [{name: 'x', when: 'Oh!', shot: 'huge'}]};
+
+// A point setting may default to the frame's middle (footprint-story/motion's 'centre'), or to a place.
+import type {TransitionSetting} from '../types/index.js';
+const middle: TransitionSetting = {point: true, default: 'centre'};
+const place: TransitionSetting = {point: true, default: [400, 300]};
+// @ts-expect-error a point's default is 'centre' or [x, y], never another word
+const elsewhere: TransitionSetting = {point: true, default: 'left'};
+void [middle, place, elsewhere];
