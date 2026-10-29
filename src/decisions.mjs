@@ -32,12 +32,27 @@ export function whyOf(evidence, {rules, fallback}) {
       checks: (r.conditions ?? []).map(c => `${c.key} ${shownAgainst(c.actualSummary, c.op, c.threshold, c.result)} ${SIGN[c.op] ?? c.op} ${c.threshold} ${c.result ? '✓' : '✗'}`), ...(r.matchError ? {error: r.matchError} : {})}))};
 }
 
-/** A decider for one decision: decide() over the scope with the table, the why written under `whyKey` (whyOf). */
-export const decideWith = (table, whyKey) => s => {
-  const result = decide(s, table.rules, table.fallback);
+/**
+ * A decider for one decision: decide() over the scope with the table, the why written under `whyKey` (whyOf). `about`,
+ * when given, names what is decided in every label of the record (about(s): "scene-05 enter torn") — the why keeps
+ * the table's own labels.
+ */
+export const decideWith = (table, whyKey, about = null) => s => {
+  const named = about ? (who => ({rules: table.rules.map(r => ({...r, label: `${who}: ${r.label}`})), fallback: {...table.fallback, label: `${who}: ${table.fallback.label}`}}))(about(s)) : table;
+  const result = decide(s, named.rules, named.fallback);
   s[whyKey] = whyOf(result.evidence, table);
   return result;
 };
+
+/**
+ * A decider on a chart for one rule table, and one branch per verdict, each writing it under `key` (two rules may give
+ * one verdict); the why under `${key}Why`; `about` names what is decided in the record's labels (decideWith).
+ */
+export function addDecider(chart, {name, id, description, table, key, about = null}) {
+  let list = chart.addDeciderFunction(name, decideWith(table, `${key}Why`, about), id, description);
+  for (const verdict of new Set([...table.rules.map(r => r.then), table.fallback.branch])) list = list.addFunctionBranch(verdict, verdict, s => { s[key] = verdict; });
+  return list.setDefault(table.fallback.branch).end();
+}
 
 /**
  * A decider on a chart: decide() over the scope's measures, each label carrying the candidate's name (its number and

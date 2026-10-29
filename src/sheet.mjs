@@ -36,22 +36,39 @@ export async function contactSheet(film, {moments = film.moments(), columns = 4,
  * @returns a PNG Buffer
  */
 export async function transitionSheet({catalog = TRANSITIONS, moments = [.2, .4, .6, .8], width = 1200} = {}) {
-  const names = Object.keys(catalog).filter(n => n !== 'cut'), theme = loadTheme('paper'), ghost = ghostPainter();
+  const names = Object.keys(catalog).filter(n => n !== 'cut');
   const pad = 10, label = 170, cols = moments.length, w = Math.floor((width - label - pad * (cols + 1)) / cols), h = Math.round(w * 9 / 16);
   const sheet = createCanvas(width, pad + names.length * (h + pad)), c = sheet.getContext('2d');
   c.fillStyle = '#20232a'; c.fillRect(0, 0, sheet.width, sheet.height);
   names.forEach((name, row) => {
-    const en = readEntrance(sampleEntrance(catalog[name], name), `transitionSheet ${name}`, catalog), y = pad + row * (h + pad), boxes = sampleBoxes(en);
+    const sample = transitionSample(name, catalog), y = pad + row * (h + pad);
     moments.forEach((u, col) => {
       const x = label + pad + col * (w + pad);
-      c.save(); c.translate(x, y); c.beginPath(); c.rect(0, 0, w, h); c.clip(); c.scale(w / 1600, w / 1600);
-      en.draw(c, {e: en.ease(u), from: pictureA, to: pictureB, p: en.p, ghost: (alpha, paint) => ghost(c, alpha, paint), theme, boxes});
-      c.restore();
+      c.save(); c.translate(x, y); c.beginPath(); c.rect(0, 0, w, h); c.clip(); c.scale(w / 1600, w / 1600); sample.draw(c, u); c.restore();
     });
     c.fillStyle = '#f2f3f5'; c.font = '700 20px Menlo'; c.textBaseline = 'middle'; c.fillText(name, pad, y + h / 2 - 12);
-    c.fillStyle = '#9aa1ab'; c.font = '500 13px Menlo'; c.fillText(`${catalog[name].family} · ${en.seconds} s`, pad, y + h / 2 + 14);
+    c.fillStyle = '#9aa1ab'; c.font = '500 13px Menlo'; c.fillText(`${sample.family} · ${sample.seconds} s`, pad, y + h / 2 + 14);
   });
   return sheet.encode('png');
+}
+
+/**
+ * One transition of a collection, played between the two sample pictures: what the transitions sheet and the studio's
+ * gallery draw. draw(c, u) paints it u of the way through its change (eased as the transition eases) into c, whose
+ * transform maps the 1600×900 frame: at or before 0 picture A whole, at or after 1 picture B whole — as a film shows the
+ * shot before a change and the shot after it (a cut, 0 s long, is only those two). Its settings are its defaults; a
+ * thing it goes through is the sample's.
+ * @returns {name, family, seconds, draw(c, u)}
+ */
+export function transitionSample(name, catalog = TRANSITIONS) {
+  if (!Object.hasOwn(catalog, name)) throw new Error(`transitionSample: "${name}" is not in the collection (${Object.keys(catalog).join(', ')})`);
+  const en = readEntrance(sampleEntrance(catalog[name], name), `transitionSample ${name}`, catalog), theme = loadTheme('paper'), ghost = ghostPainter(), boxes = sampleBoxes(en);
+  const draw = (c, u) => {
+    if (!(u > 0)) pictureA(c);
+    else if (u >= 1 || !en.draw) pictureB(c);   // a cut has no change to draw: the new picture, whole, at once
+    else en.draw(c, {e: en.ease(u), from: pictureA, to: pictureB, p: en.p, ghost: (alpha, paint) => ghost(c, alpha, paint), theme, boxes});
+  };
+  return {name, family: catalog[name].family, seconds: en.seconds, draw};
 }
 
 /** A transition with its default settings; a setting that names a thing in the picture (it has no default) names the sample's. */

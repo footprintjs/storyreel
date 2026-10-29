@@ -8,7 +8,9 @@ export interface ProjectInputs {storyboard: unknown; recipe: unknown; kits?: unk
   strategies?: unknown; reducedMotion?: boolean;
   /** The full render's own makeFilm options (fullRender carries them; the review tools do not read them). */
   render?: Record<string, unknown>; code?: string | null; music?: unknown; check?: 'report' | 'refuse' | null; expect?: {seconds?: number; tolerance?: number};
-  voiceCheck?: 'report' | 'refuse'; claims?: 'report' | 'refuse'; approval?: unknown}
+  voiceCheck?: 'report' | 'refuse'; claims?: 'report' | 'refuse'; approval?: unknown;
+  /** Files `storyreel studio` compiles again on, besides the recipe's file and storyboard.json beside it: paths from the config's folder, or absolute. */
+  watch?: string[]}
 /** The project's inputs, timed (from its voice, or evenly) but not compiled. */
 export interface ProjectSource {inputs: ProjectInputs & {voiced: boolean}; cwd: string}
 export interface Project extends ProjectSource {film: Film}
@@ -26,6 +28,13 @@ export function clockSeconds(value: string | number, name?: string): number;
 export const TOOL_DEFAULTS: Readonly<{handles: number; frames: number; fps: number; width: number; every: number; per: number; sheetWidth: number}>;
 /** The project's film, compiled once (paced from its voice folder's timings.json when it names one). */
 export function loadProject(options?: {config?: string; cwd?: string; [flag: string]: unknown}): Promise<Project>;
+/** The project's film compiled from its inputs, with another recipe when one is given (the studio's Try: a copy with a pick in it). */
+export function compileProject(project: ProjectSource, recipe?: unknown): Promise<Film>;
+/**
+ * The file the project's recipe is written in — `recipe` (from cwd), or recipe.json beside the config — when it holds the
+ * very recipe the config's film() gives with these flags; else a refusal naming the fix. What `storyreel apply` writes.
+ */
+export function projectRecipe(project: ProjectSource | ProjectConfig, options?: {config?: string; recipe?: string}): {file: string; text: string; recipe: unknown};
 /** A part: its scenes, or a window on the film clock (from and to: seconds or m:ss), with the seconds shown either side. */
 export interface PartArgs {scene?: string | string[]; scenes?: string | string[]; from?: number | string; to?: number | string; handles?: number | string}
 export function timeline(project: Project, args?: PartArgs): Promise<string>;

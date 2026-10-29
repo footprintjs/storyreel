@@ -4,11 +4,14 @@
  * agents: read first (timeline, review), look last (part, still). The project's storyreel.config.mjs names the
  * film; every flag goes to its film() too (--ep ep1 --voice work/ep1/voice). `storyreel beats <song>` needs no project:
  * it prints the song's beat map as text (beats.mjs · beatMapText), so a person can settle an unsure tempo in seconds.
+ * `storyreel studio` opens the preview studio on the project (studio/cli.mjs); `storyreel apply "<line>" …` writes the
+ * picks kept in its gallery into the recipe (apply-cli.mjs).
  */
 import path from 'node:path';
 import {TOOLS, CONFIG, loadProject, loadInputs, readInputs} from './tools.mjs';
 import {SOUNDS_HELP} from './sounds/cli.mjs';
 import {REMAKE_USAGE} from './remake-cli.mjs';
+import {STUDIO_HELP, APPLY_HELP} from './studio/help.mjs';
 // Loaded first, so the picture's channel is taken from the environment before any project code runs (mcp.mjs · sendPicture).
 import {serveMcp, startOf, sendPicture} from './mcp.mjs';
 
@@ -106,6 +109,9 @@ if (command === 'remake') { const {remakeCommand} = await import('./remake-cli.m
 if (command === 'doctor') process.exit(await doctorCommand(given));
 // sounds needs no project: its own usage, flags and exit codes (sounds/cli.mjs; the Openverse adapter loads only for search and add).
 if (command === 'sounds') { const {soundsCommand} = await import('./sounds/cli.mjs'); process.exit(await soundsCommand(given)); }
+// studio runs until it is stopped (Ctrl+C), on the project here; apply writes kept picks into its recipe (studio/cli.mjs, apply-cli.mjs).
+if (command === 'studio') { const {studioCommand} = await import('./studio/cli.mjs'); process.exit(await studioCommand(given)); }
+if (command === 'apply') { const {applyCommand} = await import('./apply-cli.mjs'); process.exit(await applyCommand(given)); }
 // `<command> --help` (or `help <command>`): that command's usage alone, on stdout, exit 0 — every command has one.
 const asked = given.includes('--help') ? command : command === 'help' && given[0] ? given[0] : null;
 if (asked) {
@@ -117,10 +123,12 @@ if (asked) {
     : asked === 'remake' ? REMAKE_USAGE
     : asked === 'doctor' ? `storyreel doctor [--json] [--ffmpeg path] [--ffprobe path] [--theme paper,storybook]\n${DOCTOR_HELP}`
     : asked === 'sounds' ? SOUNDS_HELP
+    : asked === 'studio' ? STUDIO_HELP
+    : asked === 'apply' ? APPLY_HELP
     : asked === 'mcp' ? `storyreel mcp [--flag value …]   serves ${Object.keys(TOOLS).join(', ')} over MCP (stdio); the project (--config, --cwd) and the film's own flags (e.g. --out work/out) are fixed here for every call, and a call passes only its tool's arguments`
     : null;
   if (usage) { console.log(usage); process.exit(0); }
-  console.error(`storyreel: "${asked}" is not a command; the commands are ${[...Object.keys(TOOLS), 'beats', 'share', 'sounds', 'breakdown', 'remake', 'doctor', 'mcp'].join(', ')} (storyreel help lists them all)`); process.exit(2);
+  console.error(`storyreel: "${asked}" is not a command; the commands are ${[...Object.keys(TOOLS), 'beats', 'share', 'sounds', 'studio', 'apply', 'breakdown', 'remake', 'doctor', 'mcp'].join(', ')} (storyreel help lists them all)`); process.exit(2);
 }
 // beats takes the song first, share the video: a path, not a flag.
 const song = (command === 'beats' || command === 'share') && given[0] !== undefined && !given[0].startsWith('--') ? given[0] : null, rest = song === null ? given : given.slice(1);
@@ -161,7 +169,7 @@ if (command === 'beats') {
   } catch (e) { console.error(`storyreel beats: ${e.message}`); process.exit(e.code === 'BEAT_OPTIONS' ? 2 : 1); }
 }
 if (!command || command === 'help' || command === '--help' || !TOOLS[command]) {
-  const lines = [...Object.entries(TOOLS).map(([name, t]) => [`  ${name.padEnd(9)}${t.about}`, ...Object.entries(t.args).map(([a, d]) => `             --${a}  ${d}`)].join('\n')), BEATS_HELP, SHARE_HELP, SOUNDS_HELP, DOCTOR_HELP];
+  const lines = [...Object.entries(TOOLS).map(([name, t]) => [`  ${name.padEnd(9)}${t.about}`, ...Object.entries(t.args).map(([a, d]) => `             --${a}  ${d}`)].join('\n')), BEATS_HELP, SHARE_HELP, SOUNDS_HELP, STUDIO_HELP, APPLY_HELP, DOCTOR_HELP];
   (TOOLS[command] || !command || command === 'help' || command === '--help' ? console.log : console.error)(`storyreel <tool> [--flag value …]   (the film is named in ./${CONFIG}; --config another file)\n\n${lines.join('\n')}\n\nRead first, look last: timeline → review → fix → part → still.\nAfter an edit to the words (narration, recipe, pacing): anchors first.\nAfter an edit: changes (what it redraws) → changes --render (only those pieces, and a short clip of them).\nstoryreel mcp [--flag value …] serves the same tools over MCP (stdio); the project (--config, --cwd) and the film's own flags are fixed when it starts.\n${BREAKDOWN_USAGE}\n${REMAKE_USAGE}`);
   process.exit(command && command !== 'help' && command !== '--help' && !TOOLS[command] ? 2 : 0);
 }

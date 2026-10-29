@@ -71,6 +71,15 @@ npx storyreel remake work/reference --starter work/like-it   # approved: the sta
 cd work/like-it && npx storyreel sheet && node render.mjs
 ```
 
+To change how a scene comes in or how its words land, the person picks by eye: `npx storyreel studio` in the folder
+opens the gallery (every transition and word move playing; Try puts one on the scene at the playhead, Keep copies its
+line). Apply the lines they kept without reading the recipe — every line is checked first, and one that refuses
+writes nothing and names the fix (`--record` prints the check's record as JSON):
+
+```sh
+npx storyreel apply "scene-03 enter torn" "scene-02 move pop"
+```
+
 ## Its limits
 
 A wipe, a push or a zoom between shots reads as motion (often as a short moving shot between two cuts); a slow change

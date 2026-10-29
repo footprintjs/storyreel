@@ -1,5 +1,5 @@
 import type {Clock, StoryWorld, Kit} from '../index.js';
-import type {MoveName} from './moves.js';
+import type {MoveName, Move} from './moves.js';
 
 /** A word of a kinetic stage: its text, landing when the voice says it — or {text, at}, landing at its own anchor. */
 export type KineticWord = string | {text: string; at: [string, string] | [string, string, number] | {scene: string; phrase: string; edge?: 'start' | 'end'; plus?: number; nth?: number}};
@@ -29,6 +29,10 @@ export interface KineticSpec {
 }
 /** The kit's numbers: the largest a word is drawn, the default colours, the face, how much of the frame's width a word may fill, line height, an earlier stacked word's dimness, the most words. */
 export const KINETIC: Readonly<{size: number; colors: readonly [string, string]; font: string; fit: number; line: number; dim: number; most: number}>;
+/** The built-in moves a whole word may enter with (`move`): entrances for text that neither split the word nor count it up. */
+export const WORD_MOVES: readonly MoveName[];
+/** A word's entrance, checked: a move's name that a whole word makes (or one of your own, as data); a refusal names the ones that are. */
+export function readWordMove(move: MoveName | (string & {}) | Move, where: string): Readonly<Move>;
 /** The words compiled against the film's clock: a world (draw, texts for the reading check — each from when it can be read, 0.2 s after it lands — sounds), and the words with when each lands. */
 export function compileKinetic(spec: KineticSpec, clock: Clock): StoryWorld & {words: readonly {readonly text: string; readonly at: number}[]};
 /** The kinetic kit: words that slam in as the voice says them. Pass it in `kits`; a world stage or the story names it (`kit: 'kinetic'`). */

@@ -12,6 +12,7 @@
  */
 import path from 'node:path';
 import {existsSync, readFileSync} from 'node:fs';
+import {isDeepStrictEqual} from 'node:util';
 import {writeOutput, outputFolder, insideRoot} from './files.mjs';
 import {pathToFileURL} from 'node:url';
 import {compileFilm, evenTimings, paceTimings, makeFilm, makeClock, withDirections} from './index.mjs';
@@ -74,8 +75,32 @@ export async function loadInputs(options = {}) {
 
 /** The project: its config's film, compiled once (paced from the voice folder's timings.json when it names one). */
 export async function loadProject(options = {}) {
-  const {inputs, cwd} = await loadInputs(options);
-  return {film: await compileFilm({...pick(inputs, FILM_KEYS), timings: inputs.timings, root: inputs.root ?? cwd}), inputs, cwd};
+  const project = await loadInputs(options);
+  return {film: await compileProject(project), ...project};
+}
+
+/**
+ * The project's film compiled from its inputs (loadInputs) — with another recipe when one is given: the studio's Try
+ * compiles a copy of the recipe with a pick in it (picks.mjs), and nothing is written.
+ */
+export function compileProject({inputs, cwd}, recipe = inputs.recipe) {
+  return compileFilm({...pick(inputs, FILM_KEYS), recipe, timings: inputs.timings, root: inputs.root ?? cwd});
+}
+
+/**
+ * The file the project's recipe is written in: `recipe` (a path from cwd), or recipe.json beside the config — when it
+ * holds the very recipe the config's film() gives (with the same flags), so an edit to it is an edit to that film. What
+ * `storyreel apply` writes and the studio links a drawing's entry to. A file that is not there, is not JSON or holds
+ * another recipe (other flags pick another film, or the config changes the recipe it reads) refuses, naming the fix.
+ * Returns {file, text, recipe}.
+ */
+export function projectRecipe({inputs, cwd}, {config = CONFIG, recipe} = {}) {
+  const file = recipe ? path.resolve(cwd, recipe) : path.join(path.dirname(path.resolve(cwd, config)), 'recipe.json');
+  if (!existsSync(file)) throw new Error(`no recipe file at ${file}: name the JSON file ${config}'s film() reads its recipe from (--recipe file)`);
+  const text = readFileSync(file, 'utf8');
+  let given; try { given = JSON.parse(text); } catch (e) { throw new Error(`${file} is not JSON (${e.message}): fix it, or name the recipe's file (--recipe file)`); }
+  if (!isDeepStrictEqual(given, inputs.recipe)) throw new Error(`${file} is not the recipe ${config}'s film() gives with these flags: give the flags that pick its film (as every tool takes them, e.g. --ep), or name the file that film reads, as it reads it (--recipe file)`);
+  return {file, text, recipe: given};
 }
 
 /** The film's inputs as makeFilm takes them: a voiced film's voice and pacing (the voice paced as a render paces it), a silent one's timings. */

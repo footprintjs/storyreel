@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased
+
+- **Pick a move by eye: the studio's gallery, `storyreel studio` and `storyreel apply`.** Picking a transition or a word
+  move no longer means reading names or editing JSON. The preview studio has a **gallery**: a card for every transition
+  the film can enter with (the built-in ones and its kits') and every move a word of kinetic type can land with, each
+  playing on a loop of frames drawn by the code that draws a film (a transition between the sample pictures, as the
+  transitions sheet draws it; a move by the kinetic kit itself). A card says only what the data says of it: a
+  transition's family and seconds, a move's feel and seconds. **Try** puts one on the scene at the playhead — the stage's
+  `enter`, or the `move` of the kinetic world whose words the scene says (a world goes by its own `scene`, which need not
+  be its stage's) — in a copy of the recipe compiled in memory, and plays the scene from a second before it (or from
+  before its change, when that starts earlier); nothing is written, and a refusal shows its words. One Try compiles at a
+  time (another meanwhile is told to wait), and the last few are kept, so a pick tried again plays at once. **Keep**
+  copies the pick as one line (`scene-05 enter torn`, `scene-05 move pop`, with a box to copy from when the browser will
+  not) and lists the lines kept. `storyreel apply "<line>" …` writes them into the project's recipe: every line checked
+  first (its scene, the stage or kinetic world it sets, the name), then the recipe with them compiled once as the tools
+  compile the film; any refusal, in its own words, and nothing is written. Only the values set change in the file: each
+  replaced where it stands, a key not there put just after its entry's `scene` (or `kit`) in the layout around it — every
+  other byte as written (short lists on one line, CRLF, tabs, one line, numbers as spelled). One line is printed per
+  change; the checks run as a footprintjs flowchart, and `--record` prints its record (each line, the rule that took or
+  refused it, and why) as JSON. `storyreel studio [--port n] [--recipe file]` opens the studio on the project here — the
+  film its `storyreel.config.mjs` names, every other flag reaching its `film(flags)` as the review tools' do — compiling
+  again when the recipe's file, the storyboard beside it or a file the config lists in `watch` changes. The studio still
+  only reads: HEAD only for the page's own files and the voice (405 elsewhere), and what draws, checks or compiles on
+  request (a frame, a card, a pick, a Try) answers its own page only — a request another site's page makes
+  (`Sec-Fetch-Site`) is refused, as is a query with a parameter given twice or longer than 1024 characters.
+  `startStudio`'s `load()` may return `compile(recipe)`, what Try plays, and the studio's `held()` says what it keeps in
+  memory (cards drawn, picks tried), each bounded; new in `footprint-storyreel/tools`: `compileProject`,
+  `projectRecipe`; in `footprint-storyreel/kits/kinetic`: `WORD_MOVES` and `readWordMove`, the one rule for the moves a
+  whole word makes (its refusal named `drop-in` and `scale-in`, which it refuses; it now names the moves that are) — a
+  line's word move is checked by it and refused in its words; in `footprint-storyreel/sheet`: `transitionSample`, the
+  one draw of a sample transition at a moment that the sheet and the gallery share. The voice is not played by
+  `storyreel studio` (its paced narration is a render's), but its words are the paced voice's, and Try compiles on the
+  same timings.
+
 ## 0.25.0 — a film's pace, kinetic type, music first, and make one like it
 
 - **A starter film from the plan: `remakeStarter` (`footprint-storyreel/breakdown`, `storyreel remake --starter`).** An

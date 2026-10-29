@@ -19,11 +19,24 @@
  *
  * No words ("words": []) is the ground alone: a beat of plain colour between words, as a launch film cuts to one.
  */
-import {moveAt, readMove} from 'footprint-story/motion';
+import {moveAt, readMove, MOVES, MOVE_NAMES} from 'footprint-story/motion';
 import {applyMove} from '../../moves.mjs';
 import {SOUND_NAMES} from '../../sound.mjs';
 
 export const KINETIC = Object.freeze({size: 480, colors: Object.freeze(['#f3eee3', '#1a1a1a']), font: '"Avenir Next", Arial, sans-serif', fit: .86, line: 1.02, dim: .45, most: 40});
+
+/** A move a whole word makes: an entrance for text that neither splits the word into words or letters nor counts it up. */
+const wholeWord = (move) => move.kind === 'entrance' && move.uses.includes('text') && move.split === undefined && move.props.progress === undefined;
+/** The built-in moves a word may enter with (`move`): the one rule, read by the kit and by the studio's gallery. */
+export const WORD_MOVES = Object.freeze(MOVE_NAMES.filter((name) => wholeWord(MOVES[name])));
+
+/** A word's entrance, checked: a move's name (or one of your own, as data) that a whole word makes; a refusal names the ones that are. */
+export function readWordMove(given, where) {
+  if (typeof given === 'string' && !Object.hasOwn(MOVES, given)) throw new Error(`${where}: kinetic move "${given}" is not a move — name one a whole word makes (${WORD_MOVES.join(', ')})`);
+  const move = readMove(given, `${where}: kinetic move`);
+  if (!wholeWord(move)) throw new Error(`${where}: kinetic move "${move.name}" is not an entrance a whole word makes — name one that is (${WORD_MOVES.join(', ')})`);
+  return move;
+}
 const STYLES = Object.freeze(['slam', 'stack']);
 const KEYS = Object.freeze(['kit', 'scene', 'words', 'on', 'every', 'style', 'move', 'flip', 'colors', 'sound', 'size']);
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
@@ -39,11 +52,7 @@ function readSpec(spec, where) {
   if (!Array.isArray(words) || words.length > KINETIC.most) throw new Error(`${where}: kinetic words is a list of up to ${KINETIC.most} words, each "text" or {text, at} ([]: the ground alone, a beat of plain colour)`);
   const style = spec.style ?? 'slam';
   if (!STYLES.includes(style)) throw new Error(`${where}: kinetic style is ${STYLES.join(' or ')}, not ${JSON.stringify(spec.style)}`);
-  const move = readMove(spec.move ?? 'slam', `${where}: kinetic move`);
-  // a word enters whole: a move that splits it into words or letters, or counts a number up, is not one a whole word makes
-  if (move.kind !== 'entrance' || !move.uses.includes('text') || move.split !== undefined || move.props.progress !== undefined) {
-    throw new Error(`${where}: kinetic move "${move.name}" is not an entrance a whole word makes — name one that is (slam, pop, blur-in, drop-in, scale-in, fade-slide, mask-wipe …)`);
-  }
+  const move = readWordMove(spec.move ?? 'slam', where);
   const colors = spec.colors ?? KINETIC.colors;
   if (!Array.isArray(colors) || colors.length !== 2 || !colors.every((c) => HEX.test(c))) throw new Error(`${where}: kinetic colors is [ground, ink], two hex colours ("#f3eee3"), not ${JSON.stringify(spec.colors)}`);
   if (spec.sound !== undefined && spec.sound !== null && !SOUND_NAMES.includes(spec.sound)) throw new Error(`${where}: kinetic sound is one of ${SOUND_NAMES.join(', ')}, or none — not ${JSON.stringify(spec.sound)}`);

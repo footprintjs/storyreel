@@ -28,11 +28,26 @@
       <a href="/api/transitions" target="_blank" rel="noopener">Transitions</a>
       <span class="keys">space: play · ← →: step · [ ]: phrase · , .: scene · click the picture: what drew it</span>
     </div>
+    <div id="trying" class="trying" hidden>
+      <span id="trying-what"></span>
+      <button id="trying-keep" type="button">Keep</button>
+      <button id="trying-back" type="button">Back to the film</button>
+    </div>
     <div class="timeline-wrap">
       <canvas id="timeline" aria-label="Timeline: scenes, spoken phrases and director's notes"></canvas>
       <div id="tip" class="tip" hidden></div>
     </div>
     <p id="transcript" class="transcript"></p>
+    <details id="gallery" class="gallery">
+      <summary>Gallery: every transition and word move, playing — Try one on the scene at the playhead, Keep the ones you like</summary>
+      <p id="gallery-for" class="muted"></p>
+      <h3>Transitions <span class="muted">— how a shot comes in (a stage's enter)</span></h3>
+      <p id="takes-enter" class="muted"></p>
+      <div id="cards-enter" class="cards"></div>
+      <h3>Word moves <span class="muted">— how each word of kinetic type lands (its move)</span></h3>
+      <p id="takes-move" class="muted"></p>
+      <div id="cards-move" class="cards"></div>
+    </details>
   </section>
   <aside class="side">
     <section>
@@ -42,6 +57,13 @@
     <section>
       <h2>Recipe entry</h2>
       <div id="entry" class="muted">Pick a drawing, or a phrase on the timeline.</div>
+    </section>
+    <section>
+      <h2>Kept picks</h2>
+      <ol id="kept" class="kept"></ol>
+      <div class="kept-actions"><button id="copy-all" type="button" hidden>Copy all</button> <span id="copied" class="muted"></span></div>
+      <textarea id="copy-here" class="copy-here" readonly hidden aria-label="The text to copy"></textarea>
+      <p class="muted small">Apply them: <code>npx storyreel apply "&lt;line&gt;" …</code></p>
     </section>
     <section>
       <h2>Phrases near the playhead</h2>

@@ -45,9 +45,9 @@ test('its spec is checked, each refusal naming the fix', async () => {
   assert.throws(bad({words: 'Every'}), /kinetic words is a list of up to 40 words, each "text" or \{text, at\} \(\[\]: the ground alone, a beat of plain colour\)/);
   assert.throws(bad({words: Array(41).fill('Every')}), /kinetic words is a list of up to 40 words/);
   assert.throws(bad({style: 'bounce'}), /kinetic style is slam or stack/);
-  assert.throws(bad({move: 'shake'}), /kinetic move "shake" is not an entrance a whole word makes — name one that is \(slam, pop/);
+  assert.throws(bad({move: 'shake'}), /kinetic move "shake" is not an entrance a whole word makes — name one that is \(fade-slide, soft-rise, mask-wipe, pop, blur-in, slam\)/, 'the list is the rule\'s own (WORD_MOVES): every move it names draws a word');
   for (const move of ['text-reveal-word', 'text-reveal-letter', 'count-up']) assert.throws(bad({move}), /is not an entrance a whole word makes/, `${move}: it splits the word or counts`);
-  assert.throws(bad({move: 'nope'}), /kinetic move/);
+  assert.throws(bad({move: 'nope'}), /kinetic move "nope" is not a move — name one a whole word makes \(fade-slide/);
   assert.throws(bad({colors: ['white', 'black']}), /kinetic colors is \[ground, ink\], two hex colours/);
   assert.throws(bad({sound: 'boom'}), /kinetic sound is one of slide, settle, tap/);
   assert.throws(bad({size: 5}), /kinetic size is the largest a word is drawn, 24 to 600 px/);

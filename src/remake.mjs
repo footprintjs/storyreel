@@ -18,7 +18,7 @@
  */
 import {flowChart, narrative} from 'footprintjs';
 import {SECONDS} from 'footprint-story/motion';
-import {decideWith, decideAll, decideMount, decided} from './decisions.mjs';
+import {addDecider, decideAll, decideMount, decided} from './decisions.mjs';
 import {BEATS} from './beats.mjs';
 import {MUSIC} from './music.mjs';
 import {QUIET} from './record.mjs';
@@ -65,13 +65,6 @@ fallback: {branch: 'moving', label: 'one shot, things moving inside the frame: a
 
 /** The scene kinds, in the order the rules try them. */
 export const SCENE_KINDS = Object.freeze([...KIND(REMAKE).rules.map(r => r.then), KIND(REMAKE).fallback.branch]);
-
-/** A decider and one branch per verdict, each writing it under `key` (two rules may give one verdict). */
-function addDecider(chart, {name, id, description, table, key}) {
-  let list = chart.addDeciderFunction(name, decideWith(table, `${key}Why`), id, description);
-  for (const verdict of new Set([...table.rules.map(r => r.then), table.fallback.branch])) list = list.addFunctionBranch(verdict, verdict, s => { s[key] = verdict; });
-  return list.setDefault(table.fallback.branch).end();
-}
 
 // ── Read: the breakdown checked, its shots grouped into scenes ─────────────────────────────────────────────
 
