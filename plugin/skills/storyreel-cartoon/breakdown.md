@@ -57,6 +57,20 @@ console.log(spec.pacing, spec.audio.beats);
 `thresholds: {cutJump: 20}` changes one threshold (`footprint-storyreel/breakdown` · `BREAKDOWN` lists them; an
 unknown name refuses). A failed run prints where its record stopped and its last decisions.
 
+## Make one like it
+
+`storyreel remake work/reference` reads the breakdown as a draft plan — scenes, pace, entrances, whether the song
+times it, each with its why, and what is still to give. Show it to the person first: nothing is made until they
+approve it. Approved, `--starter <folder>` makes it into a film that renders as it is: an animatic in the reference's
+rhythm, every card ("WORD 1", "TITLE", a grey "PICTURE") landing when the reference cuts. Its README says what to give
+and where; fill in the words in its recipe.json and render again.
+
+```sh
+npx storyreel remake work/reference                          # the plan, in words (--json for the data)
+npx storyreel remake work/reference --starter work/like-it   # approved: the starter folder
+cd work/like-it && npx storyreel sheet && node render.mjs
+```
+
 ## Its limits
 
 A wipe, a push or a zoom between shots reads as motion (often as a short moving shot between two cuts); a slow change

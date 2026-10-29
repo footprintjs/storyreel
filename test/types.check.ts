@@ -390,6 +390,11 @@ export const remade = (spec: BreakdownSpec) => remakePlan(spec, {thresholds: {qu
 export const slowPlan = (spec: BreakdownSpec) => remakePlan(spec, {thresholds: {quick: 'slow'}});
 // @ts-expect-error the plan reads a breakdown's spec, not its file
 export const filePlan = remakePlan('ref.mp4');
+// A starter from the plan: its storyboard, recipe, bars under music first, what to give and where, its files.
+import {remakeStarter, STARTER} from '../types/sub/breakdown.js';
+export const started = (spec: BreakdownSpec) => remakePlan(spec).then(p => { const s = remakeStarter(p, {title: 'Ours'}); return `${s.storyboard.scenes[0].silent[0][1]} ${s.recipe.pace} ${s.music?.bars['scene-01'] ?? 0} ${s.give.map(g => `${g.where} ${g.place ?? ''}`).join()} ${s.notes.length} ${Object.keys(s.files)} ${STARTER.words[0]} ${p.scenes[0].starts[0]}`; });
+// @ts-expect-error a starter is made from a plan, not a spec
+export const specStarter = (spec: BreakdownSpec) => remakeStarter(spec);
 // @ts-expect-error a beat reader answers its beats
 export const noBeats: BeatReader = () => ({bpm: 120});
 

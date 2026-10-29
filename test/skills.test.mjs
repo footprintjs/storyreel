@@ -66,9 +66,9 @@ function cliCommands() {
     if (named) commands[current = named[1]] = new Set(['help']);
     else if (flag && current) commands[current].add(flag[1]);
   }
-  for (const tool of ['mcp', 'breakdown']) if (new RegExp(`storyreel ${tool}\\b`).test(help)) commands[tool] = new Set(['help']);
-  const breakdownHelp = execFileSync(process.execPath, [cli, 'breakdown', '--help'], {encoding: 'utf8'});
-  for (const [, f] of breakdownHelp.matchAll(/--([a-z][\w-]*)/g)) commands.breakdown?.add(f);
+  for (const tool of ['mcp', 'breakdown', 'remake']) if (new RegExp(`storyreel ${tool}\\b`).test(help)) commands[tool] = new Set(['help']);
+  // breakdown and remake say their flags in their own usage
+  for (const tool of ['breakdown', 'remake']) for (const [, f] of execFileSync(process.execPath, [cli, tool, '--help'], {encoding: 'utf8'}).matchAll(/--([a-z][\w-]*)/g)) commands[tool]?.add(f);
   return commands;
 }
 const ANY_FLAG = new Set(['mcp']);   // its flags are fixed for every call: the project's (--config, --cwd) and the film's own (--ep ep1)
@@ -152,7 +152,7 @@ test('every `npx storyreel <command>` a skill names is a command the CLI lists, 
     for (const {command, flags, line} of commandsOn(text)) {
       if (!commands[command]) { wrong.push(`${rel(file)}:${line}: storyreel ${command} is not a command (the CLI lists ${Object.keys(commands).join(', ')})`); continue; }
       if (ANY_FLAG.has(command)) continue;
-      for (const f of flags) if (!commands[command].has(f) && !(command !== 'beats' && command !== 'breakdown' && TOOL_FLAGS.includes(f))) wrong.push(`${rel(file)}:${line}: storyreel ${command} takes no --${f} (it takes ${[...commands[command]].map(x => `--${x}`).join(', ')})`);
+      for (const f of flags) if (!commands[command].has(f) && !(!['beats', 'breakdown', 'remake'].includes(command) && TOOL_FLAGS.includes(f))) wrong.push(`${rel(file)}:${line}: storyreel ${command} takes no --${f} (it takes ${[...commands[command]].map(x => `--${x}`).join(', ')})`);
     }
   }
   assert.deepEqual(wrong, []);

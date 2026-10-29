@@ -41,6 +41,7 @@ import {safeBeats, musicAt, likelyTempi, sameTempo} from './beats.mjs';
 
 export {breakdownText};
 export {remakePlan, remakePlanText, REMAKE, SCENE_KINDS} from './remake.mjs';
+export {remakeStarter, STARTER} from './remake-starter.mjs';
 
 /** The thresholds the verdicts use. Grey differences and spreads are mean grey levels, 0–255, on frames read `width` wide. */
 export const BREAKDOWN = Object.freeze({

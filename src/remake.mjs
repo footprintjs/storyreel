@@ -170,20 +170,23 @@ function commonEntrance(scenes) {
   return type === undefined ? null : {type, scenes: count, of: scenes.length - 1};
 }
 
+/** The kinds that are a run of shots, one word or one picture a shot: each lands on a beat of its own under music first. */
+export const BURSTS = Object.freeze(['kinetic', 'montage']);
+
 /**
  * Bars for music first (music.mjs · beatTimings): the whole bars nearest a scene's seconds at the song's tempo, one at
- * least and at most MUSIC.mostBars (a longer scene is cut to it, and `longer` says so); a kinetic scene enough for one
- * beat a word, its words `every` beats apart (as many as fit, at most MUSIC.mostEvery).
+ * least and at most MUSIC.mostBars (a longer scene is cut to it, and `longer` says so); a kinetic scene or a montage
+ * enough for one beat a shot, its words or pictures `every` beats apart (as many as fit, at most MUSIC.mostEvery).
  */
 function barsOf({kind, seconds, words}, bpm) {
-  const near = Math.max(1, Math.round(seconds / (BEATS.meter * 60 / bpm))), fit = kind === 'kinetic' ? Math.max(near, Math.ceil(words / BEATS.meter)) : near;
+  const burst = BURSTS.includes(kind), near = Math.max(1, Math.round(seconds / (BEATS.meter * 60 / bpm))), fit = burst ? Math.max(near, Math.ceil(words / BEATS.meter)) : near;
   const bars = Math.min(MUSIC.mostBars, fit), longer = fit > MUSIC.mostBars ? {longer: fit} : {};
-  if (kind !== 'kinetic') return {bars, ...longer};
+  if (!burst) return {bars, ...longer};
   return {bars, every: Math.max(1, Math.min(MUSIC.mostEvery, Math.floor(bars * BEATS.meter / words))), ...longer};
 }
 
 /** What a scene still needs from a person, by its kind: its words, its pictures, or nothing (plain ground). */
-function sceneTodo({id, kind, words, camera}) {
+export function sceneTodo({id, kind, words, camera}) {
   const what = {kinetic: `${words} words, one a shot, in the order they land`, montage: `${words} pictures, one a shot`, title: 'the words it holds on screen',
     still: 'a picture', camera: `a picture for the camera to move over${camera ? ` (it moves ${camera})` : ''}`, moving: 'a moving picture: footage, or a world that moves'}[kind];
   return what ? [{scene: id, give: kind === 'kinetic' || kind === 'title' ? 'words' : 'pictures', what}] : [];
@@ -206,7 +209,7 @@ function planStage(s, run) {
   const scenes = run.scenes.map((x, i) => {
     const {enter, because} = entranceOf(x, i), kind = kinds[i].kind, seconds = round(x.to - x.from);
     const flashes = spec.flashes.filter(f => f.at >= x.from && f.at < x.to).map(f => f.at);
-    return {id: x.id, from: x.from, to: x.to, seconds, shots: x.shots.map(sh => sh.index), kind, why: kinds[i].kindWhy, in: x.shots[0].in.kind, enter, enterWhy: because,
+    return {id: x.id, from: x.from, to: x.to, seconds, shots: x.shots.map(sh => sh.index), starts: x.shots.map(sh => sh.start), kind, why: kinds[i].kindWhy, in: x.shots[0].in.kind, enter, enterWhy: because,
       ...(flashes.length ? {flashes} : {}), ...(music.verdict === 'music-first' ? barsOf({kind, seconds, words: x.shots.length}, beats.bpm) : {})};
   });
   if (music.verdict === 'music-first') music.seconds = round(scenes.reduce((n, x) => n + x.bars, 0) * BEATS.meter * 60 / beats.bpm);
@@ -219,8 +222,8 @@ function planStage(s, run) {
 
 /**
  * A draft plan for a film made like the reference: {from, pace: {name, why}, music: {verdict, why, bpm?, seconds?,
- * notRead?}, enter: the entrance most scenes come in by, scenes: [{id, from, to, seconds, shots, kind, why, in (how the
- * reference's shot comes in), enter, enterWhy, flashes?, bars?, every?}], todo: [{scene?, give, what}], thresholds, record}. `breakdown` is the spec
+ * notRead?}, enter: the entrance most scenes come in by, scenes: [{id, from, to, seconds, shots, starts (when each shot
+ * starts), kind, why, in (how the reference's shot comes in), enter, enterWhy, flashes?, bars?, every?}], todo: [{scene?, give, what}], thresholds, record}. `breakdown` is the spec
  * (breakdown.json); `thresholds` override REMAKE. Every choice says why; the record keeps each decision's evidence.
  */
 export async function remakePlan(breakdown, {thresholds} = {}) {
