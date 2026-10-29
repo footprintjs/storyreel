@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.25.0 — a film's pace, kinetic type, music first, and make one like it
 
 - **A starter film from the plan: `remakeStarter` (`footprint-storyreel/breakdown`, `storyreel remake --starter`).** An
   approved remake plan made into a film that renders as it is — an animatic in the reference's own rhythm — for a
