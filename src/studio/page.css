@@ -11,6 +11,7 @@
   }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
 .bar { display: flex; align-items: baseline; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
 .bar h1 { margin: 0; font-size: 17px; font-weight: 650; text-wrap: balance; }
@@ -59,3 +60,25 @@ pre.json { margin: 6px 0 0; max-height: 300px; overflow: auto; padding: 8px; bac
 a { color: var(--accent); }
 .list li.empty { display: block; cursor: default; }
 .list li.empty:hover { background: none; }
+.small { font-size: 12px; margin: 6px 0 0; }
+button.small, .card button, .trying button, .kept-actions button { padding: 3px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.trying { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 14%, var(--panel)); border: 1px solid var(--line); }
+.trying #trying-what { font-weight: 600; margin-right: auto; overflow-wrap: anywhere; }
+.trying.bad { background: color-mix(in srgb, var(--bad) 12%, var(--panel)); }
+.trying.bad #trying-what { color: var(--bad); font-weight: 500; }
+.gallery { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.gallery summary { cursor: pointer; font-weight: 600; }
+.gallery h3 { margin: 12px 0 4px; font-size: 13px; }
+.gallery p { margin: 4px 0; font-size: 12px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.card { display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--line); border-radius: 7px; }
+.card-screen { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 5px; background: var(--screen); }
+.card-screen img { position: absolute; left: 0; top: 0; display: block; max-width: none; height: auto; transform-origin: 0 0; user-select: none; -webkit-user-drag: none; }
+.card .name { font: 600 13px ui-monospace, Menlo, monospace; }
+.card .about { color: var(--muted); font-size: 12px; }
+.card .acts { display: flex; gap: 6px; }
+.kept { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font: 12px ui-monospace, Menlo, monospace; }
+.kept li { padding: 3px 6px; border-radius: 5px; background: var(--band-a); overflow-wrap: anywhere; user-select: all; }
+.kept li.empty { background: none; font-family: system-ui, sans-serif; color: var(--muted); user-select: auto; }
+.kept-actions { margin-top: 6px; }
+.copy-here { display: block; width: 100%; min-height: 64px; margin-top: 6px; font: 12px ui-monospace, Menlo, monospace; }

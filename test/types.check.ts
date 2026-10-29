@@ -734,3 +734,19 @@ declare const beatClock: import('footprint-storyreel').Clock;
 const firstBeats: readonly number[] = beatClock.beats('drop');
 const onBeatsSpec: import('footprint-storyreel/kits/kinetic').KineticSpec = {scene: 'drop', on: 'beats', every: 2, words: ['LANDS']};
 void songStart; void firstBeats; void onBeatsSpec;
+
+// The studio's gallery: a load() that compiles a copy of the recipe for Try; the project's compile and recipe file; the word moves.
+import type {compileProject, projectRecipe, ProjectInputs} from '../types/sub/tools.js';
+import {WORD_MOVES, readWordMove} from 'footprint-storyreel/kits/kinetic';
+import {transitionSample} from 'footprint-storyreel/sheet';
+export const tried = (start: typeof startStudio, make: typeof compileFilm, film: Film, board: Storyboard, timings: Parameters<typeof compileFilm>[0]['timings']) =>
+  start({load: async () => ({film, storyboard: board, recipe: moving, kits: [kit], compile: copy => make({storyboard: board, timings, recipe: copy})}), watch: ['recipe.json'], port: 0});
+// @ts-expect-error compile takes a recipe and gives a film
+export const badTry = (start: typeof startStudio, film: Film, board: Storyboard) => start({load: async () => ({film, storyboard: board, recipe: moving, compile: () => 1})});
+export const projectFiles = async (load: typeof loadInputs, compile: typeof compileProject, file: typeof projectRecipe) => {
+  const project = await load({ep: 'ep1'}), {text, recipe} = file(project, {recipe: 'ep1/recipe.json'});
+  return (await compile(project, recipe)).total + text.length;
+};
+export const watched: ProjectInputs = {storyboard: {}, recipe: {}, watch: ['ep1/pacing.json']};
+export const wordMoves: string[] = [...WORD_MOVES, readWordMove('pop', 'scene-05').name];
+export const sampled = transitionSample('torn').seconds;

@@ -485,7 +485,9 @@ its sound to its moment: the e its draw reaches it at (0.3 for a pop three tenth
 through the entrance's ease, so an eased change still sounds on its moment. A kit's transition
 may not take a built-in name or another kit's. `transitionSheet({catalog})` draws any collection on one
 PNG (`node examples/transitions.mjs` wrote the picture above), and the studio shows it under
-**Transitions**.
+**Transitions**. To choose one by eye, the studio's gallery plays each and tries it on your scene
+([Pick a move by eye](#pick-a-move-by-eye-the-gallery-try-keep-and-apply)); `storyreel apply "scene-05 enter torn"`
+then sets it without reading the recipe.
 
 ### Pause and guess
 
@@ -2942,6 +2944,7 @@ reference's own rhythm, every card saying what goes there. You fill it in, and i
 ```bash
 npx storyreel remake work/reference --starter work/like-it   # the plan, and a starter folder made from it
 cd work/like-it && npx storyreel sheet                        # a still of each scene
+npx storyreel studio                                          # play it; try a transition or a word move on a scene
 node render.mjs                                               # the whole film: out/film.mp4, a draft stamped STARTER
 ```
 
@@ -3021,21 +3024,80 @@ recipe file (a link that opens it in VS Code), and the coordinates you need for 
 Save the recipe and the film is compiled again; a recipe that refuses shows why, and the last good
 film stays on screen.
 
+```bash
+npx storyreel studio                      # the project here, as the review tools read it; prints the address
+npx storyreel studio --ep ep1 --recipe ep1/recipe.json --port 4322   # a series: its film's own flags, its recipe's file
+```
+
+`storyreel studio` opens the film the folder's `storyreel.config.mjs` names, compiled as the review tools compile it
+(every other flag reaches its `film(flags)`; a voice's timings paced). It compiles again when the recipe's file changes
+(`--recipe`, else `recipe.json` beside the config — when it holds the recipe the config gives), when `storyboard.json`
+beside it changes, and when a file the config's `film()` lists in `watch` does (`watch: ['ep1/pacing.json']`, paths
+from the config's folder). An edit to the config's own code (or a module it imports) needs a restart: Node keeps a
+module once it has loaded it, and the studio says so when the config changes. The voice is not played here: its paced
+narration is made by a render. A folder made by `storyreel remake --starter` opens with just `npx storyreel studio`.
+
+From code, `startStudio` takes the film's `load()`:
+
 ```js
 import {startStudio} from 'footprint-storyreel/studio';
 const studio = await startStudio({
-  load: async () => ({film, storyboard, recipe, source: {file: 'recipe.json'}, audio: 'voice.wav'}),
+  load: async () => ({film, storyboard, recipe, source: {file: 'recipe.json'}, audio: 'voice.wav', kits,
+    compile: copy => compileFilm({storyboard, timings, recipe: copy, kits})}),   // what Try plays (optional)
   watch: ['recipe.json'],          // compiled again when these change
   port: 4321,
 });
 ```
 
 Keys: space plays; ← → step a frame (shift: a second); `[` `]` the previous and next phrase; `,` `.`
-the previous and next scene. **Transitions** opens the collection a shot can enter with, on one sheet
-(return `kits` from `load()` and their own transitions show too). It listens on 127.0.0.1 only, answers only requests addressed to that
-name, only reads (GET), and runs nothing from the recipe. The engine side is `film.regionsAt(t)`
-(what is drawn where, each box naming its recipe entry) and `film.pointAt(t, x, y)` (a click in the
+the previous and next scene; Esc leaves a pick being tried. **Transitions** opens the collection a shot can enter with,
+on one sheet (return `kits` from `load()` and their own transitions show too). It listens on 127.0.0.1 only, answers
+only requests addressed to that name, only reads (GET), and runs nothing from the recipe. The engine side is
+`film.regionsAt(t)` (what is drawn where, each box naming its recipe entry) and `film.pointAt(t, x, y)` (a click in the
 recipe's coordinates); every `film.beats[i].path` names the entry that asked for that phrase.
+
+### Pick a move by eye: the gallery, Try, Keep and apply
+
+Choosing how a shot comes in, or how each word lands, is a choice you make by looking — and reading a list of names,
+or asking an agent to edit the recipe and render again, is slow and costs tokens every time. So the studio shows them
+all playing, lets you try one on your own scene in seconds without editing anything, and gives you the pick as one
+short line that a command applies without reading the recipe.
+
+- **The gallery** (open it under the transcript): a card for every transition the film can enter with — the built-in
+  ones and its kits' — and every move a word of kinetic type can land with (`footprint-storyreel/kits/kinetic` ·
+  `WORD_MOVES`: the entrances a whole word makes). Each plays on a loop, drawn by the code that draws a film: a
+  transition between the two sample pictures (`transitionSample`, what the transitions sheet draws), a move by the
+  kinetic kit itself on one word. A card says what the data says of it: a transition's family and seconds, a move's
+  feel and seconds.
+- **Try** puts it on the scene at the playhead: a transition becomes that scene's stage's `enter`; a word move, that
+  scene's kinetic world's `move`. The studio compiles a copy of the recipe in memory (`load()`'s `compile`) and plays
+  the scene from a second before it starts — earlier when the change itself starts earlier (most of a change happens
+  before the scene's first word). Nothing is written, and the next reload drops it. What cannot be tried says why: the
+  story's scene (the film opens on it: nothing enters there), a `match` or a `through` (they need a thing named, which a
+  line cannot give), a film with a `pushIn` (its stages hand over on one page), a word move on a scene with no kinetic
+  world. Under each group, the scenes that take one.
+- **Keep** copies the pick as one line — `scene-05 enter torn`, `scene-05 move pop` — to the clipboard (or into a box
+  to copy from, when the browser will not let the page copy), and lists the lines kept; **Copy all** copies them all.
+- **`storyreel apply`** writes them into the recipe, so an agent applies a pick with one command and never reads the
+  recipe:
+
+```bash
+npx storyreel apply "scene-05 enter torn" "scene-03 move pop"
+# scene-05 enter: cut → torn
+# scene-03 move: (not set) → pop
+# …/recipe.json: 2 changes written
+```
+
+Every line is checked first — its scene is in the storyboard, a stage plays it (for `enter`) or it has a kinetic world
+(for `move`), the name is one of this film's transitions (its kits' too) or a move a whole word makes — and one that
+refuses writes nothing, naming the fix (`scene-01 enter torn: no stage plays its scene, so nothing enters there … — a
+transition goes on a stage's scene: scene-02, scene-03`). The file is the one the film reads (`--recipe file`, else
+`recipe.json` beside the config; it must hold the very recipe `film(flags)` gives, so the film's own flags go along:
+`--ep ep1`), and it keeps its layout: one written by `JSON.stringify` (two spaces, four, a tab, one line) changes only
+the lines of the change. The checks run as a footprintjs flowchart — each line, which kind it is, and whether the film
+takes it, decided with `decide()` rule tables whose labels are the reasons — and `--record` prints, in place of the
+lines, one JSON object: `{file, written, changes, refusals, record}`, the record that run's narrative, so an agent that
+must debug a refusal reads why without reading the code.
 
 ## Built-in kits
 

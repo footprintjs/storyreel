@@ -35,6 +35,7 @@ made from changed) → `makeRelease` for each platform. The `storyreel-cartoon` 
 | motion by name: moves, eases, walks, acting, the animator's principles | [motion.md](../storyreel-cartoon/motion.md) |
 | camera moves by name: dolly, pan, orbit, rack focus; one camera at a time | [camera.md](../storyreel-cartoon/camera.md) |
 | cut between shots: a transition by name and what each one means (`torn`: leave the old page behind) | the package README, section Transitions: the catalog, `footprint-storyreel/transitions` · `TRANSITION_NAMES` |
+| the person picks a transition or a word move by eye; apply the lines they kept (`scene-05 enter torn`) | `npx storyreel studio` (its gallery), then `npx storyreel apply "<line>" …`: no recipe to read; the package README, section Pick a move by eye |
 | music: cut on the beat, settle an unsure tempo | [music.md](../storyreel-cartoon/music.md) |
 | a recorded sound effect (`npx storyreel sounds search`) | the package README, section Found sounds |
 | motion copied from a phone video onto a figure | [mocap.md](../storyreel-cartoon/mocap.md) |
