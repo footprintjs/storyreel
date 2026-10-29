@@ -2910,7 +2910,7 @@ plan.scenes[30].why.rules[0].checks;          // ['shots 21 ≥ 2 ✓', 'lettere
 
 `npx storyreel remake work/reference` prints the same from the folder `storyreel breakdown` wrote (or its
 `breakdown.json`); `--quick 1.5` changes what counts as a quick shot, and `--json` prints the plan for an agent, its
-record left out. It needs no project and writes nothing.
+record left out. It needs no project and writes nothing (unless asked for a starter, below).
 
 - **The scenes.** A shot shorter than `quick` (1 s) is quick; quick shots joined by hard cuts are one scene. A dissolve,
   a dip or a held shot ends a run. Half or more of a run lettered is kinetic type, a word a shot; less is a montage. A
@@ -2925,7 +2925,7 @@ record left out. It needs no project and writes nothing.
   `"enter": "cut"`.
 - **The music.** With the beats read (`storyreel breakdown --beats`): when `onBeat` (half) or more of the cuts judged
   against the beats land on one, the song times the film — each scene the whole bars nearest its length at the song's
-  tempo (4 beats a bar), a kinetic scene enough for a beat a word, its words `every` beats apart (`"on": "beats"`),
+  tempo (4 beats a bar), a kinetic scene or a montage enough for a beat a shot, its words or pictures `every` beats apart (`"on": "beats"`),
   inside what `beatTimings` and the kinetic kit take (`MUSIC.mostBars`, 64 bars a scene — a longer one is kept at 64
   and listed to split — and `MUSIC.mostEvery`, 8 beats between words). Fewer, and the words time it, with any song under. An unsure tempo is settled first (`--bpm`); beats not read are
   read first, when the film has sound.
@@ -2933,6 +2933,49 @@ record left out. It needs no project and writes nothing.
   each choice is decided with `decide()`: the why names the rule, its checks and the numbers it read, and `plan.record`
   keeps the run's narrative, each scene's decision named ("scene 3 at 4.2 s: …").
 - **The thresholds** are `REMAKE`: `remakePlan(spec, {thresholds: {quick: 1.5}})` changes one; an unknown name refuses.
+
+### A starter film from the plan
+
+Once the plan is approved, `remakeStarter(plan)` makes it into a film that renders as it is: an animatic in the
+reference's own rhythm, every card saying what goes there. You fill it in, and it becomes your film.
+
+```bash
+npx storyreel remake work/reference --starter work/like-it   # the plan, and a starter folder made from it
+cd work/like-it && npx storyreel sheet                        # a still of each scene
+node render.mjs                                               # the whole film: out/film.mp4, a draft stamped STARTER
+```
+
+```js
+import {remakePlan, remakeStarter} from 'footprint-storyreel/breakdown';
+const starter = remakeStarter(await remakePlan(spec));
+starter.recipe.story.words[1];   // {text: 'WORD 2', at: ['scene-01', 'words land', 0.35]}: when the reference cuts to shot 2
+starter.give[0].where;           // 'In recipe.json, its words: in place of "WORD 1" … "WORD 4", each keeping its at (…)'
+```
+
+- **Each scene is the reference's.** A silent scene of the storyboard, one direction as long as the reference's scene
+  (never spoken; a scene over 20 s is directions of at most 20 s; one under 0.2 s is held 0.2 s, so every later cut
+  comes that much later, and `notes` says so). On it a
+  kinetic world of cards: kinetic type a card a shot (`WORD 1` …), each landing when the reference cuts to its shot, the
+  ground and ink swapping; a title one card (`TITLE`); plain ground the ground alone (a kinetic world with `"words": []`);
+  a montage, a still, a camera move or a moving picture grey cards naming the picture (`PICTURE 1`, `CAMERA MOVE` …) —
+  a film here cannot show a picture file yet, so the card stands in. A scene's first ground is never the ground before
+  it, so every cut shows. A run of more shots than a kinetic world takes (40) is scenes of its own, `scene-31`,
+  `scene-31-2` …, cut as the reference cuts. The first scene is the story, the rest world stages coming in as the plan
+  says (`enter`), and the recipe keeps the plan's `pace`.
+- **Checked end to end.** A film made with FFmpeg (lettered cards cut every 0.32 s, a held card, a moving box) is
+  broken down, planned, made into a starter, rendered and broken down again: every cut of the reference is a cut of
+  the starter, within 0.05 s. A shot of a frame or two (at 60 fps) is too short to be a shot of its own in a render at
+  30 fps, and the slam of each card adds changes of its own inside a held card.
+- **Music first.** The song times it: `music.bars` are the plan's bars, for `beatTimings`, and the cards land on each
+  scene's beats (`"on": "beats"`, `every` apart). The folder's project maps `song.wav` (or `--song <file>`, `--bpm <n>`
+  when its tempo is unsure) and renders with the song under the film.
+- **What is still to give, and where.** `give` lists the words (where their cards are), the pictures (not yet), and the
+  song, beats, tempo or timing the plan named, each with where it goes as a sentence; `notes` says what the starter does
+  not make (the plan's flashes, a scene held longer).
+- **The folder** (`files`, written by `--starter`): `storyboard.json`, `recipe.json` (a card a line), `plan.json` (the
+  plan, its record left out), `storyreel.config.mjs` (so every review tool reads it as a project), `render.mjs` and a
+  `README.md` with the plan. A file already in the folder is never replaced: the command refuses before writing any.
+  Nothing the breakdown names is written into code, and a name with a line break is shown on one line.
 
 ## The compile record
 
@@ -3020,7 +3063,8 @@ recipe's coordinates); every `film.beats[i].path` names the entry that asked for
   a mark, a phrase as one) needs a time of its own (`{"text": "NOW", "at": ["beat", "lands on"]}`) inside its scene, or
   it refuses naming the fix. `"on": "beats"` lands them on the scene's beats instead, in a film timed by its song
   (Music first, below). Its words reach the reading check from when they can be read (0.2 s after landing);
-  `world.words` lists when each lands. `import {kineticKit} from 'footprint-storyreel/kits/kinetic'`.
+  `world.words` lists when each lands. No words (`"words": []`) is the ground alone: a beat of plain colour.
+  `import {kineticKit} from 'footprint-storyreel/kits/kinetic'`.
 
 ```json
 {"type": "world", "scene": "beat", "enter": "cut",

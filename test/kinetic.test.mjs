@@ -42,7 +42,8 @@ test('a word the voice does not say needs a time of its own: {text, at} at its a
 test('its spec is checked, each refusal naming the fix', async () => {
   const clock = await clockOf(), bad = (extra) => () => compileKinetic({scene: 'beat', words: ['Every'], ...extra}, clock);
   assert.throws(bad({styles: 'x'}), /kinetic takes scene, words, on, every, style, move, flip, colors, sound, size — not "styles"/);
-  assert.throws(bad({words: []}), /kinetic words is a list of 1 to 40 words/);
+  assert.throws(bad({words: 'Every'}), /kinetic words is a list of up to 40 words, each "text" or \{text, at\} \(\[\]: the ground alone, a beat of plain colour\)/);
+  assert.throws(bad({words: Array(41).fill('Every')}), /kinetic words is a list of up to 40 words/);
   assert.throws(bad({style: 'bounce'}), /kinetic style is slam or stack/);
   assert.throws(bad({move: 'shake'}), /kinetic move "shake" is not an entrance a whole word makes — name one that is \(slam, pop/);
   for (const move of ['text-reveal-word', 'text-reveal-letter', 'count-up']) assert.throws(bad({move}), /is not an entrance a whole word makes/, `${move}: it splits the word or counts`);
@@ -52,6 +53,14 @@ test('its spec is checked, each refusal naming the fix', async () => {
   assert.throws(bad({size: 5}), /kinetic size is the largest a word is drawn, 24 to 600 px/);
   assert.throws(bad({flip: 'yes'}), /kinetic flip is true or false/);
   assert.throws(bad({words: ['Every', '  ']}), /kinetic words\[1\] is "text" or \{text, at\}/);
+});
+
+test('no words is the ground alone: a beat of plain colour, nothing to read, no sound', async () => {
+  const clock = await clockOf(), world = compileKinetic({scene: 'beat', words: [], colors: ['#203040', '#ffffff'], sound: 'tap'}, clock);
+  assert.deepEqual([world.words, world.texts(), world.sounds], [[], [], []]);
+  const c = createCanvas(1600, 900), x = c.getContext('2d');
+  world.draw(x, clock.start('beat') + .5);
+  for (const [px, py] of [[800, 450], [10, 10], [1590, 890]]) assert.deepEqual([...x.getImageData(px, py, 1, 1).data], [0x20, 0x30, 0x40, 255], 'the ground, every pixel');
 });
 
 test('a sound at every word that lands, when one is named', async () => {

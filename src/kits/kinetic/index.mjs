@@ -16,6 +16,8 @@
  * colors  [ground, ink] ("#f3eee3", "#1a1a1a")
  * sound   a sound at every word that lands (tap, click, whoosh …), or none (the default)
  * size    the largest a word is drawn, px on the 1600×900 frame (480); a word too wide for the frame is drawn smaller
+ *
+ * No words ("words": []) is the ground alone: a beat of plain colour between words, as a launch film cuts to one.
  */
 import {moveAt, readMove} from 'footprint-story/motion';
 import {applyMove} from '../../moves.mjs';
@@ -34,7 +36,7 @@ const LEGIBLE = .2;
 function readSpec(spec, where) {
   for (const k of Object.keys(spec)) if (!KEYS.includes(k)) throw new Error(`${where}: kinetic takes ${KEYS.filter((x) => x !== 'kit').join(', ')} — not "${k}"`);
   const words = spec.words;
-  if (!Array.isArray(words) || !words.length || words.length > KINETIC.most) throw new Error(`${where}: kinetic words is a list of 1 to ${KINETIC.most} words, each "text" or {text, at}`);
+  if (!Array.isArray(words) || words.length > KINETIC.most) throw new Error(`${where}: kinetic words is a list of up to ${KINETIC.most} words, each "text" or {text, at} ([]: the ground alone, a beat of plain colour)`);
   const style = spec.style ?? 'slam';
   if (!STYLES.includes(style)) throw new Error(`${where}: kinetic style is ${STYLES.join(' or ')}, not ${JSON.stringify(spec.style)}`);
   const move = readMove(spec.move ?? 'slam', `${where}: kinetic move`);

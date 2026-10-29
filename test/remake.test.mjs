@@ -7,29 +7,12 @@ import {writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {createCanvas, GlobalFonts} from '@napi-rs/canvas';
 import {PACE_NAMES, TRANSITION_NAMES} from 'footprint-story/motion';
 import {remakePlan, remakePlanText, REMAKE, SCENE_KINDS, breakdown} from '../src/breakdown.mjs';
 import {MUSIC} from '../src/music.mjs';
 import {compileKinetic} from '../src/kits/kinetic/index.mjs';
 import {tempDir} from './tmp.mjs';
-
-const NOT_READ = Object.freeze({ran: false, why: 'no beat map was given (breakdown(file, {beatMap}))'});
-
-/** A shot as a breakdown writes it: `seconds` long, coming in by `in`, lettered or not, still, moving or the camera. */
-const shot = (seconds, {enter = 'cut', took, text = false, motion = 'still', camera, blank = false} = {}) =>
-  ({seconds, in: {kind: enter, ...(took ? {seconds: took} : {})}, motion: {verdict: motion, ...(camera ? {camera} : {})}, text: {verdict: text ? 'text' : 'no-text'}, ...(blank ? {blank: true} : {})});
-
-/** A breakdown's spec of these shots, laid end to end: the first comes in by the start, the pacing counted from them. */
-function specOf(shots, {beats = NOT_READ, flashes = [], sound = true} = {}) {
-  let at = 0;
-  const laid = shots.map((x, i) => { const s = {index: i + 1, start: at, end: +(at + x.seconds).toFixed(3), seconds: x.seconds, ...x, in: i ? x.in : {kind: x.in.kind === 'fade-in' ? 'fade-in' : 'start', ...(x.in.kind === 'fade-in' ? {seconds: x.in.seconds} : {})}, out: {kind: 'cut'}}; at = s.end; return s; });
-  const lengths = laid.map(x => x.seconds).sort((a, b) => a - b), m = lengths.length >> 1;
-  const median = lengths.length % 2 ? lengths[m] : (lengths[m - 1] + lengths[m]) / 2;
-  return {schemaVersion: 1, file: 'ref.mp4', video: {seconds: at, sound}, shots: laid, transitions: [], flashes: flashes.map(f => ({at: f})),
-    pacing: {shots: laid.length, median, cutsPerMinute: +((laid.length - 1) / at * 60).toFixed(1)}, audio: {sound, beats}};
-}
-const quickWords = n => Array.from({length: n}, () => shot(.3, {text: true}));
+import {NOT_READ, shot, specOf, quickWords, beatsOf, makeReference, skip} from './remake-specs.mjs';
 
 test('a run of quick shots joined by hard cuts is one scene; a held shot is a scene of its own; each scene says what it is and why', async () => {
   const spec = specOf([...quickWords(4), shot(2), shot(.4), shot(.4), shot(.4, {text: true}), shot(2, {text: true}), shot(2, {motion: 'camera', camera: 'left'}), shot(2, {motion: 'inside'}), shot(.5, {blank: true}), shot(2)]);
@@ -42,6 +25,7 @@ test('a run of quick shots joined by hard cuts is one scene; a held shot is a sc
   assert.deepEqual(kinetic.why.rules[0], {then: 'kinetic', met: true, checks: ['shots 4 ≥ 2 ✓', 'lettered 1 ≥ 0.5 ✓']});
   assert.deepEqual(montage.why.rules.slice(0, 2).map(r => [r.then, r.met, r.checks]), [['kinetic', false, ['shots 3 ≥ 2 ✓', 'lettered 0.333 ≥ 0.5 ✗']], ['montage', true, ['shots 3 ≥ 2 ✓']]]);
   assert.deepEqual([kinetic.from, kinetic.to, kinetic.seconds], [0, 1.2, 1.2]);
+  assert.deepEqual([kinetic.starts, montage.starts], [[0, .3, .6, .9], [3.2, 3.6, 4]], 'when each of its shots starts: where a starter lands its cards');
   // What a breakdown cannot know is still to give: words and pictures by scene, the camera's way, nothing for plain ground.
   assert.deepEqual(plan.todo.filter(x => x.scene).map(x => [x.scene, x.give, x.what]), [
     ['scene-01', 'words', '4 words, one a shot, in the order they land'], ['scene-02', 'pictures', 'a picture'], ['scene-03', 'pictures', '3 pictures, one a shot'],
@@ -80,9 +64,6 @@ test('the pace: a promo when half the shots are short or it cuts often, else a l
 });
 
 /** Beats as a breakdown reports them: `on` of `of` judged cuts on a beat. */
-const beatsOf = ({bpm = 120, sure = true, on, of}) => ({ran: true, bpm, sure, judged: {grid: 'every', beats: 4, of: 4}, beats: [], drop: null,
-  cuts: Array.from({length: of}, (_, i) => ({at: i, kind: 'cut', beat: i, off: 0, onBeat: i < on})), onBeat: on, of, within: .05});
-
 test('music: a film cut to its song is timed by it — each scene\'s bars at its tempo, a kinetic scene a beat a word at least', async () => {
   // 120 BPM: a bar is 2 s. 4 words in 1.2 s round to one bar; 9 words need three bars (4 beats a bar), one beat apart.
   const plan = await remakePlan(specOf([...quickWords(4), shot(4.2), ...quickWords(9)], {beats: beatsOf({on: 3, of: 4})}));
@@ -90,6 +71,10 @@ test('music: a film cut to its song is timed by it — each scene\'s bars at its
   assert.deepEqual(plan.music.why.rules.at(-1), {then: 'music-first', met: true, checks: ['judgedCuts 4 > 0 ✓', 'onBeatShare 0.75 ≥ 0.5 ✓']});
   assert.deepEqual(plan.scenes.map(x => [x.kind, x.bars, x.every]), [['kinetic', 1, 1], ['still', 2, undefined], ['kinetic', 3, 1]]);
   assert.equal(plan.music.seconds, 12);
+  // A montage is a run too: a beat a picture at least (6 pictures in 1.8 s round to one bar, which has 4 beats: two bars).
+  const pictures = await remakePlan(specOf([shot(4), ...Array.from({length: 6}, () => shot(.3))], {beats: beatsOf({on: 3, of: 4})}));
+  assert.deepEqual(pictures.scenes.map(x => [x.kind, x.bars, x.every]), [['still', 2, undefined], ['montage', 2, 1]]);
+  assert.match(remakePlanText(pictures), /\| 2, a picture every 1 beat \|/);
   assert.deepEqual(plan.todo.filter(x => !x.scene), [{give: 'song', what: 'a song at about 120 BPM, and its beat map (beatMap): beatTimings times the film by it'}]);
   // Fewer than half on a beat: its cuts follow the picture; its words time it.
   const under = await remakePlan(specOf([shot(2), shot(2)], {beats: beatsOf({on: 1, of: 4})}));
@@ -172,26 +157,7 @@ test('refusals name the fix', async () => {
 
 // ── End to end: a film made with FFmpeg, broken down, planned, and the command line ────────────────────────
 
-const has = cmd => !spawnSync(cmd, ['-version']).error;
-const skip = has('ffmpeg') && has('ffprobe') ? false : 'needs ffmpeg and ffprobe';
 const cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url));
-
-/** Four lettered cards of 0.32 s, cut one to the next, then a blue card held 2 s, then a box moving across black for 2 s. */
-function makeReference(dir) {
-  GlobalFonts.registerFromPath(fileURLToPath(new URL('../fonts/caveat/Caveat.ttf', import.meta.url)), 'Caveat');
-  const cards = [['ONE', '#2b2d33'], ['TWO', '#7a1f1f'], ['MORE', '#1f4f7a'], ['NOW', '#2f6b2f']].map(([word, ground], i) => {
-    const c = createCanvas(320, 180), x = c.getContext('2d');
-    x.fillStyle = ground; x.fillRect(0, 0, 320, 180); x.fillStyle = '#ffffff'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '700 64px Caveat'; x.fillText(word, 160, 90);
-    const file = path.join(dir, `word-${i}.png`); writeFileSync(file, c.toBuffer('image/png')); return file;
-  });
-  const V = 'format=yuv420p,setsar=1', file = path.join(dir, 'reference.mp4');
-  const graph = [...cards.map((_, i) => `[${i}:v]fps=25,${V}[w${i}]`), `color=c=blue:s=320x180:r=25:d=2,${V}[b]`,
-    'color=c=black:s=320x180:r=25:d=2[bg]', 'color=c=white:s=40x40:r=25:d=2[box]', `[bg][box]overlay=x='20+120*t':y=70,${V}[m]`,
-    `${cards.map((_, i) => `[w${i}]`).join('')}[b][m]concat=n=${cards.length + 2}:v=1:a=0[v]`].join(';');
-  const r = spawnSync('ffmpeg', ['-v', 'error', '-y', ...cards.flatMap(f => ['-loop', '1', '-framerate', '25', '-t', '0.32', '-i', f]), '-filter_complex', graph, '-map', '[v]', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file], {encoding: 'utf8'});
-  assert.equal(r.status, 0, r.stderr);
-  return file;
-}
 
 test('end to end: a film broken down and planned — the quick lettered cards one kinetic scene, the held blue card plain ground, the box a moving picture; the command line prints the same', {skip}, async () => {
   const dir = tempDir('remake-test'), out = path.join(dir, 'reference-breakdown');

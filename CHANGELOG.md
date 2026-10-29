@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **A starter film from the plan: `remakeStarter` (`footprint-storyreel/breakdown`, `storyreel remake --starter`).** An
+  approved remake plan made into a film that renders as it is — an animatic in the reference's own rhythm — for a
+  person to fill in. Each scene is a silent scene as long as the reference's, with a kinetic world of cards on it: a
+  card a shot for kinetic type (`WORD 1` …), each landing when the reference cuts to its shot; `TITLE` for a title; the
+  ground alone for plain ground; grey cards naming the picture for a montage, a still, a camera move or a moving picture
+  (a film here cannot show a picture file yet). Every cut shows (a scene's first ground is never the one before it); the
+  stages come in as the plan says and the recipe keeps its pace; under music first the song times it (the plan's bars,
+  the cards on the beats). `give` says what is still to give and where it goes; `notes` what the starter does not make.
+  `--starter <folder>` writes the project — storyboard, recipe, plan, `storyreel.config.mjs` (every review tool reads
+  it), `render.mjs`, a README with the plan — and never replaces a file already there. A run of more shots than a
+  kinetic world takes (40) is scenes of their own, cut as the reference cuts. Checked end to end: a film made with
+  FFmpeg, broken down, planned, made into a starter, rendered and broken down again — every cut of the reference is a
+  cut of the starter, within 0.05 s.
+  The plan's scenes now carry when each shot starts (`starts`), and a montage under music first gets a beat a picture,
+  as a kinetic scene gets a beat a word. **A kinetic world may have no words** (`"words": []`): the ground alone, a beat
+  of plain colour; it refused an empty list before.
+
 - **Make one like it: `remakePlan` (`footprint-storyreel/breakdown`, `storyreel remake`).** A breakdown's spec read as a
   draft plan for a film made like the reference, for a person to approve before anything is made. Its shots are grouped
   into scenes (a run of quick shots joined by hard cuts is one: kinetic type when half or more are lettered, a word a

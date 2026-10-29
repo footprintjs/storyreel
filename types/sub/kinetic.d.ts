@@ -8,6 +8,7 @@ export interface KineticSpec {
   kit?: 'kinetic';
   /** the scene whose voice the words follow (each lands when it is said, in order) */
   scene?: string;
+  /** in order; none ([]): the ground alone, a beat of plain colour */
   words: KineticWord[];
   /** each word on its spoken word (voice, the default), or word after word on the scene's beats (a film timed by its song: beatTimings) */
   on?: 'voice' | 'beats';

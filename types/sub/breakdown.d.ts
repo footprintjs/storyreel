@@ -125,11 +125,12 @@ export type RemakeEntrance = 'cut' | 'fade' | 'dip' | {type: 'fade' | 'dip'; sec
 export interface RemakeScene {
   id: string; from: number; to: number; seconds: number;
   /** the reference's shots it stands for (their index) */ shots: number[];
+  /** when each of its shots starts (film seconds, one a shot): where a starter lands its cards */ starts: number[];
   kind: SceneKind; why: Why;
   /** how the reference's first shot of it comes in */ in: ShotEdge['kind'];
   /** null: the first scene, which a film starts on */ enter: RemakeEntrance | null; enterWhy: string;
   /** the flashes inside it (seconds) */ flashes?: number[];
-  /** music first: the scene's whole bars (beatTimings' bars, at most 64), and a kinetic scene's beats between words (at most 8) */ bars?: number; every?: number;
+  /** music first: the scene's whole bars (beatTimings' bars, at most 64), and a kinetic scene's or a montage's beats between words or pictures (at most 8) */ bars?: number; every?: number;
   /** music first: the bars it would last, past the 64 a scene takes (its bars are cut to 64; the to-do says to split it) */ longer?: number;
 }
 export interface RemakePlan {
@@ -153,3 +154,32 @@ export interface RemakePlan {
 export function remakePlan(breakdown: BreakdownSpec, options?: {thresholds?: Partial<RemakeThresholds>}): Promise<RemakePlan>;
 /** The plan in plain words (markdown): the choices, the scenes, the entrances and flashes, and what is still to give. */
 export function remakePlanText(plan: RemakePlan): string;
+
+/** The starter's two families of cards, [ground, ink]: words on the kinetic kit's own, a picture to come on grey. */
+export const STARTER: Readonly<{words: readonly [string, string]; pictures: readonly [string, string]}>;
+/** One thing a starter still needs, and where it goes. */
+export interface StarterGive {
+  scene?: string;
+  give: 'words' | 'pictures' | 'split' | 'song' | 'tempo' | 'beats' | 'timing';
+  what: string;
+  /** where it goes, as a sentence */ where: string;
+  /** where the scene's cards are in recipe.json: story.words, or stages[i].world.words */ place?: string;
+}
+export interface RemakeStarter {
+  /** each scene silent: one direction as long as the reference's scene (in parts of at most 20 s, never under 0.2 s) */
+  storyboard: {title: string; scenes: {id: string; title: string; silent: [string, number][]}[]};
+  /** the plan's pace; the first scene the story, the rest world stages coming in as the plan says; each a kinetic world of cards */
+  recipe: {pace: string; story: Record<string, unknown>; stages: Record<string, unknown>[]};
+  /** music first: each scene's bars, for beatTimings; else null (the reference's own seconds time it) */
+  music: {bars: Record<string, number>} | null;
+  give: StarterGive[];
+  /** what the starter does not make: scenes held 0.2 s, the plan's flashes */ notes: string[];
+  /** the folder's files by name: storyboard.json, recipe.json, plan.json, storyreel.config.mjs, render.mjs, README.md */
+  files: Record<string, string>;
+}
+/**
+ * A starter film from an approved plan: a storyboard and a recipe that render as they are — an animatic in the
+ * reference's own rhythm, every card ("WORD 1", "TITLE", a grey "PICTURE") landing when the reference cuts to its shot —
+ * with what is still to give and where, and the files of a project folder (storyreel remake --starter writes them).
+ */
+export function remakeStarter(plan: RemakePlan | Omit<RemakePlan, 'record'>, options?: {title?: string}): RemakeStarter;

@@ -37,7 +37,7 @@ function choiceLines(plan) {
 function sceneLines(plan) {
   const bars = plan.music.verdict === 'music-first';
   return ['## Scenes', '', `| scene | from | to | length | shots | what | comes in by |${bars ? ' bars |' : ''} why |`, `|---|---|---|---|---|---|---|${bars ? '---|' : ''}---|`,
-    ...plan.scenes.map(x => `| ${x.id} | ${clockTenths(x.from)} | ${clockTenths(x.to)} | ${secondsText(x.seconds)} | ${shotsText(x.shots)} | ${kindText(x)} | ${enterText(x.enter)} |${bars ? ` ${x.bars}${x.every ? `, a word every ${plural(x.every, 'beat')}` : ''} |` : ''} ${x.why.because} |`)];
+    ...plan.scenes.map(x => `| ${x.id} | ${clockTenths(x.from)} | ${clockTenths(x.to)} | ${secondsText(x.seconds)} | ${shotsText(x.shots)} | ${kindText(x)} | ${enterText(x.enter)} |${bars ? ` ${x.bars}${x.every ? `, a ${x.kind === 'montage' ? 'picture' : 'word'} every ${plural(x.every, 'beat')}` : ''} |` : ''} ${x.why.because} |`)];
 }
 
 /** Each entrance that is not a plain cut, and each flash, with its reason. */
