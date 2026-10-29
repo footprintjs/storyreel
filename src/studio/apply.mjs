@@ -6,18 +6,18 @@
  *
  * Every line is checked before any is applied; one refusal and none is (each refusal says its reason — the rule's
  * label — and its fix). applyPicks works on the recipe as data (the studio's Try and Keep); applyLines on its JSON text,
- * keeping the text's layout (storyreel apply). No file is read or written here.
+ * changing only the text of the values it sets (storyreel apply). No file is read or written here.
  *
  *   await applyLines(text, ['scene-05 enter torn', 'scene-03 move pop'], {scenes, catalog})
- *     → {text, changes: [{line, scene, kind, name, path, before, after}], record}
+ *     → {text, recipe, changes: [{line, scene, kind, name, path, before, after}], record}
  */
 import {flowChart, decide, narrative} from 'footprintjs';
+import {isDeepStrictEqual} from 'node:util';
 import {TRANSITIONS} from '../transitions.mjs';
-import {WORD_MOVES} from '../kits/kinetic/index.mjs';
 import {addDecider} from '../decisions.mjs';
 import {QUIET, plainNarrative} from '../record.mjs';
-import {editableJson} from '../remake-starter-files.mjs';
-import {PICK_FORM, lineFacts, putPicks, changeText} from './picks.mjs';
+import {PICK_FORM, BESIDE, lineFacts, putPicks, changeText} from './picks.mjs';
+import {spliceJson} from './lines.mjs';
 
 /** The most lines one run applies (each is a pass of the chart's loop, and the loop is bounded). */
 export const MOST_LINES = 200;
@@ -33,10 +33,11 @@ fallback: {branch: 'move', label: 'a word move: it sets the move of its scene\'s
 
 /**
  * Whether the film takes the line: its scene, the place its kind goes, and its name. Each refusal's label is its reason;
- * `fix` names what would do (the scenes that take one, the names this film has), for the message.
+ * `fix` names what would do (the scenes that take one, the names this film has), for the message — or, `own`, is the
+ * whole refusal in the words of the reader that said no (a line that is no pick; a move the kinetic kit refuses).
  */
 const CHECK = {rules: [
-  {when: {lineIs: {eq: 'not-a-pick'}}, then: 'refused', label: 'it is not a pick', fix: f => f.formError},
+  {when: {lineIs: {eq: 'not-a-pick'}}, then: 'refused', label: 'it is not a pick', fix: f => f.formError, own: true},
   {when: {sceneKnown: {eq: false}}, then: 'refused', label: 'its scene is not in the storyboard', fix: (f, film) => `the scenes are ${listed(film.scenes)}`},
   {when: {lineIs: {eq: 'enter'}, pushIn: {eq: true}}, then: 'refused', label: 'the film has a pushIn, which hands its stages over on one page, so no stage enters with a transition', fix: () => 'enter is for a film without one'},
   {when: {lineIs: {eq: 'enter'}, stagePlays: {eq: false}}, then: 'refused', label: 'no stage plays its scene, so nothing enters there (the story opens the film; a scene with no stage stays in the shot before it)',
@@ -46,14 +47,13 @@ const CHECK = {rules: [
     fix: f => `${f.settingsError.replace(`${f.pick.line}: `, '')}; give this one in the recipe ("enter": {"type": "${f.pick.name}", …})`},
   {when: {lineIs: {eq: 'move'}, kineticWorld: {eq: false}}, then: 'refused', label: 'its scene has no kinetic world (kits/kinetic), so there is no word to move',
     fix: f => (f.takes.length ? `the scenes with one are ${listed(f.takes)}` : 'this film has none: a word move is for kinetic type')},
-  {when: {lineIs: {eq: 'move'}, moveKnown: {eq: false}}, then: 'refused', label: 'its name is not a move', fix: () => `name one a whole word makes: ${listed(WORD_MOVES)}`},
-  {when: {lineIs: {eq: 'move'}, wholeWord: {eq: false}}, then: 'refused', label: 'its move is not an entrance a whole word makes', fix: () => `name one that is: ${listed(WORD_MOVES)}`}],
+  {when: {lineIs: {eq: 'move'}, wordMove: {eq: false}}, then: 'refused', label: 'its name is not a move a whole word makes (the kinetic kit\'s own rule, readWordMove)', fix: f => f.moveError, own: true}],
 fallback: {branch: 'takes-it', label: 'its scene takes it, and its name is one this film has'}};
 
 /** The table as decide() reads it: the rules without their fixes (its evidence is kept in the record, as plain data). */
-const CHECK_TABLE = {rules: CHECK.rules.map(({fix, ...rule}) => rule), fallback: CHECK.fallback};
-/** A refusal in words: the line, the rule's reason, its fix (a line that is no pick says so in the reader's own words). */
-const refusalOf = (rule, f, film) => (f.facts.form ? `${f.pick.line}: ${rule.label} — ${rule.fix(f, film)}` : rule.fix(f, film));
+const CHECK_TABLE = {rules: CHECK.rules.map(({fix, own, ...rule}) => rule), fallback: CHECK.fallback};
+/** A refusal in words: the line, the rule's reason, its fix — or the reader's own words, which say all three. */
+const refusalOf = (rule, f, film) => (rule.own ? rule.fix(f, film) : `${f.pick.line}: ${rule.label} — ${rule.fix(f, film)}`);
 
 // ── The chart ───────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -112,24 +112,17 @@ export async function applyPicks(recipe, lines, {scenes, catalog = TRANSITIONS} 
 }
 
 /**
- * A JSON text's layout, as a writer for a new value: the one it was written in — JSON.stringify's, with its indent (two
- * spaces, four, a tab) or on one line — so an edit changes only the lines it changes; any other layout is written as a
- * person edits JSON (remake-starter-files.mjs · editableJson). A final line break is kept as it was.
- */
-export function jsonLayout(text) {
-  const value = JSON.parse(text), body = text.replace(/\r?\n$/, ''), end = body.length < text.length ? '\n' : '';
-  const indent = /^[{[]\r?\n([ \t]+)\S/.exec(body)?.[1] ?? '';
-  const written = [indent, ''].find(i => JSON.stringify(value, null, i) === body);
-  return written === undefined ? v => `${editableJson(v)}${end}` : v => `${JSON.stringify(v, null, written)}${end}`;
-}
-
-/**
- * The lines applied to a recipe's JSON text (applyPicks): {text, changes, record} — the recipe's new text in its own
- * layout (jsonLayout). A refusal is applyPicks's: nothing is applied.
+ * The lines applied to a recipe's JSON text (applyPicks): {text, recipe, changes, record} — the recipe's new text, in
+ * which only each value set has changed (lines.mjs · spliceJson: the value's own text replaced where it is; a key not
+ * there put beside its scene, or its kit, laid out as its neighbours are), every other byte kept: its indent, its line
+ * endings, its numbers as they were written. A refusal is applyPicks's: nothing is applied.
  */
 export async function applyLines(recipeText, lines, {scenes, catalog} = {}) {
   let recipe;
   try { recipe = JSON.parse(recipeText); } catch (e) { throw new Error(`the recipe is not JSON (${e.message})`, {cause: e}); }
   const applied = await applyPicks(recipe, lines, {scenes, catalog});
-  return {text: jsonLayout(recipeText)(applied.recipe), changes: applied.changes, record: applied.record};
+  const text = spliceJson(recipeText, applied.changes.map(c => ({path: c.path, value: JSON.stringify(c.after)})), {beside: BESIDE});
+  // The text is spliced where the checked recipe has each change, so the two read back the same: never written otherwise.
+  if (!isDeepStrictEqual(JSON.parse(text), applied.recipe)) throw new Error(`the recipe's text, edited in place, does not read back as the checked recipe: set ${applied.changes.map(c => c.path).join(', ')} by hand`);
+  return {text, recipe: applied.recipe, changes: applied.changes, record: applied.record};
 }

@@ -1,15 +1,14 @@
 // The studio's gallery (studio/gallery.mjs, server.mjs): a card per transition and per word move, each playing on a loop
 // of frames drawn by the code that draws a film; Try on the scene at the playhead — a copy of the film compiled in
 // memory, the film itself unchanged — and Keep's one line; every refusal shown with its words; still loopback-only and
-// read-only. And `storyreel studio` (studio/cli.mjs): the studio on the project in a folder, as made by
-// `storyreel remake --starter`.
+// read-only, the routes that draw or compile answering the studio's own page only, one compile at a time, hostile
+// queries refused before anything is drawn. And `storyreel studio` (studio/cli.mjs): the studio on the project in a
+// folder, as made by `storyreel remake --starter`.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import {mkdirSync, symlinkSync, writeFileSync, readFileSync} from 'node:fs';
+import {writeFileSync, readFileSync} from 'node:fs';
 import path from 'node:path';
-import {spawn} from 'node:child_process';
-import {fileURLToPath} from 'node:url';
 import {createCanvas, loadImage} from '@napi-rs/canvas';
 import {compileFilm, evenTimings} from '../src/index.mjs';
 import {kineticKit, compileKinetic, WORD_MOVES} from '../src/kits/kinetic/index.mjs';
@@ -17,14 +16,15 @@ import {transitionCatalog, TRANSITION_NAMES} from '../src/transitions.mjs';
 import {transitionSample} from '../src/sheet.mjs';
 import {startStudio} from '../src/studio/server.mjs';
 import {galleryCards, cardFrames, boundedCache, CARD} from '../src/studio/gallery.mjs';
+import {KEPT_TRIES} from '../src/studio/tries.mjs';
 import {remakePlan, remakeStarter} from '../src/breakdown.mjs';
 import {shot, specOf, quickWords} from './remake-specs.mjs';
 import {tempDir} from './tmp.mjs';
+import {installed, studioIn, stopped} from './studio-run.mjs';
 
-const cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url));
-/** GET (or another method) with a chosen Host header (fetch will not send a foreign one). */
-const raw = (port, pathName, {host = `127.0.0.1:${port}`, method = 'GET'} = {}) => new Promise((resolve, reject) => {
-  const req = http.request({host: '127.0.0.1', port, path: pathName, method, headers: {host}}, res => { let body = ''; res.on('data', d => (body += d)); res.on('end', () => resolve({status: res.statusCode, body})); });
+/** GET (or another method) with a chosen Host header (fetch will not send a foreign one), and any other headers. */
+const raw = (port, pathName, {host = `127.0.0.1:${port}`, method = 'GET', headers = {}} = {}) => new Promise((resolve, reject) => {
+  const req = http.request({host: '127.0.0.1', port, path: pathName, method, headers: {host, ...headers}}, res => { let body = ''; res.on('data', d => (body += d)); res.on('end', () => resolve({status: res.statusCode, body, allow: res.headers.allow})); });
   req.on('error', reject); req.end();
 });
 
@@ -145,7 +145,7 @@ test('Try and Keep refuse with their words: a story scene, a transition that nee
     await refused('try?scene=a&kind=enter&name=torn', 422, /a enter torn: no stage plays its scene, so nothing enters there .* — a transition goes on a stage's scene: b, c/);
     await refused('try?scene=b&kind=enter&name=match', 422, /b enter match: its transition needs a setting a line cannot give .* a match needs enter\.region/);
     await refused('try?scene=b&kind=enter&name=nope', 422, /its name is not a transition of this film — the transitions are .*, curtain/);
-    await refused('try?scene=b&kind=move&name=drop-in', 422, /its move is not an entrance a whole word makes/);
+    await refused('try?scene=b&kind=move&name=drop-in', 422, /b move drop-in: kinetic move "drop-in" is not an entrance a whole word makes — name one that is/);
     await refused('try?scene=zz&kind=move&name=pop', 422, /its scene is not in the storyboard — the scenes are a, b, c/);
     await refused('pick?scene=b&kind=colour&name=red', 422, /kind must be enter or move \(e\.g\. kind=enter\), not "colour"/);
     await refused('pick?kind=enter&name=fade', 422, /" enter fade" is not a pick/);
@@ -166,6 +166,13 @@ test('the gallery\'s routes keep the studio\'s laws: loopback by name, read only
       assert.equal((await raw(studio.port, p, {method: 'POST'})).status, 405, `${p}: the studio only reads`);
       assert.equal((await raw(studio.port, p, {method: 'PUT'})).status, 405);
     }
+    // HEAD: only the page's own files (and the voice, whose player asks its size); every route of the API is GET only.
+    for (const p of ['/api/film', '/api/version', '/api/gallery', '/api/frame?t=1', '/api/card?kind=enter&name=fade', '/api/try?scene=b&kind=enter&name=fade', '/api/pick?scene=b&kind=enter&name=fade', '/api/hit', '/api/entry?path=story', '/api/sheet', '/api/transitions', '/nope']) {
+      const r = await raw(studio.port, p, {method: 'HEAD'});
+      assert.deepEqual([r.status, r.allow], [405, 'GET'], `HEAD ${p}`);
+    }
+    for (const p of ['/', '/studio.js', '/studio.css']) assert.equal((await raw(studio.port, p, {method: 'HEAD'})).status, 200, `HEAD ${p}`);
+    assert.deepEqual(studio.held(), {cards: 0, cardBytes: 0, tries: 0}, 'no HEAD drew or compiled anything');
     const page = await fetch(studio.url), html = await page.text();
     assert.match(page.headers.get('content-security-policy'), /default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:/);
     assert.match(html, /id="gallery"/);
@@ -174,24 +181,77 @@ test('the gallery\'s routes keep the studio\'s laws: loopback by name, read only
   } finally { await studio.close(); }
 });
 
-// ── storyreel studio, on a folder ────────────────────────────────────────────────────────────────────────────────
-/** `storyreel studio …` in `cwd`, until its address is printed: {url, child, out()}. */
-function studioIn(cwd, args = []) {
-  const child = spawn(process.execPath, [cli, 'studio', '--port', '0', ...args], {cwd});
-  let out = '', err = '';
-  child.stdout.on('data', d => (out += d)); child.stderr.on('data', d => (err += d));
-  const url = new Promise((resolve, reject) => {
-    child.stdout.on('data', () => { const m = /StoryReel Studio: (\S+)/.exec(out); if (m) resolve(m[1]); });
-    child.on('exit', code => reject(Object.assign(new Error(`storyreel studio exited ${code}: ${err}`), {code, err})));
-  });
-  return {url, child, out: () => out, err: () => err};
-}
-const stopped = child => new Promise(resolve => { if (child.exitCode !== null) resolve(child.exitCode); else { child.on('exit', resolve); child.kill('SIGINT'); } });
+test('a hostile query is refused (4xx) before anything is drawn or compiled: odd names, long values, repeated parameters', async () => {
+  const studio = await studioOf(), long = 'x'.repeat(10_000);
+  try {
+    const queries = [
+      'card?kind=enter&name=__proto__', 'card?kind=enter&name=constructor', 'card?kind=__proto__&name=fade', 'card?kind=move&name=toString', `card?kind=enter&name=${long}`,
+      'card?kind=enter&name=fade%20', 'card?kind=enter&name=fa%0Ade', 'card?kind=enter&name=../fade', 'card?kind=enter&name=..%2Ffade', 'card?kind=enter&name=fade/wipe',
+      'card?kind=enter&kind=move&name=fade', 'card?kind=enter&name=fade&name=wipe',
+      'try?scene=__proto__&kind=enter&name=fade', 'try?scene=constructor&kind=move&name=pop', `try?scene=${long}&kind=enter&name=fade`, 'try?scene=b%0Ac&kind=enter&name=fade',
+      'try?scene=b%20c&kind=enter&name=fade', 'try?scene=b&kind=enter&kind=move&name=fade', 'try?scene=b&kind=enter&name=../fade', 'try?scene=b&kind=enter&name=a/b', 'try?scene=b&kind=__proto__&name=fade',
+      'pick?scene=__proto__&kind=enter&name=fade', 'pick?scene=b&kind=constructor&name=fade', 'pick?scene=b&kind=enter&name=__proto__', 'pick?scene=b&scene=c&kind=enter&name=fade',
+      'frame?t=1&try=__proto__', 'frame?t=1&try=../1', `frame?t=1&w=${long}`, 'frame?t=1&t=2',
+    ];
+    for (const q of queries) {
+      const r = await raw(studio.port, `/api/${q}`);
+      assert.ok(r.status >= 400 && r.status < 500, `${q.slice(0, 80)}: ${r.status}`);
+      assert.ok(JSON.parse(r.body).error.length < 2000, `${q.slice(0, 80)}: the refusal does not hand a long value back`);
+    }
+    assert.match(JSON.parse((await raw(studio.port, '/api/card?kind=enter&kind=move&name=fade')).body).error, /"kind" is given 2 times: give each parameter once/);
+    assert.match(JSON.parse((await raw(studio.port, `/api/card?kind=enter&name=${long}`)).body).error, /The query is 10017 characters long: the studio reads at most 1024/);
+    assert.deepEqual(studio.held(), {cards: 0, cardBytes: 0, tries: 0}, 'nothing drawn, nothing compiled');
+    // Only a card the gallery lists is drawn, and asking again draws none.
+    for (let i = 0; i < 3; i++) assert.equal((await raw(studio.port, '/api/card?kind=enter&name=fade')).status, 200);
+    assert.equal(studio.held().cards, 1);
+  } finally { await studio.close(); }
+});
 
+test('the routes that draw or compile answer the studio\'s own page only; one Try compiles at a time; a pick tried again is not compiled again', async () => {
+  let compiles = 0, gate = null;
+  const slow = async r => { compiles++; if (gate) await gate.promise; return compile(r); };
+  const studio = await studioOf({compile: slow}), url = studio.url;
+  try {
+    // A page on another site can ask by an image or a link (Sec-Fetch-Site says so): refused, before anything is drawn.
+    for (const p of ['/api/frame?t=1', '/api/card?kind=enter&name=fade', '/api/pick?scene=b&kind=enter&name=fade', '/api/try?scene=b&kind=enter&name=fade']) {
+      for (const site of ['cross-site', 'same-site']) {
+        const r = await raw(studio.port, p, {headers: {'sec-fetch-site': site}});
+        assert.equal(r.status, 403, `${p} ${site}`);
+        assert.match(JSON.parse(r.body).error, new RegExp(`${p.split('?')[0]} answers the studio's own page only, and this request came from another site's \\(Sec-Fetch-Site: ${site}\\): open the studio at its own address`));
+      }
+      assert.equal(studio.held().cards + studio.held().tries + compiles, 0, `${p}: nothing drawn or compiled for another site`);
+    }
+    // Its own page (same-origin), the address typed (none), and a browser that does not say: answered.
+    for (const p of ['/api/frame?t=1', '/api/card?kind=enter&name=fade', '/api/pick?scene=b&kind=enter&name=fade', '/api/try?scene=b&kind=enter&name=fade']) {
+      for (const headers of [{'sec-fetch-site': 'same-origin'}, {'sec-fetch-site': 'none'}, {}]) assert.equal((await raw(studio.port, p, {headers})).status, 200, `${p} ${JSON.stringify(headers)}`);
+    }
+    assert.equal(compiles, 1, 'a pick tried three times is compiled once: the last few are kept, by scene, kind, name and version');
+    // One compile at a time: a Try while one runs is told to wait — even for a pick kept.
+    gate = Promise.withResolvers();
+    const first = fetch(`${url}api/try?scene=c&kind=enter&name=wipe`);
+    while (compiles < 2) await new Promise(r => setTimeout(r, 5));
+    for (const q of ['scene=b&kind=enter&name=dip', 'scene=b&kind=enter&name=fade']) {
+      const busy = await fetch(`${url}api/try?${q}`);
+      assert.equal(busy.status, 409, q);
+      assert.match((await busy.json()).error, /Another pick is being compiled: try this one again when it is done/);
+    }
+    gate.resolve(); gate = null;
+    const tried = await (await first).json();
+    assert.equal(tried.line, 'c enter wipe');
+    assert.equal((await fetch(`${url}api/frame?t=4.5&w=320&try=${tried.key}`)).status, 200);
+    const again = await (await fetch(`${url}api/try?scene=c&kind=enter&name=wipe`)).json();
+    assert.deepEqual([compiles, again.line], [2, 'c enter wipe'], 'tried again: from those kept');
+    assert.equal((await fetch(`${url}api/frame?t=4.5&w=320&try=${tried.key}`)).status, 410, 'the pick tried last is the one drawn');
+    for (const name of ['dip', 'iris', 'push', 'slide', 'whip']) await fetch(`${url}api/try?scene=b&kind=enter&name=${name}`);
+    assert.equal(studio.held().tries, KEPT_TRIES, 'the picks kept are bounded');
+    await studio.reload();
+    assert.deepEqual([studio.held().tries, studio.held().cards], [0, 0], 'a reload drops them: they were copies of the film before');
+  } finally { gate?.resolve(); await studio.close(); }
+});
+
+// ── storyreel studio, on a folder ────────────────────────────────────────────────────────────────────────────────
 test('storyreel studio on a starter folder (storyreel remake --starter): the film, the gallery and Try, with no flag but the port', async t => {
-  const folder = path.join(tempDir('studio-cli', t), 'like-it');
-  mkdirSync(path.join(folder, 'node_modules'), {recursive: true});
-  symlinkSync(fileURLToPath(new URL('..', import.meta.url)), path.join(folder, 'node_modules', 'footprint-storyreel'), 'dir');
+  const folder = installed(path.join(tempDir('studio-cli', t), 'like-it'));
   const starter = remakeStarter(await remakePlan(specOf([...quickWords(4), shot(2, {blank: true}), shot(1.2, {text: true}), shot(.4), shot(.4)])));
   for (const [name, text] of Object.entries(starter.files)) writeFileSync(path.join(folder, name), text);
   const run = studioIn(folder);

@@ -3052,7 +3052,11 @@ const studio = await startStudio({
 Keys: space plays; ← → step a frame (shift: a second); `[` `]` the previous and next phrase; `,` `.`
 the previous and next scene; Esc leaves a pick being tried. **Transitions** opens the collection a shot can enter with,
 on one sheet (return `kits` from `load()` and their own transitions show too). It listens on 127.0.0.1 only, answers
-only requests addressed to that name, only reads (GET), and runs nothing from the recipe. The engine side is
+only requests addressed to that name, only reads (GET; HEAD only for the page's own files and the voice), and runs
+nothing from the recipe. What draws, checks or compiles on request — a frame, a gallery card, a pick, a Try — answers
+the studio's own page only: a request another site's page makes (its browser says so in `Sec-Fetch-Site`) is refused,
+so a page elsewhere cannot spend the studio's time or replace the pick being tried. `studio.held()` says what it keeps
+in memory (the cards drawn, the picks tried), each bounded. The engine side is
 `film.regionsAt(t)` (what is drawn where, each box naming its recipe entry) and `film.pointAt(t, x, y)` (a click in the
 recipe's coordinates); every `film.beats[i].path` names the entry that asked for that phrase.
 
@@ -3070,12 +3074,14 @@ short line that a command applies without reading the recipe.
   kinetic kit itself on one word. A card says what the data says of it: a transition's family and seconds, a move's
   feel and seconds.
 - **Try** puts it on the scene at the playhead: a transition becomes that scene's stage's `enter`; a word move, that
-  scene's kinetic world's `move`. The studio compiles a copy of the recipe in memory (`load()`'s `compile`) and plays
-  the scene from a second before it starts — earlier when the change itself starts earlier (most of a change happens
-  before the scene's first word). Nothing is written, and the next reload drops it. What cannot be tried says why: the
-  story's scene (the film opens on it: nothing enters there), a `match` or a `through` (they need a thing named, which a
-  line cannot give), a film with a `pushIn` (its stages hand over on one page), a word move on a scene with no kinetic
-  world. Under each group, the scenes that take one.
+  scene's kinetic world's `move` (a world goes by its own `scene`, the one whose words it follows, which need not be its
+  stage's). The studio compiles a copy of the recipe in memory (`load()`'s `compile`) and plays the scene from a second
+  before it starts — earlier when the change itself starts earlier (most of a change happens before the scene's first
+  word). One Try compiles at a time (another meanwhile is told to wait), and the last few are kept, so trying one again
+  plays at once. Nothing is written, and the next reload drops it. What cannot be tried says why: the story's scene
+  (the film opens on it: nothing enters there), a `match` or a `through` (they need a thing named, which a line cannot
+  give), a film with a `pushIn` (its stages hand over on one page), a word move on a scene with no kinetic world.
+  Under each group, the scenes that take one.
 - **Keep** copies the pick as one line — `scene-05 enter torn`, `scene-05 move pop` — to the clipboard (or into a box
   to copy from, when the browser will not let the page copy), and lists the lines kept; **Copy all** copies them all.
 - **`storyreel apply`** writes them into the recipe, so an agent applies a pick with one command and never reads the
@@ -3093,11 +3099,16 @@ Every line is checked first — its scene is in the storyboard, a stage plays it
 refuses writes nothing, naming the fix (`scene-01 enter torn: no stage plays its scene, so nothing enters there … — a
 transition goes on a stage's scene: scene-02, scene-03`). The file is the one the film reads (`--recipe file`, else
 `recipe.json` beside the config; it must hold the very recipe `film(flags)` gives, so the film's own flags go along:
-`--ep ep1`), and it keeps its layout: one written by `JSON.stringify` (two spaces, four, a tab, one line) changes only
-the lines of the change. The checks run as a footprintjs flowchart — each line, which kind it is, and whether the film
-takes it, decided with `decide()` rule tables whose labels are the reasons — and `--record` prints, in place of the
-lines, one JSON object: `{file, written, changes, refusals, record}`, the record that run's narrative, so an agent that
-must debug a refusal reads why without reading the code.
+`--ep ep1`). The recipe with the lines is then compiled once, as the tools compile the film, and one the compile refuses
+writes nothing either, in the compile's own words (a kit's transition that looks for a door the scene has none of).
+Only the values set change in the file: each is replaced where it stands, and a key not there goes just after its
+entry's `scene` (a world with none: its `kit`), on a line of its own with its neighbours' indent and line ending, or
+inline beside it when the entry is on one line — every other byte stays as written (short lists on one line, CRLF,
+tabs, numbers as you spelled them). Two lines for one scene and kind: the later wins. The checks run as a footprintjs
+flowchart — each line, which kind it is, and whether the film takes it, decided with `decide()` rule tables whose
+labels are the reasons (a word move is the kinetic kit's own rule, `readWordMove`, refusing in its words) — and
+`--record` prints, in place of the lines, one JSON object: `{file, written, changes, refusals, record}`, the record that
+run's narrative, so an agent that must debug a refusal reads why without reading the code.
 
 ## Built-in kits
 

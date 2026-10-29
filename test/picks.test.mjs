@@ -2,7 +2,8 @@
 // line — "scene-05 enter torn", "scene-03 move pop" — and written into the recipe by `storyreel apply` without anyone
 // reading it: the line, where it goes (a stage's enter, a kinetic world's move), every refusal naming its reason and its
 // fix, nothing applied when any line refuses, the record of each run (every line's checks, decided on a flowchart), and
-// the file's own layout kept. End to end on a project that picks its film by a flag (--ep, as a series does).
+// only the values set changed in the file's text. End to end on a project that picks its film by a flag (--ep, as a
+// series does), the edited recipe compiled before anything is written.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync, writeFileSync, mkdirSync, symlinkSync, realpathSync} from 'node:fs';
@@ -10,11 +11,11 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {readPick, pickLine, pickScenes, changeText} from '../src/studio/picks.mjs';
-import {applyPicks, applyLines, jsonLayout, MOST_LINES} from '../src/studio/apply.mjs';
+import {applyPicks, applyLines, MOST_LINES} from '../src/studio/apply.mjs';
+import {jsonSpans} from '../src/studio/lines.mjs';
 import {transitionCatalog, TRANSITION_NAMES} from '../src/transitions.mjs';
 import {MOVES, MOVE_NAMES} from '../src/moves.mjs';
 import {WORD_MOVES, readWordMove, compileKinetic} from '../src/kits/kinetic/index.mjs';
-import {editableJson} from '../src/remake-starter-files.mjs';
 import {tempDir} from './tmp.mjs';
 
 const cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url));
@@ -57,6 +58,13 @@ test('where a pick goes: enter on the stage that plays the scene, move on the sc
   assert.deepEqual(twice.changes.map(changeText), ['shop enter: cut → torn', 'shop enter: torn → fade']);
   assert.deepEqual(pickScenes(given), {enter: ['shop', 'walk', 'next'], move: ['open', 'shop']});
   assert.deepEqual(pickScenes({...given, pushIn: {}}).enter, [], 'a film with a pushIn: no stage enters with a transition');
+  // A word move goes by the scene whose words the world follows — its own scene, which need not be its stage's.
+  const follows = {stages: [{type: 'world', scene: 'shop', world: {kit: 'kinetic', scene: 'walk', words: []}}, {type: 'world', scene: 'next', world: {kit: 'kinetic', words: []}}]};
+  assert.deepEqual(pickScenes(follows), {enter: ['shop', 'next'], move: ['walk', 'next']}, 'a world that names no scene of its own goes by its stage\'s');
+  const moved = await applyPicks(follows, ['walk move pop', 'next move slam'], film);
+  assert.deepEqual(moved.changes.map(c => c.path), ['stages[0].world.move', 'stages[1].world.move']);
+  assert.deepEqual(Object.keys(moved.recipe.stages[1].world), ['kit', 'move', 'words'], 'a world with no scene: the move goes beside its kit');
+  await assert.rejects(applyPicks(follows, ['shop move pop'], film), /shop move pop: its scene has no kinetic world .* — the scenes with one are walk, next/);
 });
 
 test('every refusal says its reason (the rule\'s label) and its fix; every line is checked before any is applied', async () => {
@@ -68,8 +76,9 @@ test('every refusal says its reason (the rule\'s label) and its fix; every line 
   await refuses(['shop enter torn'], /shop enter torn: the film has a pushIn, which hands its stages over on one page, so no stage enters with a transition — enter is for a film without one/, {...recipe(), pushIn: {}});
   await refuses(['walk move pop'], /walk move pop: its scene has no kinetic world \(kits\/kinetic\), so there is no word to move — the scenes with one are open, shop/);
   await refuses(['shop move pop'], /this film has none: a word move is for kinetic type/, {stages: [{type: 'world', scene: 'shop', world: {kit: 'cartoon'}}]});
-  await refuses(['shop move drop-in'], /shop move drop-in: its move is not an entrance a whole word makes — name one that is: fade-slide, soft-rise, mask-wipe, pop, blur-in, slam/);
-  await refuses(['shop move wobble'], /shop move wobble: its name is not a move — name one a whole word makes: fade-slide, soft-rise, mask-wipe, pop, blur-in, slam/);
+  // A word move is the kinetic kit's own rule (readWordMove): its refusal, in its own words, is the line's.
+  await refuses(['shop move drop-in'], /^Error: shop move drop-in: kinetic move "drop-in" is not an entrance a whole word makes — name one that is \(fade-slide, soft-rise, mask-wipe, pop, blur-in, slam\)$/);
+  await refuses(['shop move wobble'], /^Error: shop move wobble: kinetic move "wobble" is not a move — name one a whole word makes \(fade-slide, soft-rise, mask-wipe, pop, blur-in, slam\)$/);
   await refuses(['shop fade torn'], /^Error: "shop fade torn" is not a pick: write/);
   const r = recipe(), refused = await applyPicks(r, ['shop enter torn', 'attic enter torn', 'nonsense', 'open move pop'], film).catch(e => e);
   assert.match(refused.message, /^2 of 4 lines refuse:\n {2}attic enter torn: its scene is not in the storyboard.*\n {2}"nonsense" is not a pick/);
@@ -91,7 +100,7 @@ test('each run keeps its record: every line, its kind and the rule that took it 
   assert.ok(refused.record.some(e => e.type === 'condition' && /open enter torn: no stage plays its scene.*stagePlays false eq false ✓, and chose refused/.test(e.text)), 'a refusal keeps its record too: which rule refused, over which facts');
 });
 
-test('the moves a whole word makes are one rule, the kinetic kit\'s: each one draws a word, every other move refuses', () => {
+test('the moves a whole word makes are one rule, the kinetic kit\'s: each one draws a word, every other move refuses', async () => {
   assert.deepEqual(WORD_MOVES, MOVE_NAMES.filter(n => { try { readWordMove(n, 'x'); return true; } catch { return false; } }));
   assert.deepEqual(WORD_MOVES, ['fade-slide', 'soft-rise', 'mask-wipe', 'pop', 'blur-in', 'slam']);
   for (const move of WORD_MOVES) {
@@ -99,26 +108,57 @@ test('the moves a whole word makes are one rule, the kinetic kit\'s: each one dr
     assert.doesNotThrow(() => compileKinetic({words: [{text: 'Word', at: ['s', 'p']}], move}, {at: () => .2, total: 2}), move);
   }
   assert.throws(() => readWordMove('wobble', 'x'), /x: kinetic move "wobble" is not a move — name one a whole word makes \(fade-slide, soft-rise, mask-wipe, pop, blur-in, slam\)/);
+  // A line takes every move the kit takes, and refuses every other in the kit's own words.
+  const kitSays = line => { try { readWordMove(line.split(' ')[2], line); return null; } catch (e) { return e.message; } };
+  for (const move of MOVE_NAMES) assert.equal(await applyPicks(recipe(), [`shop move ${move}`], film).then(() => null, e => e.message), kitSays(`shop move ${move}`), move);
 });
 
-test('applyLines: the recipe\'s text in, the new text out, in the layout it was written in; no file is read or written', async () => {
+test('applyLines: the recipe\'s text in, the new text out — only the values set changed, every other byte as it was; no file is read or written', async () => {
   const r = recipe(), lines = ['shop enter torn'], expected = (await applyPicks(r, lines, film)).recipe;
+  // As JSON.stringify writes it (two spaces, four, a tab, one line; a final line break or none): still JSON.stringify's.
   for (const [gap, layout] of [[2, 'two spaces'], [4, 'four spaces'], ['\t', 'a tab'], ['', 'one line']]) {
     for (const end of ['\n', '']) {
       const out = await applyLines(`${JSON.stringify(r, null, gap)}${end}`, lines, film);
       assert.equal(out.text, `${JSON.stringify(expected, null, gap)}${end}`, `${layout}${end ? ', a final line break' : ''}`);
       assert.equal(out.changes.length, 1); assert.ok(out.record.length > 10);
+      assert.deepEqual(out.recipe, expected);
     }
   }
-  // As JSON.stringify writes it: only the line of the change differs.
-  const two = `${JSON.stringify(r, null, 2)}\n`, changed = (await applyLines(two, lines, film)).text.split('\n'), was = two.split('\n');
-  assert.deepEqual(changed.map((l, i) => [l, was[i]]).filter(([a, b]) => a !== b), [['      "enter": "torn",', '      "enter": "cut",']]);
-  // Any other layout is written as a person edits JSON.
-  const odd = `{ "story": {"kit": "kinetic", "scene": "open", "words": ["Hello"]},\n "stages": ${JSON.stringify(r.stages)} }\n`;
-  assert.equal((await applyLines(odd, lines, film)).text, `${editableJson(expected)}\n`);
-  assert.equal(jsonLayout('[\n  1\n]')([2]), '[\n  2\n]');
+  // Any other layout — short lists on one line (as prettier writes them), numbers as a person wrote them, a line ending
+  // of its own — is kept too: a value set is replaced where it stands, and a key not there goes beside its scene, on a
+  // line of its own with its neighbours' indent and line ending, or inline beside it.
+  const written = ['{',
+    '  "story": { "kit": "kinetic", "scene": "open", "words": ["Hello", "there"], "colors": ["#f3eee3", "#1a1a1a"], "size": 4.80e2 },',
+    '  "stages": [',
+    '    { "type": "world", "scene": "shop", "enter": "cut", "world": { "kit": "kinetic", "scene": "shop", "words": [] } },',
+    '    {', '      "type": "world",', '      "scene": "walk",', '      "enter": { "type": "fade", "seconds": 0.80 },', '      "world": { "kit": "cartoon", "scene": "walk" }', '    },',
+    '    {', '      "type": "world",', '      "scene": "next",', '      "world": { "kit": "cartoon", "scene": "next" }', '    }',
+    '  ]', '}', ''].join('\n');
+  const four = ['shop enter torn', 'walk enter fade', 'next enter iris', 'open move pop'];
+  /** The text with exactly the four changes, each in the layout around it. */
+  const changed = (text, eol, indent) => text.replace('"scene": "open", "words"', '"scene": "open", "move": "pop", "words"').replace('"enter": "cut"', '"enter": "torn"')
+    .replace('"enter": { "type": "fade", "seconds": 0.80 }', '"enter": "fade"').replace(`"scene": "next",${eol}`, `"scene": "next",${eol}${indent}"enter": "iris",${eol}`);
+  const tabs = written.replace(/^( +)/gm, m => '\t'.repeat(m.length / 2)), crlf = written.replaceAll('\n', '\r\n');
+  for (const [text, eol, indent, layout] of [[written, '\n', '      ', 'short lists on one line'], [crlf, '\r\n', '      ', 'CRLF line endings'], [tabs, '\n', '\t\t\t', 'tabs']]) {
+    const out = await applyLines(text, four, film);
+    assert.equal(out.text, changed(text, eol, indent), layout);
+    assert.equal(out.text.split(eol).length, text.split(eol).length + 1, `${layout}: one line more, the entrance put beside its scene`);
+  }
+  // On one line (as JSON.stringify writes it compact): the line is the same but for the four values.
+  const compact = JSON.stringify(JSON.parse(written)), out = (await applyLines(compact, four, film)).text;
+  assert.equal(out, compact.replace('"scene":"open","words"', '"scene":"open","move":"pop","words"').replace('"enter":"cut"', '"enter":"torn"')
+    .replace('"enter":{"type":"fade","seconds":0.8}', '"enter":"fade"').replace('"scene":"next","world"', '"scene":"next","enter":"iris","world"'));
+  // Two lines for one scene and kind: the later wins, set once (a key not there is put in once, with the later value).
+  const twice = await applyLines(written, ['shop enter torn', 'next enter iris', 'shop enter fade', 'next enter wipe'], film);
+  assert.equal(twice.text, written.replace('"enter": "cut"', '"enter": "fade"').replace('"scene": "next",\n', '"scene": "next",\n      "enter": "wipe",\n'));
+  assert.deepEqual(twice.changes.map(changeText), ['shop enter: cut → torn', 'next enter: (not set) → iris', 'shop enter: torn → fade', 'next enter: iris → wipe']);
+  // Where each value is: its text's offsets, and a member's key.
+  const spans = jsonSpans(written), at = p => written.slice(spans.get(p).start, spans.get(p).end);
+  assert.deepEqual([at('stages[1].enter'), at('story.size'), at('story.words'), written.slice(spans.get('stages[1].enter').keyStart, spans.get('stages[1].enter').keyEnd)],
+    ['{ "type": "fade", "seconds": 0.80 }', '4.80e2', '["Hello", "there"]', '"enter"']);
+  assert.equal(spans.get('stages[2].scene').line, 13);
   await assert.rejects(applyLines('{"story":', lines, film), /the recipe is not JSON/);
-  await assert.rejects(applyLines(two, ['attic enter torn'], film), /its scene is not in the storyboard/);
+  await assert.rejects(applyLines(written, ['attic enter torn'], film), /its scene is not in the storyboard/);
 });
 
 // ── storyreel apply, end to end ──────────────────────────────────────────────────────────────────────────────────────
@@ -129,16 +169,21 @@ function project(dir, files) {
   for (const [name, text] of Object.entries(files)) { mkdirSync(path.dirname(path.join(dir, name)), {recursive: true}); writeFileSync(path.join(dir, name), text); }
   return dir;
 }
-/** A series' config: --ep picks the episode, whose storyboard and recipe are in a folder of its own; a kit adds a curtain. */
+/**
+ * A series' config: --ep picks the episode, whose storyboard and recipe are in a folder of its own; a kit adds a curtain,
+ * and a door — a transition that goes through the door in the picture it arrives at, which no picture here has: a line
+ * that passes every check, and a film that refuses to compile with it.
+ */
 const SERIES = `import {readFileSync} from 'node:fs';
 import {evenTimings} from 'footprint-storyreel';
 import {kineticKit} from 'footprint-storyreel/kits/kinetic';
 const curtain = {family: 'theatre', seconds: 1, ease: 'inOut', sound: null, params: {}, draw(ctx, {e, from, to}) { (e < .5 ? from : to)(ctx); }};
+const door = {...curtain, regions: () => ({to: ['door']})};
 const read = (ep, name) => JSON.parse(readFileSync(new URL(\`./\${ep}/\${name}\`, import.meta.url), 'utf8'));
 export default {film: ({ep = 'ep00'} = {}) => {
   if (!/^ep\\d\\d$/.test(ep)) throw new Error('no episode ' + ep);
   const storyboard = read(ep, 'storyboard.json');
-  return {storyboard, recipe: read(ep, 'recipe.json'), kits: [kineticKit, {name: 'stage', transitions: {curtain}}], timings: evenTimings(storyboard, {tail: 0})};
+  return {storyboard, recipe: read(ep, 'recipe.json'), kits: [kineticKit, {name: 'stage', transitions: {curtain, door}}], timings: evenTimings(storyboard, {tail: 0})};
 }};
 `;
 const episode = {title: 'Ep', scenes: [{id: 'open', silent: [['first words', 1.5]]}, {id: 'shop', silent: [['second words', 1.5]]}, {id: 'walk', silent: [['third words', 1.5]]}]};
@@ -147,7 +192,7 @@ const episodeRecipe = {story: {kit: 'kinetic', scene: 'open', words: [{text: 'ON
     {type: 'world', scene: 'walk', enter: {type: 'fade', seconds: .5}, world: {kit: 'kinetic', scene: 'walk', words: []}}]};
 const apply = (cwd, ...args) => spawnSync(process.execPath, [cli, 'apply', ...args], {cwd, encoding: 'utf8'});
 
-test('storyreel apply on a series: --ep picks the film, --recipe names its file, a kit\'s transition is a pick, the layout is kept', t => {
+test('storyreel apply on a series: --ep picks the film, --recipe names its file, a kit\'s transition is a pick, only the values set change', t => {
   const other = {...episodeRecipe, stages: episodeRecipe.stages.slice(0, 1)};
   const dir = project(tempDir('apply', t), {'storyreel.config.mjs': SERIES, 'ep01/storyboard.json': JSON.stringify(episode), 'ep01/recipe.json': `${JSON.stringify(episodeRecipe, null, 2)}\n`,
     'ep00/storyboard.json': JSON.stringify(episode), 'ep00/recipe.json': JSON.stringify(other)});
@@ -158,13 +203,16 @@ test('storyreel apply on a series: --ep picks the film, --recipe names its file,
   const after = readFileSync(file, 'utf8'), written = JSON.parse(after);
   assert.deepEqual([written.stages.map(s => s.enter), written.story.move], [['curtain', 'torn'], 'pop']);
   assert.equal(after, `${JSON.stringify(written, null, 2)}\n`, 'written as it was: JSON.stringify\'s layout, two spaces');
+  assert.equal(after, before.replace('"enter": "cut"', '"enter": "curtain"').replace(/"enter": \{[^}]*\}/, '"enter": "torn"').replace('"scene": "open",\n', '"scene": "open",\n    "move": "pop",\n'), 'only the three values');
   assert.equal(after.split('\n').length, before.split('\n').length - 3 + 1, 'the fade\'s four lines are one, and the story has one line more');
   // Every refusal writes nothing, and names its reason and its fix.
   const unchanged = (r, pattern) => { assert.equal(r.status, 2, r.stdout); assert.match(r.stderr, pattern); assert.match(r.stderr, /Nothing was written\./); assert.equal(readFileSync(file, 'utf8'), after); };
   unchanged(apply(dir, 'shop enter fade', 'attic enter fade', ...flags), /attic enter fade: its scene is not in the storyboard — the scenes are open, shop, walk/);
   unchanged(apply(dir, 'open enter fade', ...flags), /open enter fade: no stage plays its scene/);
   unchanged(apply(dir, 'shop enter swirl', ...flags), /its name is not a transition of this film — the transitions are .*, morph, curtain/);
-  unchanged(apply(dir, 'walk move drop-in', ...flags), /its move is not an entrance a whole word makes/);
+  unchanged(apply(dir, 'walk move drop-in', ...flags), /walk move drop-in: kinetic move "drop-in" is not an entrance a whole word makes — name one that is/);
+  // A line every check takes, in a film that then refuses to compile: said in the compile's words, nothing written.
+  unchanged(apply(dir, 'shop enter fade', 'walk enter door', ...flags), /storyreel apply: the recipe with these lines does not compile: stage walk: the door looks for "door" in the picture it arrives at, and nothing in the picture is called "door"/);
   unchanged(apply(dir, 'shop fade', ...flags), /"shop fade" is not a pick/);
   // The file must be the recipe the film reads with these flags: without --ep the config gives another film.
   unchanged(apply(dir, 'shop enter fade', '--recipe', 'ep01/recipe.json'), /ep01\/recipe\.json is not the recipe storyreel\.config\.mjs's film\(\) gives with these flags: give the flags that pick its film/);
@@ -176,6 +224,10 @@ test('storyreel apply on a series: --ep picks the film, --recipe names its file,
   usage(apply(dir, 'shop enter fade', '--recipe'), /--recipe needs the recipe's JSON file/);
   assert.equal(apply(dir, 'shop enter fade', '--ep', 'ep99').status, 1, 'a film the config cannot give: the project cannot be read');
   assert.equal(readFileSync(file, 'utf8'), after);
+  // Two lines for one scene and kind: the later wins.
+  const again = apply(dir, 'shop enter fade', 'shop enter wipe', ...flags);
+  assert.equal(again.stdout, `shop enter: curtain → fade\nshop enter: fade → wipe\n${file}: 2 changes written\n`, again.stderr);
+  assert.equal(readFileSync(file, 'utf8'), after.replace('"enter": "curtain"', '"enter": "wipe"'));
 });
 
 test('storyreel apply --record: one JSON object — the file, whether it was written, the changes or the refusals, and the record', t => {
@@ -191,4 +243,8 @@ test('storyreel apply --record: one JSON object — the file, whether it was wri
   assert.equal(refused.status, 2);
   assert.deepEqual([shown.written, shown.changes, shown.refusals.length], [false, [], 1]);
   assert.ok(shown.record.some(e => /open enter torn: no stage plays its scene/.test(e.text)), 'the record says which rule refused');
+  const broken = apply(dir, 'walk enter door', '--record', '--recipe', 'ep00/recipe.json'), said = JSON.parse(broken.stdout);
+  assert.deepEqual([broken.status, said.written, said.refusals.length], [2, false, 1]);
+  assert.match(said.refusals[0], /^the recipe with this line does not compile: stage walk: the door looks for "door"/);
+  assert.ok(said.record.some(e => /walk enter door: its scene takes it/.test(e.text)), 'the checks took it: their record, and then the compile\'s refusal');
 });

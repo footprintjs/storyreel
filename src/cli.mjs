@@ -11,8 +11,7 @@ import path from 'node:path';
 import {TOOLS, CONFIG, loadProject, loadInputs, readInputs} from './tools.mjs';
 import {SOUNDS_HELP} from './sounds/cli.mjs';
 import {REMAKE_USAGE} from './remake-cli.mjs';
-import {STUDIO_HELP} from './studio/cli.mjs';
-import {APPLY_HELP} from './apply-cli.mjs';
+import {STUDIO_HELP, APPLY_HELP} from './studio/help.mjs';
 // Loaded first, so the picture's channel is taken from the environment before any project code runs (mcp.mjs · sendPicture).
 import {serveMcp, startOf, sendPicture} from './mcp.mjs';
 

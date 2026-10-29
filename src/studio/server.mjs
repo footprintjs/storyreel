@@ -9,7 +9,9 @@
  * (picks.mjs) for `storyreel apply` (apply.mjs).
  *
  * Local only: it listens on 127.0.0.1, answers only requests addressed to it by that name, and
- * only reads (GET). It writes nothing and runs nothing from the recipe.
+ * only reads (GET; HEAD only for the page's own files and the voice). The routes that draw, check or compile what a
+ * query names (a frame, a card, a pick, a Try) answer the studio's own page only: a request another site's page makes
+ * (Sec-Fetch-Site) is refused. It writes nothing and runs nothing from the recipe.
  */
 import http from 'node:http';
 import {readFileSync, statSync, createReadStream, watchFile, unwatchFile} from 'node:fs';
@@ -25,9 +27,19 @@ import {said} from '../script.mjs';
 import {pickScenes, PICK_KINDS} from './picks.mjs';
 import {applyPicks} from './apply.mjs';
 import {galleryCards, cardFrames, boundedCache} from './gallery.mjs';
+import {pickTries} from './tries.mjs';
+import {Refusal} from './refusal.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PAGE = {'/': ['page.html', 'text/html; charset=utf-8'], '/studio.js': ['page.js', 'text/javascript; charset=utf-8'], '/studio.css': ['page.css', 'text/css; charset=utf-8']};
+/** What HEAD may ask of: the page's own files and the voice (its player asks for its size); every other route is GET only. */
+const HEADED = new Set([...Object.keys(PAGE), '/api/audio']);
+/** The routes that draw, check or compile what their query names: the studio's own page asks them, no other site's. */
+const OWN_PAGE_ONLY = new Set(['/api/frame', '/api/card', '/api/pick', '/api/try']);
+/** Who may ask them (Sec-Fetch-Site): the page itself, or the person typing the address; a browser that does not say is let through. */
+const OWN = new Set(['same-origin', 'none']);
+/** The longest query the studio reads: its own page's are a fraction of it. */
+const QUERY_MOST = 1024;
 const HEADERS = {
   'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; media-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
   'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store', 'Cross-Origin-Resource-Policy': 'same-origin',
@@ -43,10 +55,10 @@ const HEADERS = {
  *               from another recipe — what the gallery's Try plays (a copy with a pick in it; nothing written)
  * @param watch  files that, when changed, make the studio call load() again
  * @param port   the port on 127.0.0.1 (0: any free port)
- * @returns {url, port, reload(), close()}
+ * @returns {url, port, reload(), held(), close()} — held: what it keeps in memory, each bounded ({cards, cardBytes, tries})
  */
 export async function startStudio({load, watch = [], port = 4321, log = console.log}) {
-  const state = {version: 0, error: null, loaded: null, lines: new Map(), loadedAt: null, variant: null};
+  const state = {version: 0, error: null, loaded: null, lines: new Map(), loadedAt: null};
   async function reload() {
     try {
       const loaded = await load();
@@ -57,13 +69,14 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
       // Keep the last good film on screen; the page shows why this one refused.
       state.error = e.message;
     }
-    // A pick being tried was a copy of the film before: it goes, and the gallery's cards are drawn again for this one.
-    state.variant = null; cards.clear(); catalog = null;
+    // A pick being tried was a copy of the film before: it goes. The gallery's cards are drawn again for this one: each is
+    // kept under the version it was drawn for, so one still being drawn for the film before is never shown for this one.
+    tries.drop(); cards.clear(); catalog = null;
     state.version++;
     return state.error;
   }
-  const cards = boundedCache();
-  let catalog = null, tries = 0;
+  const cards = boundedCache(), tries = pickTries();
+  let catalog = null;
   await reload();
   if (state.error) log(`studio: refused — ${state.error}`);
 
@@ -117,26 +130,23 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
     try { return await applyPicks(recipe, [{scene: String(q.get('scene') ?? ''), kind, name: String(q.get('name') ?? '')}], {scenes, catalog: catalogNow()}); } catch (e) { throw new Refusal(e.message); }
   }
   /**
-   * Try: the film compiled again in memory from a copy of the recipe with the pick in it, kept until the next pick
-   * tried or the next reload; the page plays it from a second before the scene starts (or from before its change
-   * starts, when that is earlier). A recipe the pick makes refuse is said with the compile's own words.
+   * Try: the film compiled again in memory from a copy of the recipe with the pick in it (tries.mjs: one compile at a
+   * time, the last few kept), the one tried until the next pick tried or the next reload; the page plays it from a
+   * second before the scene starts (or from before its change starts, when that is earlier). A recipe the pick makes
+   * refuse is said with the compile's own words.
    */
   async function tryPick(q) {
-    if (typeof state.loaded.compile !== 'function') throw new Refusal('Try compiles a copy of the recipe: this studio\'s load() gives no compile(recipe)', 501);
-    const {recipe, changes: [change]} = await pickOf(q), version = state.version;
-    let film; try { film = await state.loaded.compile(recipe); } catch (e) { throw new Refusal(`${change.line}: ${e.message}`); }
-    if (version !== state.version) throw new Refusal('The film was compiled again while this pick was: try it again', 409);
-    const clock = state.loaded.film.clock, start = clock.start(change.scene), end = clock.end(change.scene);
+    const {loaded, version} = state;
+    if (typeof loaded.compile !== 'function') throw new Refusal('Try compiles a copy of the recipe: this studio\'s load() gives no compile(recipe)', 501);
+    const {recipe, changes: [change]} = await pickOf(q);
+    const compile = async () => { try { return await loaded.compile(recipe); } catch (e) { throw new Refusal(`${change.line}: ${e.message}`); } };
+    const key = await tries.run(change.line, version, compile, () => state.version);
+    const clock = loaded.film.clock, start = clock.start(change.scene), end = clock.end(change.scene);
     const lead = change.kind === 'enter' ? readEntrance(change.name, change.line, catalogNow()).lead : 0;
-    state.variant = {key: String(++tries), version, film};
-    return {key: state.variant.key, line: change.line, scene: change.scene, kind: change.kind, name: change.name, path: change.path, start, end, from: Math.max(0, +(start - Math.max(1, lead + .5)).toFixed(3))};
+    return {key, line: change.line, scene: change.scene, kind: change.kind, name: change.name, path: change.path, start, end, from: Math.max(0, +(start - Math.max(1, lead + .5)).toFixed(3))};
   }
   /** The film a frame is asked of: this one, or the pick being tried (`try`: its key) — a pick gone with a reload is said. */
-  function filmOf(key) {
-    if (key === null) return state.loaded.film;
-    if (state.variant?.key !== key) throw new Refusal('That pick is no longer being tried (the film was compiled again, or another pick was tried)', 410);
-    return state.variant.film;
-  }
+  const filmOf = key => (key === null ? state.loaded.film : tries.filmOf(key));
 
   function hit(t, x, y) {
     const {film} = state.loaded;
@@ -157,9 +167,16 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
       const {port: bound} = server.address();
       // Loopback by name too: a page elsewhere cannot reach the studio through a name that points here.
       if (![`127.0.0.1:${bound}`, `localhost:${bound}`].includes(req.headers.host)) return send(res, 403, {error: 'The studio answers on 127.0.0.1 only'});
-      if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, {error: 'The studio only reads'});
-      const u = new URL(req.url, `http://127.0.0.1:${bound}`), q = u.searchParams;
+      const u = new URL(req.url, `http://127.0.0.1:${bound}`);
+      if (req.method !== 'GET' && !(req.method === 'HEAD' && HEADED.has(u.pathname))) {
+        res.setHeader('Allow', HEADED.has(u.pathname) ? 'GET, HEAD' : 'GET');
+        return send(res, 405, {error: `The studio only reads: ask ${u.pathname.slice(0, 80)} with GET`});
+      }
       if (PAGE[u.pathname]) { const [file, type] = PAGE[u.pathname]; return send(res, 200, readFileSync(path.join(here, file)), type); }
+      const q = queryOf(u);
+      // Another site's page can ask by an image or a link, never reading the answer: it still costs a drawing or a compile.
+      const site = req.headers['sec-fetch-site'];
+      if (OWN_PAGE_ONLY.has(u.pathname) && site !== undefined && !OWN.has(site)) return send(res, 403, {error: `${u.pathname} answers the studio's own page only, and this request came from another site's (Sec-Fetch-Site: ${site.slice(0, 40)}): open the studio at its own address`});
       if (u.pathname === '/api/version') return send(res, 200, {version: state.version, error: state.error});
       if (!state.loaded) return send(res, 503, {error: state.error ?? 'Nothing loaded yet', version: state.version});
       const total = state.loaded.film.total, t = number(q.get('t'), 0, total, 0);
@@ -169,9 +186,9 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
       if (u.pathname === '/api/gallery') return send(res, 200, {version: state.version, cards: galleryCards(catalogNow()), takes: pickScenes(state.loaded.recipe)});
       if (u.pathname === '/api/card') {
         // Only a card the gallery lists is drawn: the cache holds at most one PNG per card, and is bounded besides.
-        const card = galleryCards(catalogNow()).find(c => c.kind === q.get('kind') && c.name === q.get('name'));
-        if (!card) return send(res, 404, {error: 'No such card in the gallery'});
-        return send(res, 200, await cards.get(`${card.kind} ${card.name}`, () => cardFrames(card, catalogNow())), 'image/png');
+        const shown = catalogNow(), card = galleryCards(shown).find(c => c.kind === q.get('kind') && c.name === q.get('name'));
+        if (!card) return send(res, 404, {error: 'No such card in the gallery: open /api/gallery for the ones it has'});
+        return send(res, 200, await cards.get(`${state.version} ${card.kind} ${card.name}`, () => cardFrames(card, shown)), 'image/png');
       }
       if (u.pathname === '/api/pick') { const {changes: [c]} = await pickOf(q); return send(res, 200, {line: c.line, scene: c.scene, kind: c.kind, name: c.name, path: c.path}); }
       if (u.pathname === '/api/try') return send(res, 200, await tryPick(q));
@@ -194,13 +211,21 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
   const bound = server.address().port, url = `http://127.0.0.1:${bound}/`;
   return {
     url, port: bound, reload,
+    /** What the studio holds in memory, each bounded: the cards drawn (count and bytes), the picks tried kept compiled. */
+    held: () => ({cards: cards.size, cardBytes: cards.bytes, tries: tries.kept}),
     close: async () => { for (const file of watch) unwatchFile(file, changed); clearTimeout(pending); server.closeAllConnections?.(); server.close(); await once(server, 'close'); },
   };
 }
 
-/** A request the studio refuses, with its reason for the page and its status (422: the pick or the recipe refuses). */
-class Refusal extends Error {
-  constructor(message, status = 422) { super(message); this.status = status; }
+/**
+ * A query, read: each parameter given once, the whole of it at most QUERY_MOST characters (the page's own are short);
+ * anything else is refused before a value is read (400, 414).
+ */
+function queryOf(u) {
+  if (u.search.length > QUERY_MOST) throw new Refusal(`The query is ${u.search.length} characters long: the studio reads at most ${QUERY_MOST}`, 414);
+  const q = u.searchParams;
+  for (const name of new Set(q.keys())) if (q.getAll(name).length > 1) throw new Refusal(`${JSON.stringify(name)} is given ${q.getAll(name).length} times: give each parameter once`, 400);
+  return q;
 }
 
 /** The narration WAV, with byte ranges so the page's player can seek. */
