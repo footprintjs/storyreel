@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.25.0 — a film's pace, kinetic type, music first, and make one like it
 
 - **Pick a move by eye: the studio's gallery, `storyreel studio` and `storyreel apply`.** Picking a transition or a word
   move no longer means reading names or editing JSON. The preview studio has a **gallery**: a card for every transition
