@@ -82,7 +82,8 @@ export function blurMoments(t, {subframes: n, shutter}, fps) {
  */
 export function makePainter({film, framed, blur, width, height, fps, ctx, scratch = null}) {
   const k = width / 1600;
-  const picture = (c, t) => { c.resetTransform(); c.globalAlpha = 1; c.clearRect(0, 0, width, height); if (framed) framed.picture(c, t); else { c.scale(k, k); film.frame(c, t); } c.resetTransform(); };
+  // A frame owns a fresh destination state. Reset also releases native drawing history from changing raster footage.
+  const picture = (c, t) => { c.reset(); if (framed) framed.picture(c, t); else { c.scale(k, k); film.frame(c, t); } c.resetTransform(); };
   // The canvas a subframe is drawn on: its own, or one shared by painters that draw one after another (`scratch`).
   const sub = blur ? scratch ?? createCanvas(width, height) : null, subCtx = sub?.getContext('2d');
   return (t, {still = false, bands = true} = {}) => {

@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,mkdirSync,writeFileSync,openSync,ftruncateSync,closeSync,symlinkSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {measureFile} from '../src/input-file.mjs';
+const setup=t=>{const base=mkdtempSync(path.join(tmpdir(),'film-input-'));t.after(()=>rmSync(base,{recursive:true,force:true}));const root=path.join(base,'film');mkdirSync(root);return {base,root};};
+test('a file input is actually hashed and only the engine receives its ownership note',async t=>{const {root}=setup(t);writeFileSync(path.join(root,'data'),'abc');const notes=[];const value=await measureFile(root,'data',{maxBytes:3},(...args)=>notes.push(args));assert.equal(value.size,3);assert.equal(value.sha256,'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');assert(Object.isFrozen(value));assert.equal(notes.length,1);assert.equal(notes[0][1],value.sha256);});
+test('a huge sparse input is refused from its stat rather than read or hashed',async t=>{const {root}=setup(t),file=path.join(root,'large');const fd=openSync(file,'w');ftruncateSync(fd,1024*1024*1024);closeSync(fd);let notes=0;await assert.rejects(measureFile(root,'large',{maxBytes:100},()=>notes++),/too large.*smaller|smaller.*file/i);assert.equal(notes,0);});
+test('a symlink cannot make an outside input part of the film',async t=>{const {root,base}=setup(t);writeFileSync(path.join(base,'outside'),'abc');symlinkSync(path.join(base,'outside'),path.join(root,'data'));await assert.rejects(measureFile(root,'data',{maxBytes:100},()=>{}),/outside.*move|inside.*root/i);});
+test('a missing input or directory has a concrete fix',async t=>{const {root}=setup(t);await assert.rejects(measureFile(root,'missing',{maxBytes:100},()=>{}),/choose|move|give/i);await assert.rejects(measureFile(root,'.',{maxBytes:100},()=>{}),/regular|file.*choose/i);});

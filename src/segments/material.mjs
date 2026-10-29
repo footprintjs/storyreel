@@ -59,7 +59,10 @@ export function segmentMaterial(film, seg, {recipe, storyboard = null, pixels, c
   const entering = crossing.flatMap(({r, j}) => [...r.paths, ...(j ? film.rows[j - 1].paths : [])]);
   const paths = [...new Set([...seg.paths, ...(seg.before ?? []), ...entering, ...overlays])];
   const entries = paths.map(p => [p, entryAt(recipe, p) ?? null]);
-  const {strings = null, data = null, theme = null, files = {}, cast = null} = film.inputs ?? {};
+  const {strings = null, data = null, theme = null, files: allFiles = {}, cast = null} = film.inputs ?? {};
+  // Scoped media reaches every row drawn here, including replays, blur and camera-held pictures.
+  const filePaths = [...new Set([...paths, ...(film.rows ?? []).filter(row => drawn.some(([from,to]) => row.from <= to && row.to >= from)).flatMap(row => row.paths)])];
+  const files = film.fileOwners ? Object.fromEntries(Object.entries(allFiles).filter(([file]) => !Object.hasOwn(film.fileOwners,file) || film.fileOwners[file].some(owner => filePaths.includes(owner)))) : allFiles;
   // The words it shows: only the strings its own entries name (a word changed elsewhere does not redraw it); a film
   // compiled without per-string hashes keys on the whole table, as before.
   const words = film.stringHashes ? Object.fromEntries([...stringRefs(entries)].sort().map(k => [k, film.stringHashes[k] ?? null])) : strings;

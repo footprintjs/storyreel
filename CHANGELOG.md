@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Recorded video as a world (`footprint-storyreel/kits/footage`).** `footageKit` shows a local MP4/WebM inside the
+  film's root, muted, with contain/cover fitting and named source-pixel regions. Remap keys pair a film phrase or
+  second with a recording second: hold a frame, speed through a wait or land a recorded moment on the narration.
+  Backward, out-of-range and excessive-rate keys refuse with the fix. Existing camera, focus, captions and
+  transitions operate on the world. Preparation is bounded and finishes before any frame is drawn; source bytes
+  and decode settings invalidate the pieces that show the recording. `createFootageKit` accepts explicit local
+  FFmpeg/ffprobe paths, and `FOOTAGE` owns the limits. A kit context's new `fileInput(file, {maxBytes})` stream-hashes
+  a bounded local file and records which world read it; existing file readers and full approval locking keep their
+  behavior. A world's optional plain `preparation` report is detached after readiness, collected by world path in
+  `film.preparation` and written to the making-of record; footage keeps its source/bounds/remap decision narratives
+  there. Kits without reports keep the field absent. Recorded pixels are not transcribed or checked as text. No click-log generation, automatic zooms,
+  source-audio playback or recording-script execution is added.
+
+
 - **Pick a move by eye: the studio's gallery, `storyreel studio` and `storyreel apply`.** Picking a transition or a word
   move no longer means reading names or editing JSON. The preview studio has a **gallery**: a card for every transition
   the film can enter with (the built-in ones and its kits') and every move a word of kinetic type can land with, each

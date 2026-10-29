@@ -1,0 +1,17 @@
+{
+  "title": "A recorded interaction",
+  "scenes": [
+    {
+      "id": "intro",
+      "narration": "A recorded interaction."
+    },
+    {
+      "id": "take",
+      "narration": "A real click shows the error. We hold on this message. Then the long wait plays faster. Named regions keep the whole error readable. The camera and circle use the same timeline. This is a local prototype, not a live service test."
+    },
+    {
+      "id": "outro",
+      "narration": "Edit the recipe. Reuse the rest."
+    }
+  ]
+}

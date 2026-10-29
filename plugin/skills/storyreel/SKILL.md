@@ -31,6 +31,7 @@ made from changed) → `makeRelease` for each platform. The `storyreel-cartoon` 
 |---|---|
 | build a cartoon film, the main path, with a walking figure | the `storyreel-cartoon` skill ([its SKILL.md](../storyreel-cartoon/SKILL.md)) |
 | fix or polish a film that exists: timeline, review, part, still | the `storyreel-review` skill ([its SKILL.md](../storyreel-review/SKILL.md)) |
+| a local screen recording as a shot: fitting, holds, speed changes, named zoom targets | [footage.md](../storyreel-cartoon/footage.md) |
 | write a kit: what it returns, the built-in cartoon and whiteboard kits | [kits.md](../storyreel-cartoon/kits.md) |
 | motion by name: moves, eases, walks, acting, the animator's principles | [motion.md](../storyreel-cartoon/motion.md) |
 | camera moves by name: dolly, pan, orbit, rack focus; one camera at a time | [camera.md](../storyreel-cartoon/camera.md) |

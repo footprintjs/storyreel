@@ -43,6 +43,8 @@ export const NOT_DRAWING = Object.freeze({
   'found/index.mjs': 'the found sounds: recorded effects, their licences and records',
   'listening.mjs': 'what the sound asks of the ear: checks on the film\'s sound',
   'record.mjs': 'the compile\'s footprintjs record',
+  'preparation.mjs': 'bounded plain-data kit decisions for the making-of record; never drawn',
+  'input-file.mjs': 'engine-owned file hashing: bytes are already included in the owning pieces\' input material',
   'reading.mjs': 'the reading check: a line on screen too short to read refuses or is reported, never drawn',
   'shots.mjs': 'the shot plan\'s checks (intent, continuity, reads, too much too fast): they refuse or report, never draw',
   'progression.mjs': 'the five scene questions and their check: words that ride on film.shots and the record, never drawn',

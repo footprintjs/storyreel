@@ -351,6 +351,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
         tools: TOOLS(),
         pipeline: trace.getEntries(),
         ...(film?.record ? {compile: film.record.narrative} : {}),
+        ...(film?.preparation ? {preparation: film.preparation} : {}),
       };
       writeOutput(path.join(dir, 'making-of.failed.json'), JSON.stringify(record, null, 2));
     } catch { /* the run's own error is the one to see */ }
@@ -420,6 +421,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     pipeline: trace.getEntries(),
     // The compile, stage by stage (record.mjs · recordSteps): what each stage read and wrote, every line as when.<recipe path>.
     compile: film.record.narrative,
+    ...(film.preparation ? {preparation: film.preparation} : {}),
   };
   const makingOf = path.join(dir, 'making-of.json');
   writeOutput(makingOf, JSON.stringify(record, null, 2));
