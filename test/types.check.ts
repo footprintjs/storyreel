@@ -100,6 +100,37 @@ export const unsaid: ContextKit = {name: 'unsaid', story: {compile: (spec: unkno
 // @ts-expect-error the context cannot be changed
 export const writeContext = (context: KitContext) => { context.root = '/'; };
 
+// Recorded worlds are local media, with named source-pixel boxes and time remapping as plain data.
+import {footageKit, createFootageKit, FOOTAGE} from '../types/sub/footage.js';
+import type {FootageSpec, FootageKey, FootageRegion} from '../types/sub/footage.js';
+export const recordedShot: FootageSpec = {kit: 'footage', scene: 'form', file: 'demo/form.webm', fit: 'contain', fps: 12,
+  keys: [{at: 0, video: 0}, {at: ['form', 'the result'], video: 4}, {at: ['form', 'continue'], video: 4}],
+  regions: [{name: 'result', box: [100, 200, 500, 350]}]};
+export const recordedKits: ContextKit[] = [footageKit, createFootageKit({ffmpeg: '/usr/bin/ffmpeg', ffprobe: '/usr/bin/ffprobe'})];
+export const recordingCap: number = FOOTAGE.maxBytes;
+export const preparationPaths = (film: Film): string[] => film.preparation?.map(row => row.path) ?? [];
+export const preparedKit: ContextKit = {name: 'prepared', story: {context: true, compile: () => ({
+  draw: () => {}, ready: Promise.resolve(), preparation: {choice: 'hold', keys: [0, 4, 4], confirmed: true}
+})}};
+// @ts-expect-error preparation is plain data, not executable code
+export const executableReport: import('../types/index.js').StoryWorld = {draw: () => {}, preparation: {run: () => 'hidden'}};
+// @ts-expect-error the detached preparation report cannot change its owner
+export const changeReportOwner = (film: Film) => { if (film.preparation?.[0]) film.preparation[0].path = 'other'; };
+export const mediaInput = (context: KitContext): Promise<Readonly<{file: string; size: number; sha256: string}>> =>
+  context.fileInput('demo/form.mp4', {maxBytes: FOOTAGE.maxBytes});
+// @ts-expect-error a recording names its scene and file
+export const missingRecording: FootageSpec = {kit: 'footage', scene: 'form'};
+// @ts-expect-error fit is contain or cover
+export const stretchedRecording: FootageSpec = {...recordedShot, fit: 'stretch'};
+// @ts-expect-error remap video time is a number
+export const wordTime: FootageKey = {at: ['form', 'result'], video: 'four'};
+// @ts-expect-error a region box has four coordinates
+export const incompleteBox: FootageRegion = {name: 'result', box: [1, 2, 3]};
+// @ts-expect-error file admission needs an explicit byte bound
+export const unboundedInput = (context: KitContext) => context.fileInput('demo/form.mp4');
+// @ts-expect-error admitted file evidence is immutable
+export const rewriteInput = async (context: KitContext) => { (await context.fileInput('demo/form.mp4', {maxBytes: 1024})).sha256 = 'changed'; };
+
 // The documented subpaths carry types too.
 import type {makeClock, checkScene} from '../types/sub/clock.js';
 import type {hitTest, View} from '../types/sub/regions.js';

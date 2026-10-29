@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-interface-prototype",
+  "video": "media/screen.webm",
+  "sha256": "17d4dd442f9398fa05d4ae240af8bc0a58e6601c50db4d0cb9ce79d013d2e22e",
+  "viewport": {
+    "width": 1920,
+    "height": 1080
+  },
+  "recordVideo": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 12
+  },
+  "deviceScaleFactor": 1,
+  "crop": null,
+  "events": [
+    {
+      "kind": "click",
+      "label": "Save changes",
+      "at": 3.129860167,
+      "box": {
+        "x": 1104.578125,
+        "y": 433,
+        "width": 193.421875,
+        "height": 55
+      }
+    },
+    {
+      "kind": "observed-error",
+      "label": "Validation message",
+      "at": 3.2434765420000105,
+      "box": {
+        "x": 622,
+        "y": 488,
+        "width": 676,
+        "height": 66.5
+      }
+    }
+  ],
+  "timing": "Approximate Node monotonic offset from page creation; not frame-accurate alignment.",
+  "networkRequestsDenied": 0,
+  "providerCalls": 0
+}

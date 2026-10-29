@@ -1,0 +1,133 @@
+{
+  "story": {
+    "kit": "kinetic",
+    "scene": "intro",
+    "words": [
+      "A",
+      "recorded",
+      "interaction."
+    ],
+    "style": "stack",
+    "size": 180
+  },
+  "stages": [
+    {
+      "type": "world",
+      "scene": "take",
+      "enter": {
+        "type": "fade",
+        "seconds": 0.6
+      },
+      "world": {
+        "kit": "footage",
+        "scene": "take",
+        "file": "media/screen.webm",
+        "width": 960,
+        "fps": 12,
+        "fit": "contain",
+        "regions": [
+          {
+            "name": "validation",
+            "box": [
+              600,
+              460,
+              1320,
+              580
+            ]
+          }
+        ],
+        "keys": [
+          {
+            "at": 4,
+            "video": 0
+          },
+          {
+            "at": 8,
+            "video": 4
+          },
+          {
+            "at": [
+              "take",
+              "Then the long wait plays faster"
+            ],
+            "video": 4
+          },
+          {
+            "at": 70,
+            "video": 100
+          },
+          {
+            "at": 80,
+            "video": 119
+          },
+          {
+            "at": 84,
+            "video": 119
+          }
+        ]
+      }
+    },
+    {
+      "type": "world",
+      "scene": "outro",
+      "enter": {
+        "type": "fade",
+        "seconds": 0.6
+      },
+      "world": {
+        "kit": "kinetic",
+        "scene": "outro",
+        "words": [
+          "Edit",
+          "the",
+          "recipe.",
+          "Reuse",
+          "the",
+          "rest."
+        ],
+        "style": "stack",
+        "size": 130,
+        "colors": [
+          "#dbe9f4",
+          "#182c24"
+        ]
+      }
+    }
+  ],
+  "camera": [
+    {
+      "move": "dolly-in",
+      "at": [
+        "take",
+        "message",
+        1
+      ],
+      "until": [
+        "take",
+        "message",
+        2.4
+      ],
+      "on": "validation",
+      "amount": 1.4
+    }
+  ],
+  "focus": {
+    "strategy": "circle",
+    "keys": [
+      {
+        "at": [
+          "take",
+          "We"
+        ],
+        "on": "validation"
+      },
+      {
+        "at": [
+          "take",
+          "Then"
+        ],
+        "on": "wide"
+      }
+    ]
+  }
+}

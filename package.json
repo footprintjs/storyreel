@@ -263,7 +263,11 @@
       "types": "./types/sub/openverse.d.ts",
       "default": "./src/sounds/openverse.mjs"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./kits/footage": {
+      "types": "./types/sub/footage.d.ts",
+      "default": "./src/kits/footage/index.mjs"
+    }
   },
   "types": "./types/index.d.ts",
   "bin": {
@@ -280,6 +284,7 @@
     "examples/*/*.mjs",
     "examples/*/*.json",
     "examples/*/*.ts",
+    "examples/footage/interface.html",
     "examples/*/strings/*.json",
     "README.md",
     "CHANGELOG.md",

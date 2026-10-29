@@ -1,0 +1,28 @@
+// Explicit user-run recording script. The library never runs this script.
+import assert from 'node:assert/strict';
+import {performance} from 'node:perf_hooks';
+import {createHash} from 'node:crypto';
+import {readFileSync} from 'node:fs';
+import {fileURLToPath, pathToFileURL} from 'node:url';
+import path from 'node:path';
+import {outputFolder, writeOutput} from '../../src/files.mjs';
+const root=fileURLToPath(new URL('.',import.meta.url));
+assert(process.env.PLAYWRIGHT_MODULE,'Set PLAYWRIGHT_MODULE to an already-installed local Playwright module; do not install it.');
+const {chromium}=await import(pathToFileURL(process.env.PLAYWRIGHT_MODULE));
+const browser=await chromium.launch({headless:true,args:['--disable-background-networking','--disable-component-update'],executablePath:process.env.BROWSER_EXECUTABLE});
+const media=outputFolder(root,['media']);
+const context=await browser.newContext({viewport:{width:1920,height:1080},deviceScaleFactor:1,recordVideo:{dir:media,size:{width:1920,height:1080},fps:12},serviceWorkers:'block'});
+let denied=0;await context.route('**/*',route=>{const url=route.request().url();if(url.startsWith('file:')||url.startsWith('data:'))return route.continue();denied++;return route.abort();});
+const begin=performance.now(),page=await context.newPage();
+await page.goto(pathToFileURL(path.join(root,'interface.html')).href);
+await page.waitForTimeout(3000);
+const button=page.getByRole('button',{name:'Save changes'}),box=await button.boundingBox();
+const clickAt=(performance.now()-begin)/1000;
+await button.click();await page.getByRole('alert').waitFor();
+const errorBox=await page.getByRole('alert').boundingBox();
+await page.waitForTimeout(116500);
+const video=page.video();await context.close();
+const raw=path.join(media,'screen.webm');await video.saveAs(raw);await browser.close();
+const receipt={schemaVersion:1,kind:'local-interface-prototype',video:'media/screen.webm',sha256:createHash('sha256').update(readFileSync(raw)).digest('hex'),viewport:{width:1920,height:1080},recordVideo:{width:1920,height:1080,fps:12},deviceScaleFactor:1,crop:null,events:[{kind:'click',label:'Save changes',at:clickAt,box},{kind:'observed-error',label:'Validation message',at:(performance.now()-begin)/1000-116.5,box:errorBox}],timing:'Approximate Node monotonic offset from page creation; not frame-accurate alignment.',networkRequestsDenied:denied,providerCalls:0};
+writeOutput(path.join(root,'capture.json'),JSON.stringify(receipt,null,2)+'\n');
+console.log(JSON.stringify({recorded:receipt.video,sha256:receipt.sha256,clickAt,networkRequestsDenied:denied}));

@@ -438,6 +438,8 @@ export type FoundSoundChoice = { type: 'found'; name: string; gain?: number; fro
 export interface UsedFoundSound { name: string; file: string; record: import('./sub/sounds.js').FoundRecord; root: string; allowShareAlike: boolean }
 
 export interface Film {
+  /** Detached world preparation reports, read after ready; absent when no kit provides one. Also written to making-of.json. */
+  readonly preparation?: readonly PreparationReport[];
   /** Seconds. */
   total: number;
   clock: Clock;
@@ -545,8 +547,15 @@ export interface CompileRecord {
   snapshot: RuntimeSnapshot;
 }
 
+/** Finite plain JSON at runtime; nested accessors, symbols, cycles and oversized reports refuse. */
+export type PreparationData = null | boolean | number | string | readonly PreparationData[] | {readonly [key: string]: PreparationData};
+/** A world's optional report, detached and frozen by the engine after ready. */
+export interface PreparationReport {readonly path: string; readonly record: PreparationData}
+
 /** What a story kit's compile returns: a world the engine hangs on the paper and draws at any t. */
 export interface StoryWorld {
+  /** Plain preparation data (or a getter), read once after ready. The engine snapshots it into film.preparation. */
+  preparation?: PreparationData;
   hang?: number;
   draw(ctx: any, t: number, spot: unknown): void;
   spotAt?(t: number): {cx: number; cy: number; r: number; zoom: number; w: number} | null;
@@ -602,6 +611,8 @@ export interface KitContext {
   insideRoot(file: string): string;
   /** A file's bytes, read only from inside root (insideRoot). */
   readFile(file: string): Uint8Array;
+  /** Admit a regular file inside root, stream-hash at most maxBytes, and bind it to this world's render inputs. Include the Promise in the returned world's ready. */
+  fileInput(file: string, options: {maxBytes: number}): Promise<Readonly<{file: string; size: number; sha256: string}>>;
 }
 
 /**

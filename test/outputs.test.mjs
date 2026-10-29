@@ -474,8 +474,10 @@ const IMPORTS = {
   'pipeline.mjs': ['writeFileSync'], 'render.mjs': ['writeFileSync'], 'segments/join.mjs': ['writeFileSync'], 'stills.mjs': ['writeFileSync'],
   'segments/store.mjs': ['utimesSync'],   // a kept piece's manifest touched when it is reused: its age orders eviction
   'mcp.mjs': ['writeSync'],   // sendPicture: one line on the pipe the MCP server opened for the call (fd 3), never a file
+  'input-file.mjs': ['openSync'],   // only O_RDONLY + NOFOLLOW + NONBLOCK: admit a regular input, never create or write
 };
 const OWN = [
+  ['input-file.mjs', 'fd=openSync(real,constants.O_RDONLY|(constants.O_NOFOLLOW??0)|(constants.O_NONBLOCK??0))', 'read-only admission: existing regular input, no following a changed symlink, no output'],
   ['files.mjs', 'ops.copyFileSync(from, temp, constants.COPYFILE_EXCL)', 'writeOutput: a new random name beside the output, created exclusively'],
   ['files.mjs', 'ops.writeFileSync(temp, what, {flag: \'wx\'})', 'writeOutput: the same'],
   ['files.mjs', 'ops.linkSync(what.copy, temp)', 'writeOutput: the same'],
@@ -504,6 +506,7 @@ const OWN = [
   ['mcp.mjs', 'writeSync(pictureFd, ', 'sendPicture: the picture\'s path, one line on fd 3 — a pipe the MCP server opened for this call (callTool), not a file'],
 ];
 const RUNS = [
+  ['kits/footage/process.mjs', 'spawned(command,args,{stdio:', 'bounded FFmpeg/ffprobe descriptor input, protocol fd/pipe only; stdout is read into a capped buffer or private frame cache'],
   ['files.mjs', "spawnSync('/sbin/mount', [], {encoding: 'utf8'})", 'macOS\'s mount table, read once by securePath (to stdout): a reader, it writes nothing'],
   ['mcp.mjs', 'spawn(process.execPath, [CLI, name, ...flags]', 'Node running StoryReel\'s own CLI (src/, held to this guard)'],
   ['spawned.mjs', 'const child = spawn(command, args, options);', 'the wrapper: its callers are listed below'],
@@ -568,7 +571,7 @@ function rawWrites(files = srcFiles()) {
     for (const name of allowed.filter(n => !writers.some(w => w.name === n))) problems.push(`${file}: listed as importing ${name}, and it does not — remove it from IMPORTS`);
     // The programs: child_process's runners and spawned.mjs's wrapper, by the names this file gives them.
     const runners = [...named.filter(n => n.module === 'cp' && RUNNERS.includes(n.name)).map(n => n.local),
-      ...[...code.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]\.\/spawned\.mjs['"]/g)].flatMap(m => m[1].split(',').map(p => p.trim().split(/\s+as\s+/)).filter(([n]) => n === 'spawned').map(([n, l = n]) => l))];
+      ...[...code.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"](?:\.\.?\/)+spawned\.mjs['"]/g)].flatMap(m => m[1].split(',').map(p => p.trim().split(/\s+as\s+/)).filter(([n]) => n === 'spawned').map(([n, l = n]) => l))];
     const writes = callsOf(writers.map(n => n.local)), runs = callsOf(runners);
     code.split('\n').forEach((line, i) => {
       const text = line.trim(), at = `${file}:${i + 1} ${text.slice(0, 120)}`;
@@ -610,6 +613,8 @@ test('the guard catches each way around it, planted in src/: openSync + writeSyn
   // A program not listed (curl writing a file), under its own name and under another.
   caught(plant('tools.mjs', c => `import {spawnSync} from 'node:child_process';\n${c}\nspawnSync('curl', ['-o', 'film.mp4', 'https://example.com']);\n`), /^tools\.mjs:\d+ spawnSync\('curl'.* — a program StoryReel runs: list it in RUNS/);
   caught(plant('tools.mjs', c => `import {execFileSync as run} from 'node:child_process';\n${c}\nrun('cp', ['a', 'b']);\n`), /^tools\.mjs:\d+ run\('cp', \['a', 'b'\]\);/);
+  caught(plant('input-file.mjs', c => c.replace('constants.O_RDONLY|','constants.O_WRONLY|')), /^input-file\.mjs:\d+.*openSync/);
+  caught(plant('kits/footage/process.mjs', c => c.replace('spawned(command,args,',"spawned('curl',args,")), /^kits\/footage\/process\.mjs:\d+.*spawned/);
   // A flag that makes FFmpeg or ffprobe write a file, wherever it is written.
   for (const flag of ['-progress', '-report', '-vstats_file', '-y']) caught(plant('beats.mjs', c => `${c}\nconst extra = ['${flag}', 'out.txt'];\n`), new RegExp(`^beats\\.mjs:\\d+ const extra = \\['${escape(flag)}'`));
   caught(plant('beats.mjs', c => `${c}\nconst env = {FFREPORT: 'file=report.log'};\n`), /^beats\.mjs:\d+ const env = \{FFREPORT/);

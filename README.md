@@ -248,7 +248,7 @@ A phrase that is not in the narration refuses the recipe.
   recipe names those keys in `hostKeys`: they are allowed, and the engine never reads them.
   `compileFilm({…, recipe: {story, stages, terms}})` refuses `"terms"` with the fix;
   `compileFilm({…, recipe: {story, stages, terms}, hostKeys: ['terms']})` compiles (so does `makeFilm`).
-- **Files stay inside `root`.** A file the recipe names (a code excerpt today; pictures next) loads only
+- **Files stay inside `root`.** A file the recipe names (a code excerpt or a recording) loads only
   from inside the film's root folder (the `root` option, default the working folder). The check uses
   real paths, so `../film-private/x.ts` (a sibling folder whose name begins like the root) and a
   symbolic link that leads out of the folder are both refused, with a message naming the fix (so is a
@@ -3144,6 +3144,67 @@ run's narrative, so an agent that must debug a refusal reads why without reading
  "world": {"kit": "kinetic", "scene": "beat", "words": ["Every", "beat", "lands", "cut"], "flip": true, "sound": "tap"}}
 ```
 
+
+## Recorded video as a shot
+
+A screen recording can be a world, so its camera, focus, transitions and captions use the same recipe as a drawn
+scene. Edit a phrase anchor or a named box instead of re-editing the video. Record with your own tool, put the MP4
+or WebM inside the film's `root`, and pass `footageKit` in `kits`:
+
+Use local FFmpeg and ffprobe builds with the `fd` input protocol; `createFootageKit({ffmpeg, ffprobe})` selects
+explicit tool paths when they are not on PATH.
+
+```js
+import {compileFilm, evenTimings} from 'footprint-storyreel';
+import {footageKit} from 'footprint-storyreel/kits/footage';
+
+const storyboard = {scenes: [{id: 'form', silent: [
+  ['Open the form', 4], ['Explain the result', 4], ['Continue the recording', 4]
+]}]};
+const recipe = {story: {kit: 'footage', scene: 'form', file: 'demo/form.webm',
+  fit: 'contain', background: '#15151b', fps: 12, width: 1600,
+  keys: [{at: ['form', 'Open the form'], video: 0},
+         {at: ['form', 'Explain the result'], video: 4},
+         {at: ['form', 'Continue the recording'], video: 4},
+         {at: 12, video: 12}],
+  regions: [{name: 'result', box: [120, 240, 720, 420]}]},
+  camera: [{move: 'dolly-in', at: ['form', 'Explain the result'], seconds: 1,
+            on: 'result', amount: 1.3}]};
+const film = await compileFilm({storyboard, timings: evenTimings(storyboard, {tail: 0}),
+  recipe, root: process.cwd(), kits: [footageKit], record: true});
+```
+
+This example needs a recording at least 12 seconds long and a `result` box inside its original pixel dimensions.
+It plays the first four seconds, holds while the result is explained, then plays the next eight seconds in four.
+`at` is film time (seconds or a spoken/direction phrase); `video` is recording time in seconds. Film times strictly
+increase; video times never go backwards. Two equal video times hold; otherwise the segment plays linearly at
+1/8×–8×. Before the first key and after the last, the nearest keyed frame holds. Without keys, the recording starts
+at its scene's start at normal speed, then holds its last frame. A refusal names the key and how to fix it.
+
+Read `film.preparation` for the recorded choices, by world path. A footage report keeps `source` (admission/cache
+preparation), `bounds` and `remap` decision narratives; `makeFilm` carries them into `making-of.json.preparation`.
+This is why a hold, speed change or refusal can be investigated from data instead of video frames.
+
+`fit: 'contain'` preserves the entire image, with background around it; `cover` fills 1600×900 and crops the edges.
+`regions` are named boxes `[left, top, right, bottom]` in the **original recording's pixels**. Existing camera and
+focus tools use the fitted boxes; names are provided by the recipe, not inferred from the picture. The recording's
+own audio is muted: use the film's existing narration/music paths. Click logging, automatic click zooms and a
+recording script runner are not part of this kit.
+
+Preparation finishes before drawing: frames can be sought in any order, without launching a decoder from
+`draw(ctx, t)`. File bytes, decode settings and drawing ownership take part in segment keys, so a new take
+invalidates the pieces that show it while approvals still lock the full input set. The source file must be local
+and stay inside `root`, including through symlinks. Limits come from `FOOTAGE`: 512 MiB input, 600 seconds,
+18,000 sampled frames, 1–30 fps (12 by default), and decode width 160–1920 (1600 by default). Lower the sampling
+rate/width, trim or split the recording when refused. These limits are admission bounds, not a promise about total
+process memory or render speed. See the [kit notes](src/kits/footage/README.md) for the full bounds and preparation.
+Preparation is shared across kit factories: at most two active jobs per process, with 32 active or queued requests
+in total. A queued job acquires its slot before hashing, opening or decoding the recording.
+
+**Pixels are not text evidence.** The kit does not transcribe or verify words and numbers baked into the recording.
+The usual caption/recipe checks still apply to their own text; they do not prove that the recorded screen is
+readable or its claims are true. Review a still at the intended output size, then a small rendered part.
+
 ## Kits
 
 ```js
@@ -3193,13 +3254,24 @@ the context (a property of your own, a map keyed by it) and never compare contex
 over from the frame before.
 
 **The kit context.** A story kit that declares `context: true` is compiled as `compile(spec, context)`
-instead: one frozen object `{clock, motion, theme, root, cast, library, labels, insideRoot, readFile, where}`. `theme`
+instead: one frozen object `{clock, motion, theme, root, cast, library, labels, insideRoot, readFile, fileInput, where}`. `theme`
 is the film's theme; `where` names the recipe entry the world is compiled for (`the story`, or `stage <scene>`), for
 the kit's own refusals; `library` and `labels` are the recipe's (empty until a recipe carries them). Files go
 through `readFile(path)` (or `insideRoot(path)`, the real path), which loads only from inside the film's
 root folder, the same rule as the recipe's own files: a sibling folder or a link out refuses. The context
-has no way to draw the film. A kit that does not declare it keeps `compile(spec, clock, motion)`, and the
+also offers `await fileInput(path, {maxBytes})` for a large local media input: admission and a streaming SHA-256,
+returning frozen `{file, size, sha256}` and recording its canonical identity against the world that read it. Legacy
+`readFile`/`insideRoot` inputs keep their existing global cache behavior. A custom kit includes the file-input Promise
+in its returned world's `ready`, so the engine waits for admission before drawing or freezing inputs. The footage
+kit already does this. The context has no way to draw the film.
+A kit that does not declare it keeps `compile(spec, clock, motion)`, and the
 speed-note rule above is the same for both.
+
+A world may provide plain JSON `preparation` data (or a getter read once after `ready`). The engine detaches and
+freezes it into `film.preparation` as `{path, record}` entries; `makeFilm` also writes those entries to its making-of.
+Kits without reports keep the field absent. Nested accessors, symbols, cycles, non-finite numbers and oversized
+reports refuse with the fix; the report is not a way to attach code. Keep it concise: at most 256 reports, 2 MiB,
+20,000 nodes and depth 32.
 
 **Characters that talk.** A storyboard scene may name who says it — `{"id": "no", "speaker": "robot",
 "narration": "No, it was not shipped."}` — and the clock a kit is compiled with answers who is speaking at any
@@ -3605,13 +3677,14 @@ the default because it rarely does; there is no swap repair.
 | `footprint-storyreel/pose` → `motionSource({name, poseAt})` · `walkSource(walk)` · `checkPose(pose)` · `POSE_KEYS` · `TORSO_SHARE` | the motion-source port: one pose shape for everything that moves a figure; the planned walk as one adapter |
 | `footprint-storyreel/mocap` → `fromPose(keypoints, {x, size, …})` · `MOCAP` · `SCHEMES` · `RIG_JOINTS` | motion copied from a video's 2D keypoints (COCO-17, MediaPipe-33), as a motion source with its record |
 | `footprint-storyreel/stage` → `compileStage(spec, {adapters, at?, clock?})` · `stageDrawings({name, places, people, props, badge?})` · `demoDrawings` · `DEMO` · `readAdapters` · `ACTIONS` · `TRAVELS` · `BADGES` · `STAGE` | a scene as data: a place, a cast, props and actions from a small fixed vocabulary, timed and checked by the library, drawn by a kit's adapters; its continuity ledger and facts reach `film.shots` and the record |
+| `footprint-storyreel/kits/footage` → `footageKit` · `createFootageKit({ffmpeg?, ffprobe?})` · `FOOTAGE` | a local muted MP4/WebM as a seekable world: phrase-anchored holds/speed changes, contain/cover, named regions and existing camera/focus/captions |
 | `footprint-storyreel/kits/cartoon/figure` → `drawFigure(ctx, pose, {floor, size})` · `figureAt` · `FIGURE_COLORS` | a cartoon figure any motion source moves; planted feet stay put |
 | `contactSheet(film, {moments?, columns?, width?})` | a PNG of stills |
 | `frameHashes(film, {count?, width?, times?, each?})` · `changedFrames(pinned, now)` | pixel pins (`each(t, ctx)` sees every frame drawn) |
 | `whiteboardKit` · `cartoonKit` · `loadTheme('paper' \| 'storybook')` | the built-in looks |
 | `footprint-storyreel/studio` → `startStudio({load, watch, port})` | the preview studio |
 
-TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/script`, `/ease`, `/moves`, `/principles`, `/acting`, `/director`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/progression`, `/review`, `/rubric`, `/slideshow`, `/geometry`, `/claims`, `/decorative`, `/regions`, `/captions`, `/layout`, `/zones`, `/doctor`, `/transitions`, `/breakdown`, `/sounds`, `/sounds/openverse`, `/camera`, `/beats`, `/music`, `/kits/whiteboard`, `/kits/cartoon`, `/kits/paper/steps-track`, `/pose`, `/mocap`, `/kits/cartoon/figure`, `/stage`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
+TypeScript types ship with the package: the main entry, `/studio`, and the documented subpaths (`/clock`, `/pacing`, `/script`, `/ease`, `/moves`, `/principles`, `/acting`, `/director`, `/finished`, `/listening`, `/release`, `/pins`, `/sheet`, `/render`, `/segments`, `/approval`, `/pipeline`, `/film`, `/strings`, `/theme`, `/reading`, `/shots`, `/progression`, `/review`, `/rubric`, `/slideshow`, `/geometry`, `/claims`, `/decorative`, `/regions`, `/captions`, `/layout`, `/zones`, `/doctor`, `/transitions`, `/breakdown`, `/sounds`, `/sounds/openverse`, `/camera`, `/beats`, `/music`, `/kits/whiteboard`, `/kits/cartoon`, `/kits/footage`, `/kits/paper/steps-track`, `/pose`, `/mocap`, `/kits/cartoon/figure`, `/stage`). The drawing internals a kit author may reuse (`/pen`, `/ground`, `/sound`, `/notes`, `/kits/paper`, `/kits/paper/code`, `/kits/whiteboard/board`) are plain JavaScript without types.
 
 
 ## Laws

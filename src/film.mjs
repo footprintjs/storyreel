@@ -20,6 +20,7 @@ import {readCast, withCast} from './cast.mjs';
 import {createCanvas} from '@napi-rs/canvas';
 import {readFileSync, statSync, realpathSync, existsSync} from 'node:fs';
 import path from 'node:path';
+import {measureFile} from './input-file.mjs';
 import {insideRoot} from './files.mjs';
 import {hashOf, hashBytes} from './hash.mjs';
 import {inOut as ease} from './ease.mjs';
@@ -51,6 +52,7 @@ import {checkSound, soundsByScene, MAX_SOUNDS_PER_SCENE, FOUND} from './sound.mj
 import {readLibrary, useFound, trimOf, foundFields} from './found/index.mjs';
 import {listeningMode, changeSounds, listeningText} from './listening.mjs';
 import {step, drainSteps, recordSteps} from './record.mjs';
+import {worldPreparation} from './preparation.mjs';
 import {readEntrance, transitionCatalog, ghostPainter, layerCrossfader, CUT} from './transitions.mjs';
 import {readThought, drawThought, thoughtAt, thoughtCamera, THOUGHT_ENTRANCE, THOUGHT_SETTINGS} from './thought/index.mjs';
 import {SHEET_SHADOW} from './frame.mjs';
@@ -116,9 +118,9 @@ const aim = (ctx, c) => { ctx.translate(c.tx, c.ty); ctx.scale(c.z, c.z); ctx.tr
  * empty. A file the kit opens goes through `readFile`, which loads only from inside root (files.mjs ·
  * insideRoot, as the recipe's own files do).
  */
-function kitContext({clock, motion, theme, root, cast = null, inside = file => insideRoot(root, file)}) {
+function kitContext({clock, motion, theme, root, cast = null, inside = file => insideRoot(root, file), fileInput = null}) {
   return Object.freeze({clock, motion, theme, root, cast, library: Object.freeze({}), labels: Object.freeze({}),
-    insideRoot: inside, readFile: file => readFileSync(inside(file))});
+    insideRoot: inside, readFile: file => readFileSync(inside(file)), ...(fileInput ? {fileInput} : {})});
 }
 
 /**
@@ -127,12 +129,21 @@ function kitContext({clock, motion, theme, root, cast = null, inside = file => i
  * or a file that does not exist, is not recorded.
  */
 function fileLedger(root) {
-  const seen = new Map(), base = (() => { try { return realpathSync(path.resolve(root)); } catch { return path.resolve(root); } })();
+  const seen = new Map(), global = new Set(), scoped = new Map(), base = (() => { try { return realpathSync(path.resolve(root)); } catch { return path.resolve(root); } })();
   return {
     note(real) {
+      global.add(real);
       if (!seen.has(real)) { let hash = null; try { if (statSync(real).isFile()) hash = hashBytes(readFileSync(real)); } catch { /* not there: nothing read */ } seen.set(real, hash); }
       return real;
     },
+    scoped(real, digest, entry) {
+      const hash = digest.slice(0, 16);
+      if (seen.has(real) && seen.get(real) !== hash) throw new Error('A film input changed during compilation; make a stable local copy and compile again.');
+      seen.set(real, hash);
+      if (!scoped.has(real)) scoped.set(real, new Set());
+      scoped.get(real).add(entry);
+    },
+    owners: () => Object.fromEntries([...scoped].filter(([real]) => !global.has(real)).map(([real, owners]) => [path.relative(base, real).split(path.sep).join('/'), Object.freeze([...owners].sort())])),
     list: () => Object.fromEntries([...seen].filter(([, h]) => h).map(([real, h]) => [path.relative(base, real).split(path.sep).join('/'), h]).sort(([a], [b]) => a.localeCompare(b))),
   };
 }
@@ -265,6 +276,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   if (typeof reducedMotion !== 'boolean') throw new Error(`compileFilm: reducedMotion must be true (the camera's moves cut to their end framing; handheld off) or false (the default), not ${JSON.stringify(reducedMotion)}`);
   if (anchors !== 'refuse' && anchors !== 'note') throw new Error(`compileFilm: anchors must be 'refuse' (the default: a phrase its scene does not say stops the compile) or 'note' (every phrase not as written is noted in film.anchors, so all are checked in one pass), not ${JSON.stringify(anchors)}`);
   checkRecipeKeys(recipe, hostKeys);
+  const storyPathName = recipe.story ? 'story' : 'whiteboard';
   // The film's first shot is its story world (the shots are the story, then each stage): a recipe names it. An empty
   // board is said ("items": []), never assumed — a recipe that lost its story would otherwise open on a blank board.
   const storyGiven = recipe.story ?? recipe.whiteboard;
@@ -317,26 +329,27 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const transitions = transitionCatalog(allKits);
   const worldKits = new Set();
   // What a context kit gets (kitContext); every world's `ready`, settled before recalls are drawn (readyWorlds).
-  const context = kitContext({clock, motion, theme: paper, root, cast, inside: within}), readies = [];
-  const compileWorld = (spec, where) => {
+  const context = kitContext({clock, motion, theme: paper, root, cast, inside: within}), readies = [], preparedWorlds = [];
+  const compileWorld = (spec, where, entry) => {
     const kit = storyKits[spec?.kit];
     if (!kit) throw new Error(`No story kit "${spec?.kit}" for ${where} (have: ${Object.keys(storyKits).join(', ')})`);
     // A camera speed covers EVERY camera move, so a world whose kit cannot follow it refuses the note.
     if (notes.speed !== 1 && !kit.motion?.includes('cameraSpeed')) throw new Error(`note "${notes.speedNote.note}": ${where} is drawn by the kit "${spec.kit}", which does not take a camera speed (a story kit that does lists motion: ['cameraSpeed'] and divides its camera moves' seconds by motion.cameraSpeed)`);
     worldKits.add(spec.kit);
     // A context kit's context also says which recipe entry the world is for (`where`: the story, or stage <scene>).
-    const instance = usesContext(kit, spec.kit) ? kit.compile(spec, Object.freeze({...context, where})) : kit.compile(spec, clock, motion);
+    const instance = usesContext(kit, spec.kit) ? kit.compile(spec, Object.freeze({...context, where, fileInput: (file, limits) => measureFile(root, file, limits, (real, digest) => files.scoped(real, digest, entry))})) : kit.compile(spec, clock, motion);
     checkCameraMoves(instance, spec.kit, where);
     readies.push(readyOf(instance, spec.kit, where));
+    preparedWorlds.push({path:entry,instance});
     return instance;
   };
   // The director's keys land in each world whose kit takes direction, before the worlds are built: each such world is
   // built once first to read what it names (its regionsAt) — its beats are not logged, its ready not awaited — and
   // explicit keys win (director/land.mjs). The recipe as compiled (`directed`) is what the cache keys on.
   const probeWorld = (spec, path) => {
-    const b = beats.length, r = readies.length, story = path === 'story' || path === 'whiteboard';
+    const b = beats.length, r = readies.length, p = preparedWorlds.length, story = path === 'story' || path === 'whiteboard';
     const world = story ? Object.fromEntries(Object.entries(spec).filter(([key]) => !PLAN_KEYS.includes(key) && key !== 'frame')) : spec;
-    try { return compileWorld(world, story ? 'the story' : `stage ${recipe.stages[+path.slice(7, -1)].scene}`); } finally { beats.length = b; readies.length = r; }
+    try { return compileWorld(world, story ? 'the story' : `stage ${recipe.stages[+path.slice(7, -1)].scene}`, story ? storyPathName : path); } finally { beats.length = b; readies.length = r; preparedWorlds.length = p; }
   };
   const direction = directing && directWorlds(directing, {storyboard, timings, clock: base, recipe, storyKits, probe: probeWorld});
   if (direction?.placements.length) { directed = applyPlacements(given, direction.placements); recipe = applyPlacements(recipe, direction.placements); entries = recipePaths(recipe); }
@@ -355,7 +368,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const {intent: storyIntent, continuity: storyContinuity, reads: storyReads, frame: storyFrame, ...storyRest} = recipe.story ?? {kit: 'whiteboard', ...recipe.whiteboard};
   // Its answers to the five scene questions are the engine's too (progression.mjs): read, then left out of what the kit gets.
   const storyQuestions = readQuestions(storyRest, 'the story'), storySpec = Object.fromEntries(Object.entries(storyRest).filter(([key]) => !QUESTIONS.includes(key)));
-  const story = compileWorld(storySpec, 'the story');
+  const story = compileWorld(storySpec, 'the story', storyPathName);
   // A film may be story only (no push-in, no card, no paper stages).
   const push = recipe.pushIn ?? null;
   if (push && storyFrame !== undefined) throw new Error('the story: a frame is for a film without a pushIn (the camera pushes into the story\'s page, which hangs on the paper): leave frame out, or the pushIn');
@@ -387,7 +400,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (!push) st.entrance = readEntrance(spec.enter, where, transitions);
     if (spec.type === 'world') {
       for (const key of [...PLAN_KEYS, 'frame']) if (spec.world && Object.hasOwn(spec.world, key)) throw new Error(`${where}: ${key} belongs on the stage, beside world (the engine reads it there), not inside world (the kit's own spec)`);
-      st.world = {...hung(compileWorld(spec.world, where), {frame: readThought(spec.frame, where), from: st.start}), kit: spec.world.kit};
+      st.world = {...hung(compileWorld(spec.world, where, `stages[${stages.length}]`), {frame: readThought(spec.frame, where), from: st.start}), kit: spec.world.kit};
     }
     if (reads('code') && spec.code) {
       const source = excerpt(within(spec.code.file), {elide: spec.code.elide ?? []});
@@ -425,7 +438,6 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   if (push && buildStage && boardEnd + TURN * .9 > MOVE0) throw new Error(`The push-in ends at ${(boardEnd + TURN * .9).toFixed(2)} s${notes.speed !== 1 ? ` (at camera speed ${notes.speed} it takes ${TURN.toFixed(2)} s)` : ''}, after the card moves aside for the first stage at ${MOVE0.toFixed(2)} s: give the scene before ${buildStage.scene} a longer tail (pacing.tails), or the push-in a shorter turn`);
   // The plan of the shots (shots.mjs): what each is for, and what is true when it starts and ends — one
   // shot's start must agree with what the shots before it left.
-  const storyPathName = recipe.story ? 'story' : 'whiteboard';
   // Reads (shots.mjs · readReads): what the viewer must take in, each on a phrase (resolved here, so the record
   // logs it). Each keeps its declared index (k), so a problem names the read the recipe wrote; a read's phrase
   // is when something is taken in, not something new to see, so it is no moment (readRefs, below).
@@ -993,6 +1005,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
 
   // A push on a named thing reads the worlds' regions, so every world is ready first (its images decoded).
   await readyWorlds(readies);
+  const preparation = worldPreparation(preparedWorlds);
   // An entrance that goes through a named thing (transitions.mjs · regions) finds it once, here: in the picture
   // it leaves at the change's first moment, in the one it arrives at at its last. The draw reads these boxes,
   // so a frame stays a pure function of time; a name the picture does not have refuses, naming the ones it has.
@@ -1253,6 +1266,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   // key holds the code of the kits that draw it (segments/kitcode.mjs, from each kit's `sources`).
   const drawnBy = Object.freeze(Object.fromEntries([[storyPathName, storySpec.kit], ...stages.map((st, i) => [`stages[${i}]`, st.world?.kit ?? stageKitNames[st.type] ?? null])].filter(([, kit]) => kit)));
   return {total: clock.total, clock, timings, sounds, foundSounds: foundUsed, listening, frame, beats, anchors: noted, strings: [...used], notes: notesApplied, attention: attention?.record ?? null, focusAt: attention?.focus?.viewAt ?? null,
+    ...(preparation ? {preparation} : {}),
     attentionFrames: attention?.frames ?? null,
     camera: camerawork?.record ?? null, cameraAt: camerawork?.viewAt ?? null, reading, reads, posterAt, moments, regionsAt, pointAt, theme: paper, shots: shotsPlanned, watching,
     // What does not progress (progression.mjs), only when a shot answers one of the five scene questions.
@@ -1261,7 +1275,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     ...(rubricRule ? {rubric: rubricRule} : {}),
     // Its pace, when the recipe names one (the slideshow check holds it to it; a lesson's, when absent).
     ...(pace ? {pace} : {}),
-    rows: Object.freeze(rows().map(Object.freeze)), overlays, replays, inputs, stringHashes, mouthsAt, partsAt, pictureAt: pictureClock,
+    rows: Object.freeze(rows().map(Object.freeze)), overlays, replays, inputs, ...(Object.keys(files.owners()).length ? {fileOwners: Object.freeze(files.owners())} : {}), stringHashes, mouthsAt, partsAt, pictureAt: pictureClock,
     lines: Object.freeze(lines.map(l => Object.freeze({...l}))), changes: Object.freeze(pictureChanges().map(c => Object.freeze({...c}))), claims, lang: filmLang,
     // What it was compiled from, kept for the cache's keys (segments.mjs): the recipe as given (its strings unresolved), with
     // the director's keys where they landed, frozen.
