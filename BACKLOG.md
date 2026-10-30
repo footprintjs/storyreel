@@ -88,3 +88,42 @@ above keeps marketing polish out of the package. These items are capabilities, n
    phrase, and fails when the voice does not clearly lead.
 10. **A release folder in one call.** Masters at the `high` encode, a no-sound copy, the captions, small share
     copies with posters, and a README with checksums and the licences of every voice and asset.
+
+## Checks borrowed from "Opus 5.5 Loop Lab" (2026-10-30)
+
+Source: an X article by @anstapnever, "Opus 5.5 Loop Lab: 3D motion loops made from code"
+(https://x.com/anstapnever/status/2110392373377380473, article https://x.com/i/article/2110374956806909952). It
+states no licence for its code or prompts, so the IDEAS are borrowed and the code is written here. Several of its
+rules this package already keeps: a frame is a pure function of time, randomness is seeded, the motion numbers live
+in one place (footprint-story/motion), cuts are rounded from the song's own times, the first frame is the poster,
+and there are stills, contact sheets, sync and loudness checks. Six are new. Each is a footprintjs stage, its rules a
+`decide()` table, so a run says why it passed or refused. Not started; each needs a go.
+
+1. **An accessibility check, the first to build.**
+   - Text contrast of at least 4.5:1 against what is behind it, on every frame where a word is read.
+   - No more than three flashes in any one second (the WCAG photosensitive threshold); the breakdown already
+     finds flashes.
+   - It matters most for films children watch.
+2. **A brief check before the recipe.** A brief with fixed fields: goal, format, beat, look, stage, shots,
+   motion, banned, and frames to check. It refuses vague adjectives ("premium", "luxurious", "realistic") until
+   they are stated as values: colours, materials, light, sizes, timings. The article's main finding is that the
+   vague brief gave a generic picture and the stated one gave the intended one.
+3. **A banned-defaults check.** Everything fading in at once; the same entrance on every element; text that moves
+   while it is read; decorative glow or particles; centred-everything layouts. Each is measured on the timeline
+   and regions, and a project can add its own, after the article's rule: name what the model used anyway, and ban
+   it.
+4. **A motion-grammar check.**
+   - Entrances ease out; exits ease in and are shorter; moves across the frame ease in and out; linear only for
+     rotation, progress and loop phase.
+   - Opacity and colour never bounce.
+   - One hero move per shot. Secondary moves travel 50–70 % of the hero's and start 100–200 ms later; ambient
+     motion stays under 5 %.
+   - It extends the laws `readMove` already keeps.
+5. **A seamless-loop check.** For a looping clip, the last frame flows into the first: frames 0 to N−1 are
+   rendered, never N. A value moving through the seam keeps its speed, not only its position, and a sound tail
+   needs a gap or a fade at the seam. StoryDeck's ambient loops need the same check.
+6. **A motion graph.** Plot one named element's position and size, frame by frame, from the regions the film
+   already knows, so a jerky or badly eased move shows as numbers before anyone looks at a picture.
+
+Out of scope for now: the article's 3D material and light cookbook. Three.js is a different renderer from this
+package's 2D canvas.
