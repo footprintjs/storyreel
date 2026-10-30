@@ -127,3 +127,54 @@ and there are stills, contact sheets, sync and loudness checks. Six are new. Eac
 
 Out of scope for now: the article's 3D material and light cookbook. Three.js is a different renderer from this
 package's 2D canvas.
+
+## The studio's review loop, borrowed from "Direct It Like a Studio, Check It Like an Engineer" (2026-10-30)
+
+Source: an X article by @m4lkxx, "Motion Design with Opus 5.5: Direct It Like a Studio, Check It Like an Engineer"
+(https://x.com/m4lkxx/status/2112550174962651338, article https://x.com/i/article/2112529635778965505). It states no
+licence: the IDEAS are borrowed, the code is written here.
+
+Several of its rules this package already keeps:
+- any frame drawn from `t` alone;
+- seeded randomness;
+- picture and sound on one clock;
+- sync checked in the decoded file, not the source;
+- loudness per platform;
+- cheap evidence first (stills, sheets, strips before a render);
+- only changed pieces redrawn;
+- a plan shown before anything is made (`remake`, look first);
+- a release folder that lists what still needs a human eye.
+
+Eight are new. They fit the studio (local, notes on the screen, an AI that applies changes) and every review. Not
+started; each needs a go.
+
+1. **A feeling becomes a defect.** A note in the studio that says a feeling ("feels slow", "too busy", "the colour
+   is off", "the transition is weird") is turned by a `decide()` table into a measurement and a candidate change:
+   - "slow" becomes a shorter hold, one beat;
+   - "busy" becomes one hero move, with secondary moves 150 ms later;
+   - "colour off" becomes a colour probe;
+   - "weird transition" becomes three frames around the seam.
+   The record says which rule fired, and the person still decides.
+2. **Every finding carries its evidence class:**
+   - **observed:** seen in a named frame, or measured from its pixels;
+   - **inferred:** several observations point to a cause, but no frame proves it yet;
+   - **unknown:** not checked, or the evidence conflicts.
+   The judge is the render, the reference or a measurement, never the model's own claim. This is the same law as
+   the claims' evidence classes, applied to review findings.
+3. **Review rounds kept as files.** Each round is a folder: the stills it looked at, the person's notes VERBATIM,
+   the defects found (with frames and classes), and what changed. Each round shrinks to the frames the last one
+   touched. The making-of then shows how the film got right, not only that it did.
+4. **Seam stills.** For every cut and transition, three frames one frame apart around it, on one sheet. In the
+   studio, a click on a transition shows them.
+5. **A colour probe.** The median colour of a named region (from the regions the film already knows), measured
+   against its target (a theme token or a brand colour) with a colour difference. It is how "the colour is off"
+   becomes a number.
+6. **Check the checker.** Plant defects on purpose: shift a colour, land a sound three frames late, leave a
+   placeholder bar, cover a caption. Each review check must catch its planted defect, or it is not trusted. This
+   is a mutation test for the critic.
+7. **References as rules.** A reference becomes measured rules (palette in hex, type, proportions, pacing; the
+   breakdown already measures pacing) plus a list of what may NOT be copied, kept beside the film.
+   **Missing assets are named before production**, all at once, not one refusal per render.
+8. **The delivery lists what still needs a human eye.** Every release says which judgements no check can make:
+   the voice's accent, the wording, likeness. This package's release folders start doing it now; the article
+   makes it part of the contract.
