@@ -1,5 +1,9 @@
 # Footprint StoryReel
 
+For developers and lesson authors who want to edit an explainer as code and data.
+
+[Install](#install) · [First film](#your-first-film) · [Preview studio](#the-preview-studio) · [Agent skills](#skills-for-ai-agents) · [Runtime boundaries](#not-in-this-package)
+
 **Teaching films from a script and a recipe.** You write what is said (the storyboard) and what is
 drawn when each phrase is said (the recipe, plain JSON). StoryReel turns them into one film you can
 seek to any moment, renders the MP4 with its sound, and writes a **making-of record**: which words
@@ -8,6 +12,8 @@ triggered which drawing, the pacing, the tools and versions.
 It is built for explainers and lessons: a whiteboard story, a push into a typed card, code that
 appears line by line as the voice names it, pause-and-guess questions, a recap drawn from the
 film's own frames. A cartoon world and a storybook look ship too, and the look is a plug-in.
+
+For interactive slide decks and scroll-driven articles, see [StoryDeck](https://github.com/footprintjs/storydeck). Both use [footprint-story](https://github.com/footprintjs/footprint-story) for shared narration and motion rules.
 
 ```
 a lesson:   story (a world, a problem, a eureka) → push-in to one prop → paper stages on one page → recap → teaser
