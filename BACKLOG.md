@@ -178,3 +178,76 @@ started; each needs a go.
 8. **The delivery lists what still needs a human eye.** Every release says which judgements no check can make:
    the voice's accent, the wording, likeness. This package's release folders start doing it now; the article
    makes it part of the contract.
+
+## The rule draws the picture, borrowed from "Math-Animals" (2026-11-02)
+
+Source: Math-Animals by r3al1tym (https://github.com/r3al1tym/math-animals). Ten animals are drawn in Canvas 2D from
+published models of their form (a logarithmic spiral, a Voronoi wing, a Turing pattern), and a 64 s film is shot
+from the pages. Its licence is MIT (Copyright (c) 2026 r3al1tym), so its code may be adapted if that notice is kept
+in the file it lands in. Worth reading: `kit/kit.js` (one light, pencil lines that draw themselves, a lettering
+hand), `tools/render.mjs` (its determinism check), `BUILDERS.md` (one shared brief) and `CONCEPT.md` (the concept
+card).
+
+Several of its rules this package already keeps:
+- a frame is a pure function of time;
+- randomness is seeded;
+- slow surfaces are prepared once (a kit's `ready`) and each frame composes them;
+- every number on screen has a source (`facts.json`, checked by `review`);
+- judgement is scored per point (`review --rubric`) on each scene's settled picture.
+
+Six are new. Each is a footprintjs stage with its rules in a `decide()` table. Not started; each needs a go.
+
+1. **The construction is the picture.** In a film that explains how something works (a lesson, a science film, a
+   product's flowchart), the rule is drawn first, in pencil, and the thing grows out of it **in register**: the
+   drawn spiral is the one the chambers follow, the drawn number line is the one the apples land on, the drawn
+   flowchart is the one the footprints walk.
+   - One function draws both, so they cannot drift apart. A check refuses a construction and an object drawn from
+     different numbers.
+   - The build has a grammar. The construction draws itself at a draughtsman's pace. The one designed moment is the
+     handover, when the line becomes the thing. The labels are lettered last. After the build only ambient motion
+     moves.
+   - Where the object does not cover it, the construction stays visible, so a viewer can check the picture against
+     the rule.
+   - The whiteboard kit already draws strokes that write themselves; this adds the register and the handover. The
+     flowchart world from the two-language film (above) would be its first user.
+2. **A trial row: the same rule at other values.** Three to five small sketches along the foot of a scene, drawn by
+   the same code at other values, each lettered with its value, and the real one ticked. It shows that the real
+   thing is one setting of its rule. In a footprintjs film these are the branches a `decide()` did not take, drawn
+   from the same chart, with the taken one ticked.
+3. **One light for every kit.** One window direction for the whole film. A lifted piece casts its shadow
+   `height × K` away along that direction, blurred in proportion to its height, plus a tight contact shadow where it
+   touches. Kits ask for a shadow by height instead of setting their own numbers; the paper kit sets its own today,
+   piece by piece.
+   - The light table belongs beside the spring table in footprint-story's `/motion`, so a deck and a film share it.
+     That package needs the owner's go.
+   - Math-Animals' `castShadow` is a small MIT function to start from.
+4. **A determinism check for a project's own kits.** This package tests its own kits for purity. A film's own kits
+   are never checked (the two-language film has seventeen), yet the segment cache trusts them.
+   - A `review` verdict draws a scene's settled frame, then another frame, then the first again, and compares the
+     pixels.
+   - It scans each kit's sources for `Math.random`, `Date.now` and `performance.now`.
+   - It prints each kit's prepare time and its draw time per frame.
+   - Their known trap goes in the kit guide: on some canvases, a small canvas drawn scaled up straight onto the
+     frame differs by a few levels between draws. Scale it into a full-size canvas first, then draw that.
+5. **A blind review packet.** Each round, a reviewer that has never seen the work gets the same fixed packet: each
+   scene's settled picture at feed size, one full-size crop, and one reference. Nothing else: no making-of, no
+   earlier notes, no intent. It scores the existing rubric and returns at most three ranked changes.
+   - The packet is the mechanism. A person or a fresh agent reviews it; the library still calls no model.
+   - Their open problem shows why the score matters: reviewers who saw only the output rarely said PASS (all 45 in
+     one round said REVISE), and they propose a score per criterion to show progress between rounds. The rubric
+     already gives that.
+   - It builds on "Review rounds kept as files" above.
+6. **A zoom never enlarges a picture silently.** The camera zooms by redrawing, so drawn shapes stay sharp. A
+   prepared picture (a baked layer, a still, and soon a screen recording) is enlarged instead. `review` compares the
+   camera's deepest zoom over each picture with the picture's own resolution, and names the fix: prepare it at that
+   scale (their film shoots each page at 3× before it zooms), or zoom less. The motion graph (Loop Lab item 6) can
+   also show that a zoom's centre stays still; theirs held within 0.004 px.
+
+Not borrowed:
+- **The fleet.** 154 sessions (3 leads, 46 builders, 97 reviewers, 8 fact-checkers) is against this package's token
+  rule. One fresh reviewer per round keeps the useful half.
+- **Material realism** (area light, occlusion, scattering). Their own open problem says it still reads as computed,
+  and it is a 3D shading job.
+
+The concept card's fields (person, feeling, wow moment, reference to beat, concept line) fold into the brief check
+(Loop Lab item 2) when that is built.
