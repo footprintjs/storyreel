@@ -195,7 +195,8 @@ Several of its rules this package already keeps:
 - every number on screen has a source (`facts.json`, checked by `review`);
 - judgement is scored per point (`review --rubric`) on each scene's settled picture.
 
-Six are new. Each is a footprintjs stage with its rules in a `decide()` table. Not started; each needs a go.
+Six are new, and a seventh says how they fit together. Each is a footprintjs stage with its rules in a `decide()`
+table. Not started; each needs a go.
 
 1. **The construction is the picture.** In a film that explains how something works (a lesson, a science film, a
    product's flowchart), the rule is drawn first, in pencil, and the thing grows out of it **in register**: the
@@ -242,6 +243,24 @@ Six are new. Each is a footprintjs stage with its rules in a `decide()` table. N
    camera's deepest zoom over each picture with the picture's own resolution, and names the fix: prepare it at that
    scale (their film shoots each page at 3× before it zooms), or zoom less. The motion graph (Loop Lab item 6) can
    also show that a zoom's centre stays still; theirs held within 0.004 px.
+7. **Forms as strategies: how the six fit together.** A rule that draws (a spiral, a Voronoi tiling, branching
+   toward free space, an L-system plant, packed circles relaxing into hexagons, growth rings) is a `form` strategy,
+   the same family as the focus and walk strategies: `compileFilm({…, strategies: {form: {mine: …}}})`. Three layers,
+   each with one job:
+   - **The choices are a subflow, run once when the film compiles.** Which form, which values, whether each value is
+     inside its stated range and sourced, which values the trial row shows, and when the construction, the handover
+     and the labels play. Each is a `decide()` table, so the record says why a nautilus spiral grows 3.00 a turn and
+     not the golden 6.85.
+   - **The form is a pure function, not a stage.** `build(values, seed)` gives the construction as DATA (points,
+     curves, cells), and `at(construction, u)` gives the shape grown to `u` (0..1). It never touches a canvas.
+     Running a flowchart per frame would cost a run every 1/30 s and fill the record with noise.
+   - **Drawing is an adapter.** Canvas for a film; canvas or SVG for a StoryDeck figure (its backlog item 3), so a
+     deck and a film draw the same form from the same data. The one light (item 3) and the pencil belong here.
+   - **For cartoons:** forms draw the world (trees, grass, clouds, stones, tiles, crowds), the patterns (a coat, a
+     shell, a fabric) and the "how it works" pictures. Characters stay authored kits: maths does not make a face
+     people like. A character's parts can still ask a form (hair strands along a curve, leaves on a branch).
+   - **Look first:** one form (the spiral) with its trial row and its construction, drawn from one subflow run, in a
+     film scene and a deck slide.
 
 Not borrowed:
 - **The fleet.** 154 sessions (3 leads, 46 builders, 97 reviewers, 8 fact-checkers) is against this package's token
