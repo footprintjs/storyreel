@@ -3094,14 +3094,15 @@ const studio = await startStudio({
     compile: copy => compileFilm({storyboard, timings, recipe: copy, kits})}),   // what Try plays (optional)
   watch: ['recipe.json'],          // compiled again when these change
   port: 4321,
+  home: '/home/me/.storyreel',     // where the note key lives (default: STORYREEL_HOME, else ~/.storyreel)
 });
 ```
 
 Keys: space plays; ← → step a frame (shift: a second); `[` `]` the previous and next phrase; `,` `.`
 the previous and next scene; Esc leaves a pick being tried. **Transitions** opens the collection a shot can enter with,
 on one sheet (return `kits` from `load()` and their own transitions show too). It listens on 127.0.0.1 only, answers
-only requests addressed to that name, only reads (GET; HEAD only for the page's own files and the voice), and runs
-nothing from the recipe. What draws, checks or compiles on request — a frame, a gallery card, a pick, a Try — answers
+only requests addressed to that name, reads (GET; HEAD only for the page's own files and the voice), takes one
+write — a note on the film, from its own page only (below) — and runs nothing from the recipe. What draws, checks or compiles on request — a frame, a gallery card, a pick, a Try — answers
 the studio's own page only: a request another site's page makes (its browser says so in `Sec-Fetch-Site`) is refused,
 so a page elsewhere cannot spend the studio's time or replace the pick being tried. `studio.held()` says what it keeps
 in memory (the cards drawn, the picks tried), each bounded. The engine side is
@@ -3157,6 +3158,51 @@ flowchart — each line, which kind it is, and whether the film takes it, decide
 labels are the reasons (a word move is the kinetic kit's own rule, `readWordMove`, refusing in its words) — and
 `--record` prints, in place of the lines, one JSON object: `{file, written, changes, refusals, record}`, the record that
 run's narrative, so an agent that must debug a refusal reads why without reading the code.
+
+### Notes on the film: leave one where it happens, an agent edits the line
+
+Telling an agent what to change in a film usually means describing a moment in words ("near the end of the second
+scene, the oranges…"), and the agent then looks at frames and reads whole files to find it — slow, and costly in
+tokens every round. So the studio takes the note where you see the problem, and writes down its exact place for you.
+
+Click a spot on the picture (or just leave the playhead where it is), type the note under it — *the oranges vanish too
+fast* — and press Enter. It lands as one line of `feedback.md`, beside the recipe's file:
+
+```markdown
+- [ ] 0:42.3 · walk+8.10 · stages[1].world.squirrels (recipe.json:212) · "Then a little squirrel scampers up" — the oranges vanish too fast <!-- note:1a2b3c4d by:5e6f7a8b sig:… -->
+```
+
+The film clock; the scene and the seconds into it (what `still --at` takes); the recipe entry drawn at the spot you
+clicked — the smallest drawing there, as "what drew this spot" answers — and its line in the recipe file; the words
+said around that moment; then your words. The page sends only the moment, the spot and your words: everything else is
+read from the film itself, on a footprintjs flowchart whose record says why the note names what it names (which
+entry, whether anything is quoted, whether the file's project id was made). An agent reads them with one command:
+
+```bash
+npx storyreel feedback                  # your open notes, each with its place; also an MCP tool (storyreel mcp)
+# 1 open note from your studio in feedback.md (tick one when done: storyreel feedback --done 1):
+# 1. at "walk+8.10" (0:42.3) · entry "stages[1].world.squirrels" · line 212 of "recipe.json" · said "Then a little squirrel scampers up"
+#    note: the oranges vanish too fast
+npx storyreel feedback --done 1         # ticked: - [x], every other byte of the file kept
+```
+
+It opens line 212 and edits it; no frame, no whole file. When the recipe has changed since and the entry moved, a
+`now: line 215` says where it is now (`--all` lists the ticked notes too; `--record` prints one JSON object with the
+reading's record). Notes are yours by signature, never by where they are: a project someone sends you can carry a
+`feedback.md`, and its lines must never pass for your requests. The studio signs each note with a key kept with you,
+outside the project (`~/.storyreel/key`, or `STORYREEL_HOME`: made once, readable by you only, read only as a plain
+file of your own and refused inside the project's folder), against a project id the file's first line holds (so a
+project moved or renamed keeps its notes yours). Ticking keeps the signature; an edited line, an unsigned one or
+someone else's is counted, never listed. A signature says the studio wrote the line — not that you said its anchors:
+the place is the film's own text (a scene id, an entry's path, the narration), so the reader quotes every anchor as
+JSON and puts your words on a line of their own, and an anchor can never pass for a request.
+
+Taking a note is the studio's one write, and the narrowest it can be: `POST /api/note` only, from the studio's own page
+only — `Sec-Fetch-Site: same-origin` and the studio's own `Origin` (a request that does not say where it came from is
+refused here, though the read routes let it through, for this one writes) — a JSON body of at most 16 KB holding only
+`{version, t, x?, y?, words}` (the film the page drew, the moment, the spot, the words: a note aimed at a film compiled
+since is refused, so a spot never names a drawing of the next film), one note at a time, written as every output is.
+A studio whose recipe file is not known (no `--recipe`, no `recipe.json` beside the config) takes no note and says so.
 
 ## Built-in kits
 

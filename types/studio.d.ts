@@ -1,10 +1,12 @@
 import type {Film, Storyboard, Recipe, Kit} from './index.js';
 
 /**
- * The preview studio: a local, read-only page for directing a film (127.0.0.1 only; GET, and HEAD only for the page's own
- * files and the voice). The routes that draw, check or compile what a query names (a frame, a card, a pick, a Try) answer
- * the studio's own page only (Sec-Fetch-Site same-origin or none, or a browser that does not say); one Try compiles at a
- * time (409 while one does), and the last few compiled are kept.
+ * The preview studio: a local page for directing a film (127.0.0.1 only; GET, and HEAD only for the page's own files and
+ * the voice). The routes that draw, check or compile what a query names (a frame, a card, a pick, a Try) answer the
+ * studio's own page only (Sec-Fetch-Site same-origin or none, or a browser that does not say); one Try compiles at a
+ * time (409 while one does), and the last few compiled are kept. Its one write is a note left on the film (POST
+ * /api/note, from its own page only: Sec-Fetch-Site same-origin, its own Origin, JSON of at most 16 KB holding
+ * {version, t, x?, y?, words}), written as a signed line of feedback.md beside `source.file`, its place read from the film.
  */
 export function startStudio(options: {
   /**
@@ -16,6 +18,8 @@ export function startStudio(options: {
   watch?: string[];
   port?: number;
   log?: (line: string) => void;
+  /** Where the person's note key lives, outside the project (default: STORYREEL_HOME, else ~/.storyreel): notes are signed with it. */
+  home?: string;
 }): Promise<{
   url: string;
   port: number;

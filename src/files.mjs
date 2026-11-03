@@ -16,10 +16,13 @@
  * follows a link — so a link another user planted at an output's name in a shared folder (/tmp) is replaced, and the
  * file it points at is never written. The folders StoryReel names inside the caller's (a release's <target>, a
  * breakdown's shots) are made by outputFolder, which refuses a link there.
+ *
+ * What StoryReel reads from a folder someone else may have filled — a project's feedback.md, the person's note key —
+ * is read one way too, readPlainFile: never through a link, never from a FIFO or a device, and never more than a bound.
  */
 import path from 'node:path';
 import {randomBytes} from 'node:crypto';
-import {existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync, chmodSync, copyFileSync, linkSync, lstatSync, constants} from 'node:fs';
+import {existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync, chmodSync, copyFileSync, linkSync, lstatSync, openSync, fstatSync, readSync, closeSync, constants} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {ownedFolder} from './scratch.mjs';
 
@@ -397,4 +400,60 @@ export function requireVoiceApart(voice, outDir) {
   const real = p => realPathOf(path.resolve(p), realpathSync.native);
   const v = real(voice), out = real(outDir), narration = real(path.join(outDir, 'narration'));
   if (within(v, out) || within(v, narration) || within(narration, v)) throw new Error(`voice: the voice folder ${voice} and the render's out folder ${outDir} overlap — the render paces a copy of the voice in the out folder, then replaces ${path.join(outDir, 'narration')} with it, so it would write into the voice folder or delete it: keep the voice folder outside the render's out folder, and render outside the voice folder`);
+}
+
+const NOFOLLOW = constants.O_NOFOLLOW ?? 0, NONBLOCK = constants.O_NONBLOCK ?? 0;
+
+/**
+ * A file's text, read only as a plain file of its own: what a folder someone else may have filled holds (a project's
+ * feedback.md) or what must be the person's alone (the note key). Its name is looked at first without following it
+ * (lstat): a link — a Windows junction too — or anything but a regular file is refused before it is opened, so a FIFO
+ * or a device never holds the process. Then it is opened read-only, without following a link where the system can say
+ * so (O_NOFOLLOW), and without blocking (O_NONBLOCK); what was opened (fstat) must be the very file looked at (same
+ * device and inode — nothing swapped in between, on a system with no O_NOFOLLOW either), a regular file, and pass
+ * `judge(st)` (a reason to refuse it, or null). At most `most` bytes are read, in a bounded loop, whatever its size
+ * claims: more refuses. Returns the text (UTF-8), or null when there is no file. Each refusal ends with `fix`, the
+ * caller's words for what to do.
+ */
+export function readPlainFile(file, {most, fix, judge = () => null}) {
+  let named;
+  try { named = lstatSync(file, {bigint: true}); } catch (e) { if (e?.code === 'ENOENT') return null; throw e; }
+  if (named.isSymbolicLink()) throw new Error(`${file} is a link (or a junction), not a file of its own: StoryReel reads it only as a plain file — ${fix}`);
+  if (!named.isFile()) throw new Error(`${file} is not a plain file (a folder, a FIFO or a device): StoryReel reads it only as one — ${fix}`);
+  let fd;
+  try { fd = openSync(file, constants.O_RDONLY | NOFOLLOW | NONBLOCK); } catch (e) {
+    if (e?.code === 'ENOENT') return null;
+    if (e?.code === 'ELOOP' || e?.code === 'EMLINK') throw new Error(`${file} is a link, not a file of its own: StoryReel reads it only as a plain file — ${fix}`, {cause: e});
+    throw e;
+  }
+  try {
+    const opened = fstatSync(fd, {bigint: true}), st = fstatSync(fd);
+    if (opened.dev !== named.dev || opened.ino !== named.ino) throw new Error(`${file} was replaced while StoryReel opened it: read it again, and keep that folder your own — ${fix}`);
+    if (!st.isFile()) throw new Error(`${file} is not a plain file: StoryReel reads it only as one — ${fix}`);
+    const why = judge(st);
+    if (why) throw new Error(`${file} ${why} — ${fix}`);
+    if (st.size > most) throw new Error(`${file} holds ${st.size} bytes, more than the ${most} StoryReel reads of it: make it smaller — ${fix}`);
+    const buf = Buffer.alloc(most + 1);
+    let got = 0;
+    for (let n; got < buf.length && (n = readSync(fd, buf, got, buf.length - got, null)) > 0;) got += n;
+    if (got > most) throw new Error(`${file} holds more than the ${most} bytes StoryReel reads of it (it grew while read) — ${fix}`);
+    return buf.subarray(0, got).toString('utf8');
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * A secret written once: `text` into a NEW file at `file`, readable and writable by this user only (0600), created
+ * exclusively — never over a file already there, never through a link (O_CREAT | O_EXCL refuses a link at the name,
+ * dangling or not). Its folder is made as every folder is (makeFolder). Returns true when it was made, false when a
+ * file (or a link) was there already: the caller reads that one, as any is read (readPlainFile).
+ */
+export function writeSecretFile(file, text) {
+  const folder = makeFolder(path.dirname(path.resolve(file)));
+  try { writeFileSync(path.join(folder, path.basename(file)), text, {flag: 'wx', mode: 0o600}); } catch (e) {
+    if (e?.code === 'EEXIST') return false;
+    throw e;
+  }
+  return true;
 }

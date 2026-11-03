@@ -8,10 +8,16 @@
  * scene at the playhead in a copy of the film, compiled in memory, and Keep gives the pick's one line
  * (picks.mjs) for `storyreel apply` (apply.mjs).
  *
+ * Notes: the person leaves a note on the film at the playhead, or on a spot of the picture, and it lands as one signed
+ * line of feedback.md beside the recipe's file, with its exact place read from the film (take-note.mjs, note.mjs);
+ * `storyreel feedback` reads them back for an agent.
+ *
  * Local only: it listens on 127.0.0.1, answers only requests addressed to it by that name, and
- * only reads (GET; HEAD only for the page's own files and the voice). The routes that draw, check or compile what a
+ * reads (GET; HEAD only for the page's own files and the voice). The routes that draw, check or compile what a
  * query names (a frame, a card, a pick, a Try) answer the studio's own page only: a request another site's page makes
- * (Sec-Fetch-Site) is refused. It writes nothing and runs nothing from the recipe.
+ * (Sec-Fetch-Site) is refused. It runs nothing from the recipe. Its one write is a note (POST /api/note), taken only
+ * from its own page: Sec-Fetch-Site same-origin (a request that does not say is refused), the studio's own Origin, a
+ * JSON body of at most 16 KB with only the fields a note has — never the place, which is read from the film.
  */
 import http from 'node:http';
 import {readFileSync, statSync, createReadStream, watchFile, unwatchFile} from 'node:fs';
@@ -29,6 +35,9 @@ import {applyPicks} from './apply.mjs';
 import {galleryCards, cardFrames, boundedCache} from './gallery.mjs';
 import {pickTries} from './tries.mjs';
 import {Refusal} from './refusal.mjs';
+import {noteTaker, readJsonBody, noteRequest} from './take-note.mjs';
+import {feedbackFile} from './feedback-file.mjs';
+import {storyreelHome} from './notekey.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PAGE = {'/': ['page.html', 'text/html; charset=utf-8'], '/studio.js': ['page.js', 'text/javascript; charset=utf-8'], '/studio.css': ['page.css', 'text/css; charset=utf-8']};
@@ -38,6 +47,8 @@ const HEADED = new Set([...Object.keys(PAGE), '/api/audio']);
 const OWN_PAGE_ONLY = new Set(['/api/frame', '/api/card', '/api/pick', '/api/try']);
 /** Who may ask them (Sec-Fetch-Site): the page itself, or the person typing the address; a browser that does not say is let through. */
 const OWN = new Set(['same-origin', 'none']);
+/** The one route that writes, and its one method: a note, from the studio's own page only (a browser that does not say is refused). */
+const NOTE = '/api/note';
 /** The longest query the studio reads: its own page's are a fraction of it. */
 const QUERY_MOST = 1024;
 const HEADERS = {
@@ -55,9 +66,11 @@ const HEADERS = {
  *               from another recipe — what the gallery's Try plays (a copy with a pick in it; nothing written)
  * @param watch  files that, when changed, make the studio call load() again
  * @param port   the port on 127.0.0.1 (0: any free port)
+ * @param home   where the person's note key lives (notekey.mjs · storyreelHome: STORYREEL_HOME, or ~/.storyreel): notes
+ *               are signed with it, so `storyreel feedback` knows them for theirs; never inside the project's folder
  * @returns {url, port, reload(), held(), close()} — held: what it keeps in memory, each bounded ({cards, cardBytes, tries})
  */
-export async function startStudio({load, watch = [], port = 4321, log = console.log}) {
+export async function startStudio({load, watch = [], port = 4321, log = console.log, home = storyreelHome()}) {
   const state = {version: 0, error: null, loaded: null, lines: new Map(), loadedAt: null};
   // One load at a time: a change while one runs asks for one more, after it, so the last load always reads the last
   // edit (two watchers — the data's here, the code's in cli.mjs — can fire together). Every caller gets the last answer.
@@ -83,7 +96,7 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
     state.version++;
     return state.error;
   }
-  const cards = boundedCache(), tries = pickTries();
+  const cards = boundedCache(), tries = pickTries(), notes = noteTaker({home});
   let catalog = null;
   await reload();
   if (state.error) log(`studio: refused — ${state.error}`);
@@ -102,7 +115,7 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
     const {film, storyboard, title, source, audio} = state.loaded, clock = film.clock;
     return {
       version: state.version, error: state.error, loadedAt: state.loadedAt, title: title ?? storyboard.title ?? 'Untitled film', total: film.total,
-      recipeFile: source?.file ?? null, audio: Boolean(audio),
+      recipeFile: source?.file ?? null, feedbackFile: source?.file ? feedbackFile(source.file) : null, audio: Boolean(audio),
       // A silent scene's words are its directions (clock.mjs · directionTimings): shown, never spoken. The narration is what is
       // said (script.mjs · said): its marks are never shown.
       scenes: storyboard.scenes.map((s, i) => ({id: s.id, title: s.title ?? s.id, start: clock.offsets[i], end: clock.end(s.id), narration: s.narration === undefined ? undefined : said(s.narration),
@@ -166,6 +179,21 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
     return {path: p, line: lineOf(p), json: text.length > 6000 ? `${text.slice(0, 6000)}\n…` : text};
   }
 
+  /**
+   * A note, from the studio's own page only: Sec-Fetch-Site same-origin — a request that does not say is refused here,
+   * as no other route refuses it, for this one writes — the studio's own Origin, JSON; then its body (take-note.mjs).
+   */
+  async function takeNote(req, bound) {
+    const site = req.headers['sec-fetch-site'], origin = req.headers.origin;
+    if (site !== 'same-origin') throw new Refusal(`a note comes from the studio's own page only, and this request ${site === undefined ? 'does not say where it came from (no Sec-Fetch-Site)' : `came from elsewhere (Sec-Fetch-Site: ${site.slice(0, 40)})`}: leave it in the studio's page, in a current browser`, 403);
+    if (![`http://127.0.0.1:${bound}`, `http://localhost:${bound}`].includes(origin)) throw new Refusal('a note comes from the studio\'s own page only (its Origin): leave it in the studio\'s page, at its own address', 403);
+    if (!/^application\/json\b/i.test(String(req.headers['content-type'] ?? ''))) throw new Refusal('a note\'s request is JSON: give it Content-Type: application/json', 415);
+    const body = await readJsonBody(req);
+    if (!state.loaded) throw new Refusal('no film is loaded yet: fix the recipe the studio shows, then leave the note', 503);
+    const {film, storyboard, source} = state.loaded;
+    return notes.take({film, storyboard, recipeFile: source?.file ?? null, lineOf}, noteRequest(body, {version: state.version, total: film.total}));
+  }
+
   const send = (res, status, body, type = 'application/json; charset=utf-8') => {
     res.writeHead(status, {...HEADERS, 'content-type': type});
     res.end(type.startsWith('application/json') ? JSON.stringify(body) : body);
@@ -176,9 +204,16 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
       // Loopback by name too: a page elsewhere cannot reach the studio through a name that points here.
       if (![`127.0.0.1:${bound}`, `localhost:${bound}`].includes(req.headers.host)) return send(res, 403, {error: 'The studio answers on 127.0.0.1 only'});
       const u = new URL(req.url, `http://127.0.0.1:${bound}`);
+      if (u.pathname === NOTE) {
+        if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); return send(res, 405, {error: `${NOTE} takes a note: POST it from the studio's page`}); }
+        try { return send(res, 200, await takeNote(req, bound)); } catch (e) {
+          if (e instanceof Refusal && e.status === 413) res.setHeader('Connection', 'close');   // the rest of the body is never read
+          throw e;
+        }
+      }
       if (req.method !== 'GET' && !(req.method === 'HEAD' && HEADED.has(u.pathname))) {
         res.setHeader('Allow', HEADED.has(u.pathname) ? 'GET, HEAD' : 'GET');
-        return send(res, 405, {error: `The studio only reads: ask ${u.pathname.slice(0, 80)} with GET`});
+        return send(res, 405, {error: `The studio reads, and takes one write (a note: POST ${NOTE}): ask ${u.pathname.slice(0, 80)} with GET`});
       }
       if (PAGE[u.pathname]) { const [file, type] = PAGE[u.pathname]; return send(res, 200, readFileSync(path.join(here, file)), type); }
       const q = queryOf(u);

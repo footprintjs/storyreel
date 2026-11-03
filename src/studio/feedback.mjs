@@ -15,9 +15,15 @@
  * says the note's id, the key that signed it (its name in this project) and the signature. The file's first line holds
  * the project id, made once: notes are signed against it, so a project moved or renamed keeps its notes.
  *
- * Nothing a person or a recipe writes can break a line: each field is one line of visible characters, and the
- * characters that separate the fields (`·`, `—`, `"`, the parentheses of a line number) or could open a comment or a
- * tag (`<`, `>`) are escaped with a backslash where they appear in a value — markdown shows `\<` as `<`.
+ * Nothing a person or a recipe writes can break a line: each field is one line of visible characters, capped
+ * (ANCHOR_MOST), and the characters that separate the fields (`·`, `—`, `"`, the parentheses of a line number) or
+ * could open a comment or a tag (`<`, `>`) are escaped with a backslash where they appear in a value — markdown shows
+ * `\<` as `<`.
+ *
+ * The anchors are the film's own text — a scene's id, a recipe entry's path, the recipe file's name, the narration —
+ * so they are recipe data even on a line the person's key signed: the signature says the studio wrote them there, not
+ * that the person said them. Only the words after " — " are the person's. A reader keeps the two apart: `words` is a
+ * field of its own, and placeText quotes every anchor as JSON, so no anchor can pass for the person's request.
  */
 import {clockSeconds} from '../clocktext.mjs';
 
@@ -27,6 +33,8 @@ export const FEEDBACK = 'feedback.md';
 export const NOTE_MOST = 1000;
 /** The most characters of what is said that a note quotes. */
 export const SAID_MOST = 80;
+/** The most characters each other anchor keeps: the place (scene+seconds), the entry's path, the recipe file's name. */
+export const ANCHOR_MOST = Object.freeze({at: 80, entry: 160, file: 120});
 
 const PROJECT = /^﻿?<!-- storyreel feedback · project ([0-9a-f]{16}) /;
 const CHECKBOX = /^(\s*[-*] \[)([ xX])(\] )(.*?)(\r?)$/;
@@ -75,8 +83,8 @@ export function cleanWords(text) {
 /** What is said around a moment, as a note quotes it: one line, at most SAID_MOST characters. */
 export const cleanSaid = text => capped(oneLine(text), SAID_MOST);
 
-/** An anchor's value escaped: what separates the fields, opens a comment or a tag, and the backslash itself. */
-const field = value => oneLine(value).replace(/[\\·—"<>()]/g, c => `\\${c}`);
+/** An anchor's value, capped at `most` characters and escaped: what separates the fields, opens a comment or a tag, and the backslash itself. */
+const field = (value, most = Infinity) => capped(oneLine(value), most).replace(/[\\·—"<>()]/g, c => `\\${c}`);
 /** The person's words escaped: nothing in them can open a comment or a tag. */
 const wordsText = words => words.replace(/[\\<>]/g, c => `\\${c}`);
 /** A value as written, its escapes undone. */
@@ -87,8 +95,8 @@ const unescaped = text => text.replace(/\\(.)/gu, '$1');
  * (quoted), then " — " and the words. {clock, at, entry?, file?, line?, said?, words}.
  */
 export function noteBody({clock, at, entry, file, line, said, words}) {
-  const where = entry ? `${field(entry)}${file && line ? ` (${field(file)}:${line})` : ''}` : null;
-  return [field(clock), field(at), where, said ? `"${field(said)}"` : null].filter(Boolean).join(' · ') + ` — ${wordsText(words)}`;
+  const where = entry ? `${field(entry, ANCHOR_MOST.entry)}${file && Number.isInteger(line) && line > 0 ? ` (${field(file, ANCHOR_MOST.file)}:${line})` : ''}` : null;
+  return [field(clock, 16), field(at, ANCHOR_MOST.at), where, said ? `"${field(said, SAID_MOST)}"` : null].filter(Boolean).join(' · ') + ` — ${wordsText(words)}`;
 }
 
 /** A note's line: its checkbox (open), its body, its stamp. */
@@ -135,9 +143,13 @@ export function tickLines(text, indexes) {
   return String(text).split('\n').map((raw, i) => (ticked.has(i) ? raw.replace(CHECKBOX, (all, open, box, close, rest, cr) => `${open}x${close}${rest}${cr}`) : raw)).join('\n');
 }
 
-/** A note as an agent reads it, in one line: scene+seconds, the entry (file:line), what is said, and the words. */
-export function noteText(note) {
-  if (!note) return null;
-  const where = note.entry ? ` ${note.entry}${note.file ? ` (${note.file}:${note.line})` : ''}` : '';
-  return `${note.at}${where}${note.said ? ` "${note.said}"` : ''} — ${note.words}`;
+/**
+ * A note's place as an agent reads it, in one line, every anchor quoted as JSON (they are recipe data, never the
+ * person's words): `at "walk+8.10" (0:42.3) · entry "stages[1].world.squirrels" · line 212 of "recipe.json" · said "Then…"`.
+ * The person's words are not in it: a reader shows them on their own (note.words).
+ */
+export function placeText(note) {
+  const q = JSON.stringify;
+  return [`at ${q(note.at)} (${note.clock})`, note.entry ? `entry ${q(note.entry)}` : null, note.entry && note.file ? `line ${note.line} of ${q(note.file)}` : null,
+    note.said ? `said ${q(note.said)}` : null].filter(Boolean).join(' · ');
 }

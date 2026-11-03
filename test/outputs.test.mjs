@@ -470,7 +470,7 @@ const WRITERS = ['writeFileSync', 'writeFile', 'openSync', 'open', 'writeSync', 
 const RUNNERS = ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork'];
 const FLAGS = ['-y', '-report', '-progress', '-vstats', '-vstats_file', '-passlogfile', '-dump_attachment', '-sdp_file', '-o'];
 const IMPORTS = {
-  'files.mjs': ['writeFileSync', 'renameSync', 'chmodSync', 'copyFileSync', 'linkSync'],   // the owner: writeOutput, makeFolder, copyVoice, placeVoice
+  'files.mjs': ['writeFileSync', 'renameSync', 'chmodSync', 'copyFileSync', 'linkSync', 'openSync'],   // the owner: writeOutput, makeFolder, copyVoice, placeVoice, writeSecretFile; readPlainFile opens read-only
   'pipeline.mjs': ['writeFileSync'], 'render.mjs': ['writeFileSync'], 'segments/join.mjs': ['writeFileSync'], 'stills.mjs': ['writeFileSync'],
   'segments/store.mjs': ['utimesSync'],   // a kept piece's manifest touched when it is reused: its age orders eviction
   'mcp.mjs': ['writeSync'],   // sendPicture: one line on the pipe the MCP server opened for the call (fd 3), never a file
@@ -485,6 +485,8 @@ const OWN = [
   ['files.mjs', "writeFileSync(target, readFileSync(path.join(base, f)), {flag: 'wx'})", 'copyVoice: the same'],
   ['files.mjs', 'ops.chmodSync(copy, plainFolderMode())', 'placeVoice: the voice copy, before it is renamed'],
   ['files.mjs', 'ops.renameSync(copy, final)', 'placeVoice: the copy renamed onto narration/'],
+  ['files.mjs', 'fd = openSync(file, constants.O_RDONLY | NOFOLLOW | NONBLOCK)', 'readPlainFile: opened read-only, never created or written'],
+  ["files.mjs", "writeFileSync(path.join(folder, path.basename(file)), text, {flag: 'wx', mode: 0o600})", 'writeSecretFile: a new file (0600), created exclusively in a folder makeFolder checked — never over a file, never through a link'],
   ['pipeline.mjs', "if (scope.narration) writeFileSync(path.join(scope.narration, 'timings.json')", 'fit-to-music: the same copy (place-narration, the last stage, makes it narration/)'],
   ['render.mjs', "spawnSync(ffmpeg, ['-y', '-hide_banner'", 'runReporting: the mux, into the work folder (finishRender renames it onto out)'],
   ['render.mjs', "writeFileSync(path.join(dir, 'film-narration.txt')", 'joinVoice: called with the work folder'],

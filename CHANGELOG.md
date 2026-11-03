@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **Notes on the film: leave one in the studio where it happens, an agent edits the line.** Saying what to change used to
+  mean describing a moment in words, and an agent then looked at frames and read whole files to find it. Now, in
+  `storyreel studio`, click a spot on the picture (or leave the playhead), type the note under it and press Enter: it
+  lands as one line of `feedback.md` beside the recipe file, with its exact place read from the film itself — the film
+  clock, the scene and the seconds into it, the recipe entry drawn at the spot and its line, the words said there — and
+  your words. `storyreel feedback` (also an MCP tool) lists your open notes, short, each place's anchors quoted as JSON
+  and your words on a line of their own, and says where an entry is now when the recipe moved it; `--done 1` ticks one
+  (every other byte kept), `--all` and `--record` show more. Notes are yours by signature: the studio signs each with a
+  key kept outside the project (`~/.storyreel/key`, or `STORYREEL_HOME`; `startStudio({home})`), so a `feedback.md`
+  that came with someone's project never passes for your requests — its lines are counted, never listed. Writing and
+  reading a note are footprintjs flowcharts with `decide()` rule tables (which entry, what is quoted, whose each line
+  is, where each entry is now, which numbers to tick), so the record says why. The studio's first write, and the
+  narrowest: `POST /api/note` only, from its own page only (`Sec-Fetch-Site: same-origin` — a request that does not say
+  is refused here — and its own `Origin`), JSON of at most 16 KB holding only `{version, t, x?, y?, words}`, one at a
+  time. New in `files.mjs`: `readPlainFile` (never through a link or a junction, never from a FIFO, the descriptor
+  checked against the name, a bounded read) and `writeSecretFile` (a new 0600 file, created exclusively).
+
 - **A review verdict: words stand out.** Every word the review reads is measured on the frame's own pixels, as WCAG
   measures text: its ink against the ground just around it must stand at least 4.5:1 (3:1 for a large word, about
   18 pt). A word is judged by its best moment, so one written on or typed in is read once it is whole; a word fading in

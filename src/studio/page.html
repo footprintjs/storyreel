@@ -28,6 +28,13 @@
       <a href="/api/transitions" target="_blank" rel="noopener">Transitions</a>
       <span class="keys">space: play · ← →: step · [ ]: phrase · , .: scene · click the picture: what drew it</span>
     </div>
+    <div id="note" class="note">
+      <span id="note-where" class="note-where">Note</span>
+      <input id="note-words" type="text" maxlength="1000" autocomplete="off" spellcheck="true" aria-labelledby="note-where" placeholder="What should change here? Enter leaves it in feedback.md">
+      <button id="note-send" type="button">Leave note</button>
+      <button id="note-playhead" type="button" hidden title="Forget the spot: the note is on the moment alone">Playhead only</button>
+      <span id="note-said" class="note-said muted" role="status"></span>
+    </div>
     <div id="trying" class="trying" hidden>
       <span id="trying-what"></span>
       <button id="trying-keep" type="button">Keep</button>

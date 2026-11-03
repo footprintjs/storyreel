@@ -3,7 +3,7 @@
 const $ = id => document.getElementById(id);
 const state = {film: null, version: -1, t: 0, playing: false, clock0: 0, busy: false, dirty: false, width: 960,
   beat: null, hit: null, sceneIndex: -1, nearKey: '', drag: false,
-  trying: null, gallery: null, kept: []};   // the pick being tried {key, line, from, end}; the gallery's cards; the lines kept
+  trying: null, gallery: null, kept: [], spot: null, noting: false};   // the pick being tried {key, line, from, end}; the gallery's cards; the lines kept; the spot clicked {t, x, y, path}
 const COLOURS = {story: '#3867d6', whiteboard: '#3867d6', stages: '#1e9e6a', card: '#d9822b', guesses: '#8e44ad', notes: '#c0392b', pushIn: '#7f8c8d', recalls: '#7f8c8d'};
 const colourOf = path => COLOURS[(path ?? '').match(/^[a-zA-Z]+/)?.[0]] ?? '#95a5a6';
 const clockTenths = t => { const tenths = Math.round(t * 10); return `${Math.floor(tenths / 600)}:${(tenths % 600 / 10).toFixed(1).padStart(4, '0')}`; };   // clock.mjs · clockTenths's copy (this page runs on its own): 59.96 s is 1:00.0
@@ -30,6 +30,7 @@ async function loadFilm() {
   if (film.audio) voice.src = `/api/audio?v=${film.version}`; else voice.removeAttribute('src');
   renderNotes(); renderReading(); renderShots(); renderWatching();
   seek(Math.min(state.t, film.total));
+  renderNoteWhere();
 }
 function showStatus(error, loadedAt) {
   $('status').textContent = error ? (state.film ? 'refused — the last good film is shown' : 'refused') : `compiled ${new Date(loadedAt).toLocaleTimeString()}`;
@@ -67,6 +68,8 @@ function seek(t) {
   markWord(); renderNear(); drawTimeline();
   if (!state.playing) { const v = $('voice'); if (state.film.audio && Math.abs(v.currentTime - state.t) > .05) v.currentTime = state.t; }
   if (state.hit && Math.abs(state.hit.t - state.t) > 1e-3) { $('box').hidden = true; $('dot').hidden = true; }
+  if (state.spot && Math.abs(state.spot.t - state.t) > 1e-3) state.spot = null;
+  renderNoteWhere();
 }
 const sceneIndexAt = t => { const s = state.film.scenes; let i = s.length - 1; while (i > 0 && t < s[i].start) i--; return i; };
 
@@ -219,6 +222,9 @@ async function ask(e) {
   const r = $('frame').getBoundingClientRect(), x = (e.clientX - r.left) / r.width * 1600, y = (e.clientY - r.top) / r.height * 900;
   const answer = await getJson(`/api/hit?t=${state.t.toFixed(3)}&x=${x.toFixed(1)}&y=${y.toFixed(1)}`);
   state.hit = answer;
+  // The spot a note is left on, until the playhead moves: the server reads what drew it from the film, as it answered here.
+  state.spot = Math.abs(answer.t - state.t) > 1e-3 ? null : {t: answer.t, x: +x.toFixed(1), y: +y.toFixed(1), path: answer.hits[0]?.path ?? null};
+  renderNoteWhere();
   const dot = $('dot'); dot.hidden = false; dot.style.left = `${x / 16}%`; dot.style.top = `${y / 9}%`;
   const coords = el('div', {className: 'coords'}, el('span', {className: 'label', textContent: `at ${clockTenths(answer.t)}`}), coordinate('frame', answer.point.frame, 'a push note\'s at'));
   if (answer.point.world) coords.append(coordinate(answer.point.world.path, answer.point.world.at, 'a new item on this world'));
@@ -316,7 +322,7 @@ async function tryPick(kind, name) {
   try {
     const t = await getJson(`/api/try?${q}`);
     state.trying = {key: t.key, line: t.line, kind: t.kind, name: t.name, scene: t.scene, end: t.end};
-    showTrying(`Trying ${t.line} — a copy, nothing written`);
+    showTrying(`Trying ${t.line} — a copy, nothing written`); renderNoteWhere();
     renderGalleryFor(); seek(t.from); play();
   } catch (e) { state.trying = null; showTrying(e.message, true); state.dirty = true; requestFrame(); }
 }
@@ -325,7 +331,7 @@ function showTrying(text, bad = false) {
   $('trying-what').textContent = text; $('trying-keep').hidden = bad || !state.trying;
 }
 function endTry() {
-  state.trying = null; $('trying').hidden = true;
+  state.trying = null; $('trying').hidden = true; renderNoteWhere();
   if (state.playing) pause();
   state.dirty = true; requestFrame(); renderGalleryFor();
 }
@@ -354,6 +360,42 @@ function copy(text) {
   setTimeout(shown, 1000);   // a browser that neither copies nor refuses (it asks the person, who never answers)
 }
 
+// ── A note on the film: at the playhead, or on the spot clicked; the server reads its place from the film (take-note.mjs) ──
+/** Why a note cannot be left now, or null. */
+function noteBlocked() {
+  if (!state.film) return 'Notes: the film is loading.';
+  if (!state.film.feedbackFile) return 'Notes go beside the recipe\'s file, which this studio does not know: start it with --recipe file.';
+  if (state.trying) return 'This is a copy with a pick in it: back to the film to leave a note.';
+  return null;
+}
+function renderNoteWhere() {
+  const blocked = noteBlocked(), spot = state.spot;
+  $('note-where').textContent = blocked ?? (spot ? `Note on ${spot.path ?? 'the spot clicked'} at ${clockTenths(spot.t)}` : `Note at ${clockTenths(state.t)}`);
+  $('note-words').disabled = Boolean(blocked); $('note-send').disabled = Boolean(blocked) || state.noting;
+  $('note-playhead').hidden = Boolean(blocked) || !spot;
+}
+function noteSaid(text, bad = false) { $('note-said').textContent = text; $('note-said').classList.toggle('bad', bad); }
+async function leaveNote() {
+  const words = $('note-words').value.trim();
+  if (noteBlocked() || state.noting) return;
+  if (!words) { noteSaid('Say what should change here first.', true); $('note-words').focus(); return; }
+  if (state.playing) pause();
+  const spot = state.spot && Math.abs(state.spot.t - state.t) <= 1e-3 ? state.spot : null;
+  const body = {version: state.version, t: +state.t.toFixed(3), ...(spot ? {x: spot.x, y: spot.y} : {}), words};
+  state.noting = true; renderNoteWhere(); noteSaid('Leaving the note…');
+  try {
+    const r = await fetch('/api/note', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)}), answer = await r.json();
+    if (!r.ok) {
+      noteSaid(answer.error ?? r.statusText, true);   // the words stay in the box, to send again
+      if (r.status === 409 && (await getJson('/api/version')).version !== state.version) await loadFilm();   // aimed at a film compiled since: show the new one
+      return;
+    }
+    const {note, open} = answer;
+    $('note-words').value = '';
+    noteSaid(`Noted in feedback.md (${open} open of yours): ${note.at}${note.entry ? ` · ${note.entry}${note.line ? ` (line ${note.line})` : ''}` : ''} — ${note.words}`);
+  } catch (e) { noteSaid(e.message, true); } finally { state.noting = false; renderNoteWhere(); }
+}
+
 // ── Wiring ──
 function fit() { state.width = Math.min(1920, Math.max(320, Math.round($('screen').clientWidth * (window.devicePixelRatio || 1)))); drawTimeline(); state.dirty = true; requestFrame(); }
 $('play').addEventListener('click', play);
@@ -369,6 +411,9 @@ $('gallery').addEventListener('toggle', () => { if (!$('gallery').open) return; 
 $('trying-back').addEventListener('click', endTry);
 $('trying-keep').addEventListener('click', () => { const t = state.trying; if (t) keepPick(t.kind, t.name, t.scene); });
 $('copy-all').addEventListener('click', () => copy(state.kept.map(k => k.line).join('\n')));
+$('note-send').addEventListener('click', leaveNote);
+$('note-words').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); leaveNote(); } else if (e.key === 'Escape') e.target.blur(); });
+$('note-playhead').addEventListener('click', () => { state.spot = null; $('box').hidden = true; $('dot').hidden = true; renderNoteWhere(); });
 renderKept();
 window.addEventListener('keydown', e => {
   if (!state.film || e.target.closest?.('input, textarea, button')) return;

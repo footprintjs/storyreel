@@ -104,7 +104,7 @@ function noteChart(run) {
 export async function writeNote({film, storyboard, t, x, y, words, fileText = '', key, lineOf = () => null, file = 'recipe.json'}) {
   if (!Buffer.isBuffer(key)) throw new Error('writeNote: give the person\'s note key (notekey.mjs · noteKey)');
   if (!Number.isFinite(t)) throw new Error('writeNote: t is a time on the film clock, in seconds');
-  if ((x === undefined) !== (y === undefined)) throw new Error('writeNote: a spot is x and y together, or neither');
+  if ((x === undefined) !== (y === undefined)) throw new Error('writeNote: give a spot as x and y together, or neither (the playhead alone)');
   const run = {film, storyboard, t, x, y, words: cleanWords(words), fileText, key, lineOf, file};
   const trace = narrative();
   await noteChart(run).setLogger(QUIET).build().recorder(trace).run();

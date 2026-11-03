@@ -10,69 +10,50 @@
  * for that project only (keyName): a line it names with another key is someone else's, one that names yours and does
  * not check is edited, and two projects' lines cannot be told for one person's.
  *
- * The key is read from the file it opened, never through a link, and must be a plain file of this user's that no one
- * else can read (StoryDeck's noteKey.js holds its key to the same checks); and it never lives inside the project's
- * folder, which may be shared.
+ * The key is read as a plain file of its own (files.mjs · readPlainFile: never through a link, a FIFO or a device),
+ * and must be one of this user's that no one else can read and that has no second name (StoryDeck's noteKey.js holds
+ * its key to the same checks); it is made once, a new 0600 file created exclusively (files.mjs · writeSecretFile); and
+ * it never lives inside the project's folder, which may be shared.
  *
- *   noteKey(home, {create: true, project})   → {key} (a Buffer) | {key: null, why}
+ *   noteKey(home, {create: true, project})   → {key} (a Buffer) | {key: null, why, missing?}
  *   keyName(key, project)                    the key's name in that project's lines: 8 hex
  *   signNote(key, {project, id, by, body})   the signature: 32 hex
  *   signedBy(key, note, project)             whether the key signed this note (read back) for that project
  */
 import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
-import {closeSync, constants, fstatSync, mkdirSync, openSync, readFileSync, realpathSync, writeSync} from 'node:fs';
+import {realpathSync} from 'node:fs';
 import {homedir} from 'node:os';
 import path from 'node:path';
+import {readPlainFile, writeSecretFile} from '../files.mjs';
 
 /** Where the person's StoryReel state lives: STORYREEL_HOME (a relative one from the home folder), or ~/.storyreel. */
 export const storyreelHome = () => path.resolve(homedir(), process.env.STORYREEL_HOME || '.storyreel');
 
 const KEY = /^[0-9a-f]{64}$/;
-const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
+/** A key file is 64 hex characters and a line ending at most: anything longer is not one. */
+const KEY_MOST = 256;
 
-/** Why an opened key file cannot be trusted to sign — not a plain file, open to others, someone else's — or null. */
+/** Why an opened key file cannot be trusted to sign — a second name, open to others, someone else's — or null. */
 function untrusted(st) {
-  if (!st.isFile()) return 'is not a plain file';
-  if (st.nlink > 1) return 'has another name (a hard link) — a copy of the key may sit where others can read it';
+  if (st.nlink > 1) return 'has another name (a hard link), so a copy of the key may sit where others can read it: remove the other name';
   if (process.platform === 'win32') return null;
-  if (st.mode & 0o077) return 'can be read or written by others (chmod 600 it)';
-  return typeof process.getuid === 'function' && st.uid !== process.getuid() ? 'belongs to another user' : null;
-}
-
-/** The key file opened for reading without following a link: its descriptor, null when there is none, -1 a link. */
-function openKey(file) {
-  try {
-    return openSync(file, constants.O_RDONLY | NOFOLLOW);
-  } catch (e) {
-    if (e.code === 'ENOENT') return null;
-    if (e.code === 'ELOOP' || e.code === 'EMLINK') return -1;
-    throw e;
-  }
+  if (st.mode & 0o077) return 'can be read or written by others: chmod 600 it';
+  return typeof process.getuid === 'function' && st.uid !== process.getuid() ? 'belongs to another user: make your own (move it aside; the studio makes a new one)' : null;
 }
 
 /** A path's real place, even before it exists: its nearest existing folder's real path, and the rest of the way. */
 function realPlace(p) {
   const rest = [];
   for (let at = path.resolve(p); ; at = path.dirname(at)) {
-    try { return path.join(realpathSync(at), ...rest.reverse()); } catch { /* not there yet */ }
+    try { return path.join(realpathSync.native(at), ...rest.reverse()); } catch { /* not there yet */ }
     if (path.dirname(at) === at) return path.resolve(p);
     rest.push(path.basename(at));
   }
 }
 const inside = (folder, p) => { const r = path.relative(folder, p); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)); };
 
-/** A new key file, made only where none is: 32 random bytes, readable by its owner only. */
-function makeKey(home, file) {
-  mkdirSync(home, {recursive: true, mode: 0o700});
-  let fd;
-  try {
-    fd = openSync(file, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NOFOLLOW, 0o600);
-  } catch (e) {
-    if (e.code === 'EEXIST') return;   // made meanwhile: read as any key is
-    throw e;
-  }
-  try { writeSync(fd, randomBytes(32).toString('hex')); } finally { closeSync(fd); }
-}
+/** The key file's text, as readPlainFile reads it (null when there is none), held to `untrusted`. */
+const keyText = file => readPlainFile(file, {most: KEY_MOST, judge: untrusted, fix: 'the note key must be a plain file of yours alone (STORYREEL_HOME, or ~/.storyreel/key)'});
 
 /**
  * The person's note key: {key} (a Buffer), or {key: null, why} when there is none yet (`create` makes it), it cannot be
@@ -84,17 +65,14 @@ export function noteKey(home = storyreelHome(), {create = false, project = null}
   if (project && inside(realPlace(project), realPlace(home))) {
     return {key: null, why: `the note key's folder ${home} is inside the project's folder, which may be shared — set STORYREEL_HOME elsewhere`};
   }
-  let fd = openKey(file);
-  if (fd === null && create) { makeKey(home, file); fd = openKey(file); }
-  if (fd === null) return {key: null, missing: true, why: `there is no note key yet (${file}): the studio makes it with your first note`};
-  if (fd === -1) return {key: null, why: `the note key ${file} is a link, not a plain file`};
   try {
-    const why = untrusted(fstatSync(fd));
-    if (why) return {key: null, why: `the note key ${file} ${why}`};
-    const hex = readFileSync(fd, 'utf8').trim();
-    return KEY.test(hex) ? {key: Buffer.from(hex, 'hex')} : {key: null, why: `the note key ${file} is not a key (64 hex characters)`};
-  } finally {
-    closeSync(fd);
+    let hex = keyText(file);
+    if (hex === null && create) { writeSecretFile(file, randomBytes(32).toString('hex')); hex = keyText(file); }   // made meanwhile by another studio: that one is read
+    if (hex === null) return {key: null, missing: true, why: `there is no note key yet (${file}): the studio makes it with your first note`};
+    hex = hex.trim();
+    return KEY.test(hex) ? {key: Buffer.from(hex, 'hex')} : {key: null, why: `the note key ${file} is not a key (64 hex characters): move it aside, and the studio makes a new one`};
+  } catch (e) {
+    return {key: null, why: e.message};
   }
 }
 

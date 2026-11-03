@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {mkdirSync, writeFileSync, symlinkSync, readFileSync, realpathSync, rmSync, lstatSync, readdirSync, existsSync, chmodSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {insideRoot, copyVoice, requireVoiceApart} from '../src/files.mjs';
+import {insideRoot, copyVoice, requireVoiceApart, readPlainFile, writeSecretFile} from '../src/files.mjs';
+import {spawnSync} from 'node:child_process';
+import {statSync} from 'node:fs';
 import {compileFilm, evenTimings} from '../src/index.mjs';
 import {tempDir} from './tmp.mjs';
 
@@ -132,4 +134,34 @@ test('requireVoiceApart: an out folder in the voice, or a voice that is, holds o
   const caps = made('caps'), spoken = path.join(caps, 'Narration'); mkdirSync(spoken);
   if (existsSync(path.join(caps, 'narration'))) assert.throws(() => requireVoiceApart(spoken, caps), overlap);
   else assert.doesNotThrow(() => requireVoiceApart(spoken, caps), 'a disk that tells case apart: two folders');
+});
+
+test('readPlainFile: a plain file read whole; none is null; a link, a folder, a FIFO, too many bytes or what judge names refused with the fix — never hanging', {skip: process.platform === 'win32' ? 'POSIX links and FIFOs' : false}, t => {
+  const dir = tempDir('plain', t), file = path.join(dir, 'notes.md'), fix = 'put the file itself there';
+  writeFileSync(file, 'héllo\n');
+  assert.equal(readPlainFile(file, {most: 64, fix}), 'héllo\n');
+  assert.equal(readPlainFile(path.join(dir, 'none.md'), {most: 64, fix}), null);
+  symlinkSync(file, path.join(dir, 'link.md')); symlinkSync(path.join(dir, 'gone'), path.join(dir, 'dangling.md'));
+  for (const name of ['link.md', 'dangling.md']) assert.throws(() => readPlainFile(path.join(dir, name), {most: 64, fix}), /is a link \(or a junction\), not a file of its own: StoryReel reads it only as a plain file — put the file itself there/);
+  assert.throws(() => readPlainFile(dir, {most: 64, fix}), /is not a plain file \(a folder, a FIFO or a device\)/);
+  assert.throws(() => readPlainFile(file, {most: 3, fix}), /holds 7 bytes, more than the 3 StoryReel reads of it: make it smaller — put the file itself there/);
+  assert.throws(() => readPlainFile(file, {most: 64, fix, judge: st => (st.size > 2 ? 'is too chatty: trim it' : null)}), /notes\.md is too chatty: trim it — put the file itself there/);
+  const fifo = path.join(dir, 'pipe.md');
+  if (!spawnSync('mkfifo', [fifo]).error && existsSync(fifo)) assert.throws(() => readPlainFile(fifo, {most: 64, fix}), /is not a plain file/, 'refused before it is opened: nothing writes to it, and the test ends');
+});
+
+test('writeSecretFile: a new 0600 file, created exclusively — never over a file, never through a link', {skip: process.platform === 'win32' ? 'POSIX modes and links' : false}, t => {
+  const dir = path.join(tempDir('secret', t), 'home'), file = path.join(dir, 'key');
+  assert.equal(writeSecretFile(file, 'abc'), true);
+  assert.equal(readFileSync(file, 'utf8'), 'abc');
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+  assert.equal(writeSecretFile(file, 'other'), false, 'one is there: kept');
+  assert.equal(readFileSync(file, 'utf8'), 'abc');
+  const victim = path.join(tempDir('victim', t), 'theirs'); writeFileSync(victim, 'theirs');
+  symlinkSync(victim, path.join(dir, 'linked'));
+  assert.equal(writeSecretFile(path.join(dir, 'linked'), 'secret'), false);
+  assert.equal(readFileSync(victim, 'utf8'), 'theirs', 'never written through the link');
+  symlinkSync(path.join(dir, 'nowhere'), path.join(dir, 'dangling'));
+  assert.equal(writeSecretFile(path.join(dir, 'dangling'), 'secret'), false);
+  assert.ok(!existsSync(path.join(dir, 'nowhere')), 'nothing made where a dangling link points');
 });

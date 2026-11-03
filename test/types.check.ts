@@ -762,3 +762,9 @@ import type {contrastRatio as Ratio, luminance as Lum} from '../types/sub/review
 export const ratio = (r: typeof Ratio, l: typeof Lum) => r(l(0, 0, 0), 1) > 4.5;
 // @ts-expect-error times is a list of seconds
 export const badPurity = (p: typeof PurityOf, film: Film) => p(film, {times: 1, hashes: {}});
+
+// Notes on the film: the studio's note key lives outside the project (home).
+export const noting = (start: typeof startStudio, film: Film, board: Storyboard) =>
+  start({load: async () => ({film, storyboard: board, recipe: moving, source: {file: 'recipe.json'}}), port: 0, home: '/home/me/.storyreel'});
+// @ts-expect-error home is a folder's path
+export const badHome = (start: typeof startStudio, film: Film, board: Storyboard) => start({load: async () => ({film, storyboard: board, recipe: moving}), home: 7});
