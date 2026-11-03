@@ -19,11 +19,11 @@ test('the tools read the project\'s film: its timeline and its review as text, a
   const out = tempDir('tools'), p = await loadProject({cwd: project, out});
   assert.match(await timeline(p, {scene: 'two', handles: 0}), /^two: [\d.]+–[\d.]+ s of [\d.]+ s \(times: scene\+seconds from that scene's start, then the film clock\)\ntwo\+0\.00 \(0:0\d\.\d\)  ── two$/m);
   const read = await review(p, {full: 'true'});
-  assert.match(read, /review \(under-captions, words-overlap, cut-off, hook, text-density, stale, still, slideshow, claims\):\n[\s\S]*0:02\.0–0:03\.8 one · words over words: "Alpha" and "Beta"/);
+  assert.match(read, /review \(under-captions, words-overlap, cut-off, hook, text-density, stale, still, slideshow, pure, claims\):\n[\s\S]*0:02\.0–0:03\.8 one · words over words: "Alpha" and "Beta"/);
   const short = await review(p);
-  assert.match(short, /review \(.*\):\n1 finding: 1 words over words · verdicts: 2 passed, 1 not run\nDrawn parts hold together · not run: no kit on screen gives its parts \(parts\(t\)\)\n0:02\.0–0:03\.8 one · words over words: "Alpha" and "Beta"$/, 'by default: the counts, what did not pass, the findings');
+  assert.match(short, /review \(.*\):\n1 finding: 1 words over words · verdicts: 3 passed, 1 not run\nDrawn parts hold together · not run: no kit on screen gives its parts \(parts\(t\)\)\n0:02\.0–0:03\.8 one · words over words: "Alpha" and "Beta"$/, 'by default: the counts, what did not pass, the findings');
   assert.ok(short.length < read.length);
-  assert.match(read, /\nverdicts:\nNo slideshow · passed: the shots move inside themselves: most of their running time is never held still for more than 3 s \(0 % of [\d.]+ s dead, \d+ % still\)\nDrawn parts hold together · not run: no kit on screen gives its parts \(parts\(t\)\)\nEvery number has a source · passed: the film shows no number/, 'the verdicts follow the findings, each with why');
+  assert.match(read, /\nverdicts:\nNo slideshow · passed: the shots move inside themselves: most of their running time is never held still for more than 3 s \(0 % of [\d.]+ s dead, \d+ % still\)\nDrawn parts hold together · not run: no kit on screen gives its parts \(parts\(t\)\)\nEvery moment draws the same · passed: every moment drawn again, in the other order, gives the same picture \(8 moments drawn again\)\nEvery number has a source · passed: the film shows no number/, 'the verdicts follow the findings, each with why');
   const s = await still(p, {at: 'one+2.5,two+0'});
   assert.ok(existsSync(s.file) && s.file.endsWith('.png'), s.text);
   await assert.rejects(still(p, {at: 'three+1'}), /"three\+1" is not a moment \(scene\+seconds, .*; the scenes are one, two\)/);

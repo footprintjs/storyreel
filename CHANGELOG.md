@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **A review verdict: every moment draws the same.** Everything after the drawing (a piece re-rendered alone, a still, a
+  part, the studio's frame) trusts that a frame is a pure function of time. StoryReel's own kits are tested for it; a
+  film's own kits were not. `reviewPart` now draws eight of its samples again, last first, and fails when one gives
+  another picture (a kit that keeps state between frames, or draws with `Math.random` or the clock); each such moment
+  is a finding that names the fix. `purityOf` and `PURITY_VERDICT` are on `footprint-storyreel/review`; the check is
+  `pure` in `REVIEW_CHECKS`.
 - **The studio loads the project's own code again when it changes.** Editing a kit used to need a restart: Node keeps a
   module once it has loaded it, so a recipe that took a key a kit had just learnt was still refused ("unsupported key
   together") by the old code. `storyreel studio` now watches the config and every module and file it reaches inside its
