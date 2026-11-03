@@ -17,7 +17,10 @@
   narrowest: `POST /api/note` only, from its own page only (`Sec-Fetch-Site: same-origin` — a request that does not say
   is refused here — and its own `Origin`), JSON of at most 16 KB holding only `{version, t, x?, y?, words}`, one at a
   time. New in `files.mjs`: `readPlainFile` (never through a link or a junction, never from a FIFO, the descriptor
-  checked against the name, a bounded read) and `writeSecretFile` (a new 0600 file, created exclusively).
+  checked against the name, a bounded read) and `writeSecretFile` (a new 0600 file, created exclusively). The
+  `storyreel-review` skill starts from the notes (three lines, +324 bytes), so the agent-cost baseline was updated
+  deliberately (`node scripts/agent-cost.mjs --baseline`); its other numbers take up the growth main already had within
+  the 10 % allowed.
 
 - **A review verdict: words stand out.** Every word the review reads is measured on the frame's own pixels, as WCAG
   measures text: its ink against the ground just around it must stand at least 4.5:1 (3:1 for a large word, about
