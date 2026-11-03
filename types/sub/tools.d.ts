@@ -9,17 +9,19 @@ export interface ProjectInputs {storyboard: unknown; recipe: unknown; kits?: unk
   /** The full render's own makeFilm options (fullRender carries them; the review tools do not read them). */
   render?: Record<string, unknown>; code?: string | null; music?: unknown; check?: 'report' | 'refuse' | null; expect?: {seconds?: number; tolerance?: number};
   voiceCheck?: 'report' | 'refuse'; claims?: 'report' | 'refuse'; approval?: unknown;
-  /** Files `storyreel studio` compiles again on, besides the recipe's file and storyboard.json beside it: paths from the config's folder, or absolute. */
+  /** Files `storyreel studio` compiles again on, besides the recipe's file, storyboard.json beside it and the project's own code: paths from the config's folder, or absolute. */
   watch?: string[]}
 /** The project's inputs, timed (from its voice, or evenly) but not compiled. */
 export interface ProjectSource {inputs: ProjectInputs & {voiced: boolean}; cwd: string}
 export interface Project extends ProjectSource {film: Film}
 export const CONFIG: 'storyreel.config.mjs';
 /** The project's inputs from its config's film(flags), timed and not compiled (what changes reads: it prepares the film as the full render does). */
-export function loadInputs(options?: {config?: string; cwd?: string; [flag: string]: unknown}): Promise<ProjectSource>;
+export function loadInputs(options?: {config?: string; cwd?: string; [flag: string]: unknown}, how?: ReadHow): Promise<ProjectSource>;
+/** How the config is read: `url`, another URL of the same file to import it from (the studio's, under a version of the project's code, so an edited kit is loaded again). */
+export interface ReadHow {url?: string}
 /** The project's inputs as film(flags) gives them, not yet timed: `said`, the storyboard with the cast's names in it; `raw`, its timings before pacing (what anchors reads: it times the film itself). */
 export interface ProjectConfig {inputs: ProjectInputs & {voiced: boolean}; cwd: string; said: unknown; raw: unknown}
-export function readInputs(options?: {config?: string; cwd?: string; [flag: string]: unknown}): Promise<ProjectConfig>;
+export function readInputs(options?: {config?: string; cwd?: string; [flag: string]: unknown}, how?: ReadHow): Promise<ProjectConfig>;
 /** The project's full render as makeFilm's options: its film, its video in the project's out folder (film.mp4), the config's render (its layout by default) and code. */
 export function fullRender(project: ProjectSource): import('../index.js').MakeFilmOptions;
 /** A time on the film clock as a command takes it: seconds (12.5) or m:ss (0:12); anything else refuses, naming `name`. */

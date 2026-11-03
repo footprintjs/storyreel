@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **The studio loads the project's own code again when it changes.** Editing a kit used to need a restart: Node keeps a
+  module once it has loaded it, so a recipe that took a key a kit had just learnt was still refused ("unsupported key
+  together") by the old code. `storyreel studio` now watches the config and every module and file it reaches inside its
+  folder, and loads the code again when one changes (`studio/code.mjs`: the config imported under a version of its
+  modules' bytes, handed on to each module it reaches by one resolve hook). StoryReel and the packages in `node_modules`
+  stay the copy first loaded; an undone edit comes back to the modules loaded before; a file an import names before it
+  is written is watched, and two changes at once load once more rather than racing. A module outside the folder, or one
+  imported by a name chosen at run time, still needs a restart, and the studio names it when it starts; so does a
+  CommonJS module. Needs Node 22.15 or later
+  (`module.registerHooks`); on an older Node a code change is said, as before. `readInputs` and `loadInputs` take a
+  second argument, `{url}`, the URL to import the config from.
+
 - **Pick a move by eye: the studio's gallery, `storyreel studio` and `storyreel apply`.** Picking a transition or a word
   move no longer means reading names or editing JSON. The preview studio has a **gallery**: a card for every transition
   the film can enter with (the built-in ones and its kits') and every move a word of kinetic type can land with, each

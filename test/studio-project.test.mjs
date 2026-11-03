@@ -1,7 +1,7 @@
 // The studio on a whole project (studio/cli.mjs · projectStudio, tools.mjs · compileProject): a voiced film paced by its
 // config, whose words come from the voice and whose Try compiles with the very same timings; a file the config asks to
-// be watched compiling the film again; a `watch` that is not a list refused, naming the fix; and a film with a pushIn,
-// whose stages hand over on one page, refusing an entrance to Try.
+// be watched compiling the film again; the project's own code loaded again when it changes; a `watch` that is not a list
+// refused, naming the fix; and a film with a pushIn, whose stages hand over on one page, refusing an entrance to Try.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdirSync, writeFileSync, readFileSync} from 'node:fs';
@@ -54,7 +54,7 @@ test('a voiced, paced project: the film\'s words come from the voice, paced; Try
     assert.equal(shown.error, null);
     assert.deepEqual(shown.scenes.map(s => s.words.map(w => [w.text, w.start])), film.timings.scenes.map((s, i) => s.words.map(w => [w.text, film.clock.offsets[i] + w.start])),
       'the studio\'s words are the paced voice\'s, as compileProject times them');
-    assert.match(run.out(), /watching recipe\.json, storyboard\.json, pacing\.json;/);
+    assert.match(run.out(), /watching recipe\.json, storyboard\.json, pacing\.json, and the project's code \(1 file\);/);
     // Try a move on scene two: the copy is compiled from the same timings, so scene one is the same picture, frame for frame.
     const tried = await (await fetch(`${url}api/try?scene=two&kind=move&name=pop`)).json();
     assert.deepEqual([tried.line, tried.start, tried.path], ['two move pop', film.clock.start('two'), 'stages[0].world.move']);
@@ -96,4 +96,57 @@ test('a film with a pushIn: its stages hand over on one page, so Try refuses an 
     assert.deepEqual((await (await fetch(`${studio.url}api/gallery`)).json()).takes, {enter: [], move: []});
     assert.equal(studio.held().tries, 0, 'nothing compiled');
   } finally { await studio.close(); }
+});
+
+/** A project whose kit is its own code: kits/strict.mjs refuses any key it does not know, and draws in a colour from kits/colour.mjs. */
+const STRICT = known => `import {COLOUR} from './colour.mjs';
+export const strictKit = {name: 'strict', story: {compile(spec) {
+  for (const key of Object.keys(spec)) if (!${JSON.stringify(known)}.includes(key)) throw new Error('strict: unsupported key ' + key);
+  return {hang: 1, draw: c => { c.fillStyle = COLOUR; c.fillRect(0, 0, 1600, 900); }};
+}}};
+`;
+const OWN_KIT_CONFIG = `import {readFileSync} from 'node:fs';
+import {strictKit} from './kits/strict.mjs';
+const read = name => JSON.parse(readFileSync(new URL('./' + name, import.meta.url), 'utf8'));
+export default {film: () => ({storyboard: read('storyboard.json'), recipe: read('recipe.json'), kits: [strictKit]})};
+`;
+
+test('the project\'s own code is loaded again when it changes: a key the kit learns, a colour from a module it imports', async t => {
+  const dir = installed(tempDir('studio-code', t)), write = (f, text) => writeFileSync(path.join(dir, f), text);
+  mkdirSync(path.join(dir, 'kits'));
+  write('storyboard.json', JSON.stringify({title: 'Own kit', scenes: [{id: 'a', silent: [['a square of colour', 2]]}]}));
+  write('recipe.json', JSON.stringify({story: {kit: 'strict'}}));
+  write('kits/strict.mjs', STRICT(['kit']));
+  write('kits/colour.mjs', 'export const COLOUR = \'#336\';\n');
+  write('storyreel.config.mjs', OWN_KIT_CONFIG);
+  const run = studioIn(dir);
+  try {
+    const url = await run.url, film = async () => (await fetch(`${url}api/film`)).json(), frame = async () => bytes(await fetch(`${url}api/frame?t=1&w=160`));
+    const first = await film(), blue = await frame();
+    assert.equal(first.error, null);
+    assert.match(run.out(), /watching recipe\.json, storyboard\.json, and the project's code \(3 files\);/);
+    // The recipe takes a key the kit does not know yet: refused, and the last good film stays.
+    write('recipe.json', JSON.stringify({story: {kit: 'strict', together: true}}));
+    const refused = await until(film, f => f.error !== null);
+    assert.match(refused.error, /strict: unsupported key together/);
+    // The kit learns it: its new code is loaded, with no restart.
+    write('kits/strict.mjs', STRICT(['kit', 'together']));
+    const learnt = await until(film, f => f.version > refused.version);
+    assert.equal(learnt.error, null, 'the kit\'s new code compiles the recipe');
+    assert.match(run.out(), /studio: the code changed — compiled again/);
+    assert.ok((await frame()).equals(blue), 'the same colour');
+    // A module the kit imports changes: it is loaded again too.
+    write('kits/colour.mjs', 'export const COLOUR = \'#c30\';\n');
+    const red = await until(film, f => f.version > learnt.version);
+    assert.equal(red.error, null);
+    assert.ok(!(await frame()).equals(blue), 'the new colour is drawn');
+    // The kit imports a module not written yet: refused; the moment it is written, the film compiles.
+    write('kits/strict.mjs', `import './extra.mjs';\n${STRICT(['kit', 'together'])}`);
+    const waiting = await until(film, f => f.error !== null);
+    assert.match(waiting.error, /extra\.mjs/);
+    write('kits/extra.mjs', 'export {};\n');
+    const written = await until(film, f => f.version > waiting.version && f.error === null);
+    assert.equal(written.error, null, 'the new file was watched before it existed');
+    assert.equal(run.err(), '', 'nothing said on stderr');
+  } finally { assert.equal(await stopped(run.child), 0); }
 });

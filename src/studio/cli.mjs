@@ -5,18 +5,21 @@
  * the recipe from the same inputs (tools.mjs · compileProject); nothing is written.
  *
  * What it watches, and compiles again on: the recipe's file (tools.mjs · projectRecipe: --recipe, else recipe.json
- * beside the config — when it holds the recipe the config gives), storyboard.json beside that file, and every file the
- * config's film() lists in `watch` (a path relative to the config's folder, or absolute). An edit to the config's own
- * code is said, not compiled: Node keeps a module once it has loaded it, so the studio needs a restart for it.
+ * beside the config — when it holds the recipe the config gives), storyboard.json beside that file, every file the
+ * config's film() lists in `watch` (a path relative to the config's folder, or absolute), and the project's own code:
+ * the config and every module and file it reaches inside its folder (code.mjs), loaded again when one changes, and the
+ * files its imports name that are not there yet. A module it reaches outside that folder, or an import chosen at run
+ * time, is said when the studio starts: it needs a restart.
  * The voice is not played: its paced narration is made by a render (makeFilm), so the picture plays on its own clock.
  * studioCommand returns the exit code once the studio is stopped (Ctrl+C): 0; 1 the project cannot be read or the
  * studio cannot listen; 2 the command line is wrong.
  */
-import {existsSync, watchFile, unwatchFile} from 'node:fs';
+import {existsSync, realpathSync, watchFile, unwatchFile} from 'node:fs';
 import path from 'node:path';
 import {once} from 'node:events';
 import {CONFIG, readInputs, loadInputs, compileProject, projectRecipe} from '../tools.mjs';
 import {startStudio} from './server.mjs';
+import {projectCode, reloads} from './code.mjs';
 import {STUDIO_USAGE as USAGE} from './help.mjs';
 
 const OWN = ['port', 'recipe'];
@@ -43,12 +46,15 @@ function configWatch(watch, folder) {
 }
 
 /**
- * The studio's project: what it watches (the recipe's file and storyboard.json beside it, the config's `watch`) and
- * its load() — the film compiled as the tools compile it, with compile(recipe) for Try. Returns {load, watch, config,
- * recipeFile, notes}: notes say what it could not find (a recipe file it cannot link to).
+ * The studio's project: what it watches (the recipe's file and storyboard.json beside it, the config's `watch`), its
+ * code (code.mjs: `code()` the code as last loaded) and its load() — the film compiled as the tools compile it, from the
+ * code as it is now, with compile(recipe) for Try. Returns {load, watch, code, config, recipeFile, notes}: notes say
+ * what it could not find (a recipe file it cannot link to, an import it cannot follow).
  */
 export async function projectStudio({film: flags, recipe}) {
-  const read = await readInputs(flags), config = path.resolve(read.cwd, flags.config ?? CONFIG), folder = path.dirname(config), notes = [];
+  const config = path.resolve(flags.cwd ?? process.cwd(), flags.config ?? CONFIG), folder = path.dirname(config), notes = [];
+  let code = existsSync(config) ? projectCode(config) : null;   // none: readInputs refuses, naming the fix
+  const read = await readInputs(flags, {url: code?.url});
   let recipeFile = null;
   try { recipeFile = projectRecipe(read, {config: flags.config, recipe}).file; } catch (e) {
     if (recipe) throw e;
@@ -56,12 +62,42 @@ export async function projectStudio({film: flags, recipe}) {
   }
   const besides = recipeFile ? [recipeFile, path.join(path.dirname(recipeFile), 'storyboard.json')] : [];
   const watch = [...new Set([...besides.filter(f => existsSync(f)), ...configWatch(read.inputs.watch, folder)])];
+  for (const {from, code: spec} of code.unfollowed) notes.push(`${path.relative(folder, from)} imports ${spec}, chosen at run time: an edit to that module needs a restart`);
+  for (const file of code.outside) notes.push(`${path.relative(folder, file)} is outside the config's folder: it is loaded once, so an edit to it needs a restart`);
   const load = async () => {
-    const project = await loadInputs(flags), {storyboard, recipe: given, kits = []} = project.inputs;
+    code = projectCode(config);
+    const project = await loadInputs(flags, {url: code.url}), {storyboard, recipe: given, kits = []} = project.inputs;
     return {film: await compileProject(project), storyboard, recipe: given, kits, title: storyboard.title,
       ...(recipeFile ? {source: {file: recipeFile}} : {}), compile: copy => compileProject(project, copy)};
   };
-  return {load, watch, config, recipeFile, notes};
+  return {load, watch, code: () => code, config, recipeFile, notes};
+}
+
+/**
+ * Watch the project's code (project.code().files, the files the studio does not watch already) and compile again when
+ * one changes, from the code as it is then; the files are watched again after each compile, so a module a kit starts
+ * to import is watched from then on. Where this Node cannot load a module again (code.mjs · reloads), a change is said:
+ * it needs a restart. Returns {files() (how many it watches), close()}.
+ */
+function watchCode(project, studio, out) {
+  const real = f => { try { return realpathSync(f); } catch { return f; } };
+  const watched = new Map(), data = new Set(project.watch.map(real));
+  let pending, closed = false;
+  const changed = (now, before) => {
+    if (closed || (now.mtimeMs === before.mtimeMs && now.size === before.size)) return;
+    if (!reloads) { out(`studio: the project's code changed — restart the studio to use it (Node ${process.versions.node} keeps a module once it has loaded it; Node 22.15 and later loads it again)`); return; }
+    clearTimeout(pending);
+    pending = setTimeout(() => studio.reload().then(err => { out(err ? `studio: the code changed, and the film refused — ${err}` : 'studio: the code changed — compiled again'); sync(); }), 150);
+  };
+  // A file an import names but nobody has written yet is watched too: creating it compiles again.
+  const sync = () => {
+    if (closed) return;
+    const {files, missing} = project.code(), now = new Set([...files, ...missing].filter(f => !data.has(f)));
+    for (const [f, fn] of watched) if (!now.has(f)) { unwatchFile(f, fn); watched.delete(f); }
+    for (const f of now) if (!watched.has(f)) { watchFile(f, {interval: 300}, changed); watched.set(f, changed); }
+  };
+  sync();
+  return {files: () => project.code().files.filter(f => !data.has(f)).length, close: () => { closed = true; clearTimeout(pending); for (const [f, fn] of watched) unwatchFile(f, fn); watched.clear(); }};
 }
 
 /** Run `storyreel studio …` until it is stopped (Ctrl+C); `out` and `err` print a line. Returns the exit code. */
@@ -74,14 +110,13 @@ export async function studioCommand(args, {out = console.log, err = console.erro
   try { studio = await startStudio({load: project.load, watch: project.watch, port: given.port, log: out}); } catch (e) {
     err(`storyreel studio: ${e.message}${e.code === 'EADDRINUSE' ? ` — another port: --port ${given.port + 1} (or --port 0, any free one)` : ''}`); return 1;
   }
-  // The config is code: a change to it is said, never compiled with the module Node already holds.
-  const restart = (now, before) => { if (now.mtimeMs !== before.mtimeMs) out(`studio: ${path.basename(project.config)} changed — restart the studio to use it (Node keeps a module once it has loaded it)`); };
-  watchFile(project.config, {interval: 1000}, restart);
+  const code = watchCode(project, studio, out);
   out(`StoryReel Studio: ${studio.url}`);
   for (const note of project.notes) out(`studio: ${note}`);
-  out(`watching ${project.watch.length ? project.watch.map(f => path.relative(process.cwd(), f) || f).join(', ') : 'nothing'}; local only (127.0.0.1); Ctrl+C stops it`);
+  const named = project.watch.map(f => path.relative(process.cwd(), f) || f), files = code.files();
+  out(`watching ${named.length ? named.join(', ') : 'nothing'}, and the project's code (${files} file${files === 1 ? '' : 's'}); local only (127.0.0.1); Ctrl+C stops it`);
   await (stop ?? Promise.race([once(process, 'SIGINT'), once(process, 'SIGTERM')]));
-  unwatchFile(project.config, restart);
+  code.close();
   await studio.close();
   return 0;
 }

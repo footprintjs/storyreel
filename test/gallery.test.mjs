@@ -260,7 +260,7 @@ test('storyreel studio on a starter folder (storyreel remake --starter): the fil
     assert.deepEqual(film.scenes.map(s => s.id), starter.storyboard.scenes.map(s => s.id));
     assert.match(film.recipeFile, /like-it[\\/]recipe\.json$/, 'a click names its line in the starter\'s recipe.json');
     assert.equal(film.error, null);
-    assert.match(run.out(), /watching recipe\.json, storyboard\.json; local only \(127\.0\.0\.1\); Ctrl\+C stops it/);
+    assert.match(run.out(), /watching recipe\.json, storyboard\.json, and the project's code \(1 file\); local only \(127\.0\.0\.1\); Ctrl\+C stops it/);
     const g = await (await fetch(`${url}api/gallery`)).json();
     assert.deepEqual(g.takes.move, starter.storyboard.scenes.map(s => s.id), 'every scene of a starter is a kinetic world');
     const tried = await (await fetch(`${url}api/try?scene=scene-03&kind=enter&name=fade`)).json();

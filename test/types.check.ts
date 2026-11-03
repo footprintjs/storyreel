@@ -526,6 +526,10 @@ export const noted = (make: typeof compileFilm, board: Storyboard, timings: Para
   .then(f => f.anchors.filter(n => n.problem === 'missing').map(n => n.near?.phrase ?? n.path).length + f.clock.places('a', 'red square').length);
 // @ts-expect-error anchors is 'refuse' or 'note'
 export const badAnchors = (make: typeof compileFilm, board: Storyboard, timings: Parameters<typeof compileFilm>[0]['timings']) => make({storyboard: board, timings, recipe: moving, anchors: 'warn'});
+// The studio reads the config from its versioned URL (studio/code.mjs); the URL is a string.
+export const versioned = (read: typeof readInputs, load: typeof loadInputs) => Promise.all([read({}, {url: 'file:///p/storyreel.config.mjs?storyreel-code=1'}), load({ep: 'ep1'}, {})]);
+// @ts-expect-error url is a string
+export const badVersioned = (read: typeof readInputs) => read({}, {url: 1});
 export const anchorsChecked = async (read: typeof readInputs, check: typeof anchors, at: typeof sheet, project: Parameters<typeof sheet>[0]) =>
   (await check(await read({ep: 'ep1'}), {full: true})).length + (await at(project, {scene: 'a', every: 2})).files.length;
 export const shared = (share: typeof shareCopy) => share('out/film.mp4', {width: 854, poster: 2}).bytes;

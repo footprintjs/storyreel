@@ -4,14 +4,15 @@ A local page for directing a film (see the package README, "The preview studio")
 
 | file | one job |
 |---|---|
-| server.mjs | `startStudio({load, watch, port})`: loopback-only, read-only HTTP; compiles again when a watched file changes; keeps the last good film when a recipe refuses; the gallery's routes; what may ask what (HEAD, Sec-Fetch-Site, the query) |
+| server.mjs | `startStudio({load, watch, port})`: loopback-only, read-only HTTP; compiles again when a watched file changes (one load at a time: a change meanwhile loads once more after it); keeps the last good film when a recipe refuses; the gallery's routes; what may ask what (HEAD, Sec-Fetch-Site, the query) |
 | tries.mjs | the picks tried (`pickTries`): one compile at a time (409), the last few compiled kept by line and version, the one tried last drawn (410 for any other) |
 | refusal.mjs | `Refusal`: a request refused, its words and its HTTP status |
 | lines.mjs | a JSON text read where it stands: `jsonSpans(text)` (path → its line and offsets), `jsonLines(text)` (path → line), `spliceJson(text, edits, {beside})` (values set in place, every other byte kept); `valueAt(recipe, path)` |
 | gallery.mjs | the gallery's cards (`galleryCards`): a transition of the film's catalog or a word move each; a card's frames as one PNG (`cardFrames`), drawn by the code that draws a film; `boundedCache` for the cards drawn |
 | picks.mjs | a pick as one line (`readPick`, `pickLine`), where each kind goes in a recipe (`pickScenes`), the facts a check reads (`lineFacts`), picks put in their places (`putPicks`, a new key `BESIDE` its scene or kit) |
 | apply.mjs | the checks, on a footprintjs flowchart with a record: `applyPicks(recipe, lines, {scenes, catalog})` on data, `applyLines(text, …)` on a recipe's JSON text, changing only the values set (`spliceJson`); no file read or written |
-| cli.mjs | `storyreel studio`: the studio on the project here (`projectStudio`: its load(), compile(recipe) and what it watches) |
+| cli.mjs | `storyreel studio`: the studio on the project here (`projectStudio`: its load(), compile(recipe) and what it watches; `watchCode`: its own code, compiled again when it changes) |
+| code.mjs | the project's own code, read fresh after an edit (`projectCode`): the files the config reaches inside its folder, a version of their bytes, and the config's URL under it; one resolve hook hands the version on, so an edited kit is a new module and StoryReel and the packages stay one copy |
 | help.mjs | the usage of `storyreel studio` and `storyreel apply`, text only, so `storyreel --help` loads neither |
 | page.html · page.css · page.js | the page: picture, timeline, transcript, "what drew this spot", notes, the gallery, Try, the kept picks |
 
