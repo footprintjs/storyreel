@@ -270,3 +270,24 @@ Not borrowed:
 
 The concept card's fields (person, feeling, wow moment, reference to beat, concept line) fold into the brief check
 (Loop Lab item 2) when that is built.
+
+## A 3D stage: the camera flies from one view to another (2026-11-03)
+
+Today the camera is 2.5D: pan, tilt, dolly, truck and crane move over a flat picture, and orbit, dolly zoom and rack
+focus slide, scale and blur a world's depth layers (`camera.mjs` · `layersAt`); `perspective` places flat drawings in
+a one-point room. Nothing has an x, y, z place, so a shot cannot turn from one angle of a scene to another.
+
+- **The stage is data.** Flat cards (a world, a slide, a picture, a word) placed in x, y, z with a turn; named
+  viewpoints `{at: [x, y, z], look: [x, y, z], lens}`. A move flies the camera from one view to the next, eased, along
+  a path that never passes through a card.
+- **One model, two renderers.** The projection maths and the flight are one module, shared with StoryDeck (its backlog
+  item 4), so a deck and a film fly the same way: in footprint-story beside `/motion`, which needs the owner's go.
+  StoryReel draws each card warped into perspective on the 2D canvas, cut into small triangles (a canvas transform
+  alone cannot foreshorten); StoryDeck uses the browser's own CSS 3D.
+- **Choices on a flowchart.** Which way round to fly, how far to arc, how long by the distance and the turn, whether a
+  card would fill the lens or be seen edge-on: `decide()` tables, so the record says why the camera went the way it did.
+- **Laws:** a frame stays a pure function of time; a card is never seen from behind unless it says it has a back;
+  reduced motion cuts instead of flying; the review's checks read the words on a turned card where they land.
+- **Look first:** one scene of three cards and two views, flown in a film and in a deck.
+
+Not planned: a full 3D renderer (meshes, lights, materials). The cards stay drawings; only their place is 3D.
