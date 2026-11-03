@@ -7,8 +7,9 @@
  * What it watches, and compiles again on: the recipe's file (tools.mjs · projectRecipe: --recipe, else recipe.json
  * beside the config — when it holds the recipe the config gives), storyboard.json beside that file, every file the
  * config's film() lists in `watch` (a path relative to the config's folder, or absolute), and the project's own code:
- * the config and every module and file it reaches inside its folder (code.mjs), loaded again when one changes. A module
- * it reaches outside that folder, or an import chosen at run time, is said: it needs a restart.
+ * the config and every module and file it reaches inside its folder (code.mjs), loaded again when one changes, and the
+ * files its imports name that are not there yet. A module it reaches outside that folder, or an import chosen at run
+ * time, is said when the studio starts: it needs a restart.
  * The voice is not played: its paced narration is made by a render (makeFilm), so the picture plays on its own clock.
  * studioCommand returns the exit code once the studio is stopped (Ctrl+C): 0; 1 the project cannot be read or the
  * studio cannot listen; 2 the command line is wrong.
@@ -62,6 +63,7 @@ export async function projectStudio({film: flags, recipe}) {
   const besides = recipeFile ? [recipeFile, path.join(path.dirname(recipeFile), 'storyboard.json')] : [];
   const watch = [...new Set([...besides.filter(f => existsSync(f)), ...configWatch(read.inputs.watch, folder)])];
   for (const {from, code: spec} of code.unfollowed) notes.push(`${path.relative(folder, from)} imports ${spec}, chosen at run time: an edit to that module needs a restart`);
+  for (const file of code.outside) notes.push(`${path.relative(folder, file)} is outside the config's folder: it is loaded once, so an edit to it needs a restart`);
   const load = async () => {
     code = projectCode(config);
     const project = await loadInputs(flags, {url: code.url}), {storyboard, recipe: given, kits = []} = project.inputs;
@@ -80,20 +82,22 @@ export async function projectStudio({film: flags, recipe}) {
 function watchCode(project, studio, out) {
   const real = f => { try { return realpathSync(f); } catch { return f; } };
   const watched = new Map(), data = new Set(project.watch.map(real));
-  let pending;
+  let pending, closed = false;
   const changed = (now, before) => {
-    if (now.mtimeMs === before.mtimeMs && now.size === before.size) return;
+    if (closed || (now.mtimeMs === before.mtimeMs && now.size === before.size)) return;
     if (!reloads) { out(`studio: the project's code changed — restart the studio to use it (Node ${process.versions.node} keeps a module once it has loaded it; Node 22.15 and later loads it again)`); return; }
     clearTimeout(pending);
     pending = setTimeout(() => studio.reload().then(err => { out(err ? `studio: the code changed, and the film refused — ${err}` : 'studio: the code changed — compiled again'); sync(); }), 150);
   };
+  // A file an import names but nobody has written yet is watched too: creating it compiles again.
   const sync = () => {
-    const now = new Set(project.code().files.filter(f => !data.has(f)));
+    if (closed) return;
+    const {files, missing} = project.code(), now = new Set([...files, ...missing].filter(f => !data.has(f)));
     for (const [f, fn] of watched) if (!now.has(f)) { unwatchFile(f, fn); watched.delete(f); }
     for (const f of now) if (!watched.has(f)) { watchFile(f, {interval: 300}, changed); watched.set(f, changed); }
   };
   sync();
-  return {files: () => watched.size, close: () => { clearTimeout(pending); for (const [f, fn] of watched) unwatchFile(f, fn); watched.clear(); }};
+  return {files: () => project.code().files.filter(f => !data.has(f)).length, close: () => { closed = true; clearTimeout(pending); for (const [f, fn] of watched) unwatchFile(f, fn); watched.clear(); }};
 }
 
 /** Run `storyreel studio …` until it is stopped (Ctrl+C); `out` and `err` print a line. Returns the exit code. */

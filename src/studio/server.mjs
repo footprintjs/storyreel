@@ -59,7 +59,15 @@ const HEADERS = {
  */
 export async function startStudio({load, watch = [], port = 4321, log = console.log}) {
   const state = {version: 0, error: null, loaded: null, lines: new Map(), loadedAt: null};
-  async function reload() {
+  // One load at a time: a change while one runs asks for one more, after it, so the last load always reads the last
+  // edit (two watchers — the data's here, the code's in cli.mjs — can fire together). Every caller gets the last answer.
+  let running = null, again = false;
+  function reload() {
+    if (running) { again = true; return running; }
+    running = (async () => { let error; do { again = false; error = await loadOnce(); } while (again); running = null; return error; })();
+    return running;
+  }
+  async function loadOnce() {
     try {
       const loaded = await load();
       if (!loaded?.film || !loaded?.storyboard) throw new Error('load() must return {film, storyboard, recipe}');

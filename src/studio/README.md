@@ -4,7 +4,7 @@ A local page for directing a film (see the package README, "The preview studio")
 
 | file | one job |
 |---|---|
-| server.mjs | `startStudio({load, watch, port})`: loopback-only, read-only HTTP; compiles again when a watched file changes; keeps the last good film when a recipe refuses; the gallery's routes; what may ask what (HEAD, Sec-Fetch-Site, the query) |
+| server.mjs | `startStudio({load, watch, port})`: loopback-only, read-only HTTP; compiles again when a watched file changes (one load at a time: a change meanwhile loads once more after it); keeps the last good film when a recipe refuses; the gallery's routes; what may ask what (HEAD, Sec-Fetch-Site, the query) |
 | tries.mjs | the picks tried (`pickTries`): one compile at a time (409), the last few compiled kept by line and version, the one tried last drawn (410 for any other) |
 | refusal.mjs | `Refusal`: a request refused, its words and its HTTP status |
 | lines.mjs | a JSON text read where it stands: `jsonSpans(text)` (path → its line and offsets), `jsonLines(text)` (path → line), `spliceJson(text, edits, {beside})` (values set in place, every other byte kept); `valueAt(recipe, path)` |

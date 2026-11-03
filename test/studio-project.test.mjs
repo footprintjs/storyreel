@@ -140,6 +140,13 @@ test('the project\'s own code is loaded again when it changes: a key the kit lea
     const red = await until(film, f => f.version > learnt.version);
     assert.equal(red.error, null);
     assert.ok(!(await frame()).equals(blue), 'the new colour is drawn');
+    // The kit imports a module not written yet: refused; the moment it is written, the film compiles.
+    write('kits/strict.mjs', `import './extra.mjs';\n${STRICT(['kit', 'together'])}`);
+    const waiting = await until(film, f => f.error !== null);
+    assert.match(waiting.error, /extra\.mjs/);
+    write('kits/extra.mjs', 'export {};\n');
+    const written = await until(film, f => f.version > waiting.version && f.error === null);
+    assert.equal(written.error, null, 'the new file was watched before it existed');
     assert.equal(run.err(), '', 'nothing said on stderr');
   } finally { assert.equal(await stopped(run.child), 0); }
 });

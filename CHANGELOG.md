@@ -7,8 +7,10 @@
   together") by the old code. `storyreel studio` now watches the config and every module and file it reaches inside its
   folder, and loads the code again when one changes (`studio/code.mjs`: the config imported under a version of its
   modules' bytes, handed on to each module it reaches by one resolve hook). StoryReel and the packages in `node_modules`
-  stay the copy first loaded; an undone edit comes back to the modules loaded before. A module outside the folder, or
-  one imported by a name chosen at run time, still needs a restart, and the studio says which. Needs Node 22.15 or later
+  stay the copy first loaded; an undone edit comes back to the modules loaded before; a file an import names before it
+  is written is watched, and two changes at once load once more rather than racing. A module outside the folder, or one
+  imported by a name chosen at run time, still needs a restart, and the studio names it when it starts; so does a
+  CommonJS module. Needs Node 22.15 or later
   (`module.registerHooks`); on an older Node a code change is said, as before. `readInputs` and `loadInputs` take a
   second argument, `{url}`, the URL to import the config from.
 
