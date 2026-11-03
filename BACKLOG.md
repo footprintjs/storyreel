@@ -280,10 +280,9 @@ a one-point room. Nothing has an x, y, z place, so a shot cannot turn from one a
 - **The stage is data.** Flat cards (a world, a slide, a picture, a word) placed in x, y, z with a turn; named
   viewpoints `{at: [x, y, z], look: [x, y, z], lens}`. A move flies the camera from one view to the next, eased, along
   a path that never passes through a card.
-- **One model, two renderers.** The projection maths and the flight are one module, shared with StoryDeck (its backlog
-  item 4), so a deck and a film fly the same way: in footprint-story beside `/motion`, which needs the owner's go.
-  StoryReel draws each card warped into perspective on the 2D canvas, cut into small triangles (a canvas transform
-  alone cannot foreshorten); StoryDeck uses the browser's own CSS 3D.
+- **One model, one renderer: the browser.** The views, the flight and its choices are one module, shared with
+  StoryDeck (its backlog item 4). Both draw the stage with the browser's own CSS 3D: StoryDeck live, StoryReel through
+  an `html` world kit (below). No second 3D renderer is written for the 2D canvas.
 - **Choices on a flowchart.** Which way round to fly, how far to arc, how long by the distance and the turn, whether a
   card would fill the lens or be seen edge-on: `decide()` tables, so the record says why the camera went the way it did.
 - **Laws:** a frame stays a pure function of time; a card is never seen from behind unless it says it has a back;
@@ -291,3 +290,26 @@ a one-point room. Nothing has an x, y, z place, so a shot cannot turn from one a
 - **Look first:** one scene of three cards and two views, flown in a film and in a deck.
 
 Not planned: a full 3D renderer (meshes, lights, materials). The cards stay drawings; only their place is 3D.
+
+## An `html` world kit: a web page as a shot, captured frame by frame (2026-11-03)
+
+A world drawn by a web page: HTML, CSS (3D transforms included), SVG, web fonts, a StoryDeck slide, a product's own
+screen. Not a screen recording, which drops and doubles frames and drifts from the voice, but a capture driven by
+the film's clock, as Math-Animals' `tools/render.mjs` drives its pages:
+
+- **The page keeps a small contract:** `window.storyreel = {ready, seek(t)}`, and `seek(t)` draws exactly moment t (a
+  pure function of time, so a piece re-rendered alone matches). CSS animations are paused and set by time
+  (`animation-delay: -t`), never left to run.
+- **Captured in `ready`.** The kit opens the page in a headless browser (Playwright, an optional dependency loaded only
+  when the kit is used), seeks each frame of its shot at the film's rate and size, and keeps the frames in a cache
+  folder keyed by the page's files and the times (`outputFolder`). `draw(ctx, t)` then only draws the cached frame, so
+  the camera, captions, focus, transitions and every review check work on it unchanged.
+- **Regions from the page:** elements marked `data-region="name"` give their boxes, so focus and the studio's "what
+  drew this spot" name them; the words the page shows are read from the page itself, for the review.
+- **Threat model:** the page is the project's own file, inside its folder; the browser runs with no network, and a
+  page that asks for one is refused, naming the fix; bounded frames, size and time.
+- **Cost, measured before choosing:** a browser frame costs far more than a canvas frame; the cache and the pieces
+  re-render only what changed. The bench decides the default resolution and whether to capture at 2× for zooms.
+- **Look first:** one StoryDeck slide flown in 3D as a ten-second shot inside a film.
+
+It also serves product demos (a product's own page driven by script, the handoff's phase 2) and decks shown in films.
