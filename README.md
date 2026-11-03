@@ -3038,9 +3038,14 @@ npx storyreel studio --ep ep1 --recipe ep1/recipe.json --port 4322   # a series:
 `storyreel studio` opens the film the folder's `storyreel.config.mjs` names, compiled as the review tools compile it
 (every other flag reaches its `film(flags)`; a voice's timings paced). It compiles again when the recipe's file changes
 (`--recipe`, else `recipe.json` beside the config — when it holds the recipe the config gives), when `storyboard.json`
-beside it changes, and when a file the config's `film()` lists in `watch` does (`watch: ['ep1/pacing.json']`, paths
-from the config's folder). An edit to the config's own code (or a module it imports) needs a restart: Node keeps a
-module once it has loaded it, and the studio says so when the config changes. The voice is not played here: its paced
+beside it changes, when a file the config's `film()` lists in `watch` does (`watch: ['ep1/pacing.json']`, paths
+from the config's folder), and when the project's own code does: the config and every module it imports inside its
+folder (a kit, a helper it imports), loaded again with no restart. So a recipe that takes a key the kit does not know
+yet is refused, and the moment the kit learns it the film compiles. StoryReel and the packages in `node_modules` stay
+the copy first loaded. A module outside the config's folder, or one imported by a name chosen at run time
+(`import(name)`), still needs a restart, and the studio says which when it starts. Loading a module again needs Node
+22.15 or later; on an older Node the studio says a code change needs a restart. Each version of the code stays in
+memory until the studio stops (Node never drops a module); after a long session of edits, a restart frees it. The voice is not played here: its paced
 narration is made by a render. A folder made by `storyreel remake --starter` opens with just `npx storyreel studio`.
 
 From code, `startStudio` takes the film's `load()`:

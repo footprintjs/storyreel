@@ -45,11 +45,13 @@ const pick = (o, keys) => Object.fromEntries(keys.filter(k => o[k] !== undefined
  * The project's inputs as its config's film(flags) gives them, not yet timed: {inputs, cwd, said, raw} — `said` the
  * storyboard with the cast's names in it (prepare.mjs · castFilm), as a voice says it; `raw` its timings before any
  * pacing (the voice folder's timings.json, else even). What a tool that times the film itself reads (anchors).
+ * `url` imports the config from another URL of the same file: the studio's, under a version of the project's code
+ * (studio/code.mjs), so an edited kit is loaded again.
  */
-export async function readInputs({config = CONFIG, cwd = process.cwd(), ...flags} = {}) {
+export async function readInputs({config = CONFIG, cwd = process.cwd(), ...flags} = {}, {url} = {}) {
   const file = path.resolve(cwd, config);
   if (!existsSync(file)) throw new Error(`no ${config} in ${cwd}: a project names its film there — export default {film: flags => ({storyboard, recipe, kits, root, narrationDir?, pacing?, layout?, out?})}`);
-  const made = (await import(pathToFileURL(file).href)).default;
+  const made = (await import(url ?? pathToFileURL(file).href)).default;
   if (!made || typeof made.film !== 'function') throw new Error(`${config} must export default {film(flags)}, returning the film's inputs`);
   const inputs = await made.film(flags);
   for (const key of ['storyboard', 'recipe']) if (!inputs?.[key]) throw new Error(`${config}: film() must return the ${key}`);
@@ -66,10 +68,10 @@ const pacedOf = ({inputs, said, raw}, holds = inputs.pacing?.holds) => (inputs.t
 /**
  * The project's inputs: its config's film(flags), timed — paced from the voice folder's timings.json when it names one,
  * else evenly (and paced, when the config names a pacing, as makeFilm paces given timings) — and not compiled (what a
- * tool that prepares the film itself reads: changes).
+ * tool that prepares the film itself reads: changes). `how` is readInputs's: {url}.
  */
-export async function loadInputs(options = {}) {
-  const read = await readInputs(options);
+export async function loadInputs(options = {}, how = {}) {
+  const read = await readInputs(options, how);
   return {inputs: {...read.inputs, timings: pacedOf(read)}, cwd: read.cwd};
 }
 
