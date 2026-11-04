@@ -62,8 +62,10 @@ function othersText(others) {
  * The tool: `recipe` the project's recipe file and its text ({file, text}: tools.mjs · projectRecipe, which the tools'
  * table hands in), `args` the command line's flags. Reads feedback.md beside the recipe's file with the person's key
  * (notekey.mjs); writes it only to tick, holding its lock (feedback-file.mjs · withFeedback) and reading it again there.
+ * `keep(run)` keeps the reading's run for `storyreel log` (runlog.mjs · keepRun, as the tools' table hands it in) and
+ * answers null or why it could not: a file with no lines read leaves no run.
  */
-export async function feedback({file: recipeFile, text: recipeText}, args = {}, {home = storyreelHome()} = {}) {
+export async function feedback({file: recipeFile, text: recipeText}, args = {}, {home = storyreelHome(), keep = () => null} = {}) {
   const done = named(args.done), file = feedbackFile(recipeFile), {key, why, missing} = noteKey(home, {project: path.dirname(file)});
   if (!key && !missing) throw new Error(why);
   const lines = jsonLines(recipeText), reading = text => readFeedback(text, {key, done, lineOf: p => lines.get(p) ?? null, file: path.basename(recipeFile)});
@@ -77,14 +79,17 @@ export async function feedback({file: recipeFile, text: recipeText}, args = {}, 
   if (read.refused.length || (done.length && !key)) {
     const mine = read.notes.length > 1 ? `yours are 1–${read.notes.length}` : read.notes.length ? 'yours is 1' : 'you have none';
     const refused = read.refused.length ? read.refused : done;
-    throw new Error(`no note of yours is ${refused.join(', ')} (${mine}): nothing was ticked — storyreel feedback lists them with their numbers and ids`);
+    const message = `no note of yours is ${refused.join(', ')} (${mine}): nothing was ticked — storyreel feedback lists them with their numbers and ids`;
+    if (text) keep({feature: 'feedback', record: read.record, failure: message});
+    throw new Error(message);
   }
-  if (yes(args.record)) return JSON.stringify({file, notes: read.notes, open: read.open, others: read.others, ticked: read.ticked, already: read.already, refused: read.refused, record: read.record}, null, 2);
+  const unsaved = text ? keep({feature: 'feedback', summary: `${read.notes.length} of yours, ${read.open} open${read.ticked.length ? `, ticked ${read.ticked.join(', ')}` : ''}`, record: read.record}) : null;
+  if (yes(args.record)) return JSON.stringify({file, notes: read.notes, open: read.open, others: read.others, ticked: read.ticked, already: read.already, refused: read.refused, record: read.record, ...(unsaved ? {unsaved} : {})}, null, 2);
   const open = read.notes.filter(x => !x.done), shown = yes(args.all) ? read.notes : open, said = [];
   if (read.ticked.length) said.push(`ticked ${read.ticked.join(', ')} in ${file}`);
   if (read.already.length) said.push(`already done: ${read.already.join(', ')}`);
   if (!text) said.push(`no ${FEEDBACK} beside ${path.basename(recipeFile)} yet: the notes left in storyreel studio land there`);
   else if (!key) said.push(`no note of yours: ${why}`);
   else said.push(open.length ? `${plural(open.length, 'open note')} from your studio in ${FEEDBACK} (tick one when done: storyreel feedback --done ${open[0].n}):` : `no open note from your studio in ${FEEDBACK}${read.notes.length ? ` (${plural(read.notes.length, 'done one')}: --all lists ${read.notes.length === 1 ? 'it' : 'them'})` : ''}`);
-  return [...said, ...shown.map(noteText)].join('\n') + othersText(read.others);
+  return [...said, ...shown.map(noteText)].join('\n') + othersText(read.others) + (unsaved ? `\n(${unsaved})` : '');
 }

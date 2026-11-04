@@ -30,8 +30,8 @@ import {momentAt, sceneTime, sceneIds, placeOf, HUNDREDTH} from './momenttext.mj
 import {formatScale} from './layout.mjs';
 import {hashOf} from './hash.mjs';
 import {reviewPart, reviewSummary, REVIEW_DEFAULTS, SUMMARY_TOP} from './review.mjs';
-import {saveRun, logText, LOG_LINES} from './runlog.mjs';
-export {saveRun, listRuns, logText, RUNS, RUNS_KEPT, RUNS_LISTED} from './runlog.mjs';
+import {keepRun, keepFailedRun, logText, LOG_LINES} from './runlog.mjs';
+export {saveRun, keepRun, listRuns, logText, RUNS, RUNS_KEPT, RUNS_LISTED} from './runlog.mjs';
 import {readRubric, rubricSheet, rubricText, recordScores} from './rubric.mjs';
 import {TARGETS, TARGET_NAMES, loadTarget} from './release.mjs';
 import {phoneSheet, PHONE} from './phone.mjs';
@@ -58,6 +58,7 @@ export async function readInputs({config = CONFIG, cwd = process.cwd(), ...flags
   if (!made || typeof made.film !== 'function') throw new Error(`${config} must export default {film(flags)}, returning the film's inputs`);
   const inputs = await made.film(flags);
   for (const key of ['storyboard', 'recipe']) if (!inputs?.[key]) throw new Error(`${config}: film() must return the ${key}`);
+  if ((inputs.out ?? null) !== null && typeof inputs.out !== 'string') throw new Error(`${config}: film()'s out is the out folder's path as text (out: 'out'), not ${typeof inputs.out === 'object' ? 'an object' : JSON.stringify(inputs.out)}: a URL's path is fileURLToPath(url)`);
   const voiced = Boolean(inputs.narrationDir && existsSync(path.join(inputs.narrationDir, 'timings.json')));
   const said = castFilm(inputs).storyboard;
   const raw = inputs.timings ?? (voiced ? JSON.parse(readFileSync(path.join(inputs.narrationDir, 'timings.json'), 'utf8')) : evenTimings(said));
@@ -183,18 +184,26 @@ export async function review(project, args = {}) {
   if (args.rubric !== undefined && args.rubric !== false && args.rubric !== 'false') return rubricReview(project, args);
   if (args.scores !== undefined || args.by !== undefined) throw new Error(`review: ${args.scores !== undefined ? 'scores' : 'by'} goes with a rubric: add --rubric (--rubric --scores ${args.scores ?? 'id=8,…'} --by "<who scored>")`);
   const part = partOf(args), loop = yes(args.loop);
-  const r = await reviewPart(project.film, {...(part?.window ? spanOf(project.film, part) : part ? {part} : {}), layout: project.inputs.layout ?? null, loop});
+  const r = await reviewRun(project, {...(part?.window ? spanOf(project.film, part) : part ? {part} : {}), layout: project.inputs.layout ?? null, loop});
   const said = yes(args.full) ? `${r.text || 'nothing found'}${r.verdicts?.length ? `\nverdicts:\n${r.verdictText}` : ''}` : reviewSummary(r, {more: FULL_HINT});
   const line = `${head(project.film, part, r.window)} — review (${r.ran.join(', ') || 'no check fits'})`;
-  // the review's answer is the result; its saved run is a record beside it, so a run that cannot be saved is said, never the answer lost
-  let unsaved = '';
-  try { saveRun(outFolderOf(project), {feature: 'review', summary: `${line}: ${reviewSummary(r, {more: ''}).split('\n')[0]}`, record: r.record, verdicts: r.verdicts}); } catch (e) { unsaved = `\n(this review's run was not saved for storyreel log: ${e.message})`; }
-  return `${line}:\n${said}${unsaved}`;
+  return `${line}:\n${said}${keepReview(project, line, r)}`;
+}
+
+/** A review run: reviewPart, a run that fails leaving its record in the log (runlog.mjs) as it goes on to the caller. */
+async function reviewRun(project, options) {
+  try { return await reviewPart(project.film, options); } catch (e) { keepFailedRun(outFolderOf(project), 'review', e); throw e; }
+}
+
+/** A review's run kept in the log: its line and counts, its record, its verdicts with their evidence. Returns what to say under the answer: nothing, or why it was not saved. */
+function keepReview(project, line, r) {
+  const unsaved = keepRun(outFolderOf(project), {feature: 'review', summary: `${line}: ${reviewSummary(r, {more: ''}).split('\n')[0]}`, record: r.record, verdicts: r.verdicts});
+  return unsaved ? `\n(${unsaved})` : '';
 }
 
 /** The full render's making-of record: beside film.mp4 in the project's out folder (fullRender), where the scores go. */
 /** The project's out folder: where its renders, their making-of and its saved runs go. */
-const outFolderOf = project => path.resolve(project.cwd, project.inputs.out ?? 'out');
+export const outFolderOf = project => path.resolve(project.cwd, project.inputs.out ?? 'out');
 const makingOfOf = project => path.join(outFolderOf(project), 'making-of.json');
 /**
  * The rubric a review scores on (rubric.mjs): the recipe's (rubric: 'true'), or a JSON file inside the project (rubric:
@@ -228,7 +237,7 @@ async function rubricReview(project, args) {
     return `rubric "${rec.name}" scored by ${rec.by}, recorded in ${makingOf}: ${rec.points.map(id => `${id} ${rec.scores[id]}`).join(', ')}${met}`;
   }
   if (args.by !== undefined) throw new Error('review --rubric: by goes with the scores: add --scores id=8,… (and --by "<who scored>")');
-  const {film} = project, r = await reviewPart(film, {layout: project.inputs.layout ?? null});
+  const {film} = project, r = await reviewRun(project, {layout: project.inputs.layout ?? null});
   const sheet = rubricSheet(film, rubric, {review: r, record, opening: REVIEW_DEFAULTS.hook}), files = {};
   for (const p of sheet.points) {
     if (!p.stills.length) continue;
@@ -236,7 +245,8 @@ async function rubricReview(project, args) {
     writeOutput(files[p.id], await contactSheet(film, {moments: p.stills, columns: Math.min(3, p.stills.length), width: TOOL_DEFAULTS.width}));
   }
   const scoreLine = `\nRecord the scores (into ${makingOf}${record ? '' : ', once the film is rendered'}): storyreel review --rubric${yes(args.rubric) ? '' : ` ${shellWord(String(args.rubric))}`} --scores ${sheet.points.map(p => `${p.id}=N`).join(',')} --by "<who scored>"`;
-  const text = `${head(film, null, r.window)} — review (${r.ran.join(', ') || 'no check fits'}):\n${reviewSummary(r, {more: FULL_HINT})}\n\n${rubricText(sheet, {files})}\n${scoreLine}`;
+  const line = `${head(film, null, r.window)} — review (${r.ran.join(', ') || 'no check fits'})`;
+  const text = `${line}:\n${reviewSummary(r, {more: FULL_HINT})}\n\n${rubricText(sheet, {files})}\n${scoreLine}${keepReview(project, line, r)}`;
   return {text, files: Object.values(files), file: Object.values(files)[0]};
 }
 
@@ -507,21 +517,22 @@ export async function changes(project, args = {}) {
 }
 
 /** The notes the person left in the studio, read beside the recipe's file the film reads (studio/feedback-tool.mjs). */
-const feedbackTool = (project, args = {}) => feedback(projectRecipe(project, {config: args.config ?? CONFIG, recipe: args.recipe}), args);
+const feedbackTool = (project, args = {}) => feedback(projectRecipe(project, {config: args.config ?? CONFIG, recipe: args.recipe}), args, {keep: run => keepRun(outFolderOf(project), run)});
 
 /** The full flag: by default a review says the counts, the verdicts that did not pass and the first findings (review.mjs · reviewSummary). */
 const FULL_ARG = `true for every finding and every verdict's why (default: the counts, what did not pass, the first ${SUMMARY_TOP} findings)`;
 /**
  * The project's run log (runlog.mjs): the runs, newest first, or one run's stages and decisions, or one verdict's
- * evidence. It takes the flags as they are (load: 'flags') and reads the config only for its out folder, so a config
- * that no longer loads — when the log is wanted most — still leaves the log readable: --out, or the default out.
+ * evidence. It takes the flags as they are (load: 'flags'): --folder names the folder, with no project needed (a
+ * breakdown's has none); else the config says it, --out reaching its film as it reaches every tool's, so a config that
+ * maps --out reads where it wrote. A config that no longer loads — when the log is wanted most — still leaves --out, or
+ * ./out, readable, and says why it read that one.
  */
 export async function log(flags = {}) {
-  let out, note = '';
-  try { out = outFolderOf(await readInputs(flags)); } catch (e) {
-    out = path.resolve(flags.cwd ?? process.cwd(), typeof flags.out === 'string' ? flags.out : 'out');
-    note = `\n(the config did not load, so these are the runs in ${out}: ${e.message})`;
-  }
+  const cwd = flags.cwd ?? process.cwd();
+  for (const name of ['folder', 'out']) if (flags[name] !== undefined && (typeof flags[name] !== 'string' || yes(flags[name]) || !flags[name].trim())) throw new Error(`--${name} needs a folder (--${name} work/out)`);
+  let out = path.resolve(cwd, flags.folder ?? flags.out ?? 'out'), note = '';
+  if (flags.folder === undefined) try { out = outFolderOf(await readInputs(flags)); } catch (e) { note = `\n(the config did not load, so these are the runs in ${out}: ${e.message})`; }
   return logText(out, {run: flags.run === undefined || yes(flags.run) ? null : flags.run, only: flags.only ?? null, check: flags.check ?? null, all: yes(flags.all)}) + note;
 }
 
@@ -531,7 +542,7 @@ export const TOOLS = Object.freeze({
     args: {scene: 'scene ids, comma-separated (default: the whole film; or a window: from and to)', from: 'the window\'s start on the film clock: seconds or m:ss (0:12)', to: 'the window\'s end: seconds or m:ss',
       handles: `seconds of the film shown either side of the scenes or the window (${TOOL_DEFAULTS.handles})`}},
   feedback: {run: feedbackTool, load: 'config', about: FEEDBACK_ABOUT, args: FEEDBACK_ARGS},
-  log: {run: log, load: 'flags', about: 'How a result was made: the project\'s runs, newest first (a review, a render); one run\'s stages, what each wrote and decided, with the rule that matched and the values it read; a verdict\'s evidence, each item measured. Read it before re-running or looking at pictures.',
+  log: {run: log, load: 'flags', about: 'How a result was made: the project\'s runs, newest first (a review, an apply, a note, a Try, a render), each done or refused; one run\'s stages, what each wrote and decided, with the rule that matched and the values it read; a verdict\'s evidence, each item measured. Read it before re-running or looking at pictures. On the command line, --folder reads the runs in a folder with no project: a breakdown\'s or a remake\'s.',
     args: {run: 'a run\'s number from the list, to show that run (default: the list)', only: 'with run: decisions, errors or steps (every entry as the record says it); default: each stage once, what it wrote and decided',
       check: 'with run: a verdict\'s name (contrast, slideshow, …): everything its check measured, each item', all: `true for every line (default: the first ${LOG_LINES})`}},
   review: {run: review, about: `What is wrong, read from the picture as text: words under the captions, over each other, cut off at the edge, the picture frozen for ${REVIEW_DEFAULTS.stillFor} s, nothing new for ${REVIEW_DEFAULTS.newEvery} s while it moves. Times on the film clock. Then three verdicts (passed, failed, or not run): no slideshow, drawn parts hold together, every number on screen has a source. With rubric: each point of a rubric laid out with its stills and evidence, to score; with scores and by, the scores recorded in the render's making-of.json.`,

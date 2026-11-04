@@ -76,9 +76,10 @@ export function noteRequest(body, {version, total}) {
  * What takes notes for one studio: take(film, request) — `film` the one on screen ({film, storyboard, recipeFile,
  * lineOf}), `request` noteRequest's — writes the note into feedback.md beside the recipe's file, one at a time, and
  * returns {note (its place and words, read back), open (the person's open notes now), file}. `home` is where the
- * person's note key lives (notekey.mjs · storyreelHome).
+ * person's note key lives (notekey.mjs · storyreelHome); `keep(run)` keeps the note's run for `storyreel log` (the
+ * studio's: runlog.mjs), a note refused on its way among them.
  */
-export function noteTaker({home = storyreelHome()} = {}) {
+export function noteTaker({home = storyreelHome(), keep = () => {}} = {}) {
   let last = Promise.resolve();
   async function write({film, storyboard, recipeFile, lineOf}, {t, x, y, words}) {
     if (!recipeFile) throw new Refusal('the recipe\'s file is not known, so there is nowhere to keep notes: start the studio with --recipe file (or give load() source.file)', 501);
@@ -92,7 +93,10 @@ export function noteTaker({home = storyreelHome()} = {}) {
         let fileText;
         try { fileText = readFeedbackFile(at); } catch (e) { throw new Refusal(e.message, 409); }
         let made;
-        try { made = await writeNote({film, storyboard, t, x, y, words, fileText, key, lineOf, file: path.basename(recipeFile)}); } catch (e) { throw new Refusal(e.message, 400); }
+        try { made = await writeNote({film, storyboard, t, x, y, words, fileText, key, lineOf, file: path.basename(recipeFile)}); } catch (e) {
+          if (e.record) keep({feature: 'note', record: e.record, failure: e.message});
+          throw new Refusal(e.message, 400);
+        }
         let written;
         try { written = addToFeedback(at, fileText, made.text); } catch (e) { throw new Refusal(e.message, 409); }
         if (written) return made;
@@ -102,6 +106,7 @@ export function noteTaker({home = storyreelHome()} = {}) {
     let made;
     try { made = await withFeedback(file, held); } catch (e) { throw e instanceof Refusal ? e : new Refusal(e.message, 409); }
     const {open} = await readFeedback(made.text, {key});
+    keep({feature: 'note', summary: `at ${made.note.at} (${made.note.clock})${made.note.entry ? ` on ${made.note.entry}` : ''}`, record: made.record});
     return {note: made.note, open, file};
   }
   return {take: (film, request) => { const turn = last.then(() => write(film, request)); last = turn.catch(() => {}); return turn; }};

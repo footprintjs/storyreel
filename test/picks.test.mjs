@@ -206,7 +206,7 @@ test('storyreel apply on a series: --ep picks the film, --recipe names its file,
   assert.equal(after, before.replace('"enter": "cut"', '"enter": "curtain"').replace(/"enter": \{[^}]*\}/, '"enter": "torn"').replace('"scene": "open",\n', '"scene": "open",\n    "move": "pop",\n'), 'only the three values');
   assert.equal(after.split('\n').length, before.split('\n').length - 3 + 1, 'the fade\'s four lines are one, and the story has one line more');
   // Every refusal writes nothing, and names its reason and its fix.
-  const unchanged = (r, pattern) => { assert.equal(r.status, 2, r.stdout); assert.match(r.stderr, pattern); assert.match(r.stderr, /Nothing was written\./); assert.equal(readFileSync(file, 'utf8'), after); };
+  const unchanged = (r, pattern) => { assert.equal(r.status, 2, r.stdout); assert.match(r.stderr, pattern); assert.match(r.stderr, /The recipe was not changed\./); assert.equal(readFileSync(file, 'utf8'), after); };
   unchanged(apply(dir, 'shop enter fade', 'attic enter fade', ...flags), /attic enter fade: its scene is not in the storyboard — the scenes are open, shop, walk/);
   unchanged(apply(dir, 'open enter fade', ...flags), /open enter fade: no stage plays its scene/);
   unchanged(apply(dir, 'shop enter swirl', ...flags), /its name is not a transition of this film — the transitions are .*, morph, curtain/);

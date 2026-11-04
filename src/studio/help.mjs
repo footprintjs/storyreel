@@ -15,7 +15,7 @@ export const STUDIO_USAGE = `storyreel studio [--port n] [--config file] [--reci
 
 export const APPLY_HELP = `  apply    "<scene> enter <transition>" | "<scene> move <move>" … — the lines kept in the studio's gallery, written into
            the project's recipe: a stage's entrance, or a kinetic world's word move. Every line is checked first (the
-           scene, its stage or kinetic world, the name) and the edited recipe compiled; one that refuses writes nothing.
+           scene, its stage or kinetic world, the name) and the edited recipe compiled; one that refuses leaves the recipe as it was.
            Only the values set change in the file; one line printed per change. Any other flag reaches the config's
            film(flags), as the tools' do (--ep ep1)
              --recipe  the recipe's JSON file to write (default: recipe.json beside the config); it must hold the recipe that film reads

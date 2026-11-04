@@ -21,7 +21,9 @@
  * query names (a frame, a card, a pick, a Try) answer the studio's own page only: a request another site's page makes
  * (Sec-Fetch-Site) is refused. It runs nothing from the recipe. Its one write is a note (POST /api/note), taken only
  * from its own page: Sec-Fetch-Site same-origin (a request that does not say is refused), the studio's own Origin, a
- * JSON body of at most 16 KB with only the fields a note has — never the place, which is read from the film.
+ * JSON body of at most 16 KB with only the fields a note has — never the place, which is read from the film. A note and
+ * a Try each leave their run for `storyreel log` in the project's out folder (load()'s `out`; runlog.mjs), bounded as
+ * every run is: what a request names only as far as the checks passed it, and never in place of the answer.
  */
 import http from 'node:http';
 import {randomBytes, timingSafeEqual} from 'node:crypto';
@@ -39,6 +41,7 @@ import {pickScenes, PICK_KINDS} from './picks.mjs';
 import {applyPicks} from './apply.mjs';
 import {galleryCards, cardFrames, boundedCache} from './gallery.mjs';
 import {pickTries} from './tries.mjs';
+import {keepRun} from '../runlog.mjs';
 import {Refusal} from './refusal.mjs';
 import {noteTaker, readJsonBody, noteRequest} from './take-note.mjs';
 import {feedbackFile} from './feedback-file.mjs';
@@ -70,7 +73,8 @@ const HEADERS = {
  *               sits, e.g. 'recipe') · audio: a WAV of the paced narration, for playback · kits: the
  *               kits the film was compiled with, so the transitions sheet and the gallery show their
  *               transitions too · compile: async recipe => film, the film compiled as this one was but
- *               from another recipe — what the gallery's Try plays (a copy with a pick in it; nothing written)
+ *               from another recipe — what the gallery's Try plays (a copy with a pick in it; nothing written) ·
+ *               out: the project's out folder, where a note's and a Try's runs are kept for `storyreel log` (none: not kept)
  * @param watch  files that, when changed, make the studio call load() again
  * @param port   the port on 127.0.0.1 (0: any free port)
  * @param home   where the person's note key lives (notekey.mjs · storyreelHome: STORYREEL_HOME, or ~/.storyreel): notes
@@ -103,7 +107,12 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
     state.version++;
     return state.error;
   }
-  const cards = boundedCache(), tries = pickTries(), notes = noteTaker({home});
+  /** A run the studio made kept for the log, in the out folder of the film on screen; one that cannot be saved is said in the studio's own log. */
+  const keep = run => {
+    const unsaved = state.loaded?.out ? keepRun(state.loaded.out, run) : null;
+    if (unsaved) log(`studio: ${unsaved}`);
+  };
+  const cards = boundedCache(), tries = pickTries(), notes = noteTaker({home, keep});
   // The studio's key: its address's first step, shown only to whoever started it (the address it returns and prints).
   const key = randomBytes(KEY_LENGTH / 2).toString('hex'), keyBytes = Buffer.from(key);
   let catalog = null;
@@ -159,20 +168,23 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
     const kind = q.get('kind');
     if (!PICK_KINDS.includes(kind)) throw new Refusal(`kind must be ${PICK_KINDS.join(' or ')} (e.g. kind=enter), not ${JSON.stringify(kind)}`);
     const {storyboard, recipe} = state.loaded, scenes = storyboard.scenes.map(s => s.id);
-    try { return await applyPicks(recipe, [{scene: String(q.get('scene') ?? ''), kind, name: String(q.get('name') ?? '')}], {scenes, catalog: catalogNow()}); } catch (e) { throw new Refusal(e.message); }
+    try { return await applyPicks(recipe, [{scene: String(q.get('scene') ?? ''), kind, name: String(q.get('name') ?? '')}], {scenes, catalog: catalogNow()}); } catch (e) { throw Object.assign(new Refusal(e.message), {record: e.record}); }
   }
   /**
    * Try: the film compiled again in memory from a copy of the recipe with the pick in it (tries.mjs: one compile at a
    * time, the last few kept), the one tried until the next pick tried or the next reload; the page plays it from a
    * second before the scene starts (or from before its change starts, when that is earlier). A recipe the pick makes
-   * refuse is said with the compile's own words.
+   * refuse is said with the compile's own words. Its run stays in the log: the pick's checks and what became of it.
    */
   async function tryPick(q) {
     const {loaded, version} = state;
     if (typeof loaded.compile !== 'function') throw new Refusal('Try compiles a copy of the recipe: this studio\'s load() gives no compile(recipe)', 501);
-    const {recipe, changes: [change]} = await pickOf(q);
-    const compile = async () => { try { return await loaded.compile(recipe); } catch (e) { throw new Refusal(`${change.line}: ${e.message}`); } };
+    let picked;
+    try { picked = await pickOf(q); } catch (e) { if (e.record) keep({feature: 'try', record: e.record, failure: e.message}); throw e; }
+    const {recipe, changes: [change], record} = picked;
+    const compile = async () => { try { return await loaded.compile(recipe); } catch (e) { keep({feature: 'try', summary: change.line, record, failure: e.message}); throw new Refusal(`${change.line}: ${e.message}`); } };
     const key = await tries.run(change.line, version, compile, () => state.version);
+    keep({feature: 'try', summary: `${change.line}, tried on the film of version ${version}`, record});
     const clock = loaded.film.clock, start = clock.start(change.scene), end = clock.end(change.scene);
     const lead = change.kind === 'enter' ? readEntrance(change.name, change.line, catalogNow()).lead : 0;
     return {key, line: change.line, scene: change.scene, kind: change.kind, name: change.name, path: change.path, start, end, from: Math.max(0, +(start - Math.max(1, lead + .5)).toFixed(3))};
@@ -192,7 +204,7 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
 
   /**
    * A note, from the studio's own page only: Sec-Fetch-Site same-origin — a request that does not say is refused here,
-   * as no other route refuses it, for this one writes — the studio's own Origin, JSON; then its body (take-note.mjs).
+   * as no other route refuses it, for this one writes what the request says — the studio's own Origin, JSON; then its body (take-note.mjs).
    */
   async function takeNote(req, bound) {
     const site = req.headers['sec-fetch-site'], origin = req.headers.origin;

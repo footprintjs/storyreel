@@ -11,6 +11,7 @@ import path from 'node:path';
 import {TOOLS, CONFIG, loadProject, loadInputs, readInputs} from './tools.mjs';
 import {SOUNDS_HELP} from './sounds/cli.mjs';
 import {REMAKE_USAGE} from './remake-cli.mjs';
+import {logCall} from './runlog.mjs';
 import {STUDIO_HELP, APPLY_HELP} from './studio/help.mjs';
 // Loaded first, so the picture's channel is taken from the environment before any project code runs (mcp.mjs · sendPicture).
 import {serveMcp, startOf, sendPicture} from './mcp.mjs';
@@ -72,7 +73,7 @@ async function breakdownCommand(args) {
   const {breakdown} = await import('./breakdown.mjs'), reader = beats ? (await import('./beats.mjs')).beatMap : null;
   try {
     const {text, files} = await breakdown(video, {hints: 'cli', ...(out ? {out} : {}), ...(ffmpeg ? {ffmpeg} : {}), ...(reader ? {beatMap: reader, beatOptions: bpm !== undefined ? {bpm: Number(bpm)} : {}} : {})});
-    console.log(`${text}\n${files.json}\n${files.md}\n${files.overview} · ${files.sheets.length} shot sheet${files.sheets.length === 1 ? '' : 's'} in ${files.sheets.length ? files.sheets[0].replace(/[^/\\]*$/, '') : '-'}\n${files.record}`);
+    console.log(`${text}\n${files.json}\n${files.md}\n${files.overview} · ${files.sheets.length} shot sheet${files.sheets.length === 1 ? '' : 's'} in ${files.sheets.length ? files.sheets[0].replace(/[^/\\]*$/, '') : '-'}\n${files.record}\nhow it was made: ${logCall(path.dirname(files.record))}`);
   } catch (e) {
     console.error(`storyreel breakdown: ${String(e?.message ?? e).replace(/^breakdown: /, '')}${recordSoFar(e?.record)}`);
     process.exit(e?.cause?.code === 'BEAT_OPTIONS' ? 2 : 1);

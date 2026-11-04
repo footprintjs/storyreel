@@ -5,11 +5,12 @@
 // review tool saving its run end to end.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readdirSync, readFileSync, writeFileSync, symlinkSync, chmodSync} from 'node:fs';
+import {readdirSync, readFileSync, writeFileSync, symlinkSync, chmodSync, statSync} from 'node:fs';
+import {spawn} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {flowChart, decide, narrative} from 'footprintjs';
-import {saveRun, listRuns, logText, compactSelected, RUNS, RUNS_KEPT, RUNS_LISTED, LOG_LINES, RUN_MOST} from '../src/runlog.mjs';
+import {saveRun, keepRun, keepFailedRun, withRecord, logCall, listRuns, logText, compactSelected, RUNS, RUNS_KEPT, RUNS_LISTED, LOG_LINES, LINE_CHARS, ENTRY_CHARS, RUN_MOST} from '../src/runlog.mjs';
 import {loadProject, review, TOOLS} from '../src/tools.mjs';
 import {tempDir} from './tmp.mjs';
 
@@ -47,18 +48,111 @@ test('saveRun keeps a run as words: each entry\'s text, kind, stage and stage id
   assert.notEqual(saveRun(dir, {feature: 'review', at}), saveRun(dir, {feature: 'review', at}), 'two saves in one millisecond are two runs');
 });
 
-test(`a project keeps its newest ${RUNS_KEPT} runs: one more drops the oldest — never the one just written — and nothing else in the folder is touched`, t => {
+test(`a project keeps each feature's newest ${RUNS_KEPT} runs: one more drops that feature's oldest — never the one just written, never another feature's — and nothing else in the folder is touched`, t => {
   const dir = tempDir('runlog-kept', t), at = k => new Date(Date.UTC(2026, 0, 1, 0, 0, k));
+  saveRun(dir, {feature: 'breakdown', summary: 'the only breakdown', at: new Date('2020-01-01T00:00:00Z')});
   for (let k = 0; k < RUNS_KEPT; k++) saveRun(dir, {feature: 'review', summary: `run ${k}`, at: at(k)});
   writeFileSync(path.join(dir, ...RUNS, 'notes.json'), '{}');
   saveRun(dir, {feature: 'review', summary: 'the newest', at: at(RUNS_KEPT)});
   const left = runsIn(dir);
-  assert.equal(left.length, RUNS_KEPT + 1, 'one in, one out (and notes.json)');
+  assert.equal(left.length, RUNS_KEPT + 2, 'one in, one out (and the breakdown, and notes.json)');
   assert.ok(left.includes('notes.json'), 'a file not named as a run stays');
-  assert.ok(!left.some(n => n.startsWith('2026-01-01T00-00-00-000Z')), 'the oldest went');
-  const late = saveRun(dir, {feature: 'review', summary: 'a clock gone back', at: new Date('2020-01-01T00:00:00Z')});
+  assert.ok(!left.some(n => n.startsWith('2026-01-01T00-00-00-000Z')), 'the oldest review went');
+  assert.equal(listRuns(dir).at(-1).summary, 'the only breakdown', 'many reviews never push out a breakdown');
+  const late = saveRun(dir, {feature: 'review', summary: 'a clock gone back', at: new Date('2021-01-01T00:00:00Z')});
   assert.ok(runsIn(dir).includes(path.basename(late)), 'the run just written stays, whatever its time');
-  assert.equal(runsIn(dir).length, RUNS_KEPT + 1);
+  assert.equal(runsIn(dir).length, RUNS_KEPT + 2);
+});
+
+test('a run that failed says what it failed on, in the list and as its last entry; a record too big to read back is cut to fit, the cut counted, the failure kept', t => {
+  const dir = tempDir('runlog-failed', t), big = Array.from({length: 4000}, (_, k) => ({type: 'stage', text: `Stage ${k}: ${'x'.repeat(500)}`, stageName: `s${k}`}));
+  saveRun(dir, {feature: 'breakdown', summary: 'film.mp4', record: big, failure: 'the sound\ncannot be read', at: new Date('2026-01-01T00:00:00Z')});
+  const [run] = listRuns(dir);
+  assert.equal(run.summary, 'film.mp4 — failed: the sound cannot be read', 'the failure in the summary, one line');
+  assert.ok(run.omitted > 0 && run.entries.length + run.omitted === big.length + 1, 'every entry kept or counted');
+  assert.match(logText(dir), /^1\. 2026-01-01 00:00:00 breakdown · film\.mp4 — failed: the sound cannot be read\n/);
+  assert.match(logText(dir, {run: 1}), new RegExp(`\\n\\(${run.omitted} of its entries were not kept: its record was over ${RUN_MOST} bytes\\)\\n`));
+  assert.equal(logText(dir, {run: 1, only: 'errors'}).split('\n').at(-1), 'the sound cannot be read', 'the failure survives the cut');
+});
+
+test('a saved run is always readable, whatever is too big: the bytes bound holds for words of any width, one huge entry costs only its own words, a huge failure or summary is cut, verdicts too big drop what they measured and say so', t => {
+  const dir = tempDir('runlog-bounds', t), text = '€'.repeat(3000);
+  saveRun(dir, {feature: 'wide', record: Array.from({length: 2000}, (_, k) => ({type: 'stage', text, stageName: `s${k}`}))});
+  const [wide] = listRuns(dir);
+  assert.ok(statSync(wide.file).size <= RUN_MOST, 'in bytes, not characters');
+  assert.ok(wide.omitted > 0 && wide.entries.length + wide.omitted === 2000);
+  const big = tempDir('runlog-big', t);
+  saveRun(big, {feature: 'big', record: [{type: 'stage', text: 'x'.repeat(2 * RUN_MOST), stageName: 'first'}, ...Array.from({length: 100}, (_, k) => ({type: 'stage', text: `Stage ${k}`, stageName: `s${k}`}))]});
+  const [one] = listRuns(big);
+  assert.equal(one.entries.length, 101, 'every entry kept');
+  assert.equal(one.entries[0].text.length, ENTRY_CHARS);
+  const failed = tempDir('runlog-big-failure', t);
+  assert.equal(keepRun(failed, {feature: 'long', summary: 's'.repeat(RUN_MOST), record: [{type: 'stage', text: 'kept', stageName: 'a'}], failure: 'f'.repeat(RUN_MOST)}), null);
+  const [long] = listRuns(failed);
+  assert.ok(long.entries.some(e => e.text === 'kept'), 'the record survives a huge failure');
+  assert.equal(long.entries.at(-1).type, 'error');
+  const measured = tempDir('runlog-big-verdicts', t);
+  assert.equal(keepRun(measured, {feature: 'review', record: [{type: 'stage', text: 'kept', stageName: 'a'}], verdicts: [{check: 'x', label: 'X', verdict: 'passed', why: 'why', measured: {all: 'y'.repeat(RUN_MOST)}}]}), null);
+  const [v] = listRuns(measured);
+  assert.ok(v.entries.some(e => e.text === 'kept'), 'the record survives');
+  assert.equal(logText(measured, {run: 1, check: 'x'}), 'X · passed: why\n(what it measured was too big to keep with its record)');
+});
+
+test('what prints is bounded: a long line is cut in every view and the call that shows it whole is said; a list of evidence too; a long summary in the list', t => {
+  const dir = tempDir('runlog-lines', t), long = 'w'.repeat(LINE_CHARS * 3);
+  const id = idOf(saveRun(dir, {feature: 'review', summary: long, record: [{type: 'stage', text: 'Stage 1', stageName: 's', stageId: 's'}, {type: 'error', text: long, stageName: 's', stageId: 's'}, {type: 'condition', text: `[Condition]: ${long}`, stageName: 's', stageId: 's'}],
+    verdicts: [{check: 'x', label: 'X', verdict: 'failed', why: 'why', measured: {items: Array.from({length: LOG_LINES + 5}, (_, n) => ({n, say: 'a\u2028b\u202ec'}))}}]}));
+  assert.ok(logText(dir).split('\n')[0].length < LINE_CHARS + 60, 'the list');
+  for (const only of [null, 'errors', 'steps']) {
+    const text = logText(dir, {run: 1, only});
+    assert.ok(text.split('\n').slice(2).filter(l => !l.startsWith('evidence:')).every(l => l.length <= LINE_CHARS + 90), `${only}: every line`);
+    assert.match(text, new RegExp(`\\n… lines cut short: storyreel log --run ${id}${only ? ` --only ${only}` : ''} --all`), only);
+    assert.ok(logText(dir, {run: 1, only, all: true}).includes(long), `${only}: whole with --all`);
+  }
+  const evidence = logText(dir, {run: 1, check: 'x'});
+  assert.ok(!/[\u2028\u202e]/.test(evidence), 'evidence is shown as plain lines');
+  assert.match(evidence, new RegExp(`\\n… 7 more: storyreel log --run ${id} --check x --all$`));
+});
+
+test('a save at the cap never says it failed because another process dropped a file first', async t => {
+  const dir = tempDir('runlog-race', t), url = new URL('../src/runlog.mjs', import.meta.url).href;
+  const script = `import(${JSON.stringify(url)}).then(({keepRun}) => { let bad = 0; for (let k = 0; k < 150; k++) if (keepRun(${JSON.stringify(dir)}, {feature: 'race'})) bad++; console.log(bad); });`;
+  const counts = await Promise.all(Array.from({length: 3}, () => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['-e', script]); let out = '';
+    child.stdout.on('data', d => (out += d)); child.on('error', reject); child.on('close', () => resolve(Number(out)));
+  })));
+  assert.deepEqual(counts, [0, 0, 0]);
+  assert.ok(runsIn(dir).length <= RUNS_KEPT + 3, 'the cap holds, give or take the saves in flight');
+});
+
+test('logCall says the call as a person types it, quoted where the shell would split it', () => {
+  assert.equal(logCall('/x/film-breakdown'), 'storyreel log --folder /x/film-breakdown');
+  assert.equal(logCall('/x/My Film-breakdown'), "storyreel log --folder '/x/My Film-breakdown'");
+  assert.equal(logCall("/x/it's $HOME"), "storyreel log --folder '/x/it'\\''s $HOME'");
+});
+
+test('keepRun never throws: it answers null, or why the run was not saved; a failed run keeps its record only when it has one; withRecord carries it', async t => {
+  const dir = tempDir('runlog-keep', t), file = path.join(dir, 'a-file');
+  assert.equal(keepRun(dir, {feature: 'review', summary: 'saved'}), null);
+  writeFileSync(file, '');
+  assert.match(keepRun(file, {feature: 'review'}), /^this review's run was not saved for storyreel log: /);
+  assert.equal(keepFailedRun(dir, 'review', new Error('no chart ran')), null);
+  assert.equal(listRuns(dir).length, 1, 'a refusal with no record leaves no run');
+  const trace = narrative();
+  await flowChart('first', s => { s.seen = 1; }, 'first').addFunction('boom', () => { throw new Error('it broke'); }, 'boom').build().recorder(trace).run().catch(e => { withRecord(e, trace); assert.equal(keepFailedRun(dir, 'review', e, 'a film'), null); });
+  const [failed] = listRuns(dir);
+  assert.equal(failed.summary, 'a film — failed: it broke');
+  assert.ok(failed.entries.some(e => e.stage === 'first'), 'the record so far');
+  const own = Object.assign(new Error('x'), {record: ['mine']});
+  assert.deepEqual(withRecord(own, trace).record, ['mine'], 'a record the error already carries stays');
+  assert.equal(withRecord('text', trace), 'text', 'a thrown value that is no object goes on as it was');
+  // Whatever was thrown stays what was thrown: these run on an error's way out.
+  const frozen = Object.freeze(new Error('frozen')), bare = Object.assign(Object.create(null), {record: []}), hostile = new Proxy({}, {has() { throw new Error('a trap'); }, get() { throw new Error('a trap'); }});
+  assert.equal(withRecord(frozen, trace), frozen);
+  assert.equal(withRecord(hostile, trace), hostile);
+  assert.equal(keepFailedRun(dir, 'review', hostile), null);
+  assert.equal(keepFailedRun(dir, 'review', bare), null, 'one that has no words is still a run');
+  assert.match(listRuns(dir)[0].summary, /^failed: something that cannot be said in words was thrown$/);
 });
 
 test('the list: newest first, numbered, each with its summary and how many decisions; the render\'s making-of.json among them, read from its compile record', async t => {
@@ -67,12 +161,23 @@ test('the list: newest first, numbered, each with its summary and how many decis
   saveRun(dir, {feature: 'review', summary: 'newer', record: await recordOf(2), at: new Date('2026-01-02T00:00:00Z')});
   writeFileSync(path.join(dir, ...RUNS, runName('2026-01-03T00:00:00.000Z')), 'not json');
   // a making-of.json as pipeline.mjs writes it: compile is the compile's narrative entries (record.mjs · plainNarrative)
-  writeFileSync(path.join(dir, 'making-of.json'), JSON.stringify({out: '/films/film.mp4', compile: (await recordOf(9)).map(({rawValue, ...e}) => e)}));
+  writeFileSync(path.join(dir, 'making-of.json'), JSON.stringify({made: '2026-01-04T00:00:00.000Z', out: '/films/film.mp4', compile: (await recordOf(9)).map(({rawValue, ...e}) => e)}));
   const text = logText(dir);
-  assert.match(text, /^1\. \d{4}-\d\d-\d\d \d\d:\d\d:\d\d render · \/films\/film\.mp4 · 1 decisions\n2\. 2026-01-02 00:00:00 review · newer · 1 decisions\n3\. 2026-01-01 00:00:00 review · older · 1 decisions\n/);
+  assert.match(text, /^1\. 2026-01-04 00:00:00 render · \/films\/film\.mp4 · 1 decisions\n2\. 2026-01-02 00:00:00 review · newer · 1 decisions\n3\. 2026-01-01 00:00:00 review · older · 1 decisions\n/);
   assert.match(text, /\nstoryreel log --run <n> shows one \(--only decisions \| errors \| steps, --check <verdict>, --all\)\n\(1 run file could not be read and is not listed\)$/);
   assert.match(logText(dir, {run: 1}), /\njudge · decided: It evaluated Rule 0 "the score is above 5": score 9 gt 5 ✓, and chose high\. · read score 9\n/, 'the render\'s compile, stage by stage');
-  assert.match(logText(tempDir('runlog-none', t)), /^no runs yet in .*\.storyreel\/runs: a review saves one \(storyreel review\), a render writes making-of\.json$/);
+  assert.match(logText(tempDir('runlog-none', t)), /^no runs yet in .*\.storyreel\/runs: a review, an apply, a breakdown and a render each leave one$/);
+});
+
+test('a render that failed (making-of.failed.json) is listed with what it failed on; the film\'s own run and the song\'s records are read with the compile', async t => {
+  const dir = tempDir('runlog-render', t), entries = (await recordOf(9)).map(({rawValue, ...e}) => e);
+  writeFileSync(path.join(dir, 'making-of.failed.json'), JSON.stringify({schemaVersion: 1, failed: {error: 'FFmpeg stopped'}, made: '2026-01-02T00:00:00.000Z', pipeline: entries}));
+  writeFileSync(path.join(dir, 'making-of.json'), JSON.stringify({made: '2026-01-01T00:00:00.000Z', out: 'film.mp4', pipeline: entries, compile: entries, music: {beats: {record: entries}, fit: {record: entries}}}));
+  const [failed, render] = listRuns(dir);
+  assert.equal(failed.summary, 'failed: FFmpeg stopped');
+  assert.equal(failed.entries.at(-1).text, 'FFmpeg stopped');
+  assert.equal(logText(dir, {run: 1, only: 'errors'}).split('\n').at(-1), 'FFmpeg stopped');
+  assert.equal(render.entries.length, 4 * entries.length, 'the four records of a render');
 });
 
 test(`the list shows the newest ${RUNS_LISTED} and counts the rest; --all lists every one`, t => {
@@ -99,13 +204,13 @@ test('one run: each stage once — what it wrote, what it decided with the rule 
   assert.match(logText(dir, {run: 1, only: 'errors'}), /\n\(no errors in this run\)$/);
 });
 
-test('every step is said: a write and an update as wrote, a delete as deleted, a key with spaces, a value with a line break, a step it cannot take apart as it is', t => {
+test('every step is said: what a subflow was handed as took, a write and an update as wrote, a delete as deleted, a key with spaces, a value with a line break, a step it cannot take apart as it is', t => {
   const dir = tempDir('runlog-steps', t), step = text => ({type: 'step', text, stageName: 's', stageId: 's'});
-  saveRun(dir, {feature: 'review', record: [{type: 'stage', text: 'Stage 1: s', stageName: 's', stageId: 's'}, step('Step 1: Write my key = 3'), step('Step 2: Update list = [1, 2]'),
+  saveRun(dir, {feature: 'review', record: [{type: 'stage', text: 'Stage 1: s', stageName: 's', stageId: 's'}, step('Input: item = {at, n}'), step('Input: index = 0'), step('Step 1: Write my key = 3'), step('Step 2: Update list = [1, 2]'),
     step('Step 3: Write note = "two\nlines"'), step('Step 4: Delete old'), step('Step 5: Something new')]});
   const text = logText(dir, {run: 1});
-  assert.match(text, /\ns\n {2}wrote my key 3, list \[1, 2\], note "two⏎lines"\n {2}deleted old\n {2}Step 5: Something new$/);
-  assert.equal(logText(dir, {run: 1, only: 'steps'}).split('\n').length, 2 + 6, 'one entry, one line');
+  assert.match(text, /\ns\n {2}took item \{at, n\}, index 0\n {2}wrote my key 3, list \[1, 2\], note "two⏎lines"\n {2}deleted old\n {2}Step 5: Something new$/);
+  assert.equal(logText(dir, {run: 1, only: 'steps'}).split('\n').length, 2 + 8, 'one entry, one line');
 });
 
 test('a stage whose lines carry its id only (a selector\'s) is one stage, shown by its name', t => {
@@ -120,7 +225,7 @@ test('an error is said where it happened; a long run is cut at the line budget a
   const dir = tempDir('runlog-cut', t), many = Array.from({length: LOG_LINES + 5}, (_, k) => ({type: 'stage', text: `Stage ${k + 1}: step ${k}`, stageName: `s${k}`}));
   const id = idOf(saveRun(dir, {feature: 'review', record: [...many, {type: 'error', text: 'it broke: no such file', stageName: 's44'}]}));
   const text = logText(dir, {run: 1});
-  assert.equal(text.split('\n').length, 2 + LOG_LINES + 1);
+  assert.equal(text.split('\n').length, 2 + LOG_LINES + 1, 'the head, the lines, what was left out');
   assert.match(text, new RegExp(`\\n… 5 more: storyreel log --run ${id} --all$`));
   assert.match(logText(dir, {run: 1, all: true}), /\ns44 · error: it broke: no such file$/);
   assert.match(logText(dir, {run: 1, only: 'errors'}), /\ns44: it broke: no such file$/);
@@ -208,4 +313,16 @@ test('the log reads a project whose config no longer loads: the runs in --out, a
   const text = await TOOLS.log.run({cwd: dir});
   assert.match(text, /^1\. .* review · before it broke\n/);
   assert.match(text, /\n\(the config did not load, so these are the runs in .*out: recipe\.json: unexpected token\)$/);
+});
+
+test('--folder names the folder: the log needs no project there; --out reaches the film as it does for every tool; a flag with no folder refuses', async t => {
+  const dir = tempDir('runlog-folder', t), elsewhere = tempDir('runlog-no-project', t);
+  saveRun(dir, {feature: 'breakdown', summary: 'a reference'});
+  assert.match(await TOOLS.log.run({cwd: elsewhere, folder: dir}), /^1\. .* breakdown · a reference\nstoryreel log --run <n> shows one [^\n]*$/, 'no word about a config');
+  assert.match(await TOOLS.log.run({cwd: elsewhere, out: dir}), /^1\. .* breakdown · a reference\n.*\n\(the config did not load, so these are the runs in /, 'with no project, --out is still read, and it says why');
+  const mapped = tempDir('runlog-mapped', t);
+  writeFileSync(path.join(mapped, 'storyreel.config.mjs'), `export default {film: flags => ({storyboard: {title: 'T', scenes: [{id: 'one', silent: [['some words', 1]]}]}, recipe: {story: {kit: 'none'}}, out: flags.out + '/ep1'})};\n`);
+  saveRun(path.join(mapped, 'flagged', 'ep1'), {feature: 'review', summary: 'where the film wrote'});
+  assert.match(await TOOLS.log.run({cwd: mapped, out: 'flagged'}), /^1\. .* review · where the film wrote\n/, 'a config that maps --out reads where it wrote');
+  for (const flag of ['folder', 'out']) await assert.rejects(TOOLS.log.run({cwd: elsewhere, [flag]: 'true'}), new RegExp(`^Error: --${flag} needs a folder \\(--${flag} work/out\\)$`));
 });

@@ -68,18 +68,24 @@ export const SHARE_DEFAULTS: Readonly<{width: number; crf: number; poster: numbe
 export function strip(project: Project, args: {at: string; frames?: number | string; fps?: number | string; width?: number | string}): Promise<{text: string; file: string}>;
 /** A tool: what it runs, what it does, what it takes; `picture` when its result is an image (MCP returns it as one); `load`: 'inputs' when it reads the timed inputs and prepares the film itself (changes), 'config' when it reads the config's film untimed (anchors, script); none: the compiled film. */
 export interface Tool {run(project: Project | ProjectSource | ProjectConfig, args: Record<string, unknown>): Promise<string | {text: string; file: string}>; about: string; args: Record<string, string>; picture?: boolean; load?: 'inputs' | 'config' | 'flags'}
-/** The project's run log: the runs newest first, or one run (`run`: its number or id) read one way (`only`: decisions, errors, steps; default: each stage once), or one verdict's evidence (`check`). It takes the command line's flags as they are: the project (config, cwd) is read only for its out folder, and a config that does not load leaves --out (or ./out) readable. */
-export function log(flags?: {config?: string; cwd?: string; out?: string; run?: number | string; only?: 'decisions' | 'errors' | 'steps'; check?: string; all?: boolean | string; [flag: string]: unknown}): Promise<string>;
+/** The project's run log: the runs newest first, or one run (`run`: its number or id) read one way (`only`: decisions, errors, steps; default: each stage once), or one verdict's evidence (`check`). It takes the command line's flags as they are: `folder` reads that folder with no project; else the project (config, cwd, out) is read only for its out folder, and a config that does not load leaves `out` (or ./out) readable. */
+export function log(flags?: {config?: string; cwd?: string; folder?: string; out?: string; run?: number | string; only?: 'decisions' | 'errors' | 'steps'; check?: string; all?: boolean | string; [flag: string]: unknown}): Promise<string>;
 /** One verdict as a run keeps it: its answer, why, and every value its check measured. */
-export interface RunVerdict {check: string; label: string; verdict: 'passed' | 'failed' | 'not run'; why: string; measured: Record<string, unknown>; summary?: string}
+export interface RunVerdict {check: string; label: string; verdict: 'passed' | 'failed' | 'not run'; why: string; measured: Record<string, unknown>; summary?: string; dropped?: boolean}
 /** One saved run: the feature, when, its summary, the record's entries in words, the verdicts when it kept them. */
-export interface SavedRun {n: number; id: string; feature: string; at: string; summary: string; entries: {type: string; text: string; depth: number; stage: string | null; id: string | null}[]; verdicts?: RunVerdict[]; file: string}
+export interface SavedRun {n: number; id: string; feature: string; at: string; summary: string; omitted?: number; entries: {type: string; text: string; depth: number; stage: string | null; id: string | null}[]; verdicts?: RunVerdict[]; file: string}
 /** Where the runs live inside the out folder, how many it keeps, and how many the list shows. */
 export const RUNS: readonly ['.storyreel', 'runs'];
 export const RUNS_KEPT: number;
 export const RUNS_LISTED: number;
-/** Save a run of a feature (a short lowercase name) into the out folder's runs: its footprintjs record (narrative().getEntries()) kept as words. Returns the file written. */
-export function saveRun(out: string, run: {feature: string; summary?: string; record?: readonly {type: string; text?: string; depth?: number; stageName?: string; stageId?: string}[]; verdicts?: readonly RunVerdict[] | null; at?: Date}): string;
+/** A run to save: a feature (a short lowercase name), its summary, its footprintjs record (narrative().getEntries()) kept as words, its verdicts, and what it failed on when it did. */
+export interface RunToSave {feature: string; summary?: string; record?: readonly {type: string; text?: string; depth?: number; stageName?: string; stageId?: string}[]; verdicts?: readonly RunVerdict[] | null; failure?: string | null; at?: Date}
+/** Save a run into the out folder's runs. Returns the file written; throws when it cannot. */
+export function saveRun(out: string, run: RunToSave): string;
+/** Save a run, never throwing: null, or why it was not saved, for the feature to say beside its answer. */
+export function keepRun(out: string, run: RunToSave): string | null;
+/** The project's out folder: where its renders, their making-of and its runs go. */
+export function outFolderOf(project: {inputs: {out?: string}; cwd: string}): string;
 /** The runs in the out folder, newest first, numbered from 1 (the render's making-of.json there among them). */
 export function listRuns(out: string): SavedRun[] & {unread: number};
 /** The log as text: the list, or one run in a view, or one verdict's evidence. */

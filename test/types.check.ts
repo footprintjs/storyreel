@@ -775,5 +775,7 @@ import type {faintWords as FaintWords} from '../types/sub/review.js';
 export const logged = (save: typeof SaveRun, text: typeof LogText, list: typeof ListRuns) =>
   save('/p', {feature: 'review', summary: 'a run', record: [{type: 'stage', text: 'Stage 1'}]}) + text('/p', {run: 1, only: 'decisions'}) + text('/p', {run: 1, check: 'contrast'}) + list('/p').unread;
 export const closestCall = (f: typeof FaintWords) => f([]).closest?.ratio ?? 0;
+import type {keepRun as KeepRun} from '../types/sub/tools.js';
+export const kept = (keep: typeof KeepRun) => keep('/p', {feature: 'mine', summary: 'a run', failure: 'it broke'})?.length ?? 0;
 // @ts-expect-error only is decisions, errors or steps
 export const badView = (text: typeof LogText) => text('/p', {run: 1, only: 'everything'});
