@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **A review verdict: words stand out.** Every word the review reads is measured on the frame's own pixels, as WCAG
+  measures text: its ink against the ground just around it must stand at least 4.5:1 (3:1 for a large word, about
+  18 pt). A word is judged by its best moment, so one written on or typed in is read once it is whole; a word fading in
+  is not read yet, and one never seen (clipped away) is counted, not read. A faint word is a finding with its ratio and
+  the fix. `contrast` in `REVIEW_CHECKS`; `wordContrast`, `luminance`, `contrastRatio`, `faintWords`, `CONTRAST` and
+  `CONTRAST_VERDICT` on `footprint-storyreel/review`. A film with no words says so (`Words stand out · not run`), so the
+  agent-cost baseline of `storyreel review` and `part` grows by that one line (76 B), deliberately. The other half of the accessibility check (no more than three
+  flashes a second) stays in the backlog.
+
 - **A review verdict: every moment draws the same.** Everything after the drawing (a piece re-rendered alone, a still, a
   part, the studio's frame) trusts that a frame is a pure function of time. StoryReel's own kits are tested for it; a
   film's own kits were not. `reviewPart` now draws eight of its samples again, last first, and fails when one gives

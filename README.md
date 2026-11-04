@@ -772,10 +772,11 @@ film.progression;   // [{kind: 'not-carried', where: 'stage refused', next: 'sta
   and, under `compile`, the compile stage by stage (the narrative of its record, below). A version made
   for a platform says so: `"version": {"format": "vertical", "motionBlur": 4, "captionFiles": ["captions.vtt"]}`.
 
-## The verdicts: no slideshow, parts that hold, the same picture, numbers with a source
+## The verdicts: no slideshow, parts that hold, the same picture, words that stand out, numbers with a source
 
 Some questions about a film have a yes or a no: is it a slideshow? Does the drawing hold together? Does each moment
-draw the same picture every time? Does every number on screen say where it comes from? StoryReel answers each with a **verdict** — `passed`, `failed`, or
+draw the same picture every time? Can every word be read against what is behind it? Does every number on screen say
+where it comes from? StoryReel answers each with a **verdict** — `passed`, `failed`, or
 `not run` — decided with footprintjs's `decide()`, so the record of the run that asked keeps *why*: the rule that
 matched, the values it read and the thresholds it compared them with. A check that cannot run (no parts, no facts)
 says `not run` and why; it never passes.
@@ -787,6 +788,7 @@ console.log(r.verdictText);
 // No slideshow · passed: the shots move inside themselves: most of their running time is never held still for more than 3 s (32 % of 27.8 s dead, 63 % still; held still: stage rule 75 %)
 // Drawn parts hold together · not run: no kit on screen gives its parts (parts(t))
 // Every moment draws the same · passed: every moment drawn again, in the other order, gives the same picture (8 moments drawn again)
+// Words stand out · passed: every word read stands at least 4.5:1 against what is behind it (3:1 when large) (70 words measured)
 // Every number has a source · not run: the storyboard names no facts, so the numbers outside example scenes cannot be checked (4 numbers on screen: 0 sourced, 0 in example scenes, 4 unchecked)
 r.record.filter(e => e.type === 'condition').map(e => e.text);
 // [Condition]: It evaluated Rule 2 "the storyboard names no facts, so the numbers outside example scenes cannot be checked": factsGiven false eq false ✓, open 4 gt 0 ✓, and chose claims/not run.
@@ -882,6 +884,23 @@ from the frame before.
 import {purityOf} from 'footprint-storyreel/review';
 import {frameHashes} from 'footprint-storyreel/pins';
 purityOf(film, {times: [1, 2, 3], hashes: frameHashes(film, {times: [1, 2, 3], width: 160})});   // {moments: 3, changed: []}
+```
+
+### Words stand out
+
+A word the eye cannot pick out of what is behind it is not read, and a film watched on a phone in the sun, or by
+someone who sees less contrast, loses it first. The review measures every word it reads on **the frame's own
+pixels**, as WCAG measures text: the ground is the median of a ring just outside the word's box, the ink the pixel
+inside it furthest from the ground (at the 95th percentile, so one stray pixel never decides), and the ratio
+`(lighter + 0.05) / (darker + 0.05)` must be at least **4.5:1**, or **3:1** for a large word (a box at least 1.6 % of
+the frame's height: about 18 pt). A word fading in (alpha under 1) is on its way, not read yet; a word is judged by
+its **best** moment over the part, so one written on stroke by stroke or typed in is read once it is whole; one with
+no ink at all (clipped away, not revealed yet) is counted as never seen, not read. A faint word is a finding with its
+ratio and the fix.
+
+```js
+import {wordContrast, luminance, contrastRatio, CONTRAST} from 'footprint-storyreel/review';
+contrastRatio(luminance(0x76, 0x76, 0x76), 1);   // 4.54: #767676 on white just reads
 ```
 
 ### Drawn parts hold together
@@ -2200,7 +2219,7 @@ run it.
   A check that throws, or answers with anything else (a promise, no list, a hit without its time or its words),
   fails the review with one error naming every check that failed, so a review that returns has run every check it
   picked. Three checks answer with a verdict — no slideshow, drawn parts that hold together, every number with a
-  source (`r.verdicts`, `r.verdictText`; [below](#the-verdicts-no-slideshow-parts-that-hold-the-same-picture-numbers-with-a-source)).
+  source (`r.verdicts`, `r.verdictText`; [below](#the-verdicts-no-slideshow-parts-that-hold-the-same-picture-words-that-stand-out-numbers-with-a-source)).
 - **The same, from the command line — and as a skill for agents.** `npx storyreel timeline | review | part | anchors |
   still | sheet | strip --scene <id>` (`anchors`: [every phrase, checked at once](#when-the-words-change-anchors);
   `script`: [the film's script as JSON, for a voice step](#one-script-moments-and-speakers-in-the-narration);

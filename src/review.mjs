@@ -38,6 +38,7 @@ import {verdictChart, verdictsText, readVerdict} from './verdict.mjs';
 import {slideshowOf, pacedRule, slideshowVerdict} from './slideshow.mjs';
 import {geometryOf, breakText, GEOMETRY_VERDICT} from './geometry.mjs';
 import {purityOf, PURITY_FINDING, PURITY_VERDICT} from './purity.mjs';
+import {wordContrast, needs, faintWords, contrastText, CONTRAST_VERDICT} from './contrast.mjs';
 import {claimsCount, unsourcedClaims, claimText, drawnClaims, drawnLines, lingeringExamples, lingerText, HOLD, CLAIMS_VERDICT} from './claims.mjs';
 import {wordsIn} from './reading.mjs';
 import {isDecorative, isCode} from './decorative.mjs';
@@ -52,8 +53,24 @@ import {isDecorative, isCode} from './decorative.mjs';
  * this frame is painted (it paints synchronously), then put back.
  */
 export function wordsAt(film, t, {layout = null} = {}) {
+  return readFrame(film, t, {layout}).words;
+}
+
+/** The frame at t read once: its words (wordsAt) and the canvas it was painted on, its pixels the finished frame (until the next read). */
+function readFrame(film, t, {layout = null} = {}) {
   const canvas = readingCanvas(layout?.width ?? 1600, layout?.height ?? 900), ctx = canvas.getContext('2d');
-  return readWords(canvas, () => { if (layout) layout.picture(ctx, t); else film.frame(ctx, t); });
+  return {words: readWords(canvas, () => { if (layout) layout.picture(ctx, t); else film.frame(ctx, t); }), canvas};
+}
+
+/**
+ * The contrast of each word of a frame, measured on its pixels (contrast.mjs): each word fully drawn (alpha 1) and not
+ * decorative, against the ground around it: [{text, box, ratio, needs, large}].
+ */
+function wordContrasts(words, canvas) {
+  const shown = words.filter(w => w.alpha >= .999 && !w.decorative);
+  if (!shown.length) return [];
+  const {width, height} = canvas, data = canvas.getContext('2d').getImageData(0, 0, width, height).data;
+  return shown.flatMap(w => { const c = wordContrast(data, width, height, w.box); return c ? [{text: w.text, box: w.box, ratio: c.ratio, needs: needs(c), large: c.large}] : []; });
 }
 
 /**
@@ -355,6 +372,17 @@ export const REVIEW_CHECKS = Object.freeze({
     },
     summary: m => `${m.moments} moments drawn again${m.changed ? `; ${m.changed} gave another picture, first at ${clockTenths(m.at[0])}` : ''}`,
     verdict: PURITY_VERDICT},
+  // Every word read stands out from what is behind it (contrast.mjs): WCAG's 4.5:1, 3:1 for large words, measured on
+  // the frame's own pixels at every sample.
+  contrast: {label: 'Words stand out', why: 'the part draws words', notRun: 'the part draws no word to read',
+    when: s => s.facts.words > 0,
+    measure: ({samples}) => {
+      const {words, low, unseen} = faintWords(samples), lowest = low.reduce((m, w) => (m === null || w.ratio < m.ratio ? w : m), null);
+      return {measured: {words, unseen, low: low.length, lowest: lowest ? {text: lowest.text, ratio: lowest.ratio, needs: lowest.needs, t: lowest.t} : null},
+        hits: low.map(w => ({kind: 'contrast', t: w.t, what: contrastText(w)}))};
+    },
+    summary: m => `${m.words} word${m.words === 1 ? '' : 's'} measured${m.unseen ? ` (${m.unseen} never seen: clipped or not revealed)` : ''}${m.low ? `; ${m.low} too faint, the faintest "${m.lowest.text}" ${m.lowest.ratio}:1 at ${clockTenths(m.lowest.t)}` : ''}`,
+    verdict: CONTRAST_VERDICT},
   // Every number on screen has a source (claims.mjs): a fact the storyboard names, or an example scene. The numbers are
   // the film's declared ones on screen during the part (their [at, to] meets it) and every number the samples' words
   // draw that none of them holds (claims.mjs · drawnClaims: the words read once, for every check — no second drawing).
@@ -395,12 +423,13 @@ function frozenWords(film, f) {
 }
 
 const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes', hook: 'no hook', 'text-density': 'too much to read', silences: 'no breath', stale: 'nothing new', loop: 'the loop jumps', 'frozen-voice': 'a freeze over the voice',
-  slideshow: 'held still', geometry: 'the drawing breaks', pure: 'drawn differently twice', claims: 'no source', 'example-lingers': 'example data over real numbers'};
+  slideshow: 'held still', geometry: 'the drawing breaks', pure: 'drawn differently twice', contrast: 'too faint to read', claims: 'no source', 'example-lingers': 'example data over real numbers'};
 /** What a verdict check's scope keeps for itself: never a measured value's name. */
 const MACHINERY = new Set(['hits', 'failed', 'measured', 'verdict', 'why', 'summary']);
 /** The findings as lines: "1:21.5–1:23.0 chapters · under the captions: \"requests in\"". */
 export {verdictsText};
 export {purityOf, PURITY_VERDICT} from './purity.mjs';
+export {wordContrast, luminance, contrastRatio, faintWords, CONTRAST, CONTRAST_VERDICT} from './contrast.mjs';
 export const findingsText = findings => findings.map(f => `${clockTenths(f.from)}–${clockTenths(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}`).join('\n');
 
 /** The findings that are advice, not errors (a held title can be right): listed after the rest in a summary. */
@@ -515,11 +544,13 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
     // A mark with no letter or digit ("-", ".") has a short ink box, however big its type: it is kept apart (`marks`), for
     // the claims check to join to the digits it touches (claims.mjs · drawnLines), and is no word for the other checks.
     const mark = w => !/[\p{L}\p{N}]/u.test(w.text);
-    const sampleAt = t => {
-      const zoomed = (film.focusAt?.(t)?.z ?? 1) > 1.001 || (film.cameraAt?.(t)?.z ?? 1) > 1.001, drawn = wordsAt(film, t, {layout: framed}).filter(w => w.alpha >= minAlpha && shown(w, zoomed));
-      return {t, words: drawn.filter(legible), marks: drawn.filter(w => !legible(w) && mark(w))};
+    // A sample's words; a review sample's also measured for contrast on the very pixels the frame drew (`contrasts`).
+    const sampleAt = (t, measure = false) => {
+      const zoomed = (film.focusAt?.(t)?.z ?? 1) > 1.001 || (film.cameraAt?.(t)?.z ?? 1) > 1.001, frame = readFrame(film, t, {layout: framed});
+      const drawn = frame.words.filter(w => w.alpha >= minAlpha && shown(w, zoomed)), words = drawn.filter(legible);
+      return {t, words, marks: drawn.filter(w => !legible(w) && mark(w)), ...(measure ? {contrasts: wordContrasts(words, frame.canvas)} : {})};
     };
-    review.samples = times.map(sampleAt);
+    review.samples = times.map(t => sampleAt(t, true));
     // frameHashes keys a moment by its millisecond, and the film's end can sit a hair under its own (21.2999…97 is
     // 21.300): the hashes are keyed by each sample's own time, so a check reads hashes[t].
     // The same drawing gives each sample's grey levels (finished.mjs · greyOf), for the slideshow check.
