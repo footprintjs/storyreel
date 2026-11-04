@@ -152,7 +152,8 @@ test('keepRun never throws: it answers null, or why the run was not saved; a fai
   assert.equal(withRecord(hostile, trace), hostile);
   assert.equal(keepFailedRun(dir, 'review', hostile), null);
   assert.equal(keepFailedRun(dir, 'review', bare), null, 'one that has no words is still a run');
-  assert.match(listRuns(dir)[0].summary, /^failed: something that cannot be said in words was thrown$/);
+  // Runs saved in one millisecond have no newest among them, so look for this one by what it says.
+  assert.ok(listRuns(dir).some(r => /^failed: something that cannot be said in words was thrown$/.test(r.summary)));
 });
 
 test('the list: newest first, numbered, each with its summary and how many decisions; the render\'s making-of.json among them, read from its compile record', async t => {
