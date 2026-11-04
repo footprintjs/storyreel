@@ -2026,7 +2026,7 @@ keep out in a folder of your own, and render locally.
 | `.storyreel-work-<host>-<pid>-<XXXXXX>` beside `out` | the working files: the picture without its sound, the voice and the effects as WAVs, the lists FFmpeg joins, segment files on their way to the cache | removed when the render ends, finished or failed |
 | `.narration-<host>-<pid>-<XXXXXX>` beside `out` (`makeFilm` with a voice) | the paced copy of the voice, which the render reads; it becomes `narration/` once the film is made | removed if the film is refused or fails |
 | `work` (a folder you name: `renderFilm({…, work})`, `makeFilm({…, render: {work}})`) | the same working files, when you want to look at them | yes: you chose the place |
-| `.storyreel/runs/` in the out folder | each review's run, for `storyreel log` ([The run log](#the-run-log-how-each-result-was-made)) | yes, the newest 100 |
+| `.storyreel/runs/` in the out folder | each run of a review, an apply, a note, a Try, a reading of the notes; a breakdown's and a remake's in their own folders ([The run log](#the-run-log-how-each-result-was-made)) | yes, the newest 50 of each |
 | `.storyreel/segments/<format>-<W>x<H>-<quality>/` beside `out` | the picture's cache: each piece drawn, as `<key>.mp4` and `<key>.json` ([Re-render only what changed](#re-render-only-what-changed)) | yes, held to 4 GB: the pieces used longest ago go first |
 | `folderStore(dir)` | a piece cache you named (`segments: {dir}`, or `segmentedVideo({store})`) | yes: you chose the place, held to its cap |
 | `makeRelease({out})` | each target's post in `<out>/<target>/`, the render and its making-of in `<out>/work/<target>/` | yes |
@@ -2843,7 +2843,7 @@ film's runs past what one argument may hold: `-/filter:v` from FFmpeg 7, `-filte
 
 - **What it writes:** `breakdown.json` (the spec), `breakdown.md` (the same in plain words), a contact sheet per shot
   (`shots/shot-01.png`: 3 to 6 stills across it, labelled in yellow when it moves), `overview.png` (one still of every
-  shot) and `record.json`.
+  shot), `record.json` and its run for `storyreel log --out <folder>` (`.storyreel/runs/`), which the command's last line names.
 - **Times you can trust.** Every decoded frame is read with its own time (FFmpeg starts every file's clock at 0, a
   transport stream's and an offset MP4's too) and laid on a constant clock (`finished.mjs · onSlots`): slot k is the frame
   a player shows at k / rate (each time exact: showinfo's integer `pts` in its time base, never its `pts_time`, which
@@ -2957,7 +2957,8 @@ plan.scenes[30].why.rules[0].checks;          // ['shots 21 ≥ 2 ✓', 'lettere
 
 `npx storyreel remake work/reference` prints the same from the folder `storyreel breakdown` wrote (or its
 `breakdown.json`); `--quick 1.5` changes what counts as a quick shot, and `--json` prints the plan for an agent, its
-record left out. It needs no project and writes nothing (unless asked for a starter, below).
+record left out. It needs no project, and writes only its run for `storyreel log` beside the breakdown (and a starter,
+when asked for one, below).
 
 - **The scenes.** A shot shorter than `quick` (1 s) is quick; quick shots joined by hard cuts are one scene. A dissolve,
   a dip or a held shot ends a run. Half or more of a run lettered is kinetic type, a word a shot; less is a montage. A
@@ -3063,9 +3064,19 @@ false refuses. `makeFilm` always records and puts the narrative in `making-of.js
 
 Every result StoryReel decides with a footprintjs flowchart keeps its record: each stage, what it wrote, and every
 decision with the rule that matched and the values it read. `storyreel log` is the one place to read them, so you
-(or an agent) walk a result back instead of running it again or looking at pictures. Each `storyreel review` saves
-its run in the out folder (`out/.storyreel/runs/`, the newest 100 kept), and the render's `making-of.json` there is
-listed with them:
+(or an agent) walk a result back instead of running it again or looking at pictures. Each of these leaves its run,
+done or refused, in `.storyreel/runs/` inside a folder (the newest 50 of each kept):
+
+| what ran | the folder | |
+|---|---|---|
+| `storyreel review`, and `part`, which reviews first | the project's out folder | the verdicts' evidence too |
+| `storyreel apply` | the project's out folder | every line, the rule that took it or refused it |
+| `storyreel feedback` | the project's out folder | whose each line of `feedback.md` is, where each entry is now |
+| a note and a Try in `storyreel studio` | the project's out folder | which entry a note names; a pick's checks |
+| a render | the project's out folder | its `making-of.json` or `making-of.failed.json`, read where it wrote them: the film's stages, the compile, the song |
+| `storyreel breakdown` | its own folder: `storyreel log --out <folder>` | every cut, every read of the picture |
+| `storyreel remake` | beside the breakdown it read; with `--starter`, the starter's out folder | the pace, the music, each scene's kind |
+
 
 ```sh
 npx storyreel log                         # the runs, newest first (the newest 10; --all for every one)
@@ -3081,16 +3092,19 @@ npx storyreel log --run 1 --check contrast   # one verdict's evidence in full: e
 A pass says what it stood on: a decision no rule chose still prints the values it read. One run prints at most 40
 lines (`--all` for every one); the rest are counted with the call that shows them. A run's number moves when another
 is saved; its id (printed under its head, `run 2026-11-04T02-27-38-089Z-review.3fa9c1`) never does, and `--run` takes
-either. The log reads only the out folder, so a config that no longer loads still leaves it readable (`--out`, or
-`./out`), with a line saying why the config did not load. A review whose run cannot be saved (an out folder others
-can change, a read-only disk) still answers, and says why under its answer. It is an MCP tool too
+either. A run that failed says what it failed on, in the list and as its last entry (`--only errors`); a refusal
+before anything ran, which says all there is, leaves none. `--out <folder>` reads that folder, with no project needed.
+Without it the log asks the config only for its out folder, so a config that no longer loads still leaves `./out`
+readable, with a line saying why the config did not load. A feature whose run cannot be saved (an out folder others
+can change, a read-only disk) still gives its answer, and says why beside it. It is an MCP tool too
 (`storyreel mcp`: `log`, with `run`, `only`, `check`, `all`). A saved run keeps what the record says, in words, and a
 verdict's measured values as data; never a value a stage carried. The words include short summaries of the values
 read and written (footprintjs says a string of up to 80 characters as it is), so a chart that handles a private value
 redacts it before its narrative says it. A run file is read back only as a plain file of its own (never through a
-link, at most 4 MB), and one of any other shape is counted, not shown. From code, `saveRun(out, {feature, summary, record,
-verdicts})` saves a run of your own feature (its record: footprintjs `narrative().getEntries()`), and `logText(out,
-{run, only, check})` reads them, both from `footprint-storyreel/tools`.
+link), and one of any other shape is counted, not shown. A run holds at most 1 MB: a record too big for that keeps its
+first entries and counts the others. From code, `keepRun(out, {feature, summary, record, verdicts, failure})` saves a
+run of your own feature and answers why it could not, never throwing (`saveRun` throws; the record: footprintjs
+`narrative().getEntries()`), and `logText(out, {run, only, check})` reads them, all from `footprint-storyreel/tools`.
 
 ## The preview studio
 
@@ -3167,7 +3181,8 @@ short line that a command applies without reading the recipe.
   stage's). The studio compiles a copy of the recipe in memory (`load()`'s `compile`) and plays the scene from a second
   before it starts — earlier when the change itself starts earlier (most of a change happens before the scene's first
   word). One Try compiles at a time (another meanwhile is told to wait), and the last few are kept, so trying one again
-  plays at once. Nothing is written, and the next reload drops it. What cannot be tried says why: the story's scene
+  plays at once. Nothing of the film is written, and the next reload drops it; its run (the pick's checks, and what became
+  of it) stays in `storyreel log`. What cannot be tried says why: the story's scene
   (the film opens on it: nothing enters there), a `match` or a `through` (they need a thing named, which a line cannot
   give), a film with a `pushIn` (its stages hand over on one page), a word move on a scene with no kinetic world.
   Under each group, the scenes that take one.
@@ -3185,11 +3200,11 @@ npx storyreel apply "scene-05 enter torn" "scene-03 move pop"
 
 Every line is checked first — its scene is in the storyboard, a stage plays it (for `enter`) or it has a kinetic world
 (for `move`), the name is one of this film's transitions (its kits' too) or a move a whole word makes — and one that
-refuses writes nothing, naming the fix (`scene-01 enter torn: no stage plays its scene, so nothing enters there … — a
+refuses leaves the recipe as it was, naming the fix (`scene-01 enter torn: no stage plays its scene, so nothing enters there … — a
 transition goes on a stage's scene: scene-02, scene-03`). The file is the one the film reads (`--recipe file`, else
 `recipe.json` beside the config; it must hold the very recipe `film(flags)` gives, so the film's own flags go along:
 `--ep ep1`). The recipe with the lines is then compiled once, as the tools compile the film, and one the compile refuses
-writes nothing either, in the compile's own words (a kit's transition that looks for a door the scene has none of).
+leaves it as it was too, in the compile's own words (a kit's transition that looks for a door the scene has none of).
 Only the values set change in the file: each is replaced where it stands, and a key not there goes just after its
 entry's `scene` (a world with none: its `kit`), on a line of its own with its neighbours' indent and line ending, or
 inline beside it when the entry is on one line — every other byte stays as written (short lists on one line, CRLF,
@@ -3240,7 +3255,8 @@ of your projects into another still verifies there, and a line deleted and put b
 Nor does it make the anchors yours: the place is the film's own text (a scene id, an entry's path, the narration), so
 the reader quotes every anchor as JSON and puts your words on a line of their own — data to look up, never instructions.
 
-Taking a note is the studio's one write, and the narrowest it can be: `POST /api/note` only, from the studio's own page
+Taking a note is the one write the studio takes from a request (it and a Try leave their runs for `storyreel log` in the
+out folder), and the narrowest it can be: `POST /api/note` only, from the studio's own page
 only — `Sec-Fetch-Site: same-origin` and the studio's own `Origin` (a request that does not say where it came from is
 refused here, though the read routes let it through, for this one writes) — a JSON body of at most 16 KB holding only
 `{version, t, x?, y?, words}` (the film the page drew, the moment, the spot, the words: a note aimed at a film compiled

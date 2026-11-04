@@ -46,6 +46,11 @@ compile runs at a time (another Try meanwhile: 409); the last four picks compile
 version, so a pick tried again is free; the one tried last is the one drawn, and a reload drops them all.
 `held()` says what is kept.
 
+Runs: a note and a Try each leave their run for `storyreel log` in `load()`'s `out` (the project's out folder; no `out`,
+no run), through `runlog.mjs · keepRun`, bounded as every run is and never in place of the answer; one that cannot be
+saved is said in the studio's own log. A Try refused by a check or by the compile leaves one too; a pick only looked
+at (`/api/pick`) does not.
+
 The one write — a note, `POST /api/note` (any other method there: 405, `Allow: POST`; a POST anywhere else: 405) —
 is the narrowest the page needs. Refused (403) unless `Sec-Fetch-Site` is `same-origin`: here a request that does not
 say is refused too, unlike the read routes, because it writes (a current browser always says; a script outside one
@@ -103,7 +108,8 @@ world whose words the scene says: the story's (its `scene`), or a world stage's 
 not be the stage's; a world with none goes by its stage's).
 
 Apply: `storyreel apply` (apply-cli.mjs) checks every line (apply.mjs), then compiles the recipe with them once, as
-the tools compile the film (tools.mjs · compileProject): any refusal and nothing is written. The text changes only
+the tools compile the film (tools.mjs · compileProject): any refusal and the recipe is not changed. Done or refused, its
+run stays for `storyreel log` in the project's out folder (runlog.mjs · keepRun). The text changes only
 where a value is set — `spliceJson` replaces the value's own text, or puts a key not there just after its entry's
 `scene` (else `kit`), on a line of its own with its neighbours' indent and line ending, or inline beside it — so a
 file written by hand, by prettier, with CRLF or tabs or on one line keeps every other byte. With `next enter iris`,

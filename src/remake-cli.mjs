@@ -2,12 +2,14 @@
  * storyreel remake <breakdown.json | its folder> [--quick s] [--json] [--starter folder]: a draft plan for a film made
  * like the reference (remake.mjs · remakePlan), printed in plain words for a person to approve, or as JSON for an agent;
  * with --starter, the approved plan made into a starter film's folder (remake-starter.mjs · remakeStarter), which never
- * replaces a file already there. It needs no project. Exit 0 with the plan, 2 when the command line, the breakdown or the
- * folder is wrong.
+ * replaces a file already there. It needs no project. Its run is kept for `storyreel log` (runlog.mjs): beside the
+ * breakdown it read, or in the starter's out folder, where the log of that film finds it. Exit 0 with the plan, 2 when
+ * the command line, the breakdown or the folder is wrong.
  */
 import {lstatSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {makeFolder, writeOutput} from './files.mjs';
+import {keepRun, keepFailedRun} from './runlog.mjs';
 
 export const REMAKE_USAGE = `storyreel remake <breakdown.json | its folder> [--quick s] [--json] [--starter folder]   make one like it: a draft plan from a breakdown (storyreel breakdown) — its scenes, pace, entrances and music, each with its why, and what is still to give; it needs no project, and writes only a starter
              --quick    seconds: a shot shorter than this is quick, and quick shots joined by hard cuts are one scene (1)
@@ -32,6 +34,9 @@ function writeStarter(folder, files) {
   const made = makeFolder(folder);
   for (const [name, text] of Object.entries(files)) writeOutput(path.join(made, name), text);
 }
+
+/** The folder of the breakdown named: the folder itself, or the one its file is in. */
+const breakdownFolder = given => { try { return statSync(given).isDirectory() ? given : path.dirname(given); } catch { return path.dirname(given); } };
 
 /** The breakdown's spec: the file named, or breakdown.json in the folder named. */
 function readBreakdown(given) {
@@ -60,18 +65,28 @@ export async function remakeCommand(args) {
   }
   if (given === null) return refuse('name the breakdown: its breakdown.json, or the folder storyreel breakdown wrote it in');
   const {remakePlan, remakePlanText} = await import('./remake.mjs');
+  /** The plan's run kept in `folder`; one that cannot be saved is said apart from the plan, which an agent may be reading as JSON. */
+  const keep = (folder, plan) => {
+    const unsaved = keepRun(folder, {feature: 'remake', summary: `${plan.scenes.length} scene${plan.scenes.length === 1 ? '' : 's'} from ${path.basename(path.resolve(given))}${starter === null ? '' : `, a starter film in ${starter}`}`, record: plan.record});
+    if (unsaved) console.error(`storyreel remake: ${unsaved}`);
+  };
+  let plan = null;
   try {
-    const plan = await remakePlan(readBreakdown(given), quick === undefined ? {} : {thresholds: {quick: Number(quick)}});
+    plan = await remakePlan(readBreakdown(given), quick === undefined ? {} : {thresholds: {quick: Number(quick)}});
     const {record, ...data} = plan;
-    if (starter === null) { console.log(json ? JSON.stringify(data, null, 2) : remakePlanText(plan)); return 0; }
+    if (starter === null) { keep(breakdownFolder(given), plan); console.log(json ? JSON.stringify(data, null, 2) : remakePlanText(plan)); return 0; }
     const {remakeStarter} = await import('./remake-starter.mjs');
     const made = remakeStarter(plan);
     writeStarter(starter, made.files);
+    keep(path.join(starter, 'out'), plan);   // the starter's config names out: its own `storyreel log` finds the plan that made it
     const files = Object.keys(made.files);
     console.log(json ? JSON.stringify({...data, starter: {folder: starter, files, give: made.give, notes: made.notes}}, null, 2)
       : `${remakePlanText(plan)}\n## A starter film, in ${starter}\n\n${files.join(', ')}: it renders as it is, every card saying what goes there. In that folder, npx storyreel sheet shows a still of each scene and node render.mjs the whole film; its README.md says what is still to give, and where.\n`);
     return 0;
   } catch (e) {
+    // a plan refused on its way, or one made that no starter could be made of: the run so far stays beside the breakdown
+    if (plan && e && typeof e === 'object' && !e.record) e.record = plan.record;
+    keepFailedRun(breakdownFolder(given), 'remake', e);
     console.error(`storyreel remake: ${String(e?.message ?? e).replace(/^remake(Plan|Starter): /, '')}`);
     return 2;
   }

@@ -2,10 +2,22 @@
 
 ## Unreleased
 
+- **Every feature now leaves its run for `storyreel log`, done or refused.** Until now only a review did. Now `apply`,
+  `feedback`, a note and a Try in the studio save theirs in the project's out folder. A breakdown saves in its own
+  folder, and its last line says how to read it (`storyreel log --out <folder>`, no project needed). A remake saves
+  beside the breakdown it read, or with `--starter` in the starter's out folder, where that film's own log finds it. A
+  render's listing now reads the film's own stages and the song's records as well as the compile, and a failed render's
+  `making-of.failed.json` says what it failed on. A run that failed keeps its record so far and says what it failed
+  on, in the list and as its last entry; a refusal before anything ran leaves none. A feature whose run cannot be saved
+  still gives its answer and says why beside it (`keepRun`, from `footprint-storyreel/tools`, never throws).
+  **Changed:** a project keeps the newest 50 runs of each feature, not 100 in all, so many notes never push out a
+  breakdown. A run holds at most 1 MB: a bigger record keeps its first entries and counts the others. `storyreel
+  apply`'s refusal now ends "The recipe was not changed." instead of "Nothing was written.", because the run is written.
+  A studio's `load()` may give `out`, where its runs are kept (none: not kept).
 - **`storyreel log`: one place to read how a result was made.** Records were kept in several places (a render's
   `making-of.json`, a review's record in memory, a breakdown's `record.json`), and nothing read them in one place. Now each
-  `storyreel review` saves its run in the out folder (`out/.storyreel/runs/`, the newest 100 kept), and `storyreel log`
-  lists the runs newest first, the render's `making-of.json` among them. `--run 1` shows one run in at most 40 lines, each
+  `storyreel review` saves its run in the out folder (`out/.storyreel/runs/`), and `storyreel log` lists the runs newest
+  first, the render's `making-of.json` among them. `--run 1` shows one run in at most 40 lines, each
   stage once with what it wrote and what it decided. Each decision shows the rule that matched and the values it read,
   so a pass that no rule chose still says what it stood on. `--only decisions | errors | steps` narrows the view, and
   `--check contrast` (or any verdict's name) prints everything that check measured, one item a line. The list shows the

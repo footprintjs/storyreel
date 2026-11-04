@@ -36,6 +36,7 @@ import {contactSheet} from './sheet.mjs';
 import {GRID, readFootage, cutsAndFades, gradualCandidates, shotMotion, energyCurve} from './footage.mjs';
 import {eachStill, readLettering, cornerMarks, logoCandidates, lettering} from './stills.mjs';
 import {breakdownText} from './breakdown-text.mjs';
+import {keepRun, keepFailedRun, withRecord} from './runlog.mjs';
 import {decideWith, decideAll, decideMount, decided} from './decisions.mjs';
 import {safeBeats, musicAt, likelyTempi, sameTempo} from './beats.mjs';
 
@@ -646,13 +647,14 @@ export async function breakdown(videoFile, options = {}) {
   run.o.out = securePath(run.o.out);
   refuseFolders(['breakdown.json', 'breakdown.md', 'record.json', 'overview.png'].map(f => path.join(run.o.out, f)));
   makeFolder(run.o.out);
-  const trace = narrative();
+  const trace = narrative(), name = path.basename(String(videoFile));
   try { await breakdownChart(run).recorder(trace).run(); } catch (error) {
-    if (error && typeof error === 'object' && !('record' in error)) error.record = recordOf(trace);
+    keepFailedRun(run.o.out, 'breakdown', withRecord(error, trace), name);
     throw error;
   }
   const record = recordOf(trace), files = {json: path.join(run.o.out, 'breakdown.json'), md: path.join(run.o.out, 'breakdown.md'), record: path.join(run.o.out, 'record.json'),
     overview: path.join(run.o.out, 'overview.png'), sheets: run.sheets.shots.map(f => path.join(run.o.out, f))};
   writeOutput(files.record, JSON.stringify(record, null, 2));
-  return {spec: run.spec, text: run.text, record, files};
+  const unsaved = keepRun(run.o.out, {feature: 'breakdown', summary: `${name}: ${run.spec.shots.length} shots`, record});
+  return {spec: run.spec, text: unsaved ? `${run.text}\n(${unsaved})` : run.text, record, files};
 }

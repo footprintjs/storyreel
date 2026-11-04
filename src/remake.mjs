@@ -23,6 +23,7 @@ import {BEATS} from './beats.mjs';
 import {MUSIC} from './music.mjs';
 import {QUIET} from './record.mjs';
 import {remakePlanText} from './remake-text.mjs';
+import {withRecord} from './runlog.mjs';
 
 export {remakePlanText};
 
@@ -228,6 +229,6 @@ export async function remakePlan(breakdown, {thresholds} = {}) {
   chart = chart.addSubFlowChartNext('kinds', decideAll(KIND(t), 'scenes'), 'decide each scene', decideMount('sceneMeasures', 'sceneKinds'))
     .addFunction('plan', s => planStage(s, run), 'plan', 'Each scene\'s entrance, its bars under music first, and what is still to give');
   const trace = narrative();
-  await chart.setLogger(QUIET).build().recorder(trace).run();
+  try { await chart.setLogger(QUIET).build().recorder(trace).run(); } catch (e) { throw withRecord(e, trace); }
   return {...run.plan, record: JSON.parse(JSON.stringify(trace.getEntries().map(({rawValue, ...entry}) => entry)))};
 }

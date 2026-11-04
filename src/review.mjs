@@ -35,6 +35,7 @@ import {greyOf} from './finished.mjs';
 import {partScenes, partWindow, partTimeline, timelineText} from './render.mjs';
 import {clockTenths} from './clock.mjs';
 import {verdictChart, verdictsText, readVerdict} from './verdict.mjs';
+import {withRecord} from './runlog.mjs';
 import {slideshowOf, pacedRule, slideshowVerdict} from './slideshow.mjs';
 import {geometryOf, breakText, GEOMETRY_VERDICT} from './geometry.mjs';
 import {purityOf, PURITY_FINDING, PURITY_VERDICT} from './purity.mjs';
@@ -632,11 +633,13 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
   }
   const built = chart.end().addFunction('report', async s => { findings = spans(film, s.hits ?? [], every, lasting); s.findings = findings.length; }, 'report', 'The findings as spans, each with its scene')
     .setLogger({info: heard, warn: heard, error: heard, log() {}, debug() {}}).build();
-  const trace = narrative(), run = await built.recorder(trace).run();
+  const trace = narrative();
+  let run;
+  try { run = await built.recorder(trace).run(); } catch (e) { throw withRecord(e, trace); }
   const state = run?.state ?? run?.sharedState ?? {}, failed = [...(state.failed ?? [])], ran = new Set(state.ran ?? []);
   // A check picked that neither ran nor failed was lost on the way (its result never reached the review): a failure too.
   for (const id of review.picked) if (!ran.has(id) && !failed.some(f => f.id === id)) failed.push({id, message: `it did not finish${engine.length ? ` (the engine: ${engine.join('; ')})` : ''}`});
-  if (failed.length) throw new Error(`review: ${failed.length > 1 ? `${failed.length} checks` : 'a check'} failed, so the review is incomplete — ${failed.map(f => `"${f.id}": ${f.message}`).join('; ')}`);
+  if (failed.length) throw withRecord(new Error(`review: ${failed.length > 1 ? `${failed.length} checks` : 'a check'} failed, so the review is incomplete — ${failed.map(f => `"${f.id}": ${f.message}`).join('; ')}`), trace);
   // Every verdict check answers, in the order the checks are listed: one that did not fit the part is not run, never passed.
   const answered = new Map((state.verdicts ?? []).map(v => [v.check, v]));
   const verdicts = Object.entries(checks).filter(([, c]) => typeof c.find !== 'function')

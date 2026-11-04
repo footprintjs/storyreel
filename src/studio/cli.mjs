@@ -17,7 +17,7 @@
 import {existsSync, realpathSync, watchFile, unwatchFile} from 'node:fs';
 import path from 'node:path';
 import {once} from 'node:events';
-import {CONFIG, readInputs, loadInputs, compileProject, projectRecipe} from '../tools.mjs';
+import {CONFIG, readInputs, loadInputs, compileProject, projectRecipe, outFolderOf} from '../tools.mjs';
 import {startStudio} from './server.mjs';
 import {projectCode, reloads} from './code.mjs';
 import {STUDIO_USAGE as USAGE} from './help.mjs';
@@ -67,7 +67,7 @@ export async function projectStudio({film: flags, recipe}) {
   const load = async () => {
     code = projectCode(config);
     const project = await loadInputs(flags, {url: code.url}), {storyboard, recipe: given, kits = []} = project.inputs;
-    return {film: await compileProject(project), storyboard, recipe: given, kits, title: storyboard.title,
+    return {film: await compileProject(project), storyboard, recipe: given, kits, title: storyboard.title, out: outFolderOf(project),
       ...(recipeFile ? {source: {file: recipeFile}} : {}), compile: copy => compileProject(project, copy)};
   };
   return {load, watch, code: () => code, config, recipeFile, notes};

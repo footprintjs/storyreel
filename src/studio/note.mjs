@@ -16,6 +16,7 @@
  */
 import {randomBytes} from 'node:crypto';
 import {flowChart, narrative} from 'footprintjs';
+import {withRecord} from '../runlog.mjs';
 import {hitTest} from '../regions.mjs';
 import {clockTenths} from '../clock.mjs';
 import {placeOf, sceneTime} from '../momenttext.mjs';
@@ -107,7 +108,7 @@ export async function writeNote({film, storyboard, t, x, y, words, fileText = ''
   if ((x === undefined) !== (y === undefined)) throw new Error('writeNote: give a spot as x and y together, or neither (the playhead alone)');
   const run = {film, storyboard, t, x, y, words: cleanWords(words), fileText, key, lineOf, file};
   const trace = narrative();
-  await noteChart(run).setLogger(QUIET).build().recorder(trace).run();
+  try { await noteChart(run).setLogger(QUIET).build().recorder(trace).run(); } catch (e) { throw withRecord(e, trace); }
   return {text: run.text, line: run.line, project: run.project, note: readBody(run.line.slice('- [ ] '.length, run.line.lastIndexOf(' <!-- '))),
     record: JSON.parse(JSON.stringify(plainNarrative(trace)))};
 }
