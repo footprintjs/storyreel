@@ -19,7 +19,12 @@ async function getJson(url) {
 
 // ── The film: loaded once, again whenever the server compiled it again ──
 async function loadFilm() {
-  const film = await getJson('/api/film');
+  const film = await getJson('api/film');
+  // A spot clicked on the film before names a drawing of that film: it goes (the words typed stay), as does what it drew.
+  if (film.version !== state.version && (state.spot || state.hit)) {
+    if (state.spot) noteSaid('The film was compiled again: click the spot again (your words are kept).');
+    state.spot = null; state.hit = null; $('box').hidden = true; $('dot').hidden = true;
+  }
   state.film = film; state.version = film.version; state.sceneIndex = -1; state.nearKey = '';
   // A pick being tried was a copy of the film before: the server dropped it with the reload.
   if (state.trying) endTry();
@@ -27,7 +32,7 @@ async function loadFilm() {
   $('title').textContent = film.title; document.title = `${film.title} · StoryReel Studio`;
   showStatus(film.error, film.loadedAt);
   const voice = $('voice');
-  if (film.audio) voice.src = `/api/audio?v=${film.version}`; else voice.removeAttribute('src');
+  if (film.audio) voice.src = `api/audio?v=${film.version}`; else voice.removeAttribute('src');
   renderNotes(); renderReading(); renderShots(); renderWatching();
   seek(Math.min(state.t, film.total));
   renderNoteWhere();
@@ -39,7 +44,7 @@ function showStatus(error, loadedAt) {
 }
 async function poll() {
   try {
-    const v = await getJson('/api/version');
+    const v = await getJson('api/version');
     if (v.version !== state.version) {
       try { await loadFilm(); } catch (e) { state.version = v.version; showStatus(v.error ?? e.message); }
     }
@@ -52,7 +57,7 @@ function requestFrame() {
   if (state.busy || !state.film) return;
   state.busy = true; state.dirty = false;
   const t = state.t, trying = state.trying;
-  fetch(`/api/frame?t=${t.toFixed(3)}&w=${state.width}&v=${state.version}${trying ? `&try=${trying.key}` : ''}`)
+  fetch(`api/frame?t=${t.toFixed(3)}&w=${state.width}&v=${state.version}${trying ? `&try=${trying.key}` : ''}`)
     .then(r => { if (r.status === 410 && trying === state.trying) endTry(); return r.ok ? r.blob() : null; })
     .then(blob => { if (!blob) return; const img = $('frame'), old = img.src; img.src = URL.createObjectURL(blob); if (old.startsWith('blob:')) URL.revokeObjectURL(old); })
     .catch(() => {})
@@ -219,11 +224,11 @@ function renderWatching() {
 // ── Ask the picture: what drew this spot? ──
 async function ask(e) {
   if (!state.film) return;
-  const r = $('frame').getBoundingClientRect(), x = (e.clientX - r.left) / r.width * 1600, y = (e.clientY - r.top) / r.height * 900;
-  const answer = await getJson(`/api/hit?t=${state.t.toFixed(3)}&x=${x.toFixed(1)}&y=${y.toFixed(1)}`);
+  const r = $('frame').getBoundingClientRect(), x = (e.clientX - r.left) / r.width * 1600, y = (e.clientY - r.top) / r.height * 900, clickedOn = state.version;
+  const answer = await getJson(`api/hit?t=${state.t.toFixed(3)}&x=${x.toFixed(1)}&y=${y.toFixed(1)}`);
   state.hit = answer;
   // The spot a note is left on, until the playhead moves: the server reads what drew it from the film, as it answered here.
-  state.spot = Math.abs(answer.t - state.t) > 1e-3 ? null : {t: answer.t, x: +x.toFixed(1), y: +y.toFixed(1), path: answer.hits[0]?.path ?? null};
+  state.spot = Math.abs(answer.t - state.t) > 1e-3 ? null : {t: answer.t, x: +x.toFixed(1), y: +y.toFixed(1), path: answer.hits[0]?.path ?? null, version: clickedOn};
   renderNoteWhere();
   const dot = $('dot'); dot.hidden = false; dot.style.left = `${x / 16}%`; dot.style.top = `${y / 9}%`;
   const coords = el('div', {className: 'coords'}, el('span', {className: 'label', textContent: `at ${clockTenths(answer.t)}`}), coordinate('frame', answer.point.frame, 'a push note\'s at'));
@@ -248,7 +253,7 @@ function outline([x0, y0, x1, y1]) {
   box.style.width = `${(Math.min(1600, x1) - Math.max(0, x0)) / 16}%`; box.style.height = `${(Math.min(900, y1) - Math.max(0, y0)) / 9}%`;
 }
 async function showEntry(path) {
-  const e = await getJson(`/api/entry?path=${encodeURIComponent(path)}`), film = state.film;
+  const e = await getJson(`api/entry?path=${encodeURIComponent(path)}`), film = state.film;
   const where = e.line && film.recipeFile ? el('a', {href: `vscode://file/${film.recipeFile}:${e.line}`, textContent: `${film.recipeFile.split('/').pop()}:${e.line}`, title: 'Open in VS Code'}) : el('span', {className: 'muted', textContent: 'line unknown'});
   $('entry').replaceChildren(el('div', {}, el('span', {className: 'path', textContent: e.path || '(the recipe)'}), ' · ', where), el('pre', {className: 'json', textContent: e.json}));
 }
@@ -257,7 +262,7 @@ async function showEntry(path) {
 /** The scene a pick goes on: the one being tried (its play starts in the scene before), else the playhead's. */
 const sceneHere = () => (state.trying ? state.film?.scenes.find(s => s.id === state.trying.scene) : state.film?.scenes[state.sceneIndex]) ?? null;
 async function loadGallery() {
-  const list = await getJson('/api/gallery'), was = state.gallery;
+  const list = await getJson('api/gallery'), was = state.gallery;
   const same = was && was.cards.length === list.cards.length && list.cards.every((c, i) => ['kind', 'name', 'about', 'frames', 'columns'].every(k => c[k] === was.cards[i].card[k]));
   if (same) { was.takes = list.takes; renderGalleryFor(); return; }
   if (was) for (const c of was.cards) if (c.img.src.startsWith('blob:')) URL.revokeObjectURL(c.img.src);
@@ -269,7 +274,7 @@ async function loadGallery() {
   // One card at a time: the server draws each when first asked, and the picture's own frames go between them.
   for (const c of cards) {
     if (state.gallery?.cards !== cards) return;
-    const r = await fetch(`/api/card?kind=${encodeURIComponent(c.card.kind)}&name=${encodeURIComponent(c.card.name)}`).catch(() => null);
+    const r = await fetch(`api/card?kind=${encodeURIComponent(c.card.kind)}&name=${encodeURIComponent(c.card.name)}`).catch(() => null);
     if (r?.ok) c.img.src = URL.createObjectURL(await r.blob());
   }
 }
@@ -320,7 +325,7 @@ async function tryPick(kind, name) {
   showTrying(`Trying ${kind} ${name} on ${scene.id}: compiling a copy…`);
   const q = `scene=${encodeURIComponent(scene.id)}&kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`;
   try {
-    const t = await getJson(`/api/try?${q}`);
+    const t = await getJson(`api/try?${q}`);
     state.trying = {key: t.key, line: t.line, kind: t.kind, name: t.name, scene: t.scene, end: t.end};
     showTrying(`Trying ${t.line} — a copy, nothing written`); renderNoteWhere();
     renderGalleryFor(); seek(t.from); play();
@@ -340,7 +345,7 @@ function endTry() {
 async function keepPick(kind, name, scene = sceneHere()?.id) {
   if (!scene) return;
   try {
-    const {line} = await getJson(`/api/pick?scene=${encodeURIComponent(scene)}&kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`);
+    const {line} = await getJson(`api/pick?scene=${encodeURIComponent(scene)}&kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`);
     // A later pick of the same scene and kind replaces the one before.
     state.kept = [...state.kept.filter(k => !(k.scene === scene && k.kind === kind)), {scene, kind, line}];
     renderKept(); copy(line);
@@ -381,13 +386,14 @@ async function leaveNote() {
   if (!words) { noteSaid('Say what should change here first.', true); $('note-words').focus(); return; }
   if (state.playing) pause();
   const spot = state.spot && Math.abs(state.spot.t - state.t) <= 1e-3 ? state.spot : null;
-  const body = {version: state.version, t: +state.t.toFixed(3), ...(spot ? {x: spot.x, y: spot.y} : {}), words};
+  // The version the spot was clicked on: a film compiled since is refused (409), never placed with the new film's drawings.
+  const body = {version: spot ? spot.version : state.version, t: +state.t.toFixed(3), ...(spot ? {x: spot.x, y: spot.y} : {}), words};
   state.noting = true; renderNoteWhere(); noteSaid('Leaving the note…');
   try {
-    const r = await fetch('/api/note', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)}), answer = await r.json();
+    const r = await fetch('api/note', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)}), answer = await r.json();
     if (!r.ok) {
       noteSaid(answer.error ?? r.statusText, true);   // the words stay in the box, to send again
-      if (r.status === 409 && (await getJson('/api/version')).version !== state.version) await loadFilm();   // aimed at a film compiled since: show the new one
+      if (r.status === 409 && (await getJson('api/version')).version !== state.version) await loadFilm();   // aimed at a film compiled since: show the new one
       return;
     }
     const {note, open} = answer;

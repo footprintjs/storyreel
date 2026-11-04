@@ -3102,7 +3102,11 @@ Keys: space plays; ← → step a frame (shift: a second); `[` `]` the previous 
 the previous and next scene; Esc leaves a pick being tried. **Transitions** opens the collection a shot can enter with,
 on one sheet (return `kits` from `load()` and their own transitions show too). It listens on 127.0.0.1 only, answers
 only requests addressed to that name, reads (GET; HEAD only for the page's own files and the voice), takes one
-write — a note on the film, from its own page only (below) — and runs nothing from the recipe. What draws, checks or compiles on request — a frame, a gallery card, a pick, a Try — answers
+write — a note on the film, from its own page only (below) — and runs nothing from the recipe. Its address carries a
+random key (`http://127.0.0.1:4321/3f9c…/`, printed when it starts): on a machine shared with other users, any of them
+can reach the port, but without the key nothing is answered (403) — they can neither watch your film nor leave a note
+that reads as yours. No cookie holds it, because a browser sends a cookie for 127.0.0.1 to every port there, another
+user's server included; the page asks with relative paths, so the key rides along. What draws, checks or compiles on request — a frame, a gallery card, a pick, a Try — answers
 the studio's own page only: a request another site's page makes (its browser says so in `Sec-Fetch-Site`) is refused,
 so a page elsewhere cannot spend the studio's time or replace the pick being tried. `studio.held()` says what it keeps
 in memory (the cards drawn, the picks tried), each bounded. The engine side is
@@ -3181,27 +3185,33 @@ entry, whether anything is quoted, whether the file's project id was made). An a
 ```bash
 npx storyreel feedback                  # your open notes, each with its place; also an MCP tool (storyreel mcp)
 # 1 open note from your studio in feedback.md (tick one when done: storyreel feedback --done 1):
-# 1. at "walk+8.10" (0:42.3) · entry "stages[1].world.squirrels" · line 212 of "recipe.json" · said "Then a little squirrel scampers up"
+# 1. note:1a2b3c4d · at "walk+8.10" (0:42.3) · entry "stages[1].world.squirrels" · line 212 of "recipe.json" · said "Then a little squirrel scampers up"
 #    note: the oranges vanish too fast
-npx storyreel feedback --done 1         # ticked: - [x], every other byte of the file kept
+npx storyreel feedback --done 1         # ticked: - [x] and your done mark, every other byte of the file kept (or --done note:1a2b3c4d)
 ```
 
 It opens line 212 and edits it; no frame, no whole file. When the recipe has changed since and the entry moved, a
-`now: line 215` says where it is now (`--all` lists the ticked notes too; `--record` prints one JSON object with the
-reading's record). Notes are yours by signature, never by where they are: a project someone sends you can carry a
+`now: line 215` says where it is now; a note left on another recipe file of the same folder says which, with no line
+to follow (`--all` lists the done notes too; `--record` prints one JSON object with the reading's record). Notes are yours by signature, never by where they are: a project someone sends you can carry a
 `feedback.md`, and its lines must never pass for your requests. The studio signs each note with a key kept with you,
 outside the project (`~/.storyreel/key`, or `STORYREEL_HOME`: made once, readable by you only, read only as a plain
 file of your own and refused inside the project's folder), against a project id the file's first line holds (so a
-project moved or renamed keeps its notes yours). Ticking keeps the signature; an edited line, an unsigned one or
-someone else's is counted, never listed. A signature says the studio wrote the line — not that you said its anchors:
-the place is the film's own text (a scene id, an entry's path, the narration), so the reader quotes every anchor as
-JSON and puts your words on a line of their own, and an anchor can never pass for a request.
+project moved or renamed keeps its notes yours). Ticking keeps the signature and adds a done mark signed the same
+way: the mark is what is trusted, so a box unticked by hand does not bring a finished note back, and a copy of a line
+(the same note id twice) is one note. An edited line, an unsigned one or someone else's is counted, never listed. What
+a signature proves, and no more: your studio wrote that line for that project id. A `feedback.md` copied whole from one
+of your projects into another still verifies there, and a line deleted and put back from an older copy comes back.
+Nor does it make the anchors yours: the place is the film's own text (a scene id, an entry's path, the narration), so
+the reader quotes every anchor as JSON and puts your words on a line of their own — data to look up, never instructions.
 
 Taking a note is the studio's one write, and the narrowest it can be: `POST /api/note` only, from the studio's own page
 only — `Sec-Fetch-Site: same-origin` and the studio's own `Origin` (a request that does not say where it came from is
 refused here, though the read routes let it through, for this one writes) — a JSON body of at most 16 KB holding only
 `{version, t, x?, y?, words}` (the film the page drew, the moment, the spot, the words: a note aimed at a film compiled
-since is refused, so a spot never names a drawing of the next film), one note at a time, written as every output is.
+since is refused, so a spot never names a drawing of the next film; the page drops a clicked spot when the film
+is compiled again, keeping your words), one note at a time. The studio and `storyreel feedback` may run at once, so
+`feedback.md` changes only under its lock (a `feedback.md.lock` made exclusively), read again under it: a note is one
+appended write, a tick the whole text renamed over the file with its mode kept — neither loses the other's line.
 A studio whose recipe file is not known (no `--recipe`, no `recipe.json` beside the config) takes no note and says so.
 
 ## Built-in kits

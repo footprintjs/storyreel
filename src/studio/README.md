@@ -14,8 +14,8 @@ A local page for directing a film (see the package README, "The preview studio")
 | feedback.mjs | feedback.md's format, text in and out: the project id line (`withProject`), a note's body and line (`noteBody`, `noteLine`), read back (`readBody`, `noteLines`), ticked (`tickLines`), appended (`appendLine`), the words cleaned (`cleanWords`), a place as an agent reads it (`placeText`: every anchor JSON-quoted) |
 | notekey.mjs | the person's note key, kept outside the project (`noteKey`: STORYREEL_HOME, else ~/.storyreel; made once, 0600, read only as a plain file of theirs), a key's name in a project (`keyName`), a note's signature (`signNote`, `signedBy`) |
 | note.mjs | a note made into feedback.md's next line, on a footprintjs flowchart with a record (`writeNote`): the place read from the film (scene+seconds, the entry drawn at the spot and its line, the words said around), signed |
-| feedback-read.mjs | feedback.md read on a flowchart (`readFeedback`): whose each line is (decided per line), the person's notes numbered, where each entry is now, the numbers to tick (one refused, none ticked) |
-| feedback-file.mjs | feedback.md on disk, beside the recipe's file: read with `files.mjs · readPlainFile` (no link, no FIFO, at most 1 MB), written with `writeOutput` |
+| feedback-read.mjs | feedback.md read on a flowchart (`readFeedback`): whose each line is (decided per line; a repeated id is one note), done by the person's done mark, where each entry is now (another recipe file's said), the notes to tick by number or id (one refused, none ticked) |
+| feedback-file.mjs | feedback.md on disk, beside the recipe's file: read with `files.mjs · readPlainFile` (no link, no FIFO, at most 1 MB); changed only under its lock (`withFeedback`), a note appended (`addToFeedback`), a tick rewritten with its mode kept (`rewriteFeedback`) |
 | take-note.mjs | the one write's three steps: the body read (`readJsonBody`, at most 16 KB), its fields checked (`noteRequest`), the note taken one at a time (`noteTaker`) |
 | feedback-tool.mjs | `storyreel feedback` (and its MCP tool, listed in tools.mjs): the person's open notes for an agent, short; `--done`, `--all`, `--record` |
 | cli.mjs | `storyreel studio`: the studio on the project here (`projectStudio`: its load(), compile(recipe) and what it watches; `watchCode`: its own code, compiled again when it changes) |
@@ -24,7 +24,11 @@ A local page for directing a film (see the package README, "The preview studio")
 | page.html · page.css · page.js | the page: picture, timeline, transcript, "what drew this spot", the director's notes, the gallery, Try, the kept picks, and the note box under the picture (a note at the playhead, or on the spot clicked) |
 
 Laws: it listens on 127.0.0.1 and answers only requests addressed to that name (a page elsewhere
-cannot reach it through a name that points here); it reads (GET; HEAD only for the page's own
+cannot reach it through a name that points here), and only at its own address, `/<key>/` — 128 random bits, printed
+to whoever started it and nowhere else: anything else is 403 before it is read, so another user of a shared machine,
+who can reach the port, can neither read the film nor post a note that verifies as the person's (`curl` sets every
+header the write checks; it cannot guess the key). The page uses relative paths, so the key rides on every request.
+No cookie: a browser sends a cookie for 127.0.0.1 to every port, another user's server among them; it reads (GET; HEAD only for the page's own
 files and `/api/audio`, 405 elsewhere) and takes one write, a note (below); it never runs anything from the recipe
 (paths are looked up, JSON is read, not evaluated). The page is built with `textContent` only and a
 CSP of `default-src 'none'` plus its own script and style (and `blob:` images: the frames and the
@@ -51,8 +55,13 @@ elsewhere could only send it after a CORS preflight the studio never answers. Th
 a longer `Content-Length` before a byte is read, a longer body as soon as it is; the connection closed after) and must
 be one object of `{version, t, x?, y?, words}` and nothing else (400): the page never sends the place — the scene,
 the entry, the line, what is said are read from the film itself (note.mjs), so a request cannot put words in an
-anchor. `version` is the film the page drew (409 when it was compiled again since: a spot names a drawing of the film
-the person saw, never the next one). One note is taken at a time (feedback.md is read, appended to and written whole).
+anchor. `version` is the film the spot was clicked on (409 when it was compiled again since: a spot names a drawing of
+the film the person saw, never the next one), and the page drops a spot when the film reloads, keeping the words; the
+film and its recipe file's lines are taken together, so a reload while a note waits pairs neither with the other.
+One note is taken at a time in the studio, and every change to feedback.md — a note, or a tick from `storyreel
+feedback` in another process — holds its lock (`feedback.md.lock`, made with O_EXCL; one older than a minute is said,
+naming it to remove) and reads the file again under it: a note is one O_APPEND write (the first one, a new file
+linked into place), a tick the whole text renamed over it with its mode kept, so neither loses the other's line.
 feedback.md is read with `files.mjs · readPlainFile` (its name lstat-ed first and never followed, a FIFO or a device
 refused before it is opened, opened `O_NOFOLLOW | O_NONBLOCK` where the system has them, the descriptor's device and
 inode compared with the name's, at most 1 MB read in a bounded loop) and written with `writeOutput` into its folder's
@@ -60,7 +69,11 @@ checked real path. The key that signs it lives outside the project (notekey.mjs;
 so a project someone sends cannot carry notes that pass for the person's, and its file is read the same way and must
 be the person's alone (0600, one name). A studio with no recipe file takes no note (501), saying how to give it one.
 The anchors of a signed line are still recipe data — a scene id, an entry's path, the narration — so the reader
-(feedback-tool.mjs) quotes each as JSON and gives the person's words a line of their own.
+(feedback-tool.mjs) quotes each as JSON and gives the person's words a line of their own; its description tells an
+agent they are data, never instructions. A tick adds a done mark signed like the note (notekey.mjs · signDone): the
+mark, not the box, is trusted, and a repeated id is one note. What a signature does not prove: that the line is in the
+project it was written for (a feedback.md copied whole from another of the person's projects verifies), nor that a
+line deleted and put back from an older copy is still wanted.
 
 Example: in a project, `npx storyreel studio`, click the drawing that moves too fast, type *slower here*, Enter; then
 `npx storyreel feedback` prints `1. at "scene-02+3.40" (0:12.4) · entry "stages[1]" · line 18 of "recipe.json" · said

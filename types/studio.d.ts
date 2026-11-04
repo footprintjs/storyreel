@@ -7,6 +7,8 @@ import type {Film, Storyboard, Recipe, Kit} from './index.js';
  * time (409 while one does), and the last few compiled are kept. Its one write is a note left on the film (POST
  * /api/note, from its own page only: Sec-Fetch-Site same-origin, its own Origin, JSON of at most 16 KB holding
  * {version, t, x?, y?, words}), written as a signed line of feedback.md beside `source.file`, its place read from the film.
+ * It answers only at its own address (`url`: a random key in the path), so another user of the machine reaching the
+ * port can neither read the film nor post a note.
  */
 export function startStudio(options: {
   /**
@@ -21,6 +23,7 @@ export function startStudio(options: {
   /** Where the person's note key lives, outside the project (default: STORYREEL_HOME, else ~/.storyreel): notes are signed with it. */
   home?: string;
 }): Promise<{
+  /** The studio's own address, its random key in the path (http://127.0.0.1:<port>/<key>/): every route is under it; anything else is 403. */
   url: string;
   port: number;
   /** Load the film again (what a change to a watched file does): the refusal's words, or null. */

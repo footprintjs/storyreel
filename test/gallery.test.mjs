@@ -23,8 +23,10 @@ import {tempDir} from './tmp.mjs';
 import {installed, studioIn, stopped} from './studio-run.mjs';
 
 /** GET (or another method) with a chosen Host header (fetch will not send a foreign one), and any other headers. */
-const raw = (port, pathName, {host = `127.0.0.1:${port}`, method = 'GET', headers = {}} = {}) => new Promise((resolve, reject) => {
-  const req = http.request({host: '127.0.0.1', port, path: pathName, method, headers: {host, ...headers}}, res => { let body = ''; res.on('data', d => (body += d)); res.on('end', () => resolve({status: res.statusCode, body, allow: res.headers.allow})); });
+const raw = (at, pathName, {host = null, method = 'GET', headers = {}} = {}) => new Promise((resolve, reject) => {
+  const {port, pathname: base} = new URL(at);   // the studio's own address: its key, then the route
+  host ??= `127.0.0.1:${port}`;
+  const req = http.request({host: '127.0.0.1', port, path: base.replace(/\/$/, '') + pathName, method, headers: {host, ...headers}}, res => { let body = ''; res.on('data', d => (body += d)); res.on('end', () => resolve({status: res.statusCode, body, allow: res.headers.allow})); });
   req.on('error', reject); req.end();
 });
 
@@ -162,16 +164,16 @@ test('the gallery\'s routes keep the studio\'s laws: loopback by name, read only
   const studio = await studioOf();
   try {
     for (const p of ['/api/gallery', '/api/card?kind=enter&name=fade', '/api/try?scene=b&kind=enter&name=fade', '/api/pick?scene=b&kind=enter&name=fade']) {
-      assert.equal((await raw(studio.port, p, {host: 'studio.example.com'})).status, 403, `${p}: a name that points here is not the studio's`);
-      assert.equal((await raw(studio.port, p, {method: 'POST'})).status, 405, `${p}: the studio only reads`);
-      assert.equal((await raw(studio.port, p, {method: 'PUT'})).status, 405);
+      assert.equal((await raw(studio.url, p, {host: 'studio.example.com'})).status, 403, `${p}: a name that points here is not the studio's`);
+      assert.equal((await raw(studio.url, p, {method: 'POST'})).status, 405, `${p}: the studio only reads`);
+      assert.equal((await raw(studio.url, p, {method: 'PUT'})).status, 405);
     }
     // HEAD: only the page's own files (and the voice, whose player asks its size); every route of the API is GET only.
     for (const p of ['/api/film', '/api/version', '/api/gallery', '/api/frame?t=1', '/api/card?kind=enter&name=fade', '/api/try?scene=b&kind=enter&name=fade', '/api/pick?scene=b&kind=enter&name=fade', '/api/hit', '/api/entry?path=story', '/api/sheet', '/api/transitions', '/nope']) {
-      const r = await raw(studio.port, p, {method: 'HEAD'});
+      const r = await raw(studio.url, p, {method: 'HEAD'});
       assert.deepEqual([r.status, r.allow], [405, 'GET'], `HEAD ${p}`);
     }
-    for (const p of ['/', '/studio.js', '/studio.css']) assert.equal((await raw(studio.port, p, {method: 'HEAD'})).status, 200, `HEAD ${p}`);
+    for (const p of ['/', '/studio.js', '/studio.css']) assert.equal((await raw(studio.url, p, {method: 'HEAD'})).status, 200, `HEAD ${p}`);
     assert.deepEqual(studio.held(), {cards: 0, cardBytes: 0, tries: 0}, 'no HEAD drew or compiled anything');
     const page = await fetch(studio.url), html = await page.text();
     assert.match(page.headers.get('content-security-policy'), /default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:/);
@@ -194,15 +196,15 @@ test('a hostile query is refused (4xx) before anything is drawn or compiled: odd
       'frame?t=1&try=__proto__', 'frame?t=1&try=../1', `frame?t=1&w=${long}`, 'frame?t=1&t=2',
     ];
     for (const q of queries) {
-      const r = await raw(studio.port, `/api/${q}`);
+      const r = await raw(studio.url, `/api/${q}`);
       assert.ok(r.status >= 400 && r.status < 500, `${q.slice(0, 80)}: ${r.status}`);
       assert.ok(JSON.parse(r.body).error.length < 2000, `${q.slice(0, 80)}: the refusal does not hand a long value back`);
     }
-    assert.match(JSON.parse((await raw(studio.port, '/api/card?kind=enter&kind=move&name=fade')).body).error, /"kind" is given 2 times: give each parameter once/);
-    assert.match(JSON.parse((await raw(studio.port, `/api/card?kind=enter&name=${long}`)).body).error, /The query is 10017 characters long: the studio reads at most 1024/);
+    assert.match(JSON.parse((await raw(studio.url, '/api/card?kind=enter&kind=move&name=fade')).body).error, /"kind" is given 2 times: give each parameter once/);
+    assert.match(JSON.parse((await raw(studio.url, `/api/card?kind=enter&name=${long}`)).body).error, /The query is 10017 characters long: the studio reads at most 1024/);
     assert.deepEqual(studio.held(), {cards: 0, cardBytes: 0, tries: 0}, 'nothing drawn, nothing compiled');
     // Only a card the gallery lists is drawn, and asking again draws none.
-    for (let i = 0; i < 3; i++) assert.equal((await raw(studio.port, '/api/card?kind=enter&name=fade')).status, 200);
+    for (let i = 0; i < 3; i++) assert.equal((await raw(studio.url, '/api/card?kind=enter&name=fade')).status, 200);
     assert.equal(studio.held().cards, 1);
   } finally { await studio.close(); }
 });
@@ -215,7 +217,7 @@ test('the routes that draw or compile answer the studio\'s own page only; one Tr
     // A page on another site can ask by an image or a link (Sec-Fetch-Site says so): refused, before anything is drawn.
     for (const p of ['/api/frame?t=1', '/api/card?kind=enter&name=fade', '/api/pick?scene=b&kind=enter&name=fade', '/api/try?scene=b&kind=enter&name=fade']) {
       for (const site of ['cross-site', 'same-site']) {
-        const r = await raw(studio.port, p, {headers: {'sec-fetch-site': site}});
+        const r = await raw(studio.url, p, {headers: {'sec-fetch-site': site}});
         assert.equal(r.status, 403, `${p} ${site}`);
         assert.match(JSON.parse(r.body).error, new RegExp(`${p.split('?')[0]} answers the studio's own page only, and this request came from another site's \\(Sec-Fetch-Site: ${site}\\): open the studio at its own address`));
       }
@@ -223,7 +225,7 @@ test('the routes that draw or compile answer the studio\'s own page only; one Tr
     }
     // Its own page (same-origin), the address typed (none), and a browser that does not say: answered.
     for (const p of ['/api/frame?t=1', '/api/card?kind=enter&name=fade', '/api/pick?scene=b&kind=enter&name=fade', '/api/try?scene=b&kind=enter&name=fade']) {
-      for (const headers of [{'sec-fetch-site': 'same-origin'}, {'sec-fetch-site': 'none'}, {}]) assert.equal((await raw(studio.port, p, {headers})).status, 200, `${p} ${JSON.stringify(headers)}`);
+      for (const headers of [{'sec-fetch-site': 'same-origin'}, {'sec-fetch-site': 'none'}, {}]) assert.equal((await raw(studio.url, p, {headers})).status, 200, `${p} ${JSON.stringify(headers)}`);
     }
     assert.equal(compiles, 1, 'a pick tried three times is compiled once: the last few are kept, by scene, kind, name and version');
     // One compile at a time: a Try while one runs is told to wait — even for a pick kept.

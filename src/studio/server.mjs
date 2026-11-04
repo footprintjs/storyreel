@@ -12,7 +12,11 @@
  * line of feedback.md beside the recipe's file, with its exact place read from the film (take-note.mjs, note.mjs);
  * `storyreel feedback` reads them back for an agent.
  *
- * Local only: it listens on 127.0.0.1, answers only requests addressed to it by that name, and
+ * Local only: it listens on 127.0.0.1, answers only requests addressed to it by that name and to its own address — a
+ * path made of a random key (`http://127.0.0.1:4321/<key>/`), which only the person who started it is shown: another
+ * user of the same machine can reach the port, but not the key, so they can neither read the film nor leave a note
+ * signed as the person (403). Its pages use relative paths, so the key rides along on every request; no cookie, since a
+ * cookie for 127.0.0.1 is sent to every port of it, another user's server among them. It
  * reads (GET; HEAD only for the page's own files and the voice). The routes that draw, check or compile what a
  * query names (a frame, a card, a pick, a Try) answer the studio's own page only: a request another site's page makes
  * (Sec-Fetch-Site) is refused. It runs nothing from the recipe. Its one write is a note (POST /api/note), taken only
@@ -20,6 +24,7 @@
  * JSON body of at most 16 KB with only the fields a note has — never the place, which is read from the film.
  */
 import http from 'node:http';
+import {randomBytes, timingSafeEqual} from 'node:crypto';
 import {readFileSync, statSync, createReadStream, watchFile, unwatchFile} from 'node:fs';
 import {once} from 'node:events';
 import path from 'node:path';
@@ -49,6 +54,8 @@ const OWN_PAGE_ONLY = new Set(['/api/frame', '/api/card', '/api/pick', '/api/try
 const OWN = new Set(['same-origin', 'none']);
 /** The one route that writes, and its one method: a note, from the studio's own page only (a browser that does not say is refused). */
 const NOTE = '/api/note';
+/** The studio's key, in hex characters: 128 random bits. */
+const KEY_LENGTH = 32;
 /** The longest query the studio reads: its own page's are a fraction of it. */
 const QUERY_MOST = 1024;
 const HEADERS = {
@@ -97,6 +104,8 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
     return state.error;
   }
   const cards = boundedCache(), tries = pickTries(), notes = noteTaker({home});
+  // The studio's key: its address's first step, shown only to whoever started it (the address it returns and prints).
+  const key = randomBytes(KEY_LENGTH / 2).toString('hex'), keyBytes = Buffer.from(key);
   let catalog = null;
   await reload();
   if (state.error) log(`studio: refused — ${state.error}`);
@@ -108,7 +117,9 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
 
   const canvases = new Map();
   let sheet = null, transitions = null;
-  const lineOf = p => { const prefix = state.loaded?.source?.prefix; return state.lines.get(prefix ? (p ? `${prefix}.${p}` : prefix) : p) ?? null; };
+  /** An entry's line in the recipe file, as `lines` (that file read when `loaded` was) says it. */
+  const linesOf = (loaded, lines) => p => { const prefix = loaded?.source?.prefix; return lines.get(prefix ? (p ? `${prefix}.${p}` : prefix) : p) ?? null; };
+  const lineOf = p => linesOf(state.loaded, state.lines)(p);
   const number = (v, lo, hi, fallback) => { const n = Number(v); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : fallback; };
 
   function filmJson() {
@@ -190,8 +201,9 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
     if (!/^application\/json\b/i.test(String(req.headers['content-type'] ?? ''))) throw new Refusal('a note\'s request is JSON: give it Content-Type: application/json', 415);
     const body = await readJsonBody(req);
     if (!state.loaded) throw new Refusal('no film is loaded yet: fix the recipe the studio shows, then leave the note', 503);
-    const {film, storyboard, source} = state.loaded;
-    return notes.take({film, storyboard, recipeFile: source?.file ?? null, lineOf}, noteRequest(body, {version: state.version, total: film.total}));
+    // The film the note is placed against and its recipe file's lines, taken together now: a reload while the note waits changes neither.
+    const {loaded, lines, version} = state, {film, storyboard, source} = loaded;
+    return notes.take({film, storyboard, recipeFile: source?.file ?? null, lineOf: linesOf(loaded, lines)}, noteRequest(body, {version, total: film.total}));
   }
 
   const send = (res, status, body, type = 'application/json; charset=utf-8') => {
@@ -203,47 +215,51 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
       const {port: bound} = server.address();
       // Loopback by name too: a page elsewhere cannot reach the studio through a name that points here.
       if (![`127.0.0.1:${bound}`, `localhost:${bound}`].includes(req.headers.host)) return send(res, 403, {error: 'The studio answers on 127.0.0.1 only'});
-      const u = new URL(req.url, `http://127.0.0.1:${bound}`);
-      if (u.pathname === NOTE) {
+      const u = new URL(req.url, `http://127.0.0.1:${bound}`), [, given = ''] = u.pathname.split('/');
+      // The studio's own address: its key first, compared in constant time; anything else is refused before it is read.
+      if (Buffer.byteLength(given) !== KEY_LENGTH || !timingSafeEqual(Buffer.from(given), keyBytes)) return send(res, 403, {error: 'The studio answers its own address only: open the one storyreel studio printed (its path carries the studio\'s key)'});
+      if (u.pathname === `/${key}`) { res.setHeader('Location', `/${key}/`); return send(res, 308, {error: 'The studio\'s page is its address with a / at the end'}); }
+      const route = u.pathname.slice(key.length + 1);
+      if (route === NOTE) {
         if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); return send(res, 405, {error: `${NOTE} takes a note: POST it from the studio's page`}); }
         try { return send(res, 200, await takeNote(req, bound)); } catch (e) {
           if (e instanceof Refusal && e.status === 413) res.setHeader('Connection', 'close');   // the rest of the body is never read
           throw e;
         }
       }
-      if (req.method !== 'GET' && !(req.method === 'HEAD' && HEADED.has(u.pathname))) {
-        res.setHeader('Allow', HEADED.has(u.pathname) ? 'GET, HEAD' : 'GET');
-        return send(res, 405, {error: `The studio reads, and takes one write (a note: POST ${NOTE}): ask ${u.pathname.slice(0, 80)} with GET`});
+      if (req.method !== 'GET' && !(req.method === 'HEAD' && HEADED.has(route))) {
+        res.setHeader('Allow', HEADED.has(route) ? 'GET, HEAD' : 'GET');
+        return send(res, 405, {error: `The studio reads, and takes one write (a note: POST ${NOTE}): ask ${route.slice(0, 80)} with GET`});
       }
-      if (PAGE[u.pathname]) { const [file, type] = PAGE[u.pathname]; return send(res, 200, readFileSync(path.join(here, file)), type); }
+      if (PAGE[route]) { const [file, type] = PAGE[route]; return send(res, 200, readFileSync(path.join(here, file)), type); }
       const q = queryOf(u);
       // Another site's page can ask by an image or a link, never reading the answer: it still costs a drawing or a compile.
       const site = req.headers['sec-fetch-site'];
-      if (OWN_PAGE_ONLY.has(u.pathname) && site !== undefined && !OWN.has(site)) return send(res, 403, {error: `${u.pathname} answers the studio's own page only, and this request came from another site's (Sec-Fetch-Site: ${site.slice(0, 40)}): open the studio at its own address`});
-      if (u.pathname === '/api/version') return send(res, 200, {version: state.version, error: state.error});
+      if (OWN_PAGE_ONLY.has(route) && site !== undefined && !OWN.has(site)) return send(res, 403, {error: `${route} answers the studio's own page only, and this request came from another site's (Sec-Fetch-Site: ${site.slice(0, 40)}): open the studio at its own address`});
+      if (route === '/api/version') return send(res, 200, {version: state.version, error: state.error});
       if (!state.loaded) return send(res, 503, {error: state.error ?? 'Nothing loaded yet', version: state.version});
       const total = state.loaded.film.total, t = number(q.get('t'), 0, total, 0);
-      if (u.pathname === '/api/film') return send(res, 200, filmJson());
-      if (u.pathname === '/api/frame') return send(res, 200, await frame(filmOf(q.get('try')), t, number(q.get('w'), 160, 1920, 960)), 'image/jpeg');
+      if (route === '/api/film') return send(res, 200, filmJson());
+      if (route === '/api/frame') return send(res, 200, await frame(filmOf(q.get('try')), t, number(q.get('w'), 160, 1920, 960)), 'image/jpeg');
       // The cards, and the scenes that take each kind of pick (a stage's scene an entrance; a kinetic world's a word move).
-      if (u.pathname === '/api/gallery') return send(res, 200, {version: state.version, cards: galleryCards(catalogNow()), takes: pickScenes(state.loaded.recipe)});
-      if (u.pathname === '/api/card') {
+      if (route === '/api/gallery') return send(res, 200, {version: state.version, cards: galleryCards(catalogNow()), takes: pickScenes(state.loaded.recipe)});
+      if (route === '/api/card') {
         // Only a card the gallery lists is drawn: the cache holds at most one PNG per card, and is bounded besides.
         const shown = catalogNow(), card = galleryCards(shown).find(c => c.kind === q.get('kind') && c.name === q.get('name'));
         if (!card) return send(res, 404, {error: 'No such card in the gallery: open /api/gallery for the ones it has'});
         return send(res, 200, await cards.get(`${state.version} ${card.kind} ${card.name}`, () => cardFrames(card, shown)), 'image/png');
       }
-      if (u.pathname === '/api/pick') { const {changes: [c]} = await pickOf(q); return send(res, 200, {line: c.line, scene: c.scene, kind: c.kind, name: c.name, path: c.path}); }
-      if (u.pathname === '/api/try') return send(res, 200, await tryPick(q));
-      if (u.pathname === '/api/hit') return send(res, 200, hit(t, number(q.get('x'), 0, 1600, 800), number(q.get('y'), 0, 900, 450)));
-      if (u.pathname === '/api/sheet') { if (sheet?.version !== state.version) sheet = {version: state.version, png: await contactSheet(state.loaded.film)}; return send(res, 200, sheet.png, 'image/png'); }
-      if (u.pathname === '/api/transitions') {
+      if (route === '/api/pick') { const {changes: [c]} = await pickOf(q); return send(res, 200, {line: c.line, scene: c.scene, kind: c.kind, name: c.name, path: c.path}); }
+      if (route === '/api/try') return send(res, 200, await tryPick(q));
+      if (route === '/api/hit') return send(res, 200, hit(t, number(q.get('x'), 0, 1600, 800), number(q.get('y'), 0, 900, 450)));
+      if (route === '/api/sheet') { if (sheet?.version !== state.version) sheet = {version: state.version, png: await contactSheet(state.loaded.film)}; return send(res, 200, sheet.png, 'image/png'); }
+      if (route === '/api/transitions') {
         // The collection a shot can enter with (transitions.mjs): the built-in ones and the film's kits' own.
         if (transitions?.version !== state.version) transitions = {version: state.version, png: await transitionSheet({catalog: transitionCatalog(state.loaded.kits ?? [])})};
         return send(res, 200, transitions.png, 'image/png');
       }
-      if (u.pathname === '/api/entry') return send(res, 200, entry(String(q.get('path') ?? '')));
-      if (u.pathname === '/api/audio' && state.loaded.audio) return sendAudio(req, res, state.loaded.audio);
+      if (route === '/api/entry') return send(res, 200, entry(String(q.get('path') ?? '')));
+      if (route === '/api/audio' && state.loaded.audio) return sendAudio(req, res, state.loaded.audio);
       return send(res, 404, {error: 'Not found'});
     } catch (e) {
       return send(res, e instanceof Refusal ? e.status : 500, {error: e.message});
@@ -251,7 +267,7 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
   });
   server.listen(port, '127.0.0.1');
   await once(server, 'listening');
-  const bound = server.address().port, url = `http://127.0.0.1:${bound}/`;
+  const bound = server.address().port, url = `http://127.0.0.1:${bound}/${key}/`;
   return {
     url, port: bound, reload,
     /** What the studio holds in memory, each bounded: the cards drawn (count and bytes), the picks tried kept compiled. */

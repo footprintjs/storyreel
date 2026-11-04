@@ -2,7 +2,14 @@
  * Which notes in a project's feedback.md the person left in their own studio (note.mjs writes them, feedback-read.mjs
  * reads them). Files someone sends you can carry a feedback.md, and its lines must never pass for your requests: the
  * studio signs each note it writes with a key that lives with the person, not the project (STORYREEL_HOME, or
- * ~/.storyreel), and a reader lists only the notes that key signed for that project.
+ * ~/.storyreel), and a reader lists only the notes that key signed for that project id.
+ *
+ * What a signature proves, and no more: this person's studio wrote this body under this id for the project id the
+ * file's first line holds. It does not prove the line is in the project it was written for — a feedback.md copied whole
+ * (its id line with it) from one of the person's projects into another still verifies there, so a project shared once
+ * can hand an old note back — nor that the line is still wanted. A done mark (signDone) proves the note was ticked in
+ * the person's own tools, so a box unticked by hand, or an old copy of the line, never brings it back; a line deleted
+ * and replayed from an older copy does come back. Nor does it make the anchors the person's: they are recipe text.
  *
  * A note is signed against the project id the file's first line holds (made once, at random: feedback.mjs), never the
  * folder's path: a project moved or renamed keeps its notes yours. What is signed is the note's body — its anchors and
@@ -12,7 +19,8 @@
  *
  * The key is read as a plain file of its own (files.mjs · readPlainFile: never through a link, a FIFO or a device),
  * and must be one of this user's that no one else can read and that has no second name (StoryDeck's noteKey.js holds
- * its key to the same checks); it is made once, a new 0600 file created exclusively (files.mjs · writeSecretFile); and
+ * its key to the same checks); it is made once, a new 0600 file written whole and linked into place (files.mjs ·
+ * writeNewFile: no reader ever sees it empty, and two studios making one at once keep the first); and
  * it never lives inside the project's folder, which may be shared.
  *
  *   noteKey(home, {create: true, project})   → {key} (a Buffer) | {key: null, why, missing?}
@@ -24,7 +32,7 @@ import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
 import {realpathSync} from 'node:fs';
 import {homedir} from 'node:os';
 import path from 'node:path';
-import {readPlainFile, writeSecretFile} from '../files.mjs';
+import {makeFolder, readPlainFile, writeNewFile} from '../files.mjs';
 
 /** Where the person's StoryReel state lives: STORYREEL_HOME (a relative one from the home folder), or ~/.storyreel. */
 export const storyreelHome = () => path.resolve(homedir(), process.env.STORYREEL_HOME || '.storyreel');
@@ -50,7 +58,8 @@ function realPlace(p) {
     rest.push(path.basename(at));
   }
 }
-const inside = (folder, p) => { const r = path.relative(folder, p); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)); };
+/** Whether `p` is `folder` or inside it: a name that only begins with two dots (`..x`) is inside. */
+const inside = (folder, p) => { const r = path.relative(folder, p); return r === '' || !(r === '..' || r.startsWith(`..${path.sep}`) || path.isAbsolute(r)); };
 
 /** The key file's text, as readPlainFile reads it (null when there is none), held to `untrusted`. */
 const keyText = file => readPlainFile(file, {most: KEY_MOST, judge: untrusted, fix: 'the note key must be a plain file of yours alone (STORYREEL_HOME, or ~/.storyreel/key)'});
@@ -67,7 +76,11 @@ export function noteKey(home = storyreelHome(), {create = false, project = null}
   }
   try {
     let hex = keyText(file);
-    if (hex === null && create) { writeSecretFile(file, randomBytes(32).toString('hex')); hex = keyText(file); }   // made meanwhile by another studio: that one is read
+    if (hex === null && create) {
+      const folder = makeFolder(home, {fix: 'set STORYREEL_HOME to a folder of your own'});
+      writeNewFile(path.join(folder, 'key'), randomBytes(32).toString('hex'), {mode: 0o600});   // made meanwhile by another studio: that one is read
+      hex = keyText(file);
+    }
     if (hex === null) return {key: null, missing: true, why: `there is no note key yet (${file}): the studio makes it with your first note`};
     hex = hex.trim();
     return KEY.test(hex) ? {key: Buffer.from(hex, 'hex')} : {key: null, why: `the note key ${file} is not a key (64 hex characters): move it aside, and the studio makes a new one`};
@@ -90,4 +103,14 @@ export const signNote = (key, {project, id, by, body}) =>
 export function signedBy(key, note, project) {
   if (!key || !project || typeof note.sig !== 'string' || !/^[0-9a-f]{32}$/.test(note.sig)) return false;
   return timingSafeEqual(Buffer.from(signNote(key, {project, id: note.id, by: note.by, body: note.body})), Buffer.from(note.sig));
+}
+
+/** A note's done mark under `key`: 32 hex over the project id, the note's id and the key's name — what a reader trusts as done. */
+export const signDone = (key, {project, id, by}) =>
+  createHmac('sha256', key).update(JSON.stringify(['storyreel-done', 1, project, id, by])).digest('hex').slice(0, 32);
+
+/** Whether the note's done mark (feedback.mjs · noteLines: {id, by, mark}) is `key`'s for `project`. */
+export function doneBy(key, note, project) {
+  if (!key || !project || typeof note.mark !== 'string' || !/^[0-9a-f]{32}$/.test(note.mark)) return false;
+  return timingSafeEqual(Buffer.from(signDone(key, {project, id: note.id, by: note.by})), Buffer.from(note.mark));
 }

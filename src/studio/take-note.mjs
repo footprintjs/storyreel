@@ -7,15 +7,17 @@
  *   noteTaker({home}).take()   the place read from the film itself (note.mjs), signed with the person's key
  *                              (notekey.mjs), appended to feedback.md (feedback-file.mjs: files.mjs reads and writes it)
  *
- * The page's film version rides along: a note the page aimed at a film compiled since is refused (409), so a spot
- * clicked on one film never names a drawing of the next. One note is taken at a time: feedback.md is read, appended to
- * and written whole, so two notes at once would lose one.
+ * The version the spot was clicked under rides along: a note aimed at a film compiled since is refused (409), so a
+ * spot clicked on one film never names a drawing of the next; the film it is placed against and the recipe file's
+ * lines are taken together, from the one film on screen. One note is taken at a time in the studio, and each holds
+ * feedback.md's lock and reads it again under it before its one appended write (feedback-file.mjs), so neither another
+ * note nor a tick from `storyreel feedback` meanwhile is lost.
  */
 import path from 'node:path';
 import {Refusal} from './refusal.mjs';
 import {writeNote} from './note.mjs';
 import {readFeedback} from './feedback-read.mjs';
-import {feedbackFile, readFeedbackFile, writeFeedbackFile} from './feedback-file.mjs';
+import {addToFeedback, feedbackFile, readFeedbackFile, withFeedback} from './feedback-file.mjs';
 import {noteKey, storyreelHome} from './notekey.mjs';
 
 /** The most bytes a note's request may hold: its words are at most 1000 characters (feedback.mjs · NOTE_MOST). */
@@ -83,11 +85,16 @@ export function noteTaker({home = storyreelHome()} = {}) {
     const file = feedbackFile(recipeFile);
     const {key, why} = noteKey(home, {create: true, project: path.dirname(file)});
     if (!key) throw new Refusal(`${why} — a note is signed with it, so it is known for yours`, 409);
-    let fileText;
-    try { fileText = readFeedbackFile(file); } catch (e) { throw new Refusal(e.message, 409); }
+    const held = async at => {
+      let fileText;
+      try { fileText = readFeedbackFile(at); } catch (e) { throw new Refusal(e.message, 409); }
+      let made;
+      try { made = await writeNote({film, storyboard, t, x, y, words, fileText, key, lineOf, file: path.basename(recipeFile)}); } catch (e) { throw new Refusal(e.message, 400); }
+      try { addToFeedback(at, fileText, made.text); } catch (e) { throw new Refusal(e.message, 409); }
+      return made;
+    };
     let made;
-    try { made = await writeNote({film, storyboard, t, x, y, words, fileText, key, lineOf, file: path.basename(recipeFile)}); } catch (e) { throw new Refusal(e.message, 400); }
-    try { writeFeedbackFile(file, made.text); } catch (e) { throw new Refusal(e.message, 409); }
+    try { made = await withFeedback(file, held); } catch (e) { throw e instanceof Refusal ? e : new Refusal(e.message, 409); }
     const {open} = await readFeedback(made.text, {key});
     return {note: made.note, open, file};
   }

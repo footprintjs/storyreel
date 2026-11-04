@@ -12,8 +12,11 @@
  * A note's line is its checkbox, its body and its stamp. The body is what is signed (notekey.mjs): the film clock, the
  * scene and the seconds into it (momenttext.mjs · sceneTime, what `--at` reads back), the recipe entry the click named
  * with its line in the recipe file, the words said around that moment, then " — " and the person's words. The stamp
- * says the note's id, the key that signed it (its name in this project) and the signature. The file's first line holds
- * the project id, made once: notes are signed against it, so a project moved or renamed keeps its notes.
+ * says the note's id, the key that signed it (its name in this project) and the signature — and, once the note is done,
+ * a done mark signed the same way (`done:…`): the mark, not the checkbox, is what a reader trusts, so a box unticked
+ * by hand (or a line put back from before it was ticked, beside the ticked one: one id is one note) does not bring a
+ * finished note back. The file's first line holds the project id, made once: notes are signed against it, so a project
+ * moved or renamed keeps its notes.
  *
  * Nothing a person or a recipe writes can break a line: each field is one line of visible characters, capped
  * (ANCHOR_MOST), and the characters that separate the fields (`·`, `—`, `"`, the parentheses of a line number) or
@@ -38,7 +41,7 @@ export const ANCHOR_MOST = Object.freeze({at: 80, entry: 160, file: 120});
 
 const PROJECT = /^﻿?<!-- storyreel feedback · project ([0-9a-f]{16}) /;
 const CHECKBOX = /^(\s*[-*] \[)([ xX])(\] )(.*?)(\r?)$/;
-const STAMP = / <!-- note:([0-9a-f]{8}) by:([0-9a-f]{8}) sig:([0-9a-f]{32}) -->$/;
+const STAMP = / <!-- note:([0-9a-f]{8}) by:([0-9a-f]{8}) sig:([0-9a-f]{32})(?: done:([0-9a-f]{32}))? -->$/;
 
 /** The project id the file's first line holds, or null. */
 export function projectOf(text) {
@@ -58,17 +61,21 @@ export function withProject(text, project) {
   return String(text).trim() ? `${projectLine(project)}${endingOf(text)}${text}` : HEAD(project);
 }
 
-/** The file with one more line at the end of its notes, in its own line ending: a blank line first when the last line is not a note (a list starts). */
-export function appendLine(text, line) {
-  const nl = endingOf(text);
-  let end = text.length;
-  while (end > 0 && /\s/.test(text[end - 1])) end--;
-  const kept = text.slice(0, end), last = kept.slice(kept.lastIndexOf('\n') + 1);
-  return `${kept}${CHECKBOX.test(last) ? nl : nl + nl}${line}${nl}`;
+/**
+ * What to add at the end of the file so that it ends with one more line of its list, in its own line ending: a line
+ * ending first when the file does not end with one, and a blank line when its last line is not a list's (a list starts).
+ * Nothing already there changes, so the studio adds a note with one appended write (feedback-file.mjs).
+ */
+export function lineAfter(text, line) {
+  const nl = endingOf(text), body = String(text).replace(/\s+$/, ''), last = body.slice(body.lastIndexOf('\n') + 1);
+  const ending = text === '' || /\n$/.test(text) ? '' : nl;
+  return `${ending}${!body || CHECKBOX.test(last) ? '' : nl}${line}${nl}`;
 }
+/** The file with one more line at the end of its notes (lineAfter). */
+export const appendLine = (text, line) => `${text}${lineAfter(text, line)}`;
 
 /** What a reader cannot see or a line cannot hold: control and format characters (but the joiner emoji are made of), line and paragraph separators. */
-const UNSEEN = /[\p{Cc}\p{Zl}\p{Zp}]|(?!‍)\p{Cf}/gu;
+const UNSEEN = /[\p{Cc}\p{Cs}\p{Zl}\p{Zp}]|(?!‍)\p{Cf}/gu;   // a lone surrogate (Cs) too: UTF-8 cannot hold it, so a signed line would not read back
 /** Text as one plain line of visible characters, spaces collapsed. */
 const oneLine = text => String(text).replace(UNSEEN, ' ').replace(/\s+/g, ' ').trim();
 /** Text cut to `most` characters (whole characters, never half of one), ending in "…" when cut. */
@@ -85,8 +92,8 @@ export const cleanSaid = text => capped(oneLine(text), SAID_MOST);
 
 /** An anchor's value, capped at `most` characters and escaped: what separates the fields, opens a comment or a tag, and the backslash itself. */
 const field = (value, most = Infinity) => capped(oneLine(value), most).replace(/[\\·—"<>()]/g, c => `\\${c}`);
-/** The person's words escaped: nothing in them can open a comment or a tag. */
-const wordsText = words => words.replace(/[\\<>]/g, c => `\\${c}`);
+/** The person's words escaped: one line of what can be seen (cleanWords made them so), nothing in them can open a comment or a tag. */
+const wordsText = words => oneLine(words).replace(/[\\<>]/g, c => `\\${c}`);   // one line again: nothing UTF-8 cannot hold is ever signed
 /** A value as written, its escapes undone. */
 const unescaped = text => text.replace(/\\(.)/gu, '$1');
 
@@ -132,15 +139,21 @@ export function noteLines(text) {
     const m = CHECKBOX.exec(raw);
     if (!m) return;
     const rest = m[4], stamp = STAMP.exec(rest), body = stamp ? rest.slice(0, stamp.index) : rest;
-    out.push({index, done: m[2] !== ' ', body, signed: Boolean(stamp), ...(stamp ? {id: stamp[1], by: stamp[2], sig: stamp[3]} : {}), note: readBody(body)});
+    out.push({index, done: m[2] !== ' ', body, signed: Boolean(stamp), ...(stamp ? {id: stamp[1], by: stamp[2], sig: stamp[3], mark: stamp[4] ?? null} : {}), note: readBody(body)});
   });
   return out;
 }
 
-/** The file with the checklist lines at `indexes` ticked (`- [x]`), every other byte as it was. */
-export function tickLines(text, indexes) {
-  const ticked = new Set(indexes);
-  return String(text).split('\n').map((raw, i) => (ticked.has(i) ? raw.replace(CHECKBOX, (all, open, box, close, rest, cr) => `${open}x${close}${rest}${cr}`) : raw)).join('\n');
+/**
+ * The file with notes done: each line at an index of `marks` (a Map: line index → its done mark, notekey.mjs ·
+ * signDone) ticked (`- [x]`) and its mark put in its stamp (kept when it has one); every other byte as it was.
+ */
+export function markDone(text, marks) {
+  return String(text).split('\n').map((raw, i) => {
+    if (!marks.has(i)) return raw;
+    const ticked = raw.replace(CHECKBOX, (all, open, box, close, rest, cr) => `${open}x${close}${rest}${cr}`);
+    return / done:[0-9a-f]{32} -->\r?$/.test(ticked) ? ticked : ticked.replace(/ -->(\r?)$/, ` done:${marks.get(i)} -->$1`);
+  }).join('\n');
 }
 
 /**

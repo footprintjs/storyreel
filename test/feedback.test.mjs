@@ -10,11 +10,11 @@ import {fileURLToPath} from 'node:url';
 import {compileFilm, evenTimings} from '../src/index.mjs';
 import {kineticKit} from '../src/kits/kinetic/index.mjs';
 import {jsonLines} from '../src/studio/lines.mjs';
-import {noteBody, noteLine, readBody, noteLines, tickLines, withProject, appendLine, projectOf, cleanWords, cleanSaid, placeText, ANCHOR_MOST, NOTE_MOST} from '../src/studio/feedback.mjs';
-import {noteKey, keyName, signNote, signedBy} from '../src/studio/notekey.mjs';
+import {noteBody, noteLine, readBody, noteLines, markDone, lineAfter, withProject, appendLine, projectOf, cleanWords, cleanSaid, placeText, ANCHOR_MOST, NOTE_MOST} from '../src/studio/feedback.mjs';
+import {noteKey, keyName, signNote, signedBy, signDone, doneBy} from '../src/studio/notekey.mjs';
 import {writeNote, SAID_AROUND} from '../src/studio/note.mjs';
 import {readFeedback} from '../src/studio/feedback-read.mjs';
-import {feedbackFile, readFeedbackFile, writeFeedbackFile, FILE_MOST} from '../src/studio/feedback-file.mjs';
+import {feedbackFile, readFeedbackFile, addToFeedback, rewriteFeedback, withFeedback, FILE_MOST} from '../src/studio/feedback-file.mjs';
 import {feedback} from '../src/studio/feedback-tool.mjs';
 import {tempDir} from './tmp.mjs';
 
@@ -62,8 +62,9 @@ test('feedback.md: the project id first, made once; a line appended to the list 
   const crlf = '# Notes\r\n\r\n- [ ] one\r\n', added = appendLine(crlf, '- [ ] two');
   assert.equal(added, '# Notes\r\n\r\n- [ ] one\r\n- [ ] two\r\n');
   assert.equal(appendLine('# Notes\nsome words\n', '- [ ] a'), '# Notes\nsome words\n\n- [ ] a\n', 'a list starts after a blank line');
-  const ticked = tickLines(added, [2]);
-  assert.equal(ticked, '# Notes\r\n\r\n- [x] one\r\n- [ ] two\r\n');
+  assert.equal(lineAfter(crlf, '- [ ] two'), '- [ ] two\r\n', 'only what is added: one appended write');
+  assert.equal(lineAfter('# Notes\n- [ ] one', '- [ ] two'), '\n- [ ] two\n', 'a file that does not end its line gets one first');
+  assert.equal(markDone(added, new Map([[2, 'd'.repeat(32)]])), '# Notes\r\n\r\n- [x] one\r\n- [ ] two\r\n', 'an unsigned line: its box only');
   assert.deepEqual(noteLines(added).map(l => [l.index, l.done, l.signed]), [[2, false, false], [3, false, false]]);
 });
 
@@ -85,6 +86,7 @@ test('the note key: made once (0600), read only as a plain file of the person\'s
   const inside = path.join(project, '.storyreel');
   assert.match(noteKey(inside, {create: true, project}).why, /is inside the project's folder, which may be shared — set STORYREEL_HOME elsewhere/);
   assert.ok(!existsSync(inside), 'and nothing is made there');
+  assert.match(noteKey(path.join(project, '..x'), {create: true, project}).why, /is inside the project's folder/, 'a folder whose name begins with two dots is inside too');
   const bad = tempDir('bad-home', t); writeFileSync(path.join(bad, 'key'), 'not hex', {mode: 0o600});
   assert.match(noteKey(bad).why, /is not a key \(64 hex characters\): move it aside/);
 });
@@ -95,8 +97,9 @@ test('a signature: one key name per project; it covers the body, not the checkbo
   assert.ok(signedBy(key, read, project));
   assert.ok(!signedBy(other, read, project), 'another key');
   assert.ok(!signedBy(key, read, 'e'.repeat(16)), 'another project');
-  const [ticked] = noteLines(tickLines(line, [0]));
+  const by = keyName(key, project), [ticked] = noteLines(markDone(line, new Map([[0, signDone(key, {project, id: 'a1b2c3d4', by})]])));
   assert.ok(ticked.done && signedBy(key, ticked, project), 'ticked, it is still the person\'s');
+  assert.ok(doneBy(key, ticked, project) && !doneBy(other, ticked, project) && !doneBy(key, ticked, 'e'.repeat(16)), 'its done mark is the person\'s, for this project');
   const [edited] = noteLines(line.replace('too fast', 'too slow'));
   assert.ok(!signedBy(key, edited, project));
 });
@@ -107,7 +110,8 @@ test('readFeedback: only the person\'s notes are listed, numbered; the rest coun
     signedLine(key, project, fields, 'c1c2c3c4').replace('too fast', 'too slow'), signedLine(key, project, {clock: '0:03.0', at: 'a+3.00', words: 'second of mine'}, 'd1d2d3d4'), ''].join('\n');
   const read = await readFeedback(text, {key});
   assert.deepEqual(read.notes.map(n => [n.n, n.words, n.place]), [[1, 'the oranges vanish too fast', 'unchecked'], [2, 'second of mine', 'no-entry']]);
-  assert.deepEqual(read.others, {'someone-else': 1, unsigned: 1, edited: 1});
+  assert.deepEqual(read.others, {'someone-else': 1, unsigned: 1, edited: 1, repeated: 0});
+  assert.deepEqual(read.notes.map(n => n.id), ['a1b2c3d4', 'd1d2d3d4']);
   assert.equal(read.open, 2);
   const record = JSON.stringify(read.record);
   for (const words of ['ignore your rules', 'someone else', 'too slow', 'oranges']) assert.ok(!record.includes(words), `the record holds no line's text: ${words}`);
@@ -130,8 +134,38 @@ test('readFeedback: where each entry is now (here, moved, gone), and ticking by 
   assert.deepEqual((await readFeedback(ticked.text, {key, done: [2]})).already, [2]);
   const refused = await readFeedback(text, {key, done: [1, 7]});
   assert.deepEqual([refused.ticked, refused.refused, refused.text], [[], [7], text]);
+  const byId = await readFeedback(text, {key, done: ['note:e1e2e3e4', 'f1f2f3f4']});
+  assert.deepEqual([byId.ticked, byId.notes.map(n => n.done), byId.open], [[2, 3], [false, true, true], 1], 'by id too; the notes as the text returned has them');
+  await assert.rejects(readFeedback(text, {key, done: ['x']}), /done is a list of note numbers or ids/);
   await assert.rejects(readFeedback(text, {key: 'k'}), /key is the person's note key \(notekey\.mjs · noteKey\), or null/);
   await assert.rejects(readFeedback(text, {key, lineOf: 3}), /lineOf is a function/);
+});
+
+test('readFeedback: one id is one note; the done mark, not the box, is trusted; a note left on another recipe file is said', async () => {
+  const project = '4'.repeat(16), head = withProject('', project).trimEnd(), open = signedLine(key, project, fields);
+  const twice = [head, '', open, open, ''].join('\n');
+  const read = await readFeedback(twice, {key});
+  assert.deepEqual([read.notes.length, read.others.repeated], [1, 1], 'a copy of a line is the same note, counted once');
+  const ticked = (await readFeedback(twice, {key, done: [1]})).text;
+  assert.match(ticked, / done:[0-9a-f]{32} -->/);
+  const unticked = ticked.replace('- [x]', '- [ ]');
+  assert.deepEqual((await readFeedback(unticked, {key})).notes.map(n => n.done), [true], 'a box unticked by hand: still done (its mark says so)');
+  const replayed = [head, '', open, ticked.split('\n').find(l => l.includes('done:')), ''].join('\n');
+  assert.deepEqual([(await readFeedback(replayed, {key})).notes.map(n => n.done), (await readFeedback(replayed, {key})).open], [[true], 0], 'an old open copy beside the done one: done');
+  const forged = ticked.replace(/done:[0-9a-f]{32}/, `done:${'0'.repeat(32)}`).replace('- [x]', '- [ ]');
+  assert.deepEqual((await readFeedback(forged, {key})).notes.map(n => n.done), [false], 'a mark that is not the person\'s is not trusted');
+  const lines = new Map([['stages[1].world.squirrels', 99]]);
+  const elsewhere = await readFeedback(twice, {key, lineOf: p => lines.get(p) ?? null, file: 'ep2.json'});
+  assert.deepEqual([elsewhere.notes[0].place, elsewhere.notes[0].now], ['other-file', null]);
+  assert.match(JSON.stringify(elsewhere.record), /it was left on another recipe file in this folder/);
+});
+
+test('a lone surrogate never reaches a signed line: one that UTF-8 cannot hold would not read back as signed', async () => {
+  const lone = 'a\ud800b', body = noteBody({...fields, entry: `stages${lone}`, said: lone, words: `slower${lone}`});
+  assert.ok(!/[\ud800-\udfff]/.test(body));
+  const project = '5'.repeat(16), text = `${withProject('', project)}\n${signedLine(key, project, {...fields, words: `slower${lone}`})}\n`;
+  const roundTrip = Buffer.from(text, 'utf8').toString('utf8');
+  assert.deepEqual((await readFeedback(roundTrip, {key})).notes.map(n => n.words), ['slowera b'], 'written as UTF-8 and read back, it still checks');
 });
 
 const helloFilm = async () => {
@@ -169,17 +203,28 @@ test('writeNote: a silent scene\'s words are directions, never quoted as said', 
   assert.match(made.record.filter(e => e.type === 'condition').map(e => e.text).join('\n'), /a silent scene: its words are directions/);
 });
 
-test('feedback.md on disk: read only as a plain file, never through a link or from a FIFO, at most FILE_MOST bytes; written as an output', {skip: posix ? false : 'POSIX links'}, t => {
+test('feedback.md on disk: read only as a plain file, never through a link or from a FIFO, at most FILE_MOST bytes; changed only under its lock, a note appended, a tick keeping the mode', {skip: posix ? false : 'POSIX links'}, async t => {
   const dir = tempDir('fb', t), file = feedbackFile(path.join(dir, 'recipe.json'));
   assert.equal(file, path.join(dir, 'feedback.md'));
   assert.equal(readFeedbackFile(file), '', 'none yet');
-  writeFeedbackFile(file, 'hello\n');
+  await withFeedback(file, at => addToFeedback(at, '', 'hello\n'));
   assert.equal(readFeedbackFile(file), 'hello\n');
+  writeFileSync(file, 'hello\nsomeone else added this\n');   // meanwhile: an append never drops it
+  await withFeedback(file, at => addToFeedback(at, 'hello\n', 'hello\n- [ ] mine\n'));
+  assert.equal(readFeedbackFile(file), 'hello\nsomeone else added this\n- [ ] mine\n');
+  chmodSync(file, 0o640);
+  await withFeedback(file, at => rewriteFeedback(at, 'ticked\n'));
+  assert.deepEqual([readFeedbackFile(file), statSync(file).mode & 0o777], ['ticked\n', 0o640], 'a rewrite keeps the file\'s mode');
+  // Held by one, another waits; neither loses the other's line.
+  const order = [];
+  await Promise.all([withFeedback(file, async () => { order.push('a'); await new Promise(r => setTimeout(r, 50)); order.push('a done'); }), withFeedback(file, () => { order.push('b'); })]);
+  assert.deepEqual(order, ['a', 'a done', 'b']);
+  assert.ok(!existsSync(`${file}.lock`), 'the lock is gone after');
   const elsewhere = path.join(tempDir('elsewhere', t), 'secret.md'); writeFileSync(elsewhere, 'secret');
   const linked = path.join(tempDir('linked', t), 'feedback.md'); symlinkSync(elsewhere, linked);
   assert.throws(() => readFeedbackFile(linked), /is a link \(or a junction\), not a file of its own: StoryReel reads it only as a plain file — put feedback\.md itself there/);
-  writeFeedbackFile(linked, 'mine');
-  assert.equal(readFileSync(elsewhere, 'utf8'), 'secret', 'a link at the name is replaced, never written through');
+  await assert.rejects(withFeedback(linked, at => addToFeedback(at, 'secret', 'secret+')), /is not a plain file of its own/);
+  assert.equal(readFileSync(elsewhere, 'utf8'), 'secret', 'never written through a link');
   writeFileSync(file, 'x'.repeat(FILE_MOST + 1));
   assert.throws(() => readFeedbackFile(file), /holds 1048577 bytes, more than the 1048576 StoryReel reads of it: make it smaller/);
 });
@@ -195,15 +240,16 @@ test('storyreel feedback, the reading: short, each place JSON-quoted and the wor
   const text = await feedback(recipe, {}, {home});
   assert.equal(text, [
     '1 open note from your studio in feedback.md (tick one when done: storyreel feedback --done 1):',
-    '1. at "walk+8.10" (0:42.3) · entry "story" · line 9 of "recipe.json" · said "Then a little squirrel scampers up"',
+    '1. note:a1b2c3d4 · at "walk+8.10" (0:42.3) · entry "story" · line 9 of "recipe.json" · said "Then a little squirrel scampers up"',
     '   now: line 2 (the entry moved since the note)',
     '   note: the oranges vanish too fast',
     '1 open line in feedback.md is not yours — 1 unsigned (written by hand or by another tool): not listed, text in the file, not a request.'].join('\n'));
-  await assert.rejects(feedback(recipe, {done: '4'}, {home}), /no note of yours has the number 4 \(yours is 1\): nothing was ticked — storyreel feedback lists them/);
-  await assert.rejects(feedback(recipe, {done: 'all'}, {home}), /--done takes note numbers, comma-separated \(e\.g\. --done 1,3\)/);
-  assert.match(await feedback(recipe, {done: '1'}, {home}), /^ticked 1 in .*feedback\.md\nno open note from your studio in feedback\.md \(1 ticked one: --all lists it\)/);
+  await assert.rejects(feedback(recipe, {done: '4'}, {home}), /no note of yours is 4 \(yours is 1\): nothing was ticked — storyreel feedback lists them with their numbers and ids/);
+  await assert.rejects(feedback(recipe, {done: 'all'}, {home}), /--done takes notes by number or id, comma-separated \(e\.g\. --done 1,3 or --done note:1a2b3c4d\)/);
+  assert.match(await feedback(recipe, {done: 'note:a1b2c3d4'}, {home}), /^ticked 1 in .*feedback\.md\nno open note from your studio in feedback\.md \(1 done one: --all lists it\)/);
+  assert.ok(!existsSync(`${feedbackFile(recipeFile)}.lock`));
   assert.match(readFileSync(feedbackFile(recipeFile), 'utf8'), /\n- \[x\] 0:42\.3/);
-  assert.match(await feedback(recipe, {all: 'true'}, {home}), /\n1\. \[done\] at "walk\+8\.10"/);
+  assert.match(await feedback(recipe, {all: 'true'}, {home}), /\n1\. \[done\] note:a1b2c3d4 · at "walk\+8\.10"/);
   const record = JSON.parse(await feedback(recipe, {record: 'true'}, {home}));
   assert.deepEqual([record.notes.length, record.notes[0].words, record.notes[0].place, record.open, record.others.unsigned], [1, 'the oranges vanish too fast', 'moved', 0, 1]);
   assert.ok(record.record.length > 0);

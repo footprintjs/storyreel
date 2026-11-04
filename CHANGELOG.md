@@ -16,8 +16,15 @@
   is, where each entry is now, which numbers to tick), so the record says why. The studio's first write, and the
   narrowest: `POST /api/note` only, from its own page only (`Sec-Fetch-Site: same-origin` — a request that does not say
   is refused here — and its own `Origin`), JSON of at most 16 KB holding only `{version, t, x?, y?, words}`, one at a
-  time. New in `files.mjs`: `readPlainFile` (never through a link or a junction, never from a FIFO, the descriptor
-  checked against the name, a bounded read) and `writeSecretFile` (a new 0600 file, created exclusively). The
+  time. The studio answers only at its own address, `http://127.0.0.1:<port>/<key>/` (a random key, printed when it
+  starts): another user of a shared machine can reach the port but not read the film or post a note (403). A tick adds
+  a signed done mark, which a reader trusts over the box, and a repeated note id is one note; `--done` takes a note's
+  id too (`--done note:1a2b3c4d`), and a note left on another recipe file in the folder says so. The studio and
+  `storyreel feedback` change `feedback.md` only under its lock (a note is one appended write, a tick a rewrite with
+  the file's mode kept), so neither loses the other's line. New in `files.mjs`: `readPlainFile` (never through a link
+  or a junction, never from a FIFO, the descriptor checked against the name, a bounded read), `writeNewFile` (written
+  whole, then linked into place: never over a file, never seen half-written), `appendToFile`, `rewriteFile` and
+  `withFileLock`; `securePath` and `makeFolder` take the advice their refusals give (`fix`). The
   `storyreel-review` skill starts from the notes (three lines, +324 bytes), so the agent-cost baseline was updated
   deliberately (`node scripts/agent-cost.mjs --baseline`); its other numbers take up the growth main already had within
   the 10 % allowed.
