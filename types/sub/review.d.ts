@@ -44,9 +44,22 @@ export type ReviewCheck = FindingCheck | VerdictCheck;
  * seconds or more needs real silences.
  */
 export const REVIEW_DEFAULTS: Readonly<{every: number; stillFor: number; lasting: number; minAlpha: number; minHeight: number; maxWords: number; minSilence: number; newEvery: number; hook: number; breath: number}>;
-export const REVIEW_CHECKS: Readonly<Record<'under-captions' | 'words-overlap' | 'cut-off' | 'hook' | 'text-density' | 'silences' | 'stale' | 'loop' | 'frozen-voice' | 'still' | 'example-lingers', FindingCheck> & Record<'slideshow' | 'geometry' | 'pure' | 'claims', VerdictCheck>>;
+export const REVIEW_CHECKS: Readonly<Record<'under-captions' | 'words-overlap' | 'cut-off' | 'hook' | 'text-density' | 'silences' | 'stale' | 'loop' | 'frozen-voice' | 'still' | 'example-lingers', FindingCheck> & Record<'slideshow' | 'geometry' | 'pure' | 'contrast' | 'claims', VerdictCheck>>;
 /** Moments drawn again, last first, against the pictures they gave the first time (`hashes`: t → hash, as frameHashes draws them at `width`): the moments that gave another one. */
 export function purityOf(film: Film, options: {times: number[]; hashes: Record<string, string>; width?: number}): {moments: number; changed: number[]};
+/** WCAG relative luminance of an sRGB colour (0–255 channels). */
+export function luminance(r: number, g: number, b: number): number;
+/** The contrast ratio of two luminances, 1 to 21. */
+export function contrastRatio(a: number, b: number): number;
+/** A word's contrast on a frame's RGBA bytes: its ink against the ground around its box; null when too small to read. */
+export function wordContrast(data: Uint8ClampedArray | Uint8Array, width: number, height: number, box: [number, number, number, number], thresholds?: typeof CONTRAST): {ratio: number; ink: number; ground: number; large: boolean} | null;
+export interface WordContrast {text: string; box: [number, number, number, number]; ratio: number; needs: number; large: boolean}
+/** The words too faint to read, each judged by its best moment over the samples; words never seen are counted. */
+export function faintWords(samples: {t: number; contrasts?: WordContrast[]}[], thresholds?: typeof CONTRAST): {words: number; unseen: number; low: (WordContrast & {t: number})[]};
+/** The thresholds: WCAG's 4.5:1 and 3:1, what counts as large (a share of the frame's height), the ring and ink percentile, the least ratio that counts as seen. */
+export const CONTRAST: Readonly<{normal: number; large: number; largeHeight: number; ring: number; inkPercentile: number; seen: number}>;
+/** The contrast verdict's rules. */
+export const CONTRAST_VERDICT: VerdictRules;
 /** The purity verdict's rules: not run under two moments, failed when one changed. */
 export const PURITY_VERDICT: VerdictRules;
 /** What a verdict check answered: its verdict, why (the rule that matched, or what passing means), what it measured, and its numbers in words. */

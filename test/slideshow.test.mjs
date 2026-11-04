@@ -144,18 +144,18 @@ test('the rule cannot be gamed: a deck swapped every 3 s, and a still card with 
 test('the example films\' verdicts, as the README gives them', async () => {
   const verdicts = {};
   for (const name of ['hello', 'recap', 'shepherd', 'worlds']) {
-    const r = await reviewPart(await compileExample(name)), [slides, parts, pure, claims] = ['slideshow', 'geometry', 'pure', 'claims'].map(id => r.verdicts.find(v => v.check === id));
+    const r = await reviewPart(await compileExample(name)), [slides, parts, pure, contrast, claims] = ['slideshow', 'geometry', 'pure', 'contrast', 'claims'].map(id => r.verdicts.find(v => v.check === id));
     verdicts[name] = {slideshow: [slides.verdict, slides.measured.deadShare, slides.measured.stillShare, slides.measured.deadShots.map(s => `${s.where} ${s.deadShare}`)],
-      geometry: [parts.verdict, parts.measured.parts ?? 0], pure: [pure.verdict, pure.measured.changed], claims: [claims.verdict, claims.measured.numbers ?? 0, claims.measured.drawn ?? 0]};
+      geometry: [parts.verdict, parts.measured.parts ?? 0], pure: [pure.verdict, pure.measured.changed], contrast: [contrast.verdict, contrast.measured.low], claims: [claims.verdict, claims.measured.numbers ?? 0, claims.measured.drawn ?? 0]};
   }
   assert.deepEqual(verdicts, {
     // A whiteboard and a code stage, still between their reveals: held still for a third of their time, and moving for
     // the rest. The numbers they draw (the card's "sheep 1", a 0 in the code) have no facts to be checked against.
-    hello: {slideshow: ['passed', .324, .631, ['stage rule 0.75']], geometry: ['not run', 0], pure: ['passed', 0], claims: ['not run', 4, 4]},
-    recap: {slideshow: ['passed', .146, .584, ['the story 0.217', 'stage code 0.371']], geometry: ['not run', 0], pure: ['passed', 0], claims: ['not run', 12, 9]},
+    hello: {slideshow: ['passed', .324, .631, ['stage rule 0.75']], geometry: ['not run', 0], pure: ['passed', 0], contrast: ['passed', 0], claims: ['not run', 4, 4]},
+    recap: {slideshow: ['passed', .146, .584, ['the story 0.217', 'stage code 0.371']], geometry: ['not run', 0], pure: ['passed', 0], contrast: ['passed', 0], claims: ['not run', 12, 9]},
     // The cartoon kit gives its parts; its world moves all the time. Every built-in kit draws each moment the same.
-    shepherd: {slideshow: ['passed', 0, 0, []], geometry: ['passed', 21], pure: ['passed', 0], claims: ['passed', 0, 0]},
-    worlds: {slideshow: ['passed', 0, .341, []], geometry: ['passed', 17], pure: ['passed', 0], claims: ['not run', 3, 3]}});
+    shepherd: {slideshow: ['passed', 0, 0, []], geometry: ['passed', 21], pure: ['passed', 0], contrast: ['passed', 0], claims: ['passed', 0, 0]},
+    worlds: {slideshow: ['passed', 0, .341, []], geometry: ['passed', 17], pure: ['passed', 0], contrast: ['passed', 0], claims: ['not run', 3, 3]}});
 });
 
 test('a part too short to hold a shot is not run, never passed', async () => {

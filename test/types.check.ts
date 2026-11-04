@@ -758,5 +758,7 @@ export const sampled = transitionSample('torn').seconds;
 // The purity verdict: moments drawn again against their first pictures.
 import type {purityOf as PurityOf} from '../types/sub/review.js';
 export const purity = (p: typeof PurityOf, film: Film) => p(film, {times: [1, 2], hashes: {}}).changed.length;
+import type {contrastRatio as Ratio, luminance as Lum} from '../types/sub/review.js';
+export const ratio = (r: typeof Ratio, l: typeof Lum) => r(l(0, 0, 0), 1) > 4.5;
 // @ts-expect-error times is a list of seconds
 export const badPurity = (p: typeof PurityOf, film: Film) => p(film, {times: 1, hashes: {}});

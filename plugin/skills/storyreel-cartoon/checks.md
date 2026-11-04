@@ -37,6 +37,7 @@ claims)`); a check runs only when the part has what it reads (no caption band, n
 | `slideshow` | held still | a shot holds still for more than 3 s<!-- SLIDESHOW.hold --> at a time (the verdict below) | motion inside the shot |
 | `geometry` | the drawing breaks | a drawn part comes off, crosses or slides (the verdict below) | fix the kit's drawing |
 | `pure` | drawn differently twice | a moment drawn again, after later ones, gives another picture (the verdict below) | draw from `t` alone: seeded randomness, no clock, nothing kept between frames |
+| `contrast` | too faint to read | a word read at its best stands under 4.5:1 against what is behind it (3:1 when large; the verdict below) | darken or lighten the word, or a band behind it |
 | `claims` | no source | a number on screen has no source (the verdict below) | a fact, or an example scene |
 
 "Nothing changes", "nothing new" and the slideshow's "held still" are advice: a held title can be right, and then
