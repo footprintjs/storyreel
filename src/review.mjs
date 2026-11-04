@@ -41,7 +41,7 @@ import {overlapOf} from './zones.mjs';
 import {slideshowOf, pacedRule, slideshowVerdict} from './slideshow.mjs';
 import {geometryOf, breakText, GEOMETRY_VERDICT} from './geometry.mjs';
 import {purityOf, PURITY_FINDING, PURITY_VERDICT} from './purity.mjs';
-import {wordContrast, needs, faintWords, contrastText, CONTRAST_VERDICT} from './contrast.mjs';
+import {wordContrast, wordArea, needs, faintWords, contrastText, CONTRAST_VERDICT} from './contrast.mjs';
 import {claimsCount, unsourcedClaims, claimText, drawnClaims, drawnLines, lingeringExamples, lingerText, HOLD, CLAIMS_VERDICT} from './claims.mjs';
 import {wordsIn, readingPace} from './reading.mjs';
 import {isDecorative, isCode} from './decorative.mjs';
@@ -72,8 +72,8 @@ function readFrame(film, t, {layout = null} = {}) {
 function wordContrasts(words, canvas) {
   const shown = words.filter(w => w.alpha >= .999 && !w.decorative);
   if (!shown.length) return [];
-  const {width, height} = canvas, data = canvas.getContext('2d').getImageData(0, 0, width, height).data;
-  return shown.flatMap(w => { const c = wordContrast(data, width, height, w.box); return c ? [{text: w.text, box: w.box, ratio: c.ratio, needs: needs(c), large: c.large}] : []; });
+  const {width, height} = canvas, ctx = canvas.getContext('2d');
+  return shown.flatMap(w => { const area = wordArea(w.box, width, height), c = area && wordContrast(ctx.getImageData(area.x, area.y, area.w, area.h).data, width, height, w.box, undefined, area); return c ? [{text: w.text, box: w.box, ratio: c.ratio, needs: needs(c), large: c.large}] : []; });
 }
 
 /**

@@ -5,8 +5,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCanvas} from '@napi-rs/canvas';
 import {compileFilm, evenTimings} from '../src/index.mjs';
-import {reviewPart} from '../src/review.mjs';
-import {luminance, contrastRatio, wordContrast, faintWords, CONTRAST} from '../src/contrast.mjs';
+import {kineticKit} from '../src/kits/kinetic/index.mjs';
+import {reviewPart, REVIEW_CHECKS} from '../src/review.mjs';
+import {luminance, contrastRatio, wordContrast, wordArea, faintWords, CONTRAST} from '../src/contrast.mjs';
 
 test('the ratio is WCAG\'s: black on white 21:1, #767676 on white just passes 4.5:1, #777777 just fails', () => {
   assert.equal(+contrastRatio(luminance(0, 0, 0), luminance(255, 255, 255)).toFixed(2), 21);
@@ -72,4 +73,26 @@ test('a large word needs 3:1, a small one 4.5:1', async () => {
 test('a part with no word is not run', async () => {
   const r = await reviewPart(await filmOf(c => { c.fillStyle = '#fff'; c.fillRect(0, 0, 1600, 900); }));
   assert.equal(verdict(r).verdict, 'not run');
+});
+
+test('a word read from its own pixels measures the same as from the whole frame, and a review reads no whole frame for it', async () => {
+  const c = createCanvas(400, 100), x = c.getContext('2d');
+  const gradient = x.createLinearGradient(0, 0, 400, 0); gradient.addColorStop(0, '#fff'); gradient.addColorStop(1, '#223');
+  x.fillStyle = gradient; x.fillRect(0, 0, 400, 100);
+  x.fillStyle = '#b03'; x.font = '30px sans-serif'; x.fillText('near the edge', 2, 30); x.fillText('in the middle', 180, 80);
+  const whole = x.getImageData(0, 0, 400, 100).data;
+  for (const box of [[0, 2, 190, 34], [180, 55, 380, 90], [395, 90, 460, 130]]) {
+    const area = wordArea(box, 400, 100), part = x.getImageData(area.x, area.y, area.w, area.h).data;
+    assert.deepEqual(wordContrast(part, 400, 100, box, undefined, area), wordContrast(whole, 400, 100, box), `the same pixels for ${box}`);
+  }
+  assert.equal(wordArea([10, 10, 11, 11], 400, 100), null, 'too small to read');
+
+  const proto = Object.getPrototypeOf(createCanvas(8, 8).getContext('2d')), real = proto.getImageData, wholeFrames = [];
+  proto.getImageData = function (ax, ay, w, h, ...rest) { if (w >= this.canvas.width && h >= this.canvas.height && this.canvas.width >= 1600) wholeFrames.push(`${w}x${h}`); return real.call(this, ax, ay, w, h, ...rest); };
+  try {
+    const storyboard = {title: 'T', scenes: [{id: 'one', narration: 'Here are a few words the review reads from the frame.'}]};
+    const film = await compileFilm({storyboard, recipe: {story: {kit: 'kinetic', scene: 'one', words: [{text: 'WORDS', at: ['one', 'few']}]}}, kits: [kineticKit], timings: evenTimings(storyboard, {tail: 0})});
+    await reviewPart(film, {checks: {contrast: REVIEW_CHECKS.contrast}});
+  } finally { proto.getImageData = real; }
+  assert.deepEqual(wholeFrames, [], 'a whole frame of pixels per moment is memory the garbage collector does not see');
 });

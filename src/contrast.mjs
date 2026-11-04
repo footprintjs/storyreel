@@ -32,12 +32,26 @@ export const contrastRatio = (a, b) => (Math.max(a, b) + .05) / (Math.min(a, b) 
  * pixels. Returns {ratio, ink, ground, large} (the luminances, and whether the word is large), or null when the box is
  * under 3 px tall or wide, or leaves no ring on the frame to read the ground from.
  */
-export function wordContrast(data, width, height, box, thresholds = CONTRAST) {
+/**
+ * The pixels a word's contrast reads: the word's box and the ring around it, held to the frame: {x, y, w, h, x0…ry1}, or
+ * null when the word is too small to read. A review asks for only these: a frame's worth of pixels for each moment it
+ * reads is memory the garbage collector does not see.
+ */
+export function wordArea(box, width, height, thresholds = CONTRAST) {
   const [x0, y0, x1, y1] = [Math.max(0, Math.floor(box[0])), Math.max(0, Math.floor(box[1])), Math.min(width, Math.ceil(box[2])), Math.min(height, Math.ceil(box[3]))];
   if (x1 - x0 < 3 || y1 - y0 < 3) return null;
   const pad = Math.max(2, Math.round((y1 - y0) * thresholds.ring));
   const [rx0, ry0, rx1, ry1] = [Math.max(0, x0 - pad), Math.max(0, y0 - pad), Math.min(width, x1 + pad), Math.min(height, y1 + pad)];
-  const at = (x, y) => { const k = (y * width + x) * 4; return luminance(data[k], data[k + 1], data[k + 2]); };
+  return {x: rx0, y: ry0, w: rx1 - rx0, h: ry1 - ry0, x0, y0, x1, y1, rx0, ry0, rx1, ry1};
+}
+
+export function wordContrast(data, width, height, box, thresholds = CONTRAST, area = null) {
+  const near = wordArea(box, width, height, thresholds);
+  if (!near) return null;
+  const {x0, y0, x1, y1, rx0, ry0, rx1, ry1} = near;
+  // `data` is the whole frame, or only the part `area` names (wordArea): the same pixels either way.
+  const stride = area ? area.w : width, left = area ? area.x : 0, top = area ? area.y : 0;
+  const at = (x, y) => { const k = ((y - top) * stride + x - left) * 4; return luminance(data[k], data[k + 1], data[k + 2]); };
   const ring = [], inside = [];
   for (let y = ry0; y < ry1; y++) for (let x = rx0; x < rx1; x++) (x >= x0 && x < x1 && y >= y0 && y < y1 ? inside : ring).push(at(x, y));
   if (ring.length < 8) return null;
