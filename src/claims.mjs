@@ -689,7 +689,8 @@ export function drawnClaims(samples, {claims, sceneOf, scenes = [], wordsAt = nu
   // Spaces made one (a no-break space is a language's group symbol: kept), and the film's language to read numbers by.
   const tidy = text => String(text).trim().replace(/[ \t\r\n]+/g, ' '), declared = (claims?.numbers ?? []).filter(c => c.path !== 'captions'), locale = numberLocale(lang);
   const part = (drawn, line) => drawn === line || line.startsWith(`${drawn} `) || line.endsWith(` ${drawn}`);
-  const known = (number, text) => declared.some(c => c.number === number && part(text, tidy(c.line)));
+  // A label's own words (claims.own, differs.mjs): a number there is the film's declaration of how the scene differs, whole or broken across a crop's labels.
+  const own = (claims?.own ?? []).map(tidy), known = (number, text) => own.some(line => line.includes(text)) || declared.some(c => c.number === number && part(text, tidy(c.line)));
   /**
    * A frame's numbers that no declared line holds: [{text, offset, place, number, code}] — its code (words drawn inside
    * decorative.mjs · code) made into lines of its own and read as code reads numbers (CODE_READING), the rest by the

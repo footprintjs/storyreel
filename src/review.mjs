@@ -36,6 +36,7 @@ import {partScenes, partWindow, partTimeline, timelineText} from './render.mjs';
 import {clockTenths} from './clock.mjs';
 import {verdictChart, verdictsText, readVerdict} from './verdict.mjs';
 import {withRecord} from './runlog.mjs';
+import {differsMeasure, DIFFERS_VERDICT} from './differs.mjs';
 import {slideshowOf, pacedRule, slideshowVerdict} from './slideshow.mjs';
 import {geometryOf, breakText, GEOMETRY_VERDICT} from './geometry.mjs';
 import {purityOf, PURITY_FINDING, PURITY_VERDICT} from './purity.mjs';
@@ -399,6 +400,14 @@ export const REVIEW_CHECKS = Object.freeze({
     },
     summary: m => (m.numbers ? `${m.numbers} number${m.numbers === 1 ? '' : 's'} on screen: ${m.sourced} sourced${m.unverified ? ` (${m.unverified} on a source nobody can follow: unverified)` : ''}, ${m.examples} in example scenes${m.factsGiven ? `, ${m.unsourced} with no source` : `, ${m.open - m.sourced} unchecked`}` : ''),
     verdict: CLAIMS_VERDICT},
+  // A scene that differs from the real thing says how, on screen or in the voice (differs.mjs). Only a film that declares
+  // one is asked (`asked`): any other film's verdicts stay as they were.
+  differs: {label: 'Says how it differs from the real thing', why: 'a scene in the part declares it differs from the real thing', notRun: 'no scene in the part declares it differs from the real thing',
+    asked: film => Boolean(film.differs?.length),
+    when: s => s.facts.differs > 0,
+    measure: ({film, window, layout}) => differsMeasure(film.differs, window, {wordsAt: t => wordsAt(film, t, {layout})}),
+    summary: m => `${m.scenes} scene${m.scenes === 1 ? '' : 's'} differ${m.scenes === 1 ? 's' : ''}: ${m.shown} on screen, ${m.said} in the voice${m.unstated ? `, ${m.unstated} neither` : ''}`,
+    verdict: DIFFERS_VERDICT},
   // An example line that stays up into a scene that is not example data keeps its label (claims.mjs · labelSpans): beside
   // a real number there, the label seems to cover it too (claims.mjs · lingeringExamples). Said while both are on screen.
   'example-lingers': {label: 'Example data over real numbers', why: 'an example line stays up into a scene that is not example data', when: s => (s.facts.lingers ?? 0) > 0,
@@ -415,7 +424,7 @@ const freezesIn = (film, window) => (film.camera?.moves ?? []).filter(m => m.mov
  * poster or a recall — and not the emphasis, the focus or a guess card, which are drawn on the voice's clock (film.mjs ·
  * frame), so a freeze never holds them.
  */
-const drawsSomething = path => Boolean(path) && !/^(camera|notes|poster|recalls|emphasis|focus|guesses)\b/.test(path) && !/\.reads\[/.test(path);
+const drawsSomething = path => Boolean(path) && !/^(camera|notes|poster|recalls|emphasis|focus|guesses|storyboard)\b/.test(path) && !/\.reads\[/.test(path);
 /** Who speaks while a freeze holds a mouth of theirs on screen (sampled 10 times a second), or null. */
 function frozenWords(film, f) {
   for (let t = f.at; t < f.until; t += .1) {
@@ -426,7 +435,7 @@ function frozenWords(film, f) {
 }
 
 const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes', hook: 'no hook', 'text-density': 'too much to read', silences: 'no breath', stale: 'nothing new', loop: 'the loop jumps', 'frozen-voice': 'a freeze over the voice',
-  slideshow: 'held still', geometry: 'the drawing breaks', pure: 'drawn differently twice', contrast: 'too faint to read', claims: 'no source', 'example-lingers': 'example data over real numbers'};
+  slideshow: 'held still', geometry: 'the drawing breaks', pure: 'drawn differently twice', contrast: 'too faint to read', differs: 'does not say how it differs', claims: 'no source', 'example-lingers': 'example data over real numbers'};
 /** How many faint words the contrast verdict keeps as evidence, each with its ratio (low counts them all). */
 export const FAINT_KEPT = 50;
 
@@ -436,6 +445,7 @@ const MACHINERY = new Set(['hits', 'failed', 'measured', 'verdict', 'why', 'summ
 export {verdictsText};
 export {purityOf, PURITY_VERDICT} from './purity.mjs';
 export {wordContrast, luminance, contrastRatio, faintWords, CONTRAST, CONTRAST_VERDICT} from './contrast.mjs';
+export {readDiffers, timeWords, DIFFERS_VERDICT, DIFFERS_MOST} from './differs.mjs';
 export const findingsText = findings => findings.map(f => `${clockTenths(f.from)}–${clockTenths(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}`).join('\n');
 
 /** The findings that are advice, not errors (a held title can be right): listed after the rest in a summary. */
@@ -533,7 +543,7 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
     if (!c || typeof c.when !== 'function' || typeof c.label !== 'string' || (typeof c.find !== 'function' && !(typeof c.measure === 'function' && c.verdict))) throw new Error(`review check "${id}" must be {label, why?, when(scope), find(review)} — or, answering with a verdict, {label, why?, notRun?, when(scope), measure(review), verdict: {rules, passed} or verdict(film) giving them}`);
   }
   // a verdict may depend on the film (the slideshow's on its pace): read for this film, once
-  checks = Object.fromEntries(Object.entries(checks).map(([id, c]) => [id, typeof c.verdict === 'function' ? {...c, verdict: c.verdict(film)} : c]));
+  checks = Object.fromEntries(Object.entries(checks).filter(([, c]) => c.asked?.(film) ?? true).map(([id, c]) => [id, typeof c.verdict === 'function' ? {...c, verdict: c.verdict(film)} : c]));
   for (const [id, c] of Object.entries(checks)) if (typeof c.find !== 'function') readVerdict(c.verdict, `review check "${id}": verdict`);
   const review = {film, window, part: own, layout: framed, width: framed?.width ?? 1600, height: framed?.height ?? 900, every, stillFor, maxWords, minSilence, newEvery, minAlpha, samples: [], hashes: {}, greys: new Map(), frozen: [], drawn: [], lingers: [], picked: []};
   let findings = [];
@@ -583,7 +593,7 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
     s.facts = {from: window.from, to: window.to, seconds: +(window.to - window.from).toFixed(3), stillFor, newEvery, loop: Boolean(loop), captions: Boolean(framed?.boxes.captions), samples: times.length, words: review.samples.reduce((n, x) => n + x.words.length, 0),
       spoken: film.timings.scenes.some((sc, i) => (sc.words ?? []).some(w => film.clock.offsets[i] + w.end > window.from && film.clock.offsets[i] + w.start < window.to)),
       parts: times.filter(drawsParts).length, claims: Boolean(film.claims),
-      ...(freezesIn(film, window).length ? {freezes: freezesIn(film, window).length} : {}), ...(review.lingers.length ? {lingers: review.lingers.length} : {})};
+      ...(freezesIn(film, window).length ? {freezes: freezesIn(film, window).length} : {}), ...(film.differs?.length ? {differs: film.differs.filter(d => d.from < window.to - 1e-6 && d.to > window.from + 1e-6).length} : {}), ...(review.lingers.length ? {lingers: review.lingers.length} : {})};
     s.ran = []; s.hits = []; s.failed = []; s.verdicts = [];
   };
   // The picks go on the review too, so a check can leave a finding to another that runs. A when() that throws is a

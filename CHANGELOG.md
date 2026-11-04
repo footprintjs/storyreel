@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **A scene that differs from the real thing says so.** A picture is believed, so a process run 30 times faster or a part
+  drawn far larger than it is reads as how the thing is. A scene now declares it (`"differs": {"time": 30, "scale": "The
+  dots are drawn far larger than real"}`), and the film says it: on screen by default, a label in the top right corner
+  over that scene ("Time shown 30 times faster"; `shown` for the film's language, `false` for the voice alone), in the
+  voice with `said`, the phrase of the narration that says it, or both. A new verdict reads the part it is given and fails
+  where neither reaches the viewer, such as a part cut to lose the phrase. It is asked only of a film that declares, and
+  any other film's verdicts, keys and bytes stay as they were. It cannot see a speed-up nobody declared.
 - **Every feature now leaves its run for `storyreel log`, done or refused.** Until now only a review did. Now `apply`,
   `feedback`, a note and a Try in the studio save theirs in the project's out folder. A breakdown saves in its own
   folder, and its last line says how to read it (`storyreel log --folder <folder>`, no project needed). A remake saves

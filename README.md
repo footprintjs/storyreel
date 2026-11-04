@@ -905,6 +905,34 @@ import {wordContrast, luminance, contrastRatio, CONTRAST} from 'footprint-storyr
 contrastRatio(luminance(0x76, 0x76, 0x76), 1);   // 4.54: #767676 on white just reads
 ```
 
+### A scene that differs from the real thing says so
+
+A picture is believed. A process run 30 times faster, or a part drawn far larger than it is, reads as how the thing is
+unless the film says otherwise. A scene declares how it differs, and the film says so, on screen, in the voice, or both:
+
+```json
+{"id": "inside", "narration": "Here it runs thirty times faster than life.",
+ "differs": {"time": 30, "scale": "The dots are drawn far larger than real", "said": "thirty times faster"}}
+```
+
+- **`time`** is how many times faster the picture runs than the real thing (`30`; `0.04` is 25 times slower).
+  **`scale`** is what is out of scale, in words (at most 70 characters). Give either or both.
+- **On screen, by default.** A label per statement in the top right corner, in the example label's look, under it when
+  that is up, over the scene and no longer: "Time shown 30 times faster". In a format that crops the frame it stays
+  inside what is shown, a long one broken between words. `"shown"` gives the words in the film's language, or `false`
+  for the voice alone. The labels are lines to read, so the reading-time check covers them. The number in a label is the
+  film's own declaration, so it needs no source.
+- **In the voice.** `"said"` names the phrase of the scene's narration that says it, found as every phrase in a recipe
+  is: a phrase the scene does not say refuses, and `storyreel anchors` lists it with the others. A number in the voice is
+  a claim like any other, so say it in words or give it a fact.
+- **The verdict** (`Says how it differs from the real thing`) is asked only of a film that declares, so any other film's
+  verdicts stay as they were. It reads the part it is given: the labels as the frame draws them, the phrase where it is
+  said. A part cut to lose the phrase fails (`storyreel review --from 3`), and the finding says what to keep.
+  `film.differs` and the making-of list every declaration.
+- **What it cannot do.** It reads what is declared, and cannot see a speed-up nobody declared. A kit that runs its own
+  clock reads the same `time` from its scene to keep the two together; nothing ties them for it. A render's cuts (`edit`) are
+  not checked yet, so review the part you cut.
+
 ### Drawn parts hold together
 
 An arm that floats off its shoulder for three frames, two legs that pass through each other, a foot that skates

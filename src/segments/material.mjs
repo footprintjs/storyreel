@@ -114,6 +114,8 @@ export function segmentMaterial(film, seg, {recipe, storyboard = null, pixels, c
     crop: layout?.cropKeys ? reaching(layout.cropKeys).map(k => [round(k.x), round(k.width), when(k.t), ...(k.y !== undefined ? [round(k.y)] : []), ...(k.jump ? ['jump'] : [])]) : undefined,
     // An example scene's label, while it is up over the piece (claims.mjs · labelSpans).
     labels: (film.claims?.labels ?? []).filter(l => over(l.from, l.to)).map(l => [l.words ?? null, when(l.from), when(l.to)]),
+    // A scene's labels on how it differs from the real thing (differs.mjs), only where one is up: every other piece is keyed as it was.
+    ...((film.differs ?? []).some(d => d.shown.length && over(d.from, d.to)) ? {differs: film.differs.filter(d => d.shown.length && over(d.from, d.to)).map(d => [d.shown, when(d.from), when(d.to)])} : {}),
     strings: words, data, theme, files, cast,
     poster: seg.index === 0 ? extra.poster ?? null : null,
     recalls: drawsRecalls(entries) ? extra.recalls ?? null : null,
@@ -155,7 +157,7 @@ export const segmentKey = (film, seg, options) => pieceKey(film, seg, options).k
 export const PART_WHY = Object.freeze({
   engine: "StoryReel's drawing code changed", code: 'shot code changed', frames: 'its length changed', pixels: 'frame settings changed', crop: 'the crop moved',
   entries: 'its recipe entries changed', lines: 'beats moved', words: 'words changed', captions: 'captions changed', notes: 'notes changed',
-  camera: 'camera moves changed', attention: 'focus or emphasis changed', labels: 'example label changed', strings: 'on-screen words changed',
+  camera: 'camera moves changed', attention: 'focus or emphasis changed', labels: 'example label changed', differs: 'what a scene says on how it differs changed', strings: 'on-screen words changed',
   data: 'data changed', theme: 'theme changed', files: 'a file it shows changed', cast: 'the cast changed', poster: 'the poster changed', recalls: 'the recalls changed',
 });
 

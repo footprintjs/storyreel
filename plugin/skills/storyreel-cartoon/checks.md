@@ -33,6 +33,7 @@ claims)`); a check runs only when the part has what it reads (no caption band, n
 | `still` | nothing changes | the picture is frozen for 5 s<!-- REVIEW_DEFAULTS.stillFor --> or more | something alive in the shot (a cloud, a blink) |
 | `loop` | the loop jumps | `--loop true`: the part's end does not come round to its start | trim it to whole cycles |
 | `frozen-voice` | a freeze over the voice | a camera `freeze` holds a drawing the voice names, or a mouth while its speaker talks | move the freeze off the line |
+| `differs` | does not say how it differs | a scene's `differs` is neither shown nor said in this part | keep its phrase in the part, or put the words on screen |
 | `example-lingers` | example data over real numbers | an example scene's line, and its label, stay up into a real scene | erase that line before the scene |
 | `slideshow` | held still | a shot holds still for more than 3 s<!-- SLIDESHOW.hold --> at a time (the verdict below) | motion inside the shot |
 | `geometry` | the drawing breaks | a drawn part comes off, crosses or slides (the verdict below) | fix the kit's drawing |

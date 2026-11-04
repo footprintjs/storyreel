@@ -405,6 +405,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     // The director's proposals (director.mjs): where each key landed, the ones that did not and why — so a person or an
     // AI edits only the exceptions. Only when the recipe asks for the director.
     ...(film.director ? {director: film.director} : {}),
+    // How its scenes differ from the real thing (differs.mjs), as declared and as said.
+    ...(film.differs?.length ? {differs: film.differs} : {}),
     sounds: film.sounds.length,
     // The found sounds it plays (found/): each one's record — source, id, licence, attribution, sha256 — for the credits
     // (release.mjs · creditsText reads them from here) and for anyone asking where a sound came from.

@@ -34,7 +34,8 @@ import {icons} from './kits/whiteboard/board.mjs';
 import {drawCard, drawStage, drawSummary, drawConnector, cardEdge, PANEL, drawRecap, recapSlotBox, drawRecallFramed, drawGuess, GUESS_PLACES, GUESS_FLIP, cardPlacement, cardRowBoxes, stageBoxes, drawRewind, rewindAt} from './kits/paper/paper.mjs';
 import {readStepsTrack, drawStepsTrack, stepsTrackBox, stepsTrackLines} from './kits/paper/steps-track.mjs';
 import {tokenize, excerpt} from './kits/paper/code.mjs';
-import {readAttention, chip} from './attention.mjs';
+import {readAttention, chip, chipLines} from './attention.mjs';
+import {differsOf} from './differs.mjs';
 import {readDirector} from './director/settings.mjs';
 import {directWorlds, directFocus, directorRecord} from './director/film.mjs';
 import {applyPlacements} from './director/land.mjs';
@@ -303,12 +304,13 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const files = fileLedger(root), within = file => files.note(insideRoot(root, file));
   // Claims (claims.mjs): the facts the storyboard names — from inside the root, hashed for an approval but in no
   // segment's key (they draw nothing) — and the scenes it marks as example data, checked before anything is built.
-  const factList = storyFacts(storyboard.facts, root, filmLang), examples = exampleScenes(storyboard);
+  const factList = storyFacts(storyboard.facts, root, filmLang), examples = exampleScenes(storyboard), declaredDiffers = differsOf(storyboard);
   // The open claims a release may show anyway, each with its reason (claims.mjs · readAllowOpen), and the rubric's minimum.
   const allowOpen = readAllowOpen(recipe.evidence, factList), rubricRule = readRubricRule(recipe.rubric);
   // How long its picture may sit still (footprint-story/motion · PACES): a lesson may pause, a promo may not — the slideshow check reads it.
   const pace = recipe.pace === undefined ? null : readPace(recipe.pace, 'recipe pace');
   let labels = [];   // when the example label is up (claims.mjs · labelSpans): set once the film's lines are known
+  let differsUp = [];   // when a scene says how it differs from the real thing (differs.mjs): set with them
   const allKits = [whiteboardKit, ...kits];
   const storyKits = Object.fromEntries(allKits.filter(k => k.story).map(k => [k.name, k.story]));
   const stageKits = Object.fromEntries(allKits.flatMap(k => Object.entries(k.stages ?? {})));
@@ -790,6 +792,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (stepsTrack) drawStepsTrack(ctx, makePen(ctx, paper, {baseScale: 1}), stepsTrack, t);
     attention?.emphasis?.draw(ctx, t);
     exampleLabel(ctx, t, window);
+    differsLabel(ctx, t, window);
   }
   /**
    * An example scene says so on screen (claims.mjs · exampleScenes): a small label — the emphasis corner label's look
@@ -801,6 +804,17 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     if (!words) return;
     const right = window ? Math.min(1600, window.x0 + window.w) : 1600, top = window ? Math.max(0, window.y0) : 0;
     chip(ctx, words, 1, paper, {right: right - 40, y: top + 26});
+  }
+  /**
+   * A scene that differs from the real thing says so (differs.mjs): a label per statement, in the example label's look,
+   * under it when that one is up, each kept inside what is shown (a crop's narrower window breaks a long one in two).
+   */
+  function differsLabel(ctx, t, window) {
+    const up = differsUp.find(d => t >= d.from && t < d.to);
+    if (!up?.shown.length) return;
+    const right = window ? Math.min(1600, window.x0 + window.w) : 1600, left = window ? Math.max(0, window.x0) : 0, top = window ? Math.max(0, window.y0) : 0;
+    let y = top + 26 + (labels.some(l => t >= l.from && t < l.to) ? 48 : 0);
+    for (const line of up.shown.flatMap(text => chipLines(ctx, text, paper, right - left - 80))) { chip(ctx, line, 1, paper, {right: right - 40, y}); y += 48; }
   }
 
   /**
@@ -1084,7 +1098,15 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     ...storyboard.scenes.flatMap(captionsOf)];
   // The example label (exampleLabel): over each example scene, and on while any line it shows is still on screen.
   labels = labelSpans(shown, {examples, scenes: storyboard.scenes.map((sc, i) => ({from: clock.offsets[i], to: clock.offsets[i] + timings.scenes[i].duration}))});
-  const lines = [...shownLines, ...labels.map(l => ({text: l.words, from: l.from, to: l.to, path: `storyboard.scenes[${l.scene}].example`}))];
+  // A scene's words on how it differs (differsLabel): over the scene, read as every line is; its phrase in the voice found as every phrase is.
+  differsUp = declaredDiffers.flatMap((d, i) => {
+    if (!d) return [];
+    const from = clock.offsets[i], ref = d.said === undefined ? null : [storyboard.scenes[i].id, d.said];
+    if (ref) entries.set(ref, `storyboard.scenes[${i}].differs.said`);
+    return [Object.freeze({...d, scene: storyboard.scenes[i].id, index: i, from, to: from + timings.scenes[i].duration, ...(ref ? {saidAt: +clock.at(ref).toFixed(3)} : {})})];
+  });
+  const lines = [...shownLines, ...labels.map(l => ({text: l.words, from: l.from, to: l.to, path: `storyboard.scenes[${l.scene}].example`})),
+    ...differsUp.flatMap(d => d.shown.map(text => ({text, from: d.from, to: d.to, path: `storyboard.scenes[${d.index}].differs`})))];
   const readingRule = readingMode(recipe.reading), reading = tooShortToRead(lines, readingPace(recipe.reading));
   // Reads: one at a time, each while its shot is on screen — from when it starts to arrive until the next one
   // does — with its time before the shot leaves, each about a thing that is there the whole time it needs.
@@ -1241,7 +1263,9 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   const claims = Object.freeze({facts: factList, examples: Object.freeze([...examples]), labels: Object.freeze(labels.map(l => Object.freeze({...l}))),
     numbers: Object.freeze(findClaims(shown, {facts: factList, examples, scenes: storyboard.scenes.map(sc => sc.id), lang: filmLang}).map(Object.freeze)),
     ...(factList?.some(f => f.says !== undefined) ? {statements: Object.freeze(findStatements(shown, {facts: factList, examples, scenes: storyboard.scenes.map(sc => sc.id)}).map(Object.freeze))} : {}),
-    ...(allowOpen ? {allowOpen} : {})});
+    ...(allowOpen ? {allowOpen} : {}),
+    // A label's own words on how a scene differs: the number in them is the film's declaration, not a claim about the world.
+    ...(differsUp.some(d => d.shown.length) ? {own: Object.freeze(differsUp.flatMap(d => d.shown))} : {})});
   // What is drawn over every shot for a while: the guess cards, from their question to the card gone.
   const overlays = Object.freeze([...guesses.map((g, n) => Object.freeze({path: `guesses[${n}]`, from: g.start, to: g.until + .5})),
     ...(stepsTrack ? [Object.freeze({path: 'stepsTrack', from: stepsTrack.from, to: stepsTrack.until + .5})] : [])]);
@@ -1262,6 +1286,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
     // Its pace, when the recipe names one (the slideshow check holds it to it; a lesson's, when absent).
     ...(pace ? {pace} : {}),
     rows: Object.freeze(rows().map(Object.freeze)), overlays, replays, inputs, stringHashes, mouthsAt, partsAt, pictureAt: pictureClock,
+    ...(differsUp.length ? {differs: Object.freeze(differsUp)} : {}),
     lines: Object.freeze(lines.map(l => Object.freeze({...l}))), changes: Object.freeze(pictureChanges().map(c => Object.freeze({...c}))), claims, lang: filmLang,
     // What it was compiled from, kept for the cache's keys (segments.mjs): the recipe as given (its strings unresolved), with
     // the director's keys where they landed, frozen.

@@ -20,7 +20,10 @@ export type StoryboardScene = {id: string; title?: string; /** Who says the scen
   /** Number slots: [shown, spoken] — the captions show `shown` ("16.67 ms"), the voice says `spoken` ("sixteen point six seven milliseconds"; words only). Each shown text appears in the narration, in order. */
   say?: [string, string][];
   /** The scene shows example data (claims.mjs): its numbers need no source, and it says so on screen — true draws "Example data", a string draws those words (the film's language); false or left out, it is not. */
-  example?: boolean | string; [key: string]: unknown}
+  example?: boolean | string;
+  /** How the scene differs from the real thing (differs.mjs): time, how many times faster it runs (30; 0.04 is 25 times slower); scale, what is out of scale, in words. Said on screen by default (shown: the words, or false for the voice alone) and in the voice with said, the phrase of its narration that says it. */
+  differs?: {time?: number; scale?: string; shown?: string | string[] | false; said?: string};
+  [key: string]: unknown}
   & ({/** What is said. Marks in it are never said nor shown: {name} a moment a beat or a hold names ("{hop}"), {@who} the speaker of the quoted line right after it ({@mom}"…": script.mjs; the voice step writes each word's speaker from it). */ narration: string; silent?: never}
     | {silent: Direction[]; narration?: never});
 
@@ -80,7 +83,7 @@ export interface WordsClaim extends ClaimKnown { says: string; line: string; off
  * cannot be checked), each scene's example label (or null) and when a label is up; the claims in words (only when a fact
  * `says` one); the open claims a release may show anyway, each with its reason (recipe.evidence.allowOpen; only when given).
  */
-export interface Claims { facts: readonly ClaimFact[] | null; examples: readonly (string | null)[]; labels: readonly ExampleLabel[]; numbers: readonly Claim[];
+export interface Claims { facts: readonly ClaimFact[] | null; examples: readonly (string | null)[]; labels: readonly ExampleLabel[]; numbers: readonly Claim[]; /** A label's own words on how a scene differs: a number in them is no claim. */ own?: readonly string[];
   statements?: readonly WordsClaim[]; allowOpen?: Readonly<Record<string, string>> }
 /** Every claim the film says or shows outside example scenes with its class (claims.mjs · evidenceOf; the making-of's `claims.evidence`). `evidence: null`: a number no fact backs. */
 export interface ClaimEvidence {
@@ -517,6 +520,8 @@ export interface Film {
   changes: readonly {from: number; to: number; what: string}[];
   /** Every number the film shows and where it comes from: a fact the storyboard names, or an example scene. */
   claims: Claims;
+  /** The scenes that declare they differ from the real thing, each with its span and how it says so; absent when none does. */
+  differs?: readonly {scene: string; index: number; from: number; to: number; time?: number; scale?: string; shown: readonly string[]; said?: string; saidAt?: number}[];
   /** The language the film is shown in (compileFilm's lang, canonical BCP 47), or null: its numbers are read by it. */
   lang: string | null;
   /** The recipe's poster frame (seconds), or null. */

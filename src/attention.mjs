@@ -106,6 +106,17 @@ export function chip(ctx, text, alpha, theme, {x = 40, y = 26, k = 1, right = nu
   ctx.restore();
   return w;
 }
+/** A label's words as chips that fit `most` px across: one line when it fits, else broken between words. */
+export function chipLines(ctx, text, theme, most) {
+  ctx.save(); ctx.font = `800 24px ${theme?.type?.sans ?? SANS}`;
+  const lines = [''];
+  for (const word of text.split(' ')) {
+    const longer = lines.at(-1) ? `${lines.at(-1)} ${word}` : word;
+    if (lines.at(-1) && ctx.measureText(longer).width + 32 > most) lines.push(word); else lines[lines.length - 1] = longer;
+  }
+  ctx.restore();
+  return lines;
+}
 /** Where a box in the picture lands on the frame, through the focus view (the camera), or as it is without one. */
 const onFrame = (box, v) => !v ? box : [(box[0] - v.cx) * v.z + v.sx, (box[1] - v.cy) * v.z + v.sy, (box[2] - v.cx) * v.z + v.sx, (box[3] - v.cy) * v.z + v.sy];
 /** The emphasis strategies: how the words of a beat are put in front of the viewer. */

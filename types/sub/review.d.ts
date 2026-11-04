@@ -1,4 +1,4 @@
-import type {Claim, Film, Layout, Verdict, VerdictRules} from '../index.js';
+import type {Claim, Film, Layout, StoryboardScene, Verdict, VerdictRules} from '../index.js';
 /** A line of text a frame draws: its box (axis-aligned) and quad (its four corners, rotation kept) in output pixels, and its alpha. */
 /** decorative: drawn inside decorative() (footprint-storyreel/decorative) — read by every check but the claims check; code: drawn inside code(), its numbers read as code writes them. */
 export interface Word {text: string; box: [number, number, number, number]; quad: [number, number][]; alpha: number; decorative?: true; code?: true}
@@ -87,3 +87,11 @@ export function reviewPart(film: Film, options?: {part?: {scenes: string[]; hand
   /** something new (a scene, a beat, a new word) at least every this many seconds (5) while the picture moves: the stale check */ newEvery?: number;
   /** the part is made to loop: the end of its own scenes (not its handles) must come round to their start; motion that steps (a flipbook, drawing on twos) reads one drawing short there */ loop?: boolean; checks?: Record<string, ReviewCheck>}): Promise<{window: {from: number; to: number}; facts: Record<string, unknown> | null;
   findings: Finding[]; text: string; verdicts: ReviewVerdict[]; verdictText: string; timeline: string; ran: string[]; record: unknown[]}>;
+/** A scene's `differs`, checked: {time?, scale?, shown: the labels' words, said?}; null when it declares none. A refusal names the fix. */
+export function readDiffers(spec: StoryboardScene['differs'] | null, where?: string): {time?: number; scale?: string; shown: readonly string[]; said?: string} | null;
+/** A time factor in words: 30 is "Time shown 30 times faster", 0.04 "Time shown 25 times slower". */
+export function timeWords(time: number): string;
+/** The most characters one statement holds on its label. */
+export const DIFFERS_MOST: number;
+/** The verdict over `differs`: failed when a scene declares it differs and neither shows nor says how. */
+export const DIFFERS_VERDICT: VerdictRules;

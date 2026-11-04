@@ -779,3 +779,11 @@ import type {keepRun as KeepRun} from '../types/sub/tools.js';
 export const kept = (keep: typeof KeepRun) => keep('/p', {feature: 'mine', summary: 'a run', failure: 'it broke'})?.length ?? 0;
 // @ts-expect-error only is decisions, errors or steps
 export const badView = (text: typeof LogText) => text('/p', {run: 1, only: 'everything'});
+
+// A scene that differs from the real thing: declared on the storyboard, said on screen or in the voice.
+import type {StoryboardScene} from '../types/index.js';
+import type {readDiffers as ReadDiffers, timeWords as TimeWords} from '../types/sub/review.js';
+export const differing: StoryboardScene = {id: 'inside', narration: 'Thirty times faster here.', differs: {time: 30, scale: 'Drawn far larger than real', said: 'Thirty times faster'}};
+export const differsRead = (read: typeof ReadDiffers, words: typeof TimeWords) => (read(differing.differs ?? null)?.shown.length ?? 0) + words(30).length;
+// @ts-expect-error time is a number: how many times faster
+export const badDiffers: StoryboardScene = {id: 'inside', narration: 'Here.', differs: {time: 'fast'}};
