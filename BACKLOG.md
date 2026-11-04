@@ -289,7 +289,15 @@ a one-point room. Nothing has an x, y, z place, so a shot cannot turn from one a
   reduced motion cuts instead of flying; the review's checks read the words on a turned card where they land.
 - **Look first:** one scene of three cards and two views, flown in a film and in a deck.
 
-Not planned: a full 3D renderer (meshes, lights, materials). The cards stay drawings; only their place is 3D.
+- **Our port, their adapters.** The stage is OUR shape — cards, views, flights, as plain data with no library's types
+  in it — and a 3D library is an adapter behind one small interface: `renderer.mount(stage)`, `renderer.at(t)` (place
+  the camera and cards for moment t), `renderer.regions()` (each card's box on the frame, for focus and the review).
+  The first adapter is CSS 3D (no library, in StoryDeck and through the `html` world kit); a three.js adapter (an
+  optional dependency, loaded only when named) can follow when a film needs real models, lights or materials. Every
+  adapter passes one conformance test: the same stage at the same moments gives the same card corners on the frame,
+  within a pixel. A film or a deck never imports a 3D library directly.
+
+Not planned now: our own 3D renderer (meshes, lights, materials). That is the three.js adapter's job when it is needed.
 
 ## An `html` world kit: a web page as a shot, captured frame by frame (2026-11-03)
 
