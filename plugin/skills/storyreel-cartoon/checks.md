@@ -36,6 +36,7 @@ claims)`); a check runs only when the part has what it reads (no caption band, n
 | `example-lingers` | example data over real numbers | an example scene's line, and its label, stay up into a real scene | erase that line before the scene |
 | `slideshow` | held still | a shot holds still for more than 3 s<!-- SLIDESHOW.hold --> at a time (the verdict below) | motion inside the shot |
 | `geometry` | the drawing breaks | a drawn part comes off, crosses or slides (the verdict below) | fix the kit's drawing |
+| `pure` | drawn differently twice | a moment drawn again, after later ones, gives another picture (the verdict below) | draw from `t` alone: seeded randomness, no clock, nothing kept between frames |
 | `claims` | no source | a number on screen has no source (the verdict below) | a fact, or an example scene |
 
 "Nothing changes", "nothing new" and the slideshow's "held still" are advice: a held title can be right, and then

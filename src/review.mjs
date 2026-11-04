@@ -37,6 +37,7 @@ import {clockTenths} from './clock.mjs';
 import {verdictChart, verdictsText, readVerdict} from './verdict.mjs';
 import {slideshowOf, pacedRule, slideshowVerdict} from './slideshow.mjs';
 import {geometryOf, breakText, GEOMETRY_VERDICT} from './geometry.mjs';
+import {purityOf, PURITY_FINDING, PURITY_VERDICT} from './purity.mjs';
 import {claimsCount, unsourcedClaims, claimText, drawnClaims, drawnLines, lingeringExamples, lingerText, HOLD, CLAIMS_VERDICT} from './claims.mjs';
 import {wordsIn} from './reading.mjs';
 import {isDecorative, isCode} from './decorative.mjs';
@@ -345,6 +346,15 @@ export const REVIEW_CHECKS = Object.freeze({
     },
     summary: m => `${m.parts} parts at ${m.moments} moments${m.broken ? `; ${m.worst.slice(0, 3).map(w => `${w.text}${w.px !== undefined ? ` (${w.px} px at ${clockTenths(w.t)})` : ` (at ${clockTenths(w.t)})`}`).join('; ')}${m.broken > 3 ? `; and ${m.broken - 3} more` : ''}` : ''}`,
     verdict: GEOMETRY_VERDICT},
+  // Each moment draws the same picture, whatever was drawn before (purity.mjs): a few samples drawn again, last first.
+  pure: {label: 'Every moment draws the same', why: 'the part has moments to draw again', notRun: 'the part has fewer than two moments to draw again',
+    when: s => s.facts.samples >= 2,
+    measure: ({film, samples, hashes}) => {
+      const p = purityOf(film, {times: samples.map(x => x.t), hashes, width: 160});
+      return {measured: {moments: p.moments, changed: p.changed.length, at: p.changed}, hits: p.changed.map(t => ({kind: 'pure', t, what: PURITY_FINDING}))};
+    },
+    summary: m => `${m.moments} moments drawn again${m.changed ? `; ${m.changed} gave another picture, first at ${clockTenths(m.at[0])}` : ''}`,
+    verdict: PURITY_VERDICT},
   // Every number on screen has a source (claims.mjs): a fact the storyboard names, or an example scene. The numbers are
   // the film's declared ones on screen during the part (their [at, to] meets it) and every number the samples' words
   // draw that none of them holds (claims.mjs · drawnClaims: the words read once, for every check — no second drawing).
@@ -385,11 +395,12 @@ function frozenWords(film, f) {
 }
 
 const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes', hook: 'no hook', 'text-density': 'too much to read', silences: 'no breath', stale: 'nothing new', loop: 'the loop jumps', 'frozen-voice': 'a freeze over the voice',
-  slideshow: 'held still', geometry: 'the drawing breaks', claims: 'no source', 'example-lingers': 'example data over real numbers'};
+  slideshow: 'held still', geometry: 'the drawing breaks', pure: 'drawn differently twice', claims: 'no source', 'example-lingers': 'example data over real numbers'};
 /** What a verdict check's scope keeps for itself: never a measured value's name. */
 const MACHINERY = new Set(['hits', 'failed', 'measured', 'verdict', 'why', 'summary']);
 /** The findings as lines: "1:21.5–1:23.0 chapters · under the captions: \"requests in\"". */
 export {verdictsText};
+export {purityOf, PURITY_VERDICT} from './purity.mjs';
 export const findingsText = findings => findings.map(f => `${clockTenths(f.from)}–${clockTenths(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}`).join('\n');
 
 /** The findings that are advice, not errors (a held title can be right): listed after the rest in a summary. */

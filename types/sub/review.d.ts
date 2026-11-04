@@ -44,7 +44,11 @@ export type ReviewCheck = FindingCheck | VerdictCheck;
  * seconds or more needs real silences.
  */
 export const REVIEW_DEFAULTS: Readonly<{every: number; stillFor: number; lasting: number; minAlpha: number; minHeight: number; maxWords: number; minSilence: number; newEvery: number; hook: number; breath: number}>;
-export const REVIEW_CHECKS: Readonly<Record<'under-captions' | 'words-overlap' | 'cut-off' | 'hook' | 'text-density' | 'silences' | 'stale' | 'loop' | 'frozen-voice' | 'still' | 'example-lingers', FindingCheck> & Record<'slideshow' | 'geometry' | 'claims', VerdictCheck>>;
+export const REVIEW_CHECKS: Readonly<Record<'under-captions' | 'words-overlap' | 'cut-off' | 'hook' | 'text-density' | 'silences' | 'stale' | 'loop' | 'frozen-voice' | 'still' | 'example-lingers', FindingCheck> & Record<'slideshow' | 'geometry' | 'pure' | 'claims', VerdictCheck>>;
+/** Moments drawn again, last first, against the pictures they gave the first time (`hashes`: t → hash, as frameHashes draws them at `width`): the moments that gave another one. */
+export function purityOf(film: Film, options: {times: number[]; hashes: Record<string, string>; width?: number}): {moments: number; changed: number[]};
+/** The purity verdict's rules: not run under two moments, failed when one changed. */
+export const PURITY_VERDICT: VerdictRules;
 /** What a verdict check answered: its verdict, why (the rule that matched, or what passing means), what it measured, and its numbers in words. */
 export interface ReviewVerdict {check: string; label: string; verdict: Verdict; why: string; measured: Record<string, unknown>; summary?: string}
 export function verdictsText(verdicts: ReviewVerdict[]): string;

@@ -772,10 +772,10 @@ film.progression;   // [{kind: 'not-carried', where: 'stage refused', next: 'sta
   and, under `compile`, the compile stage by stage (the narrative of its record, below). A version made
   for a platform says so: `"version": {"format": "vertical", "motionBlur": 4, "captionFiles": ["captions.vtt"]}`.
 
-## Three verdicts: no slideshow, parts that hold, numbers with a source
+## The verdicts: no slideshow, parts that hold, the same picture, numbers with a source
 
-Some questions about a film have a yes or a no: is it a slideshow? Does the drawing hold together? Does every
-number on screen say where it comes from? StoryReel answers each with a **verdict** — `passed`, `failed`, or
+Some questions about a film have a yes or a no: is it a slideshow? Does the drawing hold together? Does each moment
+draw the same picture every time? Does every number on screen say where it comes from? StoryReel answers each with a **verdict** — `passed`, `failed`, or
 `not run` — decided with footprintjs's `decide()`, so the record of the run that asked keeps *why*: the rule that
 matched, the values it read and the thresholds it compared them with. A check that cannot run (no parts, no facts)
 says `not run` and why; it never passes.
@@ -786,6 +786,7 @@ const r = await reviewPart(film);     // the hello example
 console.log(r.verdictText);
 // No slideshow · passed: the shots move inside themselves: most of their running time is never held still for more than 3 s (32 % of 27.8 s dead, 63 % still; held still: stage rule 75 %)
 // Drawn parts hold together · not run: no kit on screen gives its parts (parts(t))
+// Every moment draws the same · passed: every moment drawn again, in the other order, gives the same picture (8 moments drawn again)
 // Every number has a source · not run: the storyboard names no facts, so the numbers outside example scenes cannot be checked (4 numbers on screen: 0 sourced, 0 in example scenes, 4 unchecked)
 r.record.filter(e => e.type === 'condition').map(e => e.text);
 // [Condition]: It evaluated Rule 2 "the storyboard names no facts, so the numbers outside example scenes cannot be checked": factsGiven false eq false ✓, open 4 gt 0 ✓, and chose claims/not run.
@@ -865,6 +866,22 @@ their time.
 import {slideshowOf, SLIDESHOW} from 'footprint-storyreel/slideshow';
 const s = slideshowOf(film);             // {shots, seconds, still, dead, deadShare, deadShots: [{where, deadShare, deadAt, …}]}
 slideshowOf(film, {rule: {...SLIDESHOW, hold: 4}});    // the thresholds are data
+```
+
+### Every moment draws the same
+
+Everything after the drawing trusts that a frame is a pure function of time: a piece re-rendered alone, a still, a
+part, the studio's frame at the playhead. StoryReel's own kits are tested for it; **a film's own kits are checked by
+the review.** Eight of the review's samples, spread over the part, are drawn again in the other order, the last
+first, and each must give the very picture it gave the first time (`purityOf`, on `footprint-storyreel/review`). A kit that keeps
+state between frames (a position stepped on each draw), or draws with `Math.random` or the clock, gives another one,
+and the moment is a finding that names the fix: draw from `t` alone, with seeded randomness, no clock, nothing kept
+from the frame before.
+
+```js
+import {purityOf} from 'footprint-storyreel/review';
+import {frameHashes} from 'footprint-storyreel/pins';
+purityOf(film, {times: [1, 2, 3], hashes: frameHashes(film, {times: [1, 2, 3], width: 160})});   // {moments: 3, changed: []}
 ```
 
 ### Drawn parts hold together
@@ -2183,7 +2200,7 @@ run it.
   A check that throws, or answers with anything else (a promise, no list, a hit without its time or its words),
   fails the review with one error naming every check that failed, so a review that returns has run every check it
   picked. Three checks answer with a verdict — no slideshow, drawn parts that hold together, every number with a
-  source (`r.verdicts`, `r.verdictText`; [below](#three-verdicts-no-slideshow-parts-that-hold-numbers-with-a-source)).
+  source (`r.verdicts`, `r.verdictText`; [below](#the-verdicts-no-slideshow-parts-that-hold-the-same-picture-numbers-with-a-source)).
 - **The same, from the command line — and as a skill for agents.** `npx storyreel timeline | review | part | anchors |
   still | sheet | strip --scene <id>` (`anchors`: [every phrase, checked at once](#when-the-words-change-anchors);
   `script`: [the film's script as JSON, for a voice step](#one-script-moments-and-speakers-in-the-narration);
@@ -3602,7 +3619,7 @@ the default because it rarely does; there is no swap repair.
 | `footprint-storyreel/shots` → `readIntent` · `readContinuity` · `checkContinuity` · `tooMuchTooFast` · `distinctMoments` · `WATCHING` | the shot plan's checks, on their own |
 | `footprint-storyreel/progression` → `QUESTIONS` · `QUESTION_ASKS` · `ANSWER_MAX` · `readQuestions` · `checkProgression` · `progressionMode` · `progressionRefusal` · `contentWords` · `sharedWords` | the five scene questions (exists, changed, why, opens, remains) and the check that the story moves one world on |
 | `footprint-storyreel/rubric` → `readRubric` · `rubricSheet` · `rubricText` · `readScores` · `scoresRecord` · `recordScores` · `rubricShort` · `rubricRefusal` · `LOOKS` · `SEEN_INPUTS` | a scored self-review: a rubric as data, each point's stills and evidence laid out, the scores recorded in the making-of, an approval that waits for them |
-| `footprint-storyreel/review` → `reviewPart(film, {part?, layout?, checks?, …})` · `REVIEW_DEFAULTS` · `REVIEW_CHECKS` · `findingsText` · `verdictsText` · `wordsAt` | a part reviewed by reading it: findings with times, and three verdicts (passed, failed, not run) with their `decide()` evidence |
+| `footprint-storyreel/review` → `reviewPart(film, {part?, layout?, checks?, …})` · `REVIEW_DEFAULTS` · `REVIEW_CHECKS` · `findingsText` · `verdictsText` · `wordsAt` | a part reviewed by reading it: findings with times, and its verdict checks (each passed, failed or not run) with their `decide()` evidence |
 | `footprint-storyreel/slideshow` → `slideshowOf(film, {from?, to?, every?, rule?})` · `shotMotion` · `shotInsides` · `moved` · `SLIDESHOW` · `SLIDESHOW_VERDICT` | no slideshow: how much each shot moves in its middle, and whether most of the running time is dead (held still more than 3 s) |
 | `footprint-storyreel/geometry` → `geometryOf(film, {from?, to?, rule?})` · `auditParts` · `readParts` · `crosses` · `breakText` · `GEOMETRY` · `GEOMETRY_VERDICT` | a kit's drawn parts audited: mounted ends stay on, pairs kept apart never cross, a planted end stays where it was planted |
 | `footprint-storyreel/claims` → `numbersIn` · `numberValue` · `numberLocale` · `CODE_READING` · `readFacts` · `sourceKind` · `exampleScenes` · `labelSpans` · `findClaims` · `drawnLines` · `DRAWN` · `HOLD` · `drawnClaims` · `lingeringExamples` · `claimsCount` · `unsourcedClaims` · `claimText` · `CLAIMS_VERDICT` · `EVIDENCE` · `findStatements` · `readAllowOpen` · `evidenceOf` · `unallowedOpen` · `openText` · `openRefusal` | every number on screen with its source: a fact the storyboard names, or an example scene (`film.claims`; the review adds what the picture draws); how each claim is known (its evidence class), claims in words, and the open claims a release refuses |

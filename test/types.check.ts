@@ -754,3 +754,9 @@ export const projectFiles = async (load: typeof loadInputs, compile: typeof comp
 export const watched: ProjectInputs = {storyboard: {}, recipe: {}, watch: ['ep1/pacing.json']};
 export const wordMoves: string[] = [...WORD_MOVES, readWordMove('pop', 'scene-05').name];
 export const sampled = transitionSample('torn').seconds;
+
+// The purity verdict: moments drawn again against their first pictures.
+import type {purityOf as PurityOf} from '../types/sub/review.js';
+export const purity = (p: typeof PurityOf, film: Film) => p(film, {times: [1, 2], hashes: {}}).changed.length;
+// @ts-expect-error times is a list of seconds
+export const badPurity = (p: typeof PurityOf, film: Film) => p(film, {times: 1, hashes: {}});
