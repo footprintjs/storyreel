@@ -175,8 +175,8 @@ if (!command || command === 'help' || command === '--help' || !TOOLS[command]) {
 }
 try {
   // A tool that prepares the film itself reads the config without compiling it first: changes as the full render does
-  // ('inputs': timed), anchors with its own timing ('config': not yet timed).
-  const load = {config: readInputs, inputs: loadInputs}[TOOLS[command].load] ?? loadProject;
+  // ('inputs': timed), anchors with its own timing ('config': not yet timed); the log takes the flags as they are ('flags').
+  const load = {config: readInputs, inputs: loadInputs, flags: async given => given}[TOOLS[command].load] ?? loadProject;
   const project = await load(flags), out = await TOOLS[command].run(project, flags);
   console.log(typeof out === 'string' ? out : out.text);
   for (const file of out?.files ?? [out?.file]) sendPicture(file);   // run by the MCP server for a still, a strip or a sheet: each picture's path on its own pipe, never read out of the text

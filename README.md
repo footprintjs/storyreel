@@ -897,7 +897,7 @@ the frame's height: about 18 pt). A word fading in (alpha under 1) is on its way
 its **best** moment over the part, so one written on stroke by stroke or typed in is read once it is whole; one with
 no ink at all (clipped away, not revealed yet) is counted as never seen, not read. A faint word is a finding with its
 ratio and the fix. The verdict keeps its evidence word by word: each faint word with its ratio and the time (the first
-50; `low` counts them all) and the closest call, the word read nearest its threshold, so a pass says what it stood on
+50; `low` counts them all, `faintNotListed` the rest) and the closest call, the word read nearest its threshold, so a pass says what it stood on
 (`storyreel log --run 1 --check contrast`).
 
 ```js
@@ -3068,7 +3068,7 @@ its run in the out folder (`out/.storyreel/runs/`, the newest 100 kept), and the
 listed with them:
 
 ```sh
-npx storyreel log                         # the runs, newest first
+npx storyreel log                         # the runs, newest first (the newest 10; --all for every one)
 # 1. 2026-11-04 02:27:38 review · the whole film: 0.00–20.80 s … nothing found · verdicts: 4 passed, 1 not run · 5 decisions
 npx storyreel log --run 1                 # each stage once: what it wrote, what it decided and what the decision read
 # slideshow/No slideshow · wrote shots 1, seconds 20.75, still 2, stillShare 0.096, dead 0, deadShare 0, …
@@ -3079,9 +3079,16 @@ npx storyreel log --run 1 --check contrast   # one verdict's evidence in full: e
 ```
 
 A pass says what it stood on: a decision no rule chose still prints the values it read. One run prints at most 40
-lines (`--all` for every one); the rest are counted with the call that shows them. It is an MCP tool too
+lines (`--all` for every one); the rest are counted with the call that shows them. A run's number moves when another
+is saved; its id (printed under its head, `run 2026-11-04T02-27-38-089Z-review.3fa9c1`) never does, and `--run` takes
+either. The log reads only the out folder, so a config that no longer loads still leaves it readable (`--out`, or
+`./out`), with a line saying why the config did not load. A review whose run cannot be saved (an out folder others
+can change, a read-only disk) still answers, and says why under its answer. It is an MCP tool too
 (`storyreel mcp`: `log`, with `run`, `only`, `check`, `all`). A saved run keeps what the record says, in words, and a
-verdict's measured values as data; never a value a stage carried. From code, `saveRun(out, {feature, summary, record,
+verdict's measured values as data; never a value a stage carried. The words include short summaries of the values
+read and written (footprintjs says a string of up to 80 characters as it is), so a chart that handles a private value
+redacts it before its narrative says it. A run file is read back only as a plain file of its own (never through a
+link, at most 4 MB), and one of any other shape is counted, not shown. From code, `saveRun(out, {feature, summary, record,
 verdicts})` saves a run of your own feature (its record: footprintjs `narrative().getEntries()`), and `logText(out,
 {run, only, check})` reads them, both from `footprint-storyreel/tools`.
 

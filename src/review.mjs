@@ -379,8 +379,8 @@ export const REVIEW_CHECKS = Object.freeze({
     measure: ({samples}) => {
       const {words, low, unseen, closest} = faintWords(samples), lowest = low.reduce((m, w) => (m === null || w.ratio < m.ratio ? w : m), null);
       const word = w => (w ? {text: w.text, ratio: w.ratio, needs: w.needs, t: w.t} : null);
-      // the evidence, item by item: each faint word (the first FAINT_KEPT, the rest counted by low) and the closest call
-      return {measured: {words, unseen, low: low.length, lowest: word(lowest), closest: word(closest), faint: low.slice(0, FAINT_KEPT).map(word)},
+      // the evidence, item by item: each faint word (the first FAINT_KEPT, the rest counted: faintNotListed) and the closest call
+      return {measured: {words, unseen, low: low.length, lowest: word(lowest), closest: word(closest), faint: low.slice(0, FAINT_KEPT).map(word), ...(low.length > FAINT_KEPT ? {faintNotListed: low.length - FAINT_KEPT} : {})},
         hits: low.map(w => ({kind: 'contrast', t: w.t, what: contrastText(w)}))};
     },
     summary: m => `${m.words} word${m.words === 1 ? '' : 's'} measured${m.unseen ? ` (${m.unseen} never seen: clipped or not revealed)` : ''}${m.low ? `; ${m.low} too faint, the faintest "${m.lowest.text}" ${m.lowest.ratio}:1 at ${clockTenths(m.lowest.t)}` : ''}`,

@@ -250,7 +250,7 @@ test('a film with no voice is paced from its config: the even timings take its h
 test('the command line: each tool by name, its flags to the film too; refusals name the fix', () => {
   const help = run(['help']);
   assert.equal(help.status, 0); assert.match(help.stdout, /Read first, look last: timeline → review → fix → part → still\./);
-  const r = run(['review', '--scene', 'one']);
+  const r = run(['review', '--scene', 'one', '--out', tempDir('cli-review')]);   // a review saves its run in the out folder: never the fixture's
   assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /words over words: "Alpha" and "Beta"/);
   const none = run(['review'], tempDir('empty'));   // a folder with no project in it (its own, not the shared temp folder)
   assert.equal(none.status, 1); assert.match(none.stderr, /no storyreel\.config\.mjs in .*: a project names its film there/);

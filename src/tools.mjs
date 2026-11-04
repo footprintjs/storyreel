@@ -31,7 +31,7 @@ import {formatScale} from './layout.mjs';
 import {hashOf} from './hash.mjs';
 import {reviewPart, reviewSummary, REVIEW_DEFAULTS, SUMMARY_TOP} from './review.mjs';
 import {saveRun, logText, LOG_LINES} from './runlog.mjs';
-export {saveRun, listRuns, logText, RUNS, RUNS_KEPT} from './runlog.mjs';
+export {saveRun, listRuns, logText, RUNS, RUNS_KEPT, RUNS_LISTED} from './runlog.mjs';
 import {readRubric, rubricSheet, rubricText, recordScores} from './rubric.mjs';
 import {TARGETS, TARGET_NAMES, loadTarget} from './release.mjs';
 import {phoneSheet, PHONE} from './phone.mjs';
@@ -186,8 +186,10 @@ export async function review(project, args = {}) {
   const r = await reviewPart(project.film, {...(part?.window ? spanOf(project.film, part) : part ? {part} : {}), layout: project.inputs.layout ?? null, loop});
   const said = yes(args.full) ? `${r.text || 'nothing found'}${r.verdicts?.length ? `\nverdicts:\n${r.verdictText}` : ''}` : reviewSummary(r, {more: FULL_HINT});
   const line = `${head(project.film, part, r.window)} — review (${r.ran.join(', ') || 'no check fits'})`;
-  saveRun(outFolderOf(project), {feature: 'review', summary: `${line}: ${reviewSummary(r, {more: ''}).split('\n')[0]}`, record: r.record, verdicts: r.verdicts});
-  return `${line}:\n${said}`;
+  // the review's answer is the result; its saved run is a record beside it, so a run that cannot be saved is said, never the answer lost
+  let unsaved = '';
+  try { saveRun(outFolderOf(project), {feature: 'review', summary: `${line}: ${reviewSummary(r, {more: ''}).split('\n')[0]}`, record: r.record, verdicts: r.verdicts}); } catch (e) { unsaved = `\n(this review's run was not saved for storyreel log: ${e.message})`; }
+  return `${line}:\n${said}${unsaved}`;
 }
 
 /** The full render's making-of record: beside film.mp4 in the project's out folder (fullRender), where the scores go. */
@@ -509,8 +511,19 @@ const feedbackTool = (project, args = {}) => feedback(projectRecipe(project, {co
 
 /** The full flag: by default a review says the counts, the verdicts that did not pass and the first findings (review.mjs · reviewSummary). */
 const FULL_ARG = `true for every finding and every verdict's why (default: the counts, what did not pass, the first ${SUMMARY_TOP} findings)`;
-/** The project's run log (runlog.mjs): the runs, newest first, or one run's stages and decisions, or one verdict's evidence. */
-export const log = (project, args = {}) => logText(outFolderOf(project), {run: args.run === undefined || yes(args.run) ? null : args.run, only: args.only ?? null, check: args.check ?? null, all: yes(args.all)});
+/**
+ * The project's run log (runlog.mjs): the runs, newest first, or one run's stages and decisions, or one verdict's
+ * evidence. It takes the flags as they are (load: 'flags') and reads the config only for its out folder, so a config
+ * that no longer loads — when the log is wanted most — still leaves the log readable: --out, or the default out.
+ */
+export async function log(flags = {}) {
+  let out, note = '';
+  try { out = outFolderOf(await readInputs(flags)); } catch (e) {
+    out = path.resolve(flags.cwd ?? process.cwd(), typeof flags.out === 'string' ? flags.out : 'out');
+    note = `\n(the config did not load, so these are the runs in ${out}: ${e.message})`;
+  }
+  return logText(out, {run: flags.run === undefined || yes(flags.run) ? null : flags.run, only: flags.only ?? null, check: flags.check ?? null, all: yes(flags.all)}) + note;
+}
 
 /** The tools, as the command line and an MCP server list them: what each does and what it takes. */
 export const TOOLS = Object.freeze({
@@ -518,7 +531,7 @@ export const TOOLS = Object.freeze({
     args: {scene: 'scene ids, comma-separated (default: the whole film; or a window: from and to)', from: 'the window\'s start on the film clock: seconds or m:ss (0:12)', to: 'the window\'s end: seconds or m:ss',
       handles: `seconds of the film shown either side of the scenes or the window (${TOOL_DEFAULTS.handles})`}},
   feedback: {run: feedbackTool, load: 'config', about: FEEDBACK_ABOUT, args: FEEDBACK_ARGS},
-  log: {run: log, load: 'config', about: 'How a result was made: the project\'s runs, newest first (a review, a render); one run\'s stages, what each wrote and decided, with the rule that matched and the values it read; a verdict\'s evidence, each item measured. Read it before re-running or looking at pictures.',
+  log: {run: log, load: 'flags', about: 'How a result was made: the project\'s runs, newest first (a review, a render); one run\'s stages, what each wrote and decided, with the rule that matched and the values it read; a verdict\'s evidence, each item measured. Read it before re-running or looking at pictures.',
     args: {run: 'a run\'s number from the list, to show that run (default: the list)', only: 'with run: decisions, errors or steps (every entry as the record says it); default: each stage once, what it wrote and decided',
       check: 'with run: a verdict\'s name (contrast, slideshow, …): everything its check measured, each item', all: `true for every line (default: the first ${LOG_LINES})`}},
   review: {run: review, about: `What is wrong, read from the picture as text: words under the captions, over each other, cut off at the edge, the picture frozen for ${REVIEW_DEFAULTS.stillFor} s, nothing new for ${REVIEW_DEFAULTS.newEvery} s while it moves. Times on the film clock. Then three verdicts (passed, failed, or not run): no slideshow, drawn parts hold together, every number on screen has a source. With rubric: each point of a rubric laid out with its stills and evidence, to score; with scores and by, the scores recorded in the render's making-of.json.`,
