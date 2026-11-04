@@ -16,6 +16,7 @@
 import {readFileSync} from 'node:fs';
 import {writeOutput} from './files.mjs';
 import {claimsCount} from './claims.mjs';
+import {saidBeat} from './differs.mjs';
 import {stableJson} from './hash.mjs';
 
 /** What each look lays out for a point: its stills, and the evidence beside them. */
@@ -133,7 +134,7 @@ const LAYOUTS = {
       ...(found.length ? [`${found.length} thing${found.length === 1 ? '' : 's'} that do${found.length === 1 ? 'es' : ''} not progress: ${found.slice(0, 3).map(f => f.text).join('; ')}`] : [])]};
   },
   sound(film, {record}) {
-    const sounds = film.sounds ?? [], beats = film.beats ?? [], shown = spread(sounds);
+    const sounds = film.sounds ?? [], beats = (film.beats ?? []).filter(b => !saidBeat(b)), shown = spread(sounds);
     const near = s => beats.reduce((best, b) => (!best || Math.abs(b.t - s.time) < Math.abs(best.t - s.time) ? b : best), null);
     const voice = record?.voice ? [`the voice check: ${record.voice.lowWords?.length ?? 0} word${record.voice.lowWords?.length === 1 ? '' : 's'} scored low, ${record.voice.notHeard?.length ?? 0} not heard`] : [];
     return {stills: shown.map(s => ({t: inside(film, s.time), label: `${s.type} ${secs(s.time)}`})), evidence: [

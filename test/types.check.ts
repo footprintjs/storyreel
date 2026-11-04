@@ -784,6 +784,7 @@ export const badView = (text: typeof LogText) => text('/p', {run: 1, only: 'ever
 import type {StoryboardScene} from '../types/index.js';
 import type {readDiffers as ReadDiffers, timeWords as TimeWords} from '../types/sub/review.js';
 export const differing: StoryboardScene = {id: 'inside', narration: 'Thirty times faster here.', differs: {time: 30, scale: 'Drawn far larger than real', said: 'Thirty times faster'}};
-export const differsRead = (read: typeof ReadDiffers, words: typeof TimeWords) => (read(differing.differs ?? null)?.shown.length ?? 0) + words(30).length;
+export const differsRead = (read: typeof ReadDiffers, words: typeof TimeWords) => (read(differing.differs ?? null)?.shown.length ?? 0) + (read(differing.differs ?? null)?.said?.length ?? 0) + words(30).length;
+export const differingEach: StoryboardScene = {id: 'inside', narration: 'Thirty times faster, and far larger.', differs: {time: 30, scale: 'Drawn far larger than real', shown: false, said: ['Thirty times faster', 'far larger']}};
 // @ts-expect-error time is a number: how many times faster
 export const badDiffers: StoryboardScene = {id: 'inside', narration: 'Here.', differs: {time: 'fast'}};

@@ -915,23 +915,35 @@ unless the film says otherwise. A scene declares how it differs, and the film sa
  "differs": {"time": 30, "scale": "The dots are drawn far larger than real", "said": "thirty times faster"}}
 ```
 
-- **`time`** is how many times faster the picture runs than the real thing (`30`; `0.04` is 25 times slower).
+- **`time`** is how many times faster the picture runs than the real thing (`30`; `0.04` is 25 times slower). A factor a
+  label can say is 1.01 or more, or 0.99 or less, up to a billion times either way; past that, say it in words in `scale`.
   **`scale`** is what is out of scale, in words (at most 70 characters). Give either or both.
 - **On screen, by default.** A label per statement in the top right corner, in the example label's look, under it when
   that is up, over the scene and no longer: "Time shown 30 times faster". In a format that crops the frame it stays
-  inside what is shown, a long one broken between words. `"shown"` gives the words in the film's language, or `false`
-  for the voice alone. The labels are lines to read, so the reading-time check covers them. The number in a label is the
-  film's own declaration, so it needs no source.
+  inside what is shown, a long one broken between words, and a word too long for its chip broken between its letters.
+  `"shown"` gives the words in the film's language, or `false` for the voice alone. A film in another language must give
+  them: the default words are English. The labels are lines to read, so the reading-time check covers them.
+- **Which numbers are claims.** The time words, or a line whose only number is the declared time, are the film's own
+  declaration, so they need no source. Any other number in a label is a claim like any on screen: "Drawn 1000 times
+  larger" needs a fact, or an example scene. A number in the time's line that is not the one declared is refused.
 - **In the voice.** `"said"` names the phrase of the scene's narration that says it, found as every phrase in a recipe
-  is: a phrase the scene does not say refuses, and `storyreel anchors` lists it with the others. A number in the voice is
-  a claim like any other, so say it in words or give it a fact.
+  is: a phrase the scene does not say refuses, and `storyreel anchors` lists it with the others. A silent scene says
+  nothing, so it names no phrase. A number in the voice is a claim like any other, so say it in words or give it a fact.
+- **Every statement is said.** A scene that declares both `time` and `scale` gives each a line or a phrase of its own:
+  `"shown": false` with `"said": ["thirty times faster", "far larger than real"]`, or one line and one phrase. Nothing
+  checks what the words mean, so the verdict prints them for you to judge.
 - **The verdict** (`Says how it differs from the real thing`) is asked only of a film that declares, so any other film's
-  verdicts stay as they were. It reads the part it is given: the labels as the frame draws them, the phrase where it is
-  said. A part cut to lose the phrase fails (`storyreel review --from 3`), and the finding says what to keep.
-  `film.differs` and the making-of list every declaration.
+  verdicts stay as they were. It reads the part it is given, and only that part's own scenes, not what its handles show.
+  A label counts when the frame draws it whole, inside the film, clear of the title band and the app's UI, for as long as
+  it takes to read. A phrase counts where it is said whole, at any place it is said. A part cut to lose the phrase
+  fails (`storyreel review --from 3`), and the finding says what to keep. A render's report on the app's UI names a label
+  under it (`kind: 'label'`). `film.differs` and the making-of list every declaration, with each place a phrase is said.
+- **It goes with the picture.** A camera freeze that holds a scene's picture into the next scene holds its label too, and
+  the verdict reads it there. A teaser's rewind shows it with the moment it replays.
 - **What it cannot do.** It reads what is declared, and cannot see a speed-up nobody declared. A kit that runs its own
-  clock reads the same `time` from its scene to keep the two together; nothing ties them for it. A render's cuts (`edit`) are
-  not checked yet, so review the part you cut.
+  clock reads the same `time` from its scene to keep the two together; nothing ties them for it. A world held on screen
+  through the next scene loses the label at the scene's end, though its picture is still up: declare the next scene too.
+  A render's cuts (`edit`) are not checked yet, so review the part you cut.
 
 ### Drawn parts hold together
 

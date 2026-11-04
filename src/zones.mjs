@@ -10,8 +10,8 @@
  *             first and kept, untouched, when none of it lies under a zone, so a layout whose text is clear draws as
  *             it always did; else narrowed about its centre to what the zones leave clear across its rows, or moved
  *             out of a band that spans it.
- *   the check uiFindings: every caption, the title band and every named face region (ui.faces) still under a zone
- *             after the fitting — when, under which zone, and where — what a render reports, or refuses when the
+ *   the check uiFindings: every caption, the title band, every named face region (ui.faces) and every label on how a
+ *             scene differs (differs.mjs) still under a zone after the fitting — when, under which zone, and where — what a render reports, or refuses when the
  *             layout says so (ui.covered: 'refuse').
  *
  * Geometry is in the format's own pixels (1080×1920 for vertical), whatever the render's scale; rectangles drawn are
@@ -154,8 +154,8 @@ export const rectText = r => `x ${Math.round(r[0])}–${Math.round(r[2])}, y ${M
 /**
  * What of the film is still under the app's UI in a compiled layout (layout.mjs · compileLayout with `ui`), between
  * `from` and `to` on the film clock (`cut`, an edit's cut index, is said with each): [{kind: 'title' | 'caption' |
- * 'face', at, until?, zone, name?, said?, rect, overlap, cut?}], in time order — the title band once (at `from`), each
- * caption chunk said there (at its start), each named face (ui.faces) as runs of FACE_STEP samples. Also {fitted}: how
+ * 'face' | 'label', at, until?, zone, name?, said?, rect, overlap, cut?}], in time order — the title band once (at `from`), each
+ * caption chunk said there (at its start), each named face (ui.faces) and each label on how a scene differs as runs of FACE_STEP samples. Also {fitted}: how
  * many captions the fitting moved or narrowed, and whether it moved the title. Pure: nothing is drawn.
  */
 export function uiFindings(film, framed, {from = 0, to = film.total, cut} = {}) {
@@ -171,7 +171,7 @@ export function uiFindings(film, framed, {from = 0, to = film.total, cut} = {}) 
     if (fit.fitted) captions++;
     for (const h of fit.covered) out.push({kind: 'caption', at: +chunk.start.toFixed(3), zone: h.zone, said: chunk.text, rect: rounded(h.rect), overlap: rounded(h.overlap), ...tag});
   }
-  out.push(...faceRuns(film, framed, {from, to}).map(r => ({...r, ...tag})));
+  out.push(...faceRuns(film, framed, {from, to}).map(r => ({...r, ...tag})), ...labelRuns(film, framed, {from, to}, ctx).map(r => ({...r, ...tag})));
   return {findings: out.sort((a, b) => a.at - b.at), fitted: {captions, title: Boolean(title?.fitted)}};
 }
 
@@ -198,33 +198,43 @@ export function uiReport(film, layouts) {
   return {zones: zones.map(z => ({...z, rect: rounded(z.rect)})), covered, faces: [...faces], fitted, findings: said, ok: !said.length};
 }
 
-/** Each named face (ui.faces) under a zone, as runs: {kind: 'face', name, zone, at, until, rect, overlap} (the first sample's). */
-function faceRuns(film, framed, {from, to}) {
-  const names = framed.ui.faces;
-  if (!names.length || typeof film.regionsAt !== 'function') return [];
+/**
+ * What `boxesAt(t)` puts on the frame ([{name, box}]) that lies under a zone, as runs: {kind, name, zone, at, until, rect,
+ * overlap} (the first sample's), read every FACE_STEP.
+ */
+function runsUnder(kind, boxesAt, framed, {from, to}) {
   const runs = [], open = new Map();
   for (let k = 0; from + k * FACE_STEP < to - 1e-6; k++) {
     const t = from + k * FACE_STEP, seen = new Set();
-    for (const r of film.regionsAt(t)) {
-      if (!r.name || !names.includes(r.name)) continue;
+    for (const r of boxesAt(t)) {
       const rect = framed.toOutput(t, r.box);
       if (!rect) continue;
       for (const z of framed.ui.zones) {
         const o = overlapOf(rect, z.rect); if (!o) continue;
         const key = `${r.name}\u0000${z.name}`; seen.add(key);
         if (open.has(key)) open.get(key).until = +Math.min(to, t + FACE_STEP).toFixed(3);
-        else { const run = {kind: 'face', name: r.name, zone: z.name, at: +t.toFixed(3), until: +Math.min(to, t + FACE_STEP).toFixed(3), rect: rounded(rect), overlap: rounded(o)}; open.set(key, run); runs.push(run); }
+        else { const run = {kind, name: r.name, zone: z.name, at: +t.toFixed(3), until: +Math.min(to, t + FACE_STEP).toFixed(3), rect: rounded(rect), overlap: rounded(o)}; open.set(key, run); runs.push(run); }
       }
     }
     for (const key of [...open.keys()]) if (!seen.has(key)) open.delete(key);
   }
   return runs;
 }
+/** Each named face (ui.faces) under a zone, as runs. */
+function faceRuns(film, framed, span) {
+  const names = framed.ui.faces;
+  if (!names.length || typeof film.regionsAt !== 'function') return [];
+  return runsUnder('face', t => film.regionsAt(t).filter(r => r.name && names.includes(r.name)), framed, span);
+}
+/** Each label on how a scene differs from the real thing (differs.mjs) under a zone, as runs. */
+function labelRuns(film, framed, span, ctx) {
+  return film.labelsAt ? runsUnder('label', t => film.labelsAt(ctx, t, framed.windowAt(t)), framed, span) : [];
+}
 
 /** A finding as words: "the caption "for every sheep" at 12.30 s is under the action column (x 780–952, y 1345–1413)". */
 export function findingText(f) {
   const where = `${f.cut !== undefined ? `cut ${f.cut}, ` : ''}${f.at.toFixed(2)} s${f.until !== undefined ? `–${f.until.toFixed(2)} s` : ''}`;
-  const what = f.kind === 'title' ? 'the title band' : f.kind === 'caption' ? `the caption "${String(f.said).slice(0, 40)}"` : `"${f.name}"`;
+  const what = f.kind === 'title' ? 'the title band' : f.kind === 'caption' ? `the caption "${String(f.said).slice(0, 40)}"` : f.kind === 'label' ? `the label "${f.name}"` : `"${f.name}"`;
   return `${what} at ${where} is under the ${f.zone} (${rectText(f.overlap)})`;
 }
 
@@ -234,6 +244,7 @@ export function findingText(f) {
  */
 export function findingFix(f, zones) {
   const z = zones.find(q => q.name === f.zone), at = z ? ` (it covers ${rectText(z.rect)})` : '';
+  if (f.kind === 'label') return `say it in the voice (differs.said) and leave the label out (differs.shown: false), or shorten it so it clears the ${f.zone}${at}: a label keeps to the top right of what is shown`;
   if (f.kind === 'face') return `frame "${f.name}" off the ${f.zone}${at}: a crop key that moves the window, or a smaller width; or take it out of ui.faces`;
   return `give layout.${f.kind === 'title' ? 'header' : 'captions'}.box a box clear of the ${f.zone}${at}, or a shorter ${f.kind === 'title' ? 'title' : 'chunk (captions.maxWords)'}`;
 }

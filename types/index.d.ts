@@ -21,8 +21,8 @@ export type StoryboardScene = {id: string; title?: string; /** Who says the scen
   say?: [string, string][];
   /** The scene shows example data (claims.mjs): its numbers need no source, and it says so on screen — true draws "Example data", a string draws those words (the film's language); false or left out, it is not. */
   example?: boolean | string;
-  /** How the scene differs from the real thing (differs.mjs): time, how many times faster it runs (30; 0.04 is 25 times slower); scale, what is out of scale, in words. Said on screen by default (shown: the words, or false for the voice alone) and in the voice with said, the phrase of its narration that says it. */
-  differs?: {time?: number; scale?: string; shown?: string | string[] | false; said?: string};
+  /** How the scene differs from the real thing (differs.mjs): time, how many times faster it runs (30; 0.04 is 25 times slower; 1.01 or more, 0.99 or less, up to a billion times either way); scale, what is out of scale, in words. Said on screen by default (shown: the words, or false for the voice alone) and in the voice with said, the phrase of its narration that says it (a list: one per statement). Each statement declared needs a line or a phrase of its own. */
+  differs?: {time?: number; scale?: string; shown?: string | string[] | false; said?: string | string[]};
   [key: string]: unknown}
   & ({/** What is said. Marks in it are never said nor shown: {name} a moment a beat or a hold names ("{hop}"), {@who} the speaker of the quoted line right after it ({@mom}"…": script.mjs; the voice step writes each word's speaker from it). */ narration: string; silent?: never}
     | {silent: Direction[]; narration?: never});
@@ -83,7 +83,7 @@ export interface WordsClaim extends ClaimKnown { says: string; line: string; off
  * cannot be checked), each scene's example label (or null) and when a label is up; the claims in words (only when a fact
  * `says` one); the open claims a release may show anyway, each with its reason (recipe.evidence.allowOpen; only when given).
  */
-export interface Claims { facts: readonly ClaimFact[] | null; examples: readonly (string | null)[]; labels: readonly ExampleLabel[]; numbers: readonly Claim[]; /** A label's own words on how a scene differs: a number in them is no claim. */ own?: readonly string[];
+export interface Claims { facts: readonly ClaimFact[] | null; examples: readonly (string | null)[]; labels: readonly ExampleLabel[]; numbers: readonly Claim[];
   statements?: readonly WordsClaim[]; allowOpen?: Readonly<Record<string, string>> }
 /** Every claim the film says or shows outside example scenes with its class (claims.mjs · evidenceOf; the making-of's `claims.evidence`). `evidence: null`: a number no fact backs. */
 export interface ClaimEvidence {
@@ -521,7 +521,9 @@ export interface Film {
   /** Every number the film shows and where it comes from: a fact the storyboard names, or an example scene. */
   claims: Claims;
   /** The scenes that declare they differ from the real thing, each with its span and how it says so; absent when none does. */
-  differs?: readonly {scene: string; index: number; from: number; to: number; time?: number; scale?: string; shown: readonly string[]; said?: string; saidAt?: number}[];
+  differs?: readonly {scene: string; index: number; from: number; to: number; time?: number; scale?: string; shown: readonly string[]; said?: readonly string[]; /** Each phrase, with every place it is said (none: it is not, in a compile that notes its anchors). */ heard?: readonly {phrase: string; places: readonly {start: number; end: number}[]}[]}[];
+  /** Where the labels on how a scene differs sit on the frame at t (`window`: what a crop shows): only on a film that declares one. */
+  labelsAt?: (ctx: unknown, t: number, window?: {x0: number; y0: number; w: number; h: number} | null) => {name: string; box: [number, number, number, number]}[];
   /** The language the film is shown in (compileFilm's lang, canonical BCP 47), or null: its numbers are read by it. */
   lang: string | null;
   /** The recipe's poster frame (seconds), or null. */
@@ -739,7 +741,7 @@ export interface LayoutUi {zones: Zone[]; covered?: 'report' | 'refuse'; faces?:
 /** A zone on the picture, in the format's pixels: [x0, y0, x1, y1]. */
 export interface ZoneRect {name: string; basis?: 'measured' | 'estimate'; rect: [number, number, number, number]}
 /** One thing still under the app's UI: the title band (once), a caption chunk (at its start), a named face (a run of samples). */
-export interface UiFinding {kind: 'title' | 'caption' | 'face'; at: number; until?: number; zone: string; name?: string; said?: string; rect: [number, number, number, number]; overlap: [number, number, number, number]; cut?: number; text: string; fix: string}
+export interface UiFinding {kind: 'title' | 'caption' | 'face' | 'label'; at: number; until?: number; zone: string; name?: string; said?: string; rect: [number, number, number, number]; overlap: [number, number, number, number]; cut?: number; text: string; fix: string}
 /** What a render with `ui` says (renderFilm's result, the making-of record's `ui`): the zones, how the bands were fitted, what is still under them. */
 export interface UiReport {zones: ZoneRect[]; covered: 'report' | 'refuse'; faces: string[]; fitted: {captions: number; title: boolean}; findings: UiFinding[]; ok: boolean}
 /**
@@ -783,7 +785,9 @@ export function compileLayout(film: Film, layout: Layout, span?: {from: number; 
   /** With `ui` only: a caption as drawn, fitted clear of the zones. */
   captionFit?(ctx: any, caption: {words: {text: string}[]; active: number}): {rects: number[][]; fitted: boolean; covered: {rect: number[]; zone: string; overlap: number[]}[]};
   /** With `ui` only: a box on the 1600×900 frame at t, in the format's pixels (cut to the film's box; null when none of it shows). */
-  toOutput?(t: number, box: [number, number, number, number]): [number, number, number, number] | null};
+  toOutput?(t: number, box: [number, number, number, number]): [number, number, number, number] | null;
+  /** The window of the frame a crop shows at t (null: the whole frame). */
+  windowAt?(t: number): {x0: number; y0: number; w: number; h: number} | null};
 
 /** One row of pictures (Film.rows). */
 export interface FilmRow { from: number; start: number; paths: string[];

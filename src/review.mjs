@@ -36,19 +36,20 @@ import {partScenes, partWindow, partTimeline, timelineText} from './render.mjs';
 import {clockTenths} from './clock.mjs';
 import {verdictChart, verdictsText, readVerdict} from './verdict.mjs';
 import {withRecord} from './runlog.mjs';
-import {differsMeasure, DIFFERS_VERDICT} from './differs.mjs';
+import {differsMeasure, differsReached, differsSummary, labelMark, ownFigureLines, saidBeat, DIFFERS_VERDICT, DECLARING_CLAIMS_VERDICT} from './differs.mjs';
+import {overlapOf} from './zones.mjs';
 import {slideshowOf, pacedRule, slideshowVerdict} from './slideshow.mjs';
 import {geometryOf, breakText, GEOMETRY_VERDICT} from './geometry.mjs';
 import {purityOf, PURITY_FINDING, PURITY_VERDICT} from './purity.mjs';
 import {wordContrast, needs, faintWords, contrastText, CONTRAST_VERDICT} from './contrast.mjs';
 import {claimsCount, unsourcedClaims, claimText, drawnClaims, drawnLines, lingeringExamples, lingerText, HOLD, CLAIMS_VERDICT} from './claims.mjs';
-import {wordsIn} from './reading.mjs';
+import {wordsIn, readingPace} from './reading.mjs';
 import {isDecorative, isCode} from './decorative.mjs';
 
 /**
- * The words a frame draws at t: [{text, box: [x0, y0, x1, y1], alpha, decorative?, code?}] (decorative: drawn inside
+ * The words a frame draws at t: [{text, box: [x0, y0, x1, y1], alpha, decorative?, code?, differs?}] (decorative: drawn inside
  * decorative.mjs · decorative, which only the claims check leaves out; code: inside decorative.mjs · code, whose numbers
- * the claims check reads as code writes them), in the layout's output pixels (or on the
+ * the claims check reads as code writes them; differs: a scene's label on how it differs, differs.mjs · asLabel), in the layout's output pixels (or on the
  * 1600×900 frame). A kit draws on its world's own sheet, which the film then lays on the frame under the camera,
  * so the words are followed from canvas to canvas: each line is noted on the canvas it is drawn on, and carried
  * (box and alpha mapped) wherever that canvas is drawn. The 2D context's drawing calls are watched only while
@@ -108,7 +109,7 @@ function readWords(canvas, paint) {
   const note = (ctx, text, x, y) => {
     const s = String(text); if (!s.trim()) return;
     const m = ctx.measureText(s), box = [x - (m.actualBoundingBoxLeft ?? 0), y - (m.actualBoundingBoxAscent ?? 0), x + (m.actualBoundingBoxRight ?? m.width), y + (m.actualBoundingBoxDescent ?? 0)];
-    on(ctx.canvas).push({text: s, quad: apply(ctx.getTransform(), corners(box)), alpha: ctx.globalAlpha, ...(isDecorative(ctx) ? {decorative: true} : {}), ...(isCode(ctx) ? {code: true} : {})});
+    on(ctx.canvas).push({text: s, quad: apply(ctx.getTransform(), corners(box)), alpha: ctx.globalAlpha, ...(isDecorative(ctx) ? {decorative: true} : {}), ...(isCode(ctx) ? {code: true} : {}), ...(labelMark(ctx) ? {differs: labelMark(ctx)} : {})});
   };
   proto.fillText = function (text, x, y, ...rest) { note(this, text, x, y); return original.fillText.call(this, text, x, y, ...rest); };
   proto.strokeText = function (text, x, y, ...rest) { note(this, text, x, y); return original.strokeText.call(this, text, x, y, ...rest); };
@@ -130,14 +131,14 @@ function readWords(canvas, paint) {
       const T = this.getTransform(), kx = dw / sw, ky = dh / sh, here = on(this.canvas);
       for (const n of carried) {
         const [x0, y0, x1, y1] = bounds(n.quad); if (!(x1 > sx && x0 < sx + sw && y1 > sy && y0 < sy + sh)) continue;
-        here.push({text: n.text, quad: apply(T, n.quad.map(([x, y]) => [dx + (x - sx) * kx, dy + (y - sy) * ky])), alpha: n.alpha * this.globalAlpha, ...(n.decorative ? {decorative: true} : {}), ...(n.code ? {code: true} : {})});
+        here.push({text: n.text, quad: apply(T, n.quad.map(([x, y]) => [dx + (x - sx) * kx, dy + (y - sy) * ky])), alpha: n.alpha * this.globalAlpha, ...(n.decorative ? {decorative: true} : {}), ...(n.code ? {code: true} : {}), ...(n.differs ? {differs: n.differs} : {})});
       }
     }
     return original.drawImage.call(this, src, ...args);
   };
   try { paint(); } finally { Object.assign(proto, original); }
   const round = p => p.map(v => +v.toFixed(1));
-  return (notes.get(canvas) ?? []).map(w => ({text: w.text, box: round(bounds(w.quad)), quad: w.quad.map(round), alpha: +w.alpha.toFixed(3), ...(w.decorative ? {decorative: true} : {}), ...(w.code ? {code: true} : {})}));
+  return (notes.get(canvas) ?? []).map(w => ({text: w.text, box: round(bounds(w.quad)), quad: w.quad.map(round), alpha: +w.alpha.toFixed(3), ...(w.decorative ? {decorative: true} : {}), ...(w.code ? {code: true} : {}), ...(w.differs ? {differs: w.differs} : {})}));
 }
 
 // Areas of convex quads, and of where two meet (Sutherland–Hodgman: one clipped by the other's edges).
@@ -293,7 +294,7 @@ export const REVIEW_CHECKS = Object.freeze({
       // moment before. A gap runs from one new moment (or the window's edge) to the next and holds the samples between
       // them: a new moment's own sample shows something new, so it is in no gap; the window's edges are in one.
       const ms = t => +t.toFixed(3), inside = t => t >= window.from - 1e-6 && t <= window.to + 1e-6;
-      const fresh = new Set([...film.clock.offsets, ...(film.beats ?? []).map(b => b.t)].filter(inside).map(ms));
+      const fresh = new Set([...film.clock.offsets, ...(film.beats ?? []).filter(b => !saidBeat(b)).map(b => b.t)].filter(inside).map(ms));   // (a phrase a scene only names shows nothing new: differs.mjs)
       samples.forEach((x, i) => { if (i && x.words.some(w => !samples[i - 1].words.some(p => p.text === w.text))) fresh.add(ms(x.t)); });
       // A frozen picture is the still check's to name when it runs, so a frozen stretch is said once.
       const left = picked.includes('still') ? frozen : [], quiet = t => !fresh.has(ms(t)) && !left.some(r => t >= r.from && t <= r.to);
@@ -395,18 +396,23 @@ export const REVIEW_CHECKS = Object.freeze({
     measure: ({film, window, drawn}) => {
       const declared = film.claims.numbers.filter(c => c.at <= window.to + 1e-6 && c.to >= window.from - 1e-6);
       const claims = {...film.claims, numbers: [...declared, ...drawn]}, open = unsourcedClaims(claims);
-      return {measured: {...claimsCount(claims), drawn: drawn.length, unsourcedNumbers: open.map(c => ({number: c.number, scene: c.scene, path: c.path, at: c.at}))},
+      return {measured: {...claimsCount(claims), drawn: drawn.length, ...(film.differs?.length ? {ownFigures: ownFigureLines(differsReached(film, window).map(x => x.d), film.lang ?? null)} : {}), unsourcedNumbers: open.map(c => ({number: c.number, scene: c.scene, path: c.path, at: c.at}))},
         hits: open.map(c => ({kind: 'claims', t: Math.max(c.at, window.from), what: claimText(c)}))};
     },
     summary: m => (m.numbers ? `${m.numbers} number${m.numbers === 1 ? '' : 's'} on screen: ${m.sourced} sourced${m.unverified ? ` (${m.unverified} on a source nobody can follow: unverified)` : ''}, ${m.examples} in example scenes${m.factsGiven ? `, ${m.unsourced} with no source` : `, ${m.open - m.sourced} unchecked`}` : ''),
-    verdict: CLAIMS_VERDICT},
+    verdict: film => (film.differs?.length ? DECLARING_CLAIMS_VERDICT : CLAIMS_VERDICT)},
   // A scene that differs from the real thing says how, on screen or in the voice (differs.mjs). Only a film that declares
   // one is asked (`asked`): any other film's verdicts stay as they were.
   differs: {label: 'Says how it differs from the real thing', why: 'a scene in the part declares it differs from the real thing', notRun: 'no scene in the part declares it differs from the real thing',
     asked: film => Boolean(film.differs?.length),
     when: s => s.facts.differs > 0,
-    measure: ({film, window, layout}) => differsMeasure(film.differs, window, {wordsAt: t => wordsAt(film, t, {layout})}),
-    summary: m => `${m.scenes} scene${m.scenes === 1 ? '' : 's'} differ${m.scenes === 1 ? 's' : ''}: ${m.shown} on screen, ${m.said} in the voice${m.unstated ? `, ${m.unstated} neither` : ''}`,
+    measure: ({film, window, part, layout, minAlpha}) => {
+      // What sits over the picture (the review reads the picture alone): the title band, and the app's UI. (A layout's boxes are [x, y, width, height].)
+      const corners = ([x, y, w, h]) => [x, y, x + w, y + h], over = [...(layout?.boxes.header ? [{name: 'title band', rect: corners(layout.boxes.header)}] : []), ...(layout?.ui?.zones ?? [])];
+      return differsMeasure(film, part, {wordsAt: t => wordsAt(film, t, {layout}), heardIn: window, frameBox: layout ? corners(layout.boxes.film) : [0, 0, 1600, 900], minAlpha, pace: readingPace(film.recipe?.reading),
+        coveredBy: box => over.find(z => overlapOf(box, z.rect))?.name ?? null});
+    },
+    summary: differsSummary,
     verdict: DIFFERS_VERDICT},
   // An example line that stays up into a scene that is not example data keeps its label (claims.mjs · labelSpans): beside
   // a real number there, the label seems to cover it too (claims.mjs · lingeringExamples). Said while both are on screen.
@@ -445,7 +451,7 @@ const MACHINERY = new Set(['hits', 'failed', 'measured', 'verdict', 'why', 'summ
 export {verdictsText};
 export {purityOf, PURITY_VERDICT} from './purity.mjs';
 export {wordContrast, luminance, contrastRatio, faintWords, CONTRAST, CONTRAST_VERDICT} from './contrast.mjs';
-export {readDiffers, timeWords, DIFFERS_VERDICT, DIFFERS_MOST} from './differs.mjs';
+export {readDiffers, timeWords, DIFFERS_VERDICT, DIFFERS_MOST, DIFFERS_SAID_MOST, DIFFERS_TIME_MOST} from './differs.mjs';
 export const findingsText = findings => findings.map(f => `${clockTenths(f.from)}–${clockTenths(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}`).join('\n');
 
 /** The findings that are advice, not errors (a held title can be right): listed after the rest in a summary. */
@@ -593,7 +599,7 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
     s.facts = {from: window.from, to: window.to, seconds: +(window.to - window.from).toFixed(3), stillFor, newEvery, loop: Boolean(loop), captions: Boolean(framed?.boxes.captions), samples: times.length, words: review.samples.reduce((n, x) => n + x.words.length, 0),
       spoken: film.timings.scenes.some((sc, i) => (sc.words ?? []).some(w => film.clock.offsets[i] + w.end > window.from && film.clock.offsets[i] + w.start < window.to)),
       parts: times.filter(drawsParts).length, claims: Boolean(film.claims),
-      ...(freezesIn(film, window).length ? {freezes: freezesIn(film, window).length} : {}), ...(film.differs?.length ? {differs: film.differs.filter(d => d.from < window.to - 1e-6 && d.to > window.from + 1e-6).length} : {}), ...(review.lingers.length ? {lingers: review.lingers.length} : {})};
+      ...(freezesIn(film, window).length ? {freezes: freezesIn(film, window).length} : {}), ...(film.differs?.length ? {differs: differsReached(film, own).length} : {}), ...(review.lingers.length ? {lingers: review.lingers.length} : {})};
     s.ran = []; s.hits = []; s.failed = []; s.verdicts = [];
   };
   // The picks go on the review too, so a check can leave a finding to another that runs. A when() that throws is a

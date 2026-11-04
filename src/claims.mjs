@@ -689,8 +689,7 @@ export function drawnClaims(samples, {claims, sceneOf, scenes = [], wordsAt = nu
   // Spaces made one (a no-break space is a language's group symbol: kept), and the film's language to read numbers by.
   const tidy = text => String(text).trim().replace(/[ \t\r\n]+/g, ' '), declared = (claims?.numbers ?? []).filter(c => c.path !== 'captions'), locale = numberLocale(lang);
   const part = (drawn, line) => drawn === line || line.startsWith(`${drawn} `) || line.endsWith(` ${drawn}`);
-  // A label's own words (claims.own, differs.mjs): a number there is the film's declaration of how the scene differs, whole or broken across a crop's labels.
-  const own = (claims?.own ?? []).map(tidy), known = (number, text) => own.some(line => line.includes(text)) || declared.some(c => c.number === number && part(text, tidy(c.line)));
+  const known = (number, text) => declared.some(c => c.number === number && part(text, tidy(c.line)));
   /**
    * A frame's numbers that no declared line holds: [{text, offset, place, number, code}] — its code (words drawn inside
    * decorative.mjs · code) made into lines of its own and read as code reads numbers (CODE_READING), the rest by the
@@ -700,7 +699,8 @@ export function drawnClaims(samples, {claims, sceneOf, scenes = [], wordsAt = nu
     const runs = numberRuns(text, reading);
     return runs.map((n, k) => ({text, offset: n.at, place: `${reading?.code ? 'code' : ''}\u0000${placeOf(text, runs, k)}`, number: n.run, code: Boolean(reading?.code)})).filter(x => !known(x.number, x.text));
   });
-  const numbersOf = words => { const said = words.filter(w => !w.decorative); return [...linesOf(said.filter(w => !w.code), locale), ...linesOf(said.filter(w => w.code), CODE_READING)]; };
+  // (A scene's label on how it differs, whose only number is the declared factor, says nothing about the world: differs.mjs · ownFigure.)
+  const numbersOf = words => { const said = words.filter(w => !w.decorative && !w.differs?.own); return [...linesOf(said.filter(w => !w.code), locale), ...linesOf(said.filter(w => w.code), CODE_READING)]; };
   const read = samples.map(({t, words}) => ({t, numbers: numbersOf(words)}));
   const shows = (numbers, x) => numbers.some(y => y.place === x.place && y.number === x.number);
   const shownAt = (t, x) => shows(numbersOf(wordsAt(t)), x);
