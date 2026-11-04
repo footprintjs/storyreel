@@ -9,9 +9,9 @@
 import {lstatSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {makeFolder, writeOutput} from './files.mjs';
-import {keepRun, keepFailedRun} from './runlog.mjs';
+import {keepRun, keepFailedRun, logCall} from './runlog.mjs';
 
-export const REMAKE_USAGE = `storyreel remake <breakdown.json | its folder> [--quick s] [--json] [--starter folder]   make one like it: a draft plan from a breakdown (storyreel breakdown) — its scenes, pace, entrances and music, each with its why, and what is still to give; it needs no project, and writes only a starter
+export const REMAKE_USAGE = `storyreel remake <breakdown.json | its folder> [--quick s] [--json] [--starter folder]   make one like it: a draft plan from a breakdown (storyreel breakdown) — its scenes, pace, entrances and music, each with its why, and what is still to give; it needs no project, and writes only its run for storyreel log, beside the breakdown, and a starter
              --quick    seconds: a shot shorter than this is quick, and quick shots joined by hard cuts are one scene (1)
              --json     the plan as JSON, for agents (its record left out: each choice's why carries its evidence)
              --starter  a folder to make the approved plan into a starter film: an animatic in the reference's rhythm that renders as it is (storyboard.json, recipe.json, plan.json, storyreel.config.mjs, render.mjs, README.md: what to give, and where); a file already there is never replaced`;
@@ -74,7 +74,7 @@ export async function remakeCommand(args) {
   try {
     plan = await remakePlan(readBreakdown(given), quick === undefined ? {} : {thresholds: {quick: Number(quick)}});
     const {record, ...data} = plan;
-    if (starter === null) { keep(breakdownFolder(given), plan); console.log(json ? JSON.stringify(data, null, 2) : remakePlanText(plan)); return 0; }
+    if (starter === null) { keep(breakdownFolder(given), plan); console.log(json ? JSON.stringify(data, null, 2) : `${remakePlanText(plan)}\nhow it was made: ${logCall(breakdownFolder(given))}`); return 0; }
     const {remakeStarter} = await import('./remake-starter.mjs');
     const made = remakeStarter(plan);
     writeStarter(starter, made.files);

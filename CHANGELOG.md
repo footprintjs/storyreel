@@ -4,7 +4,7 @@
 
 - **Every feature now leaves its run for `storyreel log`, done or refused.** Until now only a review did. Now `apply`,
   `feedback`, a note and a Try in the studio save theirs in the project's out folder. A breakdown saves in its own
-  folder, and its last line says how to read it (`storyreel log --out <folder>`, no project needed). A remake saves
+  folder, and its last line says how to read it (`storyreel log --folder <folder>`, no project needed). A remake saves
   beside the breakdown it read, or with `--starter` in the starter's out folder, where that film's own log finds it. A
   render's listing now reads the film's own stages and the song's records as well as the compile, and a failed render's
   `making-of.failed.json` says what it failed on. A run that failed keeps its record so far and says what it failed
@@ -14,6 +14,8 @@
   breakdown. A run holds at most 1 MB: a bigger record keeps its first entries and counts the others. `storyreel
   apply`'s refusal now ends "The recipe was not changed." instead of "Nothing was written.", because the run is written.
   A studio's `load()` may give `out`, where its runs are kept (none: not kept).
+  A config whose `out` is not text is refused when it is read, naming the fix (it used to fail later, in whichever tool
+  first read it).
 - **`storyreel log`: one place to read how a result was made.** Records were kept in several places (a render's
   `making-of.json`, a review's record in memory, a breakdown's `record.json`), and nothing read them in one place. Now each
   `storyreel review` saves its run in the out folder (`out/.storyreel/runs/`), and `storyreel log` lists the runs newest

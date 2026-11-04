@@ -204,7 +204,7 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
 
   /**
    * A note, from the studio's own page only: Sec-Fetch-Site same-origin — a request that does not say is refused here,
-   * as no other route refuses it, for this one writes — the studio's own Origin, JSON; then its body (take-note.mjs).
+   * as no other route refuses it, for this one writes what the request says — the studio's own Origin, JSON; then its body (take-note.mjs).
    */
   async function takeNote(req, bound) {
     const site = req.headers['sec-fetch-site'], origin = req.headers.origin;

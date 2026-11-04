@@ -1,5 +1,6 @@
 /**
- * The picks tried in the studio (server.mjs · /api/try), in memory, nothing written. One compile runs at a time: a Try
+ * The picks tried in the studio (server.mjs · /api/try), in memory, nothing of the film written (the server keeps each
+ * Try's run for `storyreel log`: runlog.mjs). One compile runs at a time: a Try
  * while one does is told so (409), so a flood of requests cannot queue compiles. The last few films compiled are kept,
  * each by what it is — the pick's line (its scene, kind and name) and the version of the film it is a copy of — so
  * trying a pick again costs nothing. The pick tried last is the one whose frames are drawn (its key, a frame's `try`);

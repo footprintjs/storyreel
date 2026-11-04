@@ -168,7 +168,7 @@ test('end to end: a film broken down and planned — the quick lettered cards on
   // The command line: the folder storyreel breakdown wrote, in words; --json the same plan without its record.
   const words = spawnSync(process.execPath, [cli, 'remake', out], {encoding: 'utf8'});
   assert.equal(words.status, 0, words.stderr);
-  assert.equal(words.stdout, `${remakePlanText(plan)}\n`);
+  assert.equal(words.stdout, `${remakePlanText(plan)}\nhow it was made: storyreel log --folder ${out}\n`);
   const json = spawnSync(process.execPath, [cli, 'remake', path.join(out, 'breakdown.json'), '--json', '--quick', '0.3'], {encoding: 'utf8'});
   assert.equal(json.status, 0, json.stderr);
   const data = JSON.parse(json.stdout);

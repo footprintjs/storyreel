@@ -11,6 +11,7 @@
  *   keepRun(out, run)                                     → null, or why it was not saved: what a feature calls, for its answer is the result and the run a record beside it
  *   keepFailedRun(out, feature, error, summary?)          → the same, for an error carrying its record (withRecord)
  *   withRecord(error, trace)                              → the error, carrying the record so far (error.record)
+ *   logCall(folder)                                       → the call that reads a folder's runs, to print
  *   listRuns(out)                                         → [{n, id, feature, at, summary, entries, verdicts, file}] newest first
  *   logText(out, {run?, only?, check?, all?})             → the list (the newest RUNS_LISTED), or one run as text
  *
@@ -41,8 +42,8 @@ export const RUNS_KEPT = 50;
 export const RUNS_LISTED = 10;
 /** How many lines one run prints by default (all: every one). */
 export const LOG_LINES = 40;
-/** How long one line of a stage's writes or a decision's reads runs before it is cut (… marks the cut). */
-export const LINE_CHARS = 200;
+/** How long one line printed runs before it is cut (… marks the cut; all: whole), and the most a saved run keeps of one entry's words, of its summary and of what it failed on. */
+export const LINE_CHARS = 400, ENTRY_CHARS = 4000, SAID_CHARS = 2000;
 /** The ways to read one run (`only`), the default first. */
 export const VIEWS = Object.freeze(['stages', 'decisions', 'errors', 'steps']);
 const RUN_FILE = /^\d{4}-\d\d-\d\dT[\d-]+Z-([a-z][a-z-]{0,30})\.[0-9a-f]{6}\.json$/;
@@ -59,14 +60,30 @@ export const plainEntries = record => (record ?? []).map(e => ({type: String(e.t
 /** Verdicts as the run keeps them: {check, label, verdict, why, measured, summary?} each, the measured values as data. */
 const plainVerdicts = verdicts => (verdicts ?? []).map(v => ({check: v.check, label: v.label, verdict: v.verdict, why: v.why ?? '', measured: v.measured ?? {}, ...(v.summary ? {summary: v.summary} : {})}));
 
-/** A run as the file holds it: what fits in RUN_MOST bytes, its first entries kept and the others counted (`omitted`), the failure always. */
+const cut = (text, most = LINE_CHARS) => (text.length > most ? `${text.slice(0, most - 1)}…` : text);
+
+/**
+ * A run as the file holds it, one entry a line, at most RUN_MOST bytes: each entry's words cut to ENTRY_CHARS, its first
+ * entries kept while they fit and the others counted (`omitted`), what it failed on always.
+ */
 function runText(run, entries, failure) {
-  const last = failure ? [{type: 'error', text: oneLine(failure), depth: 0, stage: null, id: null}] : [];
-  for (let kept = entries; ; kept = kept.slice(0, Math.floor(kept.length / 2))) {
-    const text = JSON.stringify({...run, entries: [...kept, ...last], ...(kept.length < entries.length ? {omitted: entries.length - kept.length} : {})}, null, 1);
-    if (Buffer.byteLength(text) <= RUN_MOST) return text;
-    if (!kept.length) throw new Error(`a run of ${run.feature} holds more than ${RUN_MOST} bytes without its record: its verdicts measure too much to keep`);
+  const line = e => JSON.stringify({...e, text: cut(e.text, ENTRY_CHARS)}), bytes = Buffer.byteLength;
+  const last = failure ? [line({type: 'error', text: oneLine(failure), depth: 0, stage: null, id: null})] : [];
+  const head = JSON.stringify(run).slice(0, -1), kept = [];
+  let room = RUN_MOST - bytes(head) - last.reduce((n, l) => n + bytes(l) + 2, 0) - 64;   // 64: the brackets, the keys and the count around them
+  for (const e of entries) {
+    const text = line(e), size = bytes(text) + 2;
+    if (size > room) break;
+    kept.push(text); room -= size;
   }
+  const omitted = entries.length - kept.length;
+  return `${head},"entries":[\n${[...kept, ...last].join(',\n')}\n]${omitted ? `,"omitted":${omitted}` : ''}}`;
+}
+
+/** A run's verdicts as it keeps them: what they measured kept unless it would crowd out the record, then dropped and said (`dropped`). */
+function keptVerdicts(verdicts) {
+  const plain = plainVerdicts(verdicts).slice(0, 50).map(v => ({...v, why: cut(v.why, SAID_CHARS), ...(v.summary ? {summary: cut(v.summary, SAID_CHARS)} : {})}));
+  return Buffer.byteLength(JSON.stringify(plain)) <= RUN_MOST / 2 ? plain : plain.map(v => ({...v, measured: {}, dropped: true}));
 }
 
 /**
@@ -77,16 +94,19 @@ export function saveRun(out, {feature, summary = '', record = [], verdicts = nul
   if (!FEATURE.test(feature)) throw new Error(`saveRun: feature is a short lowercase name (review, render, breakdown), not ${JSON.stringify(feature)}`);
   const dir = outputFolder(out, RUNS), stamp = at.toISOString().replace(/[:.]/g, '-');
   const file = path.join(dir, `${stamp}-${feature}.${randomBytes(3).toString('hex')}.json`);   // two saves in one millisecond: two runs
-  const said = failure ? `${summary ? `${summary} — ` : ''}failed: ${failure}` : String(summary);
-  writeOutput(file, runText({feature, at: at.toISOString(), summary: said, ...(verdicts ? {verdicts: plainVerdicts(verdicts)} : {})}, plainEntries(record), failure));
+  const fail = failure === null ? null : cut(String(failure), SAID_CHARS), said = cut(String(summary), SAID_CHARS);
+  writeOutput(file, runText({feature, at: at.toISOString(), summary: fail === null ? said : `${said ? `${said} — ` : ''}failed: ${fail}`, ...(verdicts ? {verdicts: keptVerdicts(verdicts)} : {})}, plainEntries(record), fail));
   dropOldRuns(dir, feature, path.basename(file));
   return file;
 }
 
 /** Keep a feature's newest RUNS_KEPT runs: its older ones (plain files named as its runs, nothing else in the folder) go — never `kept`, the one just written. */
 function dropOldRuns(dir, feature, kept) {
-  const runs = readdirSync(dir).filter(n => n !== kept && RUN_FILE.exec(n)?.[1] === feature && lstatSync(path.join(dir, n)).isFile()).sort();
-  for (const name of runs.slice(0, Math.max(0, runs.length - (RUNS_KEPT - 1)))) rmSync(path.join(dir, name), {force: true});
+  try {
+    // two processes may drop at once: one file gone under the other is no failure, and the run itself is saved by now
+    const runs = readdirSync(dir).filter(n => n !== kept && RUN_FILE.exec(n)?.[1] === feature && lstatSync(path.join(dir, n), {throwIfNoEntry: false})?.isFile()).sort();
+    for (const name of runs.slice(0, Math.max(0, runs.length - (RUNS_KEPT - 1)))) rmSync(path.join(dir, name), {force: true});
+  } catch { /* the next run drops what this one could not */ }
 }
 
 /**
@@ -98,14 +118,32 @@ export function keepRun(out, run) {
   try { saveRun(out, run); return null; } catch (e) { return `this ${run.feature}'s run was not saved for storyreel log: ${e?.message ?? e}`; }
 }
 
-/** What a failed run leaves: the error's record (withRecord) and what it failed on. An error that carries no record ran no chart: it is a refusal that says all there is. */
-export const keepFailedRun = (out, feature, error, summary = '') => (error?.record ? keepRun(out, {feature, summary, record: error.record, failure: String(error?.message ?? error)}) : null);
+/** Whatever was thrown, in words: never a throw itself. */
+function thrownText(error) {
+  try { return String(error?.message ?? error); } catch { return 'something that cannot be said in words was thrown'; }
+}
 
-/** The error on its way out of a run, carrying the record so far (error.record: its narrative, without live values, as JSON holds it). */
+/**
+ * What a failed run leaves: the error's record (withRecord) and what it failed on. An error that carries no record ran
+ * no chart: it is a refusal that says all there is. Called on an error's way out, so it never throws in its place.
+ */
+export function keepFailedRun(out, feature, error, summary = '') {
+  try { return error?.record ? keepRun(out, {feature, summary, record: error.record, failure: thrownText(error)}) : null; } catch { return null; }
+}
+
+/**
+ * The error on its way out of a run, carrying the record so far (error.record: its narrative, without live values, as
+ * JSON holds it). Always the same error back, whatever was thrown (frozen, a Proxy, not an object): it never replaces it.
+ */
 export function withRecord(error, trace) {
-  if (error && typeof error === 'object' && !('record' in error)) error.record = JSON.parse(JSON.stringify(trace.getEntries().map(({rawValue, ...entry}) => entry)));
+  try {
+    if (error && typeof error === 'object' && !('record' in error)) error.record = JSON.parse(JSON.stringify(trace.getEntries().map(({rawValue, ...entry}) => entry)));
+  } catch { /* the error itself is what the caller must see */ }
   return error;
 }
+
+/** The call that reads the runs in a folder, as a person types it: what a feature with no project says when it is done. */
+export const logCall = folder => `storyreel log --folder ${/^[\w./+:@-]+$/.test(folder) ? folder : `'${String(folder).replace(/'/g, "'\\''")}'`}`;
 
 /**
  * A file of the runs folder read as a saved run, or null when it is not one. Read only as a plain file of at most
@@ -119,11 +157,11 @@ function savedRun(file) {
   if (r.verdicts !== undefined && !(Array.isArray(r.verdicts) && r.verdicts.every(v => v && typeof v.check === 'string' && v.measured && typeof v.measured === 'object'))) return null;
   return {id: path.basename(file, '.json'), feature: r.feature, at: new Date(r.at).toISOString(), summary: oneLine(r.summary ?? ''), file, entries: readEntries(r.entries),
     ...(Number.isInteger(r.omitted) ? {omitted: r.omitted} : {}),
-    ...(r.verdicts ? {verdicts: r.verdicts.map(v => ({check: oneLine(v.check), label: oneLine(v.label ?? v.check), verdict: oneLine(v.verdict ?? ''), why: oneLine(v.why ?? ''), measured: v.measured, ...(v.summary ? {summary: oneLine(v.summary)} : {})}))} : {})};
+    ...(r.verdicts ? {verdicts: r.verdicts.map(v => ({check: oneLine(v.check), label: oneLine(v.label ?? v.check), verdict: oneLine(v.verdict ?? ''), why: oneLine(v.why ?? ''), measured: v.measured, ...(v.dropped === true ? {dropped: true} : {}), ...(v.summary ? {summary: oneLine(v.summary)} : {})}))} : {})};
 }
 
 /** Entries read back from a file: each string shown made one plain line. */
-const readEntries = entries => entries.map(e => ({type: e.type, text: oneLine(e.text), depth: Number.isInteger(e.depth) ? e.depth : 0,
+const readEntries = entries => entries.map(e => ({type: e.type, text: oneLine(e.text), depth: Number.isInteger(e.depth) ? Math.max(0, Math.min(e.depth, 4)) : 0,
   stage: typeof e.stage === 'string' ? oneLine(e.stage) : null, id: typeof e.id === 'string' ? oneLine(e.id) : null}));
 
 /**
@@ -154,7 +192,6 @@ export function listRuns(out) {
 
 const when = iso => iso.replace('T', ' ').slice(0, 19);
 const said = r => (r.summary ? ` · ${cut(r.summary)}` : '');
-const cut = (text, most = LINE_CHARS) => (text.length > most ? `${text.slice(0, most - 1)}…` : text);
 /** A step entry read: "Step 4: Write stillShare = 0.096" → {verb: 'Write', key: 'stillShare', value: '0.096'} (a key may hold spaces). */
 const STEP = /^Step \d+: (Read|Write|Update|Delete) (.+?)(?: = (.*))?$/s;
 /** What a subflow was handed: "Input: item = {at, n}" → {verb: 'Input', key: 'item', value: '{at, n}'}. */
@@ -233,33 +270,40 @@ function stageLines({stage, entries}, {decisionsOnly = false} = {}) {
   const deletes = steps.filter(s => s.verb === 'Delete'), inputs = steps.filter(s => s.verb === 'Input'), unread = steps.filter(s => s.verb === null);
   const lines = [];
   for (const e of entries) {
-    if (e.type === 'condition') lines.push(`  decided: ${decisionText(e.text)}${reads.length ? cut(` · read ${pairs(reads)}`) : ''}`);
-    else if (e.type === 'selector') lines.push(`  picked: ${cut(compactSelected(e.text), LINE_CHARS * 2)}`);
+    if (e.type === 'condition') lines.push(`  decided: ${decisionText(e.text)}${reads.length ? ` · read ${pairs(reads)}` : ''}`);
+    else if (e.type === 'selector') lines.push(`  picked: ${compactSelected(e.text)}`);
     else if (e.type === 'fork' && !decisionsOnly) lines.push(`  ${decisionText(e.text).replace(/^\[Parallel\]:\s*/, '')}`);
     else if (e.type === 'error' && !decisionsOnly) lines.push(`  error: ${e.text}`);
   }
   if (decisionsOnly) return lines.length ? [stage, ...lines] : [];
   // a step the reader cannot take apart is shown as the record says it, never dropped
-  lines.unshift(...[inputs.length && `  took ${pairs(inputs)}`, writes.length && `  wrote ${pairs(writes)}`, deletes.length && `  deleted ${deletes.map(d => d.key).join(', ')}`, ...unread.map(u => `  ${u.text}`)].filter(Boolean).map(l => cut(l)));
-  return lines.length === 1 ? [cut(`${stage} · ${lines[0].trim()}`, LINE_CHARS + stage.length)] : [stage, ...lines];
+  lines.unshift(...[inputs.length && `  took ${pairs(inputs)}`, writes.length && `  wrote ${pairs(writes)}`, deletes.length && `  deleted ${deletes.map(d => d.key).join(', ')}`, ...unread.map(u => `  ${u.text}`)].filter(Boolean));
+  return lines.length === 1 ? [`${stage} · ${lines[0].trim()}`] : [stage, ...lines];
 }
 
 /** One run's lines for a view (VIEWS). */
 function runLines(r, only) {
-  if (only === 'steps') return r.entries.map(e => `${'  '.repeat(Math.min(e.depth, 4))}${e.text}`);
+  if (only === 'steps') return r.entries.map(e => `${'  '.repeat(e.depth)}${e.text}`);
   if (only === 'errors') return r.entries.filter(e => e.type === 'error').map(e => `${e.stage ? `${e.stage}: ` : ''}${e.text}`);
   return stagesOf(r.entries).flatMap(s => stageLines(s, {decisionsOnly: only === 'decisions'}));
 }
 
-/** One verdict's evidence in full: its answer and why, then each measured value (a list one item a line). */
-function checkText(r, check) {
+/** One verdict's evidence in full: its answer and why, then each measured value (a list one item a line), as a file someone else may have put there is shown: plain lines. */
+function checkLines(r, check) {
   const v = (r.verdicts ?? []).find(x => x.check === check);
   if (!v) throw new Error(`run ${r.id} has no verdict "${check}"${r.verdicts?.length ? `: its verdicts are ${r.verdicts.map(x => x.check).join(', ')}` : ' (only a review keeps verdicts)'}`);
-  const value = x => JSON.stringify(x);
+  const value = x => oneLine(JSON.stringify(x));
   const lines = Object.entries(v.measured).flatMap(([k, x]) => (Array.isArray(x) && x.length && typeof x[0] === 'object'
     ? [`${oneLine(k)}: ${x.length}`, ...x.map(item => `  ${value(item)}`)]
     : [`${oneLine(k)}: ${value(x)}`]));
-  return [`${v.label} · ${v.verdict}: ${v.why}${v.summary ? ` (${v.summary})` : ''}`, ...(lines.length ? lines : ['nothing measured'])].join('\n');
+  return [`${v.label} · ${v.verdict}: ${v.why}${v.summary ? ` (${v.summary})` : ''}`, ...(v.dropped ? ['(what it measured was too big to keep with its record)'] : lines.length ? lines : ['nothing measured'])];
+}
+
+/** Lines as the log prints them: all of each with `all`, else at most LOG_LINES of at most LINE_CHARS, what was left out said with the call that shows it. */
+function printed(shown, all, call) {
+  const lines = all ? shown : shown.slice(0, LOG_LINES).map(l => cut(l)), left = shown.length - lines.length;
+  const shortened = !all && shown.slice(0, LOG_LINES).some(l => l.length > LINE_CHARS);
+  return {lines, more: left ? `\n… ${left} more: ${call} --all` : shortened ? `\n… lines cut short: ${call} --all` : ''};
 }
 
 /**
@@ -280,13 +324,12 @@ export function logText(out, {run = null, only = null, check = null, all = false
   }
   const r = runs.find(x => x.id === String(run)) ?? (/^\d+$/.test(String(run)) ? runs.find(x => x.n === Number(run)) : undefined);
   if (!r) throw new Error(`there is no run ${run}: the runs are 1–${runs.length}, or a run's id (storyreel log lists them)`);
-  if (check !== null) return checkText(r, String(check));
+  if (check !== null) { const {lines, more} = printed(checkLines(r, String(check)), all, `storyreel log --run ${r.id} --check ${check}`); return `${lines.join('\n')}${more}`; }
   const view = only ?? VIEWS[0];
   if (!VIEWS.includes(view)) throw new Error(`--only is ${VIEWS.slice(1).join(', ')} (or nothing, for the stages), not ${JSON.stringify(only)}`);
-  const shown = runLines(r, view), lines = all ? shown : shown.slice(0, LOG_LINES);
+  const {lines, more} = printed(runLines(r, view), all, `storyreel log --run ${r.id}${only ? ` --only ${only}` : ''}`);
   // the head names the run by its id, and so do the calls it offers: a number moves when another run is saved
   const head = `${r.n}. ${when(r.at)} ${r.feature}${said(r)}\nrun ${r.id}${r.omitted ? `\n(${r.omitted} of its entries were not kept: its record was over ${RUN_MOST} bytes)` : ''}`;
   const evidence = r.verdicts?.length ? `\nevidence: storyreel log --run ${r.id} --check ${r.verdicts.map(v => v.check).join('|')}` : '';
-  const more = shown.length > lines.length ? `\n… ${shown.length - lines.length} more: storyreel log --run ${r.id}${only ? ` --only ${only}` : ''} --all` : '';
   return `${head}\n${lines.join('\n') || `(no ${view} in this run)`}${more}${evidence}`;
 }

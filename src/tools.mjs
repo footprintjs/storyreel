@@ -58,6 +58,7 @@ export async function readInputs({config = CONFIG, cwd = process.cwd(), ...flags
   if (!made || typeof made.film !== 'function') throw new Error(`${config} must export default {film(flags)}, returning the film's inputs`);
   const inputs = await made.film(flags);
   for (const key of ['storyboard', 'recipe']) if (!inputs?.[key]) throw new Error(`${config}: film() must return the ${key}`);
+  if ((inputs.out ?? null) !== null && typeof inputs.out !== 'string') throw new Error(`${config}: film()'s out is the out folder's path as text (out: 'out'), not ${typeof inputs.out === 'object' ? 'an object' : JSON.stringify(inputs.out)}: a URL's path is fileURLToPath(url)`);
   const voiced = Boolean(inputs.narrationDir && existsSync(path.join(inputs.narrationDir, 'timings.json')));
   const said = castFilm(inputs).storyboard;
   const raw = inputs.timings ?? (voiced ? JSON.parse(readFileSync(path.join(inputs.narrationDir, 'timings.json'), 'utf8')) : evenTimings(said));
@@ -522,14 +523,16 @@ const feedbackTool = (project, args = {}) => feedback(projectRecipe(project, {co
 const FULL_ARG = `true for every finding and every verdict's why (default: the counts, what did not pass, the first ${SUMMARY_TOP} findings)`;
 /**
  * The project's run log (runlog.mjs): the runs, newest first, or one run's stages and decisions, or one verdict's
- * evidence. It takes the flags as they are (load: 'flags'): --out names the folder, with no project needed (a breakdown's
- * folder has none), else the config is read only for its out folder, so a config that no longer loads — when the log
- * is wanted most — still leaves the log of ./out readable, and says why it read that one.
+ * evidence. It takes the flags as they are (load: 'flags'): --folder names the folder, with no project needed (a
+ * breakdown's has none); else the config says it, --out reaching its film as it reaches every tool's, so a config that
+ * maps --out reads where it wrote. A config that no longer loads — when the log is wanted most — still leaves --out, or
+ * ./out, readable, and says why it read that one.
  */
 export async function log(flags = {}) {
-  const cwd = flags.cwd ?? process.cwd(), named = typeof flags.out === 'string' && !yes(flags.out);
-  let out = path.resolve(cwd, named ? flags.out : 'out'), note = '';
-  if (!named) try { out = outFolderOf(await readInputs(flags)); } catch (e) { note = `\n(the config did not load, so these are the runs in ${out}: ${e.message})`; }
+  const cwd = flags.cwd ?? process.cwd();
+  for (const name of ['folder', 'out']) if (flags[name] !== undefined && (typeof flags[name] !== 'string' || yes(flags[name]) || !flags[name].trim())) throw new Error(`--${name} needs a folder (--${name} work/out)`);
+  let out = path.resolve(cwd, flags.folder ?? flags.out ?? 'out'), note = '';
+  if (flags.folder === undefined) try { out = outFolderOf(await readInputs(flags)); } catch (e) { note = `\n(the config did not load, so these are the runs in ${out}: ${e.message})`; }
   return logText(out, {run: flags.run === undefined || yes(flags.run) ? null : flags.run, only: flags.only ?? null, check: flags.check ?? null, all: yes(flags.all)}) + note;
 }
 
@@ -539,7 +542,7 @@ export const TOOLS = Object.freeze({
     args: {scene: 'scene ids, comma-separated (default: the whole film; or a window: from and to)', from: 'the window\'s start on the film clock: seconds or m:ss (0:12)', to: 'the window\'s end: seconds or m:ss',
       handles: `seconds of the film shown either side of the scenes or the window (${TOOL_DEFAULTS.handles})`}},
   feedback: {run: feedbackTool, load: 'config', about: FEEDBACK_ABOUT, args: FEEDBACK_ARGS},
-  log: {run: log, load: 'flags', about: 'How a result was made: the project\'s runs, newest first (a review, a render); one run\'s stages, what each wrote and decided, with the rule that matched and the values it read; a verdict\'s evidence, each item measured. Read it before re-running or looking at pictures.',
+  log: {run: log, load: 'flags', about: 'How a result was made: the project\'s runs, newest first (a review, an apply, a note, a Try, a render), each done or refused; one run\'s stages, what each wrote and decided, with the rule that matched and the values it read; a verdict\'s evidence, each item measured. Read it before re-running or looking at pictures. On the command line, --folder reads the runs in a folder with no project: a breakdown\'s or a remake\'s.',
     args: {run: 'a run\'s number from the list, to show that run (default: the list)', only: 'with run: decisions, errors or steps (every entry as the record says it); default: each stage once, what it wrote and decided',
       check: 'with run: a verdict\'s name (contrast, slideshow, …): everything its check measured, each item', all: `true for every line (default: the first ${LOG_LINES})`}},
   review: {run: review, about: `What is wrong, read from the picture as text: words under the captions, over each other, cut off at the edge, the picture frozen for ${REVIEW_DEFAULTS.stillFor} s, nothing new for ${REVIEW_DEFAULTS.newEvery} s while it moves. Times on the film clock. Then three verdicts (passed, failed, or not run): no slideshow, drawn parts hold together, every number on screen has a source. With rubric: each point of a rubric laid out with its stills and evidence, to score; with scores and by, the scores recorded in the render's making-of.json.`,

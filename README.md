@@ -2843,7 +2843,7 @@ film's runs past what one argument may hold: `-/filter:v` from FFmpeg 7, `-filte
 
 - **What it writes:** `breakdown.json` (the spec), `breakdown.md` (the same in plain words), a contact sheet per shot
   (`shots/shot-01.png`: 3 to 6 stills across it, labelled in yellow when it moves), `overview.png` (one still of every
-  shot), `record.json` and its run for `storyreel log --out <folder>` (`.storyreel/runs/`), which the command's last line names.
+  shot), `record.json` and its run for `storyreel log --folder <folder>` (`.storyreel/runs/`), which the command's last line names.
 - **Times you can trust.** Every decoded frame is read with its own time (FFmpeg starts every file's clock at 0, a
   transport stream's and an offset MP4's too) and laid on a constant clock (`finished.mjs · onSlots`): slot k is the frame
   a player shows at k / rate (each time exact: showinfo's integer `pts` in its time base, never its `pts_time`, which
@@ -3074,7 +3074,7 @@ done or refused, in `.storyreel/runs/` inside a folder (the newest 50 of each ke
 | `storyreel feedback` | the project's out folder | whose each line of `feedback.md` is, where each entry is now |
 | a note and a Try in `storyreel studio` | the project's out folder | which entry a note names; a pick's checks |
 | a render | the project's out folder | its `making-of.json` or `making-of.failed.json`, read where it wrote them: the film's stages, the compile, the song |
-| `storyreel breakdown` | its own folder: `storyreel log --out <folder>` | every cut, every read of the picture |
+| `storyreel breakdown` | its own folder: `storyreel log --folder <folder>` | every cut, every read of the picture |
 | `storyreel remake` | beside the breakdown it read; with `--starter`, the starter's out folder | the pace, the music, each scene's kind |
 
 
@@ -3090,19 +3090,19 @@ npx storyreel log --run 1 --check contrast   # one verdict's evidence in full: e
 ```
 
 A pass says what it stood on: a decision no rule chose still prints the values it read. One run prints at most 40
-lines (`--all` for every one); the rest are counted with the call that shows them. A run's number moves when another
+lines of at most 400 characters (`--all` for all of them, whole); what is left out is said with the call that shows it. A run's number moves when another
 is saved; its id (printed under its head, `run 2026-11-04T02-27-38-089Z-review.3fa9c1`) never does, and `--run` takes
 either. A run that failed says what it failed on, in the list and as its last entry (`--only errors`); a refusal
-before anything ran, which says all there is, leaves none. `--out <folder>` reads that folder, with no project needed.
-Without it the log asks the config only for its out folder, so a config that no longer loads still leaves `./out`
-readable, with a line saying why the config did not load. A feature whose run cannot be saved (an out folder others
+before anything ran, which says all there is, leaves none. `--folder <folder>` reads that folder, with no project
+needed. Without it the log asks the config only for its out folder (`--out` reaches the film as it does for every
+tool), so a config that no longer loads still leaves `--out`, or `./out`, readable, with a line saying why. A feature whose run cannot be saved (an out folder others
 can change, a read-only disk) still gives its answer, and says why beside it. It is an MCP tool too
 (`storyreel mcp`: `log`, with `run`, `only`, `check`, `all`). A saved run keeps what the record says, in words, and a
 verdict's measured values as data; never a value a stage carried. The words include short summaries of the values
 read and written (footprintjs says a string of up to 80 characters as it is), so a chart that handles a private value
 redacts it before its narrative says it. A run file is read back only as a plain file of its own (never through a
 link), and one of any other shape is counted, not shown. A run holds at most 1 MB: a record too big for that keeps its
-first entries and counts the others. From code, `keepRun(out, {feature, summary, record, verdicts, failure})` saves a
+first entries and counts the others, and always what it failed on. From code, `keepRun(out, {feature, summary, record, verdicts, failure})` saves a
 run of your own feature and answers why it could not, never throwing (`saveRun` throws; the record: footprintjs
 `narrative().getEntries()`), and `logText(out, {run, only, check})` reads them, all from `footprint-storyreel/tools`.
 
