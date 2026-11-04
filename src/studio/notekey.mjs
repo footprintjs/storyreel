@@ -61,8 +61,25 @@ function realPlace(p) {
 /** Whether `p` is `folder` or inside it: a name that only begins with two dots (`..x`) is inside. */
 const inside = (folder, p) => { const r = path.relative(folder, p); return r === '' || !(r === '..' || r.startsWith(`..${path.sep}`) || path.isAbsolute(r)); };
 
-/** The key file's text, as readPlainFile reads it (null when there is none), held to `untrusted`. */
-const keyText = file => readPlainFile(file, {most: KEY_MOST, judge: untrusted, fix: 'the note key must be a plain file of yours alone (STORYREEL_HOME, or ~/.storyreel/key)'});
+/** A pause of `ms`, waited where it stands (noteKey is not async): only for the one read again below. */
+const pause = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+/**
+ * The key file's text, as readPlainFile reads it (null when there is none), held to `untrusted`. Read again once, after
+ * a moment, when it had two names or no bytes yet: that is how it looks for the instant another studio puts a new key
+ * in place (files.mjs · writeNewFile links it, or on a disk with no hard links creates it, then writes it). A second
+ * name or an empty file still there then is refused (or read as not a key), as any would be.
+ */
+function keyText(file) {
+  let twoNames = false;
+  const read = () => readPlainFile(file, {most: KEY_MOST, judge: st => { twoNames = st.nlink > 1; return untrusted(st); }, fix: 'the note key must be a plain file of yours alone (STORYREEL_HOME, or ~/.storyreel/key)'});
+  try {
+    const text = read();
+    if (text !== '') return text;
+  } catch (e) { if (!twoNames) throw e; }
+  pause(50);
+  return read();
+}
 
 /**
  * The person's note key: {key} (a Buffer), or {key: null, why} when there is none yet (`create` makes it), it cannot be

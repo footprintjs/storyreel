@@ -85,13 +85,19 @@ export function noteTaker({home = storyreelHome()} = {}) {
     const file = feedbackFile(recipeFile);
     const {key, why} = noteKey(home, {create: true, project: path.dirname(file)});
     if (!key) throw new Refusal(`${why} — a note is signed with it, so it is known for yours`, 409);
+    // Under the lock: the file read, the note made against it, written; when it changed under us (a file that appeared
+    // where none was), read again and the note made again against it as it is now — twice at most.
     const held = async at => {
-      let fileText;
-      try { fileText = readFeedbackFile(at); } catch (e) { throw new Refusal(e.message, 409); }
-      let made;
-      try { made = await writeNote({film, storyboard, t, x, y, words, fileText, key, lineOf, file: path.basename(recipeFile)}); } catch (e) { throw new Refusal(e.message, 400); }
-      try { addToFeedback(at, fileText, made.text); } catch (e) { throw new Refusal(e.message, 409); }
-      return made;
+      for (let pass = 0; ; pass++) {
+        let fileText;
+        try { fileText = readFeedbackFile(at); } catch (e) { throw new Refusal(e.message, 409); }
+        let made;
+        try { made = await writeNote({film, storyboard, t, x, y, words, fileText, key, lineOf, file: path.basename(recipeFile)}); } catch (e) { throw new Refusal(e.message, 400); }
+        let written;
+        try { written = addToFeedback(at, fileText, made.text); } catch (e) { throw new Refusal(e.message, 409); }
+        if (written) return made;
+        if (pass) throw new Refusal('feedback.md keeps changing while the note is written (a tool that takes no lock is writing it): try again in a moment', 409);
+      }
     };
     let made;
     try { made = await withFeedback(file, held); } catch (e) { throw e instanceof Refusal ? e : new Refusal(e.message, 409); }

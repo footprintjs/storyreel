@@ -165,6 +165,20 @@ test('writeNewFile: a new file, written whole then linked into place — never o
   assert.deepEqual(readdirSync(dir).filter(n => n.endsWith('.part')), [], 'nothing left under a temporary name');
 });
 
+test('writeNewFile on a disk with no hard links (EPERM, ENOTSUP, EXDEV …): the file created exclusively at its name instead', t => {
+  const dir = tempDir('no-links', t);
+  for (const code of ['EPERM', 'ENOTSUP', 'EXDEV']) {
+    const file = path.join(dir, `made-${code}`), noLinks = {linkSync: () => { throw Object.assign(new Error(code), {code}); }};
+    assert.equal(writeNewFile(file, 'whole', {mode: 0o600}, noLinks), true, code);
+    assert.equal(readFileSync(file, 'utf8'), 'whole');
+    if (process.platform !== 'win32') assert.equal(statSync(file).mode & 0o777, 0o600);
+    assert.equal(writeNewFile(file, 'again', {}, noLinks), false, `${code}: one is there, kept`);
+    assert.equal(readFileSync(file, 'utf8'), 'whole');
+  }
+  assert.throws(() => writeNewFile(path.join(dir, 'other'), 'x', {}, {linkSync: () => { throw Object.assign(new Error('EIO'), {code: 'EIO'}); }}), /EIO/, 'any other failure is said');
+  assert.deepEqual(readdirSync(dir).filter(n => n.endsWith('.part')), []);
+});
+
 test('appendToFile and rewriteFile: one appended write that keeps what another wrote; a rewrite keeping the mode; neither through a link', {skip: process.platform === 'win32' ? 'POSIX modes and links' : false}, t => {
   const dir = tempDir('append', t), file = path.join(dir, 'notes.md');
   writeFileSync(file, 'one\n'); chmodSync(file, 0o664);
@@ -187,7 +201,30 @@ test('withFileLock: one holder at a time, the lock made exclusively and removed 
   assert.ok(!existsSync(`${file}.lock`));
   await assert.rejects(withFileLock(file, () => { throw new Error('inside'); }), /inside/);
   assert.ok(!existsSync(`${file}.lock`), 'removed when fn throws too');
-  writeFileSync(`${file}.lock`, '1');
+  writeFileSync(`${file}.lock`, `${process.pid} held-by-this-test\n`);
   await assert.rejects(withFileLock(file, () => 1, {waitMs: 60}), /is being changed by another studio or storyreel feedback .*: try again in a moment/);
-  await assert.rejects(withFileLock(file, () => 1, {staleMs: -1}), /notes\.md\.lock is \d+ s old: a studio or storyreel feedback stopped while holding it — remove it, then try again/);
+  writeFileSync(`${file}.lock`, 'no pid in it');
+  await assert.rejects(withFileLock(file, () => 1, {staleMs: -1}), /notes\.md\.lock is \d+ s old and names no process: remove it, then try again/);
+  rmSync(`${file}.lock`);
+});
+
+test('withFileLock: a lock whose process is gone is taken over; a holder removes only its own lock', async t => {
+  const dir = tempDir('lock-heal', t), file = path.join(dir, 'notes.md'), lock = `${file}.lock`;
+  const gone = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], {encoding: 'utf8'}).stdout;
+  writeFileSync(lock, `${gone} left-behind\n`);
+  assert.equal(await withFileLock(file, () => 'taken over', {waitMs: 500}), 'taken over');
+  assert.ok(!existsSync(lock));
+  await withFileLock(file, () => { rmSync(lock); writeFileSync(lock, `${process.pid} someone-else\n`); });
+  assert.equal(readFileSync(lock, 'utf8'), `${process.pid} someone-else\n`, 'another holder\'s lock is left alone');
+  rmSync(lock);
+});
+
+test('withFileLock: a lock that is not a plain file — a dangling link a shared project carried, a folder — is refused at once, naming it; never a spin', {skip: process.platform === 'win32' ? 'POSIX links' : false, timeout: 5000}, async t => {
+  const dir = tempDir('lock-link', t), file = path.join(dir, 'notes.md');
+  symlinkSync(path.join(dir, 'nowhere'), `${file}.lock`);
+  const started = Date.now();
+  await assert.rejects(withFileLock(file, () => 1), /notes\.md\.lock is not a lock StoryReel made \(a link, a folder or a FIFO\): remove it, then try again/);
+  assert.ok(Date.now() - started < 1000, 'refused at once');
+  rmSync(`${file}.lock`); mkdirSync(`${file}.lock`);
+  await assert.rejects(withFileLock(file, () => 1), /is not a lock StoryReel made/);
 });

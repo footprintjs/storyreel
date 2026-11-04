@@ -3197,8 +3197,8 @@ to follow (`--all` lists the done notes too; `--record` prints one JSON object w
 outside the project (`~/.storyreel/key`, or `STORYREEL_HOME`: made once, readable by you only, read only as a plain
 file of your own and refused inside the project's folder), against a project id the file's first line holds (so a
 project moved or renamed keeps its notes yours). Ticking keeps the signature and adds a done mark signed the same
-way: the mark is what is trusted, so a box unticked by hand does not bring a finished note back, and a copy of a line
-(the same note id twice) is one note. An edited line, an unsigned one or someone else's is counted, never listed. What
+way. The mark is trusted over the box for un-ticking only: a box unticked by hand does not bring a finished note
+back; a box you tick by hand still counts as done (by design). A copy of a line (the same note id twice) is one note. An edited line, an unsigned one or someone else's is counted, never listed. What
 a signature proves, and no more: your studio wrote that line for that project id. A `feedback.md` copied whole from one
 of your projects into another still verifies there, and a line deleted and put back from an older copy comes back.
 Nor does it make the anchors yours: the place is the film's own text (a scene id, an entry's path, the narration), so
@@ -3210,7 +3210,8 @@ refused here, though the read routes let it through, for this one writes) — a 
 `{version, t, x?, y?, words}` (the film the page drew, the moment, the spot, the words: a note aimed at a film compiled
 since is refused, so a spot never names a drawing of the next film; the page drops a clicked spot when the film
 is compiled again, keeping your words), one note at a time. The studio and `storyreel feedback` may run at once, so
-`feedback.md` changes only under its lock (a `feedback.md.lock` made exclusively), read again under it: a note is one
+`feedback.md` changes only under its lock (a `feedback.md.lock` made exclusively, naming its process; a lock whose
+process is gone is taken over), read again under it: a note is one
 appended write, a tick the whole text renamed over the file with its mode kept — neither loses the other's line.
 A studio whose recipe file is not known (no `--recipe`, no `recipe.json` beside the config) takes no note and says so.
 

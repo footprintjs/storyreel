@@ -18,7 +18,8 @@
   is refused here — and its own `Origin`), JSON of at most 16 KB holding only `{version, t, x?, y?, words}`, one at a
   time. The studio answers only at its own address, `http://127.0.0.1:<port>/<key>/` (a random key, printed when it
   starts): another user of a shared machine can reach the port but not read the film or post a note (403). A tick adds
-  a signed done mark, which a reader trusts over the box, and a repeated note id is one note; `--done` takes a note's
+  a signed done mark, trusted over the box for un-ticking only (a hand tick still counts as done, by design), and a
+  repeated note id is one note; `--done` takes a note's
   id too (`--done note:1a2b3c4d`), and a note left on another recipe file in the folder says so. The studio and
   `storyreel feedback` change `feedback.md` only under its lock (a note is one appended write, a tick a rewrite with
   the file's mode kept), so neither loses the other's line. New in `files.mjs`: `readPlainFile` (never through a link

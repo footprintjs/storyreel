@@ -32,14 +32,21 @@ const placed = file => path.join(securePath(path.dirname(path.resolve(file)), {f
 export const withFeedback = (file, fn) => { const at = placed(file); return withFileLock(at, () => fn(at)); };
 
 /**
- * A note added: `after` is `before` (the file as read under the lock) with the note's line. When `after` only adds to
- * `before` it is appended in one write; a file that is not there yet is made whole (linked into place); anything else
- * (a project id put above a file the person wrote) is the whole text renamed over it, its mode kept.
+ * A note added: `after` is `before` (the file as read under the lock) with the note's line. A file that is not there
+ * yet is made whole (files.mjs · writeNewFile: linked into place); when `after` only adds to `before` it is appended in
+ * one write; anything else (a project id put above a file the person wrote) is the whole text renamed over it, its mode
+ * kept. Returns false — nothing written — when the file was not there as read: one appeared meanwhile (made by hand, or
+ * by a tool that takes no lock), so the caller reads it again and makes the note against it as it is now (a note made
+ * for an empty file carries a header and a fresh project id, which must never be appended to another).
  */
 export function addToFeedback(file, before, after) {
-  if (before === '' && writeNewFile(file, after)) return;
+  if (before === '') {
+    if (writeNewFile(file, after)) return true;
+    if (readFeedbackFile(file) !== '') return false;   // it has lines now: the note is made again against them
+  }
   if (after.startsWith(before)) appendToFile(file, after.slice(before.length), {fix: FILE_FIX});
   else rewriteFile(file, after, {fix: FILE_FIX});
+  return true;
 }
 
 /** Notes ticked: the whole new text, renamed over the file with its mode kept (read under the lock: withFeedback). */

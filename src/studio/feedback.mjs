@@ -13,9 +13,9 @@
  * scene and the seconds into it (momenttext.mjs · sceneTime, what `--at` reads back), the recipe entry the click named
  * with its line in the recipe file, the words said around that moment, then " — " and the person's words. The stamp
  * says the note's id, the key that signed it (its name in this project) and the signature — and, once the note is done,
- * a done mark signed the same way (`done:…`): the mark, not the checkbox, is what a reader trusts, so a box unticked
+ * a done mark signed the same way (`done:…`). The mark is trusted over the checkbox for un-ticking only: a box unticked
  * by hand (or a line put back from before it was ticked, beside the ticked one: one id is one note) does not bring a
- * finished note back. The file's first line holds the project id, made once: notes are signed against it, so a project
+ * finished note back; a box ticked by hand still counts as done, by design. The file's first line holds the project id, made once: notes are signed against it, so a project
  * moved or renamed keeps its notes.
  *
  * Nothing a person or a recipe writes can break a line: each field is one line of visible characters, capped

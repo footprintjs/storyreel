@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {readFileSync, writeFileSync, mkdirSync, symlinkSync, chmodSync, linkSync, existsSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {randomBytes} from 'node:crypto';
+import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {compileFilm, evenTimings} from '../src/index.mjs';
 import {kineticKit} from '../src/kits/kinetic/index.mjs';
@@ -87,6 +88,11 @@ test('the note key: made once (0600), read only as a plain file of the person\'s
   assert.match(noteKey(inside, {create: true, project}).why, /is inside the project's folder, which may be shared — set STORYREEL_HOME elsewhere/);
   assert.ok(!existsSync(inside), 'and nothing is made there');
   assert.match(noteKey(path.join(project, '..x'), {create: true, project}).why, /is inside the project's folder/, 'a folder whose name begins with two dots is inside too');
+  // For the instant another studio links a new key into place it has two names: read again a moment later, it is one.
+  const busy = path.join(tempDir('busy-home', t), 'storyreel'), {key: made2} = noteKey(busy, {create: true}), second = path.join(path.dirname(busy), 'second');
+  linkSync(path.join(busy, 'key'), second);
+  spawn('rm', [second]);   // gone a moment later, as writeNewFile's own name is
+  assert.ok(noteKey(busy).key?.equals(made2), 'read again, it has one name: the key');
   const bad = tempDir('bad-home', t); writeFileSync(path.join(bad, 'key'), 'not hex', {mode: 0o600});
   assert.match(noteKey(bad).why, /is not a key \(64 hex characters\): move it aside/);
 });
@@ -220,6 +226,13 @@ test('feedback.md on disk: read only as a plain file, never through a link or fr
   await Promise.all([withFeedback(file, async () => { order.push('a'); await new Promise(r => setTimeout(r, 50)); order.push('a done'); }), withFeedback(file, () => { order.push('b'); })]);
   assert.deepEqual(order, ['a', 'a done', 'b']);
   assert.ok(!existsSync(`${file}.lock`), 'the lock is gone after');
+  // One that appeared after it was read as missing: nothing is written, and the caller makes the note again against it.
+  const fresh = path.join(tempDir('fb-fresh', t), 'feedback.md'); writeFileSync(fresh, '# mine\n- [ ] by hand\n');
+  assert.equal(await withFeedback(fresh, at => addToFeedback(at, '', '<!-- header -->\n# Feedback\n\n- [ ] note\n')), false);
+  assert.equal(readFileSync(fresh, 'utf8'), '# mine\n- [ ] by hand\n', 'no second header appended');
+  const empty = path.join(tempDir('fb-empty', t), 'feedback.md'); writeFileSync(empty, '');
+  assert.equal(await withFeedback(empty, at => addToFeedback(at, '', 'whole\n')), true, 'an empty one is there: written into');
+  assert.equal(readFileSync(empty, 'utf8'), 'whole\n');
   const elsewhere = path.join(tempDir('elsewhere', t), 'secret.md'); writeFileSync(elsewhere, 'secret');
   const linked = path.join(tempDir('linked', t), 'feedback.md'); symlinkSync(elsewhere, linked);
   assert.throws(() => readFeedbackFile(linked), /is a link \(or a junction\), not a file of its own: StoryReel reads it only as a plain file — put feedback\.md itself there/);

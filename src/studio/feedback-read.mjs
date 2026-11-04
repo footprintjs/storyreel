@@ -14,8 +14,10 @@
  * true or false, and its line number. The key stays out of the scope too.
  *
  * A note is done when its box is ticked or when it, or a copy of it, carries the person's done mark (notekey.mjs ·
- * signDone): the mark is what is trusted, so a box unticked by hand, or an old copy of the line put back, does not
- * bring a finished note back. Ticking puts the box and the mark on the note's line.
+ * signDone). The mark is trusted over the box for un-ticking only: a box unticked by hand, or an old open copy of the
+ * line put back, does not bring back a note its mark says is done. A box ticked by hand still counts as done, by
+ * design (hiding a note is the person's call, and whoever can write the file can delete a line anyway). Ticking puts
+ * the box and the mark on the note's line.
  *
  * A note names its entry's line as it was when the note was left; the recipe may have moved on since. Given `lineOf`
  * (an entry's line in the recipe file as it is now, or null) and `file` (that recipe file's name), each of the person's

@@ -25,7 +25,7 @@
  */
 import path from 'node:path';
 import {randomBytes} from 'node:crypto';
-import {existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync, chmodSync, copyFileSync, linkSync, lstatSync, openSync, fstatSync, readSync, writeSync, closeSync, statSync, constants} from 'node:fs';
+import {existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync, chmodSync, copyFileSync, linkSync, lstatSync, openSync, fstatSync, readSync, writeSync, closeSync, constants} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {ownedFolder} from './scratch.mjs';
 
@@ -470,17 +470,28 @@ export function appendToFile(file, text, {fix = 'put the file itself there'} = {
   }
 }
 
+/** What a disk says when it cannot make a second name for a file (exFAT, FAT, some network shares and bind mounts). */
+const NO_HARD_LINKS = new Set(['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'EXDEV', 'ENOSYS', 'EMLINK']);
+
 /**
  * A new file at `file` holding `text`, created only where nothing is: written whole under a new random name beside it
  * (created exclusively, `mode` less the umask), then linked to its name — a link() never follows a link at the name and
  * fails when anything is there, dangling or not — and the random name removed. So no reader ever sees it empty or half
- * written. Returns true when it was made, false when something was there already (the caller reads that one).
+ * written (it has two names for that instant: a reader that minds, the note key's, reads again). On a disk that makes no
+ * second name (NO_HARD_LINKS) it is created at its name exclusively instead (O_CREAT | O_EXCL, never through a link) and
+ * written there: still never over a file, though a reader at that instant could see it before its bytes. Returns true
+ * when it was made, false when something was there already (the caller reads that one). `fs` replaces {linkSync} (a
+ * test plays such a disk).
  */
-export function writeNewFile(file, text, {mode = 0o644} = {}) {
-  const temp = besideName(file);
+export function writeNewFile(file, text, {mode = 0o644} = {}, fs = {}) {
+  const temp = besideName(file), link = fs.linkSync ?? linkSync;
   try {
     writeFileSync(temp, text, {flag: 'wx', mode});
-    try { linkSync(temp, file); } catch (e) { if (e?.code === 'EEXIST') return false; throw e; }
+    try { link(temp, file); } catch (e) {
+      if (e?.code === 'EEXIST') return false;
+      if (!NO_HARD_LINKS.has(e?.code)) throw e;
+      try { writeFileSync(file, text, {flag: 'wx', mode}); } catch (made) { if (made?.code === 'EEXIST') return false; throw made; }
+    }
     return true;
   } finally {
     rmSync(temp, {force: true});
@@ -498,25 +509,55 @@ export function rewriteFile(file, text, {fix = 'put the file itself there'} = {}
   viaBeside(file, temp => { writeFileSync(temp, text, {flag: 'wx'}); chmodSync(temp, st.mode & 0o7777); }, {renameSync, rmSync});
 }
 
-/** How long withFileLock waits for another holder, and how old a lock must be before it is taken for one left behind. */
+/** How long withFileLock waits for another holder, and how old a lock whose holder cannot be asked must be before it is said. */
 export const LOCK_WAIT_MS = 3000, LOCK_STALE_MS = 60000;
 
+/** Whether process `pid` is running (one of another user's counts: it cannot be asked, so it is taken as running). */
+function running(pid) {
+  if (pid === process.pid) return true;
+  try { process.kill(pid, 0); return true; } catch (e) { return e?.code === 'EPERM'; }
+}
+
 /**
- * `fn()` run while `<file>.lock` is held: the lock file is created exclusively (O_CREAT | O_EXCL: never over another
- * holder's, never through a link), waited for up to LOCK_WAIT_MS while another process holds it, and removed after.
- * One older than LOCK_STALE_MS is a holder that stopped without removing it: refused, naming the file to remove.
- * Returns what fn returns.
+ * The lock file as it is now: null when there is none; {pid, text, ino, age} when it is a plain file (pid null when
+ * it names none); a refusal, naming it to remove, when it is anything else — a link (dangling or not), a folder, a FIFO.
+ */
+function lockHeld(lock) {
+  let st;
+  try { st = lstatSync(lock, {bigint: true}); } catch (e) { if (e?.code === 'ENOENT') return null; throw e; }
+  if (st.isSymbolicLink() || !st.isFile()) throw new Error(`${lock} is not a lock StoryReel made (a link, a folder or a FIFO): remove it, then try again`);
+  const text = readPlainFile(lock, {most: 256, fix: 'remove it, then try again'});
+  if (text === null) return null;
+  const pid = /^(\d+) /.exec(text);
+  return {pid: pid ? Number(pid[1]) : null, text, ino: st.ino, age: Date.now() - Number(st.mtimeMs)};
+}
+
+/** The lock removed only when it is still `held` (the same file, holding the same text): never another holder's. */
+function removeIf(lock, held) {
+  let now;
+  try { now = lockHeld(lock); } catch { return; }   // something else is there now: not ours to remove
+  if (now && now.ino === held.ino && now.text === held.text) rmSync(lock, {force: true});
+}
+
+/**
+ * `fn()` run while `<file>.lock` is held. The lock is a file created exclusively (O_CREAT | O_EXCL: never over another
+ * holder's, never through a link) holding this process's pid and a random tag. While another holds it, it is asked
+ * again every 25 ms (each pass awaits, and checks the deadline) for up to `waitMs`, then refused. A lock whose process
+ * is gone (process.kill(pid, 0)) is taken over; one whose process cannot be told and older than `staleMs` is refused,
+ * naming it to remove; one that is not a plain file (a link left in a shared project, dangling or not) is refused at
+ * once, naming it. After fn, the lock is removed only if it is still this one (same file, same text). Returns what fn
+ * returns.
  */
 export async function withFileLock(file, fn, {waitMs = LOCK_WAIT_MS, staleMs = LOCK_STALE_MS} = {}) {
-  const lock = `${file}.lock`;
-  for (const until = Date.now() + waitMs; ;) {
-    try { writeFileSync(lock, `${process.pid}\n`, {flag: 'wx', mode: 0o600}); break; } catch (e) {
-      if (e?.code !== 'EEXIST') throw e;
-      let age = 0; try { age = Date.now() - statSync(lock).mtimeMs; } catch { continue; }   // removed meanwhile: try again
-      if (age > staleMs) throw new Error(`${lock} is ${Math.round(age / 1000)} s old: a studio or storyreel feedback stopped while holding it — remove it, then try again`);
-      if (Date.now() > until) throw new Error(`${file} is being changed by another studio or storyreel feedback (${lock}): try again in a moment`);
-      await new Promise(resolve => setTimeout(resolve, 25));
-    }
+  const lock = `${file}.lock`, text = `${process.pid} ${randomBytes(8).toString('hex')}\n`, until = Date.now() + waitMs;
+  for (;;) {
+    try { writeFileSync(lock, text, {flag: 'wx', mode: 0o600}); break; } catch (e) { if (e?.code !== 'EEXIST') throw e; }
+    const held = lockHeld(lock);
+    if (held?.pid && !running(held.pid)) removeIf(lock, held);   // its holder is gone: taken over on the next pass
+    else if (held && held.pid === null && held.age > staleMs) throw new Error(`${lock} is ${Math.round(held.age / 1000)} s old and names no process: remove it, then try again`);
+    else if (Date.now() > until) throw new Error(`${file} is being changed by another studio or storyreel feedback (${lock}): try again in a moment`);
+    await new Promise(resolve => setTimeout(resolve, 25));
   }
-  try { return await fn(); } finally { rmSync(lock, {force: true}); }
+  const ours = lockHeld(lock);
+  try { return await fn(); } finally { if (ours) removeIf(lock, ours); }
 }

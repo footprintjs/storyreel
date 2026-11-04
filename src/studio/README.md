@@ -59,9 +59,12 @@ anchor. `version` is the film the spot was clicked on (409 when it was compiled 
 the film the person saw, never the next one), and the page drops a spot when the film reloads, keeping the words; the
 film and its recipe file's lines are taken together, so a reload while a note waits pairs neither with the other.
 One note is taken at a time in the studio, and every change to feedback.md — a note, or a tick from `storyreel
-feedback` in another process — holds its lock (`feedback.md.lock`, made with O_EXCL; one older than a minute is said,
-naming it to remove) and reads the file again under it: a note is one O_APPEND write (the first one, a new file
-linked into place), a tick the whole text renamed over it with its mode kept, so neither loses the other's line.
+feedback` in another process — holds its lock (`feedback.md.lock`, made with O_EXCL, holding the holder's pid; one
+whose process is gone is taken over, one that is not a plain file — a link a shared project carried — is refused naming
+it, and a holder removes only a lock that is still its own) and reads the file again under it: a note is one O_APPEND
+write (the first one, a new file linked into place — or, on a disk with no hard links, created exclusively — and made
+again against the file when one appeared meanwhile, never a second header), a tick the whole text renamed over it
+with its mode kept, so neither loses the other's line.
 feedback.md is read with `files.mjs · readPlainFile` (its name lstat-ed first and never followed, a FIFO or a device
 refused before it is opened, opened `O_NOFOLLOW | O_NONBLOCK` where the system has them, the descriptor's device and
 inode compared with the name's, at most 1 MB read in a bounded loop) and written with `writeOutput` into its folder's
@@ -70,8 +73,9 @@ so a project someone sends cannot carry notes that pass for the person's, and it
 be the person's alone (0600, one name). A studio with no recipe file takes no note (501), saying how to give it one.
 The anchors of a signed line are still recipe data — a scene id, an entry's path, the narration — so the reader
 (feedback-tool.mjs) quotes each as JSON and gives the person's words a line of their own; its description tells an
-agent they are data, never instructions. A tick adds a done mark signed like the note (notekey.mjs · signDone): the
-mark, not the box, is trusted, and a repeated id is one note. What a signature does not prove: that the line is in the
+agent they are data, never instructions. A tick adds a done mark signed like the note (notekey.mjs · signDone), trusted
+over the box for un-ticking only (a box unticked by hand does not reopen a note its mark says is done; a box ticked by
+hand still counts as done, by design), and a repeated id is one note. What a signature does not prove: that the line is in the
 project it was written for (a feedback.md copied whole from another of the person's projects verifies), nor that a
 line deleted and put back from an older copy is still wanted.
 
