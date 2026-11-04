@@ -270,3 +270,54 @@ Not borrowed:
 
 The concept card's fields (person, feeling, wow moment, reference to beat, concept line) fold into the brief check
 (Loop Lab item 2) when that is built.
+
+## A 3D stage: the camera flies from one view to another (2026-11-03)
+
+Today the camera is 2.5D: pan, tilt, dolly, truck and crane move over a flat picture, and orbit, dolly zoom and rack
+focus slide, scale and blur a world's depth layers (`camera.mjs` · `layersAt`); `perspective` places flat drawings in
+a one-point room. Nothing has an x, y, z place, so a shot cannot turn from one angle of a scene to another.
+
+- **The stage is data.** Flat cards (a world, a slide, a picture, a word) placed in x, y, z with a turn; named
+  viewpoints `{at: [x, y, z], look: [x, y, z], lens}`. A move flies the camera from one view to the next, eased, along
+  a path that never passes through a card.
+- **One model, one renderer: the browser.** The views, the flight and its choices are one module, shared with
+  StoryDeck (its backlog item 4). Both draw the stage with the browser's own CSS 3D: StoryDeck live, StoryReel through
+  an `html` world kit (below). No second 3D renderer is written for the 2D canvas.
+- **Choices on a flowchart.** Which way round to fly, how far to arc, how long by the distance and the turn, whether a
+  card would fill the lens or be seen edge-on: `decide()` tables, so the record says why the camera went the way it did.
+- **Laws:** a frame stays a pure function of time; a card is never seen from behind unless it says it has a back;
+  reduced motion cuts instead of flying; the review's checks read the words on a turned card where they land.
+- **Look first:** one scene of three cards and two views, flown in a film and in a deck.
+
+- **Our port, their adapters.** The stage is OUR shape — cards, views, flights, as plain data with no library's types
+  in it — and a 3D library is an adapter behind one small interface: `renderer.mount(stage)`, `renderer.at(t)` (place
+  the camera and cards for moment t), `renderer.regions()` (each card's box on the frame, for focus and the review).
+  The first adapter is CSS 3D (no library, in StoryDeck and through the `html` world kit); a three.js adapter (an
+  optional dependency, loaded only when named) can follow when a film needs real models, lights or materials. Every
+  adapter passes one conformance test: the same stage at the same moments gives the same card corners on the frame,
+  within a pixel. A film or a deck never imports a 3D library directly.
+
+Not planned now: our own 3D renderer (meshes, lights, materials). That is the three.js adapter's job when it is needed.
+
+## An `html` world kit: a web page as a shot, captured frame by frame (2026-11-03)
+
+A world drawn by a web page: HTML, CSS (3D transforms included), SVG, web fonts, a StoryDeck slide, a product's own
+screen. Not a screen recording, which drops and doubles frames and drifts from the voice, but a capture driven by
+the film's clock, as Math-Animals' `tools/render.mjs` drives its pages:
+
+- **The page keeps a small contract:** `window.storyreel = {ready, seek(t)}`, and `seek(t)` draws exactly moment t (a
+  pure function of time, so a piece re-rendered alone matches). CSS animations are paused and set by time
+  (`animation-delay: -t`), never left to run.
+- **Captured in `ready`.** The kit opens the page in a headless browser (Playwright, an optional dependency loaded only
+  when the kit is used), seeks each frame of its shot at the film's rate and size, and keeps the frames in a cache
+  folder keyed by the page's files and the times (`outputFolder`). `draw(ctx, t)` then only draws the cached frame, so
+  the camera, captions, focus, transitions and every review check work on it unchanged.
+- **Regions from the page:** elements marked `data-region="name"` give their boxes, so focus and the studio's "what
+  drew this spot" name them; the words the page shows are read from the page itself, for the review.
+- **Threat model:** the page is the project's own file, inside its folder; the browser runs with no network, and a
+  page that asks for one is refused, naming the fix; bounded frames, size and time.
+- **Cost, measured before choosing:** a browser frame costs far more than a canvas frame; the cache and the pieces
+  re-render only what changed. The bench decides the default resolution and whether to capture at 2× for zooms.
+- **Look first:** one StoryDeck slide flown in 3D as a ten-second shot inside a film.
+
+It also serves product demos (a product's own page driven by script, the handoff's phase 2) and decks shown in films.
