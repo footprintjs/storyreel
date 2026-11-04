@@ -896,7 +896,9 @@ inside it furthest from the ground (at the 95th percentile, so one stray pixel n
 the frame's height: about 18 pt). A word fading in (alpha under 1) is on its way, not read yet; a word is judged by
 its **best** moment over the part, so one written on stroke by stroke or typed in is read once it is whole; one with
 no ink at all (clipped away, not revealed yet) is counted as never seen, not read. A faint word is a finding with its
-ratio and the fix.
+ratio and the fix. The verdict keeps its evidence word by word: each faint word with its ratio and the time (the first
+50; `low` counts them all, `faintNotListed` the rest) and the closest call, the word read nearest its threshold, so a pass says what it stood on
+(`storyreel log --run 1 --check contrast`).
 
 ```js
 import {wordContrast, luminance, contrastRatio, CONTRAST} from 'footprint-storyreel/review';
@@ -2024,6 +2026,7 @@ keep out in a folder of your own, and render locally.
 | `.storyreel-work-<host>-<pid>-<XXXXXX>` beside `out` | the working files: the picture without its sound, the voice and the effects as WAVs, the lists FFmpeg joins, segment files on their way to the cache | removed when the render ends, finished or failed |
 | `.narration-<host>-<pid>-<XXXXXX>` beside `out` (`makeFilm` with a voice) | the paced copy of the voice, which the render reads; it becomes `narration/` once the film is made | removed if the film is refused or fails |
 | `work` (a folder you name: `renderFilm({…, work})`, `makeFilm({…, render: {work}})`) | the same working files, when you want to look at them | yes: you chose the place |
+| `.storyreel/runs/` in the out folder | each review's run, for `storyreel log` ([The run log](#the-run-log-how-each-result-was-made)) | yes, the newest 100 |
 | `.storyreel/segments/<format>-<W>x<H>-<quality>/` beside `out` | the picture's cache: each piece drawn, as `<key>.mp4` and `<key>.json` ([Re-render only what changed](#re-render-only-what-changed)) | yes, held to 4 GB: the pieces used longest ago go first |
 | `folderStore(dir)` | a piece cache you named (`segments: {dir}`, or `segmentedVideo({store})`) | yes: you chose the place, held to its cap |
 | `makeRelease({out})` | each target's post in `<out>/<target>/`, the render and its making-of in `<out>/work/<target>/` | yes |
@@ -3055,6 +3058,39 @@ console.log(formatSlice(sliceForKey(snapshot.commitLog, 'when.story.items[0].at'
 The record is detached (it survives `structuredClone` and JSON). A refused build keeps its record: the
 error carries `error.record`, whose narrative names the stage that refused. `record` other than true or
 false refuses. `makeFilm` always records and puts the narrative in `making-of.json` under `compile`.
+
+## The run log: how each result was made
+
+Every result StoryReel decides with a footprintjs flowchart keeps its record: each stage, what it wrote, and every
+decision with the rule that matched and the values it read. `storyreel log` is the one place to read them, so you
+(or an agent) walk a result back instead of running it again or looking at pictures. Each `storyreel review` saves
+its run in the out folder (`out/.storyreel/runs/`, the newest 100 kept), and the render's `making-of.json` there is
+listed with them:
+
+```sh
+npx storyreel log                         # the runs, newest first (the newest 10; --all for every one)
+# 1. 2026-11-04 02:27:38 review · the whole film: 0.00–20.80 s … nothing found · verdicts: 4 passed, 1 not run · 5 decisions
+npx storyreel log --run 1                 # each stage once: what it wrote, what it decided and what the decision read
+# slideshow/No slideshow · wrote shots 1, seconds 20.75, still 2, stillShare 0.096, dead 0, deadShare 0, …
+# slideshow/No slideshow: verdict
+#   decided: No rules matched, fell back to default "the shots move inside themselves: …": slideshow/passed. · read measured true, shots 1, deadShare 0, stillShare 0.096
+npx storyreel log --run 1 --only decisions   # the decisions alone (or errors, or steps: every entry as recorded)
+npx storyreel log --run 1 --check contrast   # one verdict's evidence in full: each faint word with its ratio, the closest call
+```
+
+A pass says what it stood on: a decision no rule chose still prints the values it read. One run prints at most 40
+lines (`--all` for every one); the rest are counted with the call that shows them. A run's number moves when another
+is saved; its id (printed under its head, `run 2026-11-04T02-27-38-089Z-review.3fa9c1`) never does, and `--run` takes
+either. The log reads only the out folder, so a config that no longer loads still leaves it readable (`--out`, or
+`./out`), with a line saying why the config did not load. A review whose run cannot be saved (an out folder others
+can change, a read-only disk) still answers, and says why under its answer. It is an MCP tool too
+(`storyreel mcp`: `log`, with `run`, `only`, `check`, `all`). A saved run keeps what the record says, in words, and a
+verdict's measured values as data; never a value a stage carried. The words include short summaries of the values
+read and written (footprintjs says a string of up to 80 characters as it is), so a chart that handles a private value
+redacts it before its narrative says it. A run file is read back only as a plain file of its own (never through a
+link, at most 4 MB), and one of any other shape is counted, not shown. From code, `saveRun(out, {feature, summary, record,
+verdicts})` saves a run of your own feature (its record: footprintjs `narrative().getEntries()`), and `logText(out,
+{run, only, check})` reads them, both from `footprint-storyreel/tools`.
 
 ## The preview studio
 

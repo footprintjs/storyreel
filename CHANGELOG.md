@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **`storyreel log`: one place to read how a result was made.** Records were kept in several places (a render's
+  `making-of.json`, a review's record in memory, a breakdown's `record.json`), and nothing read them in one place. Now each
+  `storyreel review` saves its run in the out folder (`out/.storyreel/runs/`, the newest 100 kept), and `storyreel log`
+  lists the runs newest first, the render's `making-of.json` among them. `--run 1` shows one run in at most 40 lines, each
+  stage once with what it wrote and what it decided. Each decision shows the rule that matched and the values it read,
+  so a pass that no rule chose still says what it stood on. `--only decisions | errors | steps` narrows the view, and
+  `--check contrast` (or any verdict's name) prints everything that check measured, one item a line. The list shows the
+  newest 10 (`--all` for every one). `--run` takes a run's number or its id, which never moves when another run is
+  saved. The log needs only the out folder, so a config that no longer loads still leaves it readable. A review whose
+  run cannot be saved still answers, and says why. Run files are read back only as plain files of their own, bounded,
+  of the shape StoryReel writes. `log` is an MCP tool too. `saveRun`, `listRuns` and `logText` come from `footprint-storyreel/tools`, so your own features can save
+  and read runs the same way. A saved run keeps the record's words and a verdict's measured values, never a value a
+  stage carried.
+- **The contrast verdict keeps its evidence word by word.** It keeps each faint word with its ratio and time (the
+  first 50; `low` still counts them all, `faintNotListed` the rest), and the closest call: the word read nearest its own threshold, kept even when
+  the verdict passes. `faintWords` returns that word as `closest`.
 - **Notes on the film: leave one in the studio where it happens, an agent edits the line.** Saying what to change used to
   mean describing a moment in words, and an agent then looked at frames and read whole files to find it. Now, in
   `storyreel studio`, click a spot on the picture (or leave the playhead), type the note under it and press Enter: it

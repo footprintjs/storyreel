@@ -768,3 +768,12 @@ export const noting = (start: typeof startStudio, film: Film, board: Storyboard)
   start({load: async () => ({film, storyboard: board, recipe: moving, source: {file: 'recipe.json'}}), port: 0, home: '/home/me/.storyreel'});
 // @ts-expect-error home is a folder's path
 export const badHome = (start: typeof startStudio, film: Film, board: Storyboard) => start({load: async () => ({film, storyboard: board, recipe: moving}), home: 7});
+
+// The run log: a feature saves its run, the log reads it back; a verdict's evidence by its check's name.
+import type {saveRun as SaveRun, logText as LogText, listRuns as ListRuns} from '../types/sub/tools.js';
+import type {faintWords as FaintWords} from '../types/sub/review.js';
+export const logged = (save: typeof SaveRun, text: typeof LogText, list: typeof ListRuns) =>
+  save('/p', {feature: 'review', summary: 'a run', record: [{type: 'stage', text: 'Stage 1'}]}) + text('/p', {run: 1, only: 'decisions'}) + text('/p', {run: 1, check: 'contrast'}) + list('/p').unread;
+export const closestCall = (f: typeof FaintWords) => f([]).closest?.ratio ?? 0;
+// @ts-expect-error only is decisions, errors or steps
+export const badView = (text: typeof LogText) => text('/p', {run: 1, only: 'everything'});

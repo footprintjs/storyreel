@@ -55,7 +55,7 @@ export function contrastRatio(a: number, b: number): number;
 export function wordContrast(data: Uint8ClampedArray | Uint8Array, width: number, height: number, box: [number, number, number, number], thresholds?: typeof CONTRAST): {ratio: number; ink: number; ground: number; large: boolean} | null;
 export interface WordContrast {text: string; box: [number, number, number, number]; ratio: number; needs: number; large: boolean}
 /** The words too faint to read, each judged by its best moment over the samples; words never seen are counted. */
-export function faintWords(samples: {t: number; contrasts?: WordContrast[]}[], thresholds?: typeof CONTRAST): {words: number; unseen: number; low: (WordContrast & {t: number})[]};
+export function faintWords(samples: {t: number; contrasts?: WordContrast[]}[], thresholds?: typeof CONTRAST): {words: number; unseen: number; low: (WordContrast & {t: number})[]; closest: (WordContrast & {t: number}) | null};
 /** The thresholds: WCAG's 4.5:1 and 3:1, what counts as large (a share of the frame's height), the ring and ink percentile, the least ratio that counts as seen. */
 export const CONTRAST: Readonly<{normal: number; large: number; largeHeight: number; ring: number; inkPercentile: number; seen: number}>;
 /** The contrast verdict's rules. */
