@@ -17,6 +17,7 @@ import {writeOutput, outputFolder, insideRoot} from './files.mjs';
 import {pathToFileURL} from 'node:url';
 import {compileFilm, evenTimings, paceTimings, makeFilm, makeClock, withDirections} from './index.mjs';
 import {checkPhrase, anchorsText, phrasesIn, exactPhrases} from './anchors.mjs';
+import {saidPhrases} from './differs.mjs';
 export {shareCopy, SHARE_DEFAULTS} from './share.mjs';
 import {previewChanges} from './changes.mjs';
 import {castFilm} from './prepare.mjs';
@@ -335,7 +336,7 @@ async function phoneStill(project, args) {
   const file = path.join(stillsFolder(project), `${pictureName(`phone-${name}-${shot.name}`)}.png`);
   writeOutput(file, png);
   const zones = options.ui ? options.ui.zones.map(z => `${z.name} (${z.basis ?? 'given'})`).join(', ') : 'none declared';
-  const under = frames.flatMap(f => f.covered.map(h => `\n  ${f.label} (${f.t.toFixed(2)} s): the ${h.kind === 'face' ? `face "${h.name}"` : h.kind === 'title' ? 'title band' : 'caption'} is under the ${h.zone}`));
+  const under = frames.flatMap(f => f.covered.map(h => `\n  ${f.label} (${f.t.toFixed(2)} s): the ${h.kind === 'face' ? `face "${h.name}"` : h.kind === 'label' ? `label "${h.name}"` : h.kind === 'title' ? 'title band' : 'caption'} is under the ${h.zone}`));
   return {text: `${file} · ${frames.length} phone${frames.length > 1 ? 's' : ''} (${adapter.label}, ${width} px wide)${shot.of ?? ''}: ${frames.map(f => `${f.label} (${f.t.toFixed(2)} s)`).join(', ')}${shot.rest ?? ''}\nthe app's UI: ${zones}${under.length ? `\nunder the UI, outlined in red:${under.join('')}` : '\nnothing of the title, the captions or the named faces is under the UI'}`, file};
 }
 
@@ -460,13 +461,14 @@ export async function anchors(project, args = {}) {
   catch (e) { stopped = e.message; noted = e.anchors ?? []; }
   // Every place is said on the film's clock (the paced film says the same words), so the report has one clock: the
   // holds are read again on it, so their times and their fixes are the film's too.
-  const clock = film?.clock ?? spoken, recipe = path => (path === null ? null : `recipe.${path}`);
+  // (A path names the file it is in: a phrase the storyboard names is the storyboard's, not the recipe's.)
+  const clock = film?.clock ?? spoken, recipe = path => (path === null || path.startsWith('storyboard.') ? path : `recipe.${path}`);
   const heldOn = film ? holds.map((h, i) => ({ref: holdRef(h), path: `pacing.holds[${i}]`, how: 'pauseAfter', ...checkPhrase(clock, holdRef(h))})) : held;
   const notes = [...heldOn.filter(n => n.problem), ...noted.map(n => ({...n, path: recipe(n.path)}))];
   let checked = holds.length + new Set((film?.beats ?? []).filter(b => b.path !== null).map(b => b.ref)).size;
   if (stopped) {
     // (Read from the recipe as written: what the compile noted before it stopped is said once, as it noted it.)
-    const read = phrasesIn(inputs.recipe, new Set(said.scenes.map(sc => sc.id))), seen = new Set(noted.map(n => recipe(n.path)));
+    const read = [...phrasesIn(inputs.recipe, new Set(said.scenes.map(sc => sc.id))), ...saidPhrases(said)], seen = new Set(noted.map(n => recipe(n.path)));
     for (const {ref, path} of read) { const c = checkPhrase(clock, ref); if (c.problem && !seen.has(recipe(path))) notes.push({ref, path: recipe(path), ...c}); }
     checked = holds.length + read.length;
   }

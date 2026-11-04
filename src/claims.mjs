@@ -699,7 +699,8 @@ export function drawnClaims(samples, {claims, sceneOf, scenes = [], wordsAt = nu
     const runs = numberRuns(text, reading);
     return runs.map((n, k) => ({text, offset: n.at, place: `${reading?.code ? 'code' : ''}\u0000${placeOf(text, runs, k)}`, number: n.run, code: Boolean(reading?.code)})).filter(x => !known(x.number, x.text));
   });
-  const numbersOf = words => { const said = words.filter(w => !w.decorative); return [...linesOf(said.filter(w => !w.code), locale), ...linesOf(said.filter(w => w.code), CODE_READING)]; };
+  // (A scene's label on how it differs, whose only number is the declared factor, says nothing about the world: differs.mjs · ownFigure.)
+  const numbersOf = words => { const said = words.filter(w => !w.decorative && !w.differs?.own); return [...linesOf(said.filter(w => !w.code), locale), ...linesOf(said.filter(w => w.code), CODE_READING)]; };
   const read = samples.map(({t, words}) => ({t, numbers: numbersOf(words)}));
   const shows = (numbers, x) => numbers.some(y => y.place === x.place && y.number === x.number);
   const shownAt = (t, x) => shows(numbersOf(wordsAt(t)), x);

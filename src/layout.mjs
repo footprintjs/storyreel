@@ -144,6 +144,8 @@ export function compileLayout(film, spec, span = {from: 0, to: film.total}) {
       titleFit,
       captionFit: (ctx, caption) => (captions ? fitCaption(ctx, caption) : {rects: [], fitted: false, covered: []}),
       toOutput: (t, box) => toOutput(f, crop, t, box),
+      /** The window of the frame a crop shows at t (null: the whole frame): where the film puts a label it must keep in sight. */
+      windowAt: t => (crop ? cropWindow(crop, t, f.crop) : null),
     } : {}),
   };
 }

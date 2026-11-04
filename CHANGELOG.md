@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **A scene that differs from the real thing says so.** A picture is believed, so a process run 30 times faster or a part
+  drawn far larger than it is reads as how the thing is. A scene now declares it (`"differs": {"time": 30, "scale": "The
+  dots are drawn far larger than real"}`), and the film says it: on screen by default, a label in the top right corner
+  over that scene ("Time shown 30 times faster"; `shown` for the film's language, `false` for the voice alone), in the
+  voice with `said`, the phrase of the narration that says it (a list gives one phrase per statement), or both. Each
+  statement declared needs a line or a phrase of its own, a number in the time's line must be the one declared, a silent
+  scene names no phrase, and a film in another language gives its own words. A time factor is 1.01 or more or 0.99 or
+  less, up to a billion times either way. A new verdict reads the part it is given and fails where it does not reach the
+  viewer: a label up too briefly to read, cut off, or under the title band or the app's UI, or a phrase the part does
+  not hold whole. The verdict prints the words, so a reader can judge them. Only the time words, or a line whose only
+  number is the declared time, need no source; any other number in a label is a claim. The verdict is asked only of a
+  film that declares, and any other film's verdicts and frames stay as they were. Kept pieces redraw once, as after any
+  change to the drawing code. It cannot see a speed-up nobody declared.
+- **An example label stays in a crop through a teaser's rewind.** The rewind drew the frame it replays without the crop's
+  window, so a label the frame sets against the window's corner landed off the picture.
 - **Every feature now leaves its run for `storyreel log`, done or refused.** Until now only a review did. Now `apply`,
   `feedback`, a note and a Try in the studio save theirs in the project's out folder. A breakdown saves in its own
   folder, and its last line says how to read it (`storyreel log --folder <folder>`, no project needed). A remake saves

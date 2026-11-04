@@ -22,6 +22,7 @@ import {hashOf} from './hash.mjs';
 import {checkVideo, ffmpegProbe} from './finished.mjs';
 import {verdictChart} from './verdict.mjs';
 import {claimsCount, unsourcedClaims, claimText, CLAIMS_VERDICT, evidenceOf, unallowedOpen, openRefusal} from './claims.mjs';
+import {ownFigureLines, DECLARING_CLAIMS_VERDICT} from './differs.mjs';
 import {installedVersion, lockedVersions} from './versions.mjs';
 import {codeCover, storyreelCode, MAX_PIECES} from './segments.mjs';
 import {beatMap, likelyTempi} from './beats.mjs';
@@ -310,8 +311,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
   // What this check reads: the lines the film declares (film.claims), never the picture — it draws no frame. The review
   // reads what the picture draws too (claims.mjs · drawnClaims); the refusal and the record say so.
   const SAW = 'declared lines only (the review also reads what the picture draws)';
-  const claimsCheck = verdictChart({name: 'check-claims', id: 'check-claims', description: 'Every number on screen, sourced by a fact or shown in an example scene', verdict: CLAIMS_VERDICT,
-    measure: s => { Object.assign(s, claimsCount(film.claims)); s.measured = true; },
+  const claimsCheck = verdictChart({name: 'check-claims', id: 'check-claims', description: 'Every number on screen, sourced by a fact or shown in an example scene', verdict: storyboard.scenes.some(sc => sc?.differs) ? DECLARING_CLAIMS_VERDICT : CLAIMS_VERDICT,
+    measure: s => { Object.assign(s, claimsCount(film.claims), film.differs ? {ownFigures: ownFigureLines(film.differs, film.lang ?? null)} : {}); s.measured = true; },
     on: claims !== 'refuse' ? {} : {
       failed: () => { const open = unsourcedClaims(film.claims); refuse(`The film shows ${open.length} number${open.length > 1 ? 's' : ''} with no source (claims: 'refuse'; the check saw ${SAW}): ${open.slice(0, 3).map(claimText).join('; ')}${open.length > 3 ? `; and ${open.length - 3} more` : ''}`); },
       'not run': s => refuse(`claims: 'refuse' needs the facts the numbers on screen come from (the check saw ${SAW}) — ${s.why}: give the storyboard "facts": "facts.json" ([{"value", "text"?, "source"}]), or mark the scenes that show example data "example": true`),
@@ -405,6 +406,8 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     // The director's proposals (director.mjs): where each key landed, the ones that did not and why — so a person or an
     // AI edits only the exceptions. Only when the recipe asks for the director.
     ...(film.director ? {director: film.director} : {}),
+    // How its scenes differ from the real thing (differs.mjs), as declared and as said.
+    ...(film.differs?.length ? {differs: film.differs} : {}),
     sounds: film.sounds.length,
     // The found sounds it plays (found/): each one's record — source, id, licence, attribution, sha256 — for the credits
     // (release.mjs · creditsText reads them from here) and for anyone asking where a sound came from.

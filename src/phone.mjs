@@ -19,7 +19,7 @@ const RED = '#ff3b30', SHAPE = 'rgba(48, 50, 56, .55)', LIGHT = 'rgba(232, 234, 
 
 /**
  * What of the frame at t is under the app's UI, as drawn (format pixels): [{kind, zone, rect, name?}] — the title band,
- * the caption showing then, each named face (ui.faces) there. `ctx` measures the text.
+ * the caption showing then, each named face (ui.faces) there, each label on how a scene differs. `ctx` measures the text.
  */
 export function coveredAt(film, framed, t, ctx) {
   if (!framed.ui) return [];
@@ -30,6 +30,10 @@ export function coveredAt(film, framed, t, ctx) {
     if (!r.name || !framed.ui.faces.includes(r.name)) continue;
     const rect = framed.toOutput(t, r.box);
     for (const z of rect ? framed.ui.zones : []) { const o = overlapOf(rect, z.rect); if (o) out.push({kind: 'face', name: r.name, zone: z.name, rect: o}); }
+  }
+  for (const l of film.labelsAt?.(ctx, t, framed.windowAt(t)) ?? []) {
+    const rect = framed.toOutput(t, l.box);
+    for (const z of rect ? framed.ui.zones : []) { const o = overlapOf(rect, z.rect); if (o) out.push({kind: 'label', name: l.name, zone: z.name, rect: o}); }
   }
   return out;
 }

@@ -106,6 +106,31 @@ export function chip(ctx, text, alpha, theme, {x = 40, y = 26, k = 1, right = nu
   ctx.restore();
   return w;
 }
+const GRAPHEMES = new Intl.Segmenter(undefined, {granularity: 'grapheme'});
+/** How wide a chip of these words is. */
+export function chipWidth(ctx, text, theme) {
+  ctx.save(); ctx.font = `800 24px ${theme?.type?.sans ?? SANS}`;
+  const w = ctx.measureText(text).width + 32;
+  ctx.restore();
+  return w;
+}
+/**
+ * A label's words as chips that fit `most` px across: one line when it fits, else broken between words, and a word too
+ * wide for a chip of its own (a script written without spaces, a long compound) broken between its graphemes.
+ */
+export function chipLines(ctx, text, theme, most) {
+  const fits = line => chipWidth(ctx, line, theme) <= most, lines = [''];
+  const add = (piece, gap) => {
+    const longer = lines.at(-1) ? `${lines.at(-1)}${gap}${piece}` : piece;
+    if (lines.at(-1) && !fits(longer)) lines.push(piece); else lines[lines.length - 1] = longer;
+  };
+  for (const word of text.split(' ')) {
+    if (fits(word)) { add(word, ' '); continue; }
+    if (lines.at(-1)) lines.push('');
+    for (const {segment} of GRAPHEMES.segment(word)) add(segment, '');
+  }
+  return lines;
+}
 /** Where a box in the picture lands on the frame, through the focus view (the camera), or as it is without one. */
 const onFrame = (box, v) => !v ? box : [(box[0] - v.cx) * v.z + v.sx, (box[1] - v.cy) * v.z + v.sy, (box[2] - v.cx) * v.z + v.sx, (box[3] - v.cy) * v.z + v.sy];
 /** The emphasis strategies: how the words of a beat are put in front of the viewer. */
