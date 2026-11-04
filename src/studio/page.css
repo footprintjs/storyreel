@@ -82,3 +82,12 @@ button.small, .card button, .trying button, .kept-actions button { padding: 3px 
 .kept li.empty { background: none; font-family: system-ui, sans-serif; color: var(--muted); user-select: auto; }
 .kept-actions { margin-top: 6px; }
 .copy-here { display: block; width: 100%; min-height: 64px; margin-top: 6px; font: 12px ui-monospace, Menlo, monospace; }
+.note { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+.note-where { font-size: 12px; font-weight: 600; color: var(--muted); max-width: 100%; overflow-wrap: anywhere; }
+.note input { flex: 1 1 260px; min-width: 0; padding: 6px 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); color: var(--ink); font: inherit; }
+.note input:disabled { opacity: .6; }
+.note button { padding: 5px 12px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.note button:disabled { opacity: .5; cursor: default; }
+.note-said { flex-basis: 100%; font-size: 12px; overflow-wrap: anywhere; }
+.note-said:empty { display: none; }
+.note-said.bad { color: var(--bad); }

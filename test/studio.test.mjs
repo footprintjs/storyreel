@@ -13,8 +13,10 @@ import {tempDir} from './tmp.mjs';
 const hello = fileURLToPath(new URL('../examples/hello/', import.meta.url));
 const wait = ms => new Promise(r => setTimeout(r, ms));
 /** GET with a chosen Host header (fetch will not send a foreign one). */
-const raw = (port, pathName, {host = `127.0.0.1:${port}`, method = 'GET'} = {}) => new Promise((resolve, reject) => {
-  const req = http.request({host: '127.0.0.1', port, path: pathName, method, headers: {host}}, res => { let body = ''; res.on('data', d => (body += d)); res.on('end', () => resolve({status: res.statusCode, body})); });
+const raw = (at, pathName, {host = null, method = 'GET'} = {}) => new Promise((resolve, reject) => {
+  const {port, pathname: base} = new URL(at);   // the studio's own address: its key, then the route
+  host ??= `127.0.0.1:${port}`;
+  const req = http.request({host: '127.0.0.1', port, path: base.replace(/\/$/, '') + pathName, method, headers: {host}}, res => { let body = ''; res.on('data', d => (body += d)); res.on('end', () => resolve({status: res.statusCode, body})); });
   req.on('error', reject); req.end();
 });
 
@@ -41,7 +43,7 @@ test('the studio: frames, the film, what drew a spot; loopback only, read only; 
     const page = await fetch(url);
     assert.equal(page.status, 200);
     assert.match(page.headers.get('content-security-policy'), /default-src 'none'; script-src 'self'/);
-    assert.match(await page.text(), /<script src="\/studio.js" defer>/);
+    assert.match(await page.text(), /<script src="studio.js" defer>/);
     const film = await (await fetch(url + 'api/film')).json();
     assert.equal(film.scenes.length, 2);
     assert.deepEqual(film.beats[0].said, {scene: 'story', phrase: 'a shepherd', plus: 0});
@@ -57,12 +59,12 @@ test('the studio: frames, the film, what drew a spot; loopback only, read only; 
     assert.deepEqual(hit.point.world, {path: 'story', at: [300, 564]});
     assert.match((await (await fetch(url + 'api/entry?path=story.items[0]')).json()).json, /"figure"/);
     // Loopback by name, read only, nothing else served.
-    assert.equal((await raw(port, '/api/film', {host: 'studio.example.com'})).status, 403);
-    assert.equal((await raw(port, '/api/film', {method: 'POST'})).status, 405);
+    assert.equal((await raw(url, '/api/film', {host: 'studio.example.com'})).status, 403);
+    assert.equal((await raw(url, '/api/film', {method: 'POST'})).status, 405);
     assert.equal((await fetch(url + 'api/audio')).status, 404, 'no voice, no audio');
     const sheet = await fetch(url + 'api/transitions');
     assert.equal(sheet.headers.get('content-type'), 'image/png', 'the transitions a shot can enter with, on one sheet');
-    assert.equal((await fetch(url + '../package.json')).status, 404);
+    assert.equal((await fetch(url + '../package.json')).status, 403, 'outside the studio\'s own address: refused');
     assert.equal((await fetch(url + 'server.mjs')).status, 404);
     // A note added to the recipe: the studio compiles again and lists it.
     const recipe = JSON.parse(readFileSync(file, 'utf8'));

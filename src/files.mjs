@@ -16,10 +16,16 @@
  * follows a link — so a link another user planted at an output's name in a shared folder (/tmp) is replaced, and the
  * file it points at is never written. The folders StoryReel names inside the caller's (a release's <target>, a
  * breakdown's shots) are made by outputFolder, which refuses a link there.
+ *
+ * What StoryReel reads from a folder someone else may have filled — a project's feedback.md, the person's note key —
+ * is read one way too, readPlainFile: never through a link, never from a FIFO or a device, and never more than a bound.
+ * A file several processes add to (feedback.md: the studio adds notes, `storyreel feedback` ticks them) is changed only
+ * while its lock is held (withFileLock: a lock file created exclusively), by one appended write (appendToFile), a new
+ * file linked into place (writeNewFile) or a whole new text renamed over it, its mode kept (rewriteFile).
  */
 import path from 'node:path';
 import {randomBytes} from 'node:crypto';
-import {existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync, chmodSync, copyFileSync, linkSync, lstatSync, constants} from 'node:fs';
+import {existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync, chmodSync, copyFileSync, linkSync, lstatSync, openSync, fstatSync, readSync, writeSync, closeSync, constants} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {ownedFolder} from './scratch.mjs';
 
@@ -190,10 +196,10 @@ export function securePath(dir, fs = {}) {
   const real = realpath(found);
   for (let at = real; ; at = path.dirname(at)) {
     const bad = unsafe(lstat(at), accounts);
-    if (bad) throw new Error(`${at} ${bad.why}: StoryReel writes only below folders no other user can change (each yours or root's, writable by no one else unless sticky) — ${bad.fix}`);
+    if (bad) throw new Error(`${at} ${bad.why}: StoryReel writes only below folders no other user can change (each yours or root's, writable by no one else unless sticky) — ${fs.fix ?? bad.fix}`);
     if (path.dirname(at) === at) break;
   }
-  if (platform === 'darwin') refuseNoOwners(real, 'mounts' in fs ? fs.mounts : systemMounts());
+  if (platform === 'darwin') refuseNoOwners(real, 'mounts' in fs ? fs.mounts : systemMounts(), fs.fix);
   return path.join(real, path.relative(found, wanted));
 }
 
@@ -202,14 +208,14 @@ export function securePath(dir, fs = {}) {
  * text; null when it could not be read). An unreadable table fails closed under /Volumes/, where external drives mount;
  * the internal disk (the system volume, /) is never refused for it.
  */
-function refuseNoOwners(real, table) {
+function refuseNoOwners(real, table, fix = null) {
   const external = real === '/Volumes' || real.startsWith('/Volumes/');
   if (table === null) {
-    if (external) throw new Error(`${real} is on a drive whose mount table cannot be read (/sbin/mount), so whether it ignores ownership cannot be told — render on the internal disk and copy the film out`);
+    if (external) throw new Error(`${real} is on a drive whose mount table cannot be read (/sbin/mount), so whether it ignores ownership cannot be told — ${fix ?? 'render on the internal disk and copy the film out'}`);
     return;
   }
   const drive = mountOf(real, parseMounts(table));
-  if (drive?.flags.includes('noowners')) throw new Error(`${real} is on ${drive.point}, a drive that ignores ownership (noowners): every folder on it looks like yours — render on the internal disk and copy the film out`);
+  if (drive?.flags.includes('noowners')) throw new Error(`${real} is on ${drive.point}, a drive that ignores ownership (noowners): every folder on it looks like yours — ${fix ?? 'render on the internal disk and copy the film out'}`);
 }
 
 /** The mode every folder StoryReel makes asks for: 0755. mkdir only narrows it by the umask (077 gives 0700), never widens it. */
@@ -227,7 +233,7 @@ export function makeFolder(dir, fs = {}) {
   const planned = securePath(dir, fs);
   (fs.mkdir ?? mkdirSync)(planned, {recursive: true, mode: FOLDER_MODE});
   const made = securePath(planned, fs);
-  if (made !== planned) throw new Error(`${planned} changed while StoryReel made it: a folder on the way now leads to ${made} — ${FIX}`);   // refusal: FIX names it
+  if (made !== planned) throw new Error(`${planned} changed while StoryReel made it: a folder on the way now leads to ${made} — ${fs.fix ?? FIX}`);   // refusal: FIX names it
   return made;
 }
 
@@ -397,4 +403,161 @@ export function requireVoiceApart(voice, outDir) {
   const real = p => realPathOf(path.resolve(p), realpathSync.native);
   const v = real(voice), out = real(outDir), narration = real(path.join(outDir, 'narration'));
   if (within(v, out) || within(v, narration) || within(narration, v)) throw new Error(`voice: the voice folder ${voice} and the render's out folder ${outDir} overlap — the render paces a copy of the voice in the out folder, then replaces ${path.join(outDir, 'narration')} with it, so it would write into the voice folder or delete it: keep the voice folder outside the render's out folder, and render outside the voice folder`);
+}
+
+const NOFOLLOW = constants.O_NOFOLLOW ?? 0, NONBLOCK = constants.O_NONBLOCK ?? 0;
+
+/**
+ * A file's text, read only as a plain file of its own: what a folder someone else may have filled holds (a project's
+ * feedback.md) or what must be the person's alone (the note key). Its name is looked at first without following it
+ * (lstat): a link — a Windows junction too — or anything but a regular file is refused before it is opened, so a FIFO
+ * or a device never holds the process. Then it is opened read-only, without following a link where the system can say
+ * so (O_NOFOLLOW), and without blocking (O_NONBLOCK); what was opened (fstat) must be the very file looked at (same
+ * device and inode — nothing swapped in between, on a system with no O_NOFOLLOW either), a regular file, and pass
+ * `judge(st)` (a reason to refuse it, or null). At most `most` bytes are read, in a bounded loop, whatever its size
+ * claims: more refuses. Returns the text (UTF-8), or null when there is no file. Each refusal ends with `fix`, the
+ * caller's words for what to do.
+ */
+export function readPlainFile(file, {most, fix, judge = () => null}) {
+  let named;
+  try { named = lstatSync(file, {bigint: true}); } catch (e) { if (e?.code === 'ENOENT') return null; throw e; }
+  if (named.isSymbolicLink()) throw new Error(`${file} is a link (or a junction), not a file of its own: StoryReel reads it only as a plain file — ${fix}`);
+  if (!named.isFile()) throw new Error(`${file} is not a plain file (a folder, a FIFO or a device): StoryReel reads it only as one — ${fix}`);
+  let fd;
+  try { fd = openSync(file, constants.O_RDONLY | NOFOLLOW | NONBLOCK); } catch (e) {
+    if (e?.code === 'ENOENT') return null;
+    if (e?.code === 'ELOOP' || e?.code === 'EMLINK') throw new Error(`${file} is a link, not a file of its own: StoryReel reads it only as a plain file — ${fix}`, {cause: e});
+    throw e;
+  }
+  try {
+    const opened = fstatSync(fd, {bigint: true}), st = fstatSync(fd);
+    if (opened.dev !== named.dev || opened.ino !== named.ino) throw new Error(`${file} was replaced while StoryReel opened it: read it again, and keep that folder your own — ${fix}`);
+    if (!st.isFile()) throw new Error(`${file} is not a plain file: StoryReel reads it only as one — ${fix}`);
+    const why = judge(st);
+    if (why) throw new Error(`${file} ${why} — ${fix}`);
+    if (st.size > most) throw new Error(`${file} holds ${st.size} bytes, more than the ${most} StoryReel reads of it: make it smaller — ${fix}`);
+    const buf = Buffer.alloc(most + 1);
+    let got = 0;
+    for (let n; got < buf.length && (n = readSync(fd, buf, got, buf.length - got, null)) > 0;) got += n;
+    if (got > most) throw new Error(`${file} holds more than the ${most} bytes StoryReel reads of it (it grew while read) — ${fix}`);
+    return buf.subarray(0, got).toString('utf8');
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** A file opened for appending, as readPlainFile opens one to read: never through a link, never a FIFO, the very file its name is. */
+function openToAppend(file, fix) {
+  const named = lstatSync(file, {bigint: true});
+  if (named.isSymbolicLink() || !named.isFile()) throw new Error(`${file} is not a plain file of its own (a link, a folder, a FIFO): StoryReel adds to it only as one — ${fix}`);
+  const fd = openSync(file, constants.O_WRONLY | constants.O_APPEND | NOFOLLOW | NONBLOCK);
+  const opened = fstatSync(fd, {bigint: true});
+  if (!opened.isFile() || opened.dev !== named.dev || opened.ino !== named.ino) { closeSync(fd); throw new Error(`${file} was replaced while StoryReel opened it: try again, and keep that folder your own — ${fix}`); }
+  return fd;
+}
+
+/**
+ * `text` added at the end of `file`, a plain file that is there, in one write opened with O_APPEND — so whatever another
+ * process wrote meanwhile stays, and what is added lands after it whole (the caller holds the file's lock: withFileLock).
+ * Never through a link, never to a FIFO (openToAppend). `fix` ends a refusal.
+ */
+export function appendToFile(file, text, {fix = 'put the file itself there'} = {}) {
+  const fd = openToAppend(file, fix), bytes = Buffer.from(text, 'utf8');
+  try {
+    for (let at = 0; at < bytes.length;) at += writeSync(fd, bytes, at, bytes.length - at);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** What a disk says when it cannot make a second name for a file (exFAT, FAT, some network shares and bind mounts). */
+const NO_HARD_LINKS = new Set(['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'EXDEV', 'ENOSYS', 'EMLINK']);
+
+/**
+ * A new file at `file` holding `text`, created only where nothing is: written whole under a new random name beside it
+ * (created exclusively, `mode` less the umask), then linked to its name — a link() never follows a link at the name and
+ * fails when anything is there, dangling or not — and the random name removed. So no reader ever sees it empty or half
+ * written (it has two names for that instant: a reader that minds, the note key's, reads again). On a disk that makes no
+ * second name (NO_HARD_LINKS) it is created at its name exclusively instead (O_CREAT | O_EXCL, never through a link) and
+ * written there: still never over a file, though a reader at that instant could see it before its bytes. Returns true
+ * when it was made, false when something was there already (the caller reads that one). `fs` replaces {linkSync} (a
+ * test plays such a disk).
+ */
+export function writeNewFile(file, text, {mode = 0o644} = {}, fs = {}) {
+  const temp = besideName(file), link = fs.linkSync ?? linkSync;
+  try {
+    writeFileSync(temp, text, {flag: 'wx', mode});
+    try { link(temp, file); } catch (e) {
+      if (e?.code === 'EEXIST') return false;
+      if (!NO_HARD_LINKS.has(e?.code)) throw e;
+      try { writeFileSync(file, text, {flag: 'wx', mode}); } catch (made) { if (made?.code === 'EEXIST') return false; throw made; }
+    }
+    return true;
+  } finally {
+    rmSync(temp, {force: true});
+  }
+}
+
+/**
+ * `file` (a plain file that is there) replaced by `text` with its mode kept: written under a new random name beside it,
+ * given the file's own mode, then renamed onto it (writeOutput's way: a rename replaces a link, never follows it).
+ * The caller holds the file's lock (withFileLock) and read it under that lock, so nothing another process added is lost.
+ */
+export function rewriteFile(file, text, {fix = 'put the file itself there'} = {}) {
+  const st = lstatSync(file);
+  if (!st.isFile()) throw new Error(`${file} is not a plain file (a link, a folder, a FIFO): StoryReel rewrites it only as one — ${fix}`);
+  viaBeside(file, temp => { writeFileSync(temp, text, {flag: 'wx'}); chmodSync(temp, st.mode & 0o7777); }, {renameSync, rmSync});
+}
+
+/** How long withFileLock waits for another holder, and how old a lock whose holder cannot be asked must be before it is said. */
+export const LOCK_WAIT_MS = 3000, LOCK_STALE_MS = 60000;
+
+/** Whether process `pid` is running (one of another user's counts: it cannot be asked, so it is taken as running). */
+function running(pid) {
+  if (pid === process.pid) return true;
+  try { process.kill(pid, 0); return true; } catch (e) { return e?.code === 'EPERM'; }
+}
+
+/**
+ * The lock file as it is now: null when there is none; {pid, text, ino, age} when it is a plain file (pid null when
+ * it names none); a refusal, naming it to remove, when it is anything else — a link (dangling or not), a folder, a FIFO.
+ */
+function lockHeld(lock) {
+  let st;
+  try { st = lstatSync(lock, {bigint: true}); } catch (e) { if (e?.code === 'ENOENT') return null; throw e; }
+  if (st.isSymbolicLink() || !st.isFile()) throw new Error(`${lock} is not a lock StoryReel made (a link, a folder or a FIFO): remove it, then try again`);
+  const text = readPlainFile(lock, {most: 256, fix: 'remove it, then try again'});
+  if (text === null) return null;
+  const pid = /^(\d+) /.exec(text);
+  return {pid: pid ? Number(pid[1]) : null, text, ino: st.ino, age: Date.now() - Number(st.mtimeMs)};
+}
+
+/** The lock removed only when it is still `held` (the same file, holding the same text): never another holder's. */
+function removeIf(lock, held) {
+  let now;
+  try { now = lockHeld(lock); } catch { return; }   // something else is there now: not ours to remove
+  if (now && now.ino === held.ino && now.text === held.text) rmSync(lock, {force: true});
+}
+
+/**
+ * `fn()` run while `<file>.lock` is held. The lock is a file created exclusively (O_CREAT | O_EXCL: never over another
+ * holder's, never through a link) holding this process's pid and a random tag. While another holds it, it is asked
+ * again every 25 ms (each pass awaits, and checks the deadline) for up to `waitMs`, then refused. A lock whose process
+ * is gone (process.kill(pid, 0)) is taken over; one whose process cannot be told and older than `staleMs` is refused,
+ * naming it to remove; one that is not a plain file (a link left in a shared project, dangling or not) is refused at
+ * once, naming it. After fn, the lock is removed only if it is still this one (same file, same text). Returns what fn
+ * returns.
+ */
+export async function withFileLock(file, fn, {waitMs = LOCK_WAIT_MS, staleMs = LOCK_STALE_MS} = {}) {
+  const lock = `${file}.lock`, text = `${process.pid} ${randomBytes(8).toString('hex')}\n`, until = Date.now() + waitMs;
+  for (;;) {
+    try { writeFileSync(lock, text, {flag: 'wx', mode: 0o600}); break; } catch (e) { if (e?.code !== 'EEXIST') throw e; }
+    const held = lockHeld(lock);
+    if (held?.pid && !running(held.pid)) removeIf(lock, held);   // its holder is gone: taken over on the next pass
+    else if (held && held.pid === null && held.age > staleMs) throw new Error(`${lock} is ${Math.round(held.age / 1000)} s old and names no process: remove it, then try again`);
+    else if (Date.now() > until) throw new Error(`${file} is being changed by another studio or storyreel feedback (${lock}): try again in a moment`);
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  const ours = lockHeld(lock);
+  try { return await fn(); } finally { if (ours) removeIf(lock, ours); }
 }

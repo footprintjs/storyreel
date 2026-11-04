@@ -1,6 +1,6 @@
 /**
  * The review tools as an MCP server (stdio), so any assistant that speaks the Model Context Protocol — Claude Code,
- * Claude Desktop, VS Code's Copilot, Cursor — calls every review tool (TOOLS: timeline, review, part, anchors, script,
+ * Claude Desktop, VS Code's Copilot, Cursor — calls every review tool (TOOLS: timeline, feedback, review, part, anchors, script,
  * changes, still, sheet, strip) directly. An adapter over the same core as the command line (tools.mjs): each call runs the
  * command line in a fresh process in the project's folder, so an edit to a kit between two calls is always seen (a
  * long-lived process would keep the old module). A still or a strip comes back as the picture itself (and its path), a
@@ -128,7 +128,7 @@ export function serveMcp({defaults = {}, config, cwd = process.cwd(), input = pr
   const lines = createInterface({input}), pending = new Set();
   const reply = async (method, params) => {
     if (method === 'initialize') return {result: {protocolVersion: typeof params.protocolVersion === 'string' ? params.protocolVersion : '2025-06-18', capabilities: {tools: {}}, serverInfo: {name: 'storyreel', version: VERSION},
-      instructions: 'Read first, look last: timeline (when each beat lands) → review (what is wrong, as text) → fix → part (a quick render of the scenes) → one still to confirm the look (at: a time the timeline printed, as it is; beats: a scene\'s every beat). After an edit to the narration, recipe or pacing: anchors (every phrase not said, or said twice, with its fix) first. After an edit: changes (what it redraws, and why) → changes with render (only those pieces drawn, and a short clip of them to show); the full render then only joins. For someone checking the whole film: sheet (contact sheets).'}};
+      instructions: 'Read first, look last: feedback (the notes the person left on the film in the studio, each with its exact place: edit the line it names, then tick it with done) → timeline (when each beat lands) → review (what is wrong, as text) → fix → part (a quick render of the scenes) → one still to confirm the look (at: a time the timeline printed, as it is; beats: a scene\'s every beat). After an edit to the narration, recipe or pacing: anchors (every phrase not said, or said twice, with its fix) first. After an edit: changes (what it redraws, and why) → changes with render (only those pieces drawn, and a short clip of them to show); the full render then only joins. For someone checking the whole film: sheet (contact sheets).'}};
     if (method === 'ping') return {result: {}};
     if (method === 'tools/list') return {result: {tools: mcpTools()}};
     if (method === 'tools/call') return {result: await callTool(params.name, params.arguments ?? {}, {defaults, config, cwd})};

@@ -470,7 +470,7 @@ const WRITERS = ['writeFileSync', 'writeFile', 'openSync', 'open', 'writeSync', 
 const RUNNERS = ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork'];
 const FLAGS = ['-y', '-report', '-progress', '-vstats', '-vstats_file', '-passlogfile', '-dump_attachment', '-sdp_file', '-o'];
 const IMPORTS = {
-  'files.mjs': ['writeFileSync', 'renameSync', 'chmodSync', 'copyFileSync', 'linkSync'],   // the owner: writeOutput, makeFolder, copyVoice, placeVoice
+  'files.mjs': ['writeFileSync', 'renameSync', 'chmodSync', 'copyFileSync', 'linkSync', 'openSync', 'writeSync'],   // the owner: writeOutput, makeFolder, copyVoice, placeVoice, writeNewFile, appendToFile, rewriteFile, withFileLock; readPlainFile opens read-only
   'pipeline.mjs': ['writeFileSync'], 'render.mjs': ['writeFileSync'], 'segments/join.mjs': ['writeFileSync'], 'stills.mjs': ['writeFileSync'],
   'segments/store.mjs': ['utimesSync'],   // a kept piece's manifest touched when it is reused: its age orders eviction
   'mcp.mjs': ['writeSync'],   // sendPicture: one line on the pipe the MCP server opened for the call (fd 3), never a file
@@ -485,6 +485,14 @@ const OWN = [
   ['files.mjs', "writeFileSync(target, readFileSync(path.join(base, f)), {flag: 'wx'})", 'copyVoice: the same'],
   ['files.mjs', 'ops.chmodSync(copy, plainFolderMode())', 'placeVoice: the voice copy, before it is renamed'],
   ['files.mjs', 'ops.renameSync(copy, final)', 'placeVoice: the copy renamed onto narration/'],
+  ['files.mjs', 'fd = openSync(file, constants.O_RDONLY | NOFOLLOW | NONBLOCK)', 'readPlainFile: opened read-only, never created or written'],
+  ['files.mjs', 'const fd = openSync(file, constants.O_WRONLY | constants.O_APPEND | NOFOLLOW | NONBLOCK)', 'openToAppend: an existing plain file opened to append, never created, never through a link (dev/ino checked)'],
+  ['files.mjs', 'for (let at = 0; at < bytes.length;) at += writeSync(fd, bytes, at, bytes.length - at)', 'appendToFile: the one appended write, to the file openToAppend checked'],
+  ['files.mjs', "writeFileSync(temp, text, {flag: 'wx', mode})", 'writeNewFile: a new random name beside the file, created exclusively'],
+  ['files.mjs', "try { link(temp, file); }", 'writeNewFile: that name linked to the file\'s (fails when anything is there, never follows a link)'],
+  ['files.mjs', "try { writeFileSync(file, text, {flag: 'wx', mode}); }", 'writeNewFile on a disk with no hard links: the file created exclusively at its name (never over a file, never through a link)'],
+  ['files.mjs', "viaBeside(file, temp => { writeFileSync(temp, text, {flag: 'wx'}); chmodSync(temp, st.mode & 0o7777); }", 'rewriteFile: a new random name beside the file, created exclusively, given the file\'s mode, renamed onto it'],
+  ['files.mjs', "try { writeFileSync(lock, text, {flag: 'wx', mode: 0o600}); break; }", 'withFileLock: the lock file, created exclusively (never over another holder\'s, never through a link)'],
   ['pipeline.mjs', "if (scope.narration) writeFileSync(path.join(scope.narration, 'timings.json')", 'fit-to-music: the same copy (place-narration, the last stage, makes it narration/)'],
   ['render.mjs', "spawnSync(ffmpeg, ['-y', '-hide_banner'", 'runReporting: the mux, into the work folder (finishRender renames it onto out)'],
   ['render.mjs', "writeFileSync(path.join(dir, 'film-narration.txt')", 'joinVoice: called with the work folder'],

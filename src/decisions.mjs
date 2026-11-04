@@ -1,6 +1,6 @@
 /**
  * Rule tables decided on a footprintjs chart, the evidence kept: a rule table is {key, noun, rules: [{when, then, label}],
- * fallback: {branch, label}} — each `when` a decide() filter over a candidate's measures. decideAll decides every
+ * fallback: {branch, label}, about?} — each `when` a decide() filter over a candidate's measures. decideAll decides every
  * candidate of a list with one table (a subflow: batches, each a fan-out of one small run per candidate), and every
  * verdict is written beside its why (whyOf): the verdict, the rule that gave it, and every rule tried with its checks
  * ("jump 54.7 ≥ 12 ✓"). The one shape every spec that keeps its decisions writes (breakdown.mjs, remake.mjs).
@@ -56,13 +56,14 @@ export function addDecider(chart, {name, id, description, table, key, about = nu
 
 /**
  * A decider on a chart: decide() over the scope's measures, each label carrying the candidate's name (its number and
- * time: "cut candidate 37 at 12.48 s: …"), so every line of the record says which candidate it decided; the evidence
- * written beside the verdict; one branch per verdict.
+ * time: "cut candidate 37 at 12.48 s: …"; or the table's own `about(s)`, from the candidate's number and `at`: "feedback.md
+ * line 7"), so every line of the record says which candidate it decided; the evidence written beside the verdict; one
+ * branch per verdict.
  */
 function addDecision(chart, decision) {
-  const {key, noun, rules, fallback} = decision, verdicts = [...rules.map(r => r.then), fallback.branch];
+  const {key, noun, rules, fallback, about} = decision, verdicts = [...new Set([...rules.map(r => r.then), fallback.branch])];   // two rules may give one verdict
   let list = chart.addDeciderFunction(`decide ${key}`, s => {
-    const name = `${noun} ${s.candidate} at ${s.at} s`;
+    const name = about ? about(s) : `${noun} ${s.candidate} at ${s.at} s`;
     const result = decide(s, rules.map(r => ({...r, label: `${name}: ${r.label}`})), {...fallback, label: `${name}: ${fallback.label}`});
     s[`${key}Why`] = whyOf(result.evidence, decision);
     return result;

@@ -5,8 +5,10 @@
  */
 export const STUDIO_HELP = `  studio   — the preview studio on this project: the picture at the playhead, the timeline, what drew each spot, and a
            gallery of every transition and word move playing, to Try on the scene at the playhead and Keep as one line
-           (storyreel apply); it compiles again when the recipe or storyboard changes. Local only (127.0.0.1), it only
-           reads (GET) and writes nothing; any other flag reaches the config's film(flags), as the tools' do (--ep ep1)
+           (storyreel apply); it compiles again when the recipe or storyboard changes. A note typed under the picture
+           lands in feedback.md beside the recipe with its exact place (storyreel feedback reads them). Local only
+           (127.0.0.1), at the address it prints (a key in it); its one write is that note, from its own page only. Any other flag reaches the config's
+           film(flags), as the tools' do (--ep ep1)
              --port  the port, 0–65535 (4321; 0: any free one)
              --recipe  the recipe's JSON file, for the line a click names and to watch (default: recipe.json beside the config)`;
 export const STUDIO_USAGE = `storyreel studio [--port n] [--config file] [--recipe file] [--flag value …]\n${STUDIO_HELP}`;

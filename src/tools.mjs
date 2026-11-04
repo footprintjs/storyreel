@@ -33,6 +33,7 @@ import {reviewPart, reviewSummary, REVIEW_DEFAULTS, SUMMARY_TOP} from './review.
 import {readRubric, rubricSheet, rubricText, recordScores} from './rubric.mjs';
 import {TARGETS, TARGET_NAMES, loadTarget} from './release.mjs';
 import {phoneSheet, PHONE} from './phone.mjs';
+import {feedback, FEEDBACK_ARGS, FEEDBACK_ABOUT} from './studio/feedback-tool.mjs';
 
 export const CONFIG = 'storyreel.config.mjs';
 export {clockSeconds};
@@ -497,6 +498,9 @@ export async function changes(project, args = {}) {
   return (await previewChanges(fullRender(project), {render: yes(args.render), handles})).text;
 }
 
+/** The notes the person left in the studio, read beside the recipe's file the film reads (studio/feedback-tool.mjs). */
+const feedbackTool = (project, args = {}) => feedback(projectRecipe(project, {config: args.config ?? CONFIG, recipe: args.recipe}), args);
+
 /** The full flag: by default a review says the counts, the verdicts that did not pass and the first findings (review.mjs · reviewSummary). */
 const FULL_ARG = `true for every finding and every verdict's why (default: the counts, what did not pass, the first ${SUMMARY_TOP} findings)`;
 /** The tools, as the command line and an MCP server list them: what each does and what it takes. */
@@ -504,6 +508,7 @@ export const TOOLS = Object.freeze({
   timeline: {run: timeline, about: 'When each scene starts and each beat lands, as text. For scenes, each time is scene+seconds from the start of the scene it falls in (today+64.70), the film clock beside it; for a window or the whole film, seconds on the film clock. Either goes to still --at or strip --at as it is. Read it before choosing a moment to look at.',
     args: {scene: 'scene ids, comma-separated (default: the whole film; or a window: from and to)', from: 'the window\'s start on the film clock: seconds or m:ss (0:12)', to: 'the window\'s end: seconds or m:ss',
       handles: `seconds of the film shown either side of the scenes or the window (${TOOL_DEFAULTS.handles})`}},
+  feedback: {run: feedbackTool, load: 'config', about: FEEDBACK_ABOUT, args: FEEDBACK_ARGS},
   review: {run: review, about: `What is wrong, read from the picture as text: words under the captions, over each other, cut off at the edge, the picture frozen for ${REVIEW_DEFAULTS.stillFor} s, nothing new for ${REVIEW_DEFAULTS.newEvery} s while it moves. Times on the film clock. Then three verdicts (passed, failed, or not run): no slideshow, drawn parts hold together, every number on screen has a source. With rubric: each point of a rubric laid out with its stills and evidence, to score; with scores and by, the scores recorded in the render's making-of.json.`,
     args: {scene: 'scene ids, comma-separated (default: the whole film)', handles: `seconds either side (${TOOL_DEFAULTS.handles})`, loop: 'true when the part is made to loop: the end of its scenes (not the handles) must come round to their start', full: FULL_ARG,
       rubric: 'true to lay out the recipe\'s rubric (or a rubric file in the project): each point with its stills (a picture each) and its evidence, to score — the library scores nothing',

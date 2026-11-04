@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {mkdirSync, writeFileSync, symlinkSync, readFileSync, realpathSync, rmSync, lstatSync, readdirSync, existsSync, chmodSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {insideRoot, copyVoice, requireVoiceApart} from '../src/files.mjs';
+import {insideRoot, copyVoice, requireVoiceApart, readPlainFile, writeNewFile, appendToFile, rewriteFile, withFileLock} from '../src/files.mjs';
+import {spawnSync} from 'node:child_process';
+import {statSync} from 'node:fs';
 import {compileFilm, evenTimings} from '../src/index.mjs';
 import {tempDir} from './tmp.mjs';
 
@@ -132,4 +134,97 @@ test('requireVoiceApart: an out folder in the voice, or a voice that is, holds o
   const caps = made('caps'), spoken = path.join(caps, 'Narration'); mkdirSync(spoken);
   if (existsSync(path.join(caps, 'narration'))) assert.throws(() => requireVoiceApart(spoken, caps), overlap);
   else assert.doesNotThrow(() => requireVoiceApart(spoken, caps), 'a disk that tells case apart: two folders');
+});
+
+test('readPlainFile: a plain file read whole; none is null; a link, a folder, a FIFO, too many bytes or what judge names refused with the fix — never hanging', {skip: process.platform === 'win32' ? 'POSIX links and FIFOs' : false}, t => {
+  const dir = tempDir('plain', t), file = path.join(dir, 'notes.md'), fix = 'put the file itself there';
+  writeFileSync(file, 'héllo\n');
+  assert.equal(readPlainFile(file, {most: 64, fix}), 'héllo\n');
+  assert.equal(readPlainFile(path.join(dir, 'none.md'), {most: 64, fix}), null);
+  symlinkSync(file, path.join(dir, 'link.md')); symlinkSync(path.join(dir, 'gone'), path.join(dir, 'dangling.md'));
+  for (const name of ['link.md', 'dangling.md']) assert.throws(() => readPlainFile(path.join(dir, name), {most: 64, fix}), /is a link \(or a junction\), not a file of its own: StoryReel reads it only as a plain file — put the file itself there/);
+  assert.throws(() => readPlainFile(dir, {most: 64, fix}), /is not a plain file \(a folder, a FIFO or a device\)/);
+  assert.throws(() => readPlainFile(file, {most: 3, fix}), /holds 7 bytes, more than the 3 StoryReel reads of it: make it smaller — put the file itself there/);
+  assert.throws(() => readPlainFile(file, {most: 64, fix, judge: st => (st.size > 2 ? 'is too chatty: trim it' : null)}), /notes\.md is too chatty: trim it — put the file itself there/);
+  const fifo = path.join(dir, 'pipe.md');
+  if (!spawnSync('mkfifo', [fifo]).error && existsSync(fifo)) assert.throws(() => readPlainFile(fifo, {most: 64, fix}), /is not a plain file/, 'refused before it is opened: nothing writes to it, and the test ends');
+});
+
+test('writeNewFile: a new file, written whole then linked into place — never over a file, never through a link, never seen half-written', {skip: process.platform === 'win32' ? 'POSIX modes and links' : false}, t => {
+  const dir = tempDir('new-file', t), file = path.join(dir, 'key');
+  assert.equal(writeNewFile(file, 'abc', {mode: 0o600}), true);
+  assert.deepEqual([readFileSync(file, 'utf8'), statSync(file).mode & 0o777, statSync(file).nlink], ['abc', 0o600, 1]);
+  assert.equal(writeNewFile(file, 'other'), false, 'one is there: kept');
+  assert.equal(readFileSync(file, 'utf8'), 'abc');
+  const victim = path.join(tempDir('victim', t), 'theirs'); writeFileSync(victim, 'theirs');
+  symlinkSync(victim, path.join(dir, 'linked')); symlinkSync(path.join(dir, 'nowhere'), path.join(dir, 'dangling'));
+  assert.equal(writeNewFile(path.join(dir, 'linked'), 'secret'), false);
+  assert.equal(writeNewFile(path.join(dir, 'dangling'), 'secret'), false);
+  assert.equal(readFileSync(victim, 'utf8'), 'theirs', 'never written through the link');
+  assert.ok(!existsSync(path.join(dir, 'nowhere')), 'nothing made where a dangling link points');
+  assert.deepEqual(readdirSync(dir).filter(n => n.endsWith('.part')), [], 'nothing left under a temporary name');
+});
+
+test('writeNewFile on a disk with no hard links (EPERM, ENOTSUP, EXDEV …): the file created exclusively at its name instead', t => {
+  const dir = tempDir('no-links', t);
+  for (const code of ['EPERM', 'ENOTSUP', 'EXDEV']) {
+    const file = path.join(dir, `made-${code}`), noLinks = {linkSync: () => { throw Object.assign(new Error(code), {code}); }};
+    assert.equal(writeNewFile(file, 'whole', {mode: 0o600}, noLinks), true, code);
+    assert.equal(readFileSync(file, 'utf8'), 'whole');
+    if (process.platform !== 'win32') assert.equal(statSync(file).mode & 0o777, 0o600);
+    assert.equal(writeNewFile(file, 'again', {}, noLinks), false, `${code}: one is there, kept`);
+    assert.equal(readFileSync(file, 'utf8'), 'whole');
+  }
+  assert.throws(() => writeNewFile(path.join(dir, 'other'), 'x', {}, {linkSync: () => { throw Object.assign(new Error('EIO'), {code: 'EIO'}); }}), /EIO/, 'any other failure is said');
+  assert.deepEqual(readdirSync(dir).filter(n => n.endsWith('.part')), []);
+});
+
+test('appendToFile and rewriteFile: one appended write that keeps what another wrote; a rewrite keeping the mode; neither through a link', {skip: process.platform === 'win32' ? 'POSIX modes and links' : false}, t => {
+  const dir = tempDir('append', t), file = path.join(dir, 'notes.md');
+  writeFileSync(file, 'one\n'); chmodSync(file, 0o664);
+  appendToFile(file, 'two\n'); appendToFile(file, 'three\n');
+  assert.equal(readFileSync(file, 'utf8'), 'one\ntwo\nthree\n');
+  rewriteFile(file, 'all new\n');
+  assert.deepEqual([readFileSync(file, 'utf8'), statSync(file).mode & 0o777], ['all new\n', 0o664]);
+  const victim = path.join(tempDir('victim', t), 'theirs'); writeFileSync(victim, 'theirs'); symlinkSync(victim, path.join(dir, 'linked.md'));
+  assert.throws(() => appendToFile(path.join(dir, 'linked.md'), 'x', {fix: 'put it there'}), /is not a plain file of its own \(a link, a folder, a FIFO\): StoryReel adds to it only as one — put it there/);
+  assert.throws(() => rewriteFile(path.join(dir, 'linked.md'), 'x'), /is not a plain file \(a link, a folder, a FIFO\)/);
+  assert.equal(readFileSync(victim, 'utf8'), 'theirs');
+  assert.throws(() => appendToFile(path.join(dir, 'none.md'), 'x'), /ENOENT/, 'never made: appending is to a file that is there');
+});
+
+test('withFileLock: one holder at a time, the lock made exclusively and removed after; a stale lock refused naming the file to remove', async t => {
+  const dir = tempDir('lock', t), file = path.join(dir, 'notes.md'), order = [];
+  const hold = name => withFileLock(file, async () => { order.push(name); await new Promise(r => setTimeout(r, 30)); order.push(`${name} done`); return name; });
+  assert.deepEqual(await Promise.all([hold('a'), hold('b')]), ['a', 'b']);
+  assert.deepEqual(order, ['a', 'a done', 'b', 'b done']);
+  assert.ok(!existsSync(`${file}.lock`));
+  await assert.rejects(withFileLock(file, () => { throw new Error('inside'); }), /inside/);
+  assert.ok(!existsSync(`${file}.lock`), 'removed when fn throws too');
+  writeFileSync(`${file}.lock`, `${process.pid} held-by-this-test\n`);
+  await assert.rejects(withFileLock(file, () => 1, {waitMs: 60}), /is being changed by another studio or storyreel feedback .*: try again in a moment/);
+  writeFileSync(`${file}.lock`, 'no pid in it');
+  await assert.rejects(withFileLock(file, () => 1, {staleMs: -1}), /notes\.md\.lock is \d+ s old and names no process: remove it, then try again/);
+  rmSync(`${file}.lock`);
+});
+
+test('withFileLock: a lock whose process is gone is taken over; a holder removes only its own lock', async t => {
+  const dir = tempDir('lock-heal', t), file = path.join(dir, 'notes.md'), lock = `${file}.lock`;
+  const gone = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], {encoding: 'utf8'}).stdout;
+  writeFileSync(lock, `${gone} left-behind\n`);
+  assert.equal(await withFileLock(file, () => 'taken over', {waitMs: 500}), 'taken over');
+  assert.ok(!existsSync(lock));
+  await withFileLock(file, () => { rmSync(lock); writeFileSync(lock, `${process.pid} someone-else\n`); });
+  assert.equal(readFileSync(lock, 'utf8'), `${process.pid} someone-else\n`, 'another holder\'s lock is left alone');
+  rmSync(lock);
+});
+
+test('withFileLock: a lock that is not a plain file — a dangling link a shared project carried, a folder — is refused at once, naming it; never a spin', {skip: process.platform === 'win32' ? 'POSIX links' : false, timeout: 5000}, async t => {
+  const dir = tempDir('lock-link', t), file = path.join(dir, 'notes.md');
+  symlinkSync(path.join(dir, 'nowhere'), `${file}.lock`);
+  const started = Date.now();
+  await assert.rejects(withFileLock(file, () => 1), /notes\.md\.lock is not a lock StoryReel made \(a link, a folder or a FIFO\): remove it, then try again/);
+  assert.ok(Date.now() - started < 1000, 'refused at once');
+  rmSync(`${file}.lock`); mkdirSync(`${file}.lock`);
+  await assert.rejects(withFileLock(file, () => 1), /is not a lock StoryReel made/);
 });
