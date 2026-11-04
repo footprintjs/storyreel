@@ -377,8 +377,10 @@ export const REVIEW_CHECKS = Object.freeze({
   contrast: {label: 'Words stand out', why: 'the part draws words', notRun: 'the part draws no word to read',
     when: s => s.facts.words > 0,
     measure: ({samples}) => {
-      const {words, low, unseen} = faintWords(samples), lowest = low.reduce((m, w) => (m === null || w.ratio < m.ratio ? w : m), null);
-      return {measured: {words, unseen, low: low.length, lowest: lowest ? {text: lowest.text, ratio: lowest.ratio, needs: lowest.needs, t: lowest.t} : null},
+      const {words, low, unseen, closest} = faintWords(samples), lowest = low.reduce((m, w) => (m === null || w.ratio < m.ratio ? w : m), null);
+      const word = w => (w ? {text: w.text, ratio: w.ratio, needs: w.needs, t: w.t} : null);
+      // the evidence, item by item: each faint word (the first FAINT_KEPT, the rest counted by low) and the closest call
+      return {measured: {words, unseen, low: low.length, lowest: word(lowest), closest: word(closest), faint: low.slice(0, FAINT_KEPT).map(word)},
         hits: low.map(w => ({kind: 'contrast', t: w.t, what: contrastText(w)}))};
     },
     summary: m => `${m.words} word${m.words === 1 ? '' : 's'} measured${m.unseen ? ` (${m.unseen} never seen: clipped or not revealed)` : ''}${m.low ? `; ${m.low} too faint, the faintest "${m.lowest.text}" ${m.lowest.ratio}:1 at ${clockTenths(m.lowest.t)}` : ''}`,
@@ -424,6 +426,9 @@ function frozenWords(film, f) {
 
 const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes', hook: 'no hook', 'text-density': 'too much to read', silences: 'no breath', stale: 'nothing new', loop: 'the loop jumps', 'frozen-voice': 'a freeze over the voice',
   slideshow: 'held still', geometry: 'the drawing breaks', pure: 'drawn differently twice', contrast: 'too faint to read', claims: 'no source', 'example-lingers': 'example data over real numbers'};
+/** How many faint words the contrast verdict keeps as evidence, each with its ratio (low counts them all). */
+export const FAINT_KEPT = 50;
+
 /** What a verdict check's scope keeps for itself: never a measured value's name. */
 const MACHINERY = new Set(['hits', 'failed', 'measured', 'verdict', 'why', 'summary']);
 /** The findings as lines: "1:21.5–1:23.0 chapters · under the captions: \"requests in\"". */

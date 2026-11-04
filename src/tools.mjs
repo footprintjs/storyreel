@@ -30,6 +30,8 @@ import {momentAt, sceneTime, sceneIds, placeOf, HUNDREDTH} from './momenttext.mj
 import {formatScale} from './layout.mjs';
 import {hashOf} from './hash.mjs';
 import {reviewPart, reviewSummary, REVIEW_DEFAULTS, SUMMARY_TOP} from './review.mjs';
+import {saveRun, logText, LOG_LINES} from './runlog.mjs';
+export {saveRun, listRuns, logText, RUNS, RUNS_KEPT} from './runlog.mjs';
 import {readRubric, rubricSheet, rubricText, recordScores} from './rubric.mjs';
 import {TARGETS, TARGET_NAMES, loadTarget} from './release.mjs';
 import {phoneSheet, PHONE} from './phone.mjs';
@@ -183,11 +185,15 @@ export async function review(project, args = {}) {
   const part = partOf(args), loop = yes(args.loop);
   const r = await reviewPart(project.film, {...(part?.window ? spanOf(project.film, part) : part ? {part} : {}), layout: project.inputs.layout ?? null, loop});
   const said = yes(args.full) ? `${r.text || 'nothing found'}${r.verdicts?.length ? `\nverdicts:\n${r.verdictText}` : ''}` : reviewSummary(r, {more: FULL_HINT});
-  return `${head(project.film, part, r.window)} — review (${r.ran.join(', ') || 'no check fits'}):\n${said}`;
+  const line = `${head(project.film, part, r.window)} — review (${r.ran.join(', ') || 'no check fits'})`;
+  saveRun(outFolderOf(project), {feature: 'review', summary: `${line}: ${reviewSummary(r, {more: ''}).split('\n')[0]}`, record: r.record, verdicts: r.verdicts});
+  return `${line}:\n${said}`;
 }
 
 /** The full render's making-of record: beside film.mp4 in the project's out folder (fullRender), where the scores go. */
-const makingOfOf = project => path.join(path.resolve(project.cwd, project.inputs.out ?? 'out'), 'making-of.json');
+/** The project's out folder: where its renders, their making-of and its saved runs go. */
+const outFolderOf = project => path.resolve(project.cwd, project.inputs.out ?? 'out');
+const makingOfOf = project => path.join(outFolderOf(project), 'making-of.json');
 /**
  * The rubric a review scores on (rubric.mjs): the recipe's (rubric: 'true'), or a JSON file inside the project (rubric:
  * its path) — read, never run.
@@ -503,12 +509,18 @@ const feedbackTool = (project, args = {}) => feedback(projectRecipe(project, {co
 
 /** The full flag: by default a review says the counts, the verdicts that did not pass and the first findings (review.mjs · reviewSummary). */
 const FULL_ARG = `true for every finding and every verdict's why (default: the counts, what did not pass, the first ${SUMMARY_TOP} findings)`;
+/** The project's run log (runlog.mjs): the runs, newest first, or one run's stages and decisions, or one verdict's evidence. */
+export const log = (project, args = {}) => logText(outFolderOf(project), {run: args.run === undefined || yes(args.run) ? null : args.run, only: args.only ?? null, check: args.check ?? null, all: yes(args.all)});
+
 /** The tools, as the command line and an MCP server list them: what each does and what it takes. */
 export const TOOLS = Object.freeze({
   timeline: {run: timeline, about: 'When each scene starts and each beat lands, as text. For scenes, each time is scene+seconds from the start of the scene it falls in (today+64.70), the film clock beside it; for a window or the whole film, seconds on the film clock. Either goes to still --at or strip --at as it is. Read it before choosing a moment to look at.',
     args: {scene: 'scene ids, comma-separated (default: the whole film; or a window: from and to)', from: 'the window\'s start on the film clock: seconds or m:ss (0:12)', to: 'the window\'s end: seconds or m:ss',
       handles: `seconds of the film shown either side of the scenes or the window (${TOOL_DEFAULTS.handles})`}},
   feedback: {run: feedbackTool, load: 'config', about: FEEDBACK_ABOUT, args: FEEDBACK_ARGS},
+  log: {run: log, load: 'config', about: 'How a result was made: the project\'s runs, newest first (a review, a render); one run\'s stages, what each wrote and decided, with the rule that matched and the values it read; a verdict\'s evidence, each item measured. Read it before re-running or looking at pictures.',
+    args: {run: 'a run\'s number from the list, to show that run (default: the list)', only: 'with run: decisions, errors or steps (every entry as the record says it); default: each stage once, what it wrote and decided',
+      check: 'with run: a verdict\'s name (contrast, slideshow, …): everything its check measured, each item', all: `true for every line (default: the first ${LOG_LINES})`}},
   review: {run: review, about: `What is wrong, read from the picture as text: words under the captions, over each other, cut off at the edge, the picture frozen for ${REVIEW_DEFAULTS.stillFor} s, nothing new for ${REVIEW_DEFAULTS.newEvery} s while it moves. Times on the film clock. Then three verdicts (passed, failed, or not run): no slideshow, drawn parts hold together, every number on screen has a source. With rubric: each point of a rubric laid out with its stills and evidence, to score; with scores and by, the scores recorded in the render's making-of.json.`,
     args: {scene: 'scene ids, comma-separated (default: the whole film)', handles: `seconds either side (${TOOL_DEFAULTS.handles})`, loop: 'true when the part is made to loop: the end of its scenes (not the handles) must come round to their start', full: FULL_ARG,
       rubric: 'true to lay out the recipe\'s rubric (or a rubric file in the project): each point with its stills (a picture each) and its evidence, to score — the library scores nothing',

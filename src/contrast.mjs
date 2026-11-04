@@ -52,8 +52,9 @@ export function wordContrast(data, width, height, box, thresholds = CONTRAST) {
  * The words too faint to read, from every sample's measurements ([{t, contrasts: [{text, box, ratio, needs, large}]}]):
  * a word (its text, where it stands) is judged by its BEST moment — a word written on, typed or wiped in is read once it
  * is all there — and one never seen (its best under CONTRAST.seen: no ink at all, as text clipped away or not revealed
- * yet) is not read, only counted. Returns {words, unseen, low: [{text, box, ratio, needs, large, t}]}, low at their
- * best moment.
+ * yet) is not read, only counted. Returns {words, unseen, low: [{text, box, ratio, needs, large, t}], closest}, low at
+ * their best moment; closest the word read nearest its threshold (the smallest ratio / needs), passing or not — what a
+ * pass stood on — or null when no word was seen.
  */
 export function faintWords(samples, thresholds = CONTRAST) {
   const best = new Map();
@@ -62,7 +63,8 @@ export function faintWords(samples, thresholds = CONTRAST) {
     if (!was || c.ratio > was.ratio) best.set(key, {...c, t: x.t});
   }
   const all = [...best.values()], seen = all.filter(w => w.ratio >= thresholds.seen);
-  return {words: seen.length, unseen: all.length - seen.length, low: seen.filter(w => w.ratio < w.needs).sort((a, b) => a.t - b.t)};
+  const closest = seen.reduce((m, w) => (m === null || w.ratio / w.needs < m.ratio / m.needs ? w : m), null);
+  return {words: seen.length, unseen: all.length - seen.length, low: seen.filter(w => w.ratio < w.needs).sort((a, b) => a.t - b.t), closest};
 }
 
 /** The ratio a word needs: 3 when large, else 4.5. */
