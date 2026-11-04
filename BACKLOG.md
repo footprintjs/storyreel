@@ -299,6 +299,17 @@ a one-point room. Nothing has an x, y, z place, so a shot cannot turn from one a
 
 Not planned now: our own 3D renderer (meshes, lights, materials). That is the three.js adapter's job when it is needed.
 
+- **Why the three.js adapter may come sooner (2026-11-03).** Meng To's Sakura River Valley
+  (https://x.com/MengTo/status/2102760783344189761, live at https://valley.mengto.here.now) is a real-time three.js
+  world generated with Opus 5.5: its page says terrain, trees, temples, water and sky are made procedurally at load,
+  on three.js (MIT) and Poly Haven textures (CC0), in a 1 MB script. A real 3D world is now cheap to write, so the hard
+  part of a 3D shot is capturing it frame by frame. The page states no licence for its own code: ideas only.
+- **A 3D stage looked at from several sides.** One view hides a card seen edge-on or a part behind another. `still
+  --views` lays out one moment from the stage's named views and a few orbit angles. Scenario's skills (below) review
+  3D work on such sheets.
+- **Camera numbers to start from** (Scenario's motion library, below): one dominant move a shot; a narrow lens (18–24°)
+  to compress a poster shot, a wide one (70–95°) to fly through. Tried by eye before they become defaults.
+
 ## An `html` world kit: a web page as a shot, captured frame by frame (2026-11-03)
 
 A world drawn by a web page: HTML, CSS (3D transforms included), SVG, web fonts, a StoryDeck slide, a product's own
@@ -320,4 +331,88 @@ the film's clock, as Math-Animals' `tools/render.mjs` drives its pages:
   re-render only what changed. The bench decides the default resolution and whether to capture at 2× for zooms.
 - **Look first:** one StoryDeck slide flown in 3D as a ten-second shot inside a film.
 
+- **A page on its own clock (2026-11-03).** The valley above runs on `requestAnimationFrame` and `performance.now` and
+  has no `seek(t)`. A `clock: 'virtual'` mode replaces those, `Date.now` and the timers, and seeds `Math.random`, before
+  the page's scripts run, then steps it one frame at a time. Such a page only plays forward, so a piece re-rendered
+  alone replays from its shot's start. The purity check compares two replays and refuses a page that differs.
+- **GPU capture, a number to measure against.** Scenario's kinetic engine (below) steps `window.renderFrame(frame, fps)`
+  in headless Chrome. It reports about 28 fps a worker for a simple 1080p60 WebGL scene with `--use-angle=metal`, three
+  workers at once. That is their number on their machine; our bench decides.
+- **Credits from the page.** The valley's page lists each asset with its source and licence. The kit reads such a list
+  from a small manifest, and a release's credits (`creditsText`) name them as they name found sounds.
+
 It also serves product demos (a product's own page driven by script, the handoff's phase 2) and decks shown in films.
+
+## Figures that show the inside and say how they differ from the real thing (2026-11-03)
+
+Source: a 3D interactive electricity book by @techartist_, being built with Opus 5.5, shown by @0xKapri
+(https://x.com/0xKapri/status/2117304745228394951). It is not published and states no licence, so the IDEAS are borrowed
+and the code is written here. Read from three frames of the post's video (two lessons): an open book on a desk, the
+left page explaining, the right page holding a live figure that stands up off the page.
+
+Several of its ideas this package already keeps: a guess before the answer (`Pause and guess`), a part lit as the voice
+names it (focus), the paper look, a figure drawn by its rule (the Math-Animals section). StoryDeck's item 5 takes the
+page layout and the flap. Five are new here. Each needs a go.
+
+1. **The figure says how it differs from the real thing.** In the book, one caption says time runs 30 times faster,
+   another says a moving part is drawn far larger than real, and a control switches between slowed and real. Here a
+   figure declares it as data (`"differs": {"time": 30, "scale": "the electrons drawn far larger than real"}`), the words
+   are drawn on the figure, and a verdict refuses a declared rate other than 1 with no words on screen. This serves the
+   honest-answers goal. Its limit: the check reads what is declared and cannot see a speed-up nobody declared.
+2. **A cutaway.** A cover taken off to show the parts inside, the cut faces hatched. Flat first: two drawings (outside,
+   inside) and a window that opens over time, the inside parts naming regions only once they can be seen. Real 3D waits
+   for the three.js adapter.
+3. **A numbered key.** Numbers on the figure, the key under it, one line telling the viewer what to watch ("the kettle
+   (2), then the meter (1)"). A check: every number in the key is on a part drawn at that moment, and every number on a
+   part or in that line is in the key. These numbers are labels, so the claims check must not ask them for a source.
+4. **A flow along a wire.** Dots moving along a named path, their speed from the model's value, each place a pure
+   function of time (seeded start, offset = speed × t). Reduced motion shows fixed dots and an arrow.
+5. **Ink, with colour only for what the lesson is about.** A hatched line drawing where only what moves has colour.
+   `roughjs`, already a dependency, draws hachure, so a `hatch` fill is cheap. The colour probe measures the rule.
+
+**Look first:** one scene, a torch cut away with its current flowing, its numbered key, and a caption saying time is slowed.
+
+## A music video's lessons, from Scenario's "3D OS" skills (2026-11-03)
+
+Source: Scenario (https://x.com/Scenario_gg/status/2117273548217524720), repo https://github.com/scenario-labs/skills, MIT
+(Copyright (c) 2026 Scenario Inc.), so code may be adapted if that notice is kept in the file it lands in. Most of it
+drives Scenario's paid generation service or desktop apps (Blender, Maya, ZBrush, Unreal, Unity, Godot, Roblox), and none
+of that is borrowed: this package draws with code. Worth reading: `skills/scenario-kinetic-music-video`
+(`references/lessons.md`, `references/motion_library.md`, `references/engine_api.md`), a three.js and Canvas compositor
+where every pixel is a pure function of song time, the same idea as ours.
+
+Several of its rules this package already keeps: tempo measured, never taken from a label; cuts on the song's own times;
+no frozen frames (`still`, the slideshow verdict); a hook in the first seconds; notes by timestamp, then that range drawn
+again (studio notes, `changes --render`); contact sheets; lip-sync checked on the file. Ten are new. Each needs a go.
+
+1. **The song's layers as data.** Downbeat, kick, snare and vocal onset each drive one kind of thing, one or two layers
+   a moment: `"grammar": {"downbeat": "cut", "kick": "punch", "vocal": "word"}`. Today the beat map gives beats, bars, a
+   drop and hits. The layers need onsets split by band (`dsp.mjs`), measured on the tempo corpus before anyone relies on
+   them. Their vocal stems come from Demucs, a large dependency, not borrowed.
+2. **Lead.** Their rule: a visual hit lands 2–3 frames (0.05 s) before the sound, because the eye needs the frame before
+   the ear. Tried by eye on one kinetic scene first; opt-in, since a default would move every cut.
+3. **Cuts that climb with the energy.** Every 2 bars in a verse, 1 bar before the chorus, beats and half-beats at the
+   peak, one long held shot in the bridge. A check: a section whose energy rises while its cuts thin out, unless declared.
+4. **Showcase moments get time.** Their directors twice rejected a logo build or an end card cut too fast; it read at
+   0.35–0.5× speed. A check on a declared showcase: too short, or a cut inside it.
+5. **More word moves, never the same one twice in a row.** Ours are fade-slide, soft-rise, mask-wipe, pop, blur-in and
+   slam. Candidates from their list that fit a canvas: smear slam, width wave, weight ladder, decode scramble, odometer,
+   karaoke fill, word pile-up, kinetic crop, outline echo, text on a path. Each a gallery card to look at first. A review
+   note when two lines in a row share a move. Their timing table (exits 60–70% of the entrance, a card never scaled from
+   0) is compared with `footprint-story/motion` first; only what differs, and why.
+6. **A spine.** A device that runs through the whole film, a counter, a clock or a countdown, its value from the film's
+   clock, while the looks escalate. A number it shows goes through the claims check.
+7. **Endings as variants.** Alternate endings rendered side by side so the person picks one. The segment cache makes
+   this cheap: every piece before the split is shared. A release refuses until one is picked.
+8. **Fades through colour, and true black.** A fade to black through a flash goes grey, and near-black ink shows as raised
+   black. Two small checks for the colour probe.
+9. **Iterations counted.** `storyreel log` can say how many renders and notes a film took, a number their directors asked
+   for in the making-of.
+10. **The refine loop, for the review skill.** A written rubric first; a verdict per item citing the rubric's line, never
+    taste; the cheapest fix; one change a round; each round from the approved baseline, never the last attempt; three
+    rounds with no clean one, or one line failing twice under different fixes, means report, not respin. It goes in
+    `storyreel-review` within the agent-cost budget.
+
+**Two small probes**, each a pinned test whatever it finds: file names differing only in case are one file on macOS (an
+encode so named overwrote its own input in their run), and `start × fps` may not be whole, so a scene's first frame can
+belong to the scene before.
