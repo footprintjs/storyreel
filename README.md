@@ -917,7 +917,8 @@ unless the film says otherwise. A scene declares how it differs, and the film sa
 
 - **`time`** is how many times faster the picture runs than the real thing (`30`; `0.04` is 25 times slower). A factor a
   label can say is 1.01 or more, or 0.99 or less, up to a billion times either way; past that, say it in words in `scale`.
-  **`scale`** is what is out of scale, in words (at most 70 characters). Give either or both.
+  **`scale`** is what is out of scale, in words (at most 70 characters). **`analogy`** is what stands in for what:
+  `"people stand in for the services"` shows "An analogy: people stand in for the services". Give any of them.
 - **On screen, by default.** A label per statement in the top right corner, in the example label's look, under it when
   that is up, over the scene and no longer: "Time shown 30 times faster". In a format that crops the frame it stays
   inside what is shown, a long one broken between words, and a word too long for its chip broken between its letters.
@@ -929,7 +930,7 @@ unless the film says otherwise. A scene declares how it differs, and the film sa
 - **In the voice.** `"said"` names the phrase of the scene's narration that says it, found as every phrase in a recipe
   is: a phrase the scene does not say refuses, and `storyreel anchors` lists it with the others. A silent scene says
   nothing, so it names no phrase. A number in the voice is a claim like any other, so say it in words or give it a fact.
-- **Every statement is said.** A scene that declares both `time` and `scale` gives each a line or a phrase of its own:
+- **Every statement is said.** A scene that declares more than one of `time`, `scale` and `analogy` gives each a line or a phrase of its own:
   `"shown": false` with `"said": ["thirty times faster", "far larger than real"]`, or one line and one phrase. Nothing
   checks what the words mean, so the verdict prints them for you to judge.
 - **The verdict** (`Says how it differs from the real thing`) is asked only of a film that declares, so any other film's

@@ -13,12 +13,17 @@ name the **kind** of film a recipe is, so each kind brings its own defaults, che
 | `episode` | worlds and paper as shots, pause-and-guess (a children's series) | yes |
 | `explainer` | a library explains itself: what it is for, the problem, one real run, the one call you write, where to get it | no |
 | `teaser` | a 30–45 s vertical (9:16) cut of any film: the question first, the eureka, one line of code, where to watch | no |
+| `told-twice` | a cast of people and everyday things acts a system out, each turns into the real thing where it stood, then the same moments again for real (StoryDeck's backlog, item 6: the same shape name, so a deck and a film can share a story) | no |
+| `explain-then-quantify` | the cause first with no measured numbers, then as its own step how it is measured, then how a computer holds it (from the protein film) | no |
 
 - **The explainer is generated, then reviewed.** A command reads a repository — its README, examples,
   exports, a real run of an example — and writes a draft **storyboard and recipe** (data only, never
   code), in the spirit of [`/brag`](https://github.com/latent-spaces/brag). A person reads and approves
   them before anything is voiced or rendered. The honesty rules stay: every value on screen comes from
   the run, every line can be read in time, every film says how it was made.
+- **A kind carries its checks.** `told-twice`: every real moment matches a story moment, and each stand-in's turn says
+  both names. `explain-then-quantify`: no measured number appears before the explanation ends. The checks are what a
+  kind adds over a starter; the words, the cast and the drawings stay the film's.
 - **A brand kit for explainers**: a logo, colours and fonts in, a theme out (the library's own site
   tokens), so a library's video looks like its docs.
 - **The teaser** is drawn from the same recipe: the hook in the first three seconds (the question, not
