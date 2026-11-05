@@ -22,7 +22,7 @@ export type StoryboardScene = {id: string; title?: string; /** Who says the scen
   /** The scene shows example data (claims.mjs): its numbers need no source, and it says so on screen — true draws "Example data", a string draws those words (the film's language); false or left out, it is not. */
   example?: boolean | string;
   /** How the scene differs from the real thing (differs.mjs): time, how many times faster it runs (30; 0.04 is 25 times slower; 1.01 or more, 0.99 or less, up to a billion times either way); scale, what is out of scale, in words. Said on screen by default (shown: the words, or false for the voice alone) and in the voice with said, the phrase of its narration that says it (a list: one per statement). Each statement declared needs a line or a phrase of its own. */
-  differs?: {time?: number; scale?: string; shown?: string | string[] | false; said?: string | string[]};
+  differs?: {time?: number; scale?: string; /** What stands in for what ("An analogy: …" on screen). */ analogy?: string; shown?: string | string[] | false; said?: string | string[]};
   [key: string]: unknown}
   & ({/** What is said. Marks in it are never said nor shown: {name} a moment a beat or a hold names ("{hop}"), {@who} the speaker of the quoted line right after it ({@mom}"…": script.mjs; the voice step writes each word's speaker from it). */ narration: string; silent?: never}
     | {silent: Direction[]; narration?: never});
@@ -521,7 +521,7 @@ export interface Film {
   /** Every number the film shows and where it comes from: a fact the storyboard names, or an example scene. */
   claims: Claims;
   /** The scenes that declare they differ from the real thing, each with its span and how it says so; absent when none does. */
-  differs?: readonly {scene: string; index: number; from: number; to: number; time?: number; scale?: string; shown: readonly string[]; said?: readonly string[]; /** Each phrase, with every place it is said (none: it is not, in a compile that notes its anchors). */ heard?: readonly {phrase: string; places: readonly {start: number; end: number}[]}[]}[];
+  differs?: readonly {scene: string; index: number; from: number; to: number; time?: number; scale?: string; analogy?: string; shown: readonly string[]; said?: readonly string[]; /** Each phrase, with every place it is said (none: it is not, in a compile that notes its anchors). */ heard?: readonly {phrase: string; places: readonly {start: number; end: number}[]}[]}[];
   /** Where the labels on how a scene differs sit on the frame at t (`window`: what a crop shows): only on a film that declares one. */
   labelsAt?: (ctx: unknown, t: number, window?: {x0: number; y0: number; w: number; h: number} | null) => {name: string; box: [number, number, number, number]}[];
   /** The language the film is shown in (compileFilm's lang, canonical BCP 47), or null: its numbers are read by it. */

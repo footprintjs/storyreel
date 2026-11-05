@@ -50,10 +50,10 @@ test('a declaration is checked as written, each refusal naming the fix', () => {
   assert.deepEqual(readDiffers({scale: 'Not to scale', shown: false, said: 'not to scale'}), {scale: 'Not to scale', shown: [], said: ['not to scale']});
   const refused = (spec, re) => assert.throws(() => readDiffers(spec, 'storyboard scene one'), re);
   refused(30, /^Error: storyboard scene one: differs says how the scene differs from the real thing: \{time: 30/);
-  refused({}, /give time \(how many times faster it runs\), scale \(what is out of scale, in words\), or both/);
+  refused({}, /give time \(how many times faster it runs\), scale \(what is out of scale, in words\), analogy \(what stands in for what\), or more than one/);
   refused({time: 1}, /1 is real time, so leave it out/);
   refused({time: -2}, /differs\.time is how many times faster/);
-  refused({speed: 30}, /differs takes time, scale, shown, said, not "speed"/);
+  refused({speed: 30}, /differs takes time, scale, analogy, shown, said, not "speed"/);
   refused({scale: ''}, /differs\.scale is words/);
   refused({scale: 'x'.repeat(DIFFERS_MOST + 1)}, /more than a label can hold in a glance \(70\): shorten it, and say the rest in the voice/);
   refused({time: 30, shown: false}, /differs\.shown is false, so the voice must say it: give said/);
@@ -480,3 +480,27 @@ test('the making-of lists how its scenes differ', {skip: has('ffmpeg') ? false :
   assert.deepEqual(made.differs.map(d => [d.scene, d.time, d.shown]), [['one', 30, [TIME]]]);
   assert.match(made.claims.why, /the only number on screen is the film's own/, 'the render\'s check says so too');
 });
+
+test('an analogy says what stands in for what, in its own line', () => {
+  const ANALOGY = 'people stand in for the services', LINE = `An analogy: ${ANALOGY}`;
+  assert.deepEqual({...readDiffers({analogy: ANALOGY})}, {analogy: ANALOGY, shown: [LINE]});
+  assert.deepEqual([...readDiffers({analogy: ANALOGY, scale: SCALE, time: 30}).shown], [TIME, SCALE, LINE]);
+  assert.deepEqual([...readDiffers({analogy: ANALOGY, shown: 'Eine Analogie'}).shown], ['Eine Analogie']);
+  assert.deepEqual([...readDiffers({analogy: ANALOGY, shown: false, said: 'stand in for'}).said], ['stand in for']);
+  assert.throws(() => readDiffers({time: 30, analogy: ANALOGY, shown: TIME}), /declares both time and an analogy and says only 1 thing.*so neither goes unstated/);
+  assert.throws(() => readDiffers({time: 30, scale: SCALE, analogy: ANALOGY, shown: ['A', 'B']}), /declares time, scale and an analogy and says only 2 thing.*so none goes unstated/);
+  assert.throws(() => readDiffers({analogy: 7}), /differs\.analogy is words/);
+  assert.throws(() => readDiffers({analogy: 'x'.repeat(DIFFERS_MOST)}), /more than its label can hold in a glance \(58, after "An analogy:"\)/);
+  assert.equal(readDiffers({analogy: 'x'.repeat(58)}).shown[0].length, DIFFERS_MOST);
+  // A number in the analogy is not a wrong time; the time's own line still is held to the factor.
+  assert.deepEqual([...readDiffers({time: 30, analogy: '2 dogs stand in for 2 nuclei'}).shown], [TIME, 'An analogy: 2 dogs stand in for 2 nuclei']);
+  assert.throws(() => readDiffers({time: 30, analogy: 'a shop', shown: ['Time shown 40 times faster', 'A shop']}), /says 40 where differs\.time says 30/);
+});
+
+test('an analogy\'s default words are English, so a film in another language gives its own', () => {
+  const board = differs => ({scenes: [{id: 'one', narration: 'Hier.', differs}]});
+  assert.throws(() => differsOf(board({analogy: 'people stand in'}), {lang: 'de'}), /"An analogy: people stand in" is English and the film is in "de"/);
+  assert.deepEqual([...differsOf(board({analogy: 'people stand in', shown: 'Eine Analogie'}), {lang: 'de'})[0].shown], ['Eine Analogie']);
+  assert.equal(differsOf(board({analogy: 'people stand in'}), {lang: 'en-GB'})[0].shown[0], 'An analogy: people stand in');
+});
+

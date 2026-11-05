@@ -451,7 +451,7 @@ const MACHINERY = new Set(['hits', 'failed', 'measured', 'verdict', 'why', 'summ
 export {verdictsText};
 export {purityOf, PURITY_VERDICT} from './purity.mjs';
 export {wordContrast, luminance, contrastRatio, faintWords, CONTRAST, CONTRAST_VERDICT} from './contrast.mjs';
-export {readDiffers, timeWords, DIFFERS_VERDICT, DIFFERS_MOST, DIFFERS_SAID_MOST, DIFFERS_TIME_MOST} from './differs.mjs';
+export {readDiffers, timeWords, analogyWords, DIFFERS_VERDICT, DIFFERS_MOST, DIFFERS_SAID_MOST, DIFFERS_TIME_MOST} from './differs.mjs';
 export const findingsText = findings => findings.map(f => `${clockTenths(f.from)}–${clockTenths(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}`).join('\n');
 
 /** The findings that are advice, not errors (a held title can be right): listed after the rest in a summary. */

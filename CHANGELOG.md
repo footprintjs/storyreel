@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **A scene told as an analogy says so.** `differs: {analogy: "people stand in for the services"}` shows "An analogy:
+  people stand in for the services", or say it in the voice with `said`. It is a statement like `time` and `scale`: it
+  needs a line or a phrase of its own, the verdict holds it to being read or heard, and a film in another language gives
+  its own words. The same rule and words as StoryDeck's `data-differs-analogy`.
+
 - **A review holds less memory.** It copied a whole frame of pixels for every moment it read, to measure each word's
   contrast. That memory sits outside what the garbage collector counts, so it piled up across reviews in one process, as in
   a studio session. It now reads only each word's own pixels (`wordArea`, `contrast.mjs`). The measurements are the same.
