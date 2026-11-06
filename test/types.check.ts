@@ -788,3 +788,10 @@ export const differsRead = (read: typeof ReadDiffers, words: typeof TimeWords) =
 export const differingEach: StoryboardScene = {id: 'inside', narration: 'Thirty times faster, and far larger.', differs: {time: 30, scale: 'Drawn far larger than real', shown: false, said: ['Thirty times faster', 'far larger']}};
 // @ts-expect-error time is a number: how many times faster
 export const badDiffers: StoryboardScene = {id: 'inside', narration: 'Here.', differs: {time: 'fast'}};
+
+// A film from a storyboard (types/sub/storyboard.d.ts): what it gives goes straight into the film's own doors.
+import {readStoryboard} from 'footprint-story/storyboard';
+import {filmFromBoard} from '../types/sub/storyboard.js';
+const fromBoard = filmFromBoard(readStoryboard('{}'));
+const boardStoryboard: Storyboard = fromBoard.storyboard, boardRecipe: Recipe = fromBoard.recipe;
+void boardStoryboard; void boardRecipe;

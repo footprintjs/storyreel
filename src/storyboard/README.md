@@ -16,3 +16,6 @@ npx storyreel create --from story.json --to my-film --conversation chat.json
 
 A film draws `what-we-found` for now: `told-twice` is refused, naming what it can draw. The film is silent until it is given
 a voice, as any film is.
+
+Words stay words: a film's script reads braces as its own marks and has no way to write one as text, so a storyboard with a
+brace is refused. So is a card with no moment of its own, whose words are all said elsewhere in its scene.

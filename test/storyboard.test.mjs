@@ -93,6 +93,40 @@ test('nothing a film draws from a storyboard says "undefined", and each part sho
   for (const words of ['What we checked', 'It waits on a lock', 'What we are not sure about', 'What happens next']) assert.ok(said.has(words), `${words} in ${shown}`);
 });
 
+test('words stay words: a brace is refused, wherever a film would read it as its script', () => {
+  for (const over of [{checked: [{what: 'Disk', found: 'fine', notes: 'We asked and {@owner}"ship it."'}]}, {checked: [{what: 'Disk {', found: 'fine', notes: 'Own words here.'}]},
+    {intro: 'We looked at it {hop} closely and well, in the end.'}, {closing: 'That is {{owner}} all.'}, {next: ['Fix {it}', 'Watch it']}, {title: 'Why {it} slowed'}, {subtitle: 'A {look}'}]) {
+    assert.throws(() => film(over), (e) => {
+      assert.ok(e.problems.some((p) => /has a brace, which a film would read as its own script/.test(p.message)), JSON.stringify(over));
+      return true;
+    });
+  }
+});
+
+test('a card with no moment of its own is refused, and one that shares its opening is not', () => {
+  assert.throws(() => film({next: ['Watch the lock for a week', 'Watch the lock']}), (e) => {
+    assert.deepEqual(e.problems, [{at: 'next', message: 'is said more than once in its scene, so it has no moment of its own: reword it'}]);
+    return true;
+  });
+  assert.throws(() => film({checked: [{what: 'A', found: 'b', notes: 'We looked at the disk. It was fine.'}, {what: 'C', found: 'd', notes: 'We looked at the disk.'}]}), /checked-2 is said more than once/);
+  assert.throws(() => film({checked: [{what: 'A', found: 'b', notes: 'The same words.'}, {what: 'C', found: 'd', notes: 'The same words.'}]}), /is said more than once/);
+  assert.equal(film({next: ['That is the whole of it', 'Watch it']}).recipe.stages.at(-1).cards[0].at[1], 'That is the');
+});
+
+test('an intro too short to write its title over is refused', () => {
+  assert.throws(() => film({intro: 'Hi.'}), /intro is too short for its title to be written while it is said: 5 words at the least/);
+});
+
+test('a board in another language keeps its language, for how the film reads its numbers', async () => {
+  const labels = {checked: 'Geprüft', found: 'Gefunden', unsure: 'Unsicher', next: 'Weiter'};
+  const cwd = folder();
+  try {
+    const made = await createFilm('de', STORY({lang: 'de', labels}), {cwd});
+    assert.equal(made.board.lang, 'de');
+    assert.match(readFileSync(path.join(cwd, 'de', 'storyreel.config.mjs'), 'utf8'), /\{lang\}/);
+  } finally { rmSync(cwd, {recursive: true, force: true}); }
+});
+
 test('create makes a folder the tools can read, says what was checked, and leaves its config alone', async () => {
   const cwd = folder();
   try {
@@ -125,6 +159,10 @@ test('create refuses a folder it did not make, and anything outside the project'
     writeFileSync(path.join(cwd, 'held', 'mine.txt'), 'mine');
     writeFileSync(path.join(cwd, 'story.json'), JSON.stringify(STORY()));
     await assert.rejects(() => createTool(null, {from: 'story.json', to: 'held', cwd}), /already holds files, and create did not make it/);
+    mkdirSync(path.join(cwd, 'own'));
+    for (const f of ['story.json', 'storyboard.json', 'recipe.json']) writeFileSync(path.join(cwd, 'own', f), 'mine');
+    await assert.rejects(() => createTool(null, {from: 'story.json', to: 'own', cwd}), /already holds files, and create did not make it/);
+    assert.equal(readFileSync(path.join(cwd, 'own', 'recipe.json'), 'utf8'), 'mine');
     await assert.rejects(() => createTool(null, {from: 'story.json', to: '../away', cwd}), /is outside this project/);
     await assert.rejects(() => createTool(null, {from: '../story.json', to: 'x', cwd}), /is outside this project/);
     symlinkSync(outside, path.join(cwd, 'link'));

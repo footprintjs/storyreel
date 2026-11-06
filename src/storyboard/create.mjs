@@ -34,17 +34,21 @@ const CONFIG = `// Written by storyreel create. Change story.json and create aga
 import {readFileSync} from 'node:fs';
 
 const read = (file) => JSON.parse(readFileSync(new URL(file, import.meta.url), 'utf8'));
-export default {film: () => ({storyboard: read('./storyboard.json'), recipe: read('./recipe.json'), out: 'out'})};
+const {lang} = read('./story.json');
+export default {film: () => ({storyboard: read('./storyboard.json'), recipe: read('./recipe.json'), out: 'out', ...(lang ? {lang} : {})})};
 `;
+/** The one file only create writes: how it knows a folder is its own, whatever else the folder holds. */
+const MADE_BY_CREATE = '.storyreel-create';
 
-/** A film's folder from a storyboard: {folder, board, seconds, scenes}. New or empty, or one create made before (its story.json). */
+/** A film's folder from a storyboard: {folder, board, seconds, scenes}. New or empty, or one create made before. */
 export async function createFilm(to, input, {conversation, cwd = process.cwd()} = {}) {
   const folder = inProject(to, 'folder', cwd), board = readStoryboard(input, {conversation}), {storyboard, recipe} = filmFromBoard(board);
   const held = existsSync(folder) ? readdirSync(folder).filter((f) => !f.startsWith('.')) : [];
-  if (held.length && !held.includes('story.json')) throw new Error(`${to} already holds files, and create did not make it: name a new or empty folder, so nothing is overwritten`);
-  const film = await compileFilm({storyboard, recipe, timings: evenTimings(storyboard), root: cwd});
+  if (held.length && !existsSync(path.join(folder, MADE_BY_CREATE))) throw new Error(`${to} already holds files, and create did not make it: name a new or empty folder, so nothing is overwritten`);
+  const film = await compileFilm({storyboard, recipe, timings: evenTimings(storyboard), root: cwd, ...(board.lang ? {lang: board.lang} : {})});
   mkdirSync(folder, {recursive: true});
   const write = (name, text) => writeOutput(path.join(folder, name), text);
+  write(MADE_BY_CREATE, 'This folder was made by storyreel create, which may write here again.\n');
   write('story.json', `${JSON.stringify(input, null, 1)}\n`);
   write('storyboard.json', `${JSON.stringify(storyboard, null, 1)}\n`);
   write('recipe.json', `${JSON.stringify(recipe, null, 1)}\n`);

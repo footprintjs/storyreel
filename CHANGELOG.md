@@ -8,9 +8,6 @@
   three are MCP tools. A film draws `what-we-found` for now. See `examples/found`.
 - **A summary with fewer than three cards stands in the middle**, and a card with no picture moves its words up. Films with
   three cards, or with pictures, draw as before. A card with no heading shows its number alone.
-
-## Unreleased
-
 - **A scene told as an analogy says so.** `differs: {analogy: "people stand in for the services"}` shows "An analogy:
   people stand in for the services", or say it in the voice with `said`. It is a statement like `time` and `scale`: it
   needs a line or a phrase of its own, the verdict holds it to being read or heard, and a film in another language gives

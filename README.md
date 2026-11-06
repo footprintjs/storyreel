@@ -121,7 +121,8 @@ npx storyreel create --from story.json --to my-film --conversation chat.json
 
 `chat.json` is a list of messages, `[{"id": "m1", "who": "user", "text": "…"}]`, and any app can map its history onto it.
 Only `story.json` comes from a model. Every mistake in it comes back at once, each with its place, and a number must be in
-the message its claim cites. What a storyboard says reaches the film only as text. `examples/found` is a whole one, and
+the message its claim cites. What a storyboard says reaches the film only as text: a brace, which a film's script would read
+as its own mark, is refused. `examples/found` is a whole one, and
 `node examples/found/make.mjs` makes it. The review tools then work as usual, from the new folder.
 
 A film draws `what-we-found` for now: what was checked, what was found, what is still not known, and what happens next.
