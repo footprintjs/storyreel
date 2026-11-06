@@ -288,9 +288,11 @@ export function drawStage(c, P, paperStyle, a, st) {
   const tone = {kw: P.C.accent, ink: P.C.ink, known: P.C.available, unknown: P.C.unknown, dim: P.C.dim};
   // The chrome (the chip and the title); a chrome-free stage (chrome: false) is the picture alone.
   if (st.chrome !== false) {
-    c.font = '700 16px Menlo'; const cw = c.measureText(st.chip).width + 36;
-    c.fillStyle = st.chipDark ? P.C.ink : P.C.accent; c.beginPath(); c.roundRect(96, 84, cw, 36, 18); c.fill();
-    c.fillStyle = paperStyle.palette.bg; c.textBaseline = 'middle'; c.textAlign = 'center'; c.fillText(st.chip, 96 + cw / 2, 103);
+    if (st.chip) {
+      c.font = '700 16px Menlo'; const cw = c.measureText(st.chip).width + 36;
+      c.fillStyle = st.chipDark ? P.C.ink : P.C.accent; c.beginPath(); c.roundRect(96, 84, cw, 36, 18); c.fill();
+      c.fillStyle = paperStyle.palette.bg; c.textBaseline = 'middle'; c.textAlign = 'center'; c.fillText(st.chip, 96 + cw / 2, 103);
+    }
     P.text(st.title, 800, 104, 50, P.C.ink, {display: true, weight: 600});
   }
   // The panel sits right of the card in a lesson; a stage with the page to itself centres it (panelX).
@@ -373,7 +375,7 @@ export function drawSummary(c, P, cards, closing, hero) {
   });
   cards.forEach(({icon, head, text, alpha, image}, i) => {
     if (!(alpha > 0)) return;
-    const x = left + i * 450, y = 190, w = 400, h = 470, cx = x + w / 2, up = image || icon ? 0 : 130;   // with no picture above them, the words move up into its place
+    const x = left + i * 450, y = 190, w = 400, h = 470, cx = x + w / 2, up = image || icon ? 0 : 90;   // with no picture above them, the words move up into its place
     P.alpha(ease(alpha), () => {
       P.glass(x, y, w, h, P.C.accent, 18);
       if (image && !(hero && i === hero.into && m < 1)) drawRecall(c, P, image, x + 18, y + 18, w - 36, (w - 36) * 9 / 16);

@@ -4,6 +4,7 @@ import {mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync,
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {readStoryboard} from 'footprint-story/storyboard';
+import {createCanvas} from '@napi-rs/canvas';
 import {compileFilm, evenTimings} from '../src/index.mjs';
 import {filmFromBoard} from '../src/storyboard/film.mjs';
 import {briefTool, createFilm, createTool, shapesTool} from '../src/storyboard/create.mjs';
@@ -79,6 +80,17 @@ test('it names every card too long for a film, and refuses a shape it cannot dra
   });
   const told = {shape: 'told-twice'};
   assert.throws(() => filmFromBoard(told), /a film draws "what-we-found" for now, and this board is "told-twice"/);
+});
+
+test('nothing a film draws from a storyboard says "undefined", and each part shows its words', async () => {
+  const {storyboard, recipe} = film();
+  const made = await compileFilm({storyboard, recipe, timings: evenTimings(storyboard)});
+  const canvas = createCanvas(1600, 900), ctx = canvas.getContext('2d'), said = new Set(), fillText = ctx.fillText.bind(ctx);
+  ctx.fillText = (text, ...rest) => { said.add(String(text)); return fillText(text, ...rest); };
+  for (let t = 0; t < made.total; t += .5) made.frame(ctx, t);
+  const shown = [...said].join(' | ');
+  assert.doesNotMatch(shown, /undefined|null|NaN/);
+  for (const words of ['What we checked', 'It waits on a lock', 'What we are not sure about', 'What happens next']) assert.ok(said.has(words), `${words} in ${shown}`);
 });
 
 test('create makes a folder the tools can read, says what was checked, and leaves its config alone', async () => {
