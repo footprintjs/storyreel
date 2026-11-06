@@ -11,6 +11,7 @@
  * (fullRender).
  */
 import {briefTool, createTool, shapesTool} from './storyboard/create.mjs';
+import {narrateTool, NARRATE_ARGS, NARRATE_MCP_ARGS, NARRATE_ABOUT} from './narrate.mjs';
 import path from 'node:path';
 import {existsSync, readFileSync} from 'node:fs';
 import {isDeepStrictEqual} from 'node:util';
@@ -576,4 +577,5 @@ export const TOOLS = Object.freeze({
     args: {shape: 'the shape to write', conversation: 'a JSON file in the project: [{id, who?, text}], the messages its claims may cite'}},
   create: {run: createTool, load: 'flags', about: 'A film\'s folder from a storyboard: every mistake named at once, checked against a conversation when one is named, and drawn as the film\'s storyboard and recipe. A folder create did not make is refused. No project needed.',
     args: {from: 'the storyboard: a JSON file in the project (or give story)', story: 'the storyboard: its JSON, for an assistant that cannot write a file (or give from)', to: 'the new folder, in the project, or . for the project itself', conversation: 'a JSON file in the project: [{id, who?, text}], the messages its claims cite'}},
+  narrate: {run: narrateTool, load: 'config', about: NARRATE_ABOUT, args: NARRATE_ARGS, mcpArgs: NARRATE_MCP_ARGS},
 });

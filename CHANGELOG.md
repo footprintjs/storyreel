@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **`storyreel narrate`: one command for a film's voice.** It says what each scene says and whether it is voiced, for nothing.
+  With `--kit <folder>` it voices what is missing, and `--takes <folder>` uses your own recordings. `--only 1-2` picks a few
+  scenes. Once every scene is voiced, it writes what a render reads, and the film is timed by the voice. A film stays silent
+  until then. A folder holding a voice made another way is refused, so it is never overwritten.
+- **`narrate` as an MCP tool.** It only reads, unless the server was started with a voice and the call says what to voice with
+  `say`. A call can't name a kit, because a kit runs Python on your machine, and the voice reaches no other tool.
+- **A film from a conversation says its numbers in words.** `create` writes them as number slots, so the captions keep "4355"
+  and a voice says "four thousand three hundred fifty-five". Its silent timing follows the words said. `create` also writes
+  `narrationDir` into a new config, and forgets the old timings when it runs again.
+
 ## 0.26.0 — a film from a conversation
 
 - **A film from a conversation.** `storyreel shapes`, `storyreel brief` and `storyreel create` take a storyboard an agent wrote

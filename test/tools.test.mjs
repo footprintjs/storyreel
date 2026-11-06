@@ -27,7 +27,7 @@ test('the tools read the project\'s film: its timeline and its review as text, a
   const s = await still(p, {at: 'one+2.5,two+0'});
   assert.ok(existsSync(s.file) && s.file.endsWith('.png'), s.text);
   await assert.rejects(still(p, {at: 'three+1'}), /"three\+1" is not a moment \(scene\+seconds, .*; the scenes are one, two\)/);
-  assert.deepEqual(Object.keys(TOOLS), ['timeline', 'feedback', 'log', 'review', 'part', 'anchors', 'script', 'changes', 'still', 'sheet', 'strip', 'shapes', 'brief', 'create']);
+  assert.deepEqual(Object.keys(TOOLS), ['timeline', 'feedback', 'log', 'review', 'part', 'anchors', 'script', 'changes', 'still', 'sheet', 'strip', 'shapes', 'brief', 'create', 'narrate']);
   const st = await strip(p, {at: 'one+2', frames: 6});
   assert.ok(existsSync(st.file) && st.file.endsWith('strip-one+2.png'), st.text);
   assert.match(st.text, /6 frames at 30 fps around one\+2 \([\d.]+ s\): frame 0 is the moment/);
@@ -255,7 +255,7 @@ test('the command line: each tool by name, its flags to the film too; refusals n
   const none = run(['review'], tempDir('empty'));   // a folder with no project in it (its own, not the shared temp folder)
   assert.equal(none.status, 1); assert.match(none.stderr, /no storyreel\.config\.mjs in .*: a project names its film there/);
   assert.equal(run(['draw']).status, 2, 'an unknown tool is a usage error');
-  for (const command of ['timeline', 'feedback', 'log', 'review', 'part', 'anchors', 'script', 'changes', 'still', 'sheet', 'strip', 'beats', 'share', 'breakdown', 'mcp']) {
+  for (const command of ['timeline', 'feedback', 'log', 'review', 'part', 'anchors', 'script', 'changes', 'still', 'sheet', 'strip', 'narrate', 'beats', 'share', 'breakdown', 'mcp']) {
     const h = run([command, '--help']);
     assert.equal(h.status, 0, `${command} --help: ${h.stderr}`); assert.match(h.stdout, new RegExp(`^storyreel ${command} `), `${command} --help gives its own usage`);
   }
@@ -297,7 +297,7 @@ test('the same tools over MCP (stdio): the handshake, the list with each tool\'s
     call(9, 'anchors', {})]);
   assert.equal(replies.get(1).result.serverInfo.name, 'storyreel'); assert.ok(replies.get(1).result.capabilities.tools);
   const tools = replies.get(2).result.tools;
-  assert.deepEqual(tools.map(t => t.name), ['timeline', 'feedback', 'log', 'review', 'part', 'anchors', 'script', 'changes', 'still', 'sheet', 'strip', 'shapes', 'brief', 'create']);
+  assert.deepEqual(tools.map(t => t.name), ['timeline', 'feedback', 'log', 'review', 'part', 'anchors', 'script', 'changes', 'still', 'sheet', 'strip', 'shapes', 'brief', 'create', 'narrate']);
   assert.deepEqual(tools.find(t => t.name === 'script').inputSchema.properties, {}, 'script takes no arguments of its own');
   assert.deepEqual(Object.keys(tools.find(t => t.name === 'part').inputSchema.properties), ['scene', 'from', 'to', 'handles', 'full']);
   assert.equal(tools.find(t => t.name === 'part').inputSchema.required, undefined, 'a part takes its scenes or a window: it says which it lacks');
@@ -390,7 +390,7 @@ test('over MCP the project is fixed at start: a call that names config or cwd, a
     call(6, 'timeline', {scene: 'one\u0000'}), ask(7, 'tools/call', null), 'null', call(9, 'still', {at: `one+2+\n${secret}\nx`}),
     call(10, ['timeline'], {}), `{"jsonrpc":"2.0","method":"ping","id":${'['.repeat(9000)}${']'.repeat(9000)}}`, call(12, 'review', {scene: 'one'})]);
   const said = id => { assert.ok(replies.has(id), `no answer to call ${id}: the server stopped (exit ${code})`); return replies.get(id).result; };
-  const rule = 'config and cwd are fixed when the MCP server starts; restart it with --config (or --cwd) to use another';
+  const rule = 'config, cwd, kit and takes are fixed when the MCP server starts; restart it with --config, --cwd, --kit or --takes to use another';
   for (const id of [1, 2]) assert.deepEqual(said(id), {isError: true, content: [{type: 'text', text: rule}]});
   assert.equal(said(3).content[0].text, 'still takes no "out" (it takes at, beats, from, to, width, phone, title): the rest — the config, the folder, the film\'s own flags — is fixed when the MCP server starts');
   assert.equal(said(4).content[0].text, 'timeline: scene "--config" would be read as a flag: a value never starts with --');

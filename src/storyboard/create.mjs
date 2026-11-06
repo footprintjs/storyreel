@@ -10,6 +10,7 @@ import {evenTimings} from '../clock.mjs';
 import {compileFilm} from '../film.mjs';
 import {writeOutput} from '../files.mjs';
 import {filmFromBoard} from './film.mjs';
+import {forgetVoice} from '../narrate.mjs';
 
 const MOST_BYTES = {storyboard: 1 << 20, conversation: 32 << 20};
 
@@ -31,11 +32,14 @@ function readJson(file, what, cwd) {
 }
 
 const CONFIG = `// Written by storyreel create. Change story.json and create again for a film's words; this file is yours, and create leaves it alone.
-import {readFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 
-const read = (file) => JSON.parse(readFileSync(new URL(file, import.meta.url), 'utf8'));
+const at = (file) => new URL(file, import.meta.url);
+const read = (file) => JSON.parse(readFileSync(at(file), 'utf8'));
 const {lang} = read('./story.json');
-export default {film: () => ({storyboard: read('./storyboard.json'), recipe: read('./recipe.json'), out: 'out', ...(lang ? {lang} : {})})};
+// Once storyreel narrate has voiced every scene, the voice times the film, with this settle after each scene's last word.
+const voiced = () => (existsSync(at('./voice/timings.json')) ? {pacing: {sceneTail: 0.8, holds: []}} : {});
+export default {film: () => ({storyboard: read('./storyboard.json'), recipe: read('./recipe.json'), out: 'out', narrationDir: 'voice', ...voiced(), ...(lang ? {lang} : {})})};
 `;
 /** The one file only create writes: how it knows a folder is its own, whatever else the folder holds. */
 const MADE_BY_CREATE = '.storyreel-create';
@@ -57,6 +61,7 @@ export async function createFilm(to, input, {conversation, cwd = process.cwd(), 
   write('storyboard.json', `${JSON.stringify(storyboard, null, 1)}\n`);
   write('recipe.json', `${JSON.stringify(recipe, null, 1)}\n`);
   if (!existsSync(path.join(folder, 'storyreel.config.mjs'))) write('storyreel.config.mjs', CONFIG);
+  forgetVoice(path.join(folder, 'voice'));   // its timings were for the words before: narrate joins them again, for nothing where the words are the same
   return {folder, board, seconds: film.total, scenes: storyboard.scenes.length};
 }
 

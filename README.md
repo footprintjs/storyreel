@@ -144,6 +144,7 @@ claude mcp add storyreel -- npx storyreel mcp      # Claude Code, run from that 
 | 2 | `brief` `{shape, conversation: "chat.json"}` | The instructions for writing a storyboard, with the conversation kept apart as material. |
 | 3 | `create` `{story: "{…}", to: ".", conversation: "chat.json"}` | Checks the storyboard, naming every mistake at once, and makes the film in that folder. |
 | 4 | `timeline`, `review`, `part`, `still`, … | Read the film as text, and look only last. They work on the film `create` just made. |
+| 5 | `narrate` `{say}` | How far its voice has got, scene by scene. It only reads, unless the server has a voice and `say` names what to voice (`"all"`, or scenes like `"1-2"`). |
 
 The assistant writes the storyboard itself between steps 2 and 3, and passes it as `story`, or as a file with `from` if it can
 write one. When `create` refuses, it gets every problem with where it is, fixes them all, and calls `create` again.
@@ -169,7 +170,23 @@ What to expect from it:
 
 ## A voice
 
-Any text-to-speech works, as long as you can give each word its time. The timings are one entry per
+`storyreel narrate` is the one command for it. With a local voice kit, it voices what is missing and times the film by the voice:
+
+```bash
+npx storyreel narrate                                   # what each scene says, voiced or not; asking costs nothing
+npx storyreel narrate --kit ../voice-kit                # voices what is missing, and keeps every clip it finishes
+npx storyreel narrate --kit ../voice-kit --takes takes  # your own recordings, lined up by the kit's aligner
+npx storyreel narrate --kit ../voice-kit --only 1-2     # a few scenes first, to hear them
+```
+
+The clips stay in the voice folder's `cache`, found by their words and the voice's settings, so changing one scene re-voices
+one scene. Once every scene is voiced, the folder holds what a render reads. The film stays silent until then. It needs
+`narrationDir` in the config, and `create` writes that for you; a folder holding a voice made another way is refused, so it is
+never overwritten. It refuses digits before spending any time on them (see "Numbers" below), and a film with named speakers,
+because one voice would say every line. A kit runs Python on your machine, so only your command, or the MCP server's start,
+says where it is.
+
+Or bring your own voice step. Any text-to-speech works, as long as you can give each word its time. The timings are one entry per
 scene — `{id, duration, words: [{text, start, end}], alignment: {status: 'available'}, audio}` — written
 beside the scene audio as `timings.json`; pass the folder as `narrationDir`. Forced alignment gives the
 word times for any voice (the AgentFootprint course uses Chatterbox with torchaudio MMS_FA; Kokoro
