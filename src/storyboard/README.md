@@ -15,8 +15,9 @@ npx storyreel brief --shape what-we-found --conversation chat.json   # what a mo
 npx storyreel create --from story.json --to my-film --conversation chat.json
 ```
 
-A refused board need not be written again: `create` names every problem, grouped by piece, each piece with what it says now and
-the messages it cites. Fix those pieces in place and run `create` again. Problems a film adds come once the board itself reads.
+`create` names every problem of a refused board, grouped by piece, each piece with what it says now and the messages it cites. With
+`--from`, change those pieces in the file and run `create` again, without rewriting the board. With `--story`, give the whole board
+again: `create` takes no piece on its own. Problems a film adds come once the board itself reads.
 
 A film draws `what-we-found` for now: `told-twice` is refused, naming what it can draw. The film is silent until it is given
 a voice, as any film is.

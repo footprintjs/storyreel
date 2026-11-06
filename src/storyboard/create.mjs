@@ -74,11 +74,11 @@ function storyOf({from, story}, cwd) {
   try { return JSON.parse(story); } catch (e) { throw new Error(`--story is not valid JSON: ${e.message}`); }
 }
 
-/** `storyreel create --from story.json --to my-film [--conversation chat.json]`, or `--story '{…}'`: as text. A refused board comes back as one short brief per piece at fault. */
+/** `storyreel create --from story.json --to my-film [--conversation chat.json]`, or `--story '{…}'`: as text. A refused board comes back as one brief per piece at fault. */
 export async function createTool(_, {from, story, to, conversation, cwd = process.cwd()} = {}) {
   if (!to) throw new Error('name the new folder: --to my-film, or --to . for this one');
   const input = storyOf({from, story}, cwd), messages = conversation ? readJson(conversation, 'conversation', cwd) : undefined;
-  const made = await createFilm(to, input, {conversation: messages, cwd, inputs: [from, conversation].filter(Boolean)}).catch((refused) => { throw withFixBriefs(refused, input, messages); });
+  const made = await createFilm(to, input, {conversation: messages, cwd, inputs: [from, conversation].filter(Boolean)}).catch((refused) => { throw withFixBriefs(refused, input, messages, {file: Boolean(from)}); });
   const checked = made.board.verified ? 'its numbers were checked against the conversation' : 'its numbers were not checked: name a --conversation to check them';
   const where = path.resolve(cwd, to) === path.resolve(cwd) ? 'next' : `next, from ${to}`;
   return `✓ ${to} · ${made.board.shape} · ${made.scenes} scenes · ${made.seconds.toFixed(1)} s, silent\n  ${checked}\n  ${where}: storyreel timeline · storyreel review · storyreel part --scene found`;
