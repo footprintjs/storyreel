@@ -18,6 +18,9 @@ storyboard → kit → recipe → timings (`evenTimings(storyboard)`, or a voice
 → read `making-of.json` → `approveFilm` the draft the person watched (the final render refuses when anything it was
 made from changed) → `makeRelease` for each platform. The `storyreel-cartoon` skill walks it with a working film.
 
+**From a conversation, with no recipe to write:** `shapes`, `brief`, then `create`, on the command line or over MCP. The
+README's "A film from a conversation" has the steps.
+
 ## The edit loop
 
 - Look at an edit with `npx storyreel part --scene <id>` (seconds; never cached).

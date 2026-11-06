@@ -1,7 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.26.0 — a film from a conversation
 
+- **A film from a conversation.** `storyreel shapes`, `storyreel brief` and `storyreel create` take a storyboard an agent wrote
+  on a shape from `footprint-story/storyboard` and make a film's folder: every mistake named at once, numbers checked against
+  the conversation, and the film's storyboard and recipe drawn as data. The review tools work from the new folder, and all
+  three are MCP tools. A film draws `what-we-found` for now. See `examples/found`.
+- **A summary with fewer than three cards stands in the middle**, and a card with no picture moves its words up. Films with
+  three cards, or with pictures, draw as before. A card with no heading shows its number alone.
 - **A scene told as an analogy says so.** `differs: {analogy: "people stand in for the services"}` shows "An analogy:
   people stand in for the services", or say it in the voice with `said`. It is a statement like `time` and `scale`: it
   needs a line or a phrase of its own, the verdict holds it to being read or heard, and a film in another language gives

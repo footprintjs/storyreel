@@ -1,0 +1,19 @@
+{
+  "shape": "what-we-found",
+  "title": "The check that could hang",
+  "subtitle": "What a security review found before a release",
+  "intro": "This is the story of a check that could hang, and how it was caught before anyone got it.",
+  "checked": [
+    {"what": "The pattern", "found": "one character could match two ways", "notes": "First we looked at the pattern itself. One character could match in two ways inside a repeated group.", "sources": ["m1"]},
+    {"what": "The cost", "found": "26 hidden characters took 4355 ms", "notes": "Then we measured it. 20 hidden characters took 108 ms, and 26 took 4355 ms.", "sources": ["m2"]},
+    {"what": "The release", "found": "0.4.0 was not yet published", "notes": "And we checked what had gone out. Version 0.4.0 was merged, but npm still showed 0.3.0.", "sources": ["m3"]}
+  ],
+  "found": [
+    {"headline": "A long hidden run could hang the check", "line": "Each few extra characters multiplied the time", "notes": "So a crafted run of hidden characters could hang whatever reads a storyboard, because the time multiplied as the run grew.", "sources": ["m1", "m2"]}
+  ],
+  "unsure": [
+    {"what": "Whether other patterns have the same flaw", "why": "only this one was measured", "notes": "We are not sure no other pattern has this flaw, because only this one was measured."}
+  ],
+  "next": ["One character class, nothing overlapping", "A timed test holds the cost"],
+  "closing": "The fix went in before the release, so nothing with this bug reached npm."
+}

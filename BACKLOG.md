@@ -21,6 +21,8 @@ name the **kind** of film a recipe is, so each kind brings its own defaults, che
   code), in the spirit of [`/brag`](https://github.com/latent-spaces/brag). A person reads and approves
   them before anything is voiced or rendered. The honesty rules stay: every value on screen comes from
   the run, every line can be read in time, every film says how it was made.
+- **Started from a storyboard:** `storyreel create` draws `what-we-found` from `footprint-story/storyboard`. `told-twice` is next,
+  and needs a row of drawn pieces.
 - **A kind carries its checks.** `told-twice`: every real moment matches a story moment, and each stand-in's turn says
   both names. `explain-then-quantify`: no measured number appears before the explanation ends. The checks are what a
   kind adds over a starter; the words, the cast and the drawings stay the film's.

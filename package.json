@@ -1,6 +1,6 @@
 {
   "name": "footprint-storyreel",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "description": "Programmatic teaching films from storyboard text and drawing recipes, with phrase-timed animation, captions, MP4 rendering and a making-of record.",
   "keywords": [
     "video",
@@ -28,6 +28,10 @@
   "author": "Sanjay Krishna Anbalagan",
   "type": "module",
   "exports": {
+    "./storyboard": {
+      "types": "./types/sub/storyboard.d.ts",
+      "default": "./src/storyboard/film.mjs"
+    },
     ".": {
       "types": "./types/index.d.ts",
       "default": "./src/index.mjs"
@@ -296,7 +300,7 @@
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.9",
-    "footprint-story": "^0.3.0",
+    "footprint-story": "^0.5.0",
     "footprintjs": "^9.27.0 || ^10.0.0",
     "foottrace": "^1.0.0",
     "perfect-freehand": "^1.2.3",

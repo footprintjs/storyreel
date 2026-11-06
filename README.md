@@ -108,6 +108,65 @@ From a clone of the package: `node examples/hello/make.mjs`, `node examples/shep
 
 **See it before you render it:** `node examples/studio.mjs hello` opens the preview studio (below).
 
+## A film from a conversation
+
+An agent shouldn't have to write a recipe to turn a conversation into a story. It fills in a shape from
+[`footprint-story/storyboard`](https://github.com/footprintjs/footprint-story), and StoryReel makes the film's own inputs.
+
+```bash
+npx storyreel shapes                                                  # the shapes, and how to fill each
+npx storyreel brief --shape what-we-found --conversation chat.json    # what a model needs to write one
+npx storyreel create --from story.json --to my-film --conversation chat.json
+```
+
+`chat.json` is a list of messages, `[{"id": "m1", "who": "user", "text": "…"}]`, and any app can map its history onto it.
+Only `story.json` comes from a model. Every mistake in it comes back at once, each with its place, and a number must be in
+the message its claim cites. What a storyboard says reaches the film only as text: a brace, which a film's script would read
+as its own mark, is refused. `examples/found` is a whole one, and
+`node examples/found/make.mjs` makes it. The review tools then work as usual, from the new folder.
+
+A film draws `what-we-found` for now: what was checked, what was found, what is still not known, and what happens next.
+`told-twice` is refused, naming what it can draw. The film is silent until it is given a voice, like any other.
+
+### As MCP tools, for an AI assistant
+
+Any assistant that speaks MCP can do this without writing a recipe. Start the server in a folder of its own, holding the
+conversation:
+
+```bash
+claude mcp add storyreel -- npx storyreel mcp      # Claude Code, run from that folder
+# Claude Desktop / VS Code (Copilot) / Cursor: a stdio server, command "npx", args ["storyreel", "mcp"], in that folder
+```
+
+| Step | Tool | What it does |
+|---|---|---|
+| 1 | `shapes` | The shapes a story can take, and how to fill each, as JSON. |
+| 2 | `brief` `{shape, conversation: "chat.json"}` | The instructions for writing a storyboard, with the conversation kept apart as material. |
+| 3 | `create` `{story: "{…}", to: ".", conversation: "chat.json"}` | Checks the storyboard, naming every mistake at once, and makes the film in that folder. |
+| 4 | `timeline`, `review`, `part`, `still`, … | Read the film as text, and look only last. They work on the film `create` just made. |
+
+The assistant writes the storyboard itself between steps 2 and 3, and passes it as `story`, or as a file with `from` if it can
+write one. When `create` refuses, it gets every problem with where it is, fixes them all, and calls `create` again.
+
+```json
+{"name": "create", "arguments": {"story": "{\"shape\":\"what-we-found\",\"title\":\"The check that could hang\",…}", "to": ".", "conversation": "chat.json"}}
+```
+
+```text
+✓ . · what-we-found · 5 scenes · 65.9 s, silent
+  its numbers were checked against the conversation
+  next: storyreel timeline · storyreel review · storyreel part --scene found
+```
+
+What to expect from it:
+
+- **A conversation is untrusted.** Its words can still steer the assistant, so check what it wrote. The tools make sure those
+  words only ever reach a film as text, and a call can't choose another folder or config: those are fixed when the server
+  starts, and every file a call names must be in the project.
+- **The number check has limits.** It catches a number that isn't in the cited message. It doesn't catch a claim that's wrong
+  in words, or a number spelled out, and with no `conversation` nothing is checked, which `create` says.
+- **`create` won't overwrite your work.** It refuses a folder holding other files, unless it made that folder itself.
+
 ## A voice
 
 Any text-to-speech works, as long as you can give each word its time. The timings are one entry per
