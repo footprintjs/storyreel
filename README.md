@@ -128,6 +128,20 @@ as its own mark, is refused. `examples/found` is a whole one, and
 A film draws `what-we-found` for now: what was checked, what was found, what is still not known, and what happens next.
 `told-twice` is refused, naming what it can draw. The film is silent until it is given a voice, like any other.
 
+### The whole path
+
+```mermaid
+flowchart LR
+  chat[A conversation] --> brief[brief: what a model needs]
+  brief --> board[A model writes the storyboard]
+  board --> create{create: does it check out?}
+  create -- no: every problem named --> board
+  create -- yes --> film[A silent film's folder]
+  film --> review[timeline, review, part: read it first]
+  review --> narrate[narrate: voice it]
+  narrate --> voiced[A film timed by the voice]
+```
+
 ### As MCP tools, for an AI assistant
 
 Any assistant that speaks MCP can do this without writing a recipe. Start the server in a folder of its own, holding the
