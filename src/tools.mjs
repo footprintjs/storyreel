@@ -575,5 +575,5 @@ export const TOOLS = Object.freeze({
   brief: {run: briefTool, load: 'flags', about: 'What a model needs to write a storyboard: the instructions, and a conversation kept apart as material. No project needed.',
     args: {shape: 'the shape to write', conversation: 'a JSON file in the project: [{id, who?, text}], the messages its claims may cite'}},
   create: {run: createTool, load: 'flags', about: 'A film\'s folder from a storyboard: every mistake named at once, checked against a conversation when one is named, and drawn as the film\'s storyboard and recipe. A folder create did not make is refused. No project needed.',
-    args: {from: 'the storyboard: a JSON file in the project', to: 'the new folder, in the project', conversation: 'a JSON file in the project: [{id, who?, text}], the messages its claims cite'}},
+    args: {from: 'the storyboard: a JSON file in the project (or give story)', story: 'the storyboard: its JSON, for an assistant that cannot write a file (or give from)', to: 'the new folder, in the project, or . for the project itself', conversation: 'a JSON file in the project: [{id, who?, text}], the messages its claims cite'}},
 });

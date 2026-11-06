@@ -40,10 +40,14 @@ export default {film: () => ({storyboard: read('./storyboard.json'), recipe: rea
 /** The one file only create writes: how it knows a folder is its own, whatever else the folder holds. */
 const MADE_BY_CREATE = '.storyreel-create';
 
-/** A film's folder from a storyboard: {folder, board, seconds, scenes}. New or empty, or one create made before. */
-export async function createFilm(to, input, {conversation, cwd = process.cwd()} = {}) {
+/**
+ * A film's folder from a storyboard: {folder, board, seconds, scenes}. New or empty, or one create made before. `inputs`: files
+ * this call reads, which may already stand in the folder, so a project of one conversation can become the film itself.
+ */
+export async function createFilm(to, input, {conversation, cwd = process.cwd(), inputs = []} = {}) {
   const folder = inProject(to, 'folder', cwd), board = readStoryboard(input, {conversation}), {storyboard, recipe} = filmFromBoard(board);
-  const held = existsSync(folder) ? readdirSync(folder).filter((f) => !f.startsWith('.')) : [];
+  const own = new Set(inputs.map((file) => path.resolve(cwd, file)));
+  const held = existsSync(folder) ? readdirSync(folder).filter((f) => !f.startsWith('.') && !own.has(path.join(folder, f))) : [];
   if (held.length && !existsSync(path.join(folder, MADE_BY_CREATE))) throw new Error(`${to} already holds files, and create did not make it: name a new or empty folder, so nothing is overwritten`);
   const film = await compileFilm({storyboard, recipe, timings: evenTimings(storyboard), root: cwd, ...(board.lang ? {lang: board.lang} : {})});
   mkdirSync(folder, {recursive: true});
@@ -56,13 +60,22 @@ export async function createFilm(to, input, {conversation, cwd = process.cwd()} 
   return {folder, board, seconds: film.total, scenes: storyboard.scenes.length};
 }
 
-/** `storyreel create --from story.json --to my-film [--conversation chat.json]`: as text. */
-export async function createTool(_, {from, to, conversation, cwd = process.cwd()} = {}) {
-  if (!from || !to) throw new Error('name the storyboard and the new folder: --from story.json --to my-film');
-  const messages = conversation ? readJson(conversation, 'conversation', cwd) : undefined;
-  const made = await createFilm(to, readJson(from, 'storyboard', cwd), {conversation: messages, cwd});
+/** The storyboard as written: its file, or its JSON given in the call, as an assistant with no way to write a file gives it. */
+function storyOf({from, story}, cwd) {
+  if (Boolean(from) === Boolean(story)) throw new Error('give the storyboard one way: --from story.json, or --story with its JSON');
+  if (from) return readJson(from, 'storyboard', cwd);
+  if (Buffer.byteLength(story) > MOST_BYTES.storyboard) throw new Error(`the storyboard is too big: ${MOST_BYTES.storyboard} bytes is the most`);
+  try { return JSON.parse(story); } catch (e) { throw new Error(`--story is not valid JSON: ${e.message}`); }
+}
+
+/** `storyreel create --from story.json --to my-film [--conversation chat.json]`, or `--story '{…}'`: as text. */
+export async function createTool(_, {from, story, to, conversation, cwd = process.cwd()} = {}) {
+  if (!to) throw new Error('name the new folder: --to my-film, or --to . for this one');
+  const input = storyOf({from, story}, cwd), messages = conversation ? readJson(conversation, 'conversation', cwd) : undefined;
+  const made = await createFilm(to, input, {conversation: messages, cwd, inputs: [from, conversation].filter(Boolean)});
   const checked = made.board.verified ? 'its numbers were checked against the conversation' : 'its numbers were not checked: name a --conversation to check them';
-  return `✓ ${to} · ${made.board.shape} · ${made.scenes} scenes · ${made.seconds.toFixed(1)} s, silent\n  ${checked}\n  next, from ${to}: storyreel timeline · storyreel review · storyreel part --scene found`;
+  const where = path.resolve(cwd, to) === path.resolve(cwd) ? 'next' : `next, from ${to}`;
+  return `✓ ${to} · ${made.board.shape} · ${made.scenes} scenes · ${made.seconds.toFixed(1)} s, silent\n  ${checked}\n  ${where}: storyreel timeline · storyreel review · storyreel part --scene found`;
 }
 
 /** `storyreel shapes`: the shapes there are, and how to fill each, as JSON a model can read. */

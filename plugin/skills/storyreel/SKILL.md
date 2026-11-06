@@ -20,7 +20,8 @@ made from changed) → `makeRelease` for each platform. The `storyreel-cartoon` 
 
 **From a conversation, with no recipe to write:** `npx storyreel shapes`, then `npx storyreel brief --shape what-we-found
 --conversation chat.json` gives the instructions for writing a storyboard, and `npx storyreel create --from story.json --to
-my-film --conversation chat.json` names every mistake at once and makes the film's folder. Then the edit loop below.
+my-film --conversation chat.json` names every mistake at once and makes the film's folder. Then the edit loop below. Over MCP
+these are the tools `shapes`, `brief` and `create`: start the server in the conversation's folder and pass `story` and `to: "."`.
 
 ## The edit loop
 

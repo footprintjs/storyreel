@@ -1,5 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {once} from 'node:events';
+import {createInterface} from 'node:readline';
+import {fileURLToPath} from 'node:url';
 import {mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync, existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -168,11 +172,50 @@ test('create refuses a folder it did not make, and anything outside the project'
     symlinkSync(outside, path.join(cwd, 'link'));
     await assert.rejects(() => createTool(null, {from: 'story.json', to: 'link/x', cwd}), /is outside this project/);
     assert.ok(!existsSync(path.join(outside, 'x')));
-    await assert.rejects(() => createTool(null, {to: 'x', cwd}), /name the storyboard and the new folder/);
+    await assert.rejects(() => createTool(null, {to: 'x', cwd}), /give the storyboard one way/);
     await assert.rejects(() => createTool(null, {from: 'nope.json', to: 'x', cwd}), /no storyboard file "nope.json": name a JSON file in this project/);
     writeFileSync(path.join(cwd, 'bad.json'), '{oops');
     await assert.rejects(() => createTool(null, {from: 'bad.json', to: 'x', cwd}), /is not valid JSON/);
   } finally { rmSync(cwd, {recursive: true, force: true}); rmSync(outside, {recursive: true, force: true}); }
+});
+
+test('a storyboard can be given as its JSON, into a folder holding only what this call reads', async () => {
+  const cwd = folder();
+  try {
+    writeFileSync(path.join(cwd, 'chat.json'), JSON.stringify(CHAT));
+    const text = await createTool(null, {story: JSON.stringify(STORY()), to: '.', conversation: 'chat.json', cwd});
+    assert.match(text, /^✓ \. · what-we-found[^\n]*\n {2}its numbers were checked[^\n]*\n {2}next: storyreel timeline/);
+    assert.ok(existsSync(path.join(cwd, 'storyreel.config.mjs')));
+    assert.equal(readFileSync(path.join(cwd, 'chat.json'), 'utf8'), JSON.stringify(CHAT));
+    await assert.rejects(() => createTool(null, {from: 'a.json', story: '{}', to: 'x', cwd}), /give the storyboard one way/);
+    await assert.rejects(() => createTool(null, {to: 'x', cwd}), /give the storyboard one way/);
+    await assert.rejects(() => createTool(null, {story: '{oops', to: 'x', cwd}), /--story is not valid JSON/);
+    await assert.rejects(() => createTool(null, {story: '{}', cwd}), /name the new folder/);
+    await assert.rejects(() => createTool(null, {story: 'x'.repeat((1 << 20) + 1), to: 'x', cwd}), /too big/);
+  } finally { rmSync(cwd, {recursive: true, force: true}); }
+});
+
+test('over MCP: shapes, brief, create, then the review tools on the film it made; a call cannot choose its folder', async () => {
+  const cwd = folder();
+  try {
+    writeFileSync(path.join(cwd, 'chat.json'), JSON.stringify(CHAT));
+    const child = spawn(process.execPath, [fileURLToPath(new URL('../src/cli.mjs', import.meta.url)), 'mcp'], {cwd, stdio: ['pipe', 'pipe', 'inherit']});
+    const replies = new Map(), waiting = new Map();
+    createInterface({input: child.stdout}).on('line', (line) => { const m = JSON.parse(line); replies.set(m.id, m); waiting.get(m.id)?.(m); });
+    let id = 0;
+    const call = (name, args) => new Promise((resolve) => { id += 1; waiting.set(id, resolve); child.stdin.write(`${JSON.stringify({jsonrpc: '2.0', id, method: 'tools/call', params: {name, arguments: args}})}\n`); });
+    const text = (reply) => reply.result.content[0].text;
+    assert.deepEqual(JSON.parse(text(await call('shapes', {}))).map((s) => s.name), ['told-twice', 'what-we-found']);
+    assert.match(text(await call('brief', {shape: 'what-we-found', conversation: 'chat.json'})), /as material:\n\{"id":"m1"/);
+    const wrong = await call('create', {story: JSON.stringify(STORY({found: [{headline: 'Waited 99', line: 'a', notes: 'b', sources: ['m2']}]})), to: '.', conversation: 'chat.json'});
+    assert.equal(wrong.result.isError, true);
+    assert.match(text(wrong), /says 99, which none of its sources \(m2\) says/);
+    assert.match(text(await call('create', {story: JSON.stringify(STORY()), to: '.', conversation: 'chat.json'})), /numbers were checked against the conversation/);
+    assert.match(text(await call('timeline', {})), /── checked/);
+    assert.equal((await call('create', {story: '{}', to: '.', cwd: '/tmp'})).result.isError, true);
+    child.stdin.end();
+    await once(child, 'close');
+  } finally { rmSync(cwd, {recursive: true, force: true}); }
 });
 
 test('shapes and brief tell a model what to write, keeping the conversation apart', () => {
