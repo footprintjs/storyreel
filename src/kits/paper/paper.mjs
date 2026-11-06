@@ -358,7 +358,9 @@ const wrap = (P, text, size, width) => {
  * cards in the lesson's order, each led by a picture the viewer already saw, and a closing line.
  */
 export function drawSummary(c, P, cards, closing, hero) {
-  const slot = i => [150 + i * 450 + 18, 190 + 18, 364, 364 * 9 / 16];
+  // fewer than three stand together in the middle; three stand where they always have
+  const left = 150 + (3 - Math.min(3, cards.length)) * 225;
+  const slot = i => [left + i * 450 + 18, 190 + 18, 364, 364 * 9 / 16];
   const m = hero ? ease(hero.morph) : 1;
   if (hero && hero.alpha > 0 && m < 1) P.alpha(ease(hero.alpha), () => {
     // The hero picture flies into its card's picture slot as the cards arrive (a match cut).
@@ -371,7 +373,7 @@ export function drawSummary(c, P, cards, closing, hero) {
   });
   cards.forEach(({icon, head, text, alpha, image}, i) => {
     if (!(alpha > 0)) return;
-    const x = 150 + i * 450, y = 190, w = 400, h = 470, cx = x + w / 2;
+    const x = left + i * 450, y = 190, w = 400, h = 470, cx = x + w / 2, up = image || icon ? 0 : 130;   // with no picture above them, the words move up into its place
     P.alpha(ease(alpha), () => {
       P.glass(x, y, w, h, P.C.accent, 18);
       if (image && !(hero && i === hero.into && m < 1)) drawRecall(c, P, image, x + 18, y + 18, w - 36, (w - 36) * 9 / 16);
@@ -380,8 +382,8 @@ export function drawSummary(c, P, cards, closing, hero) {
         if (icon === 'bulb') drawStrokes(c, lightBulb(cx, y + 80, 1.1), 1, {color: INK.orange, size: 5, seed: 41});
         if (icon === 'code') P.text('{ }', cx, y + 96, 54, P.C.accent, {mono: true, weight: 700});
       }
-      P.text(`${i + 1}  ·  ${head}`, cx, y + 262, 22, P.C.accent, {mono: true, weight: 700});
-      wrap(P, text, 28, w - 56).forEach((ln, j) => P.text(ln, cx, y + 312 + j * 38, 28, P.C.ink, {display: true, weight: 600}));
+      P.text(head ? `${i + 1}  ·  ${head}` : `${i + 1}`, cx, y + 262 - up, 22, P.C.accent, {mono: true, weight: 700});
+      wrap(P, text, 28, w - 56).forEach((ln, j) => P.text(ln, cx, y + 312 - up + j * 38, 28, P.C.ink, {display: true, weight: 600}));
     });
   });
   if (closing && closing.alpha > 0) P.alpha(ease(closing.alpha), () => P.text(closing.text, 800, 730, 32, P.C.ink, {display: true, weight: 600}));

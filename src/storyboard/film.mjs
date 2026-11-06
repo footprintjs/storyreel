@@ -1,0 +1,85 @@
+/**
+ * A storyboard read by footprint-story/storyboard, as a film's own inputs: its storyboard (what is said, by scene) and its
+ * recipe (what is drawn when each phrase is said). Plain data in, plain data out, so the words a model wrote stay words: they
+ * only ever reach a film as text to speak and to draw. A "what we found" board is a title on the whiteboard, then paper cards.
+ */
+import {normSpeech} from 'footprint-story';
+
+const PER_STAGE = 3;       // what a summary stage draws side by side
+const MOST_ON_CARD = 96;   // what four lines of a card hold
+const MOST_TITLED = 60;    // what a stage's title holds on one line
+const MOST_LINE = 34;      // what one line of the whiteboard's title holds
+
+const chunks = (list, size) => Array.from({length: Math.ceil(list.length / size)}, (_, i) => list.slice(i * size, (i + 1) * size));
+const sentence = (text) => (/[.!?…。！？]$/u.test(text) ? text : `${text}.`);
+const occurrences = (whole, part) => { let n = 0; for (let at = whole.indexOf(part); at >= 0; at = whole.indexOf(part, at + 1)) n++; return n; };
+
+/** The shortest opening of these words, three at the least, said only once in the scene: the moment they start. */
+function phraseOf(words, sceneText) {
+  const list = words.trim().split(/\s+/), whole = normSpeech(sceneText);
+  for (let k = Math.min(3, list.length); k <= list.length; k++) {
+    const phrase = list.slice(0, k).join(' ');
+    if (occurrences(whole, normSpeech(phrase)) === 1) return phrase;
+  }
+  return words.trim();
+}
+
+/** A title broken into the whiteboard's lines, each drawn on its own. */
+function titleLines(title) {
+  const lines = [];
+  for (const word of title.split(/\s+/)) {
+    if (lines.length && `${lines.at(-1)} ${word}`.length <= MOST_LINE) lines[lines.length - 1] += ` ${word}`;
+    else lines.push(word);
+  }
+  return lines;
+}
+
+/** The whiteboard's first scene: the title in big writing, and the subtitle under it. */
+function titleStory(scene) {
+  const phrase = phraseOf(scene.narration, scene.narration), lines = titleLines(scene.title), top = 430 - (lines.length - 1) * 44;
+  const items = lines.map((write, i) => ({at: ['title', phrase, i * .5], dur: .8, write, x: 800, y: top + i * 88, size: 64, align: 'center'}));
+  if (scene.beat.subtitle) items.push({at: ['title', phrase, lines.length * .5], dur: .8, write: scene.beat.subtitle, x: 800, y: top + lines.length * 88 + 8, size: 36, align: 'center', color: 'blue'});
+  return {kit: 'whiteboard', defaultErase: null, erasers: {}, items, spots: []};
+}
+
+/** What one card says, by part. A claim names the messages it rests on above its words. */
+function cardOf(scene, soloFound) {
+  const {beat} = scene, head = beat.sources.join(' · ');
+  if (beat.group === 'checked') return {head, text: `${beat.name}: ${beat.line}`};
+  if (beat.group === 'found') return {head, text: soloFound ? beat.name : `${scene.title}: ${beat.name}`, icon: 'bulb'};
+  return {head, text: `${scene.title}: ${beat.name}`};
+}
+
+/** {storyboard, recipe}: a film's own inputs. Throws, its `problems` listing everything a film cannot show, each at its place. */
+export function filmFromBoard(board) {
+  if (board.shape !== 'what-we-found') throw Object.assign(new TypeError(`a film draws "what-we-found" for now, and this board is "${board.shape}"`), {problems: [{at: 'shape', message: 'a film draws "what-we-found" for now'}]});
+  const of = (part) => board.scenes.filter((s) => s.part === part), problems = [], scenes = [], stages = [];
+  const [title] = of('title'), found = of('found'), soloFound = found.length === 1 && found[0].title.length <= MOST_TITLED;
+  scenes.push({id: 'title', title: title.title, narration: title.narration});
+  for (const part of ['checked', 'found', 'unsure']) {
+    chunks(of(part), PER_STAGE).forEach((told, page) => {
+      const id = page ? `${part}-${page + 1}` : part, narration = told.map((s) => sentence(s.narration)).join(' ');
+      scenes.push({id, title: board.labels[part], narration});
+      const cards = told.map((s) => {
+        const card = cardOf(s, soloFound);
+        if (card.text.length > MOST_ON_CARD) problems.push({at: s.id, message: `says ${card.text.length} characters on its card, and ${MOST_ON_CARD} fit in a film: shorten it`});
+        return {at: [id, phraseOf(s.narration, narration)], ...card};
+      });
+      // the label says the part: as the chip above a headline of its own, or as the title itself, never as both
+      stages.push(part === 'found' && soloFound ? {type: 'summary', scene: id, chip: board.labels[part], title: found[0].title, cards} : {type: 'summary', scene: id, title: board.labels[part], cards});
+    });
+  }
+  const [last] = of('next'), pages = chunks(last.beat.points, PER_STAGE);
+  pages.forEach((points, page) => {
+    const id = page ? `next-${page + 1}` : 'next', said = points.map(sentence).join(' ');
+    const narration = page === pages.length - 1 ? `${said} ${sentence(last.narration)}` : said;
+    scenes.push({id, title: board.labels.next, narration});
+    const cards = points.map((text) => {
+      if (text.length > MOST_ON_CARD) problems.push({at: 'next', message: `says ${text.length} characters on its card, and ${MOST_ON_CARD} fit in a film: shorten it`});
+      return {at: [id, phraseOf(text, narration)], head: '', text};
+    });
+    stages.push({type: 'summary', scene: id, title: board.labels.next, cards});
+  });
+  if (problems.length) throw Object.assign(new TypeError(`this storyboard has ${problems.length} problem${problems.length === 1 ? '' : 's'} a film cannot show:\n- ${problems.map((p) => `${p.at} ${p.message}`).join('\n- ')}`), {problems});
+  return {storyboard: {title: board.title, scenes}, recipe: {story: titleStory(title), stages}};
+}

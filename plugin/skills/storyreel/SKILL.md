@@ -18,6 +18,10 @@ storyboard → kit → recipe → timings (`evenTimings(storyboard)`, or a voice
 → read `making-of.json` → `approveFilm` the draft the person watched (the final render refuses when anything it was
 made from changed) → `makeRelease` for each platform. The `storyreel-cartoon` skill walks it with a working film.
 
+**From a conversation, with no recipe to write:** `npx storyreel shapes`, then `npx storyreel brief --shape what-we-found
+--conversation chat.json` gives the instructions for writing a storyboard, and `npx storyreel create --from story.json --to
+my-film --conversation chat.json` names every mistake at once and makes the film's folder. Then the edit loop below.
+
 ## The edit loop
 
 - Look at an edit with `npx storyreel part --scene <id>` (seconds; never cached).

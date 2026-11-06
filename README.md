@@ -108,6 +108,25 @@ From a clone of the package: `node examples/hello/make.mjs`, `node examples/shep
 
 **See it before you render it:** `node examples/studio.mjs hello` opens the preview studio (below).
 
+## A film from a conversation
+
+An agent shouldn't have to write a recipe to turn a conversation into a story. It fills in a shape from
+[`footprint-story/storyboard`](https://github.com/footprintjs/footprint-story), and StoryReel makes the film's own inputs.
+
+```bash
+npx storyreel shapes                                                  # the shapes, and how to fill each
+npx storyreel brief --shape what-we-found --conversation chat.json    # what a model needs to write one
+npx storyreel create --from story.json --to my-film --conversation chat.json
+```
+
+`chat.json` is a list of messages, `[{"id": "m1", "who": "user", "text": "…"}]`, and any app can map its history onto it.
+Only `story.json` comes from a model. Every mistake in it comes back at once, each with its place, and a number must be in
+the message its claim cites. What a storyboard says reaches the film only as text. `examples/found` is a whole one, and
+`node examples/found/make.mjs` makes it. The review tools then work as usual, from the new folder.
+
+A film draws `what-we-found` for now: what was checked, what was found, what is still not known, and what happens next.
+`told-twice` is refused, naming what it can draw. The film is silent until it is given a voice, like any other.
+
 ## A voice
 
 Any text-to-speech works, as long as you can give each word its time. The timings are one entry per

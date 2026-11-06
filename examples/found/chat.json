@@ -1,0 +1,7 @@
+[
+ {"id":"m1","who":"review","text":"The security review flags the number check: a character that is both outside the allowed set and invisible can match two ways in one repeated group."},
+ {"id":"m2","who":"measure","text":"Old pattern, a digit then hidden characters then a letter: 20 hidden characters took 108 ms, 24 took 1084 ms, 26 took 4355 ms."},
+ {"id":"m3","who":"owner-log","text":"Version 0.4.0 was merged but not yet published when this was found. npm still showed 0.3.0."},
+ {"id":"m4","who":"fix","text":"The pattern is now one character class, with invisible letters marked first. A timed test holds the longest text a storyboard allows under 200 ms."},
+ {"id":"m5","who":"checks","text":"Pull request 7 passed its checks and was merged before the release command was sent."}
+]

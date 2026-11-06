@@ -28,6 +28,10 @@
   "author": "Sanjay Krishna Anbalagan",
   "type": "module",
   "exports": {
+    "./storyboard": {
+      "types": "./types/sub/storyboard.d.ts",
+      "default": "./src/storyboard/film.mjs"
+    },
     ".": {
       "types": "./types/index.d.ts",
       "default": "./src/index.mjs"

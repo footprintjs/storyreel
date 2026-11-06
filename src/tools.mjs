@@ -10,6 +10,7 @@
  * `code` are the full render's (makeFilm's own): it writes its video into `out`, and `changes` compares with its cache
  * (fullRender).
  */
+import {briefTool, createTool, shapesTool} from './storyboard/create.mjs';
 import path from 'node:path';
 import {existsSync, readFileSync} from 'node:fs';
 import {isDeepStrictEqual} from 'node:util';
@@ -570,4 +571,9 @@ export const TOOLS = Object.freeze({
       every: `seconds between frames (${TOOL_DEFAULTS.every})`, per: `frames a sheet (${TOOL_DEFAULTS.per})`, width: `each sheet's width in pixels, 100–4000 (${TOOL_DEFAULTS.sheetWidth})`}},
   strip: {run: strip, picture: true, about: 'A fast move frame by frame: consecutive frames around one moment, side by side, as a PNG — to catch a pop, a jump or two things crossing.',
     args: {at: 'the moment: scene+seconds (as the timeline prints a scene\'s times), seconds or m:ss on the film clock, or what is said there — scene:phrase or scene:{moment}, +seconds after either (required)', frames: `how many frames (${TOOL_DEFAULTS.frames})`, fps: `frames a second (${TOOL_DEFAULTS.fps})`, width: `the picture's width in pixels, 100–4000 (${TOOL_DEFAULTS.width})`}},
+  shapes: {run: shapesTool, load: 'flags', about: 'The shapes a story can take, and how to fill each, as JSON a model can read: where a film from a conversation starts. No project needed.', args: {}},
+  brief: {run: briefTool, load: 'flags', about: 'What a model needs to write a storyboard: the instructions, and a conversation kept apart as material. No project needed.',
+    args: {shape: 'the shape to write', conversation: 'a JSON file in the project: [{id, who?, text}], the messages its claims may cite'}},
+  create: {run: createTool, load: 'flags', about: 'A film\'s folder from a storyboard: every mistake named at once, checked against a conversation when one is named, and drawn as the film\'s storyboard and recipe. A folder create did not make is refused. No project needed.',
+    args: {from: 'the storyboard: a JSON file in the project', to: 'the new folder, in the project', conversation: 'a JSON file in the project: [{id, who?, text}], the messages its claims cite'}},
 });
