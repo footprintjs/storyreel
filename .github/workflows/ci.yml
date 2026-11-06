@@ -19,7 +19,7 @@ jobs:
       - uses: actions/cache@v4   # ffmpeg's packages: the mirror can be very slow, and apt checks each one's hash, so a saved copy is safe
         with:
           path: ~/apt-ffmpeg
-          key: apt-ffmpeg-ubuntu-24.04-v1
+          key: ci-apt-ffmpeg-ubuntu-24.04-v1
       - run: |
           mkdir -p ~/apt-ffmpeg/partial
           sudo apt-get update
@@ -45,7 +45,7 @@ jobs:
       - uses: actions/cache@v4   # ffmpeg's packages: the mirror can be very slow, and apt checks each one's hash, so a saved copy is safe
         with:
           path: ~/apt-ffmpeg
-          key: apt-ffmpeg-ubuntu-24.04-v1
+          key: ci-apt-ffmpeg-ubuntu-24.04-v1
       - run: |
           mkdir -p ~/apt-ffmpeg/partial
           sudo apt-get update

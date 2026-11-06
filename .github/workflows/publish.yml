@@ -17,16 +17,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: actions/cache@v4   # ffmpeg's packages: the mirror can be very slow, and apt checks each one's hash, so a saved copy is safe
-        with:
-          path: ~/apt-ffmpeg
-          key: apt-ffmpeg-ubuntu-24.04-v1
-      - run: |
-          mkdir -p ~/apt-ffmpeg/partial
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends -o Dir::Cache::archives="$HOME/apt-ffmpeg" ffmpeg
-          sudo chown -R "$USER" ~/apt-ffmpeg
-        timeout-minutes: 10
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg   # a release restores no cache: packages come from the signed repository
+        timeout-minutes: 30
       - run: npm ci
       # The same gates as CI (ci.yml): a release never publishes what CI would refuse. The whole suite with a temp
       # folder of its own, nothing left in it (scripts/temp-hygiene.mjs); then publint and attw.
@@ -52,16 +44,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: actions/cache@v4   # ffmpeg's packages: the mirror can be very slow, and apt checks each one's hash, so a saved copy is safe
-        with:
-          path: ~/apt-ffmpeg
-          key: apt-ffmpeg-ubuntu-24.04-v1
-      - run: |
-          mkdir -p ~/apt-ffmpeg/partial
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends -o Dir::Cache::archives="$HOME/apt-ffmpeg" ffmpeg
-          sudo chown -R "$USER" ~/apt-ffmpeg
-        timeout-minutes: 10
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg   # a release restores no cache: packages come from the signed repository
+        timeout-minutes: 30
       - run: npm ci
       - run: npm run test:skills:render
 
