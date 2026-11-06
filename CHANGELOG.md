@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.27.0 — narrate: one command for a film's voice
 
 - **`storyreel narrate`: one command for a film's voice.** It says what each scene says and whether it is voiced, for nothing.
   With `--kit <folder>` it voices what is missing, and `--takes <folder>` uses your own recordings. `--only 1-2` picks a few
