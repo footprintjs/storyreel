@@ -14,12 +14,7 @@ const CLI = fileURLToPath(new URL('../src/cli.mjs', import.meta.url)), FOUND = f
 const folders = [], folder = () => { const dir = mkdtempSync(path.join(tmpdir(), 'narrate-')); folders.push(dir); return dir; };
 test.after(() => folders.forEach(dir => rmSync(dir, {recursive: true, force: true})));
 const run = (cwd, ...args) => spawnSync(process.execPath, [CLI, ...args], {cwd, encoding: 'utf8'});
-/** The film's inputs as the command line reads them: from its own folder, where a config's relative paths mean what they say. */
-async function inputsAt(dir) {
-  const from = process.cwd();
-  process.chdir(dir);
-  try { return (await readInputs({cwd: dir})).inputs; } finally { process.chdir(from); }
-}
+const inputsAt = async dir => (await readInputs({cwd: dir})).inputs;
 
 /** A project of the found film, as `create` makes it. */
 function createdFilm() {
@@ -106,7 +101,7 @@ test('a silent scene is left to the clock, and a line said twice gets a sound of
   const {inputs, said: board} = await readInputs({cwd: dir});
   const copy = path.join(folder(), 'copy');
   mkdirSync(copy);
-  const paced = await pacedTimings({storyboard: board, narrationDir: path.join(dir, inputs.narrationDir), pacing: {voiceSpeed: 1, sceneTail: .5, holds: [{scene: 'a', after: 'same words', seconds: .3}]}, copy});
+  const paced = await pacedTimings({storyboard: board, narrationDir: inputs.narrationDir, pacing: {voiceSpeed: 1, sceneTail: .5, holds: [{scene: 'a', after: 'same words', seconds: .3}]}, copy});
   assert.deepEqual(paced.scenes.map(s => s.id), ['a', 'b', 'c'], 'a render reads this voice folder and paces a copy');
   assert.ok(paced.scenes[0].duration > scenes[0].duration);
   assert.deepEqual(readdirSync(path.join(dir, 'voice')).filter(f => f.includes('unpaced')), [], 'never in place');
@@ -126,6 +121,7 @@ test('it refuses what it cannot do, naming the fix, before any voicing', () => {
   assert.equal(readFileSync(path.join(foreign, 'voice', 'timings.json'), 'utf8'), '{"scenes":[]}');
   refused(film(plain), /name the voice too/, '--only', '1');
   refused(film(plain), /recordings need the voice kit too/, '--takes', 'x');
+  refused(film(plain), /--only is empty/, '--kit', kit, '--only', '');
   refused(film(plain), /is not a step/, '--kit', kit, '--only', 'first');
   refused(film(plain), /no voice settings/, '--kit', folder());
   const digits = film([{id: 'a', narration: 'It took 16 tries.'}]);
@@ -162,18 +158,45 @@ test('over MCP: a call reads, a voice is the start\'s to give, and it reaches na
   assert.match(textOf(await callTool('narrate', {only: '1'}, voice)), /narrate takes no "only" \(it takes say\)/);
   assert.match(textOf(await callTool('narrate', {say: '--kit /evil'}, voice)), /would be read as a flag/);
   assert.match(textOf(await callTool('narrate', {say: 'first'}, voice)), /is not a step/);
+  assert.match(textOf(await callTool('narrate', {say: '  '}, voice)), /say is "all"/);
   assert.match(textOf(await callTool('narrate', {}, voice)), /^0 of 2 scenes voiced/, 'asking never starts a long run, even with a voice');
   assert.deepEqual(said(), []);
   const one = await callTool('narrate', {say: '1'}, voice);
   assert.match(textOf(one), /^1 of 2 scenes voiced/);
   assert.doesNotMatch(textOf(one), /a line a kit prints/);
-  assert.match(textOf(await callTool('narrate', {say: 'all'}, voice)), /^2 of 2 scenes voiced/);
+  const [whole, second] = await Promise.all([callTool('narrate', {say: 'all'}, voice), callTool('narrate', {say: 'all'}, voice)]);
+  assert.match(textOf(whole), /^2 of 2 scenes voiced/);
+  assert.equal(second.isError, true);
+  assert.match(textOf(second), /being voiced already/, 'one voicing at a time');
   assert.equal(said().length, 2);
+  assert.match(textOf(await callTool('narrate', {say: 'all'}, voice)), /^2 of 2 scenes voiced/, 'and free again once it is done');
   // the film's config sees no voice flag from any other tool's call
   const flagsSeen = path.join(dir, 'flags.json');
   writeFileSync(path.join(dir, 'storyreel.config.mjs'), `${readFileSync(path.join(dir, 'storyreel.config.mjs'), 'utf8').replace('film: () => ({', `film: (flags) => (writeFileSync(${JSON.stringify(flagsSeen)}, JSON.stringify(flags)), {`).replace("import {readFileSync}", "import {readFileSync, writeFileSync}")}`);
   await callTool('timeline', {}, voice);
   assert.equal(JSON.parse(readFileSync(flagsSeen, 'utf8')).kit, undefined);
+});
+
+test('numbers said in words: only those standing whole, a comma only grouping thousands, and the film still compiles', async () => {
+  const {filmFromBoard} = await import('../src/storyboard/film.mjs');
+  const {readStoryboard} = await import('footprint-story/storyboard');
+  const story = JSON.parse(readFileSync(path.join(FOUND, 'story.json'), 'utf8'));
+  const said = line => {
+    const edited = {...structuredClone(story), intro: line};
+    const {storyboard} = filmFromBoard(readStoryboard(edited));
+    return storyboard.scenes[0].say ?? [];
+  };
+  assert.deepEqual(said('In 2026 we took 1,000 tries and 12.05 s, about 20% of it on version 0.4.0, here at the start.'),
+    [['2026', 'two thousand twenty-six'], ['1,000', 'one thousand'], ['12.05', 'twelve point zero five'], ['20%', 'twenty percent'], ['0.4.0', 'zero point four point zero']]);
+  assert.deepEqual(said('Then 1,2,3 came along and that was the very start of it.').map(([shown]) => shown), ['1', '2', '3']);
+  assert.deepEqual(said('The 1st pattern from the 1990s in a 3D view, using GPT-4o at 5pm, ran 3x longer.').map(([shown]) => shown), [], 'digits joined to letters are no slot');
+});
+
+test('a voice folder is the project\'s, wherever the command was run from', () => {
+  const dir = film([{id: 'a', narration: 'Some plain words here.'}], {extra: `, pacing: {sceneTail: 0.8, holds: []}`}), {kit} = fakeKit(folder());
+  const parent = path.dirname(dir), at = path.basename(dir);
+  assert.equal(run(parent, 'narrate', '--cwd', at, '--config', 'storyreel.config.mjs', '--kit', kit).status, 0);
+  assert.ok(existsSync(path.join(dir, 'voice', 'timings.json')));
 });
 
 test('a server\'s voice is read from where it was started, whatever folder its calls run in', () => {

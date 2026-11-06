@@ -77,10 +77,14 @@ function flagsOf(name, args, {defaults, config}) {
   if (name === 'narrate' && say !== undefined) {
     if (kit === undefined) return {refused: 'this server was started with no voice, so narrate can only read: restart it with --kit <your voice kit>'};
     const steps = String(say).trim();
+    if (!steps) return {refused: 'say is "all", or scenes like "1-3,7"'};
     voice = {kit, ...(takes === undefined ? {} : {takes}), ...(steps === 'all' ? {} : {only: steps})};
   }
   return {flags: Object.entries({...common, ...rest, ...voice, ...(config === undefined ? {} : {config})}).flatMap(([k, v]) => [`--${k}`, String(v)])};
 }
+
+/** The projects this server is voicing: a call that timed out leaves its voicing running, so a second one is refused, not started beside it. */
+const voicing = new Set();
 
 /** A call answered as an error: its words, as MCP content. */
 const failed = text => ({isError: true, content: [{type: 'text', text}]});
@@ -117,8 +121,11 @@ export function callTool(name, args = {}, {defaults = {}, config, cwd = process.
   if (refused) return Promise.resolve(failed(refused));
   const {flags, refused: noVoice} = flagsOf(name, args, {defaults, config});
   if (noVoice) return Promise.resolve(failed(noVoice));
+  const voices = name === 'narrate' && args.say !== undefined;
+  if (voices && voicing.has(cwd)) return Promise.resolve(failed('this project is being voiced already: call narrate with no say to see how far it has got'));
+  if (voices) voicing.add(cwd);
   const picturing = TOOLS[name].picture === true, channel = picturing ? {stdio: ['pipe', 'pipe', 'pipe', 'pipe'], env: {...process.env, [PICTURE_FD]: '3'}} : {};
-  return new Promise(resolve => {
+  const answered = new Promise(resolve => {
     let child;
     try { child = spawn(process.execPath, [CLI, name, ...flags], {cwd, ...channel}); } catch (e) { return resolve(failed(`storyreel ${name}: ${e.message}`)); }   // a value it cannot pass (a NUL byte)
     const out = [], err = [], sent = [];
@@ -133,6 +140,7 @@ export function callTool(name, args = {}, {defaults = {}, config, cwd = process.
       resolve({content});
     });
   });
+  return voices ? answered.finally(() => voicing.delete(cwd)) : answered;
 }
 
 /** A JSON-RPC id: a string, a number or null (it is echoed back in the answer, so nothing else is taken). */

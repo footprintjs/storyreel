@@ -62,10 +62,11 @@ export async function readInputs({config = CONFIG, cwd = process.cwd(), ...flags
   const inputs = await made.film(flags);
   for (const key of ['storyboard', 'recipe']) if (!inputs?.[key]) throw new Error(`${config}: film() must return the ${key}`);
   if ((inputs.out ?? null) !== null && typeof inputs.out !== 'string') throw new Error(`${config}: film()'s out is the out folder's path as text (out: 'out'), not ${typeof inputs.out === 'object' ? 'an object' : JSON.stringify(inputs.out)}: a URL's path is fileURLToPath(url)`);
-  const voiced = Boolean(inputs.narrationDir && existsSync(path.join(inputs.narrationDir, 'timings.json')));
+  const narrationDir = inputs.narrationDir ? path.resolve(cwd, inputs.narrationDir) : inputs.narrationDir;   // the project's, wherever the command was run from
+  const voiced = Boolean(narrationDir && existsSync(path.join(narrationDir, 'timings.json')));
   const said = castFilm(inputs).storyboard;
-  const raw = inputs.timings ?? (voiced ? JSON.parse(readFileSync(path.join(inputs.narrationDir, 'timings.json'), 'utf8')) : evenTimings(said));
-  return {inputs: {...inputs, voiced}, cwd, said, raw};
+  const raw = inputs.timings ?? (voiced ? JSON.parse(readFileSync(path.join(narrationDir, 'timings.json'), 'utf8')) : evenTimings(said));
+  return {inputs: {...inputs, ...(narrationDir ? {narrationDir} : {}), voiced}, cwd, said, raw};
 }
 
 /** Timings paced by the config's pacing (holds given, or the config's own), as makeFilm paces them; given timings as they are. */

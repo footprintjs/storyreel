@@ -14,7 +14,7 @@ import {sceneScript} from './script.mjs';
 
 export const NARRATE_ABOUT = 'What each scene says, voiced or not, and how far the narration has got. With a voice kit it voices what is missing, keeping every clip it finishes, and times the film by the voice once every scene is voiced.';
 export const NARRATE_ARGS = Object.freeze({kit: 'your voice kit\'s folder: it voices what is missing (a kit runs Python on this machine)', takes: 'a folder of your own recordings, lined up by the kit\'s aligner instead', only: 'the scenes to voice now, by number, like 1-3,7'});
-export const NARRATE_MCP_ARGS = Object.freeze({say: 'voice what is missing: "all", or scenes like "1-3,7"; left out, it only reads. It needs a server started with --kit, takes minutes, and keeps every clip it finishes, so a call that times out can be made again'});
+export const NARRATE_MCP_ARGS = Object.freeze({say: 'voice what is missing: "all", or scenes like "1-3,7"; left out, it only reads. It needs a server started with --kit, takes minutes, and keeps every clip it finishes. A call that times out leaves it running: call narrate with no say to see how far it has got'});
 
 const MADE_BY_NARRATE = '.storyreel-narrate', TIMINGS = 'timings.json', SCENE_SOUND = /^said-\d+\.wav$/;
 
@@ -55,6 +55,7 @@ function joinVoice(folder, voiced) {
 
 /** `storyreel narrate [--kit folder] [--takes folder] [--only 1-3,7]`: as text. With no voice it reads, and joins what is already voiced. */
 export async function narrateTool({inputs, cwd, said}, {kit, takes, only} = {}) {
+  if (only !== undefined && !String(only).trim()) throw new Error('--only is empty: name the scenes to voice, like 1-3,7, or leave it out to voice them all');
   if (only && !kit) throw new Error('--only picks the scenes to voice: name the voice too, --kit <folder>');
   const folder = voiceFolder({inputs, cwd}), cache = path.join(folder, 'cache'), lines = said.scenes.map((s, i) => ({id: s.id, text: checkScene(s, i) === 'silent' ? '' : spokenText(s)}));
   const unsaid = unsaidNumbers(said), digits = unsaid.map(u => `"${u.text}" in ${u.scene}`).join(', ');

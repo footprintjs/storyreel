@@ -51,8 +51,12 @@ function cardOf(scene, soloFound) {
   return {head, text: `${scene.title}: ${beat.name}`};
 }
 
-/** A number as written, with its percent sign when it has one: 4355, 1,000, 0.4.0, 20%. */
-const NUMBER = /\d+(?:[.,]\d+)*%?/g;
+/**
+ * A number standing whole, as a slot must (footprint-story · checkSlots), with its percent sign when it has one: 4355, 1,000,
+ * 0.4.0, 20%. A comma only groups thousands, so 1,2,3 is three numbers. Digits joined to letters (1st, 1990s, 3D) are no slot:
+ * narrate names them before any voicing, for the words to be changed.
+ */
+const NUMBER = /(?<![\p{L}\p{N}])\d+(?:,\d{3})*(?:\.\d+)*%?(?![\p{L}\p{N}])/gu;
 const AUTO = autoRules();
 const inWords = (digits) => spokenMap(digits, {rules: AUTO}).spoken;
 
