@@ -25,7 +25,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends -o Dir::Cache::archives="$HOME/apt-ffmpeg" ffmpeg
           sudo chown -R "$USER" ~/apt-ffmpeg
-        timeout-minutes: 10
+        timeout-minutes: 25
       - run: npm ci
       # The whole suite with a temp folder of its own; nothing may be left in it (scripts/temp-hygiene.mjs).
       - run: npm run test:temp
@@ -51,6 +51,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends -o Dir::Cache::archives="$HOME/apt-ffmpeg" ffmpeg
           sudo chown -R "$USER" ~/apt-ffmpeg
-        timeout-minutes: 10
+        timeout-minutes: 25
       - run: npm ci
       - run: npm run test:skills:render
