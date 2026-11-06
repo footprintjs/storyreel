@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **A refused storyboard no longer has to be written again.** `storyreel create` still names every problem at once, now grouped
+  by piece, and each piece comes with what it says now and the messages it cites. Fix those pieces where they stand and run
+  `create` again. The answer stays short however big the board or the chat is. It needs `footprint-story` with
+  `storyboardFixBriefs`. `node bench/storyboard-fix-bytes.mjs` measures it.
+- **A problem a film finds names the place you wrote it.** `checked[0]`, not `checked-1`, and a brace names the field that holds
+  it (`intro`, `closing`, `next[1]`), not the scene.
 - **`storyreel narrate`: one command for a film's voice.** It says what each scene says and whether it is voiced, for nothing.
   With `--kit <folder>` it voices what is missing, and `--takes <folder>` uses your own recordings. `--only 1-2` picks a few
   scenes. Once every scene is voiced, it writes what a render reads, and the film is timed by the voice. A film stays silent

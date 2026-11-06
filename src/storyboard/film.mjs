@@ -73,15 +73,24 @@ function withNumbersSaid(scene) {
   return say.length ? {...scene, say} : scene;
 }
 
+/** Every word a scene says, each at the place it was written: a problem names what the writer wrote, not the scene it became. `place`: a card's own. */
+function wordsAt(scene, place) {
+  const {beat} = scene;
+  if (scene.part === 'title') return [['title', scene.title], ['subtitle', beat.subtitle], ['intro', scene.narration]];
+  if (scene.part === 'next') return [['labels.next', scene.title], ['closing', scene.narration], ...beat.points.map((point, i) => [`next[${i}]`, point])];
+  return [scene.title, scene.narration, beat.name, beat.line].map((words) => [place, words]);
+}
+
 /** {storyboard, recipe}: a film's own inputs. Throws, its `problems` listing everything a film cannot show, each at its place. */
 export function filmFromBoard(board) {
   if (board.shape !== 'what-we-found') throw Object.assign(new TypeError(`a film draws "what-we-found" for now, and this board is "${board.shape}"`), {problems: [{at: 'shape', message: 'a film draws "what-we-found" for now'}]});
   const of = (part) => board.scenes.filter((s) => s.part === part), problems = [], scenes = [], stages = [];
   const say = (at, message) => problems.push({at, message});
+  const placeOf = (scene) => `${scene.part}[${of(scene.part).indexOf(scene)}]`;
   // a film's script reads braces as its own marks ({moment}, {@who}"…", {{role}}), and has no way to write one as a word: what a storyboard says stays words
   for (const s of board.scenes) {
-    const words = [s.title, s.narration, s.beat.subtitle, s.beat.name, s.beat.line, ...(s.beat.points ?? [])];
-    if (words.some((w) => w && /[{}]/.test(w))) say(s.id, 'has a brace, which a film would read as its own script: take it out');
+    const braced = wordsAt(s, placeOf(s)).filter(([, words]) => words && /[{}]/.test(words)).map(([at]) => at);
+    for (const at of new Set(braced)) say(at, 'has a brace, which a film would read as its own script: take it out');
   }
   const [title] = of('title'), found = of('found'), soloFound = found.length === 1 && found[0].title.length <= MOST_TITLED;
   const least = titleLines(title.title).length + (title.beat.subtitle ? 1 : 0) + 3;
@@ -95,8 +104,8 @@ export function filmFromBoard(board) {
       scenes.push({id, title: board.labels[part], narration});
       const cards = told.map((s) => {
         const card = cardOf(s, soloFound);
-        if (card.text.length > MOST_ON_CARD) say(s.id, `says ${card.text.length} characters on its card, and ${MOST_ON_CARD} fit in a film: shorten it`);
-        return {at: [id, moment(s.narration, narration, s.id)], ...card};
+        if (card.text.length > MOST_ON_CARD) say(placeOf(s), `says ${card.text.length} characters on its card, and ${MOST_ON_CARD} fit in a film: shorten it`);
+        return {at: [id, moment(s.narration, narration, placeOf(s))], ...card};
       });
       // the label says the part: as the chip above a headline of its own, or as the title itself, never as both
       stages.push(part === 'found' && soloFound ? {type: 'summary', scene: id, chip: board.labels[part], title: found[0].title, cards} : {type: 'summary', scene: id, title: board.labels[part], cards});
