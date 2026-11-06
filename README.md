@@ -172,6 +172,17 @@ What to expect from it:
 
 `storyreel narrate` is the one command for it. With a local voice kit, it voices what is missing and times the film by the voice:
 
+```mermaid
+flowchart LR
+  said[What each scene says] --> named{A voice named?}
+  named -- no --> read[Read the clips and say what is left]
+  named -- yes --> voice[Voice what is missing and keep each clip]
+  voice --> read
+  read --> whole{Every scene voiced?}
+  whole -- yes --> timed[The film is timed by the voice]
+  whole -- no --> silent[The film stays silent]
+```
+
 ```bash
 npx storyreel narrate                                   # what each scene says, voiced or not; asking costs nothing
 npx storyreel narrate --kit ../voice-kit                # voices what is missing, and keeps every clip it finishes
