@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.26.0 — a film from a conversation
 
 - **A film from a conversation.** `storyreel shapes`, `storyreel brief` and `storyreel create` take a storyboard an agent wrote
   on a shape from `footprint-story/storyboard` and make a film's folder: every mistake named at once, numbers checked against

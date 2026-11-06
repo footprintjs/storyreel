@@ -18,10 +18,8 @@ storyboard → kit → recipe → timings (`evenTimings(storyboard)`, or a voice
 → read `making-of.json` → `approveFilm` the draft the person watched (the final render refuses when anything it was
 made from changed) → `makeRelease` for each platform. The `storyreel-cartoon` skill walks it with a working film.
 
-**From a conversation, with no recipe to write:** `npx storyreel shapes`, then `npx storyreel brief --shape what-we-found
---conversation chat.json` gives the instructions for writing a storyboard, and `npx storyreel create --from story.json --to
-my-film --conversation chat.json` names every mistake at once and makes the film's folder. Then the edit loop below. Over MCP
-these are the tools `shapes`, `brief` and `create`: start the server in the conversation's folder and pass `story` and `to: "."`.
+**From a conversation, with no recipe to write:** `shapes`, `brief`, then `create`, on the command line or over MCP. The
+README's "A film from a conversation" has the steps.
 
 ## The edit loop
 
