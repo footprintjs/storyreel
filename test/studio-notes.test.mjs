@@ -129,7 +129,7 @@ test('storyreel studio, then storyreel feedback (and its MCP tool): an agent rea
   assert.match(read.stdout, /^1 open note from your studio in feedback\.md \(tick one when done: storyreel feedback --done 1\):\n1\. note:[0-9a-f]{8} · at "one\+2\.00" \(0:02\.0\) · entry "story" · line 2 of "recipe\.json" · said ".+"\n {3}note: the second word lands too early\n?$/);
   const mcp = await callTool('feedback', {}, {cwd: dir});
   assert.equal(mcp.isError, undefined, JSON.stringify(mcp)); assert.match(mcp.content[0].text, /note: the second word lands too early/);
-  assert.match((await callTool('feedback', {config: 'other.mjs'}, {cwd: dir})).content[0].text, /config and cwd are fixed when the MCP server starts/);
+  assert.match((await callTool('feedback', {config: 'other.mjs'}, {cwd: dir})).content[0].text, /config, cwd, kit and takes are fixed when the MCP server starts/);
   const ticked = feedback('--done', '1');
   assert.equal(ticked.status, 0, ticked.stderr); assert.match(ticked.stdout, /^ticked 1 in .*feedback\.md\nno open note from your studio/);
   assert.match(readFileSync(path.join(dir, 'feedback.md'), 'utf8'), /\n- \[x\] 0:02\.0 · one\+2\.00 · story/);

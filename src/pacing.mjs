@@ -120,7 +120,7 @@ function quietestPoint({rate, samples}, from, to) {
 export function planHolds(scene, timing, holds, wav) {
   if (scene.silent !== undefined) { const hold = holds.find(h => h.scene === scene.id); if (hold) refuseSilentHold(scene, hold, 'hold'); }
   const speech = speechIndex(scene, timing);
-  if (!speech) throw new Error(`Pacing needs complete token timings for ${scene.id}`);
+  if (!speech) throw new Error(`Pacing needs complete token timings for ${scene.id}: its words may have changed since they were voiced, so voice them again (storyreel narrate, or your own voice step)`);
   return holds.filter(h => h.scene === scene.id).map(hold => {
     const from = holdFrom(speech, hold, scene);
     const next = timing.words.find(w => w.start >= from - 1e-6 && w.text.replace(/[^\p{L}\p{N}]/gu, ''));
@@ -177,7 +177,7 @@ export function paceTimings(board, timings, pacing) {
     const timing = timings.scenes[index];
     if (timing?.id !== scene.id) throw new Error('Pacing scene identity mismatch');   // refusal: internal (withDirections lines the timings up first)
     const speech = speechIndex(scene, timing);
-    if (!speech) throw new Error(`Pacing needs complete word timings for ${scene.id}`);
+    if (!speech) throw new Error(`Pacing needs complete word timings for ${scene.id}: its words may have changed since they were voiced, so voice them again (storyreel narrate, or your own voice step)`);
     const plan = pacing.holds.filter(h => h.scene === scene.id)
       .map(hold => ({after: hold.after, seconds: hold.seconds, time: holdFrom(speech, hold, scene)})).sort((a, b) => a.time - b.time);
     // Like applyPacing: the last word's end plus EVERY hold (one after the last phrase shifts no word) plus the tail —

@@ -19,7 +19,7 @@ storyboard → kit → recipe → timings (`evenTimings(storyboard)`, or a voice
 made from changed) → `makeRelease` for each platform. The `storyreel-cartoon` skill walks it with a working film.
 
 **From a conversation, with no recipe to write:** `shapes`, `brief`, then `create`, on the command line or over MCP. The
-README's "A film from a conversation" has the steps.
+README's "A film from a conversation" has the steps. For a voice: `narrate --kit <folder>`.
 
 ## The edit loop
 

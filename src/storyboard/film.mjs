@@ -3,6 +3,7 @@
  * recipe (what is drawn when each phrase is said). Plain data in, plain data out, so the words a model wrote stay words: they
  * only ever reach a film as text to speak and to draw. A "what we found" board is a title on the whiteboard, then paper cards.
  */
+import {autoRules, spokenMap} from 'footprint-story';
 import {normSpeech} from 'footprint-story';
 
 const PER_STAGE = 3;       // what a summary stage draws side by side
@@ -50,6 +51,28 @@ function cardOf(scene, soloFound) {
   return {head, text: `${scene.title}: ${beat.name}`};
 }
 
+/**
+ * A number standing whole, as a slot must (footprint-story · checkSlots), with its percent sign when it has one: 4355, 1,000,
+ * 0.4.0, 20%. A comma only groups thousands, so 1,2,3 is three numbers. Digits joined to letters (1st, 1990s, 3D) are no slot:
+ * narrate names them before any voicing, for the words to be changed.
+ */
+const NUMBER = /(?<![\p{L}\p{N}])\d+(?:,\d{3})*(?:\.\d+)*%?(?![\p{L}\p{N}])/gu;
+const AUTO = autoRules();
+const inWords = (digits) => spokenMap(digits, {rules: AUTO}).spoken;
+
+/** A written number as a voice says it: the whole part as one number, what follows a point digit by digit, so 12.05 is not 12.5. */
+function saidNumber(shown) {
+  const [whole, ...parts] = shown.replace(/%$/, '').replace(/,/g, '').split('.');
+  const said = [inWords(whole), ...parts.map((part) => [...part].map(inWords).join(' '))].join(' point ');
+  return shown.endsWith('%') ? `${said} percent` : said;
+}
+
+/** A scene with its numbers said in words (`say`: the captions keep the digits). A board's numbers are plain digits, which a voice garbles. */
+function withNumbersSaid(scene) {
+  const say = (scene.narration.match(NUMBER) ?? []).map((shown) => [shown, saidNumber(shown)]);
+  return say.length ? {...scene, say} : scene;
+}
+
 /** {storyboard, recipe}: a film's own inputs. Throws, its `problems` listing everything a film cannot show, each at its place. */
 export function filmFromBoard(board) {
   if (board.shape !== 'what-we-found') throw Object.assign(new TypeError(`a film draws "what-we-found" for now, and this board is "${board.shape}"`), {problems: [{at: 'shape', message: 'a film draws "what-we-found" for now'}]});
@@ -91,5 +114,5 @@ export function filmFromBoard(board) {
     stages.push({type: 'summary', scene: id, title: board.labels.next, cards});
   });
   if (problems.length) throw Object.assign(new TypeError(`this storyboard has ${problems.length} problem${problems.length === 1 ? '' : 's'} a film cannot show:\n- ${problems.map((p) => `${p.at} ${p.message}`).join('\n- ')}`), {problems});
-  return {storyboard: {title: board.title, scenes}, recipe: {story: titleStory(title), stages}};
+  return {storyboard: {title: board.title, scenes: scenes.map(withNumbersSaid)}, recipe: {story: titleStory(title), stages}};
 }

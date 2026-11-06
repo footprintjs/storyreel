@@ -11,6 +11,7 @@
  * (fullRender).
  */
 import {briefTool, createTool, shapesTool} from './storyboard/create.mjs';
+import {narrateTool, NARRATE_ARGS, NARRATE_MCP_ARGS, NARRATE_ABOUT} from './narrate.mjs';
 import path from 'node:path';
 import {existsSync, readFileSync} from 'node:fs';
 import {isDeepStrictEqual} from 'node:util';
@@ -61,10 +62,11 @@ export async function readInputs({config = CONFIG, cwd = process.cwd(), ...flags
   const inputs = await made.film(flags);
   for (const key of ['storyboard', 'recipe']) if (!inputs?.[key]) throw new Error(`${config}: film() must return the ${key}`);
   if ((inputs.out ?? null) !== null && typeof inputs.out !== 'string') throw new Error(`${config}: film()'s out is the out folder's path as text (out: 'out'), not ${typeof inputs.out === 'object' ? 'an object' : JSON.stringify(inputs.out)}: a URL's path is fileURLToPath(url)`);
-  const voiced = Boolean(inputs.narrationDir && existsSync(path.join(inputs.narrationDir, 'timings.json')));
+  const narrationDir = inputs.narrationDir ? path.resolve(cwd, inputs.narrationDir) : inputs.narrationDir;   // the project's, wherever the command was run from
+  const voiced = Boolean(narrationDir && existsSync(path.join(narrationDir, 'timings.json')));
   const said = castFilm(inputs).storyboard;
-  const raw = inputs.timings ?? (voiced ? JSON.parse(readFileSync(path.join(inputs.narrationDir, 'timings.json'), 'utf8')) : evenTimings(said));
-  return {inputs: {...inputs, voiced}, cwd, said, raw};
+  const raw = inputs.timings ?? (voiced ? JSON.parse(readFileSync(path.join(narrationDir, 'timings.json'), 'utf8')) : evenTimings(said));
+  return {inputs: {...inputs, ...(narrationDir ? {narrationDir} : {}), voiced}, cwd, said, raw};
 }
 
 /** Timings paced by the config's pacing (holds given, or the config's own), as makeFilm paces them; given timings as they are. */
@@ -576,4 +578,5 @@ export const TOOLS = Object.freeze({
     args: {shape: 'the shape to write', conversation: 'a JSON file in the project: [{id, who?, text}], the messages its claims may cite'}},
   create: {run: createTool, load: 'flags', about: 'A film\'s folder from a storyboard: every mistake named at once, checked against a conversation when one is named, and drawn as the film\'s storyboard and recipe. A folder create did not make is refused. No project needed.',
     args: {from: 'the storyboard: a JSON file in the project (or give story)', story: 'the storyboard: its JSON, for an assistant that cannot write a file (or give from)', to: 'the new folder, in the project, or . for the project itself', conversation: 'a JSON file in the project: [{id, who?, text}], the messages its claims cite'}},
+  narrate: {run: narrateTool, load: 'config', about: NARRATE_ABOUT, args: NARRATE_ARGS, mcpArgs: NARRATE_MCP_ARGS},
 });

@@ -28,13 +28,14 @@ const CLI = fileURLToPath(new URL('./cli.mjs', import.meta.url));
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 const REQUIRED = {strip: ['at'], brief: ['shape'], create: ['to']};   // part takes its scenes or a window (from, to), still its moments or a scene's beats: each says which it lacks
 
-/** What only the server's start chooses: the project's config (a module the command line runs) and its folder. */
-export const FIXED_AT_START = Object.freeze(['config', 'cwd']);
-const FIXED_RULE = 'config and cwd are fixed when the MCP server starts; restart it with --config (or --cwd) to use another';
+/** What only the server's start chooses: the project's config (a module the command line runs), its folder, and a voice (a kit runs Python on this machine). */
+export const FIXED_AT_START = Object.freeze(['config', 'cwd', 'kit', 'takes']);
+const FIXED_RULE = 'config, cwd, kit and takes are fixed when the MCP server starts; restart it with --config, --cwd, --kit or --takes to use another';
 
 /** The tools as MCP lists them: name, what it does, its arguments (strings) and which are required — and no others. */
+const argsOf = t => t.mcpArgs ?? t.args;   // what a call may give: narrate's voice is the start's, so a call only says what to voice
 export const mcpTools = () => Object.entries(TOOLS).map(([name, t]) => ({name, description: t.about,
-  inputSchema: {type: 'object', properties: Object.fromEntries(Object.entries(t.args).map(([a, d]) => [a, {type: 'string', description: d}])), ...(REQUIRED[name] ? {required: REQUIRED[name]} : {}), additionalProperties: false}}));
+  inputSchema: {type: 'object', properties: Object.fromEntries(Object.entries(argsOf(t)).map(([a, d]) => [a, {type: 'string', description: d}])), ...(REQUIRED[name] ? {required: REQUIRED[name]} : {}), additionalProperties: false}}));
 
 /**
  * The server's start, from its flags: the project — its config (as given: the command line reads it from the folder)
@@ -42,12 +43,14 @@ export const mcpTools = () => Object.entries(TOOLS).map(([name, t]) => ({name, d
  * which each call is given (defaults).
  */
 export function startOf(flags = {}, from = process.cwd()) {
-  const {config, cwd, ...defaults} = flags, folder = path.resolve(from, cwd ?? '.');
+  const {config, cwd, ...rest} = flags, folder = path.resolve(from, cwd ?? '.');
   if (!statSync(folder, {throwIfNoEntry: false})?.isDirectory()) throw new Error(`--cwd ${cwd} is not a folder: start the server on the project's folder`);
+  // a voice is read from where the server was started, whatever folder its calls run in
+  const defaults = {...rest, ...Object.fromEntries(['kit', 'takes'].filter(k => rest[k] !== undefined).map(k => [k, path.resolve(from, rest[k])]))};
   return {defaults, cwd: folder, ...(config === undefined ? {} : {config})};
 }
 
-const takes = name => Object.keys(TOOLS[name].args).join(', ');
+const takes = name => Object.keys(argsOf(TOOLS[name])).join(', ');
 
 /** Why a call is refused before anything runs, or null when it may run (the rule is the header's). */
 export function refusalOf(name, args) {
@@ -57,12 +60,31 @@ export function refusalOf(name, args) {
   if (args === null || typeof args !== 'object' || Array.isArray(args)) return `${name}: the arguments are an object (${takes(name)})`;
   const keys = Object.keys(args);
   if (keys.some(k => FIXED_AT_START.includes(k))) return FIXED_RULE;
-  const other = keys.find(k => !Object.hasOwn(TOOLS[name].args, k));
+  const other = keys.find(k => !Object.hasOwn(argsOf(TOOLS[name]), k));
   if (other !== undefined) return `${name} takes no "${other}" (it takes ${takes(name)}): the rest — the config, the folder, the film's own flags — is fixed when the MCP server starts`;
   const flag = keys.find(k => String(args[k]).startsWith('--'));
   if (flag !== undefined) return `${name}: ${flag} ${JSON.stringify(String(args[flag]))} would be read as a flag: a value never starts with --`;
   return null;
 }
+
+/**
+ * What a call runs with, or a refusal: {flags} or {refused}. A voice reaches narrate alone, and only when the call says what to
+ * voice (say: "all", or scenes like "1-3,7"), so asking how far a narration has got never starts a long run.
+ */
+function flagsOf(name, args, {defaults, config}) {
+  const {kit, takes, ...common} = defaults, {say, ...rest} = args;
+  let voice = {};
+  if (name === 'narrate' && say !== undefined) {
+    if (kit === undefined) return {refused: 'this server was started with no voice, so narrate can only read: restart it with --kit <your voice kit>'};
+    const steps = String(say).trim();
+    if (!steps) return {refused: 'say is "all", or scenes like "1-3,7"'};
+    voice = {kit, ...(takes === undefined ? {} : {takes}), ...(steps === 'all' ? {} : {only: steps})};
+  }
+  return {flags: Object.entries({...common, ...rest, ...voice, ...(config === undefined ? {} : {config})}).flatMap(([k, v]) => [`--${k}`, String(v)])};
+}
+
+/** The projects this server is voicing: a call that timed out leaves its voicing running, so a second one is refused, not started beside it. */
+const voicing = new Set();
 
 /** A call answered as an error: its words, as MCP content. */
 const failed = text => ({isError: true, content: [{type: 'text', text}]});
@@ -97,9 +119,13 @@ const picturesOf = said => [...new Set(said.split('\n').map(line => { try { retu
 export function callTool(name, args = {}, {defaults = {}, config, cwd = process.cwd()} = {}) {
   const refused = refusalOf(name, args);
   if (refused) return Promise.resolve(failed(refused));
-  const flags = Object.entries({...defaults, ...args, ...(config === undefined ? {} : {config})}).flatMap(([k, v]) => [`--${k}`, String(v)]);
+  const {flags, refused: noVoice} = flagsOf(name, args, {defaults, config});
+  if (noVoice) return Promise.resolve(failed(noVoice));
+  const voices = name === 'narrate' && args.say !== undefined;
+  if (voices && voicing.has(cwd)) return Promise.resolve(failed('this project is being voiced already: call narrate with no say to see how far it has got'));
+  if (voices) voicing.add(cwd);
   const picturing = TOOLS[name].picture === true, channel = picturing ? {stdio: ['pipe', 'pipe', 'pipe', 'pipe'], env: {...process.env, [PICTURE_FD]: '3'}} : {};
-  return new Promise(resolve => {
+  const answered = new Promise(resolve => {
     let child;
     try { child = spawn(process.execPath, [CLI, name, ...flags], {cwd, ...channel}); } catch (e) { return resolve(failed(`storyreel ${name}: ${e.message}`)); }   // a value it cannot pass (a NUL byte)
     const out = [], err = [], sent = [];
@@ -114,6 +140,7 @@ export function callTool(name, args = {}, {defaults = {}, config, cwd = process.
       resolve({content});
     });
   });
+  return voices ? answered.finally(() => voicing.delete(cwd)) : answered;
 }
 
 /** A JSON-RPC id: a string, a number or null (it is echoed back in the answer, so nothing else is taken). */

@@ -11,13 +11,14 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg   # a release restores no cache: packages come from the signed repository
+        timeout-minutes: 30
       - run: npm ci
       # The same gates as CI (ci.yml): a release never publishes what CI would refuse. The whole suite with a temp
       # folder of its own, nothing left in it (scripts/temp-hygiene.mjs); then publint and attw.
@@ -37,19 +38,20 @@ jobs:
 
   # The renders the skills describe, as CI runs them (ci.yml · skills-render): the publish waits for them too.
   skills-render:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg   # a release restores no cache: packages come from the signed repository
+        timeout-minutes: 30
       - run: npm ci
       - run: npm run test:skills:render
 
   publish:
     needs: [build, skills-render]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write # OIDC trusted publishing — this job only
