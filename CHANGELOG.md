@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.28.0 — create says what to fix, piece by piece
 
 - **`storyreel create` says what to fix, piece by piece.** It still names every problem at once, now grouped by piece, each piece
   with what it says now and the messages it cites. With `--from`, change those pieces in the file and run `create` again, without
