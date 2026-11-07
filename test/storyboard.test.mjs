@@ -78,7 +78,7 @@ test('a long title goes over lines on the whiteboard', () => {
 test('it names every card too long for a film, and refuses a shape it cannot draw yet', () => {
   const long = 'x'.repeat(60);
   assert.throws(() => film({checked: [{what: long, found: long}], next: ['y'.repeat(90), 'Short']}), (e) => {
-    assert.match(e.message, /1 problem a film cannot show:\n- checked-1 says 122 characters on its card, and 96 fit in a film/);
+    assert.match(e.message, /1 problem a film cannot show:\n- checked\[0\] says 122 characters on its card, and 96 fit in a film/);
     assert.equal(e.problems.length, 1);
     return true;
   });
@@ -112,7 +112,7 @@ test('a card with no moment of its own is refused, and one that shares its openi
     assert.deepEqual(e.problems, [{at: 'next', message: 'is said more than once in its scene, so it has no moment of its own: reword it'}]);
     return true;
   });
-  assert.throws(() => film({checked: [{what: 'A', found: 'b', notes: 'We looked at the disk. It was fine.'}, {what: 'C', found: 'd', notes: 'We looked at the disk.'}]}), /checked-2 is said more than once/);
+  assert.throws(() => film({checked: [{what: 'A', found: 'b', notes: 'We looked at the disk. It was fine.'}, {what: 'C', found: 'd', notes: 'We looked at the disk.'}]}), /checked\[1\] is said more than once/);
   assert.throws(() => film({checked: [{what: 'A', found: 'b', notes: 'The same words.'}, {what: 'C', found: 'd', notes: 'The same words.'}]}), /is said more than once/);
   assert.equal(film({next: ['That is the whole of it', 'Watch it']}).recipe.stages.at(-1).cards[0].at[1], 'That is the');
 });
