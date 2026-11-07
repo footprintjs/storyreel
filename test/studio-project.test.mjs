@@ -139,7 +139,8 @@ test('the project\'s own code is loaded again when it changes: a key the kit lea
     write('kits/colour.mjs', 'export const COLOUR = \'#c30\';\n');
     const red = await until(film, f => f.version > learnt.version);
     assert.equal(red.error, null);
-    assert.ok(!(await frame()).equals(blue), 'the new colour is drawn');
+    // The version alone doesn't say which change it holds: the kit's edit can compile twice on a slow machine, so wait for the colour.
+    assert.ok(!(await until(frame, drawn => !drawn.equals(blue))).equals(blue), 'the new colour is drawn');
     // The kit imports a module not written yet: refused; the moment it is written, the film compiles.
     write('kits/strict.mjs', `import './extra.mjs';\n${STRICT(['kit', 'together'])}`);
     const waiting = await until(film, f => f.error !== null);
