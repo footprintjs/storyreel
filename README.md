@@ -128,6 +128,20 @@ as its own mark, is refused. `examples/found` is a whole one, and
 A film draws `what-we-found` for now: what was checked, what was found, what is still not known, and what happens next.
 `told-twice` is refused, naming what it can draw. The film is silent until it is given a voice, like any other.
 
+### The whole path
+
+```mermaid
+flowchart LR
+  chat[A conversation] --> brief[brief: what a model needs]
+  brief --> board[A model writes the storyboard]
+  board --> create{create: does it check out?}
+  create -- no: every problem named --> board
+  create -- yes --> film[A silent film's folder]
+  film --> review[timeline, review, part: read it first]
+  review --> narrate[narrate: voice it]
+  narrate --> voiced[A film timed by the voice]
+```
+
 ### As MCP tools, for an AI assistant
 
 Any assistant that speaks MCP can do this without writing a recipe. Start the server in a folder of its own, holding the
@@ -171,6 +185,17 @@ What to expect from it:
 ## A voice
 
 `storyreel narrate` is the one command for it. With a local voice kit, it voices what is missing and times the film by the voice:
+
+```mermaid
+flowchart LR
+  said[What each scene says] --> named{A voice named?}
+  named -- no --> read[Read the clips and say what is left]
+  named -- yes --> voice[Voice what is missing and keep each clip]
+  voice --> read
+  read --> whole{Every scene voiced?}
+  whole -- yes --> timed[The film is timed by the voice]
+  whole -- no --> silent[The film stays silent]
+```
 
 ```bash
 npx storyreel narrate                                   # what each scene says, voiced or not; asking costs nothing
