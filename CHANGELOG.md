@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.27.0 — narrate: one command for a film's voice
+## Unreleased
 
 - **`storyreel create` says what to fix, piece by piece.** It still names every problem at once, now grouped by piece, each piece
   with what it says now and the messages it cites. With `--from`, change those pieces in the file and run `create` again, without
@@ -9,6 +9,9 @@
   with `storyboardFixBriefs`. `node bench/storyboard-fix-bytes.mjs` measures what is said back, and says what it doesn't measure.
 - **A problem a film finds names the place you wrote it.** `checked[0]`, not `checked-1`, and a brace names the field that holds
   it (`intro`, `closing`, `next[1]`), not the scene.
+
+## 0.27.0 — narrate: one command for a film's voice
+
 - **`storyreel narrate`: one command for a film's voice.** It says what each scene says and whether it is voiced, for nothing.
   With `--kit <folder>` it voices what is missing, and `--takes <folder>` uses your own recordings. `--only 1-2` picks a few
   scenes. Once every scene is voiced, it writes what a render reads, and the film is timed by the voice. A film stays silent
