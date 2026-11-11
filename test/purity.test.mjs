@@ -18,6 +18,14 @@ const pure = (c, t) => { backdrop(c); c.fillRect(100 + t * 80, 400, 60, 60); };
 const stepping = () => { let x = 100; return c => { backdrop(c); x += 7; c.fillRect(x, 400, 60, 60); }; };
 /** Chance: a new place on every draw. */
 const chance = c => { backdrop(c); c.fillRect(100 + Math.random() * 1200, 400, 60, 60); };
+/**
+ * Math.random for one test: a new value on every call, each a step of 1/97 on from the last, so two draws less than
+ * 97 calls apart never put the square on the same pixels. Why the test rolls its own dice: with the real ones, two
+ * draws of one moment sometimes land on the same pixels at the width the pictures are compared at, that moment is
+ * then "unchanged", and a test that expects every moment to change fails by chance. The kit still draws with
+ * Math.random; only the numbers are the test's.
+ */
+const dice = () => { let rolls = 0; return () => (rolls++ % 97) / 97; };
 const filmOf = draw => compileFilm({storyboard, timings, recipe: {story: {kit: 'square'}}, kits: [kit(draw)]});
 const verdict = r => r.verdicts.find(v => v.check === 'pure');
 
@@ -45,7 +53,8 @@ test('a kit that keeps state between frames fails, and each changed moment names
   assert.equal(found[0].scene, 'move');
 });
 
-test('a kit that draws with Math.random fails', async () => {
+test('a kit that draws with Math.random fails', async t => {
+  t.mock.method(Math, 'random', dice());
   const film = await filmOf(chance), times = [1, 2, 3], hashes = frameHashes(film, {times, width: 160});
   assert.equal(purityOf(film, {times, hashes}).changed.length, 3);
   assert.equal(verdict(await reviewPart(film)).verdict, 'failed');
