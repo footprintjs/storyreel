@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **A conversation to a checked storyboard, as a chart.** `storyFromConversation` from `footprint-storyreel/storyboard/story`
+  reads a conversation (a file in the project, or messages), picks what matters window by window, chooses the shape in code,
+  writes the board from the points and the messages they cite, checks it with the existing readers, and sends back one piece
+  at a time, 3 rounds at the most. Each scene comes back `known`, `not-sure` or `ask`, and the asks are listed for you. The
+  model is a port: `inProcess(fn)`, where `fn` answers a brief with JSON text. The run's record says why each choice was made,
+  and holds no words of the conversation or of the model: counts, bytes, a hash, window offsets and message ids only. No
+  saving is claimed: no bench measures this yet.
+- **footprintjs 11.2 and foottrace 1.14.** The range moves from `^9.27 || ^10` to `^11.2.0`, and foottrace to `^1.14.0`.
+
 ## 0.28.0 — create says what to fix, piece by piece
 
 - **`storyreel create` says what to fix, piece by piece.** It still names every problem at once, now grouped by piece, each piece

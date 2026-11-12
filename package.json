@@ -32,6 +32,10 @@
       "types": "./types/sub/storyboard.d.ts",
       "default": "./src/storyboard/film.mjs"
     },
+    "./storyboard/story": {
+      "types": "./types/sub/story.d.ts",
+      "default": "./src/storyboard/story.mjs"
+    },
     ".": {
       "types": "./types/index.d.ts",
       "default": "./src/index.mjs"

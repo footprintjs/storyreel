@@ -25,7 +25,8 @@ function inProject(file, what, cwd) {
   return full;
 }
 
-function readJson(file, what, cwd) {
+/** A JSON file the project holds, by its real path, under the size its kind may be: the value, or a refusal naming the fix. */
+export function readJson(file, what, cwd) {
   const full = inProject(file, what, cwd);
   if (!existsSync(full) || !statSync(full).isFile()) throw new Error(`no ${what} file "${file}": name a JSON file in this project`);
   if (statSync(full).size > MOST_BYTES[what]) throw new Error(`${what} "${file}" is too big: ${MOST_BYTES[what]} bytes is the most`);
