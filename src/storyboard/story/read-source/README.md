@@ -17,5 +17,5 @@ the window size, how many messages were clipped, and the windows as message offs
 - A file or a list changed between stages: messages given in memory are copied at the start; a file is read again only
   when its stat changes (device, inode, size, change and modify times), and refused unless its words hash the same. So
   each window costs its own bytes, not the whole conversation again.
-- Too many windows (each one a pass of the loop): at most `MOST_WINDOWS` (500); the refusal names the window that fits.
+- Too many windows (each one a pass of the loop): at most `MOST_WINDOWS` (200); the refusal names the window that fits.
 - One huge message: clipped to fit its window, saying how much was cut; the check still reads it whole.

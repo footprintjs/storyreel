@@ -21,7 +21,9 @@ export const WINDOW_BYTES = 96 * 1024;
 /** The smallest window that may be asked for: a message line clipped to fit must still say something. */
 export const LEAST_WINDOW_BYTES = 1024;
 /** The most windows one run picks from: each is a pass of the chart's loop, and its record grows with them. */
-export const MOST_WINDOWS = 500;
+// Each window is one pass of the chart's loop, and footprintjs's execution tree nests one level deeper per pass; copying
+// that tree for the record runs out of stack near 500 passes on a CI runner. 200 still completes at 40% of Node's default stack.
+export const MOST_WINDOWS = 200;
 
 const lineOf = ({id, who, text}) => dataLine({id, ...(who === undefined ? {} : {who}), text});
 const bytesOf = (text) => Buffer.byteLength(text);

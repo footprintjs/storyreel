@@ -94,7 +94,7 @@ awaits the app's own call. A paused driver answers the same briefs from outside 
 - **Disagreements across windows are not found.** Each message is in one window and a point cites only its own window,
   so the merge removes duplicates and marks disagreements within a window only. Two windows that disagree keep both points,
   each standing on its own messages.
-- **At most 500 windows a run** (`MOST_WINDOWS`): a longer conversation is refused, naming the larger window that fits it.
+- **At most 200 windows a run** (`MOST_WINDOWS`): a longer conversation is refused, naming the larger window that fits it.
 
 ## Threats
 
@@ -105,7 +105,7 @@ refusal is fixed words: at the stage boundary (`engine.mjs`), anything that is n
 "the <stage> stage failed", its own error kept aside and handed to the caller as `cause` once the record is taken. Each
 folder's README names its own threats. `test/story/threats.test.mjs` checks the main ones: no message or answer words, and
 no message ids, in the record; nothing quoted on the error path (a file that is not JSON, a huge id on a bad message, a
-stage's own failure); a planted instruction changes no instructions; every brief bounded; the record bounded at 500 windows.
+stage's own failure); a planted instruction changes no instructions; every brief bounded; the record bounded at 200 windows.
 
 Tests: one file per stage folder in `test/story/` (`read-source.test.mjs`, `pick.test.mjs`, …), with a scripted fake model
 (`fakes.test.mjs`); `test/story.test.mjs` loads them into the suite.
