@@ -5,4 +5,8 @@ numbers differ, the point is marked `ask`, never settled silently.
 
 `mergePoints(picks)` → `{points, dropped, conflicts}`, at most 24 points; `pointFacts(point)` is what state may hold.
 
-**Threats:** code only. A conflict becomes `ask`, never a silent choice. A point's words never reach state.
+**What it cannot find yet:** each message is in one window, and a point may cite only its own window, so two points share
+a message only within one window. Duplicates and disagreements are found within a window; two windows that disagree
+about the same matter both keep their points. No fuzzy matching is tried.
+
+**Threats:** code only. State holds each point's sources by ordinal. A conflict becomes `ask`, never a silent choice. A point's words never reach state.

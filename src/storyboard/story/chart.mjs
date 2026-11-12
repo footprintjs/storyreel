@@ -36,7 +36,7 @@ export function storyWiring(run) {
     {id: 'write', name: 'write', about: 'The board from the points and the messages they cite', run: with_(write), retry: ASK_RETRY},
     {id: 'check', name: 'check', about: 'The board read against the whole conversation, and by a film', run: with_(check)},
     {id: 'judge', name: 'judge', about: 'Done, fix one piece at a time, or stop', run: judge, branches: [
-      {id: 'fix', name: 'fix', about: 'Each piece at fault sent back on its own', run: with_(fix), retry: ASK_RETRY, loopTo: 'check'},
+      {id: 'fix', name: 'fix', about: 'Each piece at fault sent back on its own, each with its own tries', run: with_(fix), loopTo: 'check'},
       {id: 'board-ok', name: 'done', about: 'The board, with a standing per scene', run: with_(done)},
       {id: 'stop', name: 'stop', about: 'Fix rounds used up: the problems on the record, no board', run: stop},
     ]},

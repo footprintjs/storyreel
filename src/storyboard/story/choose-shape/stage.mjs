@@ -1,12 +1,15 @@
 /** The choose-shape decider and its three branches. */
 import {choose, stopRun} from '../engine.mjs';
 import {askOrRefuse} from '../port/ask.mjs';
-import {SHAPE_FALLBACK, SHAPE_RULES, readShape, shapeBrief, shapeFacts} from './fits.mjs';
+import {FITS, SHAPE_FALLBACK, SHAPE_RULES, readShape, shapeBrief, shapeFacts} from './fits.mjs';
+
+/** What each shape needs, in words, from FITS: "what-we-found needs 1 checked, 1 found, 1 next". */
+const NEEDS = Object.entries(FITS).map(([shape, least]) => `${shape} needs ${Object.entries(least).map(([part, n]) => `${n} ${part}`).join(', ')}`).join('; ');
 
 /** Why a run stopped at the shape, by code: fixed words that name the fix. */
 export const NO_SHAPE = Object.freeze({
   'asked-undrawable': 'the shape asked for is not one the drawer draws: ask for one it draws, or leave shape out',
-  'none-fits': 'the points do not fill the parts of any shape the drawer draws: the conversation may not hold a finding yet',
+  'none-fits': `the points do not fill the parts of any shape the drawer draws (${NEEDS}): run it on a conversation that holds a finding, or check what the model picked`,
   'model-refused': 'the model named no shape among those that fit, twice: ask for one with the shape option',
 });
 

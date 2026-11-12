@@ -7,8 +7,11 @@
   writes the board from the points and the messages they cite, checks it with the existing readers, and sends back one piece
   at a time, 3 rounds at the most. Each scene comes back `known`, `not-sure` or `ask`, and the asks are listed for you. The
   model is a port: `inProcess(fn)`, where `fn` answers a brief with JSON text. The run's record says why each choice was made,
-  and holds no words of the conversation or of the model: counts, bytes, a hash, window offsets and message ids only. No
-  saving is claimed: no bench measures this yet.
+  and holds no words of the conversation or of the model, and no message ids: counts, bytes, a hash, window offsets and
+  message ordinals only. Refusals are fixed words, their own cause handed to you as `cause`. Not done yet: a disagreement
+  between two windows is not found (the merge removes duplicates and marks disagreements within a window only), and a run
+  picks from 500 windows at the most (a longer conversation is refused, naming the window that fits). No saving is
+  claimed: no bench measures this yet.
 - **footprintjs 11.2 and foottrace 1.14.** The range moves from `^9.27 || ^10` to `^11.2.0`, and foottrace to `^1.14.0`.
 
 ## 0.28.0 — create says what to fix, piece by piece

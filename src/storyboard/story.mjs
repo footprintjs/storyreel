@@ -8,13 +8,16 @@
  *   storyMermaid()   → the chart, drawn as Mermaid text
  *
  * A conversation is untrusted: its words go only into briefs, as material, apart from the instructions. The chart's state,
- * and so the record, holds counts, bytes, a hash, window offsets and message ids, never a message's or an answer's words.
+ * and so the record, holds counts, bytes, a hash, window offsets and message ordinals (a message's place in the
+ * conversation), never a message's or an answer's words, nor a message's id. Refusals are fixed words; what caused one is
+ * the rejection's `cause`, given to the caller after the record is taken.
  */
 import {storyShapes} from 'footprint-story/storyboard';
 import {FILM_SHAPES} from './film.mjs';
 import {storyWiring} from './story/chart.mjs';
 import {buildChart, mermaidOf, runChart} from './story/engine.mjs';
-import {ModelFailed, inProcess, isDriver} from './story/port/port.mjs';
+import {inProcess, isDriver} from './story/port/port.mjs';
+import {StoryRefusal, originalOf} from './story/refusal.mjs';
 import {MOST_FIX} from './story/check/stage.mjs';
 import {WINDOW_BYTES} from './story/read-source/source.mjs';
 
@@ -34,23 +37,26 @@ function inputOf({conversation, model, shape, drawable = FILM_SHAPES, window = W
 
 /** One run's context: its input, the driver, and the working memory that holds every word. */
 const runOf = (input, model) => ({input, model, source: null,
-  work: {picks: [], points: [], board: null, written: null, problems: [], fixBriefs: null, roundStart: {}, rounds: {}, fixed: [], result: null, modelError: undefined}});
+  work: {picks: [], points: [], board: null, written: null, problems: [], fixBriefs: null, roundStart: {}, rounds: {}, fixed: [], result: null}});
+
+/** The standing as the caller reads it: each scene's sources by id again, from working memory (state holds ordinals). */
+const withIds = (standing, source) => Object.fromEntries(Object.entries(standing).map(([id, s]) => [id, {...s, sources: s.sources.map((k) => source.idOf(k))}]));
 
 /**
  * Run the chart: {board, shape, standing, ask, stopped, problems, record}. `board` is the read storyboard, or null when the
  * run stopped (`stopped` says where and why; `problems` lists what was left). `ask`: what only the owner can answer.
- * A model that throws rejects the run, its own error as the refusal's `cause`.
+ * A model that throws rejects the run, its own error as the refusal's `cause`; so does any stage that fails.
  */
 export async function storyFromConversation(options = {}) {
   const run = runOf(inputOf(options), options.model);
   let record;
   try { record = await runChart(buildChart(storyWiring(run))); } catch (error) {
-    if (error instanceof ModelFailed) error.cause = run.work.modelError;
+    if (error instanceof StoryRefusal && originalOf(error) !== undefined) error.cause = originalOf(error);
     throw error;
   }
-  const state = record.snapshot.sharedState, stopped = state.stopped ?? null;
+  const state = record.snapshot?.sharedState ?? {}, stopped = state.stopped ?? null;
   return Object.freeze({
-    board: run.work.result, shape: state.shape ?? null, standing: state.standing ?? {}, ask: state.ask ?? [], stopped,
+    board: run.work.result, shape: state.shape ?? null, standing: withIds(state.standing ?? {}, run.source), ask: state.ask ?? [], stopped,
     problems: stopped ? run.work.problems.map(({at, message}) => ({at, message})) : [], record,
   });
 }

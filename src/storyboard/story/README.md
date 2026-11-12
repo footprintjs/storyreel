@@ -85,15 +85,27 @@ stop["stop"]
 
 Every stage that asks sends the same shape, `{stage, instructions, material, expects, ids}`, and takes JSON text back.
 `instructions` are code's words, the same whatever the conversation says; `material` is data lines. A driver is
-`{answer(brief, at)}`: `inProcess(fn)` awaits the app's own call. A paused driver can answer the same briefs from outside
-the run through the same method (`at` names the asking stage), so adding it does not change the port.
+`{answer(brief, at)}`, where `at` is `{stage}` and nothing more: a driver never holds the chart's scope. `inProcess(fn)`
+awaits the app's own call. A paused driver answers the same briefs from outside the run through the same method (see
+`port/README.md` for how it pauses without the scope), so adding it does not change the port.
+
+## What it does not do yet
+
+- **Disagreements across windows are not found.** Each message is in one window and a point cites only its own window,
+  so the merge removes duplicates and marks disagreements within a window only. Two windows that disagree keep both points,
+  each standing on its own messages.
+- **At most 500 windows a run** (`MOST_WINDOWS`): a longer conversation is refused, naming the larger window that fits it.
 
 ## Threats
 
 A conversation is untrusted, and so is what a model writes. Words stay data; the chart's state, and so its record, holds
-counts, bytes, a hash, window offsets and message ids, never words. Each folder's README names its own threats.
-`test/story/threats.test.mjs` checks the main ones: no message or answer words in the record, a planted instruction changes no
-instructions, a huge conversation stays bounded per brief.
+counts, bytes, a hash, window offsets and message ordinals (a message's place in the conversation), never words and never
+a message's id (an id is text the conversation chose; the caller gets ids back on the result, from working memory). Every
+refusal is fixed words: at the stage boundary (`engine.mjs`), anything that is not one of the chart's own refusals becomes
+"the <stage> stage failed", its own error kept aside and handed to the caller as `cause` once the record is taken. Each
+folder's README names its own threats. `test/story/threats.test.mjs` checks the main ones: no message or answer words, and
+no message ids, in the record; nothing quoted on the error path (a file that is not JSON, a huge id on a bad message, a
+stage's own failure); a planted instruction changes no instructions; every brief bounded; the record bounded at 500 windows.
 
 Tests: one file per stage folder in `test/story/` (`read-source.test.mjs`, `pick.test.mjs`, …), with a scripted fake model
 (`fakes.test.mjs`); `test/story.test.mjs` loads them into the suite.

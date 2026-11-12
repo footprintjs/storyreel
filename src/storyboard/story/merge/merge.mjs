@@ -2,6 +2,11 @@
  * The merge: every window's points as one list. Two points of one part that rest on a shared message are one point: kept
  * once when they say the same numbers, and marked `ask` when they do not, so a disagreement is never settled silently.
  * Code only: no model, no new words.
+ *
+ * What it can find, and what it cannot yet: each message is in exactly one window, and a point may cite only its own
+ * window, so two points share a message only when they come from the same window. The merge therefore removes duplicates
+ * and finds disagreements WITHIN a window. Two windows that say different things about the same matter are not found:
+ * both points are kept, each standing on its own messages.
  */
 import {numbersIn} from 'footprint-story/storyboard';
 
@@ -47,5 +52,5 @@ export function mergePoints(picks) {
   return {points, dropped, conflicts};
 }
 
-/** A point as state may hold it: its part, sources and standing, never its words. */
-export const pointFacts = ({part, sources, standing, why}) => ({part, sources: [...sources], standing, why});
+/** A point as state may hold it: its part, its sources by ordinal (`ordinalOf(id)`), its standing; never its words or ids. */
+export const pointFacts = ({part, sources, standing, why}, ordinalOf) => ({part, sources: sources.map(ordinalOf), standing, why});

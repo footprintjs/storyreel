@@ -37,7 +37,7 @@ test('a wrong board makes the fix loop run: only the piece at fault goes back, a
   assert.equal(result.board.scenes.find((s) => s.id === 'checked-2').title, STORY.checked[1].found);
   assert.equal(fake.asked('fix'), 1);
   assert.ok(fake.briefs.find((b) => b.stage === 'fix').material.startsWith('checked[1]\n'));
-  assert.deepEqual(state.fixes, [{round: 1, piece: 'checked[1]', problems: 1, answered: true}]);
+  assert.deepEqual(state.fixes, [{round: 1, piece: 'checked[1]', problems: 1, tries: 1, answered: true}]);
   assert.equal(result.standing['checked-2'].standing, 'not-sure');
   assert.equal(result.standing['checked-1'].standing, 'known');
   const why = decisions(result.record);
@@ -75,7 +75,9 @@ test('a window with no usable points after the retry is marked, and no shape fit
   const {fake, made} = run({pick: [{points: [{part: 'found', text: 'x', sources: ['m99']}]}]});
   const result = await made;
   assert.equal(fake.asked('pick'), 2);
-  assert.deepEqual(result.record.snapshot.sharedState.picks, [{window: 0, messages: 5, points: 0, refused: 'outside-window'}]);
+  const state = result.record.snapshot.sharedState;
+  assert.deepEqual(state.pick, {window: 0, messages: 5, points: 0, refused: 'outside-window'});
+  assert.equal(state.refusedWindows, 1);
   assert.deepEqual(result.stopped, {at: 'choose-shape', why: 'none-fits'});
   assert.match(decisions(result.record).at(-1), /No drawable shape fits the points/);
   assert.equal(fake.asked('write'), 0);
@@ -95,12 +97,24 @@ test('a write that is never an object stops the run at the write', async () => {
   assert.equal(fake.asked('write'), 2);
 });
 
-test('a model that throws rejects the run, its own error kept off the record and on the cause', async () => {
+test('a model that throws rejects the run at once, never asked again, its own error off the record and on the cause', async () => {
   const boom = new Error('the provider said no');
-  const error = await storyFromConversation({conversation: {messages: CHAT}, model: {answer: () => { throw boom; }}}).catch((e) => e);
+  let asked = 0;
+  const error = await storyFromConversation({conversation: {messages: CHAT}, model: {answer: () => { asked++; throw boom; }}}).catch((e) => e);
   assert.equal(error.name, 'ModelFailed');
+  assert.equal(asked, 1, 'a model that failed is not retried');
   assert.equal(error.cause, boom);
   assert.doesNotMatch(JSON.stringify(error.record), /provider said no/);
+});
+
+test('each piece of a fix round gets its own tries: a later piece is not left one by an earlier one', async () => {
+  const twoWrong = {...WRONG, found: STORY.found.map((f) => ({...f, line: 'It took 7777 ms'}))};
+  const answers = {'checked[1]': ['nonsense', STORY.checked[1]], 'found[0]': ['nonsense', STORY.found[0]]}, used = {};
+  const fix = (b) => { const piece = b.material.split('\n')[0]; used[piece] = (used[piece] ?? 0) + 1; return answers[piece][used[piece] - 1]; };
+  const {made} = run({pick: [PICKED], write: [twoWrong], fix: [fix]});
+  const result = await made;
+  assert.equal(result.stopped, null);
+  assert.deepEqual(result.record.snapshot.sharedState.fixes.map((f) => [f.piece, f.tries, Boolean(f.answered)]), [['checked[1]', 2, true], ['found[0]', 2, true]]);
 });
 
 test('a long conversation is picked window by window, and no pick brief is larger than a window', async () => {

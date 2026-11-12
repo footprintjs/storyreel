@@ -15,5 +15,6 @@ export const route = (scope) => choose(scope, ROUTE_RULES, ROUTE_FALLBACK);
 /** Either branch starts the picking at the first window. */
 export function startPicking(scope) {
   scope.windowAt = 0;
-  scope.picks = [];
+  scope.pickedPoints = 0;
+  scope.refusedWindows = 0;
 }

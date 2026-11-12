@@ -10,10 +10,10 @@ export interface StoryBrief {
   /** The message ids its material holds. */
   readonly ids: readonly string[];
 }
-/** Answers briefs with JSON text. `at` names the asking stage; only a driver that pauses reads it. */
+/** Answers briefs with JSON text. `at` is the asking stage's name and nothing more: a driver never holds the chart's scope. */
 export interface StoryDriver {
   readonly kind?: string;
-  answer(brief: StoryBrief, at: {readonly stage: string; readonly scope: unknown}): string | Promise<string>;
+  answer(brief: StoryBrief, at: {readonly stage: string}): string | Promise<string>;
 }
 /** A driver from the app's own model call. */
 export function inProcess(fn: (brief: StoryBrief) => string | Promise<string>): StoryDriver;
@@ -37,6 +37,7 @@ export interface StorySceneStanding {
   readonly standing: StoryStanding;
   /** Why, as a code: cited, unsure, plan, frame, fixed, disagree, cites-nothing, no-point. */
   readonly why: string;
+  /** The message ids it cites (the record names them by ordinal; ids come back here from working memory). */
   readonly sources: readonly string[];
   /** The index of the point it tells in the record's points, or null. */
   readonly point: number | null;
@@ -53,10 +54,16 @@ export interface StoryResult {
   readonly stopped: {readonly at: 'choose-shape' | 'write' | 'judge'; readonly why: string} | null;
   /** What was left when the run stopped at the judge. */
   readonly problems: readonly StoryboardProblem[];
-  /** The run's record: its narrative and snapshot, with counts, bytes, a hash, window offsets and ids, never words. */
-  readonly record: {readonly narrative: readonly object[]; readonly snapshot: object};
+  /**
+   * The run's record: its narrative and snapshot, with counts, bytes, a hash, window offsets and message ordinals, never
+   * words or message ids. `snapshot` is null (and `incomplete` says why) only when it could not be copied.
+   */
+  readonly record: {readonly narrative: readonly object[]; readonly snapshot: object | null; readonly incomplete?: string};
 }
-/** Run the chart. A model that throws rejects the run, its own error as the refusal's `cause`. */
+/**
+ * Run the chart. A model that throws, or a stage that fails, rejects the run in fixed words, its own error as `cause`.
+ * Merge finds duplicates and disagreements within a window only: a disagreement across windows is not found yet.
+ */
 export function storyFromConversation(options: StoryOptions): Promise<StoryResult>;
 /** The chart, drawn as Mermaid text from the real chart. */
 export function storyMermaid(): string;

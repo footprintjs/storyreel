@@ -5,7 +5,7 @@ export function merge(scope, run) {
   const picked = run.work.picks.map((got) => got?.value ?? []);
   const {points, dropped, conflicts} = mergePoints(picked);
   run.work.points = points;
-  scope.points = points.map(pointFacts);
+  scope.points = points.map((p) => pointFacts(p, run.source.ordinalOf));
   scope.pointCount = points.length;
   scope.merged = {dropped, conflicts, refusedWindows: run.work.picks.filter((got) => got?.refused).length};
 }

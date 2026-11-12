@@ -5,8 +5,8 @@ import {standingOf} from './standing.mjs';
 
 export function done(scope, run) {
   const board = readStoryboard(run.work.board, {conversation: run.source.all()});
-  const refused = scope.picks.filter((p) => p.refused).map((p) => p.window);
-  const {standing, ask} = standingOf(board, scope.points, run.work.fixed, refused);
+  const refused = run.work.picks.flatMap((got, window) => (got?.refused ? [window] : []));
+  const {standing, ask} = standingOf(board, scope.points, run.work.fixed, refused, run.source.ordinalOf);
   run.work.result = board;
   scope.standing = standing;
   scope.ask = ask;

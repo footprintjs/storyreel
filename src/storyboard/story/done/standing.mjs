@@ -19,9 +19,8 @@ export const SCENE_WHY = Object.freeze({
 /** The piece a scene comes from: `checked-2` is `checked[1]`; the title and what happens next are the frame. */
 const pieceOf = (scene) => (scene.part === 'title' || scene.part === 'next' ? 'frame' : `${scene.part}[${Number(scene.id.split('-').pop()) - 1}]`);
 
-/** The point a scene tells: same part, the most sources shared; -1 when none shares one. */
-function pointOf(scene, points) {
-  const sources = scene.beat.sources ?? [];
+/** The point a scene tells: same part, the most sources shared (`sources`: the scene's, by ordinal); -1 when none shares one. */
+function pointOf(scene, sources, points) {
   let best = -1, most = 0;
   points.forEach((p, k) => {
     const shared = p.part === scene.part ? p.sources.filter((id) => sources.includes(id)).length : 0;
@@ -30,11 +29,12 @@ function pointOf(scene, points) {
   return best;
 }
 
-function sceneStanding(scene, points, fixed) {
-  const wasFixed = fixed.has(pieceOf(scene));
+function sceneStanding(scene, sources, points, fixed) {
+  // a scene is fixed when its own entry was, or its whole list (piece `checked` holds every `checked-*` scene)
+  const wasFixed = fixed.has(pieceOf(scene)) || fixed.has(scene.part);
   if (scene.part === 'title' || scene.part === 'next') return {standing: wasFixed ? 'not-sure' : 'known', why: wasFixed ? 'fixed' : 'frame', point: null};
   if (scene.part === 'unsure') return {standing: 'not-sure', why: 'unsure', point: null};
-  const k = pointOf(scene, points);
+  const k = pointOf(scene, sources, points);
   if (k < 0) return {standing: 'ask', why: 'no-point', point: null};
   const p = points[k];
   if (p.standing === 'ask') return {standing: 'ask', why: p.why, point: k};
@@ -43,14 +43,16 @@ function sceneStanding(scene, points, fixed) {
 }
 
 /**
- * {standing, ask}: `standing[sceneId] = {standing, why, sources, point}` (point: the index into the record's points, or
- * null); `ask`: what only the owner can answer, [{scene} | {point} | {window}, why]. `fixed`: the pieces any fix changed.
+ * {standing, ask}: `standing[sceneId] = {standing, why, sources, point}` (sources by ordinal; point: the index into the
+ * record's points, or null); `ask`: what only the owner can answer, [{scene} | {point} | {window}, why]. `points`: their
+ * sources by ordinal. `fixed`: the pieces any fix changed. `ordinalOf(id)`: a message's ordinal.
  */
-export function standingOf(board, points, fixed, refusedWindows = []) {
-  const standing = {}, ask = [], told = new Set();
+export function standingOf(board, points, fixed, refusedWindows, ordinalOf) {
+  const standing = {}, ask = [], told = new Set(), fixedSet = new Set(fixed);
   for (const scene of board.scenes) {
-    const s = sceneStanding(scene, points, new Set(fixed));
-    standing[scene.id] = {...s, sources: [...(scene.beat.sources ?? [])]};
+    const sources = (scene.beat.sources ?? []).map(ordinalOf);
+    const s = sceneStanding(scene, sources, points, fixedSet);
+    standing[scene.id] = {...s, sources};
     if (s.point !== null) told.add(s.point);
     if (s.standing === 'ask') ask.push({scene: scene.id, why: SCENE_WHY[s.why]});
   }

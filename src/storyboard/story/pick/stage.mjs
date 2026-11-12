@@ -11,7 +11,11 @@ export async function pick(scope, run) {
   // an answer already taken for this window is the same stage, not a second ask
   const got = run.work.picks[at] ?? await askOrRefuse(scope, run, b, (answer) => readPicks(answer, b.ids));
   run.work.picks[at] = got;
-  scope.picks = [...scope.picks, {window: at, messages: b.ids.length, points: got.value?.length ?? 0, ...(got.refused ? {refused: got.refused} : {})}];
+  // one fact per pass, under one key: each pass's commit keeps its own, so the record grows by one pick a window, not by
+  // the whole list again
+  scope.pick = {window: at, messages: b.ids.length, points: got.value?.length ?? 0, ...(got.refused ? {refused: got.refused} : {})};
+  scope.pickedPoints += got.value?.length ?? 0;
+  if (got.refused) scope.refusedWindows += 1;
   scope.windowsLeft = scope.windowCount - at - 1;
 }
 
