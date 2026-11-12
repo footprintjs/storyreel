@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.29.0 — a conversation to a checked storyboard, as a flowchart
 
 - **A conversation to a checked storyboard, as a chart.** `storyFromConversation` from `footprint-storyreel/storyboard/story`
   reads a conversation (a file in the project, or messages), picks what matters window by window, chooses the shape in code,
