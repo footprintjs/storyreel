@@ -25,11 +25,17 @@ function inProject(file, what, cwd) {
   return full;
 }
 
-function readJson(file, what, cwd) {
+/**
+ * A JSON file the project holds, by its real path, under the size its kind may be: the value, or a refusal naming the fix.
+ * `quoteParser: false` leaves the JSON parser's own message out of a refusal, as it quotes the file's text. `checkOnly`
+ * refuses what is not there or too big, and reads nothing.
+ */
+export function readJson(file, what, cwd, {quoteParser = true, checkOnly = false} = {}) {
   const full = inProject(file, what, cwd);
   if (!existsSync(full) || !statSync(full).isFile()) throw new Error(`no ${what} file "${file}": name a JSON file in this project`);
   if (statSync(full).size > MOST_BYTES[what]) throw new Error(`${what} "${file}" is too big: ${MOST_BYTES[what]} bytes is the most`);
-  try { return JSON.parse(readFileSync(full, 'utf8')); } catch (e) { throw new Error(`${what} "${file}" is not valid JSON: ${e.message}`); }
+  if (checkOnly) return undefined;
+  try { return JSON.parse(readFileSync(full, 'utf8')); } catch (e) { throw new Error(`${what} "${file}" is not valid JSON: ${quoteParser ? e.message : 'fix it so it parses, then run again'}`); }
 }
 
 const CONFIG = `// Written by storyreel create. Change story.json and create again for a film's words; this file is yours, and create leaves it alone.

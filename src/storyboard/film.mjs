@@ -81,9 +81,12 @@ function wordsAt(scene, place) {
   return [scene.title, scene.narration, beat.name, beat.line].map((words) => [place, words]);
 }
 
+/** The shapes a film draws. */
+export const FILM_SHAPES = Object.freeze(['what-we-found']);
+
 /** {storyboard, recipe}: a film's own inputs. Throws, its `problems` listing everything a film cannot show, each at its place. */
 export function filmFromBoard(board) {
-  if (board.shape !== 'what-we-found') throw Object.assign(new TypeError(`a film draws "what-we-found" for now, and this board is "${board.shape}"`), {problems: [{at: 'shape', message: 'a film draws "what-we-found" for now'}]});
+  if (!FILM_SHAPES.includes(board.shape)) throw Object.assign(new TypeError(`a film draws "what-we-found" for now, and this board is "${board.shape}"`), {problems: [{at: 'shape', message: 'a film draws "what-we-found" for now'}]});
   const of = (part) => board.scenes.filter((s) => s.part === part), problems = [], scenes = [], stages = [];
   const say = (at, message) => problems.push({at, message});
   const placeOf = (scene) => `${scene.part}[${of(scene.part).indexOf(scene)}]`;

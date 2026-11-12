@@ -795,3 +795,13 @@ import {filmFromBoard} from '../types/sub/storyboard.js';
 const fromBoard = filmFromBoard(readStoryboard('{}'));
 const boardStoryboard: Storyboard = fromBoard.storyboard, boardRecipe: Recipe = fromBoard.recipe;
 void boardStoryboard; void boardRecipe;
+
+// The story chart: a driver from the app's own call, a conversation as a file or messages, and what it gives back.
+import type {inProcess as InProcess, storyFromConversation as StoryFrom} from '../types/sub/story.js';
+export const storyRun = async (make: typeof StoryFrom, driver: typeof InProcess) => {
+  const result = await make({conversation: {file: 'chat.json'}, model: driver(async (brief) => brief.instructions), mostFix: 2});
+  const sure: 'known' | 'not-sure' | 'ask' | undefined = result.standing['found-1']?.standing;
+  // @ts-expect-error the conversation is a file or messages, not text
+  await make({conversation: 'chat.json', model: driver(() => '{}')});
+  return [result.board?.shape, result.stopped?.at, sure];
+};

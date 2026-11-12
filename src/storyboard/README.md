@@ -8,6 +8,7 @@
 | `film.mjs` | a read storyboard as a film's storyboard and recipe: plain data in, plain data out |
 | `create.mjs` | the command-line and MCP door: `shapes`, `brief` and `create`, keeping every file inside the project |
 | `fixes.mjs` | a refused board as what `create` says back: one short brief per piece at fault, words kept apart as data |
+| `story.mjs` + `story/` | a conversation to a checked board, as a footprintjs chart: windowed pick, shape in code, write, check, fix one piece at a time, a standing per scene (see `story/README.md`) |
 
 ```bash
 npx storyreel shapes                                     # the shapes, and how to fill each
