@@ -1,6 +1,6 @@
 {
   "name": "footprint-storyreel",
-  "version": "0.29.0",
+  "version": "0.29.1",
   "description": "Programmatic teaching films from storyboard text and drawing recipes, with phrase-timed animation, captions, MP4 rendering and a making-of record.",
   "keywords": [
     "video",
@@ -306,7 +306,7 @@
   "dependencies": {
     "@napi-rs/canvas": "^1.0.9",
     "footprint-story": "^0.7.0",
-    "footprintjs": "^11.2.0",
+    "footprintjs": "^11.2.0 || ^12.0.0",
     "foottrace": "^1.14.0",
     "perfect-freehand": "^1.2.3",
     "roughjs": "^4.6.6",
