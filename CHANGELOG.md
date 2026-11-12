@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.29.1 — one engine beside footprintjs 12
+
+- **One engine in your app, on footprintjs 11.2 or 12.** StoryReel's `footprintjs` dependency is now `^11.2.0 || ^12.0.0`.
+  With `^11.2.0` alone, an app on footprintjs 12 got a second, older engine installed under StoryReel. StoryReel's tests
+  pass on footprintjs 12.0.0. Nothing else changes.
+
 ## 0.29.0 — a conversation to a checked storyboard, as a flowchart
 
 - **A conversation to a checked storyboard, as a chart.** `storyFromConversation` from `footprint-storyreel/storyboard/story`
