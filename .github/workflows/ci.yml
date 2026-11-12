@@ -9,8 +9,13 @@ permissions:
   contents: read
 
 jobs:
+  # The suite in three parts at once, about equal in time (scripts/test-files.mjs, by test/slow-files.json).
   test:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,10 +33,12 @@ jobs:
         timeout-minutes: 25
       - run: npm ci
       # The whole suite with a temp folder of its own; nothing may be left in it (scripts/temp-hygiene.mjs).
-      - run: npm run test:temp
+      - run: npm run test:temp -- $(node scripts/test-files.mjs --shard ${{ matrix.shard }}/3)
       - run: npx publint
+        if: matrix.shard == 1
       # Every typed entry point, from package.json (scripts/typed-entrypoints.mjs): the same list here and in publish.yml.
-      - run: npx @arethetypeswrong/cli --pack --profile esm-only --entrypoints $(node scripts/typed-entrypoints.mjs)
+      - if: matrix.shard == 1
+        run: npx @arethetypeswrong/cli --pack --profile esm-only --entrypoints $(node scripts/typed-entrypoints.mjs)
 
   # The renders the skills describe, as written: the farm film's small draft, its approval and the final, and the
   # approval refusing a changed kit (test/skills-render.mjs; locally `npm run test:skills:render`, kept out of npm test).
