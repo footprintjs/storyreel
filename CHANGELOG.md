@@ -2,11 +2,11 @@
 
 ## Unreleased
 
-- **Breaking: adopt engine 13 and Foottrace 2 together.** The runtime dependencies become `footprintjs ^13.0.0-rc.0`
-  and `foottrace ^2.0.0-rc.0`; engine 11/12 and Foottrace 1 are no longer declared supported. `footprint-story` stays
-  at `^0.7.0`. Migration: use the exact engine candidate archive with the published Foottrace 2 release candidate
-  for paired validation. The committed lock remains the prior published baseline; this draft does not claim a
-  ready install or tested compatibility yet. See the README's migration note.
+- **Breaking: adopt engine 13 and Foottrace 2 together.** The runtime dependencies become `footprintjs ^13.0.0`
+  and `foottrace ^2.0.0`; engine 11/12 and Foottrace 1 are no longer declared supported. `footprint-story` stays
+  at `^0.7.0`. Migration: update both dependencies together using their published stable releases. The lock records
+  the real registry pair; compatibility remains under validation until the existing checks pass. See the README's
+  migration note.
 
 ## 0.29.1 — one engine beside footprintjs 12
 
