@@ -50,14 +50,16 @@ npm i footprint-storyreel
 - Drawing is native (`@napi-rs/canvas`, prebuilt for macOS, Linux and Windows). The handwriting font
   (Caveat, SIL OFL) is bundled.
 
-### Migration: engine 13 and Foottrace 2
+### Migration: engine 14 release candidate and Foottrace 2.1
 
-The runtime dependencies are `footprintjs ^13.0.0` and `foottrace ^2.0.0` together. The earlier engine 11/12
-and Foottrace 1 ranges no longer apply; `footprint-story` remains `^0.7.0`.
+The runtime dependencies are `footprintjs ^14.0.0-rc.0` and `foottrace ^2.1.0` together. The engine request
+explicitly admits the published 14 release candidate; it is not an engine 13 install. `footprint-story`
+remains `^0.7.0`, and StoryReel's own version is unchanged.
 
-Both stable releases are published, and the committed lock records their registry resolutions and integrity.
-Update the engine and reader together, then run the existing runtime, record and type checks. A resolved lock
-alone does not establish compatibility; this adoption remains under validation until those checks pass.
+The committed lock records the actual registry candidate and reader resolutions and integrity. Update them
+together, then run the existing runtime, record and type checks. A resolved lock alone does not establish
+compatibility; this candidate adoption remains under validation until those checks pass. It does not promote
+the engine candidate to a stable release.
 
 ## Skills for AI agents
 

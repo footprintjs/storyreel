@@ -2,11 +2,11 @@
 
 ## Unreleased
 
-- **Breaking: adopt engine 13 and Foottrace 2 together.** The runtime dependencies become `footprintjs ^13.0.0`
-  and `foottrace ^2.0.0`; engine 11/12 and Foottrace 1 are no longer declared supported. `footprint-story` stays
-  at `^0.7.0`. Migration: update both dependencies together using their published stable releases. The lock records
-  the real registry pair; compatibility remains under validation until the existing checks pass. See the README's
-  migration note.
+- **Breaking: target the engine 14 release candidate and Foottrace 2.1 together.** Runtime requests become
+  `footprintjs ^14.0.0-rc.0` and `foottrace ^2.1.0`; `footprint-story` stays at `^0.7.0` and StoryReel's own
+  version is unchanged. Migration: use the actual published engine candidate and reader together. The lock
+  records their registry resolutions; compatibility remains under validation until the existing checks pass.
+  This does not promote the engine candidate to stable. See the README's migration note.
 
 ## 0.29.1 — one engine beside footprintjs 12
 
