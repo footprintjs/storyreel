@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {existsSync, readFileSync, readdirSync, realpathSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
+import {createRequire} from 'node:module';
 import path from 'node:path';
 import {loadImage} from '@napi-rs/canvas';
 import {evenTimings} from '../src/index.mjs';
@@ -13,6 +14,7 @@ import {youtubeChapters as chaptersOf} from 'footprint-story';
 const youtubeChapters = (pairs, length) => chaptersOf(pairs.map(([at, title]) => ({at, title})), {length}).lines;
 import {sceneChapters} from '../src/render.mjs';
 import {tempDir} from './tmp.mjs';
+import {assertPackageCredits} from './package-credits.mjs';
 
 const storyboard = {title: 'Release Test', scenes: [
   {id: 'one', title: 'The start', narration: 'A short film about pebbles and sheep, made for a test.'},
@@ -174,7 +176,9 @@ test('a release: each target its own folder — the video in its shape, captions
   assert.deepEqual(readdirSync(yt.dir).sort(), ['CREDITS.txt', 'captions.srt', 'captions.vtt', 'post.json', 'post.txt', 'release-test.mp4', 'thumbnail.jpg'], 'the folder holds what is posted and nothing else');
   assert.deepEqual(readdirSync(short.dir).sort(), ['CREDITS.txt', 'post.json', 'post.txt', 'release-test.mp4']);
   const credits = readFileSync(yt.credits, 'utf8');
-  assert.match(credits, /^Credits — Pebbles\n\nMade with\n- footprint-storyreel [\d.]+ \(MIT AND Apache-2\.0\) — the film, drawn in code\n- footprintjs [\d.]+ \(MIT\)/, 'StoryReel\'s licence as package.json gives it: its own code MIT, the X counter Apache-2.0');
+  const own = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const engine = JSON.parse(readFileSync(createRequire(import.meta.url).resolve('footprintjs/package.json'), 'utf8'));
+  assertPackageCredits(credits, {title: 'Pebbles', own, engine});
   assert.match(credits, /From the maker\n- Sheep drawn by hand\n\nThe narration is a synthetic voice\.\n$/);
   // (The paths a release reports are real ones, the ones it wrote through: files.mjs · securePath.)
   assert.ok(existsSync(yt.makingOf) && yt.makingOf.startsWith(path.join(realpathSync(out), 'work', 'youtube')), 'the record and the working files are kept apart, in work/<target>/');
