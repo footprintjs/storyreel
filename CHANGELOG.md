@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — footprintjs 14, foottrace 2 and footprint-story 0.9
+## 0.30.0 — footprintjs 14, foottrace 2 and footprint-story 0.9
 
 - **StoryReel now needs footprintjs 14 and foottrace 2.** The ranges are `"footprintjs": "^14.0.0"` and
   `"foottrace": "^2.1.0"`; footprintjs 14 asks for foottrace `^2.1.0` as a peer, so the two move together and an app keeps
