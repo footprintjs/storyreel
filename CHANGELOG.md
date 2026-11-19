@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — footprintjs 14 and foottrace 2
+
+- **StoryReel now needs footprintjs 14 and foottrace 2.** The ranges are `"footprintjs": "^14.0.0"` and
+  `"foottrace": "^2.1.0"`; footprintjs 14 asks for foottrace `^2.1.0` as a peer, so the two move together and an app keeps
+  one copy of each. An app on footprintjs 11 or 12, or on foottrace 1, stays on StoryReel 0.29.1. StoryReel's own code
+  needed no change: its tests pass on footprintjs 14.0.0 and foottrace 2.1.0.
+
 ## 0.29.1 — one engine beside footprintjs 12
 
 - **One engine in your app, on footprintjs 11.2 or 12.** StoryReel's `footprintjs` dependency is now `^11.2.0 || ^12.0.0`.
