@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — footprintjs 14, foottrace 2 and footprint-story 0.9
+
+- **StoryReel now needs footprintjs 14 and foottrace 2.** The ranges are `"footprintjs": "^14.0.0"` and
+  `"foottrace": "^2.1.0"`; footprintjs 14 asks for foottrace `^2.1.0` as a peer, so the two move together and an app keeps
+  one copy of each. An app on footprintjs 11 or 12, or on foottrace 1, stays on StoryReel 0.29.1. StoryReel's own code
+  needed no change: its tests pass on footprintjs 14.0.0 and foottrace 2.1.0.
+- **StoryReel now needs footprint-story `^0.9.0`** (it was `^0.7.0`), the same range as StoryDeck 0.14. For a 0.x version
+  two different ranges do not overlap, so an app that used both would install two copies of the package they share; it
+  installs one. Nothing StoryReel uses changes: the voice, caption and move files it reads are byte for byte the same in
+  0.7.0 and 0.9.0, and a voice you have already paid for is still found. 0.9.0 adds an order written once
+  (`readTurns`), an isometric grid and a storyboard brief that says how many entries each list holds; StoryReel does not
+  use the first two yet.
+
 ## 0.29.1 — one engine beside footprintjs 12
 
 - **One engine in your app, on footprintjs 11.2 or 12.** StoryReel's `footprintjs` dependency is now `^11.2.0 || ^12.0.0`.
