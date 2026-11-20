@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — one reader of a run's record, with StoryDeck
+## 0.33.0 — one reader of a run's record, with StoryDeck
 
 - **`log --why` and the one-line rule are footprint-story's now** (`footprint-story/record` · `whyFromRecord`, and
   `oneLine` / `errorText` from its root door), the same code StoryDeck uses: it was moved there from here, so
