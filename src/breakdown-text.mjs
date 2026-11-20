@@ -4,6 +4,7 @@
  */
 import {clockTenths} from './clock.mjs';
 import {GRID} from './footage.mjs';
+import {oneLine} from './oneline.mjs';
 
 const round = (v, digits = 2) => +v.toFixed(digits);
 const ROWS = ['top', 'upper middle', 'lower middle', 'bottom'], COLS = ['far left', 'left', 'centre left', 'centre right', 'right', 'far right'];
@@ -32,7 +33,7 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 /** The heading: the video's facts, and anything it warns of (a varying frame rate). */
 function headLines(spec) {
   const v = spec.video;
-  return [`# Breakdown: ${spec.file}`, '', `${secondsText(v.seconds)}${v.lengthFrom === 'frames' ? ' (counted from its frames: the file names no length)' : ''} · ${v.width}×${v.height}${v.rotation ? ` (turned ${v.rotation}°)` : ''} · ${v.fps} fps · sound: ${v.sound ? 'yes' : 'no'} · read ${spec.read.width}×${spec.read.height} grey, every frame at ${spec.read.rate} a second.`,
+  return [`# Breakdown: ${oneLine(spec.file)}`, '', `${secondsText(v.seconds)}${v.lengthFrom === 'frames' ? ' (counted from its frames: the file names no length)' : ''} · ${v.width}×${v.height}${v.rotation ? ` (turned ${v.rotation}°)` : ''} · ${v.fps} fps · sound: ${v.sound ? 'yes' : 'no'} · read ${spec.read.width}×${spec.read.height} grey, every frame at ${spec.read.rate} a second.`,
     ...spec.warnings.map(w => `\n**Warning:** ${w}.`)];
 }
 

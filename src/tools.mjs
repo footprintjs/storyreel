@@ -39,6 +39,7 @@ import {readRubric, rubricSheet, rubricText, recordScores} from './rubric.mjs';
 import {TARGETS, TARGET_NAMES, loadTarget} from './release.mjs';
 import {phoneSheet, PHONE} from './phone.mjs';
 import {feedback, FEEDBACK_ARGS, FEEDBACK_ABOUT} from './studio/feedback-tool.mjs';
+import {oneLine as shownLine} from './oneline.mjs';
 
 export const CONFIG = 'storyreel.config.mjs';
 export {clockSeconds};
@@ -265,7 +266,7 @@ export async function part(project, args = {}) {
     render: {...(p.window ? spanOf(project.film, p) : {part: p}), quality: 'draft', stamp: `PART · ${nameOf(p)}`, ...(layout ? {layout: {...layout, scale: half}} : {})}});
   const finished = JSON.parse(readFileSync(result.makingOf, 'utf8')).finished ?? {};
   const found = finished.findings ?? [], shown = yes(args.full) ? found : found.slice(0, SUMMARY_TOP);
-  return `${read}\n${result.out} · ${result.seconds.toFixed(1)} s · made in ${((Date.now() - started) / 1000).toFixed(1)} s · checks ${finished.ok ? 'clean' : finished.ok === false ? 'problems found' : 'not run'}${shown.map(f => `\n  ${f.text ?? JSON.stringify(f)}`).join('')}${found.length > shown.length ? `\n  … ${found.length - shown.length} more: ${FULL_HINT}` : ''}`;
+  return `${read}\n${result.out} · ${result.seconds.toFixed(1)} s · made in ${((Date.now() - started) / 1000).toFixed(1)} s · checks ${finished.ok ? 'clean' : finished.ok === false ? 'problems found' : 'not run'}${shown.map(f => `\n  ${shownLine(f.text ?? JSON.stringify(f))}`).join('')}${found.length > shown.length ? `\n  … ${found.length - shown.length} more: ${FULL_HINT}` : ''}`;
 }
 
 /**
@@ -339,8 +340,8 @@ async function phoneStill(project, args) {
   const file = path.join(stillsFolder(project), `${pictureName(`phone-${name}-${shot.name}`)}.png`);
   writeOutput(file, png);
   const zones = options.ui ? options.ui.zones.map(z => `${z.name} (${z.basis ?? 'given'})`).join(', ') : 'none declared';
-  const under = frames.flatMap(f => f.covered.map(h => `\n  ${f.label} (${f.t.toFixed(2)} s): the ${h.kind === 'face' ? `face "${h.name}"` : h.kind === 'label' ? `label "${h.name}"` : h.kind === 'title' ? 'title band' : 'caption'} is under the ${h.zone}`));
-  return {text: `${file} · ${frames.length} phone${frames.length > 1 ? 's' : ''} (${adapter.label}, ${width} px wide)${shot.of ?? ''}: ${frames.map(f => `${f.label} (${f.t.toFixed(2)} s)`).join(', ')}${shot.rest ?? ''}\nthe app's UI: ${zones}${under.length ? `\nunder the UI, outlined in red:${under.join('')}` : '\nnothing of the title, the captions or the named faces is under the UI'}`, file};
+  const under = frames.flatMap(f => f.covered.map(h => `\n  ${shownLine(f.label)} (${f.t.toFixed(2)} s): the ${h.kind === 'face' ? `face "${shownLine(h.name)}"` : h.kind === 'label' ? `label "${shownLine(h.name)}"` : h.kind === 'title' ? 'title band' : 'caption'} is under the ${h.zone}`));
+  return {text: `${file} · ${frames.length} phone${frames.length > 1 ? 's' : ''} (${adapter.label}, ${width} px wide)${shot.of ?? ''}: ${frames.map(f => `${shownLine(f.label)} (${f.t.toFixed(2)} s)`).join(', ')}${shot.rest ?? ''}\nthe app's UI: ${zones}${under.length ? `\nunder the UI, outlined in red:${under.join('')}` : '\nnothing of the title, the captions or the named faces is under the UI'}`, file};
 }
 
 /** The moments a still names (at), at most MOST_FRAMES: {moments, name}. from and to belong to beats. */
@@ -381,7 +382,7 @@ function beatTimes(film, scene) {
   const index = sceneIds(film).lastIndexOf(scene), start = film.clock.offsets[index], out = [];
   for (const r of filmTimeline(film)) {
     if (r.kind !== 'beat' || placeOf(film, r.t).index !== index) continue;
-    const t = Math.max(r.t, start), said = `"${r.phrase}"`, last = out.at(-1);
+    const t = Math.max(r.t, start), said = `"${shownLine(r.phrase)}"`, last = out.at(-1);
     if (last?.t === t) { if (!last.said.includes(said)) last.said.push(said); } else out.push({t, said: [said]});
   }
   return out;
@@ -537,7 +538,7 @@ export async function log(flags = {}) {
   const cwd = flags.cwd ?? process.cwd();
   for (const name of ['folder', 'out']) if (flags[name] !== undefined && (typeof flags[name] !== 'string' || yes(flags[name]) || !flags[name].trim())) throw new Error(`--${name} needs a folder (--${name} work/out)`);
   let out = path.resolve(cwd, flags.folder ?? flags.out ?? 'out'), note = '';
-  if (flags.folder === undefined) try { out = outFolderOf(await readInputs(flags)); } catch (e) { note = `\n(the config did not load, so these are the runs in ${out}: ${e.message})`; }
+  if (flags.folder === undefined) try { out = outFolderOf(await readInputs(flags)); } catch (e) { note = `\n(the config did not load, so these are the runs in ${out}: ${shownLine(e.message)})`; }
   return logText(out, {run: flags.run === undefined || yes(flags.run) ? null : flags.run, only: flags.only ?? null, check: flags.check ?? null, all: yes(flags.all)}) + note;
 }
 

@@ -2,13 +2,16 @@
 
 ## Unreleased — a reply's rows are the tool's own
 
-- **Words from a film's files can no longer start a line of a reply.** A scene's id, a phrase, drawn words and a
-  reason are written into the rows of `review`, `part`, `timeline`, `anchors` and `changes`, which a model reads as
-  the tool's own words. A line break inside one started a line that read like the tool's ("verdicts: 5 passed").
-  Every such row is now one line: a line break, any other control character and a mark that turns the reading
-  direction are shown as their escape (`\n`, `\u{202e}`), never obeyed (`src/oneline.mjs`).
-- **A scene id with a line break or a control character in it is refused** where the recipe is read, naming the
-  fix. An id is a name on one line.
+- **Words from a film's files can no longer start a line of a reply.** A scene's id, a phrase, drawn words, a file's
+  name and a reason are written into replies a model reads as the tool's own words. A line break inside one started
+  a line that read like the tool's ("verdicts: 5 passed"). Now every row those words are listed on is one line: the
+  rows of `review`, `part`, `timeline`, `anchors`, `changes`, `narrate`, `still --beats`, `still --phone`, a rubric,
+  a breakdown's and a remake's heading. And every error a command ends with is one line, or the rows the tool wrote
+  itself, whatever it quotes from the recipe. A line break, any other control character, a mark that turns the
+  reading direction and a character that draws nothing (a tag character, a byte-order mark) are shown as their escape
+  (`\n`, `\u{202e}`), never obeyed (`src/oneline.mjs`).
+- **A scene id that is no name is refused** where the recipe is read, naming the fix: one with a line break or a
+  control character in it, and one that is neither words nor a number.
 - **StoryReel now needs footprint-story `^0.13.0`** (it was `^0.9.0`), the range StoryDeck 0.20 asks for, so an app
   that uses both installs one copy. Nothing StoryReel uses changes: every file outside the isometric door is byte for
   byte the same in 0.9.0 and 0.13.0. 0.10 to 0.13 add places worked out from links, routes along a floor and names

@@ -34,3 +34,20 @@ test('a scene id with a line break is refused where the recipe is read, naming t
   assert.throws(() => checkScene({id: 'rule\nverdicts: 5 passed', narration: 'words'}, 2), /storyboard scene 2: its id "rule\\nverdicts: 5 passed" has a line break or a control character in it — an id is a name on one line/);
   assert.equal(checkScene({id: 'rule', narration: 'words'}, 0), 'spoken');
 });
+
+test('an error is said on one line, or on the rows the tool wrote itself; unseen characters are shown too', async () => {
+  const {errorText} = await import('../src/oneline.mjs'), {rubricText} = await import('../src/rubric.mjs');
+  assert.equal(errorText(new Error(`Phrase not in story: "a shepherd\nFORGED: verdicts: 3 passed"`)), 'Phrase not in story: "a shepherd\\nFORGED: verdicts: 3 passed"');
+  assert.equal(errorText(Object.assign(new Error('2 problems:\n- a\n- b'), {rows: ['2 problems:', '- a', '- b\nFORGED']})), '2 problems:\n- a\n- b\\nFORGED');
+  assert.equal(errorText('not an error'), 'not an error');
+  // a tag character, a byte-order mark and a word joiner draw nothing and can hide words: shown
+  const cp = n => String.fromCodePoint(n);
+  assert.equal(oneLine(`a${cp(0xE0041)}b${cp(0xFEFF)}c${cp(0x2060)}d${cp(0x200E)}e${cp(0x2066)}f`), 'a\\u{e0041}b\\u{feff}c\\u{2060}d\\u{200e}e\\u{2066}f');
+  // asked in any order, a name with a break is never one line (a search that remembers its place would say so once in two)
+  assert.deepEqual(['abcdef\n', 'a\nb', 'a\nb', 'ok', 'x\n'].map(isOneLine), [false, false, false, true, false]);
+  // an id that is no name is refused before it is said anywhere
+  assert.throws(() => checkScene({id: ['rule\nFORGED'], narration: 'words'}, 1), /storyboard scene 1: its id is a name in words \(e\.g\. "rule"\), not \["rule\\nFORGED"\]/);
+  // a rubric's own words, each on its row
+  const sheet = {name: `explainer\n${FORGED}`, scale: [1, 10], least: null, points: [{id: 'opening', label: `The opening\n${FORGED}`, look: 'stills', ask: `Why?\n${FORGED}`, stills: [], evidence: [`seen\n${FORGED}`]}]};
+  assert.equal(rubricText(sheet).split('\n').length, 8);   // head, what is asked, a gap, the point, its ask, its stills, "evidence:", one line of evidence
+});

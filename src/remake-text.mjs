@@ -3,6 +3,7 @@
  * to give — for a person to approve before anything is made. Text only: it reads the plan and nothing else.
  */
 import {clockTenths} from './clock.mjs';
+import {oneLine} from './oneline.mjs';
 
 const KIND_WORDS = {kinetic: 'kinetic type', montage: 'a montage', blank: 'plain ground', title: 'a title', still: 'a still picture', camera: 'a camera move', moving: 'a moving picture'};
 const MUSIC_WORDS = {'music-first': 'its song times it (music first)', 'song-under': 'its words time it, with any song under', unsure: 'the tempo is unsure', 'not-read': 'the beats were not read'};
@@ -29,7 +30,7 @@ function choiceLines(plan) {
   const musicLine = `**Music: ${MUSIC_WORDS[music.verdict] ?? music.verdict}.** ${music.verdict === 'not-read' && music.notRead ? `${sentence(music.why.because)}: ${music.notRead}.` : `${reasonText(music.why)}.`}`
     + (music.verdict === 'music-first' ? ` At ${music.bpm} BPM its scenes take the bars below: ${secondsText(music.seconds)}, beside the reference's ${secondsText(from.seconds)}.` : '');
   const enterLine = enter === null ? null : `**Between scenes: ${enterText(enter.type)}** (${enter.scenes} of ${enter.of}).${enter.type === 'fade' ? '' : ` Write "enter": "${enter.type}" on each stage that takes it; left out, a stage fades in.`}`;
-  return [`# Make one like ${from.file}`, '', `A draft plan from its breakdown: ${plural(from.shots, 'shot')} in ${secondsText(from.seconds)}, as ${plural(plan.scenes.length, 'scene')}. Nothing is made from it until you approve it.`, '',
+  return [`# Make one like ${oneLine(from.file)}`, '', `A draft plan from its breakdown: ${plural(from.shots, 'shot')} in ${secondsText(from.seconds)}, as ${plural(plan.scenes.length, 'scene')}. Nothing is made from it until you approve it.`, '',
     `**Pace: ${pace.name}.** ${reasonText(pace.why)}.`, '', musicLine, ...(enterLine ? ['', enterLine] : [])];
 }
 

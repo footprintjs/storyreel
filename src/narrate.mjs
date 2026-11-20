@@ -11,6 +11,7 @@ import {narrate, narrationSummary, narrationVoice} from 'footprint-story/voice';
 import {checkScene, spokenText, unsaidNumbers} from './clock.mjs';
 import {writeOutput} from './files.mjs';
 import {sceneScript} from './script.mjs';
+import {oneLine} from './oneline.mjs';
 
 export const NARRATE_ABOUT = 'What each scene says, voiced or not, and how far the narration has got. With a voice kit it voices what is missing, keeping every clip it finishes, and times the film by the voice once every scene is voiced.';
 export const NARRATE_ARGS = Object.freeze({kit: 'your voice kit\'s folder: it voices what is missing (a kit runs Python on this machine)', takes: 'a folder of your own recordings, lined up by the kit\'s aligner instead', only: 'the scenes to voice now, by number, like 1-3,7'});
@@ -69,7 +70,9 @@ export async function narrateTool({inputs, cwd, said}, {kit, takes, only} = {}) 
   const whole = report.voiced > 0 && report.toVoice === 0;
   if (whole) joinVoice(folder, report.lines.filter(l => l.state === 'voiced'));
   const hint = 'storyreel narrate --kit <your voice kit> (over MCP: a server started with --kit, and call narrate with say)';
-  return [narrationSummary(report, {noun: 'scenes', hint}),
+  // a scene's id and words are the film's: each is listed on one line (oneline.mjs)
+  const listed = {...report, lines: report.lines.map(l => ({...l, id: oneLine(l.id), text: oneLine(l.text)}))};
+  return [narrationSummary(listed, {noun: 'scenes', hint}),
     ...(unsaid.length ? [`to fix first: a voice drops or garbles digits, and the film says ${digits}: write them as number slots (say)`] : []),
     whole ? 'the film is timed by this voice now. next: storyreel timeline · storyreel review' : 'the film stays silent until every scene is voiced'].join('\n');
 }

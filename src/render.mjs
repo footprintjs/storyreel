@@ -75,7 +75,8 @@ function runReporting(ffmpeg, args) {
   const r = spawnSync(ffmpeg, ['-y', '-hide_banner', '-nostats', '-loglevel', 'info', ...args], {encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
   if (r.error || r.status !== 0) {
     const why = r.error ? r.error.message : r.status === null ? `killed by ${r.signal}` : `exit ${r.status}`;
-    throw new Error(`ffmpeg failed (${why}): ${args.join(' ').slice(0, 200)}\n${String(r.stderr ?? '').slice(-800)}`);
+    const head = `ffmpeg failed (${why}): ${args.join(' ').slice(0, 200)}`, said = String(r.stderr ?? '').slice(-800);
+    throw Object.assign(new Error(`${head}\n${said}`), {rows: [head, ...said.split(/\r?\n/)]});   // its own lines, each one line of the reply
   }
   return r.stderr;
 }

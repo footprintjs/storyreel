@@ -15,6 +15,7 @@ import {logCall} from './runlog.mjs';
 import {STUDIO_HELP, APPLY_HELP} from './studio/help.mjs';
 // Loaded first, so the picture's channel is taken from the environment before any project code runs (mcp.mjs · sendPicture).
 import {serveMcp, startOf, sendPicture} from './mcp.mjs';
+import {oneLine, errorText} from './oneline.mjs';
 
 const BEATS_HELP = `  beats    <song> — the song's tempo as the beat map hears it (no project needed): the verdict, the candidate tempi with
            their scores, and why each level of the beat is unsure; an unsure tempo is settled by giving music.bpm
@@ -75,7 +76,7 @@ async function breakdownCommand(args) {
     const {text, files} = await breakdown(video, {hints: 'cli', ...(out ? {out} : {}), ...(ffmpeg ? {ffmpeg} : {}), ...(reader ? {beatMap: reader, beatOptions: bpm !== undefined ? {bpm: Number(bpm)} : {}} : {})});
     console.log(`${text}\n${files.json}\n${files.md}\n${files.overview} · ${files.sheets.length} shot sheet${files.sheets.length === 1 ? '' : 's'} in ${files.sheets.length ? files.sheets[0].replace(/[^/\\]*$/, '') : '-'}\n${files.record}\nhow it was made: ${logCall(path.dirname(files.record))}`);
   } catch (e) {
-    console.error(`storyreel breakdown: ${String(e?.message ?? e).replace(/^breakdown: /, '')}${recordSoFar(e?.record)}`);
+    console.error(`storyreel breakdown: ${oneLine(String(e?.message ?? e).replace(/^breakdown: /, ''))}${recordSoFar(e?.record)}`);
     process.exit(e?.cause?.code === 'BEAT_OPTIONS' ? 2 : 1);
   }
 }
@@ -154,7 +155,7 @@ if (command === 'share') {
   if (wrong) { console.error(`storyreel share: --${wrong} needs ${what[wrong]}${flags[wrong] === 'true' ? '' : `, not ${JSON.stringify(flags[wrong])}`}`); process.exit(2); }
   const {shareCopy, shareText} = await import('./share.mjs'), num = f => (flags[f] === undefined ? undefined : Number(flags[f]));
   try { console.log(shareText(shareCopy(song, {width: num('width'), crf: num('crf'), poster: num('poster'), out: flags.out ?? null, ffmpeg: flags.ffmpeg ?? 'ffmpeg'}))); process.exit(0); }
-  catch (e) { console.error(`storyreel ${e.message}`); process.exit(/^share: (width|crf|poster|no video)/.test(e.message) ? 2 : 1); }
+  catch (e) { console.error(`storyreel ${errorText(e)}`); process.exit(/^share: (width|crf|poster|no video)/.test(e.message) ? 2 : 1); }
 }
 if (command === 'beats') {
   if (song === null) { console.error(`storyreel beats: name the song (storyreel beats music/theme.mp3)\n\n${BEATS_HELP}`); process.exit(2); }
@@ -167,7 +168,7 @@ if (command === 'beats') {
   try {
     const map = await beatMap(song, {...(flags.bpm !== undefined ? {bpm: Number(flags.bpm)} : {}), ...(flags.ffmpeg ? {ffmpeg: flags.ffmpeg} : {})});
     console.log(beatMapText(map, {source: path.basename(song)})); process.exit(0);
-  } catch (e) { console.error(`storyreel beats: ${e.message}`); process.exit(e.code === 'BEAT_OPTIONS' ? 2 : 1); }
+  } catch (e) { console.error(`storyreel beats: ${errorText(e)}`); process.exit(e.code === 'BEAT_OPTIONS' ? 2 : 1); }
 }
 if (!command || command === 'help' || command === '--help' || !TOOLS[command]) {
   const lines = [...Object.entries(TOOLS).map(([name, t]) => [`  ${name.padEnd(9)}${t.about}`, ...Object.entries(t.args).map(([a, d]) => `             --${a}  ${d}`)].join('\n')), BEATS_HELP, SHARE_HELP, SOUNDS_HELP, STUDIO_HELP, APPLY_HELP, DOCTOR_HELP];
@@ -182,5 +183,5 @@ try {
   console.log(typeof out === 'string' ? out : out.text);
   for (const file of out?.files ?? [out?.file]) sendPicture(file);   // run by the MCP server for a still, a strip or a sheet: each picture's path on its own pipe, never read out of the text
 } catch (e) {
-  console.error(`storyreel ${command}: ${e.message}`); process.exit(1);
+  console.error(`storyreel ${command}: ${errorText(e)}`); process.exit(1);   // one line, or the tool's own rows: what an error quotes from the film's files starts no line (oneline.mjs)
 }

@@ -18,6 +18,7 @@ import {writeOutput} from './files.mjs';
 import {claimsCount} from './claims.mjs';
 import {saidBeat} from './differs.mjs';
 import {stableJson} from './hash.mjs';
+import {oneLine} from './oneline.mjs';
 
 /** What each look lays out for a point: its stills, and the evidence beside them. */
 export const LOOKS = Object.freeze({
@@ -167,10 +168,11 @@ const leastText = r => {
  * and look, the question, its stills (`files[id]`: the picture drawn of them, when one was) and its evidence.
  */
 export function rubricText(sheet, {files = {}} = {}) {
+  // a rubric's name, its points' words and the evidence are the film's: each row is one line (oneline.mjs)
   return [`Rubric "${sheet.name}": score each point ${sheet.scale[0]}–${sheet.scale[1]} from its stills and evidence (the library scores nothing).`, leastText(sheet),
-    ...sheet.points.map((p, i) => [`\n${i + 1}. ${p.id} — ${p.label} (look: ${p.look})`, ...(p.ask ? [`   ask: ${p.ask}`] : []),
+    ...sheet.points.flatMap((p, i) => ['', `${i + 1}. ${p.id} — ${p.label} (look: ${p.look})`, ...(p.ask ? [`   ask: ${p.ask}`] : []),
       `   stills: ${files[p.id] ? `${files[p.id]} · ` : ''}${p.stills.length ? p.stills.map(s => s.label === secs(s.t) ? s.label : `${s.label} (${secs(s.t)})`).join(', ') : 'none'}`,
-      '   evidence:', ...(p.evidence.length ? p.evidence.map(e => `   - ${e}`) : ['   - none beyond the stills'])].join('\n'))].join('\n');
+      '   evidence:', ...(p.evidence.length ? p.evidence.map(e => `   - ${e}`) : ['   - none beyond the stills'])])].map(oneLine).join('\n');
 }
 
 /**
