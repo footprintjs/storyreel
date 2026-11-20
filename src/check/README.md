@@ -100,7 +100,8 @@ stage wrote is said so. The walk is foottrace's (`sliceForKey`), over the file a
   outside the run's own state (the film, the check before) is in no record: every answer ends by saying so, and
   `round` shows no cause for that reason.
 - **The record is read as a file anyone may have written.** Only as a plain file of at most 8 MB, never through a
-  link; it must hold one run; a name in it starts no line of the answer and a planted list of keys costs no time; a
+  link; it must hold one run; a name or a value in it starts no line of the answer; a step lists at most 200 rows and 200 keys read (more are cut,
+  and the answer says so); a
   saved decision is used only when it names an earlier step of this record. A record that is not whole says so
   first, and then a value it lacks is "not found in what could be read".
 - A record is removed with its run (the newest 50 checks are kept). One a killed check left pending is cleared by a

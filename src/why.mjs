@@ -27,18 +27,27 @@ import {readStoredRecord, sliceForKey, formatSlice, findLastWriter, commitValueA
 import {oneLine} from './oneline.mjs';
 
 /** The most lines an answer holds, the most characters of a value or a name it shows, the most bytes of a record it reads, the most steps and keys it walks. */
-export const WHY_LINES = 40, WHY_VALUE = 200, RECORD_MOST = 8 * 1024 * 1024, STEPS_MOST = 5000, READS_MOST = 200;
+export const WHY_LINES = 40, WHY_VALUE = 200, RECORD_MOST = 8 * 1024 * 1024, STEPS_MOST = 5000, READS_MOST = 200, ROWS_MOST = 200;
 const OUTSIDE = '(a stage also uses what it is given from outside the run\'s own state — the film, the check before: the record holds what stages read and wrote, and no more)';
 
 const name = text => { const said = oneLine(String(text ?? '')); return said.length > WHY_VALUE ? `${said.slice(0, WHY_VALUE - 1)}…` : said; };
-const shown = value => { const said = JSON.stringify(value) ?? String(value); return said.length > WHY_VALUE ? `${said.slice(0, WHY_VALUE - 1)}…` : said; };
+const shown = value => { const said = oneLine(JSON.stringify(value) ?? String(value)); return said.length > WHY_VALUE ? `${said.slice(0, WHY_VALUE - 1)}…` : said; };
 
-/** A commit as the walk may show it: its names one line and cut, its rows' keys read cut to READS_MOST. Its values are left as stored (they are shown through JSON, never raw). */
-function plainCommit(bundle) {
+/**
+ * A commit as the walk may show it: its names one line and cut; at most ROWS_MOST of its rows, and READS_MOST keys read
+ * among them all (the walk joins the lists of every row that wrote a key, so the bound is the step's, not a row's). Its
+ * values are left as stored (they are shown through JSON and made one line). `cut.lists` counts the steps so shortened.
+ */
+function plainCommit(bundle, cut) {
   const text = key => (typeof bundle[key] === 'string' ? {[key]: name(bundle[key])} : {});
-  const rows = Array.isArray(bundle.trace) ? bundle.trace.filter(row => row && typeof row === 'object').map(row => ({...row,
-    ...(typeof row.path === 'string' ? {path: name(row.path)} : {}),
-    ...(Array.isArray(row.readKeys) ? {readKeys: row.readKeys.slice(0, READS_MOST).filter(k => typeof k === 'string').map(name)} : {})})) : [];
+  const all = Array.isArray(bundle.trace) ? bundle.trace.filter(row => row && typeof row === 'object') : [];
+  let left = READS_MOST, short = all.length > ROWS_MOST;
+  const rows = all.slice(0, ROWS_MOST).map(row => {
+    const keys = Array.isArray(row.readKeys) ? row.readKeys.filter(k => typeof k === 'string') : null, kept = keys?.slice(0, left) ?? null;
+    if (keys) { short ||= kept.length < keys.length; left -= kept.length; }
+    return {...row, ...(typeof row.path === 'string' ? {path: name(row.path)} : {}), ...(kept ? {readKeys: kept.map(name)} : {})};
+  });
+  if (short) cut.lists += 1;
   return {...bundle, ...text('stage'), ...text('stageId'), ...text('stageName'), ...text('runtimeStageId'), trace: rows};
 }
 
@@ -67,7 +76,7 @@ async function entriesOf(run) {
   let size;
   try { size = lstatSync(run.recordFile).size; } catch { throw new Error(`run ${run.n}'s record is gone: ${name(run.recordFile)}`); }
   if (size > RECORD_MOST) throw new Error(`run ${run.n}'s record is ${Math.round(size / 1e6)} MB, more than a run writes (${RECORD_MOST / 1024 / 1024} MB at most): it was changed, and is not read`);
-  try { return await readRecordFile(run.recordFile); } catch (e) { throw new Error(`run ${run.n}'s record cannot be read as a plain file of its own (${name(e?.code ?? e?.message ?? e)}): ${name(run.recordFile)}`); }
+  try { return await readRecordFile(run.recordFile, {maxBytes: RECORD_MOST}); } catch (e) { throw new Error(`run ${run.n}'s record cannot be read as a plain file of its own (${name(e?.code ?? e?.message ?? e)}): ${name(run.recordFile)}`); }
 }
 
 /**
@@ -85,10 +94,13 @@ export async function whyText(run, key, {all = false} = {}) {
   const log = logs[0];
   if (!log || !log.commitLog.length) throw new Error(`run ${run.n}'s record holds no step: ${name(run.recordFile)}`);
   if (log.commitLog.length > STEPS_MOST) throw new Error(`run ${run.n}'s record holds ${log.commitLog.length} steps, more than a run takes (${STEPS_MOST} at most): it was changed, and is not read`);
-  const commits = log.commitLog.map(plainCommit);
+  // a step's id is how the walk tells steps apart: one longer than a run writes would be cut to another's, so it is refused
+  if (log.commitLog.some(b => typeof b.runtimeStageId === 'string' && b.runtimeStageId.length > WHY_VALUE)) throw new Error(`run ${run.n}'s record names a step longer than a run names one (${WHY_VALUE} characters at most): it was changed, and is not read`);
+  const cut = {lists: 0}, commits = log.commitLog.map(bundle => plainCommit(bundle, cut));
   // what is missing from the record is said before anything it answers
   const torn = [...(log.complete ? [] : ['this run did not finish: its record stops where it stopped']), ...(log.gaps.length ? [`${log.gaps.length} of its steps could not be read back`] : []),
-    ...(unreadable?.length ? [`${unreadable.length} lines of its record could not be read`] : [])];
+    ...(unreadable?.length ? [`${unreadable.length} lines of its record could not be read`] : []),
+    ...(cut.lists ? [`${cut.lists} of its steps list more rows or keys read than a run writes, and were cut`] : [])];
   const head = torn.length ? [`(the record is not whole — ${torn.join('; ')}: what follows is what could be read)`] : [];
   const writer = findLastWriter(commits, asked);
   if (!writer) return [...head, torn.length ? `${name(asked)}: not found in what could be read` : `${name(asked)}: no stage of this run wrote it (storyreel log --run ${run.n} --only steps lists what each wrote)`].join('\n');

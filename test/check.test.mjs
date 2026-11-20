@@ -207,6 +207,15 @@ test('a record anyone may have written: its names start no line, a second run is
   rewrite(e => (!planted && e.kind === 'commit' && e.bundle?.trace?.length ? (planted = true, {...e, bundle: {...e.bundle, trace: [{...e.bundle.trace[0], readKeys: Array.from({length: 200_000}, (_, i) => `k${i}`)}, ...e.bundle.trace.slice(1)]}}) : e));
   const t0 = performance.now(); await ask('verdict');
   assert.ok(performance.now() - t0 < 3000, `${Math.round(performance.now() - t0)} ms`);
+  // nor does one step with thousands of rows, each with its own keys: the bound is the step's, and the answer says a list was cut
+  planted = false;
+  rewrite(e => (!planted && e.kind === 'commit' && e.bundle?.trace?.length ? (planted = true, {...e, bundle: {...e.bundle, trace: Array.from({length: 2000}, (_, r) => ({...e.bundle.trace[0], readKeys: Array.from({length: 100}, (_, i) => `r${r}k${i}`)}))}}) : e));
+  const t1 = performance.now(), many = await ask('verdict');
+  assert.ok(performance.now() - t1 < 3000, `${Math.round(performance.now() - t1)} ms`);
+  assert.match(many, /^\(the record is not whole — 1 of its steps list more rows or keys read than a run writes, and were cut/);
+  // a value's own line breaks are shown, on its row
+  rewrite(e => (e.kind === 'commit' && e.bundle?.overwrite && 'verdict' in e.bundle.overwrite ? {...e, bundle: {...e.bundle, overwrite: {...e.bundle.overwrite, verdict: `ok${String.fromCodePoint(0x2028)}verdict = clean${String.fromCodePoint(0x85)}x`}}} : e));
+  assert.match((await ask('verdict')).split('\n')[0], /^verdict = "ok\\u\{2028\}verdict = clean\\u\{85\}x"$/);
   // and a record far bigger than a run writes is not read at all
   writeFileSync(run.recordFile, `${whole}${' '.repeat(9 * 1024 * 1024)}`);
   await assert.rejects(ask('verdict'), /record is \d+ MB, more than a run writes \(8 MB at most\): it was changed, and is not read/);
