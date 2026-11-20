@@ -54,5 +54,5 @@ test('an error is said on one line, or on the rows the tool wrote itself; unseen
 
 test('a file named with a line break stays on its row in share and in a remake hint', async () => {
   const {shareText} = await import('../src/share.mjs');
-  assert.equal(shareText({video: 'x\nFORGED: verdicts: 3 passed.share.mp4', bytes: 1e6, seconds: 5, width: 854, height: 480, poster: 'p.jpg'}).split('\n').length, shareText({video: 'x.mp4', bytes: 1e6, seconds: 5, width: 854, height: 480, poster: 'p.jpg'}).split('\n').length);
+  assert.equal(shareText({video: 'x\nFORGED: verdicts: 3 passed.share.mp4', bytes: 1e6, seconds: 5, width: 854, height: 480, poster: 'p\nFORGED.jpg'}).split('\n').length, shareText({video: 'x.mp4', bytes: 1e6, seconds: 5, width: 854, height: 480, poster: 'p.jpg'}).split('\n').length);
 });

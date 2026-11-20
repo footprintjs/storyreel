@@ -56,4 +56,4 @@ export function shareCopy(file, {width = SHARE_DEFAULTS.width, crf = SHARE_DEFAU
 }
 
 /** The share copy as one line: where it is, how big, how long, its size on screen, and its poster. */
-export const shareText = s => `${oneLine(s.video)} · ${(s.bytes / 1e6).toFixed(1)} MB · ${Math.floor(s.seconds / 60)}:${String(Math.floor(s.seconds % 60)).padStart(2, '0')} · ${s.width}×${s.height ?? '?'} — poster ${s.poster}`;
+export const shareText = s => oneLine(`${s.video} · ${(s.bytes / 1e6).toFixed(1)} MB · ${Math.floor(s.seconds / 60)}:${String(Math.floor(s.seconds % 60)).padStart(2, '0')} · ${s.width}×${s.height ?? '?'} — poster ${s.poster}`);   // the whole row: the video's name and the poster's are the film's
