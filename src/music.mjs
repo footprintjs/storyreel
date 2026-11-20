@@ -25,7 +25,7 @@ import {readEntrance, transitionCatalog} from './transitions.mjs';
 /**
  * The music's rules. tolerance: the most a scene's length changes for its cut (seconds, by default). clear: the
  * silence a shortened scene keeps after its last word or key. handOver: the seconds before a cut a hand-over on the
- * page begins (film.mjs · into: the old stage leaves 0.65 s ahead). gain: the song's level under the voice (0..1 of its
+ * page begins (film/util.mjs · into: the old stage leaves 0.65 s ahead). gain: the song's level under the voice (0..1 of its
  * own). fadeOut: the seconds the song fades over at the film's end. onBeat: closer than this, a cut is already on its beat.
  */
 export const MUSIC = Object.freeze({tolerance: .15, clear: .1, handOver: .65, gain: .2, fadeOut: 1.5, onBeat: .001,

@@ -94,7 +94,7 @@ export const FOCUS = Object.freeze({
 });
 
 const SANS = '"Helvetica Neue", Helvetica, Arial, sans-serif';
-/** A word's label in the top corner: ink ground, paper letters (also an example scene's label: film.mjs · exampleLabel). */
+/** A word's label in the top corner: ink ground, paper letters (also an example scene's label: film/labels.mjs · exampleLabel). */
 export function chip(ctx, text, alpha, theme, {x = 40, y = 26, k = 1, right = null} = {}) {
   const ink = theme?.palette?.ink ?? '#23211c', bg = theme?.palette?.bg ?? '#f3eee3', font = theme?.type?.sans ?? SANS;
   ctx.save(); ctx.globalAlpha *= alpha; ctx.font = `800 24px ${font}`;

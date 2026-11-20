@@ -28,7 +28,7 @@ export function notesSummary(guesses, notesApplied, camera = null) {
   return {reads: ['lines', 'notes', 'stage.'], writes};
 }
 /** What the checks found: the reading rule and the lines too short to read, the busiest scene's sounds, the worlds waited for. */
-export function checksSummary({readingRule, reading, reads = [], watchingRule, watching, facts, sounds, byScene, worlds, recalls, progression = null}) {
+function checksSummary({readingRule, reading, reads = [], watchingRule, watching, facts, sounds, byScene, worlds, recalls, progression = null}) {
   return {reads: ['world.', 'stage.', 'guess.', 'note.'], writes: {
     'checks.reading': {rule: readingRule, tooShort: reading.map(l => l.path), ...(reads.length ? {reads: reads.length, readProblems: reads.filter(r => r.problem).map(r => r.path)} : {})},
     'checks.watching': {rule: watchingRule, found: watching.map(w => ({kind: w.kind, path: w.path, at: w.at, moments: w.moments}))},

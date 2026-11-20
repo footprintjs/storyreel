@@ -6,7 +6,7 @@
 import {QUESTIONS} from '../progression.mjs';
 
 /** The recipe's own top-level keys: anything else refuses, unless the host application names it in `hostKeys`. */
-export const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'stepsTrack', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle', 'focus', 'emphasis', 'camera', 'foundSounds', 'progression', 'evidence', 'rubric', 'director', 'pace'];
+const RECIPE_KEYS = ['story', 'whiteboard', 'pushIn', 'card', 'stages', 'guesses', 'stepsTrack', 'notes', 'recalls', 'poster', 'reading', 'watching', 'listening', 'paperStyle', 'focus', 'emphasis', 'camera', 'foundSounds', 'progression', 'evidence', 'rubric', 'director', 'pace'];
 /**
  * What every shot may say about itself (shots.mjs): what it is for, what is true when it starts and ends, what the
  * viewer must take in — and its answers to the five scene questions (progression.mjs).

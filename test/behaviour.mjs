@@ -2,7 +2,7 @@
  * Behaviour pins for the example films: what a film decides that its pixels never show — the lines
  * too short to read (film.reading), the stills (film.moments()), and what the push check
  * (notes.mjs · placePushes) answers to one push note laid across each change of picture. They make a
- * refactor of the timings behind them (film.mjs · arrivalOf, pictureChanges) safe: any change shows.
+ * refactor of the timings behind them (film/changes.mjs · arrivalOf, pictureChanges) safe: any change shows.
  * `node test/behaviour.mjs --write` records test/behaviour.json; behaviour.test.mjs compares against it.
  * Re-record only for an intended change, and say so in the commit. No fonts are involved: the pins
  * hold on every machine.

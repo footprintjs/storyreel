@@ -1,7 +1,7 @@
 /**
  * Hashes of data, the one way StoryReel spells them: keys sorted first, so the same data always hashes the
  * same (reformatting a JSON file or reordering its keys changes nothing; changing a word or a number does).
- * The film's inputs (film.mjs · inputs), an approval (approval.mjs) and a segment's key (segments.mjs) all
+ * The film's inputs (film/inputs.mjs · inputs), an approval (approval.mjs) and a segment's key (segments.mjs) all
  * hash through here.
  */
 import {createHash} from 'node:crypto';

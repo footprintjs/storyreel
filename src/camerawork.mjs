@@ -6,7 +6,7 @@
  *
  *   read moves → one picture → one camera → motion? (decide: reduced motion) → cuts | moves → aim
  *
- * HOW IT COMPOSES (film.mjs · frame). The picture is drawn on the picture's clock (a freeze or a speed ramp:
+ * HOW IT COMPOSES (film/picture.mjs · frame). The picture is drawn on the picture's clock (a freeze or a speed ramp:
  * clockAt), a director's push moves it, the focus frames it (attention.mjs), then the camera's view is the outermost
  * lens, with handheld's drift over that. The view, the pushes and the focus run on the voice's clock; depth moves
  * act inside a world, on the picture's clock (a freeze stops them too).

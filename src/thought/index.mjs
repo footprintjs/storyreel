@@ -2,7 +2,7 @@
  * A thought cloud: a world drawn inside a cartoon thought bubble — a scalloped cloud with an ink outline and a soft
  * shadow, and a trail of three little circles toward a corner — for a memory, a recap, a daydream. No one is thinking
  * it: remembering is the cloud. A world takes it as its frame in the recipe, and the film hangs the world's sheet in
- * the cloud instead of on the paper (film.mjs · drawWorld):
+ * the cloud instead of on the paper (film/world-drawing.mjs · drawWorld):
  *
  *   {"story": {"kit": "draws", "shot": "recap", "frame": "thought"}, …}
  *   {"type": "world", "scene": "dream", "frame": {"type": "thought", "corner": "bottom-right", "size": 0.75}, "world": {…}}
