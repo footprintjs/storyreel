@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — one call after an edit, and a reply's rows are the tool's own
+## 0.31.0 — one call after an edit, and a reply's rows are the tool's own
 
 - **`storyreel check` (and the MCP tool `check`): the one call after an edit.** It reads everything that can be read
   without rendering, once: every phrase the film is keyed to, the review's checks and verdicts, and what the edit
