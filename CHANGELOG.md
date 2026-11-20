@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — one reader of a run's record, with StoryDeck
+
+- **`log --why` and the one-line rule are footprint-story's now** (`footprint-story/record` · `whyFromRecord`, and
+  `oneLine` / `errorText` from its root door), the same code StoryDeck uses: it was moved there from here, so
+  nothing a reply says changes. One more thing is said: a record holding a log under no step of its run says so first.
+- **StoryReel now needs footprint-story `^0.14.2`** (it was `^0.13.0`), the range StoryDeck 0.21 asks for.
+
 ## 0.32.0 — a check can say why
 
 - **`storyreel log --run <n> --why <value>`** (and the MCP tool `log` with `why`): where a value of a run came from,
