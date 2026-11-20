@@ -9,6 +9,7 @@
  * that hold it (its start rounded down, its end up), so it can be handed back as a window (storyreel part --from --to).
  */
 import {clockOf} from '../clocktext.mjs';
+import {oneLine} from '../oneline.mjs';
 
 /** The defaults: at most `lines` ranges said (the rest counted), and `handles` seconds of the pieces either side in a clip. */
 export const CHANGES_DEFAULTS = Object.freeze({lines: 10, handles: 1});
@@ -40,10 +41,10 @@ export function changedRanges(pieces) {
  */
 export function changesText({pieces, ranges, total, cache = null, notes = []}, {lines = CHANGES_DEFAULTS.lines} = {}) {
   const changed = pieces.filter(p => p.why !== null && p.why !== undefined);
-  const said = ranges.slice(0, lines).map(r => `${rangeText(r)} ${r.scenes.join(' + ')} · ${r.why.join(', ')}`);
+  const said = ranges.slice(0, lines).map(r => oneLine(`${rangeText(r)} ${r.scenes.join(' + ')} · ${r.why.join(', ')}`));
   if (ranges.length > said.length) said.push(`… ${ranges.length - said.length} more range${ranges.length - said.length > 1 ? 's' : ''}`);
   const seconds = changed.reduce((n, p) => n + (p.to - p.from), 0);
   const none = changed.length && changed.length === pieces.length && changed.every(p => p.why === 'new') && cache ? ` · none kept yet in ${cache}` : '';
-  const note = notes.length ? ` · note: ${notes.join('; ')}` : '';
+  const note = notes.length ? ` · note: ${oneLine(notes.join('; '))}` : '';
   return [...said, `${changed.length} of ${pieces.length} pieces changed (${clockOf(seconds, 'nearest')} of ${clockOf(total, 'nearest')})${none}${note}`].join('\n');
 }

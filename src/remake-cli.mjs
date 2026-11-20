@@ -10,6 +10,7 @@ import {lstatSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {makeFolder, writeOutput} from './files.mjs';
 import {keepRun, keepFailedRun, logCall} from './runlog.mjs';
+import {oneLine} from './oneline.mjs';
 
 export const REMAKE_USAGE = `storyreel remake <breakdown.json | its folder> [--quick s] [--json] [--starter folder]   make one like it: a draft plan from a breakdown (storyreel breakdown) — its scenes, pace, entrances and music, each with its why, and what is still to give; it needs no project, and writes only its run for storyreel log, beside the breakdown, and a starter
              --quick    seconds: a shot shorter than this is quick, and quick shots joined by hard cuts are one scene (1)
@@ -87,7 +88,7 @@ export async function remakeCommand(args) {
     // a plan refused on its way, or one made that no starter could be made of: the run so far stays beside the breakdown
     if (plan && e && typeof e === 'object' && !e.record) e.record = plan.record;
     keepFailedRun(breakdownFolder(given), 'remake', e);
-    console.error(`storyreel remake: ${String(e?.message ?? e).replace(/^remake(Plan|Starter): /, '')}`);
+    console.error(`storyreel remake: ${oneLine(String(e?.message ?? e).replace(/^remake(Plan|Starter): /, ''))}`);
     return 2;
   }
 }

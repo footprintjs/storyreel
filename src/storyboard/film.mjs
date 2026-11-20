@@ -125,6 +125,6 @@ export function filmFromBoard(board) {
     });
     stages.push({type: 'summary', scene: id, title: board.labels.next, cards});
   });
-  if (problems.length) throw Object.assign(new TypeError(`this storyboard has ${problems.length} problem${problems.length === 1 ? '' : 's'} a film cannot show:\n- ${problems.map((p) => `${p.at} ${p.message}`).join('\n- ')}`), {problems});
+  if (problems.length) throw Object.assign(new TypeError(`this storyboard has ${problems.length} problem${problems.length === 1 ? '' : 's'} a film cannot show:\n- ${problems.map((p) => `${p.at} ${p.message}`).join('\n- ')}`), {problems, rows: [`this storyboard has ${problems.length} problem${problems.length === 1 ? '' : 's'} a film cannot show:`, ...problems.map((p) => `- ${p.at} ${p.message}`)]});
   return {storyboard: {title: board.title, scenes: scenes.map(withNumbersSaid)}, recipe: {story: titleStory(title), stages}};
 }

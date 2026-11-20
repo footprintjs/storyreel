@@ -31,5 +31,6 @@ export function withFixBriefs(refused, input, conversation, {file = false} = {})
     `The ${briefs.length === 1 ? 'piece' : 'pieces'}, as material:\n\n${briefs.map(pieceText).join('\n\n')}`,
     ...(rest.length ? [`Also:\n${rest.map(restLine).join('\n')}`] : []),
   ].join('\n\n');
-  return Object.assign(new TypeError(message), {problems: refused.problems, briefs});
+  // the refusal is written on many lines by the tool itself: `rows` says which, so a reply keeps them and no other (oneline.mjs)
+  return Object.assign(new TypeError(message), {problems: refused.problems, briefs, rows: message.split('\n')});
 }

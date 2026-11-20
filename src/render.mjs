@@ -9,6 +9,7 @@ import {spawnSync} from 'node:child_process';
 import {createCanvas} from '@napi-rs/canvas';
 import {ENCODE, QUALITIES, makePainter, readMotionBlur, frameEncoder, frameHasher} from './paint.mjs';
 import {concatList} from './ffconcat.mjs';
+import {oneLine} from './oneline.mjs';
 import {checkVideoStrategy} from './whole.mjs';
 import {pictureStrategy} from './picture.mjs';
 import {createMotionSound, soundsByScene, SOUND_AT, FOUND} from './sound.mjs';
@@ -74,7 +75,8 @@ function runReporting(ffmpeg, args) {
   const r = spawnSync(ffmpeg, ['-y', '-hide_banner', '-nostats', '-loglevel', 'info', ...args], {encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
   if (r.error || r.status !== 0) {
     const why = r.error ? r.error.message : r.status === null ? `killed by ${r.signal}` : `exit ${r.status}`;
-    throw new Error(`ffmpeg failed (${why}): ${args.join(' ').slice(0, 200)}\n${String(r.stderr ?? '').slice(-800)}`);
+    const head = `ffmpeg failed (${why}): ${args.join(' ').slice(0, 200)}`, said = String(r.stderr ?? '').slice(-800);
+    throw Object.assign(new Error(`${head}\n${said}`), {rows: [head, ...said.split(/\r?\n/)]});   // its own lines, each one line of the reply
   }
   return r.stderr;
 }
@@ -328,7 +330,7 @@ export function filmTimeline(film, {from = 0, to = film.total} = {}) {
 }
 export const partTimeline = (film, stretch = {}) => filmTimeline(film, stretch).map(r => ({...r, t: +(r.t - (stretch.from ?? 0)).toFixed(2)}));
 /** The rows as lines: each one's time (`time(row)`: its seconds to the hundredth, by default), then the scene that starts or the phrase and the entry it moves. */
-export const timelineText = (rows, {time = r => r.t.toFixed(2)} = {}) => rows.map(r => `${time(r)}  ${r.kind === 'scene' ? `── ${r.scene}` : `"${r.phrase}"${r.entry ? ` → ${r.entry}` : ''}`}`).join('\n');
+export const timelineText = (rows, {time = r => r.t.toFixed(2)} = {}) => rows.map(r => oneLine(`${time(r)}  ${r.kind === 'scene' ? `── ${r.scene}` : `"${r.phrase}"${r.entry ? ` → ${r.entry}` : ''}`}`)).join('\n');
 
 /** The render's job from its options; a part ({scenes, handles}) becomes its from/to first (partWindow). Close it with closeRender. */
 export const prepareRender = options => prepareJob(withPart(options));

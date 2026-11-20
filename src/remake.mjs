@@ -24,6 +24,7 @@ import {MUSIC} from './music.mjs';
 import {QUIET} from './record.mjs';
 import {remakePlanText} from './remake-text.mjs';
 import {withRecord} from './runlog.mjs';
+import {oneLine} from './oneline.mjs';
 
 export {remakePlanText};
 
@@ -191,7 +192,7 @@ function musicTodo(music, spec) {
   if (music.verdict === 'music-first') return [{give: 'song', what: `a song at about ${music.bpm} BPM, and its beat map (beatMap): beatTimings times the film by it`}];
   const timing = {give: 'timing', what: 'what times the words: a voice (narration), or evenTimings for a silent film'};
   if (music.verdict === 'unsure') return [{give: 'tempo', what: `the tempo you hear: storyreel breakdown ${spec.file} --beats --bpm <n>, then plan again`}, timing];
-  if (music.verdict === 'not-read' && spec.video.sound) return [{give: 'beats', what: `the beats, read: storyreel breakdown ${spec.file} --beats, then plan again`}, timing];
+  if (music.verdict === 'not-read' && spec.video.sound) return [{give: 'beats', what: `the beats, read: storyreel breakdown ${oneLine(spec.file)} --beats, then plan again`}, timing];
   return [timing];
 }
 
