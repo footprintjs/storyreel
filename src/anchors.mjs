@@ -146,7 +146,7 @@ function noMoment(clock, r) {
 /** A scene's moments as a line lists them, each with its time: what a missing moment could be. */
 const momentsLine = (clock, scene) => { const list = clock.moments?.(scene) ?? []; return list.length ? `its moments: ${list.map(m => `{${m.name}} (${secs(m.t)})`).join(' · ')}` : 'it has no moments'; };
 /** A noted phrase as one line: where it is named, what is wrong, and what to write instead. */
-function lineOf(clock, n) {
+export function lineOf(clock, n) {
   const r = refOf(n.ref), named = `${r.scene} "${r.phrase}"${n.path ? ` → ${n.path}` : ''}`;
   if (n.problem === 'scene') return `${named} — no scene "${r.scene}"`;
   if (n.problem === 'missing' && isMark(r.phrase)) return `${named} — ${noMoment(clock, r)}`;

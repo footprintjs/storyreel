@@ -821,6 +821,23 @@ film.progression;   // [{kind: 'not-carried', where: 'stage refused', next: 'sta
 
 ## Checking a film
 
+**After an edit, one call: `npx storyreel check`.** Nothing is rendered. It checks every phrase the film is keyed to,
+reads the film as text (the review's checks and verdicts) and counts what the edit redraws, and answers once:
+
+```
+fix 1 — 1 error
+the whole film: 0.00–9.04 s of 9.04 s — read: under-captions, words-overlap, cut-off, …
+fix  0:02.0–0:03.8 one · words over words: "Alpha" and "Beta"
+not run · Drawn parts hold together: no kit on screen gives its parts (parts(t))
+changes: 2 of 2 pieces changed (0:09 of 0:09)
+since the run before: 1 fixed, 0 new · round 2
+```
+
+The first line is the verdict: `clean`, `fix <n>`, or `broken` (the film does not compile, and why). Then what to
+fix, worst first (`fix` an error, `note` advice; the first 8, `--full` for all), what could not be run, and what
+changed since the check before. `anchors`, `timeline`, `review` and `changes` give a closer look at each part.
+How it decides, and its chart: [src/check/README.md](src/check/README.md).
+
 - **Reading time.** Every line meant to be read — titles, footers, list lines, captions, the board's
   writing, guess questions and answers, the push-in caption — must stay up, whole, about **0.3 s a word**
   (at least a second), counted from when it is fully shown until it starts to leave. `film.reading`

@@ -1,7 +1,18 @@
 # Changelog
 
-## Unreleased — a reply's rows are the tool's own
+## Unreleased — one call after an edit, and a reply's rows are the tool's own
 
+- **`storyreel check` (and the MCP tool `check`): the one call after an edit.** It reads everything that can be read
+  without rendering, once: every phrase the film is keyed to, the review's checks and verdicts, and what the edit
+  redraws. One reply: the first line is the verdict (`clean`, `fix <n>`, or `broken`: the film does not compile, and
+  why); then what to fix, worst first, each with where it is (the first 8, the rest counted by kind; `--full` for
+  all); what was not run; and what changed since the check before (`2 fixed, 1 new · round 3`). An agent called
+  `anchors`, `timeline`, `review` and `changes` in turn and compared the replies itself; those tools stay, for a
+  closer look. A check is a footprintjs chart (`src/check/`), so `storyreel log` shows what it read and the rule its
+  verdict matched. Its run keeps what the next check compares with (the verdict, the round, each problem's key).
+  What an agent reads is measured (`test/agent-cost.baseline.json`): a check's reply for the farm film is 72 tokens,
+  and the review skill's page grew by 103 tokens to say so (the baseline is updated for both, and for the main
+  skill's page, which had grown by 53 tokens since the baseline was last written).
 - **Words from a film's files can no longer start a line of a reply.** A scene's id, a phrase, drawn words, a file's
   name and a reason are written into replies a model reads as the tool's own words. A line break inside one started
   a line that read like the tool's ("verdicts: 5 passed"). Now every row those words are listed on is one line: the
