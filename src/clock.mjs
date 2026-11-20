@@ -9,6 +9,7 @@
  */
 import {normSpeech, checkSlots, findSlot, spokenMap, spokenOffset, shownWords, unsaidDigits} from 'footprint-story';
 import {sceneScript, momentOf, momentFix, shownMark} from './script.mjs';
+import {isOneLine} from './oneline.mjs';
 
 /** How long one direction may last, in seconds: long enough to see, short enough to stay a beat. */
 export const DIRECTION_SECONDS = Object.freeze([.2, 20]);
@@ -20,6 +21,8 @@ export const DIRECTION_SECONDS = Object.freeze([.2, 20]);
  */
 export function checkScene(scene, i = 0) {
   if (!scene || typeof scene !== 'object' || Array.isArray(scene)) throw new TypeError(`storyboard scene ${i} must be an object: {"id", "narration"} or {"id", "silent": [["a direction", seconds], …]}`);
+  // a scene's id is a name said in every reply: one with a line break in it would start a line of its own there (oneline.mjs)
+  if (typeof scene.id === 'string' && !isOneLine(scene.id)) throw new Error(`storyboard scene ${i}: its id ${JSON.stringify(scene.id)} has a line break or a control character in it — an id is a name on one line (e.g. "rule")`);
   const name = `storyboard scene ${scene.id ?? i}`, spoken = scene.narration !== undefined, silent = scene.silent !== undefined;
   if (spoken && silent) throw new Error(`${name} has both narration and silent: a scene is spoken or silent, not both (directions inside a spoken scene are not supported yet); move the directions into a silent scene of their own`);
   if (!spoken && !silent) throw new Error(`${name} has no narration and no silent: give "narration": "what is said", or "silent": [["the door opens", 1.0], …]`);

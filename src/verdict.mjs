@@ -13,6 +13,7 @@
  * plain functions (slideshow.mjs, geometry.mjs, claims.mjs); this is where it becomes an answer.
  */
 import {flowChart, decide} from 'footprintjs';
+import {oneLine} from './oneline.mjs';
 
 export const VERDICTS = Object.freeze(['passed', 'failed', 'not run']);
 /** A verdict as a stage id (an id has no space). */
@@ -55,4 +56,4 @@ export function verdictChart({name, id, measure, verdict, description = '', on =
 }
 
 /** The verdicts as lines: "No slideshow · failed: most of the running time inside the shots is still (72 % of 41.3 s)". */
-export const verdictsText = verdicts => verdicts.map(v => `${v.label ?? v.check} · ${v.verdict}: ${v.why}${v.summary ? ` (${v.summary})` : ''}`).join('\n');
+export const verdictsText = verdicts => verdicts.map(v => oneLine(`${v.label ?? v.check} · ${v.verdict}: ${v.why}${v.summary ? ` (${v.summary})` : ''}`)).join('\n');

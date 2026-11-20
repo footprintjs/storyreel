@@ -34,6 +34,7 @@ import {frameHashes} from './pins.mjs';
 import {greyOf} from './finished.mjs';
 import {partScenes, partWindow, partTimeline, timelineText} from './render.mjs';
 import {clockTenths} from './clock.mjs';
+import {oneLine} from './oneline.mjs';
 import {verdictChart, verdictsText, readVerdict} from './verdict.mjs';
 import {withRecord} from './runlog.mjs';
 import {differsMeasure, differsReached, differsSummary, labelMark, ownFigureLines, saidBeat, DIFFERS_VERDICT, DECLARING_CLAIMS_VERDICT} from './differs.mjs';
@@ -452,7 +453,7 @@ export {verdictsText};
 export {purityOf, PURITY_VERDICT} from './purity.mjs';
 export {wordContrast, luminance, contrastRatio, faintWords, CONTRAST, CONTRAST_VERDICT} from './contrast.mjs';
 export {readDiffers, timeWords, analogyWords, DIFFERS_VERDICT, DIFFERS_MOST, DIFFERS_SAID_MOST, DIFFERS_TIME_MOST} from './differs.mjs';
-export const findingsText = findings => findings.map(f => `${clockTenths(f.from)}–${clockTenths(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}`).join('\n');
+export const findingsText = findings => findings.map(f => oneLine(`${clockTenths(f.from)}–${clockTenths(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}`)).join('\n');
 
 /** The findings that are advice, not errors (a held title can be right): listed after the rest in a summary. */
 const ADVICE = new Set(['still', 'stale', 'slideshow', 'hook']);

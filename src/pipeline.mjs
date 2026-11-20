@@ -27,6 +27,7 @@ import {installedVersion, lockedVersions} from './versions.mjs';
 import {codeCover, storyreelCode, MAX_PIECES} from './segments.mjs';
 import {beatMap, likelyTempi} from './beats.mjs';
 import {readMusic, musicHash, fitToMusic, fitVoice} from './music.mjs';
+import {plainNarrative} from './record.mjs';
 import {QUESTIONS} from './progression.mjs';
 
 const version = installedVersion;
@@ -350,7 +351,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
         ...(paced ? {pacing: paced.pacing ?? null} : {}),
         ...sweptRecord(),
         tools: TOOLS(),
-        pipeline: trace.getEntries(),
+        pipeline: plainNarrative(trace),
         ...(film?.record ? {compile: film.record.narrative} : {}),
       };
       writeOutput(path.join(dir, 'making-of.failed.json'), JSON.stringify(record, null, 2));
@@ -420,7 +421,7 @@ export async function makeFilm({storyboard, recipe, data = null, kits = [], them
     ...(result.video ? {picture: result.video} : {}),
     ...(finished ? {finished: {ok: finished.ok, checked: finished.checked, skipped: finished.skipped, findings: finished.findings, ...(finished.error ? {error: finished.error} : {})}} : {}),
     tools: TOOLS(),
-    pipeline: trace.getEntries(),
+    pipeline: plainNarrative(trace),
     // The compile, stage by stage (record.mjs · recordSteps): what each stage read and wrote, every line as when.<recipe path>.
     compile: film.record.narrative,
   };

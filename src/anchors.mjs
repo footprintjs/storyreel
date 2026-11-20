@@ -23,6 +23,7 @@
  */
 
 import {momentOf, momentFix} from './script.mjs';
+import {oneLine} from './oneline.mjs';
 
 /** The most words a suggested phrase runs to: past it, a scene says the same words too often to name a place by them. */
 const MOST_WORDS = 8;
@@ -171,6 +172,6 @@ export function anchorsText({clock, notes, checked, stopped = null}, {full = fal
   const head = stopped ? `the compile stopped, so the recipe's phrases were read from the recipe itself: ${checked} checked${tally ? `: ${tally}` : ''}`
     : !checked && !notes.length ? 'no phrase is named: the recipe keys nothing to the voice, and the pacing holds nothing'
     : `${checked} phrase${checked === 1 ? '' : 's'} checked${tally ? `: ${tally}` : ': each said once, where it is named'}`;
-  const body = count.map(([list, said]) => `${said}:\n${(full ? list : list.slice(0, ANCHORS_TOP)).map(n => `  ${lineOf(clock, n)}`).join('\n')}${!full && list.length > ANCHORS_TOP ? `\n  … ${list.length - ANCHORS_TOP} more: --full lists every one` : ''}`);
-  return [head, ...body, ...(stopped ? [`the compile stopped: ${stopped}\nfix the phrases above, and run it again`] : [])].join('\n');
+  const body = count.map(([list, said]) => `${said}:\n${(full ? list : list.slice(0, ANCHORS_TOP)).map(n => `  ${oneLine(lineOf(clock, n))}`).join('\n')}${!full && list.length > ANCHORS_TOP ? `\n  … ${list.length - ANCHORS_TOP} more: --full lists every one` : ''}`);
+  return [head, ...body, ...(stopped ? [`the compile stopped: ${oneLine(stopped)}\nfix the phrases above, and run it again`] : [])].join('\n');
 }
