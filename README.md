@@ -838,6 +838,10 @@ fix, worst first (`fix` an error, `note` advice; the first 8, `--full` for all),
 changed since the check before. `anchors`, `timeline`, `review` and `changes` give a closer look at each part.
 How it decides, and its chart: [src/check/README.md](src/check/README.md).
 
+A check keeps its record, so the log can say where a value came from without running anything again:
+`npx storyreel log --run 1 --why verdict` gives the value, the stage that wrote it, the rule that chose that stage
+and what the rule read, walked back (`--why errors`, `--why round`, any value a stage wrote).
+
 - **Reading time.** Every line meant to be read — titles, footers, list lines, captions, the board's
   writing, guess questions and answers, the push-in caption — must stay up, whole, about **0.3 s a word**
   (at least a second), counted from when it is fully shown until it starts to leave. `film.reading`

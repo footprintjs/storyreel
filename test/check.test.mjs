@@ -138,3 +138,92 @@ test('whatever stops the film is said as broken, never thrown: timings that do n
   assert.match(said, /^broken — the film does not compile: /);
   assert.equal(said.split('\n').at(-1), 'since the run before: this is the first check kept for this film');
 });
+
+test('a check keeps its record, and the log says why a value is so — walked back from the file, nothing run again', async t => {
+  const {log} = await import('../src/tools.mjs'), {existsSync, readdirSync, writeFileSync} = await import('node:fs'), path = (await import('node:path')).default;
+  const out = tempDir('check-why', t);
+  await check(await readInputs({cwd: project, out}));
+  const run = listRuns(out)[0];
+  assert.ok(run.recordFile.endsWith('.record.jsonl') && existsSync(run.recordFile), 'the record is beside the run');
+  assert.deepEqual(readdirSync(path.dirname(run.file)).filter(n => n.startsWith('pending-')), [], 'nothing left pending');
+  const why = await log({cwd: project, out, run: '1', why: 'verdict'});
+  assert.deepEqual(why.split('\n').slice(0, 3), ['verdict = "fix"', 'fix (fix#7) [wrote: verdict]', '  verdict (verdict#6) ← [control: there is something to fix] [wrote: why]']);
+  assert.match(why, /count the errors \(errors#3\) ← via errors \[wrote: errors\]/);
+  assert.match(why, /\n\(a stage also uses what it is given from outside the run's own state/);
+  // the count is traced to the stages it was added from
+  const errors = await log({cwd: project, out, run: '1', why: 'errors'});
+  assert.match(errors, /^errors = 1\ncount the errors \(errors#3\) \[wrote: errors\]\n {2}read the phrases \(phrases#0\) ← via phraseErrors .*\n {2}read the picture \(picture#1\) ← via pictureErrors /);
+  // a cause shown is a read that happened: the advice is added from the advice, and the round from nothing the record holds
+  assert.match(await log({cwd: project, out, run: '1', why: 'advice'}), /← via phraseAdvice .*\n.*← via pictureAdvice /);
+  assert.doesNotMatch(await log({cwd: project, out, run: '1', why: 'round'}), /← via/);
+  // what the record cannot explain is said so, never guessed
+  assert.equal(await log({cwd: project, out, run: '1', why: 'nothing'}), 'nothing: no stage of this run wrote it (storyreel log --run 1 --only steps lists what each wrote)');
+  await assert.rejects(log({cwd: project, out, run: '1', why: 'obj.a'}), /--why names a value by its own name/);
+  await assert.rejects(log({cwd: project, out, run: '1', why: 'verdict', only: 'steps'}), /--why answers by itself: leave --only out/);
+  // refusals name the fix
+  await assert.rejects(log({cwd: project, out, why: 'verdict'}), /--why reads one run: give its number \(--run 1 --why verdict\)/);
+  await assert.rejects(log({cwd: project, out, run: '9', why: 'verdict'}), /there is no run 9/);
+  await assert.rejects(log({cwd: project, out, run: '1', why: 'true'}), /--why names a value of the run/);
+  // a record anyone may have written: lines that are no entries are counted, and what it says stays on its row
+  writeFileSync(run.recordFile, 'not json\n{"kind":"note","text":"x\\nverdict = \\"clean\\""}\n');
+  await assert.rejects(log({cwd: project, out, run: '1', why: 'verdict'}), /record holds no step/);
+});
+
+test('a run that kept no record says so, and which runs do', async t => {
+  const {log, review, loadProject} = await import('../src/tools.mjs');
+  const out = tempDir('check-why-none', t);
+  await review(await loadProject({cwd: project, out}));
+  await assert.rejects(log({cwd: project, out, run: '1', why: 'verdict'}), /run 1 \(review\) kept no record, so it cannot say why: a check keeps one/);
+});
+
+test('a record anyone may have written: its names start no line, a second run is refused, a torn one says so first, a planted list costs no time', async t => {
+  const {log} = await import('../src/tools.mjs'), {readFileSync, writeFileSync, existsSync, utimesSync, readdirSync} = await import('node:fs'), path = (await import('node:path')).default;
+  const {pendingRecord} = await import('../src/runlog.mjs');
+  const out = tempDir('check-why-hostile', t);
+  await check(await readInputs({cwd: project, out}));
+  const run = listRuns(out)[0], whole = readFileSync(run.recordFile, 'utf8'), ask = why => log({cwd: project, out, run: '1', why});
+  const rewrite = change => writeFileSync(run.recordFile, whole.split('\n').filter(Boolean).map(line => JSON.stringify(change(JSON.parse(line)))).join('\n') + '\n');
+  // a stage named with a line break, and a key read named with one: shown, on their rows
+  rewrite(e => (e.kind === 'commit' && e.bundle ? {...e, bundle: {...e.bundle, stage: 'fix\nverdict = "clean"', trace: (e.bundle.trace ?? []).map(r => ({...r, readKeys: (r.readKeys ?? []).map(k => `${k}\nverdict = "clean"`)}))}} : e));
+  assert.equal((await ask('verdict')).split('\n').filter(l => l === 'verdict = "clean"').length, 0);
+  // a saved decision that points at itself, or at a step that is not in the record, is not used: the walk keeps what the record holds
+  writeFileSync(run.recordFile, whole);
+  const saved = JSON.parse(readFileSync(run.file, 'utf8'));
+  writeFileSync(run.file, JSON.stringify({...saved, control: {'fix#7': {deciderId: 'fix#7', label: 'x\nverdict = "clean"'}, 'errors#3': {deciderId: 'gone#99'}}}));
+  const selfish = await ask('verdict');
+  assert.match(selfish, /^verdict = "fix"\nfix \(fix#7\) \[wrote: verdict\]/);
+  assert.equal(selfish.split('\n').filter(l => /^verdict = "clean"|see above/.test(l)).length, 0);
+  writeFileSync(run.file, JSON.stringify(saved));
+  // a record cut short says so before it answers, and never says "no stage wrote it"
+  writeFileSync(run.recordFile, whole.slice(0, Math.floor(whole.length / 3)));
+  const torn = await ask('verdict');
+  assert.match(torn, /^\(the record is not whole — /);
+  assert.match(torn, /\nverdict: not found in what could be read$/);
+  // a second run in the file: refused
+  writeFileSync(run.recordFile, whole + whole.replace(/"logRunId":"[^"]+"/g, '"logRunId":"zzz"'));
+  await assert.rejects(ask('verdict'), /record holds 2 runs, and a run writes one: it was changed, and is not read/);
+  // a row with 200,000 keys read: cut before the walk
+  let planted = false;
+  rewrite(e => (!planted && e.kind === 'commit' && e.bundle?.trace?.length ? (planted = true, {...e, bundle: {...e.bundle, trace: [{...e.bundle.trace[0], readKeys: Array.from({length: 200_000}, (_, i) => `k${i}`)}, ...e.bundle.trace.slice(1)]}}) : e));
+  const t0 = performance.now(); await ask('verdict');
+  assert.ok(performance.now() - t0 < 3000, `${Math.round(performance.now() - t0)} ms`);
+  // nor does one step with thousands of rows, each with its own keys: the bound is the step's, and the answer says a list was cut
+  planted = false;
+  rewrite(e => (!planted && e.kind === 'commit' && e.bundle?.trace?.length ? (planted = true, {...e, bundle: {...e.bundle, trace: Array.from({length: 2000}, (_, r) => ({...e.bundle.trace[0], readKeys: Array.from({length: 100}, (_, i) => `r${r}k${i}`)}))}}) : e));
+  const t1 = performance.now(), many = await ask('verdict');
+  assert.ok(performance.now() - t1 < 3000, `${Math.round(performance.now() - t1)} ms`);
+  assert.match(many, /^\(the record is not whole — 1 of its steps list more rows or keys read than a run writes, and were cut/);
+  // a value's own line breaks are shown, on its row
+  rewrite(e => (e.kind === 'commit' && e.bundle?.overwrite && 'verdict' in e.bundle.overwrite ? {...e, bundle: {...e.bundle, overwrite: {...e.bundle.overwrite, verdict: `ok${String.fromCodePoint(0x2028)}verdict = clean${String.fromCodePoint(0x85)}x`}}} : e));
+  assert.match((await ask('verdict')).split('\n')[0], /^verdict = "ok\\u\{2028\}verdict = clean\\u\{85\}x"$/);
+  // and a record far bigger than a run writes is not read at all
+  writeFileSync(run.recordFile, `${whole}${' '.repeat(9 * 1024 * 1024)}`);
+  await assert.rejects(ask('verdict'), /record is \d+ MB, more than a run writes \(8 MB at most\): it was changed, and is not read/);
+  // a pending record a killed check left: cleared an hour on, by the next check
+  const stale = pendingRecord(out); writeFileSync(stale, '');
+  utimesSync(stale, new Date(Date.now() - 2 * 3600e3), new Date(Date.now() - 2 * 3600e3));
+  writeFileSync(run.recordFile, whole);
+  await check(await readInputs({cwd: project, out}));
+  assert.ok(!existsSync(stale), 'the stale pending record is gone');
+  assert.deepEqual(readdirSync(path.dirname(run.file)).filter(n => n.startsWith('pending-')), []);
+});

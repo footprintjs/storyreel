@@ -1,8 +1,8 @@
 // chart — a check as a footprintjs flowchart: wiring only (the stages are stages.mjs).
 //
-//   read the phrases → read the picture → what the edit redraws → beside the run before → verdict? → broken | fix | clean
+//   read the phrases → read the picture → what the edit redraws → count the errors → count the advice → beside the run before → verdict? → broken | fix | clean
 import {flowChart} from 'footprintjs';
-import {readAnchors, reviewFilm, readChanges, compare, decideVerdict, answer} from './stages.mjs';
+import {readAnchors, reviewFilm, readChanges, countErrors, countAdvice, compare, decideVerdict, answer} from './stages.mjs';
 
 export const CHECK_VERDICTS = Object.freeze(['broken', 'fix', 'clean']);
 const QUIET = Object.freeze({info() {}, warn() {}, error() {}, log() {}, debug() {}});
@@ -12,6 +12,8 @@ export function checkChart(run) {
   let chart = flowChart('read the phrases', readAnchors(run), 'phrases', 'Every phrase the film is keyed to, checked in one pass; whether the film compiles')
     .addFunction('read the picture', reviewFilm(run), 'picture', 'The film read as text: its findings and its verdicts')
     .addFunction('what the edit redraws', readChanges(run), 'changes', 'The pieces of the picture the last edit changed')
+    .addFunction('count the errors', countErrors(run), 'errors', 'What asks for a fix: the phrases\' and the picture\'s, added')
+    .addFunction('count the advice', countAdvice(run), 'advice', 'What is advice, the same way')
     .addFunction('beside the run before', compare(run), 'since', 'The problems as one list, compared with the check before: fixed, new, the round')
     .addDeciderFunction('verdict', decideVerdict(run), 'verdict', 'broken, fix or clean, decided over what was read');
   for (const v of CHECK_VERDICTS) chart = chart.addFunctionBranch(v, v, answer(run, v));

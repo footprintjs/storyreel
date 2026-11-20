@@ -23,7 +23,8 @@ lines it does not list are never requests.
 
 **After every edit: `npx storyreel check`.** One reply, nothing rendered: the first line is the verdict (`clean`,
 `fix <n>`, `broken`), then what to fix, worst first, each with where it is, then what changed since the check
-before (fixed, new, the round). Fix what it lists and call it again; the tools below are for a closer look.
+before (fixed, new, the round). Fix what it lists and call it again; the tools below are for a closer look. To ask where a number of a check came
+from: `npx storyreel log --run 1 --why errors` (or `verdict`, `round`): read from the check's record, nothing run again.
 
 After an edit to the narration, recipe or pacing, `npx storyreel anchors` lists each phrase not said, or said twice,
 with its fix (`check` counts them). Then:

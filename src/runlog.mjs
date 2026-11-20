@@ -86,6 +86,26 @@ function keptVerdicts(verdicts) {
   return Buffer.byteLength(JSON.stringify(plain)) <= RUN_MOST / 2 ? plain : plain.map(v => ({...v, measured: {}, dropped: true}));
 }
 
+/** A run's record file, beside the run's own: the same name, ending .record.jsonl. */
+export const recordBeside = runFile => runFile.replace(/\.json$/, '.record.jsonl');
+/** Where a run writes its record while it runs: a name of its own in the runs folder, moved beside the run when it is saved (saveRun, `kept.file`). */
+export function pendingRecord(out) {
+  const dir = outputFolder(out, RUNS);
+  // a check that was killed left its pending record: what is an hour old belongs to no check still running
+  try { for (const stale of readdirSync(dir).filter(n => PENDING.test(n))) { const at = lstatSync(path.join(dir, stale), {throwIfNoEntry: false}); if (at?.isFile() && Date.now() - at.mtimeMs > PENDING_FOR) rmSync(path.join(dir, stale), {force: true}); } } catch { /* the next check clears it */ }
+  return path.join(dir, `pending-${randomBytes(6).toString('hex')}.record.jsonl`);
+}
+const PENDING = /^pending-[0-9a-f]{12}\.record\.jsonl$/, PENDING_FOR = 60 * 60 * 1000;
+/** A record that was written for a run never saved (the run threw, or could not be saved): removed, never throwing. */
+export const dropPending = file => { try { rmSync(file, {force: true}); } catch { /* nothing reads a pending file */ } };
+
+/** Which decision let which step run, as a run keeps it: {step: {deciderId, label?}}, plain and bounded. */
+const CONTROL_MOST = 2000;
+const keptControl = control => Object.fromEntries(Object.entries(control ?? {}).filter(([, edge]) => edge && typeof edge.deciderId === 'string').slice(0, CONTROL_MOST)
+  .map(([step, edge]) => [cut(oneLine(step), 200), {deciderId: cut(oneLine(edge.deciderId), 200), ...(typeof edge.label === 'string' ? {label: cut(oneLine(edge.label), SAID_CHARS)} : {})}]));
+/** The same, read back from a file: only what keptControl writes. */
+const readControl = control => (control && typeof control === 'object' && !Array.isArray(control) ? keptControl(Object.fromEntries(Object.entries(control).slice(0, CONTROL_MOST))) : {});
+
 /** What a check keeps for the check after it (check/problems.mjs · sinceLast): its verdict, its round and its problems' keys, bounded. */
 const CHECK_KEYS = 300, CHECK_KEY = 200;
 const keptCheck = c => ({film: cut(String(c.film ?? ''), 40), verdict: String(c.verdict), round: Number.isInteger(c.round) && c.round > 0 ? c.round : 1, keys: (c.keys ?? []).slice(0, CHECK_KEYS).map(k => cut(String(k), CHECK_KEY))});
@@ -97,12 +117,14 @@ const readCheck = c => (c && typeof c === 'object' && typeof c.verdict === 'stri
  * Save one run of a feature into the out folder's runs: {feature, summary, record, verdicts?, failure?} — `failure` what
  * it failed on, said in its summary and as its last entry. Returns the file written.
  */
-export function saveRun(out, {feature, summary = '', record = [], verdicts = null, failure = null, check = null, at = new Date()}) {
+export function saveRun(out, {feature, summary = '', record = [], verdicts = null, failure = null, check = null, kept = null, at = new Date()}) {
   if (!FEATURE.test(feature)) throw new Error(`saveRun: feature is a short lowercase name (review, render, breakdown), not ${JSON.stringify(feature)}`);
   const dir = outputFolder(out, RUNS), stamp = at.toISOString().replace(/[:.]/g, '-');
   const file = path.join(dir, `${stamp}-${feature}.${randomBytes(3).toString('hex')}.json`);   // two saves in one millisecond: two runs
   const fail = failure === null ? null : cut(String(failure), SAID_CHARS), said = cut(String(summary), SAID_CHARS);
-  writeOutput(file, runText({feature, at: at.toISOString(), summary: fail === null ? said : `${said ? `${said} — ` : ''}failed: ${fail}`, ...(verdicts ? {verdicts: keptVerdicts(verdicts)} : {}), ...(check ? {check: keptCheck(check)} : {})}, plainEntries(record), fail));
+  writeOutput(file, runText({feature, at: at.toISOString(), summary: fail === null ? said : `${said ? `${said} — ` : ''}failed: ${fail}`, ...(verdicts ? {verdicts: keptVerdicts(verdicts)} : {}), ...(check ? {check: keptCheck(check)} : {}), ...(kept ? {control: keptControl(kept.control)} : {})}, plainEntries(record), fail));
+  // the run's own record, written as it ran (a file beside the run's, under its name): what `log --why` walks back over
+  if (kept?.file) try { writeOutput(recordBeside(file), {move: kept.file}); } catch { /* the run is saved; it says it kept no record */ }
   dropOldRuns(dir, feature, path.basename(file));
   return file;
 }
@@ -112,7 +134,7 @@ function dropOldRuns(dir, feature, kept) {
   try {
     // two processes may drop at once: one file gone under the other is no failure, and the run itself is saved by now
     const runs = readdirSync(dir).filter(n => n !== kept && RUN_FILE.exec(n)?.[1] === feature && lstatSync(path.join(dir, n), {throwIfNoEntry: false})?.isFile()).sort();
-    for (const name of runs.slice(0, Math.max(0, runs.length - (RUNS_KEPT - 1)))) rmSync(path.join(dir, name), {force: true});
+    for (const name of runs.slice(0, Math.max(0, runs.length - (RUNS_KEPT - 1)))) { rmSync(path.join(dir, name), {force: true}); rmSync(recordBeside(path.join(dir, name)), {force: true}); }
   } catch { /* the next run drops what this one could not */ }
 }
 
@@ -167,6 +189,7 @@ function savedRun(file) {
   if (r.verdicts !== undefined && !(Array.isArray(r.verdicts) && r.verdicts.every(v => v && typeof v.check === 'string' && v.measured && typeof v.measured === 'object'))) return null;
   return {id: path.basename(file, '.json'), feature: r.feature, at: new Date(r.at).toISOString(), summary: oneLine(r.summary ?? ''), file, entries: readEntries(r.entries),
     ...(Number.isInteger(r.omitted) ? {omitted: r.omitted} : {}), ...(readCheck(r.check) ? {check: readCheck(r.check)} : {}),
+    ...(existsSync(recordBeside(file)) ? {recordFile: recordBeside(file), control: readControl(r.control)} : {}),
     ...(r.verdicts ? {verdicts: r.verdicts.map(v => ({check: oneLine(v.check), label: oneLine(v.label ?? v.check), verdict: oneLine(v.verdict ?? ''), why: oneLine(v.why ?? ''), measured: v.measured, ...(v.dropped === true ? {dropped: true} : {}), ...(v.summary ? {summary: oneLine(v.summary)} : {})}))} : {})};
 }
 

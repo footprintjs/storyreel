@@ -39,7 +39,11 @@ phrases --> picture
 picture["read the picture"]
 picture --> changes
 changes["what the edit redraws"]
-changes --> since
+changes --> errors
+errors["count the errors"]
+errors --> advice
+advice["count the advice"]
+advice --> since
 since["beside the run before"]
 since --> verdict
 verdict["verdict"]
@@ -72,6 +76,36 @@ project with other flags (a config's `film(flags)` may give another film) starts
 
 **One thing to fix is counted once.** A verdict that failed is one error, unless its own findings are listed as
 errors (a verdict's findings carry its check's name): then they are what to fix.
+
+## Asking why
+
+A check keeps its record: a file beside its run in the out folder (`.storyreel/runs/<run>.record.jsonl`), written as
+the check runs — every commit, the keys each stage had read when it wrote, and (in the run's own file) which decision
+let each stage run. So a value can be asked for, and nothing is run again:
+
+```
+$ storyreel log --run 1 --why errors
+errors = 1
+count the errors (errors#3) [wrote: errors]
+  read the phrases (phrases#0) ← via phraseErrors [wrote: phrasesChecked, phraseProblems, phraseErrors, …]
+  read the picture (picture#1) ← via pictureErrors [wrote: reviewed, findings, pictureErrors, …]
+(a stage also uses what it is given from outside the run's own state — the film, the check before: …)
+```
+
+`--why verdict` shows the branch that wrote it, the rule that chose the branch, and what that rule read. A value no
+stage wrote is said so. The walk is foottrace's (`sliceForKey`), over the file alone (`../why.mjs`).
+
+- **A cause shown is a read that happened.** Each count is added in a stage of its own (`count the errors`, `count the
+  advice`) from what the stages before wrote, so the path the record holds is exact. What a stage is given from
+  outside the run's own state (the film, the check before) is in no record: every answer ends by saying so, and
+  `round` shows no cause for that reason.
+- **The record is read as a file anyone may have written.** Only as a plain file of at most 8 MB, never through a
+  link; it must hold one run; a name or a value in it starts no line of the answer; a step lists at most 200 rows and 200 keys read (more are cut,
+  and the answer says so); a
+  saved decision is used only when it names an earlier step of this record. A record that is not whole says so
+  first, and then a value it lacks is "not found in what could be read".
+- A record is removed with its run (the newest 50 checks are kept). One a killed check left pending is cleared by a
+  later check, an hour on.
 
 **Broken, never thrown.** Whatever stops the film from compiling, as every other tool compiles it, is the `broken`
 line. Only what is no film at all (no config, a config that throws) is an error of the command.
