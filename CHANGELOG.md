@@ -6,6 +6,10 @@
   `oneLine` / `errorText` from its root door), the same code StoryDeck uses: it was moved there from here, so
   nothing a reply says changes. One more thing is said: a record holding a log under no step of its run says so first.
 - **StoryReel now needs footprint-story `^0.14.2`** (it was `^0.13.0`), the range StoryDeck 0.21 asks for.
+- The compile is split into stages (`src/film/`, one module each, listed in its README): each takes one state object
+  and adds its own named results, and `src/film.mjs` runs them in order. The camera plan's stage functions moved to
+  `src/camerawork/`, leaving its chart file as wiring. Nothing a film draws, says, checks or records changes; pieces
+  cached by an earlier version are drawn again once, as after any change to the drawing code.
 
 ## 0.32.0 — a check can say why
 
