@@ -23,7 +23,7 @@ test('behaviour pins hold a refusal for every change of picture that has words o
   }
 });
 
-// The pins must reach the numbers a refactor of film.mjs · arrivalOf would touch: a plain hand-over
+// The pins must reach the numbers a refactor of film/changes.mjs · arrivalOf would touch: a plain hand-over
 // on the page (its settle, start + 0.4), a director's cut (a zero-length change) and a line too short
 // to read. examples/recap carries all three; if an edit to the examples drops one, this says so.
 test('behaviour pins reach a plain hand-over, a cut and a line too short to read', () => {

@@ -1,7 +1,7 @@
 /**
  * An approval lock. A person watches a render and approves it: `approveFilm({record, by})` takes that
  * render's making-of.json, which lists what the film was made from, hashed — the storyboard, the timings,
- * the recipe, the strings, the data, the theme and every file the film read (film.mjs · inputs), the pacing,
+ * the recipe, the strings, the data, the theme and every file the film read (film/inputs.mjs · inputs), the pacing,
  * the voice's audio, and a fingerprint of the kits' code when one was given (makeFilm's `code`).
  * `makeFilm({…, approval})` then refuses to render anything else, naming what changed and when it was
  * approved — so a "final" render can only be the film someone watched.
