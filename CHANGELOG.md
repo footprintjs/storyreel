@@ -9,8 +9,6 @@
   direction are shown as their escape (`\n`, `\u{202e}`), never obeyed (`src/oneline.mjs`).
 - **A scene id with a line break or a control character in it is refused** where the recipe is read, naming the
   fix. An id is a name on one line.
-- **`making-of.json` keeps the pipeline's words, never a live value.** Its `pipeline` entries were stored with the
-  value each carried (`rawValue`); they are now stored as every other record is, without it.
 - **StoryReel now needs footprint-story `^0.13.0`** (it was `^0.9.0`), the range StoryDeck 0.20 asks for, so an app
   that uses both installs one copy. Nothing StoryReel uses changes: every file outside the isometric door is byte for
   byte the same in 0.9.0 and 0.13.0. 0.10 to 0.13 add places worked out from links, routes along a floor and names
