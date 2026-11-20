@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — a check can say why
+## 0.32.0 — a check can say why
 
 - **`storyreel log --run <n> --why <value>`** (and the MCP tool `log` with `why`): where a value of a run came from,
   walked back from the run's own record — its value, the stage that wrote it, the decision that let that stage run and
