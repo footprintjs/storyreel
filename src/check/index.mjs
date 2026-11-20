@@ -6,9 +6,10 @@
 import {FlowChartExecutor, narrative} from 'footprintjs';
 import {checkChart} from './chart.mjs';
 import {checkText} from './text.mjs';
+import {withRecord} from '../runlog.mjs';
 
 export {checkText, verdictLine, sinceLine, CHECK_TOP} from './text.mjs';
-export {problemsOf, sinceLast, ADVICE_KINDS} from './problems.mjs';
+export {problemsOf, sinceLast, ADVICE_KINDS, ROW_MOST, KEYS_MOST} from './problems.mjs';
 export {checkChart, CHECK_VERDICTS} from './chart.mjs';
 export {VERDICT_RULES} from './stages.mjs';
 
@@ -23,10 +24,11 @@ export {VERDICT_RULES} from './stages.mjs';
 export async function checkFilm(does, {all = false, more} = {}) {
   const run = {does}, trace = narrative(), executor = new FlowChartExecutor(checkChart(run));
   executor.attachCombinedRecorder(trace);
-  await executor.run();
+  // a stage that throws (a kit whose drawing fails) leaves its run so far on the error, for the log: the error is the caller's to say
+  try { await executor.run(); } catch (e) { throw withRecord(e, trace); }
   const errors = run.problems.filter(p => p.level === 'error').length;
   const said = {verdict: run.verdict, errors, advice: run.problems.length - errors, stopped: run.anchors.stopped, head: run.review?.head ?? null,
-    problems: run.problems.map(p => ({...p, kind: p.key.split('|')[1] ?? p.key})), notRun: run.review?.notRun ?? [], changes: run.changes ?? null, since: run.since};
+    problems: run.problems, notRun: run.review?.notRun ?? [], changes: run.changes ?? null, since: run.since};
   return {verdict: run.verdict, text: checkText(said, {all, ...(more ? {more} : {})}), said, keys: run.keys, round: run.since.round,
     record: trace.getEntries().map(({rawValue, ...entry}) => entry)};
 }

@@ -4,13 +4,15 @@
 import {decide} from 'footprintjs';
 import {problemsOf, sinceLast, KEYS_MOST} from './problems.mjs';
 
+const cut = text => { const said = String(text); return said.length > 300 ? `${said.slice(0, 299)}…` : said; };
+
 /** Every phrase the film is keyed to, checked — and whether the film compiles at all. */
 export const readAnchors = run => async s => {
   run.anchors = await run.does.anchors();
   s.phrasesChecked = run.anchors.checked;
   s.phraseProblems = run.anchors.notes.length;
   s.compiles = run.anchors.stopped === null;
-  if (!s.compiles) s.stopped = run.anchors.stopped;
+  if (!s.compiles) s.stopped = cut(run.anchors.stopped);
 };
 
 /** The film read as a picture: its findings and its verdicts. Not run on a film that does not compile. */
@@ -25,7 +27,7 @@ export const reviewFilm = run => async s => {
 /** What the edit redraws, as the full render would: said beside the answer, never counted in it. One that cannot be read says why. */
 export const readChanges = run => async s => {
   if (!s.compiles) { s.changesRead = false; return; }
-  try { run.changes = await run.does.changes(); s.changesRead = true; } catch (e) { run.changes = `not read (${e?.message ?? e})`; s.changesRead = false; }
+  try { run.changes = await run.does.changes(); s.changesRead = true; } catch (e) { run.changes = `not read (${cut(e?.message ?? e)})`; s.changesRead = false; }
 };
 
 /** The problems as one list, and this check beside the one before it. */

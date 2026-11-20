@@ -64,9 +64,19 @@ default["clean"]
 The work itself is given by the caller (`does`: `anchors`, `review`, `changes`, `before`), so this folder knows
 nothing of a project's files: `tools.mjs · check` gives the project's, and a test gives fakes.
 
-**Compared by what a problem is, not when.** A problem's key leaves its times out: an edit that moves a finding two
-seconds later has not fixed it. What the next check compares with (the verdict, the round and the keys, at most 300)
-is kept in the check's own run (`runlog.mjs`), in the project's out folder.
+**Compared by what a problem is, not when.** A problem's key is a short hash of its sort, its scene and its words
+with every number taken out: an edit that moves a finding two seconds later, or leaves it 71 % still where it was
+72 %, has not fixed it. What the next check compares with (the film, the verdict, the round and the keys) is kept in
+the check's own run (`runlog.mjs`), in the project's out folder. A film is compared with itself only: a project whose
+flags pick another film (other scenes) starts its own count. Past 300 problems the counts are not said.
+
+**One thing to fix is counted once.** A verdict that failed is one error, unless its own findings are listed as
+errors (a verdict's findings carry its check's name): then they are what to fix.
+
+**Broken, never thrown.** Whatever stops the film from compiling, as every other tool compiles it, is the `broken`
+line. Only what is no film at all (no config, a config that throws) is an error of the command.
+
+**Small whatever the film.** A row is cut at 300 characters, and the list at the first 8.
 
 **What a film's files say stays on its row.** Every line of the reply that carries the film's own words is one line
 (`../oneline.mjs`).

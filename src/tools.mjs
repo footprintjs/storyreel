@@ -10,6 +10,7 @@
  * `code` are the full render's (makeFilm's own): it writes its video into `out`, and `changes` compares with its cache
  * (fullRender).
  */
+import {createHash} from 'node:crypto';
 import {briefTool, createTool, shapesTool} from './storyboard/create.mjs';
 import {narrateTool, NARRATE_ARGS, NARRATE_MCP_ARGS, NARRATE_ABOUT} from './narrate.mjs';
 import path from 'node:path';
@@ -533,28 +534,34 @@ export async function changes(project, args = {}) {
  */
 export async function check(project, args = {}) {
   const out = outFolderOf(project);
-  let film = null, loaded = null;
+  let film = null, loaded = null, reviewed = null;
+  // which film this is, for the check after it: a project whose flags pick another film (other scenes) is not compared with this one
+  const which = createHash('sha256').update(JSON.stringify([project.cwd, (project.said?.scenes ?? []).map(sc => sc.id)])).digest('hex').slice(0, 12);
   const does = {
     // the phrases are read on a film compiled to note what it cannot find; the film itself is then compiled as every tool compiles it,
     // and what stops that (a hold's phrase the pacing cannot place, a recipe entry refused) is why the film is broken
     async anchors() {
-      const read = await anchorsRead(project);
-      let stopped = read.stopped;
-      if (stopped === null) try { loaded = {inputs: {...project.inputs, timings: pacedOf(project)}, cwd: project.cwd}; film = await compileProject(loaded); } catch (e) { stopped = String(e?.message ?? e); }
+      let stopped = null, read = {clock: null, notes: [], checked: 0, stopped: null};
+      // whatever stops the film is why it is broken, said as every other tool says it: the film compiled as they compile it
+      try { loaded = {inputs: {...project.inputs, timings: pacedOf(project)}, cwd: project.cwd}; film = await compileProject(loaded); } catch (e) { stopped = String(e?.message ?? e); }
+      try { read = await anchorsRead(project); } catch (e) { stopped ??= String(e?.message ?? e); }
       return {...read, stopped, lines: read.notes.map(n => anchorLine(read.clock, n))};
     },
     async review() {
       const r = await reviewRun({...loaded, film}, {layout: loaded.inputs.layout ?? null});
+      reviewed = r;
       return {findings: r.findings, lines: r.findings.map(f => findingsText([f])), verdicts: r.verdicts ?? [], record: r.record,
         head: `${head(film, null, r.window)} — read: ${r.ran.join(', ') || 'no check fits'}`,
         notRun: (r.verdicts ?? []).filter(v => v.verdict === 'not run').map(v => `${v.label ?? v.check}: ${v.why}`)};
     },
     async changes() { return (await previewChanges(fullRender({...loaded, film}), {render: false})).text.split('\n').at(-1).split(' · ')[0]; },   // the count; where the pieces are kept and a kit's notes are `changes`' own to say
-    before: () => lastCheck(out),
+    before: () => lastCheck(out, which),
   };
-  const done = await checkFilm(does, {all: yes(args.full), more: FULL_HINT});
-  const unsaved = keepRun(out, {feature: 'check', summary: done.text.split('\n')[0], record: done.record, check: {verdict: done.verdict, round: done.round, keys: done.keys}});
-  return `${done.text}${unsaved ? `\n(${unsaved})` : ''}`;
+  let done;
+  try { done = await checkFilm(does, {all: yes(args.full), more: 'full (--full) lists every one'}); } catch (e) { keepFailedRun(out, 'check', e); throw e; }
+  // its run: its own record, the review's verdicts with what they measured (log --check), and what the next check compares with
+  const unsaved = keepRun(out, {feature: 'check', summary: done.text.split('\n')[0], record: done.record, verdicts: reviewed?.verdicts ?? null, check: {verdict: done.verdict, round: done.round, keys: done.keys, film: which}});
+  return `${done.text}${unsaved ? `\n(${shownLine(unsaved)})` : ''}`;
 }
 
 /** The notes the person left in the studio, read beside the recipe's file the film reads (studio/feedback-tool.mjs). */

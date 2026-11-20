@@ -5,6 +5,7 @@ import {flowChart} from 'footprintjs';
 import {readAnchors, reviewFilm, readChanges, compare, decideVerdict, answer} from './stages.mjs';
 
 export const CHECK_VERDICTS = Object.freeze(['broken', 'fix', 'clean']);
+const QUIET = Object.freeze({info() {}, warn() {}, error() {}, log() {}, debug() {}});
 
 /** The chart of one check. `run`: {does: {anchors, review, changes, before}}, and where the stages leave what the reply needs. */
 export function checkChart(run) {
@@ -14,5 +15,6 @@ export function checkChart(run) {
     .addFunction('beside the run before', compare(run), 'since', 'The problems as one list, compared with the check before: fixed, new, the round')
     .addDeciderFunction('verdict', decideVerdict(run), 'verdict', 'broken, fix or clean, decided over what was read');
   for (const v of CHECK_VERDICTS) chart = chart.addFunctionBranch(v, v, answer(run, v));
-  return chart.setDefault('clean').end().build();
+  // (the engine's own lines of a stage that throws are not the reply's: the error says it once, and its run is kept)
+  return chart.setDefault('clean').end().setLogger(QUIET).build();
 }

@@ -11,7 +11,8 @@
   closer look. A check is a footprintjs chart (`src/check/`), so `storyreel log` shows what it read and the rule its
   verdict matched. Its run keeps what the next check compares with (the verdict, the round, each problem's key).
   What an agent reads is measured (`test/agent-cost.baseline.json`): a check's reply for the farm film is 72 tokens,
-  and the review skill's page grew by 103 tokens to say so (the baseline is updated for both).
+  and the review skill's page grew by 103 tokens to say so (the baseline is updated for both, and for the main
+  skill's page, which had grown by 53 tokens since the baseline was last written).
 - **Words from a film's files can no longer start a line of a reply.** A scene's id, a phrase, drawn words, a file's
   name and a reason are written into replies a model reads as the tool's own words. A line break inside one started
   a line that read like the tool's ("verdicts: 5 passed"). Now every row those words are listed on is one line: the

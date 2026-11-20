@@ -88,10 +88,10 @@ function keptVerdicts(verdicts) {
 
 /** What a check keeps for the check after it (check/problems.mjs · sinceLast): its verdict, its round and its problems' keys, bounded. */
 const CHECK_KEYS = 300, CHECK_KEY = 200;
-const keptCheck = c => ({verdict: String(c.verdict), round: Number.isInteger(c.round) && c.round > 0 ? c.round : 1, keys: (c.keys ?? []).slice(0, CHECK_KEYS).map(k => cut(String(k), CHECK_KEY))});
+const keptCheck = c => ({film: cut(String(c.film ?? ''), 40), verdict: String(c.verdict), round: Number.isInteger(c.round) && c.round > 0 ? c.round : 1, keys: (c.keys ?? []).slice(0, CHECK_KEYS).map(k => cut(String(k), CHECK_KEY))});
 /** The same, read back from a file: null when it is not as keptCheck writes it. */
 const readCheck = c => (c && typeof c === 'object' && typeof c.verdict === 'string' && Number.isInteger(c.round) && c.round > 0 && Array.isArray(c.keys) && c.keys.length <= CHECK_KEYS && c.keys.every(k => typeof k === 'string' && k.length <= CHECK_KEY)
-  ? {verdict: oneLine(c.verdict), round: c.round, keys: c.keys.map(oneLine)} : null);
+  ? {film: typeof c.film === 'string' ? oneLine(c.film).slice(0, 40) : '', verdict: oneLine(c.verdict), round: c.round, keys: c.keys.map(oneLine)} : null);
 
 /**
  * Save one run of a feature into the out folder's runs: {feature, summary, record, verdicts?, failure?} — `failure` what
@@ -152,8 +152,8 @@ export function withRecord(error, trace) {
 /** The call that reads the runs in a folder, as a person types it: what a feature with no project says when it is done. */
 export const logCall = folder => `storyreel log --folder ${/^[\w./+:@-]+$/.test(folder) ? folder : `'${String(folder).replace(/'/g, "'\\''")}'`}`;
 
-/** The last check kept in a project's runs, as the next check compares with it: {verdict, round, keys}, or null. */
-export const lastCheck = out => listRuns(out).find(run => run.feature === 'check' && run.check)?.check ?? null;
+/** The last check kept in a project's runs for one film (`film`: what the check called it), as the next check compares with it: {film, verdict, round, keys}, or null. */
+export const lastCheck = (out, film = '') => listRuns(out).find(run => run.feature === 'check' && run.check && run.check.film === film)?.check ?? null;
 
 /**
  * A file of the runs folder read as a saved run, or null when it is not one. Read only as a plain file of at most
