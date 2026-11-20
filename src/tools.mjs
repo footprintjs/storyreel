@@ -69,7 +69,7 @@ export async function readInputs({config = CONFIG, cwd = process.cwd(), ...flags
   const voiced = Boolean(narrationDir && existsSync(path.join(narrationDir, 'timings.json')));
   const said = castFilm(inputs).storyboard;
   const raw = inputs.timings ?? (voiced ? JSON.parse(readFileSync(path.join(narrationDir, 'timings.json'), 'utf8')) : evenTimings(said));
-  return {inputs: {...inputs, ...(narrationDir ? {narrationDir} : {}), voiced}, cwd, said, raw};
+  return {inputs: {...inputs, ...(narrationDir ? {narrationDir} : {}), voiced}, cwd, said, raw, flags: {config, ...flags}};
 }
 
 /** Timings paced by the config's pacing (holds given, or the config's own), as makeFilm paces them; given timings as they are. */
@@ -535,8 +535,10 @@ export async function changes(project, args = {}) {
 export async function check(project, args = {}) {
   const out = outFolderOf(project);
   let film = null, loaded = null, reviewed = null;
-  // which film this is, for the check after it: a project whose flags pick another film (other scenes) is not compared with this one
-  const which = createHash('sha256').update(JSON.stringify([project.cwd, (project.said?.scenes ?? []).map(sc => sc.id)])).digest('hex').slice(0, 12);
+  // which film this is, for the check after it: the project and the flags that pick its film (a config's film(flags) may give another
+  // for other flags), so one film is compared with itself only. Where its runs go (out) and how much to list (full) pick no film.
+  const picks = Object.entries(project.flags ?? {}).filter(([name]) => name !== 'out' && name !== 'full').sort(([a], [b]) => a.localeCompare(b));
+  const which = createHash('sha256').update(JSON.stringify([project.cwd, picks])).digest('hex').slice(0, 12);
   const does = {
     // the phrases are read on a film compiled to note what it cannot find; the film itself is then compiled as every tool compiles it,
     // and what stops that (a hold's phrase the pacing cannot place, a recipe entry refused) is why the film is broken

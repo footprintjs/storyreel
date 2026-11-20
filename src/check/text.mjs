@@ -1,8 +1,6 @@
 // text — a check's reply: the verdict first, then what to fix, worst first, then what changed since the run before.
 import {oneLine} from '../oneline.mjs';
-import {ROW_MOST, KEYS_MOST} from './problems.mjs';
-
-const row = text => { const line = oneLine(text); return line.length > ROW_MOST ? `${line.slice(0, ROW_MOST - 1)}…` : line; };
+import {row, KEYS_MOST} from './problems.mjs';
 
 /** How many problems a reply lists in full; the rest are counted, by their kind. */
 export const CHECK_TOP = 8;

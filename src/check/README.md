@@ -64,11 +64,11 @@ default["clean"]
 The work itself is given by the caller (`does`: `anchors`, `review`, `changes`, `before`), so this folder knows
 nothing of a project's files: `tools.mjs · check` gives the project's, and a test gives fakes.
 
-**Compared by what a problem is, not when.** A problem's key is a short hash of its sort, its scene and its words
-with every number taken out: an edit that moves a finding two seconds later, or leaves it 71 % still where it was
-72 %, has not fixed it. What the next check compares with (the film, the verdict, the round and the keys) is kept in
-the check's own run (`runlog.mjs`), in the project's out folder. A film is compared with itself only: a project whose
-flags pick another film (other scenes) starts its own count. Past 300 problems the counts are not said.
+**Compared by what a problem is, not when.** A problem's key is a short hash of its sort, its scene and its words,
+without its times; where the words are a measurement the numbers are left out too. An edit that moves a finding two
+seconds later, or leaves it 71 % still where it was 72 %, has not fixed it. What the next check compares with (the film, the verdict, the round and the keys) is kept in
+the check's own run (`runlog.mjs`), in the project's out folder. A film is compared with itself only: the same
+project with other flags (a config's `film(flags)` may give another film) starts its own count. Past 300 problems the counts are not said.
 
 **One thing to fix is counted once.** A verdict that failed is one error, unless its own findings are listed as
 errors (a verdict's findings carry its check's name): then they are what to fix.

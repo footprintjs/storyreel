@@ -2,8 +2,9 @@
 //
 // A problem is {level: 'error' | 'advice', kind, key, line}: `line` what the reply says of it (one line, cut to
 // ROW_MOST), `kind` what sort it is (for the count of those not listed), `key` what it is — a short hash of its sort,
-// its scene and its words with every number taken out, so the same finding two seconds later, or 71 % still where it
-// was 72 %, is the same finding.
+// its scene and its words, without its times; where the words are a measurement (71 % still, where it was 72 %) the
+// numbers are left out too. So the same finding two seconds later is the same finding, and a phrase or a scene named
+// with a number ("version 2", scene2) is itself.
 import {createHash} from 'node:crypto';
 import {oneLine} from '../oneline.mjs';
 
@@ -15,9 +16,13 @@ const SOFT_PHRASES = Object.freeze(['ambiguous', 'moment']);
 export const ROW_MOST = 300, KEYS_MOST = 300;
 
 const refOf = ref => (Array.isArray(ref) ? {scene: ref[0], phrase: ref[1]} : ref ?? {});
-const row = text => { const line = oneLine(text); return line.length > ROW_MOST ? `${line.slice(0, ROW_MOST - 1)}…` : line; };
-/** A problem's key: its parts as a list (so a "|" in a phrase joins nothing), numbers out, hashed short. */
-const keyOf = parts => createHash('sha256').update(JSON.stringify(parts.map(p => String(p ?? '').replace(/\d+(\.\d+)?/g, '#')))).digest('hex').slice(0, 16);
+/** A row of the reply: cut by whole characters before it is made one line, so it never ends in half a character or half an escape. */
+export const row = text => { const said = [...String(text).slice(0, 2 * ROW_MOST)]; return oneLine(said.length > ROW_MOST ? `${said.slice(0, ROW_MOST - 1).join('')}…` : String(text)); };
+/** A problem's key: its parts as a list (so a "|" in a phrase joins nothing), hashed short. */
+const keyOf = parts => createHash('sha256').update(JSON.stringify(parts.map(p => String(p ?? '')))).digest('hex').slice(0, 16);
+/** The kinds whose words are a measurement ("still for 72 % of 41.3 s"): the numbers move with every edit, so they are no part of what the finding is. */
+const MEASURED = Object.freeze(['still', 'stale', 'slideshow', 'hook', 'frozen-voice', 'silences', 'text-density']);
+const whatOf = f => (MEASURED.includes(f.kind) ? String(f.what).replace(/\d+(\.\d+)?/g, '#') : f.what);
 
 /**
  * Every problem of one check, errors first then advice, each group in the order found:
@@ -37,7 +42,7 @@ export function problemsOf({anchors = null, review = null}) {
     const itsOwn = findings.some(f => f.kind === v.check && !ADVICE_KINDS.includes(f.kind));
     if (!itsOwn) out.push({level: 'error', kind: v.check, key: keyOf(['verdict', v.check]), line: row(`${v.label ?? v.check} · ${v.verdict}: ${v.why}`)});
   }
-  findings.forEach((f, i) => out.push({level: ADVICE_KINDS.includes(f.kind) ? 'advice' : 'error', kind: f.kind, key: keyOf(['finding', f.kind, f.scene, f.what]), line: row(review.lines[i])}));
+  findings.forEach((f, i) => out.push({level: ADVICE_KINDS.includes(f.kind) ? 'advice' : 'error', kind: f.kind, key: keyOf(['finding', f.kind, f.scene, whatOf(f)]), line: row(review.lines[i])}));
   return [...out.filter(p => p.level === 'error'), ...out.filter(p => p.level === 'advice')];
 }
 

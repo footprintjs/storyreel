@@ -90,7 +90,7 @@ test('storyreel check on a project: one reply, kept for the log, and the next ch
   // an edit that breaks the film: broken, with every phrase at fault, and nothing else read
   const broken = await check(await readInputs({cwd: project, out, anchors: 'true'}));
   assert.match(broken, /^broken — the film does not compile: Pacing phrase not found in two: "much shorter"\nfix {2}phrase · two "much shorter" → pacing\.holds\[1\] — not said/);
-  assert.match(broken, /\nsince the run before: 1 fixed, \d+ new · round 3$/);
+  assert.match(broken, /\nsince the run before: this is the first check kept for this film$/);   // other flags, another film: its own count
   // the run keeps the review's verdicts with what they measured, so the log can show a verdict's evidence for a check too
   assert.ok(listRuns(out).filter(r => r.feature === 'check').at(-1).verdicts.length > 0);
   assert.equal(listRuns(out).filter(r => r.feature === 'check').length, 3);
@@ -110,6 +110,9 @@ test('what a problem is: numbers in its words, and a "|" in a phrase, do not mak
   assert.notEqual(key('cut-off', 'one', '"Alpha"'), key('cut-off', 'one', '"Beta"'));
   const phrase = (scene, said) => problemsOf({anchors: {notes: [{ref: [scene, said], path: 'p', problem: 'missing'}], lines: ['x']}})[0].key;
   assert.notEqual(phrase('one', 'a|b'), phrase('one|a', 'b'));
+  assert.notEqual(phrase('one', 'version 2'), phrase('one', 'version 3'));                                // a number in a phrase or a scene's name is part of it
+  assert.notEqual(phrase('scene1', 'hello'), phrase('scene2', 'hello'));
+  assert.notEqual(key('cut-off', 'one', '"v2"'), key('cut-off', 'one', '"v3"'));
   assert.notEqual(phrase('one', `${'x'.repeat(400)}a`), phrase('one', `${'x'.repeat(400)}b`));           // two long phrases alike at their start
 });
 
@@ -118,6 +121,11 @@ test('a reply is small whatever the film: a row is cut, and past the most keys k
   const done = await checkFilm(fake({stopped: `Phrase not in story: "${huge}"`, notes: [{ref: ['one', huge], path: 'p', problem: 'missing'}]}));
   assert.ok(done.text.length < 3 * ROW_MOST + 200, `${done.text.length} characters`);
   assert.ok(done.text.split('\n').every(line => line.length <= ROW_MOST + 5));
+  // a row is cut between characters, before its breaks are shown: never half a character, never half an escape
+  const cutRow = problemsOf({review: {verdicts: [], findings: [finding('cut-off', 'one', 'x')], lines: [`${'a'.repeat(ROW_MOST - 10)}${'\u{1F600}'.repeat(40)}`]}})[0].line;
+  assert.ok(!/[\uD800-\uDBFF]$|[\uD800-\uDBFF]…$/.test(cutRow) && cutRow.isWellFormed(), 'no lone half of a pair');
+  const escaped = problemsOf({review: {verdicts: [], findings: [finding('cut-off', 'one', 'x')], lines: [`${'a'.repeat(ROW_MOST - 5)}${'\n'.repeat(40)}`]}})[0].line;
+  assert.match(escaped, /(\\n)+…$/);
   const many = Array.from({length: KEYS_MOST}, (_, i) => `k${i}`);
   assert.deepEqual(sinceLast(many, {keys: ['a'], round: 2, verdict: 'fix'}), {fixed: 0, added: 0, round: 3, first: false, capped: true});
   assert.equal(sinceLine({fixed: 0, added: 0, round: 3, first: false, capped: true}), `since the run before: not compared (over ${KEYS_MOST} problems) · round 3`);
