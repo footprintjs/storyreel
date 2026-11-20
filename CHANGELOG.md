@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — a check can say why
+
+- **`storyreel log --run <n> --why <value>`** (and the MCP tool `log` with `why`): where a value of a run came from,
+  walked back from the run's own record — its value, the stage that wrote it, the decision that let that stage run and
+  what each had read. `--why verdict` shows the rule that chose the verdict and the counts it read; `--why errors`
+  the stages the count was added from. Nothing is run again, and a value no stage wrote is said so.
+- **A check keeps its record.** Beside its run in the out folder (`.storyreel/runs/<run>.record.jsonl`): every commit
+  as it was written, with the keys each stage had read (footprintjs's `fileSink` and `writeProvenance`), and which
+  decision let each stage run. It is removed with its run. A run that kept none (a review, a render) says so.
+- A check's stages now add their counts from what the stages before them wrote, so the record holds the path from
+  the verdict back to the phrases and the picture.
+
 ## 0.31.0 — one call after an edit, and a reply's rows are the tool's own
 
 - **`storyreel check` (and the MCP tool `check`): the one call after an edit.** It reads everything that can be read

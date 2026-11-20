@@ -4,6 +4,7 @@
 import {decide} from 'footprintjs';
 import {problemsOf, sinceLast, KEYS_MOST} from './problems.mjs';
 
+const count = (problems, level) => problems.filter(p => p.level === level).length;
 const cut = text => { const said = String(text); return said.length > 300 ? `${said.slice(0, 299)}…` : said; };
 
 /** Every phrase the film is keyed to, checked — and whether the film compiles at all. */
@@ -11,16 +12,21 @@ export const readAnchors = run => async s => {
   run.anchors = await run.does.anchors();
   s.phrasesChecked = run.anchors.checked;
   s.phraseProblems = run.anchors.notes.length;
+  run.fromPhrases = problemsOf({anchors: run.anchors});
+  s.phraseErrors = count(run.fromPhrases, 'error'); s.phraseAdvice = count(run.fromPhrases, 'advice');
   s.compiles = run.anchors.stopped === null;
   if (!s.compiles) s.stopped = cut(run.anchors.stopped);
 };
 
 /** The film read as a picture: its findings and its verdicts. Not run on a film that does not compile. */
 export const reviewFilm = run => async s => {
-  if (!s.compiles) { s.reviewed = false; return; }
+  run.fromPicture = [];
+  if (!s.compiles) { s.reviewed = false; s.pictureErrors = 0; s.pictureAdvice = 0; return; }
   run.review = await run.does.review();
   s.reviewed = true;
   s.findings = run.review.findings.length;
+  run.fromPicture = problemsOf({review: run.review});
+  s.pictureErrors = count(run.fromPicture, 'error'); s.pictureAdvice = count(run.fromPicture, 'advice');
   s.verdictsNotPassed = run.review.verdicts.filter(v => v.verdict !== 'passed').map(v => `${v.check}: ${v.verdict}`);
 };
 
@@ -32,9 +38,11 @@ export const readChanges = run => async s => {
 
 /** The problems as one list, and this check beside the one before it. */
 export const compare = run => s => {
-  run.problems = problemsOf({anchors: run.anchors, review: run.review ?? null});
-  s.errors = run.problems.filter(p => p.level === 'error').length;
-  s.advice = run.problems.length - s.errors;
+  // the counts are added from what the two stages before wrote, so the record says where each came from (log --why errors)
+  s.errors = s.phraseErrors + s.pictureErrors;
+  s.advice = s.phraseAdvice + s.pictureAdvice;
+  const all = [...run.fromPhrases, ...run.fromPicture];
+  run.problems = [...all.filter(p => p.level === 'error'), ...all.filter(p => p.level === 'advice')];
   run.keys = run.problems.map(p => p.key).slice(0, KEYS_MOST);
   run.since = sinceLast(run.keys, run.does.before());
   s.fixedSinceLast = run.since.fixed; s.newSinceLast = run.since.added; s.round = run.since.round;

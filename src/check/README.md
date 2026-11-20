@@ -73,6 +73,26 @@ project with other flags (a config's `film(flags)` may give another film) starts
 **One thing to fix is counted once.** A verdict that failed is one error, unless its own findings are listed as
 errors (a verdict's findings carry its check's name): then they are what to fix.
 
+## Asking why
+
+A check keeps its record: a file beside its run in the out folder (`.storyreel/runs/<run>.record.jsonl`), written as
+the check runs — every commit, the keys each stage had read when it wrote, and (in the run's own file) which decision
+let each stage run. So a value can be asked for, and nothing is run again:
+
+```
+$ storyreel log --run 1 --why errors
+errors = 1
+beside the run before (since#3) [wrote: errors, advice, fixedSinceLast, newSinceLast, round]
+  read the phrases (phrases#0) ← via phraseErrors [wrote: phrasesChecked, phraseProblems, phraseErrors, …]
+  read the picture (picture#1) ← via pictureErrors [wrote: reviewed, findings, pictureErrors, …]
+```
+
+`--why verdict` shows the branch that wrote it, the rule that chose the branch, and what that rule read. A value no
+stage wrote is said so. The walk is foottrace's (`sliceForKey`), over the file alone (`../why.mjs`). The stages add
+their counts from what earlier stages wrote on the scope, so the record holds the path; what a stage takes from
+outside the scope (the film itself) is not in it, and the answer does not pretend it is. A record is removed with its
+run (the newest 50 checks are kept).
+
 **Broken, never thrown.** Whatever stops the film from compiling, as every other tool compiles it, is the `broken`
 line. Only what is no film at all (no config, a config that throws) is an error of the command.
 

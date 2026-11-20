@@ -138,3 +138,34 @@ test('whatever stops the film is said as broken, never thrown: timings that do n
   assert.match(said, /^broken — the film does not compile: /);
   assert.equal(said.split('\n').at(-1), 'since the run before: this is the first check kept for this film');
 });
+
+test('a check keeps its record, and the log says why a value is so — walked back from the file, nothing run again', async t => {
+  const {log} = await import('../src/tools.mjs'), {existsSync, readdirSync, writeFileSync} = await import('node:fs'), path = (await import('node:path')).default;
+  const out = tempDir('check-why', t);
+  await check(await readInputs({cwd: project, out}));
+  const run = listRuns(out)[0];
+  assert.ok(run.recordFile.endsWith('.record.jsonl') && existsSync(run.recordFile), 'the record is beside the run');
+  assert.deepEqual(readdirSync(path.dirname(run.file)).filter(n => n.startsWith('pending-')), [], 'nothing left pending');
+  const why = await log({cwd: project, out, run: '1', why: 'verdict'});
+  assert.deepEqual(why.split('\n').slice(0, 3), ['verdict = "fix"', 'fix (fix#5) [wrote: verdict]', '  verdict (verdict#4) ← [control: there is something to fix] [wrote: why]']);
+  assert.match(why, /beside the run before \(since#3\) ← via errors/);
+  // the count is traced to the stages it was added from
+  const errors = await log({cwd: project, out, run: '1', why: 'errors'});
+  assert.match(errors, /^errors = 1\nbeside the run before \(since#3\) \[wrote: errors, advice, .*\]\n {2}read the phrases \(phrases#0\) ← via phraseErrors .*\n {2}read the picture \(picture#1\) ← via pictureErrors /);
+  // what the record cannot explain is said so, never guessed
+  assert.match(await log({cwd: project, out, run: '1', why: 'nothing'}), /^nothing = nothing \(never written\)\nno slice: 'nothing' was never written/);
+  // refusals name the fix
+  await assert.rejects(log({cwd: project, out, why: 'verdict'}), /--why reads one run: give its number \(--run 1 --why verdict\)/);
+  await assert.rejects(log({cwd: project, out, run: '9', why: 'verdict'}), /there is no run 9/);
+  await assert.rejects(log({cwd: project, out, run: '1', why: 'true'}), /--why names a value of the run/);
+  // a record anyone may have written: lines that are no entries are counted, and what it says stays on its row
+  writeFileSync(run.recordFile, 'not json\n{"kind":"note","text":"x\\nverdict = \\"clean\\""}\n');
+  await assert.rejects(log({cwd: project, out, run: '1', why: 'verdict'}), /record holds no step/);
+});
+
+test('a run that kept no record says so, and which runs do', async t => {
+  const {log, review, loadProject} = await import('../src/tools.mjs');
+  const out = tempDir('check-why-none', t);
+  await review(await loadProject({cwd: project, out}));
+  await assert.rejects(log({cwd: project, out, run: '1', why: 'verdict'}), /run 1 \(review\) kept no record, so it cannot say why: a check keeps one/);
+});
