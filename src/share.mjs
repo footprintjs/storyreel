@@ -16,6 +16,7 @@ import {spawnSync} from 'node:child_process';
 import {writeOutput, outputFolder, refuseFolders} from './files.mjs';
 import {tempScratch} from './scratch.mjs';
 import {ffmpegProbe} from './finished.mjs';
+import {oneLine} from './oneline.mjs';
 
 /** The share copy's defaults: its width (px, the height follows), its quality (x264's CRF: lower is better and larger), its poster's moment (s; a shorter film's middle). */
 export const SHARE_DEFAULTS = Object.freeze({width: 854, crf: 28, poster: 6});
@@ -55,4 +56,4 @@ export function shareCopy(file, {width = SHARE_DEFAULTS.width, crf = SHARE_DEFAU
 }
 
 /** The share copy as one line: where it is, how big, how long, its size on screen, and its poster. */
-export const shareText = s => `${s.video} · ${(s.bytes / 1e6).toFixed(1)} MB · ${Math.floor(s.seconds / 60)}:${String(Math.floor(s.seconds % 60)).padStart(2, '0')} · ${s.width}×${s.height ?? '?'} — poster ${s.poster}`;
+export const shareText = s => `${oneLine(s.video)} · ${(s.bytes / 1e6).toFixed(1)} MB · ${Math.floor(s.seconds / 60)}:${String(Math.floor(s.seconds % 60)).padStart(2, '0')} · ${s.width}×${s.height ?? '?'} — poster ${s.poster}`;

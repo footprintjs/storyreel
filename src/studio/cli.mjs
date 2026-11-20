@@ -21,6 +21,7 @@ import {CONFIG, readInputs, loadInputs, compileProject, projectRecipe, outFolder
 import {startStudio} from './server.mjs';
 import {projectCode, reloads} from './code.mjs';
 import {STUDIO_USAGE as USAGE} from './help.mjs';
+import {oneLine} from '../oneline.mjs';
 
 const OWN = ['port', 'recipe'];
 
@@ -87,7 +88,7 @@ function watchCode(project, studio, out) {
     if (closed || (now.mtimeMs === before.mtimeMs && now.size === before.size)) return;
     if (!reloads) { out(`studio: the project's code changed — restart the studio to use it (Node ${process.versions.node} keeps a module once it has loaded it; Node 22.15 and later loads it again)`); return; }
     clearTimeout(pending);
-    pending = setTimeout(() => studio.reload().then(err => { out(err ? `studio: the code changed, and the film refused — ${err}` : 'studio: the code changed — compiled again'); sync(); }), 150);
+    pending = setTimeout(() => studio.reload().then(err => { out(err ? `studio: the code changed, and the film refused — ${oneLine(err)}` : 'studio: the code changed — compiled again'); sync(); }), 150);
   };
   // A file an import names but nobody has written yet is watched too: creating it compiles again.
   const sync = () => {

@@ -5,6 +5,7 @@
  */
 import {searchSounds, addSound, listSounds, candidateLine, addedText, listedText} from './index.mjs';
 import {usableLicences, LICENCES} from '../found/index.mjs';
+import {errorText} from '../oneline.mjs';
 
 /** The usage, as `storyreel --help` lists it (test/skills.test.mjs reads its command and flag lines). */
 export const SOUNDS_HELP = `  sounds   search "<words>" | add <id> --as <name> | list — recorded sound effects from Openverse, fetched once into the
@@ -65,7 +66,7 @@ export async function soundsCommand(args, {source = null, out = console.log, err
     }
     return 0;
   } catch (e) {
-    err(`storyreel sounds ${sub}: ${e?.message ?? e}`);
+    err(`storyreel sounds ${sub}: ${errorText(e)}`);
     return 1;
   }
 }

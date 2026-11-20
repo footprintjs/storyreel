@@ -46,6 +46,7 @@ import {Refusal} from './refusal.mjs';
 import {noteTaker, readJsonBody, noteRequest} from './take-note.mjs';
 import {feedbackFile} from './feedback-file.mjs';
 import {storyreelHome} from './notekey.mjs';
+import {oneLine} from '../oneline.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PAGE = {'/': ['page.html', 'text/html; charset=utf-8'], '/studio.js': ['page.js', 'text/javascript; charset=utf-8'], '/studio.css': ['page.css', 'text/css; charset=utf-8']};
@@ -117,7 +118,7 @@ export async function startStudio({load, watch = [], port = 4321, log = console.
   const key = randomBytes(KEY_LENGTH / 2).toString('hex'), keyBytes = Buffer.from(key);
   let catalog = null;
   await reload();
-  if (state.error) log(`studio: refused — ${state.error}`);
+  if (state.error) log(`studio: refused — ${oneLine(state.error)}`);
 
   // Watch by polling the files' times: an editor that saves by replacing the file is still seen.
   let pending = null;

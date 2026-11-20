@@ -6,7 +6,7 @@
   name and a reason are written into replies a model reads as the tool's own words. A line break inside one started
   a line that read like the tool's ("verdicts: 5 passed"). Now every row those words are listed on is one line: the
   rows of `review`, `part`, `timeline`, `anchors`, `changes`, `narrate`, `still --beats`, `still --phone`, a rubric,
-  a breakdown's and a remake's heading. And every error a command ends with is one line, or the rows the tool wrote
+  `share`, a breakdown's and a remake's heading and hint, and what `studio` and `apply` say of a film that refuses. And every error a command ends with is one line, or the rows the tool wrote
   itself, whatever it quotes from the recipe. A line break, any other control character, a mark that turns the
   reading direction and a character that draws nothing (a tag character, a byte-order mark) are shown as their escape
   (`\n`, `\u{202e}`), never obeyed (`src/oneline.mjs`).

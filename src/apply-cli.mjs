@@ -22,6 +22,7 @@ import {changeText} from './studio/picks.mjs';
 import {writeOutput} from './files.mjs';
 import {keepRun} from './runlog.mjs';
 import {APPLY_USAGE as USAGE} from './studio/help.mjs';
+import {oneLine, errorText} from './oneline.mjs';
 
 /** The command line read: {lines, recipe, record, film (the flags its film() gets, --config among them)}, or {error}. The lines come first. */
 function readArgs(args) {
@@ -48,7 +49,7 @@ export async function applyCommand(args, {out = console.log, err = console.error
   /** The result as --record prints it: one JSON object. */
   const report = fields => given.record && out(JSON.stringify({file: null, written: false, changes: [], refusals: [], record: [], ...fields}, null, 2));
   let project;
-  try { project = await loadInputs(given.film); } catch (e) { err(`storyreel apply: ${e.message}`); return 1; }
+  try { project = await loadInputs(given.film); } catch (e) { err(`storyreel apply: ${errorText(e)}`); return 1; }
   /** The run kept in the log, written or refused; one that cannot be saved is said, and changes nothing else. */
   const keep = run => { const unsaved = keepRun(outFolderOf(project), {feature: 'apply', ...run}); if (unsaved) err(`storyreel apply: ${unsaved}`); };
   let file = null, applied;
@@ -58,19 +59,19 @@ export async function applyCommand(args, {out = console.log, err = console.error
     applied = await applyLines(found.text, given.lines, {scenes: (storyboard.scenes ?? []).map(s => s?.id), catalog: transitionCatalog(kits)});
   } catch (e) {
     if (e.record) keep({record: e.record, failure: e.message});   // lines checked and refused; no record: no line was checked (the file itself refused)
-    err(`storyreel apply: ${e.message}\nThe recipe was not changed.`);
+    err(`storyreel apply: ${errorText(e)}\nThe recipe was not changed.`);
     report({file, refusals: e.refusals ?? [e.message], record: e.record ?? []});
     return 2;
   }
   // The lines pass their checks; the film they make is compiled once, as the tools compile it: one it refuses is said in its own words.
   try { await compileProject(project, applied.recipe); } catch (e) {
-    const refusal = `the recipe with ${given.lines.length === 1 ? 'this line' : 'these lines'} does not compile: ${e.message}`;
+    const refusal = `the recipe with ${given.lines.length === 1 ? 'this line' : 'these lines'} does not compile: ${oneLine(e.message)}`;
     keep({record: applied.record, failure: refusal});
     err(`storyreel apply: ${refusal}\nThe recipe was not changed.`);
     report({file, refusals: [refusal], record: applied.record});
     return 2;
   }
-  try { writeOutput(file, applied.text); } catch (e) { keep({record: applied.record, failure: e.message}); err(`storyreel apply: ${e.message}\nThe recipe was not changed.`); return 1; }
+  try { writeOutput(file, applied.text); } catch (e) { keep({record: applied.record, failure: e.message}); err(`storyreel apply: ${errorText(e)}\nThe recipe was not changed.`); return 1; }
   const changes = applied.changes.map(changeText);
   keep({summary: `${changes.length} ${changes.length === 1 ? 'change' : 'changes'} written to ${path.basename(file)}: ${given.lines.join('; ')}`, record: applied.record});
   if (given.record) report({file, written: true, changes, record: applied.record});
