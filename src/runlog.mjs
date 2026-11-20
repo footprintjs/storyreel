@@ -89,14 +89,20 @@ function keptVerdicts(verdicts) {
 /** A run's record file, beside the run's own: the same name, ending .record.jsonl. */
 export const recordBeside = runFile => runFile.replace(/\.json$/, '.record.jsonl');
 /** Where a run writes its record while it runs: a name of its own in the runs folder, moved beside the run when it is saved (saveRun, `kept.file`). */
-export const pendingRecord = out => path.join(outputFolder(out, RUNS), `pending-${randomBytes(6).toString('hex')}.record.jsonl`);
+export function pendingRecord(out) {
+  const dir = outputFolder(out, RUNS);
+  // a check that was killed left its pending record: what is an hour old belongs to no check still running
+  try { for (const stale of readdirSync(dir).filter(n => PENDING.test(n))) { const at = lstatSync(path.join(dir, stale), {throwIfNoEntry: false}); if (at?.isFile() && Date.now() - at.mtimeMs > PENDING_FOR) rmSync(path.join(dir, stale), {force: true}); } } catch { /* the next check clears it */ }
+  return path.join(dir, `pending-${randomBytes(6).toString('hex')}.record.jsonl`);
+}
+const PENDING = /^pending-[0-9a-f]{12}\.record\.jsonl$/, PENDING_FOR = 60 * 60 * 1000;
 /** A record that was written for a run never saved (the run threw, or could not be saved): removed, never throwing. */
 export const dropPending = file => { try { rmSync(file, {force: true}); } catch { /* nothing reads a pending file */ } };
 
 /** Which decision let which step run, as a run keeps it: {step: {deciderId, label?}}, plain and bounded. */
 const CONTROL_MOST = 2000;
 const keptControl = control => Object.fromEntries(Object.entries(control ?? {}).filter(([, edge]) => edge && typeof edge.deciderId === 'string').slice(0, CONTROL_MOST)
-  .map(([step, edge]) => [cut(step, 200), {deciderId: cut(edge.deciderId, 200), ...(typeof edge.label === 'string' ? {label: cut(edge.label, SAID_CHARS)} : {})}]));
+  .map(([step, edge]) => [cut(oneLine(step), 200), {deciderId: cut(oneLine(edge.deciderId), 200), ...(typeof edge.label === 'string' ? {label: cut(oneLine(edge.label), SAID_CHARS)} : {})}]));
 /** The same, read back from a file: only what keptControl writes. */
 const readControl = control => (control && typeof control === 'object' && !Array.isArray(control) ? keptControl(Object.fromEntries(Object.entries(control).slice(0, CONTROL_MOST))) : {});
 

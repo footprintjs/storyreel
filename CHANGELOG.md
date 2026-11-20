@@ -9,8 +9,13 @@
 - **A check keeps its record.** Beside its run in the out folder (`.storyreel/runs/<run>.record.jsonl`): every commit
   as it was written, with the keys each stage had read (footprintjs's `fileSink` and `writeProvenance`), and which
   decision let each stage run. It is removed with its run. A run that kept none (a review, a render) says so.
-- A check's stages now add their counts from what the stages before them wrote, so the record holds the path from
-  the verdict back to the phrases and the picture.
+- A check adds each count in a stage of its own (`count the errors`, `count the advice`) from what the stages before
+  wrote, so a cause the answer shows is a read that happened. What a stage is given from outside the run's own state
+  (the film, the check before) is in no record, and every answer ends by saying so.
+- The record is read as a file anyone may have written: a plain file of at most 8 MB holding one run, its names made
+  one line before the walk, a saved decision used only when it names an earlier step. A record that is not whole
+  says so first. A pending record a killed check left is cleared by a later check, and a check closes its record's
+  file when it ends.
 
 ## 0.31.0 — one call after an edit, and a reply's rows are the tool's own
 

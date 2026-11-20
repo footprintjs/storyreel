@@ -33,7 +33,7 @@ export async function checkFilm(does, {all = false, more, record = null} = {}) {
   executor.attachCombinedRecorder(trace);
   executor.attachCombinedRecorder(control);
   // a stage that throws (a kit whose drawing fails) leaves its run so far on the error, for the log: the error is the caller's to say
-  try { await executor.run(); } catch (e) { throw withRecord(e, trace); }
+  try { await executor.run(); } catch (e) { throw withRecord(e, trace); } finally { try { await sink?.close(); } catch { /* a record that cannot be closed costs the check nothing */ } }
   const errors = run.problems.filter(p => p.level === 'error').length;
   const said = {verdict: run.verdict, errors, advice: run.problems.length - errors, stopped: run.anchors.stopped, head: run.review?.head ?? null,
     problems: run.problems, notRun: run.review?.notRun ?? [], changes: run.changes ?? null, since: run.since};

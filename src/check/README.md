@@ -39,7 +39,11 @@ phrases --> picture
 picture["read the picture"]
 picture --> changes
 changes["what the edit redraws"]
-changes --> since
+changes --> errors
+errors["count the errors"]
+errors --> advice
+advice["count the advice"]
+advice --> since
 since["beside the run before"]
 since --> verdict
 verdict["verdict"]
@@ -82,16 +86,25 @@ let each stage run. So a value can be asked for, and nothing is run again:
 ```
 $ storyreel log --run 1 --why errors
 errors = 1
-beside the run before (since#3) [wrote: errors, advice, fixedSinceLast, newSinceLast, round]
+count the errors (errors#3) [wrote: errors]
   read the phrases (phrases#0) ← via phraseErrors [wrote: phrasesChecked, phraseProblems, phraseErrors, …]
   read the picture (picture#1) ← via pictureErrors [wrote: reviewed, findings, pictureErrors, …]
+(a stage also uses what it is given from outside the run's own state — the film, the check before: …)
 ```
 
 `--why verdict` shows the branch that wrote it, the rule that chose the branch, and what that rule read. A value no
-stage wrote is said so. The walk is foottrace's (`sliceForKey`), over the file alone (`../why.mjs`). The stages add
-their counts from what earlier stages wrote on the scope, so the record holds the path; what a stage takes from
-outside the scope (the film itself) is not in it, and the answer does not pretend it is. A record is removed with its
-run (the newest 50 checks are kept).
+stage wrote is said so. The walk is foottrace's (`sliceForKey`), over the file alone (`../why.mjs`).
+
+- **A cause shown is a read that happened.** Each count is added in a stage of its own (`count the errors`, `count the
+  advice`) from what the stages before wrote, so the path the record holds is exact. What a stage is given from
+  outside the run's own state (the film, the check before) is in no record: every answer ends by saying so, and
+  `round` shows no cause for that reason.
+- **The record is read as a file anyone may have written.** Only as a plain file of at most 8 MB, never through a
+  link; it must hold one run; a name in it starts no line of the answer and a planted list of keys costs no time; a
+  saved decision is used only when it names an earlier step of this record. A record that is not whole says so
+  first, and then a value it lacks is "not found in what could be read".
+- A record is removed with its run (the newest 50 checks are kept). One a killed check left pending is cleared by a
+  later check, an hour on.
 
 **Broken, never thrown.** Whatever stops the film from compiling, as every other tool compiles it, is the `broken`
 line. Only what is no film at all (no config, a config that throws) is an error of the command.

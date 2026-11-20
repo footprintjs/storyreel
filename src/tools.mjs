@@ -590,6 +590,7 @@ export async function log(flags = {}) {
   if (flags.why !== undefined) {
     // why a value of one run is what it is, from the run's own record (why.mjs)
     if (flags.run === undefined || yes(flags.run)) throw new Error('--why reads one run: give its number (--run 1 --why verdict)');
+    for (const other of ['only', 'check']) if (flags[other] !== undefined) throw new Error(`--why answers by itself: leave --${other} out (or ask it in a call of its own)`);
     const runs = listRuns(out), r = runs.find(x => x.id === String(flags.run)) ?? (/^\d+$/.test(String(flags.run)) ? runs.find(x => x.n === Number(flags.run)) : undefined);
     if (!r) throw new Error(`there is no run ${flags.run}: the runs are 1–${runs.length}, or a run's id (storyreel log lists them)`);
     return await whyText(r, yes(flags.why) ? '' : String(flags.why), {all: yes(flags.all)}) + note;

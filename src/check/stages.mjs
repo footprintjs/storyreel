@@ -36,11 +36,17 @@ export const readChanges = run => async s => {
   try { run.changes = await run.does.changes(); s.changesRead = true; } catch (e) { run.changes = `not read (${cut(e?.message ?? e)})`; s.changesRead = false; }
 };
 
-/** The problems as one list, and this check beside the one before it. */
+/** How many things ask for a fix: the phrases' and the picture's, added. Its own stage, so the record says exactly what the count was added from. */
+export const countErrors = () => s => { s.errors = s.phraseErrors + s.pictureErrors; };
+
+/** How much is advice, the same way. */
+export const countAdvice = () => s => { s.advice = s.phraseAdvice + s.pictureAdvice; };
+
+/**
+ * This check beside the one before it. What it compares with comes from outside the run (the last check kept, and
+ * each problem's key): the record holds the answer, and why.mjs says under every answer that it holds no more.
+ */
 export const compare = run => s => {
-  // the counts are added from what the two stages before wrote, so the record says where each came from (log --why errors)
-  s.errors = s.phraseErrors + s.pictureErrors;
-  s.advice = s.phraseAdvice + s.pictureAdvice;
   const all = [...run.fromPhrases, ...run.fromPicture];
   run.problems = [...all.filter(p => p.level === 'error'), ...all.filter(p => p.level === 'advice')];
   run.keys = run.problems.map(p => p.key).slice(0, KEYS_MOST);
