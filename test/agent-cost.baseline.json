@@ -4,16 +4,20 @@
     "tokens": 288
   },
   "storyreel/SKILL.md": {
-    "bytes": 4737,
-    "tokens": 1180
+    "bytes": 4951,
+    "tokens": 1233
   },
   "storyreel-cartoon/SKILL.md": {
     "bytes": 10105,
     "tokens": 2524
   },
   "storyreel-review/SKILL.md": {
-    "bytes": 6952,
-    "tokens": 1734
+    "bytes": 7365,
+    "tokens": 1837
+  },
+  "storyreel check": {
+    "bytes": 292,
+    "tokens": 72
   },
   "storyreel timeline": {
     "bytes": 324,
@@ -21,11 +25,11 @@
   },
   "storyreel review": {
     "bytes": 216,
-    "tokens": 54
+    "tokens": 53
   },
   "storyreel part --scene farm": {
     "bytes": 286,
-    "tokens": 71
+    "tokens": 70
   },
   "storyreel still --at farm+12": {
     "bytes": 71,

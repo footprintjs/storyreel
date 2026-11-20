@@ -18,7 +18,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {writeOutput, outputFolder, insideRoot} from './files.mjs';
 import {pathToFileURL} from 'node:url';
 import {compileFilm, evenTimings, paceTimings, makeFilm, makeClock, withDirections} from './index.mjs';
-import {checkPhrase, anchorsText, phrasesIn, exactPhrases} from './anchors.mjs';
+import {checkPhrase, anchorsText, phrasesIn, exactPhrases, lineOf as anchorLine} from './anchors.mjs';
 import {saidPhrases} from './differs.mjs';
 export {shareCopy, SHARE_DEFAULTS} from './share.mjs';
 import {previewChanges} from './changes.mjs';
@@ -32,8 +32,9 @@ import {partWindow, filmTimeline, timelineText, RENDER_DEFAULTS} from './render.
 import {momentAt, sceneTime, sceneIds, placeOf, HUNDREDTH} from './momenttext.mjs';
 import {formatScale} from './layout.mjs';
 import {hashOf} from './hash.mjs';
-import {reviewPart, reviewSummary, REVIEW_DEFAULTS, SUMMARY_TOP} from './review.mjs';
-import {keepRun, keepFailedRun, logText, LOG_LINES} from './runlog.mjs';
+import {reviewPart, reviewSummary, findingsText, REVIEW_DEFAULTS, SUMMARY_TOP} from './review.mjs';
+import {checkFilm, CHECK_TOP} from './check/index.mjs';
+import {keepRun, keepFailedRun, lastCheck, logText, LOG_LINES} from './runlog.mjs';
 export {saveRun, keepRun, listRuns, logText, RUNS, RUNS_KEPT, RUNS_LISTED} from './runlog.mjs';
 import {readRubric, rubricSheet, rubricText, recordScores} from './rubric.mjs';
 import {TARGETS, TARGET_NAMES, loadTarget} from './release.mjs';
@@ -450,7 +451,10 @@ export async function strip(project, args = {}) {
  * each phrase not said (with the nearest words said), said more than once (with words said only at each place), past
  * its nth or in no scene — where it is named. full: every one (default: the first 10 a kind).
  */
-export async function anchors(project, args = {}) {
+export const anchors = async (project, args = {}) => anchorsText(await anchorsRead(project), {full: yes(args.full)});
+
+/** The anchors as data, for the tools that say them (anchors, check): {clock, notes, checked, stopped}. */
+async function anchorsRead(project) {
   const {inputs, cwd, said, raw} = project, holds = inputs.pacing?.holds ?? [], holdRef = h => ({scene: h.scene, phrase: h.after});
   // (The voice leaves its silent scenes out: they are filled in as pacing fills them, so the clock has every scene.)
   const spoken = makeClock(said, withDirections(said, raw));
@@ -476,7 +480,7 @@ export async function anchors(project, args = {}) {
     for (const {ref, path} of read) { const c = checkPhrase(clock, ref); if (c.problem && !seen.has(recipe(path))) notes.push({ref, path: recipe(path), ...c}); }
     checked = holds.length + read.length;
   }
-  return anchorsText({clock, notes, checked, stopped}, {full: yes(args.full)});
+  return {clock, notes, checked, stopped};
 }
 
 /**
@@ -522,6 +526,37 @@ export async function changes(project, args = {}) {
   return (await previewChanges(fullRender(project), {render: yes(args.render), handles})).text;
 }
 
+/**
+ * The one call after an edit (check/): the phrases, the picture and what the edit redraws, read once — the verdict
+ * first (clean, fix <n>, broken), then what to fix, worst first, then what changed since the check before. Nothing is
+ * rendered. Its run is kept for `log`, with what the next check compares with.
+ */
+export async function check(project, args = {}) {
+  const out = outFolderOf(project);
+  let film = null, loaded = null;
+  const does = {
+    // the phrases are read on a film compiled to note what it cannot find; the film itself is then compiled as every tool compiles it,
+    // and what stops that (a hold's phrase the pacing cannot place, a recipe entry refused) is why the film is broken
+    async anchors() {
+      const read = await anchorsRead(project);
+      let stopped = read.stopped;
+      if (stopped === null) try { loaded = {inputs: {...project.inputs, timings: pacedOf(project)}, cwd: project.cwd}; film = await compileProject(loaded); } catch (e) { stopped = String(e?.message ?? e); }
+      return {...read, stopped, lines: read.notes.map(n => anchorLine(read.clock, n))};
+    },
+    async review() {
+      const r = await reviewRun({...loaded, film}, {layout: loaded.inputs.layout ?? null});
+      return {findings: r.findings, lines: r.findings.map(f => findingsText([f])), verdicts: r.verdicts ?? [], record: r.record,
+        head: `${head(film, null, r.window)} — read: ${r.ran.join(', ') || 'no check fits'}`,
+        notRun: (r.verdicts ?? []).filter(v => v.verdict === 'not run').map(v => `${v.label ?? v.check}: ${v.why}`)};
+    },
+    async changes() { return (await previewChanges(fullRender({...loaded, film}), {render: false})).text.split('\n').at(-1).split(' · ')[0]; },   // the count; where the pieces are kept and a kit's notes are `changes`' own to say
+    before: () => lastCheck(out),
+  };
+  const done = await checkFilm(does, {all: yes(args.full), more: FULL_HINT});
+  const unsaved = keepRun(out, {feature: 'check', summary: done.text.split('\n')[0], record: done.record, check: {verdict: done.verdict, round: done.round, keys: done.keys}});
+  return `${done.text}${unsaved ? `\n(${unsaved})` : ''}`;
+}
+
 /** The notes the person left in the studio, read beside the recipe's file the film reads (studio/feedback-tool.mjs). */
 const feedbackTool = (project, args = {}) => feedback(projectRecipe(project, {config: args.config ?? CONFIG, recipe: args.recipe}), args, {keep: run => keepRun(outFolderOf(project), run)});
 
@@ -551,6 +586,8 @@ export const TOOLS = Object.freeze({
   log: {run: log, load: 'flags', about: 'How a result was made: the project\'s runs, newest first (a review, an apply, a note, a Try, a render), each done or refused; one run\'s stages, what each wrote and decided, with the rule that matched and the values it read; a verdict\'s evidence, each item measured. Read it before re-running or looking at pictures. On the command line, --folder reads the runs in a folder with no project: a breakdown\'s or a remake\'s.',
     args: {run: 'a run\'s number from the list, to show that run (default: the list)', only: 'with run: decisions, errors or steps (every entry as the record says it); default: each stage once, what it wrote and decided',
       check: 'with run: a verdict\'s name (contrast, slideshow, …): everything its check measured, each item', all: `true for every line (default: the first ${LOG_LINES})`}},
+  check: {run: check, load: 'config', about: `The one call after an edit, and nothing rendered: every keyed phrase checked, the film read as text (the review's checks and verdicts) and what the edit redraws, in one reply. The first line is the verdict: clean, fix <n>, or broken (the film does not compile). Then what to fix, worst first, each with where it is (the first ${CHECK_TOP}; the rest counted), what was not run, and what changed since the check before (fixed, new, the round of fixing).`,
+    args: {full: 'true for every problem (default: the first, the rest counted by kind)'}},
   review: {run: review, about: `What is wrong, read from the picture as text: words under the captions, over each other, cut off at the edge, the picture frozen for ${REVIEW_DEFAULTS.stillFor} s, nothing new for ${REVIEW_DEFAULTS.newEvery} s while it moves. Times on the film clock. Then three verdicts (passed, failed, or not run): no slideshow, drawn parts hold together, every number on screen has a source. With rubric: each point of a rubric laid out with its stills and evidence, to score; with scores and by, the scores recorded in the render's making-of.json.`,
     args: {scene: 'scene ids, comma-separated (default: the whole film)', handles: `seconds either side (${TOOL_DEFAULTS.handles})`, loop: 'true when the part is made to loop: the end of its scenes (not the handles) must come round to their start', full: FULL_ARG,
       rubric: 'true to lay out the recipe\'s rubric (or a rubric file in the project): each point with its stills (a picture each) and its evidence, to score — the library scores nothing',

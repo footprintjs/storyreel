@@ -27,7 +27,7 @@ export const GROWTH = .1;
 /** The pages on the main path, read in this order: the router names the cartoon skill, which ends in the review loop. */
 export const PAGES = ['storyreel/SKILL.md', 'storyreel-cartoon/SKILL.md', 'storyreel-review/SKILL.md'];
 /** The commands the main path runs, as an agent types them after `npx storyreel`. */
-export const COMMANDS = [['timeline'], ['review'], ['part', '--scene', 'farm'], ['still', '--at', 'farm+12']];
+export const COMMANDS = [['check'], ['timeline'], ['review'], ['part', '--scene', 'farm'], ['still', '--at', 'farm+12']];
 
 const tokens = text => Math.ceil(text.length / 4);
 const skill = page => readFileSync(path.join(repo, 'plugin', 'skills', page), 'utf8');

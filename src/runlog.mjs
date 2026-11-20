@@ -86,16 +86,23 @@ function keptVerdicts(verdicts) {
   return Buffer.byteLength(JSON.stringify(plain)) <= RUN_MOST / 2 ? plain : plain.map(v => ({...v, measured: {}, dropped: true}));
 }
 
+/** What a check keeps for the check after it (check/problems.mjs · sinceLast): its verdict, its round and its problems' keys, bounded. */
+const CHECK_KEYS = 300, CHECK_KEY = 200;
+const keptCheck = c => ({verdict: String(c.verdict), round: Number.isInteger(c.round) && c.round > 0 ? c.round : 1, keys: (c.keys ?? []).slice(0, CHECK_KEYS).map(k => cut(String(k), CHECK_KEY))});
+/** The same, read back from a file: null when it is not as keptCheck writes it. */
+const readCheck = c => (c && typeof c === 'object' && typeof c.verdict === 'string' && Number.isInteger(c.round) && c.round > 0 && Array.isArray(c.keys) && c.keys.length <= CHECK_KEYS && c.keys.every(k => typeof k === 'string' && k.length <= CHECK_KEY)
+  ? {verdict: oneLine(c.verdict), round: c.round, keys: c.keys.map(oneLine)} : null);
+
 /**
  * Save one run of a feature into the out folder's runs: {feature, summary, record, verdicts?, failure?} — `failure` what
  * it failed on, said in its summary and as its last entry. Returns the file written.
  */
-export function saveRun(out, {feature, summary = '', record = [], verdicts = null, failure = null, at = new Date()}) {
+export function saveRun(out, {feature, summary = '', record = [], verdicts = null, failure = null, check = null, at = new Date()}) {
   if (!FEATURE.test(feature)) throw new Error(`saveRun: feature is a short lowercase name (review, render, breakdown), not ${JSON.stringify(feature)}`);
   const dir = outputFolder(out, RUNS), stamp = at.toISOString().replace(/[:.]/g, '-');
   const file = path.join(dir, `${stamp}-${feature}.${randomBytes(3).toString('hex')}.json`);   // two saves in one millisecond: two runs
   const fail = failure === null ? null : cut(String(failure), SAID_CHARS), said = cut(String(summary), SAID_CHARS);
-  writeOutput(file, runText({feature, at: at.toISOString(), summary: fail === null ? said : `${said ? `${said} — ` : ''}failed: ${fail}`, ...(verdicts ? {verdicts: keptVerdicts(verdicts)} : {})}, plainEntries(record), fail));
+  writeOutput(file, runText({feature, at: at.toISOString(), summary: fail === null ? said : `${said ? `${said} — ` : ''}failed: ${fail}`, ...(verdicts ? {verdicts: keptVerdicts(verdicts)} : {}), ...(check ? {check: keptCheck(check)} : {})}, plainEntries(record), fail));
   dropOldRuns(dir, feature, path.basename(file));
   return file;
 }
@@ -145,6 +152,9 @@ export function withRecord(error, trace) {
 /** The call that reads the runs in a folder, as a person types it: what a feature with no project says when it is done. */
 export const logCall = folder => `storyreel log --folder ${/^[\w./+:@-]+$/.test(folder) ? folder : `'${String(folder).replace(/'/g, "'\\''")}'`}`;
 
+/** The last check kept in a project's runs, as the next check compares with it: {verdict, round, keys}, or null. */
+export const lastCheck = out => listRuns(out).find(run => run.feature === 'check' && run.check)?.check ?? null;
+
 /**
  * A file of the runs folder read as a saved run, or null when it is not one. Read only as a plain file of at most
  * RUN_MOST bytes (files.mjs · readPlainFile: never through a link, never a FIFO), then checked for the shape saveRun
@@ -156,7 +166,7 @@ function savedRun(file) {
   if (!r.entries.every(e => e && typeof e.type === 'string' && typeof e.text === 'string')) return null;
   if (r.verdicts !== undefined && !(Array.isArray(r.verdicts) && r.verdicts.every(v => v && typeof v.check === 'string' && v.measured && typeof v.measured === 'object'))) return null;
   return {id: path.basename(file, '.json'), feature: r.feature, at: new Date(r.at).toISOString(), summary: oneLine(r.summary ?? ''), file, entries: readEntries(r.entries),
-    ...(Number.isInteger(r.omitted) ? {omitted: r.omitted} : {}),
+    ...(Number.isInteger(r.omitted) ? {omitted: r.omitted} : {}), ...(readCheck(r.check) ? {check: readCheck(r.check)} : {}),
     ...(r.verdicts ? {verdicts: r.verdicts.map(v => ({check: oneLine(v.check), label: oneLine(v.label ?? v.check), verdict: oneLine(v.verdict ?? ''), why: oneLine(v.why ?? ''), measured: v.measured, ...(v.dropped === true ? {dropped: true} : {}), ...(v.summary ? {summary: oneLine(v.summary)} : {})}))} : {})};
 }
 
