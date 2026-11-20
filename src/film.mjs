@@ -21,7 +21,7 @@
  */
 import {drainSteps, recordSteps, step} from './record.mjs';
 import {readOptions} from './film/options.mjs';
-import {timeClock} from './film/beats.mjs';
+import {timeClock} from './film/clock.mjs';
 import {readSources} from './film/sources.mjs';
 import {loadKits} from './film/kits.mjs';
 import {directStage} from './film/direct.mjs';

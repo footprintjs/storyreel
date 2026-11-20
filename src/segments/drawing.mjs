@@ -40,6 +40,7 @@ export const PAINTER_ASSETS = Object.freeze(['../themes/']);
 export const NOT_DRAWING = Object.freeze({
   'files.mjs': 'reads and writes files: a file the film shows is keyed by its own bytes (film.inputs.files)',
   'sound.mjs': 'the sound accents: their names, counts and synthesis',
+  'film/sounds.mjs': 'the compile\'s sound stage: the film\'s sounds, the found sounds checked, the listening check; it reads the built film and decides no pixel',
   'found/index.mjs': 'the found sounds: recorded effects, their licences and records',
   'listening.mjs': 'what the sound asks of the ear: checks on the film\'s sound',
   'record.mjs': 'the compile\'s footprintjs record',

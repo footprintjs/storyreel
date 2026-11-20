@@ -18,7 +18,7 @@ camera is placed, and draws with it. Each module's head comment says what its st
 | file | one job |
 |---|---|
 | `options.mjs` | the options checked; cast and strings put into the text; the director's rules and notes read |
-| `beats.mjs` | the film's clock, logging every phrase it resolves (anchors: 'note' notes and stands in) |
+| `clock.mjs` | the film's clock, logging every phrase it resolves (anchors: 'note' notes and stands in) |
 | `sources.mjs` | the theme, the files under the root (hashed as read), facts, example scenes, differs, rubric, pace |
 | `kits.mjs` | the story and stage kits by name, the transitions, and how a world is built and hung |
 | `direct.mjs` | the director's keys landed in the worlds before they are built |
