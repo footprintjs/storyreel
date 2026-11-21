@@ -4,7 +4,7 @@
 slide (StoryDeck) and in a film (StoryReel). This kit draws the same map the same way, because every number comes from
 `footprint-story`: `/isometric` places the blocks (`arrange`, `arrangeByGroup`), lays the cables (`routes`, with ports),
 fits the grid (`gridFor`), the floors' names (`floorLabelPlace`) and the blocks' names (`wordsToFit` with `grid.room`),
-orders the painting (`backToFront`) and rounds each cable (`rounded`); `/motion` rides the packets (`rideProfile`,
+orders the painting (`backToFront`) and rounds each cable and stops it for its head (`cableWay`); `/motion` rides the packets (`rideProfile`,
 `rideSeconds`, `withHold`, `showStops`, `hiddenRamps`). The kit only draws on the canvas and words what it finds.
 
 ```js
@@ -92,6 +92,7 @@ import the one copy, so a deck and a film draw the same cable):
 | `cables.mjs` · a cable's label, its plate and the looks a map's labels share | `/isometric` · `labelPlace`, `labelHalf`, `held`, `walkWay`, `LABEL_PLACES`, `CABLE` |
 | `cables.mjs` · a straight wire: its lanes, its ends 6 px off each outline, too close refused, its bend, its curve | `/isometric` · `lanesOf`, `straightRun`, `bentWire`, `curveWay` (and `exitOutline` beneath) |
 | `cables.mjs` · the cable's numbers (6 px clear, corners 0.4 of a tile, the 18 px head's four fifths) | `/isometric` · `CABLE` |
+| `cables.mjs` · a laid cable's line, stopped where its head begins (from 0.36.0: never past 1 px short of its last run's start, as StoryDeck stops it — before, at most half that run) | `/isometric` · `cableWay` |
 | `build.mjs` · a cylinder's outline | `/isometric` · `roundOutline` |
 | `ride.mjs` · a packet's share at t (CSS's `linear()` read at a moment) and how much of it shows past a block | `/motion` · `onStops`, `seenAt` |
 | `draw.mjs` · the arrow head's corners (only the painting is here) | `/isometric` · `arrowHead`, `headingOf` |
