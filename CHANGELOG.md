@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- **`footprint-storyreel/kits/isometric`: StoryDeck's isometric maps in a film** (`isometricKit`, pass it in `kits`).
+  Blocks and cylinders on a floor, floors with their names, groups, cables between blocks and ports, and packets riding
+  the cables, written with StoryDeck's words as recipe keys (`blocks`, `floors`, `wires`: `name`, `kind`, `at`, `size`,
+  `label`, `small`, `group`, `ports`, `arrow`, `packets`, `speed`, `ride`, `rest`, `trail`, `behind`). Every number is
+  footprint-story's — `arrange` / `arrangeByGroup` when no block has an `at`, `routes` with ports, `gridFor`,
+  `rounded`, `wordsToFit`, `floorLabelPlace`, `backToFront`, and `rideProfile` / `rideSeconds` / `withHold` /
+  `showStops` / `hiddenRamps` on the film's clock — so a deck and a film draw one map the same way. A film adds
+  `appear` (a piece comes in on a phrase) and a wire's `start`. Every block, floor and wire is a named region, so a
+  focus or a camera move frames it by name; its labels reach the reading check; each packet is mounted on its cable
+  for the geometry audit. A map that cannot be drawn as written is refused, naming the entry and the fix; what does
+  not lie well (a wire behind a block, a hairpin at a port, a name too long for its top, a floor's name covered) is
+  said in the world's `notes`, and `strict: true` refuses it. A worked example, `examples/iso-world`, is pinned in
+  `test/golden.json` and `test/behaviour.json` (the other films' pins are unchanged).
+- **StoryReel now needs footprint-story `^0.17.1`** (it was `^0.14.2`): the version with the ride numbers, hairpins,
+  floor labels and groups the kit uses.
+
 ## 0.33.0 — one reader of a run's record, with StoryDeck
 
 - **`log --why` and the one-line rule are footprint-story's now** (`footprint-story/record` · `whyFromRecord`, and

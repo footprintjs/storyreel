@@ -126,6 +126,10 @@
       "types": "./types/sub/kinetic.d.ts",
       "default": "./src/kits/kinetic/index.mjs"
     },
+    "./kits/isometric": {
+      "types": "./types/sub/isometric.d.ts",
+      "default": "./src/kits/isometric/index.mjs"
+    },
     "./kits/cartoon/figure": {
       "types": "./types/sub/figure.d.ts",
       "default": "./src/kits/cartoon/figure.mjs"
@@ -305,7 +309,7 @@
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.9",
-    "footprint-story": "^0.14.2",
+    "footprint-story": "^0.17.1",
     "footprintjs": "^14.0.0",
     "foottrace": "^2.1.0",
     "perfect-freehand": "^1.2.3",

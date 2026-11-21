@@ -354,5 +354,57 @@
     "says": "note \"push across mid the teaser\": the push runs from 50.80 s to 52.18 s, across the teaser (47.76 s); a push stays on one picture: end it before 47.76 s, or start it after the change"
    }
   ]
+ },
+ "iso-world": {
+  "reading": [],
+  "moments": [
+   {
+    "t": 5.73,
+    "kind": "settled",
+    "label": "The request"
+   },
+   {
+    "t": 11.86,
+    "kind": "moving",
+    "label": "mid the wipe into desk"
+   },
+   {
+    "t": 16.48,
+    "kind": "settled",
+    "label": "The cable"
+   }
+  ],
+  "pushes": [
+   {
+    "across": "mid the wipe into desk",
+    "at": 11.86,
+    "from": {
+     "scene": "map",
+     "phrase": "logs.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "desk",
+     "phrase": "Under",
+     "nth": 0
+    },
+    "says": "note \"push across mid the wipe into desk\": the push runs from 10.18 s to 13.36 s, across the wipe into desk (11.46 s); a push stays on one picture: end it before 11.46 s, or start it after the change"
+   },
+   {
+    "across": "start of desk",
+    "at": 12.06,
+    "from": {
+     "scene": "map",
+     "phrase": "logs.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "desk",
+     "phrase": "Under",
+     "nth": 0
+    },
+    "says": "note \"push across start of desk\": the push runs from 10.18 s to 13.36 s, across the wipe into desk (11.46 s); a push stays on one picture: end it before 11.46 s, or start it after the change"
+   }
+  ]
  }
 }

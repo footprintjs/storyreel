@@ -1,0 +1,273 @@
+{
+ "story": {
+  "kit": "isometric",
+  "blocks": [
+   {
+    "name": "you",
+    "label": "You",
+    "appear": [
+     "map",
+     "A request starts"
+    ]
+   },
+   {
+    "name": "lb",
+    "label": "Load Balancer",
+    "tone": "ok",
+    "appear": [
+     "map",
+     "the load balancer"
+    ]
+   },
+   {
+    "name": "api",
+    "label": "API",
+    "size": [
+     2,
+     2,
+     1.6
+    ],
+    "group": "backend",
+    "appear": [
+     "map",
+     "the API"
+    ]
+   },
+   {
+    "name": "db",
+    "kind": "cylinder",
+    "label": "Database",
+    "size": [
+     2,
+     2,
+     1.2
+    ],
+    "group": "backend",
+    "appear": [
+     "map",
+     "reads the database"
+    ]
+   },
+   {
+    "name": "logs",
+    "label": "Logs",
+    "group": "backend",
+    "appear": [
+     "map",
+     "writes a line"
+    ]
+   }
+  ],
+  "floors": [
+   {
+    "name": "prod",
+    "group": "backend",
+    "label": "Production account",
+    "appear": [
+     "map",
+     "the API"
+    ]
+   }
+  ],
+  "wires": [
+   {
+    "name": "w1",
+    "arrow": "you to lb",
+    "packets": 1,
+    "speed": "200px",
+    "appear": [
+     "map",
+     "the load balancer"
+    ]
+   },
+   {
+    "name": "w2",
+    "arrow": "lb to api",
+    "label": "https",
+    "packets": 1,
+    "ride": [
+     0.15,
+     0.2
+    ],
+    "rest": 0.5,
+    "appear": [
+     "map",
+     "the API"
+    ]
+   },
+   {
+    "name": "w3",
+    "arrow": "api to db",
+    "packets": 1,
+    "speed": "160px",
+    "trail": {
+     "width": 3,
+     "color": "#4a7bd0"
+    },
+    "appear": [
+     "map",
+     "reads the database"
+    ]
+   },
+   {
+    "name": "w4",
+    "arrow": "api to logs",
+    "packets": 1,
+    "behind": "fade",
+    "appear": [
+     "map",
+     "writes a line"
+    ]
+   }
+  ]
+ },
+ "stages": [
+  {
+   "type": "world",
+   "scene": "desk",
+   "enter": "wipe",
+   "world": {
+    "kit": "isometric",
+    "grid": {
+     "tile": 120,
+     "at": [
+      700,
+      150
+     ]
+    },
+    "blocks": [
+     {
+      "name": "lap",
+      "label": "Laptop",
+      "at": [
+       0,
+       5
+      ],
+      "size": [
+       2.4,
+       1.6,
+       0.3
+      ],
+      "ports": [
+       {
+        "name": "rj45",
+        "at": [
+         2.4,
+         0.8,
+         0.15
+        ]
+       }
+      ]
+     },
+     {
+      "name": "sw",
+      "label": "Switch",
+      "at": [
+       5,
+       1
+      ],
+      "size": [
+       4,
+       2,
+       0.4
+      ],
+      "ports": [
+       {
+        "name": "p1",
+        "at": [
+         0.6,
+         2,
+         0.2
+        ]
+       },
+       {
+        "name": "up",
+        "at": [
+         4,
+         1,
+         0.2
+        ]
+       }
+      ]
+     },
+     {
+      "name": "router",
+      "label": "Router",
+      "at": [
+       11,
+       1
+      ],
+      "size": [
+       2,
+       2,
+       1
+      ]
+     }
+    ],
+    "floors": [
+     {
+      "name": "desk-floor",
+      "at": [
+       -1,
+       -1
+      ],
+      "size": [
+       15,
+       9
+      ],
+      "label": "Office"
+     }
+    ],
+    "wires": [
+     {
+      "name": "c1",
+      "arrow": "lap.rj45 to sw.p1",
+      "head": "none",
+      "packets": 2,
+      "speed": "220px",
+      "ride": [
+       0.15,
+       0.2
+      ],
+      "rest": 0.4,
+      "trail": {
+       "width": 3,
+       "color": "#4a7bd0"
+      },
+      "behind": "fade"
+     },
+     {
+      "name": "c2",
+      "arrow": "sw.up to router",
+      "label": "uplink",
+      "packets": 1,
+      "start": [
+       "desk",
+       "The switch sends"
+      ]
+     }
+    ]
+   }
+  }
+ ],
+ "focus": {
+  "strategy": "camera",
+  "keys": [
+   {
+    "at": [
+     "map",
+     "reads the database"
+    ],
+    "on": "db",
+    "size": "medium"
+   },
+   {
+    "at": [
+     "map",
+     "writes a line"
+    ],
+    "on": "wide"
+   }
+  ]
+ }
+}

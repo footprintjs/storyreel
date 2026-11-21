@@ -805,3 +805,14 @@ export const storyRun = async (make: typeof StoryFrom, driver: typeof InProcess)
   await make({conversation: 'chat.json', model: driver(() => '{}')});
   return [result.board?.shape, result.stopped?.at, sure];
 };
+
+// the isometric kit: StoryDeck's maps in a film
+import {isometricKit, compileIsometric, ISO_LIMITS} from 'footprint-storyreel/kits/isometric';
+import type {IsometricSpec} from 'footprint-storyreel/kits/isometric';
+const isoSpec: IsometricSpec = {blocks: [{name: 'you', label: 'You'}, {name: 'db', kind: 'cylinder', size: [2, 2, 1.2]}],
+  floors: [{label: 'Production'}], wires: [{arrow: 'you to db', packets: 1, speed: '260px', ride: [0.15, 0.2], rest: 1, behind: 'fade'}], strict: true};
+declare const isoClock: import('footprint-storyreel').Clock;
+const isoWorld = compileIsometric(isoSpec, {clock: isoClock});
+const isoNotes: readonly {level: 'warn' | 'info'}[] = isoWorld.notes;
+const isoKits: import('footprint-storyreel').ContextKit[] = [isometricKit];
+void isoNotes; void isoKits; void ISO_LIMITS.packets;

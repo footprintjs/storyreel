@@ -3464,6 +3464,22 @@ A studio whose recipe file is not known (no `--recipe`, no `recipe.json` beside 
  "world": {"kit": "kinetic", "scene": "beat", "words": ["Every", "beat", "lands", "cut"], "flip": true, "sound": "tap"}}
 ```
 
+- **isometric** (story or world stage) — StoryDeck's maps in a film: blocks and cylinders on a floor seen from a
+  corner, floors with their names, groups, cables between blocks and ports, packets riding the cables. The recipe uses
+  StoryDeck's words as keys (`name`, `kind`, `at`, `size`, `label`, `group`, `ports`; a wire's `arrow: "lap.rj45 to
+  sw.p1"`, `packets`, `speed: "260px"`, `ride`, `rest`, `trail`, `behind`), and every number is footprint-story's
+  (`/isometric` places, lays, fits and orders; `/motion` rides), so a deck and a film draw one map the same way. With no
+  `at` the blocks are placed from the wires; `appear` brings a piece in on a phrase; every block and wire is named for
+  the camera (`"focus": {"keys": [{"on": "db", …}]}`). A wrong map is refused naming the entry and the fix, and what does
+  not lie well is said in the world's `notes` (`strict: true` refuses it). `import {isometricKit} from
+  'footprint-storyreel/kits/isometric'`; the keys: src/kits/isometric/README.md; `node examples/iso-world/make.mjs`.
+
+```json
+{"type": "world", "scene": "map", "world": {"kit": "isometric",
+ "blocks": [{"name": "you", "label": "You"}, {"name": "db", "kind": "cylinder", "label": "Database", "appear": ["map", "the database"]}],
+ "wires": [{"arrow": "you to db", "label": "sql", "packets": 1, "speed": "260px"}]}}
+```
+
 ## Kits
 
 ```js

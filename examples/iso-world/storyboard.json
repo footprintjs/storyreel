@@ -1,0 +1,7 @@
+{
+  "title": "A request on a map",
+  "scenes": [
+    {"id": "map", "title": "The request", "narration": "A request starts in your browser. It reaches the load balancer, and then the API. The API reads the database, and writes a line to the logs."},
+    {"id": "desk", "title": "The cable", "narration": "Under the desk, a laptop plugs into the switch. The switch sends each packet up to the router."}
+  ]
+}
