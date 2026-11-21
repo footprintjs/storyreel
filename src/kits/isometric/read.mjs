@@ -131,7 +131,8 @@ function readBlock(b, i, where) {
   if (own(b, 'at') && !nums(b.at, [2, 3])) throw new Error(`${who}: at is where it stands, [col, row] on the floor (a third number lifts it) — not ${shown(b.at)}`);
   const at = own(b, 'at') ? [b.at[0], b.at[1], b.at[2] ?? 0] : null;
   try { readThing({at: at ?? [0, 0], size}, `a ${kind}`); } catch (e) { throw new Error(`${who}: ${e.message.replace(/^isometric: /, '')}`, {cause: e}); }
-  if (kind === 'cylinder' && Math.abs(size[0] - size[1]) > 1e-9) throw new Error(`${who}: a cylinder is round — its size is [wide, wide, high], the same width and depth (not ${shown(size)})`);
+  // exactly equal, as footprint-story's map spec reads a cylinder (0.39.0: a billionth apart passed here, and the grid then refused it)
+  if (kind === 'cylinder' && size[0] !== size[1]) throw new Error(`${who}: a cylinder is round — its size is [wide, wide, high], the same width and depth (not ${shown(size)})`);
   if (own(b, 'color') && !HEX.test(b.color)) throw new Error(`${who}: color is a hex colour ("#bcd6f3") — its top is drawn lighter and its sides darker; not ${shown(b.color)}`);
   if (own(b, 'tone') && !TONES.includes(b.tone)) throw new Error(`${who}: tone is ${TONES.join(', ')} (the theme's colours for each) — not ${shown(b.tone)}`);
   if (own(b, 'color') && own(b, 'tone')) throw new Error(`${who}: give it a color or a tone, not both`);

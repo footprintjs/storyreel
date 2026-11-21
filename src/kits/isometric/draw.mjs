@@ -1,8 +1,8 @@
 /**
  * draw — the built map painted on a canvas at t: the ground, the floors with their names, the cables with their labels
  * and packets, then the blocks back to front, each with its name on its top and the leads into its seen ports drawn
- * over it. Only drawing: every number was worked out once (build.mjs, cables.mjs, ride.mjs), so any moment draws the
- * same pixels whatever was drawn before.
+ * over it. Only drawing: every number was worked out once (footprint-story's map steps through build.mjs, then
+ * cables.mjs and ride.mjs), so any moment draws the same pixels whatever was drawn before.
  *
  * The look is StoryDeck's (deck/iso.js · ISO_CSS, deck.css): one colour a block, its top 20% lighter and its sides 6%
  * and 18% darker, edges in ink 2.5 px wide; the floor's tile lines ink at 16%; a cable 4 px in the muted ink with an
@@ -37,11 +37,29 @@ export const inAt = (from, t) => (from === null ? 1 : Math.max(0, Math.min(1, (t
 
 const polygon = (c, points) => { c.beginPath(); points.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.closePath(); };
 
+/** A piece's face (an item of its shape: footprint-story's style shape column) traced as the canvas's current path. */
+function trace(c, face) {
+  if (face.item === 'polygon') return polygon(c, face.points);
+  c.beginPath();
+  if (face.item === 'ellipse') return c.ellipse(face.cx, face.cy, face.rx, face.ry, 0, 0, 2 * Math.PI);
+  // a path: a cylinder's side, down its left edge, round the front half of its foot, up its right edge
+  for (const [op, ...n] of face.segments) {
+    if (op === 'move') c.moveTo(n[0], n[1]);
+    else if (op === 'line') c.lineTo(n[0], n[1]);
+    else if (op === 'arc') c.ellipse(n[0], n[1], n[2], n[3], 0, n[4], n[5], n[6]);
+    else if (op === 'close') c.closePath();
+    else throw new Error(`isometric kit: a face's path has no step "${op}"`);   // refusal: internal (footprint-story's box shape gives only these four)
+  }
+}
+
+/** Each face's fill: the block's colour toward white or black by a share (StoryDeck's tones; footprint-story names the faces). */
+const FACE_TONES = Object.freeze({top: ['#ffffff', 0.2], left: ['#000000', 0.06], right: ['#000000', 0.18], side: ['#000000', 0.18]});
+
 function drawFloor(c, f, look) {
-  const {outline, lines} = f.shape;
-  if (f.color) { c.fillStyle = f.color; polygon(c, outline); c.fill(); }
+  const face = (role) => f.shape.faces.find((x) => x.role === role);
+  if (f.color) { c.fillStyle = f.color; trace(c, face('ground')); c.fill(); }
   c.strokeStyle = withAlpha(look.ink, ISO_LOOK.grid); c.lineWidth = 1.5; c.lineCap = 'butt';
-  c.beginPath(); for (const [x1, y1, x2, y2] of lines) { c.moveTo(x1, y1); c.lineTo(x2, y2); } c.stroke();
+  c.beginPath(); for (const [x1, y1, x2, y2] of face('grid').segments) { c.moveTo(x1, y1); c.lineTo(x2, y2); } c.stroke();
   if (!f.place) return;
   // flat on the floor along its front edge: the label's lines, their block's foot on the edge (CSS: matrix, then translateY(-100%))
   const {x, y, matrix: [a, b, cc, d], size, lines: words} = f.place, lh = size * 1.15;
@@ -68,14 +86,8 @@ function drawBlock(c, b, look) {
   // tones are ink-dark — on the tone itself the name would fail the film's contrast check (StoryDeck colours the block the tone)
   const tone = b.color ?? (b.tone ? mix(look.tones[b.tone], '#ffffff', 0.6) : ISO_LOOK.tone), s = b.shape;
   c.strokeStyle = look.ink; c.lineWidth = ISO_LOOK.line; c.lineJoin = 'round';
-  if (s.kind === 'cylinder') {
-    const {top: t, bottom: m} = s;
-    c.beginPath(); c.moveTo(t.cx - t.rx, t.cy); c.lineTo(m.cx - m.rx, m.cy); c.ellipse(m.cx, m.cy, m.rx, m.ry, 0, Math.PI, 0, true); c.lineTo(t.cx + t.rx, t.cy); c.closePath();
-    c.fillStyle = mix(tone, '#000000', 0.18); c.fill(); c.stroke();
-    c.beginPath(); c.ellipse(t.cx, t.cy, t.rx, t.ry, 0, 0, 2 * Math.PI); c.fillStyle = mix(tone, '#ffffff', 0.2); c.fill(); c.stroke();
-  } else {
-    for (const [face, fill] of [[s.left, mix(tone, '#000000', 0.06)], [s.right, mix(tone, '#000000', 0.18)], [s.top, mix(tone, '#ffffff', 0.2)]]) { polygon(c, face); c.fillStyle = fill; c.fill(); c.stroke(); }
-  }
+  // the faces in the order the shape gives them, back to front: a block's left, right and top; a cylinder's side and top
+  for (const face of s.faces) { trace(c, face); c.fillStyle = mix(tone, ...FACE_TONES[face.role]); c.fill(); c.stroke(); }
   if (!b.fitted?.lines.length) return;
   // the name upright on the top's middle, its lines as wordsToFit broke them; the small line beneath it
   const {lines, size} = b.fitted, lh = size * 1.15, sf = b.smallFitted, small = sf ? sf.size * 1.15 + 2 : 0, height = lines.length * lh + small;
