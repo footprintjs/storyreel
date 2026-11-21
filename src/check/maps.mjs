@@ -29,10 +29,14 @@ function readMade(made) {
   return {snapshot, differs};
 }
 
-/** `promise`, or a rejection after `ms`: the timer is cleared either way, and never holds the process open. */
+/**
+ * `promise`, or a rejection after `ms`: the timer is cleared either way. WHY not unref'd: the check is waiting on this
+ * answer, so the timer must keep the process alive — unref'd, a run that never settles (nothing else pending) let the
+ * process end before the bound, with the check's promise never settled (seen on CI, test/map-record.test.mjs).
+ */
 function within(promise, ms) {
   let timer;
-  const late = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`the map run did not finish within ${ms / 1000} s`)), ms); timer.unref?.(); });
+  const late = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`the map run did not finish within ${ms / 1000} s`)), ms); });
   return Promise.race([promise, late]).finally(() => clearTimeout(timer));
 }
 
