@@ -6,6 +6,7 @@ import path from 'node:path';
 import {createCanvas} from '@napi-rs/canvas';
 import {compileFilm, evenTimings, renderFilm, makeFilm} from '../src/index.mjs';
 import {captionChunks as chunksOf, captionAt, captionFile, FILE_CHUNKS} from 'footprint-story';
+import {wrapWords} from 'footprint-story/layout';
 import {spokenTracks} from '../src/captions.mjs';
 
 /** A film's caption chunks: footprint-story's chunker over the film's spoken tracks. */
@@ -76,7 +77,7 @@ test('layouts: four formats with their sizes; the bands take the film\'s paper; 
   bad({format: 'vertical', crop: [null]}, /layout.crop\[0\] must be \{at: beat, x, width\?\}/);
   bad({format: 'vertical', crop: [{at: ['talk', 'Two searches'], x: 800, width: 2000}]}, /layout.crop\[0\].width must be 400–1600 \(how much of the frame's width the crop shows; 1200 is the format's\)/);
   bad({format: 'vertical', crop: [{at: ['talk', 'Two searches'], x: 800, zoom: 2}]}, /unsupported key zoom \(a crop key is \{at, x, y\?, width\?, cut\?\}, or \{at, follow, width\?\}\)/);
-  bad({format: 'vertical', header: {sub: 'no title'}}, /header must be \{title, sub\?, box\?\} with words in the title, or false/);
+  bad({format: 'vertical', header: {sub: 'no title'}}, /header must be \{title, sub\?, box\?, break\?\} with words in the title, or false/);
   assert.equal(compileLayout(film, {format: 'landscape', header: false, captions: false}).boxes.header, undefined, 'false is no band, for a header as for captions');
   bad({format: 'vertical', header: {title: 'T', subtitle: 'x'}}, /layout.header has unsupported key subtitle/);
   bad({format: 'vertical', header: {title: 'T', sub: 3}}, /layout.header.sub must be words/);
@@ -86,6 +87,31 @@ test('layouts: four formats with their sizes; the bands take the film\'s paper; 
   bad({format: 'vertical', captions: {maxWords: 30}}, /maxWords must be a whole number 1–20/);
   bad({format: 'vertical', captions: {box: [0, 1800, 1080, 200]}}, /captions.box must be \[x, y, width, height\] inside the 1080×1920 picture/);
   bad({format: 'square', background: 12}, /layout.background must be a colour/);
+});
+
+test('the title band breaks by a named rule: "even" the usual (lines alike), "fill" each line as full as it goes (footprint-story/layout)', () => {
+  /** The title's lines as the band draws them (the canvas's own fillText, recorded), and the font they were drawn in. */
+  const drawnOf = (header) => {
+    const c = createCanvas(1080, 1920), ctx = c.getContext('2d'), drawn = [], real = ctx.fillText.bind(ctx);
+    ctx.fillText = (text, x, y) => { drawn.push({text, font: ctx.font}); real(text, x, y); };
+    compileLayout(film, {format: 'vertical', header, captions: false}).overlay(ctx, 0, {still: true});
+    return drawn;
+  };
+  let parted = 0;
+  for (const title of ['The map tells us where the packets go next', 'Both searches come back empty and nobody knows why', 'Why an empty answer is not always the same thing']) {
+    const usual = drawnOf({title}), fill = drawnOf({title, break: 'fill'});
+    assert.deepEqual(drawnOf({title, break: 'even'}), usual, '"even" is the usual');
+    // each is wrapWords with its rule, in the font the band chose, across the band's 880 px
+    for (const [drawn, rule] of [[usual, 'even'], [fill, 'fill']]) {
+      const ctx = createCanvas(10, 10).getContext('2d');
+      ctx.font = drawn[0].font;
+      assert.deepEqual(drawn.map((d) => d.text), wrapWords(title.split(' '), 880, (t) => ctx.measureText(t).width, {break: rule}), `${title}: broken by ${rule}`);
+    }
+    if (JSON.stringify(fill) !== JSON.stringify(usual)) parted += 1;
+  }
+  assert.ok(parted > 0, 'fill and even part on at least one of these titles');
+  assert.throws(() => compileLayout(film, {format: 'vertical', header: {title: 'T', break: 'balanced'}}), /layout.header.break is "fill" or "even" — "even" \(the usual\) makes the lines alike, "fill" fills each line as full as it goes; not "balanced"/);
+  assert.throws(() => compileLayout(film, {format: 'vertical', header: {title: 'T', break: null}}), /layout.header.break is "fill" or "even"/);
 });
 
 test('a layout at a scale draws the same picture larger: 2 makes landscape 3840×2160 (4K); the sizes stay whole and even', () => {

@@ -32,7 +32,7 @@
  * (zones.mjs · uiFindings).
  */
 import {captionChunks, captionAt} from 'footprint-story';
-import {wrapWords, narrowestWidth} from 'footprint-story/layout';
+import {wrapWords, BREAK_RULES} from 'footprint-story/layout';
 import {spokenTracks, drawCaption, captionFit} from './captions.mjs';
 import {inOut} from './ease.mjs';
 import {FOLLOW, keepWhole, filmSpeakers} from './follow.mjs';
@@ -62,7 +62,7 @@ export function formatOf(name) {
 }
 
 /**
- * Compile a layout for a film. spec: {format, header?: {title, sub?, box?}, captions?: true | {maxWords?,
+ * Compile a layout for a film. spec: {format, header?: {title, sub?, box?, break?: 'even' | 'fill'}, captions?: true | {maxWords?,
  * size?, box?}, crop?: [{at: beat, x, width?}], background?, ink?, scale?} → {width, height, format, boxes,
  * picture(ctx, t), overlay(ctx, t, {still?})}: picture draws the background and the film (what motion blur
  * may average); overlay draws the bands (a still — the poster — without a caption); boxes are where the film
@@ -190,11 +190,13 @@ export const draftSize = format => { const f = formatOf(format); return `${f.wid
 /** The title band: {title, sub?, box?}, only where the format has one; false or left out for none. */
 function readHeader(h, f, format) {
   if (h === undefined || h === false) return null;
-  if (!h || typeof h !== 'object' || Array.isArray(h) || typeof h.title !== 'string' || !h.title.trim()) throw new Error('layout.header must be {title, sub?, box?} with words in the title, or false');
-  for (const key of Object.keys(h)) if (!['title', 'sub', 'box'].includes(key)) throw new Error(`layout.header has unsupported key ${key} (a header is {title, sub?, box?})`);
+  if (!h || typeof h !== 'object' || Array.isArray(h) || typeof h.title !== 'string' || !h.title.trim()) throw new Error('layout.header must be {title, sub?, box?, break?} with words in the title, or false');
+  for (const key of Object.keys(h)) if (!['title', 'sub', 'box', 'break'].includes(key)) throw new Error(`layout.header has unsupported key ${key} (a header is {title, sub?, box?, break?})`);
   if (!f.header) throw new Error(`layout.header: the ${format} format has no title band (it shows the whole frame); leave the header out`);
   if (h.sub !== undefined && !(typeof h.sub === 'string' && h.sub.trim())) throw new Error('layout.header.sub must be words');
-  return {title: h.title, sub: h.sub ?? null, box: readBox(h.box, f, 'layout.header.box') ?? f.header};
+  // how the title breaks: footprint-story/layout's named rules, "even" the usual (the lines as alike as that many allow)
+  if (h.break !== undefined && !BREAK_RULES.includes(h.break)) throw new Error(`layout.header.break is ${BREAK_RULES.map((r) => `"${r}"`).join(' or ')} — "even" (the usual) makes the lines alike, "fill" fills each line as full as it goes; not ${JSON.stringify(h.break)}`);
+  return {title: h.title, sub: h.sub ?? null, box: readBox(h.box, f, 'layout.header.box') ?? f.header, ...(h.break === undefined ? {} : {break: h.break})};
 }
 
 /** The captions: true, or {maxWords?, size?, box?}; false or left out for none. */
@@ -302,14 +304,12 @@ export function cropWindow(keys, t, [cw, ch]) {
 }
 
 /**
- * Wrapped greedily (each line measured whole, as the canvas draws it), then balanced: the narrowest width that keeps
- * the same number of lines, so no line ends with a word alone. Both rules are footprint-story/layout's (wrapWords,
- * narrowestWidth), the ones the end card and the summary cards break by too.
+ * A title's lines, each measured whole as the canvas draws it, broken by the header's rule: footprint-story/layout ·
+ * wrapWords with `break` — "even" (the usual: as many lines as filling them takes, as alike as that many lines
+ * allow) or "fill" (each line as full as it goes, as the end card and the summary cards break).
  */
-function balancedLines(ctx, text, width) {
-  const words = text.split(/\s+/).filter(Boolean), measure = line => ctx.measureText(line).width, lines = wrapWords(words, width, measure);
-  if (lines.length < 2) return lines;
-  return wrapWords(words, narrowestWidth(width, lines.length, w => wrapWords(words, w, measure).length), measure);
+function titleBreak(ctx, text, width, rule) {
+  return wrapWords(text.split(/\s+/).filter(Boolean), width, line => ctx.measureText(line).width, {break: rule});
 }
 
 /**
@@ -327,12 +327,12 @@ function drawHeader(ctx, header, ink, sans, fit = null) {
 const subFont = sans => `600 32px ${sans}`;
 
 /**
- * The title band laid out in its box (ctx centred, middle baseline): the largest size (64 down to 34) whose balanced
- * lines fit, {font, x: the centre, lines: [{text, cy}], sub: {text, cy} | null}.
+ * The title band laid out in its box (ctx centred, middle baseline): the largest size (64 down to 34) whose lines,
+ * broken by the header's rule (titleBreak), fit — {font, x: the centre, lines: [{text, cy}], sub: {text, cy} | null}.
  */
-function titleLines(ctx, {title, sub, box: [x, y, w, h]}, sans) {
+function titleLines(ctx, {title, sub, box: [x, y, w, h], break: rule = 'even'}, sans) {
   let size = 64; const font = s => `800 ${s}px ${sans}`;
-  const lines = text => balancedLines(ctx, text, w);
+  const lines = text => titleBreak(ctx, text, w, rule);
   ctx.font = font(size); let wrapped = lines(title);
   while (size > 34 && wrapped.length * size * 1.15 + (sub ? 44 : 0) > h) { size -= 4; ctx.font = font(size); wrapped = lines(title); }
   const total = wrapped.length * size * 1.15 + (sub ? 44 : 0); let cy = y + h / 2 - total / 2 + size * .55;

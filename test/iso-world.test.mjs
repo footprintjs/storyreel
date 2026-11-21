@@ -83,6 +83,21 @@ test('names: every block and wire is named for the camera, the focus framed the 
   assert.deepEqual(film.reading, [], 'every label is up long enough to read');
 });
 
+test('a block picks how its label breaks, as a deck\'s data-break: "even" the usual, "fill" the first line full; the record names it', () => {
+  const world = (b = {}) => worldOf({grid: {tile: 96, at: [960, 240]}, blocks: [{name: 'logs', at: [0, 0], label: 'Logs to S3 Archive', ...b}]});
+  const usual = world().map.blocks[0], fill = world({break: 'fill'}).map.blocks[0];
+  assert.deepEqual(usual.lines, ['Logs to', 'S3 Archive']);
+  assert.deepEqual(world({break: 'even'}).map.blocks[0].lines, usual.lines);
+  assert.deepEqual(fill.lines, ['Logs to S3', 'Archive']);
+  assert.equal(fill.break, 'fill');
+  assert.equal('break' in usual, false, 'a block that picks none records as before');
+  // the same rule a deck uses for the same name (deck/iso.js · fitName with data-break)
+  const grid = isometric({tile: 96, origin: [960, 240]});
+  assert.deepEqual(fill.lines, wordsToFit('Logs to S3 Archive', (high) => ISO_FIT.clear * grid.room({at: [0, 0, 0], size: [2, 2, 1]}, high), {...ISO_FIT.name, break: 'fill'}).lines);
+  assert.throws(() => world({break: 'balanced'}), /isometric blocks\[0\] \("logs"\): break is "fill" or "even" — "fill" sets the label's first line as full as it goes, "even" \(the usual\) makes the two lines alike; not "balanced"/);
+  assert.throws(() => world({label: undefined, break: 'fill'}), /break says how its label breaks onto two lines — give it a label too/);
+});
+
 test('refusals name the recipe entry and the fix', () => {
   const two = (more = {}) => ({blocks: [{name: 'a'}, {name: 'b'}], ...more});
   assert.throws(() => worldOf(two({wires: [{arrow: 'a to c'}]}), 'stage map'), /stage map: isometric wires\[0\] \(a to c\): arrow "a to c" names "c", which is no block here — the blocks are a, b/);

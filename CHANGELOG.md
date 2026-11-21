@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.38.0 — a writer picks how a title and a block's name break
+
+- **`layout.header.break`**: `"even"` (the usual, what every film had: as many lines as filling them takes, as alike
+  as that many lines allow) or `"fill"` (each line as full as it goes, as the end card breaks). The title band now asks
+  footprint-story 0.22.0's `wrapWords` with that rule in one call; `"even"` gives the lines the two calls gave
+  (footprint-story's property test against this film's 0.33.0 title code).
+- **An isometric block's `break`** (a deck's `data-break`): `"fill"` sets its label's first line as full as it goes,
+  `"even"` is the usual. The world's record (`map.blocks[i].break`) names the rule a block picked; a block that picks
+  none records as before.
+- A value that is not `"even"` or `"fill"`, or a block's `break` with no label, is refused, naming the entry and the fix.
+  Films that write neither key are unchanged.
+
 ## 0.37.0 — a lead into a port is the deck's lead
 
 A lead into a port on a seen side — the stretch of a cable drawn again over its block, where a packet passes onto it —
