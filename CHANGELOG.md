@@ -37,7 +37,10 @@
   They run only on a film whose kit marks drawings; a film's other checks are unchanged.
 - **Changed words.** The fix moved out of `what` for `text-density`, `silences`, `pure`, `contrast`, `claims`,
   `differs` and `example-lingers` (into `fix`); a `claims` finding says "shown in" / "said in" its scene. So the first
-  `check` after upgrading counts those findings once as fixed and new. `PURITY_FINDING` is the words alone
+  `check` after upgrading counts those findings once as fixed and new. The same once-only change comes to a
+  `words-overlap`, `under-captions` or `cut-off` finding whose quoted word is over 40 characters or holds `"`, `\` or
+  `·` (a quoted word is now cut and escaped); two long words sharing their first 40 characters now share a key.
+  `PURITY_FINDING` is the words alone
   (`PURITY_FIX` beside it); `contrastWhat` / `contrastFix`, `lingerWhat` / `lingerFix` are new beside the old texts. The
   layout gains `frameAt(t, [x, y])`. The whiteboard's code changed, so pieces a cache holds are drawn again once.
 - **Bounded, and one line each.** `where` is cut to 80 characters, `fix` to 200, a film's word or label quoted in them

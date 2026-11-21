@@ -513,8 +513,12 @@ function findingLine(f) {
   const field = (text, most) => oneLine(unmarked(cutText(text, most)));
   const head = `${clockTenths(f.from)}–${clockTenths(f.to)} ${field(f.scene ?? '', 40)} · ${LABEL[f.kind] ?? field(f.kind, 40)}: `;
   const tail = `${f.where ? ` · at ${field(f.where, WHERE_MOST)}` : ''}${f.fix ? ` · fix: ${field(f.fix, FIX_MOST)}` : ''}`;
-  let most = Math.max(24, LINE_MOST - head.length - tail.length), what = field(f.what, most);
-  while (what.length > most && most > 1) what = field(f.what, --most);   // an escape made it longer: cut more of the words
+  // the most of the words that fit once escaped: an escape (a middle dot, a quote) makes a line longer than its words, so
+  // the cut is searched for — the longest one whose escaped form fits — never shortened back past the first escape
+  const most = Math.max(24, LINE_MOST - head.length - tail.length);
+  let lo = 1, hi = most;
+  while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (field(f.what, mid).length <= most) lo = mid; else hi = mid - 1; }
+  const what = field(f.what, lo);
   const line = `${head}${what}${tail}`;
   return line.length <= LINE_MOST ? line : `${head}${what}${tail.slice(0, LINE_MOST - head.length - what.length - 1)}…`;
 }

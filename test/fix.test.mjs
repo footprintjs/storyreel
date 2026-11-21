@@ -221,3 +221,12 @@ test('the rubric\'s words look says each finding\'s fix too (it left `what`)', a
   const sheet = rubricSheet(film, {name: 'r', points: [{id: 'words', label: 'Words', look: 'words'}]}, {review: {ran: [], findings: [{kind: 'text-density', from: 1, to: 2, what: '40 words', fix: 'cut 5 words or more'}]}});
   assert.ok(sheet.points[0].evidence.includes('1.0 s text-density: 40 words (fix: cut 5 words or more)') || sheet.points[0].evidence.some(e => /text-density: 40 words \(fix: cut 5 words or more\)$/.test(e)), JSON.stringify(sheet.points[0].evidence));
 });
+
+test('a long finding with middle dots in its words keeps as many words as fit once escaped, and its fix', () => {
+  const what = 'too many words: ' + 'TO KEEP / One cup for one sale / 1 · 2 · 3 · 4 · 5 '.repeat(8);
+  const line = findingsText([{kind: 'text-density', from: 1, to: 2, scene: 's', what, where: 'stages[1]', fix: 'cut 20 words'}]);
+  assert.ok(line.length <= 300, `${line.length}`);
+  assert.ok(line.endsWith(' · at stages[1] · fix: cut 20 words'));
+  // cut late, not just before the first escaped dot: well past the first "1 \u{b7} 2"
+  assert.ok(line.split('\\u{b7}').length > 8, line);
+});
