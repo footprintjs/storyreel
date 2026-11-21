@@ -57,31 +57,45 @@ export function regionsStage(state) {
     const say = {title: () => [`${sp}.title`, st.title], panel: () => [sp, st.file ?? st.title], footer: () => [`${sp}.footer`, st.footer?.text],
       line: i => [lineEntry(st, i), st.lines[i].map(([text]) => text).join('').trim()], mark: k => [`${sp}.marks[${k}]`, st.marks[k].icon],
       focus: k => [`${sp}.focus[${k}]`, `lines ${st.focus[k].lines.join('–')}`], list: n => [`${sp}.list[${n}]`, st.list[n].what]};
-    for (const b of stageBoxes(spec)) { const [path, label] = say[b.part](b.index); out.push({box: b.box, path, label: String(label ?? '')}); }
-    for (const r of st.kit?.regions?.(st.handle, t, push ? kitCardBox() : null) ?? []) out.push({box: r.box, path: `${sp}.${r.path}`, label: r.label ?? '', ...(r.name ? {name: r.name} : {})});
+    // A mark is an icon, ink that is not words: the review finds words laid over it and one half off the frame (Region.drawing).
+    for (const b of stageBoxes(spec)) { const [path, label] = say[b.part](b.index); out.push({box: b.box, path, label: String(label ?? ''), ...(b.part === 'mark' ? {drawing: true} : {})}); }
+    for (const r of st.kit?.regions?.(st.handle, t, push ? kitCardBox() : null) ?? []) out.push({box: r.box, path: `${sp}.${r.path}`, label: r.label ?? '', ...(r.name ? {name: r.name} : {}), ...drawn(r)});
     return out;
   }
   function cardRegions(t, now) {
     const move = Math.max(0, Math.min(1, (t - MOVE0) / (MOVE1 - MOVE0))), {box, camera} = cardPlacement(geo, card, {move, center: now.centre, aside: moveTo, loop: centrePlace}), v = about(camera);
-    return [{box: through(v, box), path: 'card', label: card.header ?? 'the card'}, ...cardRowBoxes(geo, card).map(r => ({box: through(v, r.box), path: `card.rows[${r.index}]`, label: r.label}))];
+    // The card is a drawing that holds its rows: a word inside it is its own, one laid across its edge is over it.
+    return [{box: through(v, box), path: 'card', label: card.header ?? 'the card', drawing: true, holds: [through(v, box)]}, ...cardRowBoxes(geo, card).map(r => ({box: through(v, r.box), path: `card.rows[${r.index}]`, label: r.label}))];
   }
   function guessBox(g, t) {
     const text = g.answer && t >= g.end + GUESS_FLIP ? g.answer : g.question, w = Math.min(1440, measure.measure(text, 54, {display: true, weight: 700}) + 230), cy = GUESS_PLACES[g.place];
     return [800 - w / 2, cy - 75, 800 + w / 2, cy + 75];
   }
-  /** What is drawn where at t: [{box: [x0, y0, x1, y1], path, label}] on the frame, in drawing order. */
+  /**
+   * A kit's word that a region is a drawing — `drawing: true` and nothing else — and the boxes of it that frame words
+   * (`holds`: a list of boxes; anything else is left out), seen through the view its region is (v: none on the page).
+   */
+  const isBox = b => Array.isArray(b) && b.length === 4 && b.every(Number.isFinite);
+  const drawn = (r, v = null) => {
+    if (r.drawing !== true) return {};
+    const rooms = Array.isArray(r.holds) ? r.holds.filter(isBox).slice(0, 64) : [];
+    return {drawing: true, ...(rooms.length ? {holds: rooms.map(b => (v ? through(v, b) : b))} : {})};
+  };
+  /** A region seen through a view: its box and its rooms. */
+  const seen = (v, r) => ({...r, box: through(v, r.box), ...(r.holds ? {holds: r.holds.map(b => through(v, b))} : {})});
+  /** What is drawn where at t: [{box: [x0, y0, x1, y1], path, label, name?, drawing?, holds?}] on the frame, in drawing order. */
   function regionsAt(t) {
     if (teaser && t >= teaser.at) return [{box: [0, 0, 1600, 900], path: `${stagePath(recapStage)}.teaser`, label: 'the teaser'}];
     // In a steps track's rewind cue the picture is an earlier moment's (drawFrame): its regions are that moment's.
     const at = rewinding(t) ? rewindAt((t - stepsTrack.rewind.from) / stepsTrack.rewind.seconds, stepsTrack.rewind.from, stepsTrack.rewind.to) : t;
     const out = regionsUnder(pictureClock(at));
     // Through the push and the focus (underView), then the camera's moves (a rolled box: the box that holds it).
-    const under = state.underView(at), framed = under ? out.map(r => ({...r, box: through(under, r.box)})) : out;
-    const lens = state.camerawork?.viewOn(at), seen = lens ? framed.map(r => ({...r, box: through(lens, r.box)})) : framed;
-    guesses.forEach((g, n) => { if (at >= g.start && at <= g.until + .5) seen.push({box: guessBox(g, at), path: `guesses[${n}]`, label: g.question}); });
+    const under = state.underView(at), framed = under ? out.map(r => seen(under, r)) : out;
+    const lens = state.camerawork?.viewOn(at), shown = lens ? framed.map(r => seen(lens, r)) : framed;
+    guesses.forEach((g, n) => { if (at >= g.start && at <= g.until + .5) shown.push({box: guessBox(g, at), path: `guesses[${n}]`, label: g.question}); });
     const band = stepsTrack && stepsTrackBox(stepsTrack, t);
-    if (band) seen.push({box: band, path: 'stepsTrack', label: 'the steps track'});
-    return seen;
+    if (band) shown.push({box: band, path: 'stepsTrack', label: 'the steps track'});
+    return shown;
   }
   /** What is drawn where at t before any director's push: the world's (or the page's) regions, on the frame. */
   function regionsUnder(t) {
@@ -96,8 +110,9 @@ export function regionsStage(state) {
   }
   /** A world's regions on the frame: the world itself, then each thing its kit says it draws (regionsAt), through the world's view. */
   function worldRegions(world, t) {
-    const out = [{box: through(world.view, [0, 0, 1600, 900]), path: world.path, label: `the ${world.w.kit} world`}];
-    for (const r of world.w.instance.regionsAt?.(Math.min(t, world.until)) ?? []) out.push({box: through(world.view, r.box), path: `${world.path}.${r.path}`, label: r.label ?? '', ...(r.name ? {name: r.name} : {})});
+    // `sheet`: this box is the 1600×900 sheet the world's items are written on (fix/places.mjs · sheetOf holds a drawing to it).
+    const out = [{box: through(world.view, [0, 0, 1600, 900]), path: world.path, label: `the ${world.w.kit} world`, sheet: true}];
+    for (const r of world.w.instance.regionsAt?.(Math.min(t, world.until)) ?? []) out.push({box: through(world.view, r.box), path: `${world.path}.${r.path}`, label: r.label ?? '', ...(r.name ? {name: r.name} : {}), ...drawn(r, world.view)});
     return out;
   }
   /** One shot's regions at t, on screen or not (a film without a pushIn): its world's, or its stages' on the page. */

@@ -37,7 +37,7 @@ with its fix (`check` counts them). Then:
    read, no breath, the picture frozen for 5 s<!-- REVIEW_DEFAULTS.stillFor --> ("nothing changes"), nothing new for 5 s<!-- REVIEW_DEFAULTS.newEvery --> while it moves, a camera
    freeze over the voice, example data beside real numbers, and with `--loop true` a loop that jumps. What each means
    and its fix: [checks.md](../storyreel-cartoon/checks.md).
-3. **Fix** the one problem that matters most, where the finding points (the timeline names the recipe entry). One
+3. **Fix** the one problem that matters most: each finding's `at` is its recipe entry and `fix` the change. One
    fix per round, so the next review shows what it did.
 4. **Look again, quickly:** `npx storyreel part --scene <id>`: the scenes with 1.5 s<!-- TOOL_DEFAULTS.handles --> either side (both cuts),
    the draft encode, reviewed first; seconds, not minutes. Half size only when the config names a `layout` (else

@@ -95,7 +95,7 @@ test('the review decides it with decide(): failed names the dead stretches as fi
   assert.match(said, /most of the running time inside the shots is dead \(held still for more than 3 s at a time\): a slideshow": deadShare 1 gt 0\.5 ✓, and chose slideshow\/failed/, 'the decide() evidence: the rule, the value, the threshold');
   const without = await reviewPart(still, {checks: Object.fromEntries(Object.entries(REVIEW_CHECKS).filter(([id]) => id !== 'still'))});
   assert.deepEqual(without.findings.filter(f => f.kind === 'slideshow').map(f => f.scene), ['one', 'two', 'three'], 'without the still check, the dead stretches are its own findings');
-  assert.match(without.text, /^0:\d\d\.\d–0:\d\d\.\d two · held still: stage two holds still: 100 % of its [\d.]+ s is dead \(still for more than 3 s at a time\)$/m);
+  assert.match(without.text, /^0:\d\d\.\d–0:\d\d\.\d two · held still: stage two holds still: 100 % of its [\d.]+ s is dead \(still for more than 3 s at a time\) · at stages\[0\] · fix: give the shot motion inside it at least every 3 s: a camera move, or a drawing or a reveal keyed on its phrases$/m);
   const ok = await reviewPart(await filmOf([0, 1]));
   const passed = ok.verdicts.find(x => x.check === 'slideshow');
   assert.equal(passed.verdict, 'passed');

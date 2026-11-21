@@ -193,7 +193,8 @@ export async function review(project, args = {}) {
   if (args.scores !== undefined || args.by !== undefined) throw new Error(`review: ${args.scores !== undefined ? 'scores' : 'by'} goes with a rubric: add --rubric (--rubric --scores ${args.scores ?? 'id=8,…'} --by "<who scored>")`);
   const part = partOf(args), loop = yes(args.loop);
   const r = await reviewRun(project, {...(part?.window ? spanOf(project.film, part) : part ? {part} : {}), layout: project.inputs.layout ?? null, loop});
-  const said = yes(args.full) ? `${r.text || 'nothing found'}${r.verdicts?.length ? `\nverdicts:\n${r.verdictText}` : ''}` : reviewSummary(r, {more: FULL_HINT});
+  const said = (yes(args.full) ? `${r.text || 'nothing found'}${r.verdicts?.length ? `\nverdicts:\n${r.verdictText}` : ''}` : reviewSummary(r, {more: FULL_HINT}))
+    + (r.notes ?? []).map(n => `\n${shownLine(`note · ${n}`)}`).join('');   // what the review could not read, said
   const line = `${head(project.film, part, r.window)} — review (${r.ran.join(', ') || 'no check fits'})`;
   return `${line}:\n${said}${keepReview(project, line, r)}`;
 }
@@ -555,7 +556,7 @@ export async function check(project, args = {}) {
       reviewed = r;
       return {findings: r.findings, lines: r.findings.map(f => findingsText([f])), verdicts: r.verdicts ?? [], record: r.record,
         head: `${head(film, null, r.window)} — read: ${r.ran.join(', ') || 'no check fits'}`,
-        notRun: (r.verdicts ?? []).filter(v => v.verdict === 'not run').map(v => `${v.label ?? v.check}: ${v.why}`)};
+        notRun: [...(r.verdicts ?? []).filter(v => v.verdict === 'not run').map(v => `${v.label ?? v.check}: ${v.why}`), ...(r.notes ?? [])]};
     },
     async changes() { return (await previewChanges(fullRender({...loaded, film}), {render: false})).text.split('\n').at(-1).split(' · ')[0]; },   // the count; where the pieces are kept and a kit's notes are `changes`' own to say
     before: () => lastCheck(out, which),

@@ -6,7 +6,7 @@ in one reply:
 ```
 fix 1 — 1 error
 the whole film: 0.00–9.04 s of 9.04 s — read: under-captions, words-overlap, cut-off, …
-fix  0:02.0–0:03.8 one · words over words: "Alpha" and "Beta"
+fix  0:02.0–0:03.8 one · words over words: "Alpha" and "Beta" · at story · fix: move it 36 down, clear of "Alpha" (story)
 not run · Drawn parts hold together: no kit on screen gives its parts (parts(t))
 changes: 2 of 2 pieces changed (0:09 of 0:09)
 since the run before: 1 fixed, 0 new · round 2
@@ -17,7 +17,9 @@ had to work out itself what its last edit did. Each of those tools is still ther
 
 1. **The verdict, first line**: `clean`, `fix <n>` (n errors), or `broken` (the film does not compile, and why).
 2. **What to fix, worst first**: errors (`fix`), then advice (`note`). The first 8; the rest are counted by
-   kind, and `--full` lists them. A verdict that could not run is said (`not run`), never counted as passed.
+   kind, and `--full` lists them. A verdict that could not run is said (`not run`), never counted as passed. Each
+   finding names the recipe entry it is about (`at story.items[1]`) and the one change that clears it (`fix: move it
+   138 up: set x, y to (300, 422)`), so it can be acted on without looking at the picture (`../fix/README.md`).
 3. **What the edit redraws**: the count `changes` gives.
 4. **Since the run before**: how many of the last check's problems are gone, how many are new, and the round of
    fixing (1 after a clean check; one more each check that still has something to fix).
@@ -92,7 +94,7 @@ count the errors (errors#3) [wrote: errors]
 (a stage also uses what it is given from outside the run's own state — the film, the check before: …)
 ```
 
-`--why verdict` shows the branch that wrote it, the rule that chose the branch, and what that rule read. A value no
+`--why fixes` gives each finding's kind, recipe entry and fix as data, written by `read the picture`. `--why verdict` shows the branch that wrote it, the rule that chose the branch, and what that rule read. A value no
 stage wrote is said so. The walk is foottrace's (`sliceForKey`), over the file alone (`../why.mjs`).
 
 - **A cause shown is a read that happened.** Each count is added in a stage of its own (`count the errors`, `count the

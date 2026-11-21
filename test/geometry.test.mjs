@@ -169,7 +169,7 @@ test('the review decides it with decide(): passed, failed with the breaks as fin
   assert.equal(w.verdict, 'failed'); assert.equal(w.why, GEOMETRY_VERDICT.rules[1].label);
   assert.match(w.summary, /story: "foot 1" slides while it is planted \([\d.]+ px at 0:\d\d\.\d\)/);
   assert.ok(bad.findings.some(f => f.kind === 'geometry' && f.what === 'story: "foot 1" slides while it is planted'), bad.text);
-  assert.match(bad.text, /· the drawing breaks: story: "foot 2" slides while it is planted$/m);
+  assert.match(bad.text, /· the drawing breaks: story: "foot 2" slides while it is planted · at story · fix: keep "foot 2" still while it is planted: move the body over it, not the part$/m);
   assert.match(bad.record.filter(e => e.type === 'condition').map(e => e.text).join('\n'), /"a drawn part breaks[^"]*": broken 2 gt 0 ✓, and chose geometry\/failed/);
   const none = await reviewPart(await compileFilm({storyboard, timings, recipe: {story: {kit: 'whiteboard', items: []}}}));
   assert.deepEqual(none.verdicts.find(x => x.check === 'geometry'), {check: 'geometry', label: 'Drawn parts hold together', verdict: 'not run', why: 'no kit on screen gives its parts (parts(t))', measured: {}});

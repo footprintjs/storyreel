@@ -165,9 +165,11 @@ test('the review decides it with decide(): failed lists each number with no sour
   const v = r.verdicts.find(x => x.check === 'claims');
   assert.equal(v.verdict, 'failed'); assert.equal(v.why, CLAIMS_VERDICT.rules[2].label);
   assert.equal(v.summary, '9 numbers on screen: 4 sourced (2 on a source nobody can follow: unverified), 3 in example scenes, 2 with no source');
-  assert.deepEqual(r.findings.filter(f => f.kind === 'claims').map(f => [f.scene, f.what]), [
-    ['rate', '"120" (scene rate, story.items[1]) has no source: add {"value": 120, "source": "…"} to the facts, or mark scene rate "example": true'],
-    ['rate', '"120" (scene rate, captions) has no source: add {"value": 120, "source": "…"} to the facts, or mark scene rate "example": true']]);
+  // each names the entry that shows (or says) it, and the fix
+  const fix = 'add {"value": 120, "source": "…"} to the facts, or mark scene rate "example": true';
+  assert.deepEqual(r.findings.filter(f => f.kind === 'claims').map(f => [f.scene, f.what, f.where, f.fix]), [
+    ['rate', '"120" (shown in scene rate) has no source', 'story.items[1]', fix],
+    ['rate', '"120" (said in scene rate) has no source', 'storyboard.scenes[0].narration', fix]]);
   assert.match(r.record.filter(e => e.type === 'condition').map(e => e.text).join('\n'), /"a number on screen has no source and sits in no example scene": unsourced 2 gt 0 ✓, and chose claims\/failed/);
   // The example scene and after: the board still shows "up to 120 Hz" from the scene before (its line is up until the
   // story ends), so that number is in the part; the captions' 120 was said and gone.
@@ -191,7 +193,8 @@ test('the review reads the numbers the picture draws, from the frames it already
   assert.equal(f.claims.numbers.length, 0, 'nothing declared');
   const r = await reviewPart(f, {every: .5}), v = r.verdicts.find(x => x.check === 'claims');
   assert.deepEqual([v.verdict, v.measured.numbers, v.measured.drawn, v.measured.sourced], ['failed', 2, 2, 1]);
-  assert.deepEqual(r.findings.filter(x => x.kind === 'claims').map(x => x.what), ['"42" (scene a, drawn) has no source: add {"value": 42, "source": "…"} to the facts, or mark scene a "example": true']);
+  assert.deepEqual(r.findings.filter(x => x.kind === 'claims').map(x => [x.what, x.where, x.fix]), [['"42" (shown in scene a) has no source', 'story', 'add {"value": 42, "source": "…"} to the facts, or mark scene a "example": true']],
+    'a number only drawn is named by the entry drawing the picture');
   // A drawn line the film declares is the declared claim, not a second one.
   const declaredToo = drawnClaims([{t: 7.5, words: [{text: 'up to 120 Hz'}, {text: '12 cups'}]}], {claims: film.claims, sceneOf: t => film.clock.locate(t).index, scenes: ['rate', 'shop', 'end']});
   assert.deepEqual(declaredToo, []);
@@ -272,7 +275,8 @@ test('an example line that lingers into a real scene beside a real number is a f
   const stretch = lingeringExamples(f.claims, {scenes: f.timings.scenes.map((sc, i) => ({from: f.clock.offsets[i], to: f.clock.offsets[i] + sc.duration})), examples: f.claims.examples, ids: ['shop', 'real']});
   assert.deepEqual(stretch.map(g => [g.scene, g.example, g.from, +g.to.toFixed(3), [...new Set(g.numbers.map(c => c.number))]]), [['real', 'shop', f.clock.start('real'), +f.total.toFixed(3), ['60']]]);
   const r = await reviewPart(f, {every: 1}), found = r.findings.filter(x => x.kind === 'example-lingers');
-  assert.deepEqual(found.map(x => [x.scene, x.what]), [['real', 'an example line lingers into scene real beside real numbers (60): erase it before the scene']]);
+  assert.deepEqual(found.map(x => [x.scene, x.what, x.where]), [['real', 'an example line lingers into scene real beside real numbers (60)', 'story.items[0]']], 'named by the line that keeps the label up');
+  assert.match(found[0].fix, /^erase story\.items\[0\] before scene real starts \(0:\d\d\.\d\)$/);
   assert.ok(found[0].from >= f.clock.start('real') && /example data over real numbers: an example line lingers/.test(r.text), r.text);
   assert.equal(r.verdicts.find(x => x.check === 'claims').verdict, 'passed', 'every number has its source: the finding is about what the label seems to cover, not a missing source');
   // Erased before the scene — the wipe over by the cut — the label goes with the line, and the real number stands on its own.

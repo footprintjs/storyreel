@@ -13,27 +13,47 @@ export function wordsAt(film: Film, t: number, options?: {layout?: ReturnType<ty
  */
 export interface Review {film: Film; window: {from: number; to: number}; part: {from: number; to: number}; maxWords: number; minSilence: number; minAlpha: number; layout: ReturnType<typeof import('../index.js').compileLayout> | null; width: number; height: number; every: number; stillFor: number; newEvery: number;
   /** words: what the checks read; marks: a sign or a point too short to read on its own ("-", "."), for the claims check to join to the digits it touches. */
-  samples: {t: number; words: Word[]; marks?: Word[]}[]; hashes: Record<number, string>;
+  samples: {t: number; words: Word[]; marks?: Word[]; /** the camera (or the focus) is pushed in at t */ zoomed: boolean}[]; hashes: Record<number, string>;
   /** Each sample's frame as grey levels, 160 × 90 (the same drawing as its hash): what the slideshow check reads. */
   greys: Map<number, Uint8Array>; frozen: {from: number; to: number}[]; picked: string[];
   /** The numbers the picture draws that no declared line holds (claims.mjs · drawnClaims), read once for the claims checks. */
   drawn: Claim[];
   /** Where an example line lingers into a scene that is not example data, in the window, with the real numbers beside it (claims.mjs · lingeringExamples). */
-  lingers: {scene: string | null; example: string | null; from: number; to: number; numbers: Claim[]}[]}
+  lingers: {scene: string | null; example: string | null; from: number; to: number; numbers: Claim[]; paths?: string[]}[];
+  /** Where things are in the recipe, read through the film's regions and pointAt (src/fix/places.mjs): what a check names its `where` and says its `fix` with. */
+  places: ReviewPlaces}
+/** The review's map of the recipe (src/fix/places.mjs · placesOf). Boxes are [x0, y0, x1, y1]; a word's box is in output pixels, a region's on the 1600×900 frame. */
+export interface ReviewPlaces {
+  regions(t: number): import('../index.js').Region[];
+  frameBox(t: number, box: [number, number, number, number]): [number, number, number, number];
+  sceneEntry(t: number): string;
+  wordEntry(t: number, word: Word): {path: string; region: import('../index.js').Region | null};
+  sheetOf(t: number, region: import('../index.js').Region): [number, number, number, number];
+  toRecipe(t: number, point: [number, number]): [number, number];
+  delta(t: number, from: [number, number], d: [number, number]): [number, number];
+  outDelta(t: number, from: [number, number], d: [number, number]): [number, number];
+  entry(path: string): unknown;
+  said(from: number, to: number): {text: string; start: number; end: number; scene: string}[];
+  sceneSaid(id: string): {text: string; start: number; end: number; scene: string}[];
+  placesOf(id: string, phrase: string): {start: number; end: number}[] | null;
+  trouble(): string | null}
+/** A check's hit: what it found at t; `where` the recipe entry it is about and `fix` the one change (both cut short: 80 and 200 characters). */
+export interface ReviewHit {kind: string; t: number; what: string; where?: string; fix?: string}
 /**
  * A check: a strategy run as its own subflow, picked when `when(scope)` is true (scope.facts: {seconds, stillFor, newEvery, loop, captions, samples, words, spoken, parts, claims, freezes?: the camera freezes that reach the part, when there are any, lingers?: the stretches where an example line lingers into a scene that is not example data, when there are any}).
- * `find` answers at once with its hits, copied as {kind, t, what}; a `when` or a `find` that throws, or a `find` that returns anything else
- * (a promise, no list, a hit without a name, a time or words), fails the review, naming the check. Hits with the same kind and `what` merge
- * into one span, so `what` names one stretch.
+ * `find` answers at once with its hits, copied as {kind, t, what, where?, fix?}; a `when` or a `find` that throws, or a `find` that returns anything else
+ * (a promise, no list, a hit without a name, a time or words, a `where` or `fix` that is not words), fails the review, naming the check. Hits with
+ * the same kind and `what` merge into one span, so `what` names one stretch; the span's `where` is the one most of its hits name, and its `fix` that
+ * entry's first.
  */
-export interface FindingCheck {label: string; why?: string; when(scope: any): boolean; find(review: Review): {kind: string; t: number; what: string}[]}
+export interface FindingCheck {label: string; why?: string; when(scope: any): boolean; find(review: Review): ReviewHit[]}
 /**
  * A check that answers with a verdict (passed, failed, or not run): `measure` answers at once with what it measured (each value goes on the
  * scope by its name, for the rules' decide() filters) and its hits; the verdict is decided over them, and the hits are findings only when it
  * fails. `notRun` says why when it is not picked (it is then 'not run', never passed); `summary` puts the numbers in its line.
  */
 export interface VerdictCheck {label: string; why?: string; notRun?: string; when(scope: any): boolean;
-  measure(review: Review): {measured: Record<string, unknown>; hits?: {kind: string; t: number; what: string}[]};
+  measure(review: Review): {measured: Record<string, unknown>; hits?: ReviewHit[]};
   /** its rules — or a function of the film giving them (the slideshow's follow the film's pace) */
   verdict: VerdictRules | ((film: import('../index.js').Film) => VerdictRules); summary?(measured: any): string}
 export type ReviewCheck = FindingCheck | VerdictCheck;
@@ -44,7 +64,7 @@ export type ReviewCheck = FindingCheck | VerdictCheck;
  * seconds or more needs real silences.
  */
 export const REVIEW_DEFAULTS: Readonly<{every: number; stillFor: number; lasting: number; minAlpha: number; minHeight: number; maxWords: number; minSilence: number; newEvery: number; hook: number; breath: number}>;
-export const REVIEW_CHECKS: Readonly<Record<'under-captions' | 'words-overlap' | 'cut-off' | 'hook' | 'text-density' | 'silences' | 'stale' | 'loop' | 'frozen-voice' | 'still' | 'example-lingers', FindingCheck> & Record<'slideshow' | 'geometry' | 'pure' | 'contrast' | 'claims', VerdictCheck>>;
+export const REVIEW_CHECKS: Readonly<Record<'under-captions' | 'words-overlap' | 'cut-off' | 'hook' | 'text-density' | 'silences' | 'stale' | 'loop' | 'frozen-voice' | 'still' | 'example-lingers' | 'words-over-drawing' | 'drawing-off-frame', FindingCheck> & Record<'slideshow' | 'geometry' | 'pure' | 'contrast' | 'claims', VerdictCheck>>;
 /** Moments drawn again, last first, against the pictures they gave the first time (`hashes`: t → hash, as frameHashes draws them at `width`): the moments that gave another one. */
 export function purityOf(film: Film, options: {times: number[]; hashes: Record<string, string>; width?: number}): {moments: number; changed: number[]};
 /** WCAG relative luminance of an sRGB colour (0–255 channels). */
@@ -65,8 +85,9 @@ export const PURITY_VERDICT: VerdictRules;
 /** What a verdict check answered: its verdict, why (the rule that matched, or what passing means), what it measured, and its numbers in words. */
 export interface ReviewVerdict {check: string; label: string; verdict: Verdict; why: string; measured: Record<string, unknown>; summary?: string}
 export function verdictsText(verdicts: ReviewVerdict[]): string;
-/** A finding: a span on the film clock, the scene it starts in. */
-export interface Finding {kind: string; from: number; to: number; scene: string | null; what: string}
+/** A finding: a span on the film clock, the scene it starts in; `where` the recipe entry it is about and `fix` the one change that clears it (every built-in check gives both). */
+export interface Finding {kind: string; from: number; to: number; scene: string | null; what: string; where?: string; fix?: string}
+/** Each finding as one line of at most 300 characters: `… · <label>: <what> · at <where> · fix: <fix>` (`what` is cut first, so the fix always shows). */
 export function findingsText(findings: Finding[]): string;
 /** How many findings a summary lists in full (the rest are counted). */
 export const SUMMARY_TOP: number;
@@ -86,7 +107,8 @@ export function reviewPart(film: Film, options?: {part?: {scenes: string[]; hand
   every?: number; lasting?: number; minAlpha?: number; minHeight?: number; maxWords?: number; minSilence?: number;
   /** something new (a scene, a beat, a new word) at least every this many seconds (5) while the picture moves: the stale check */ newEvery?: number;
   /** the part is made to loop: the end of its own scenes (not its handles) must come round to their start; motion that steps (a flipbook, drawing on twos) reads one drawing short there */ loop?: boolean; checks?: Record<string, ReviewCheck>}): Promise<{window: {from: number; to: number}; facts: Record<string, unknown> | null;
-  findings: Finding[]; text: string; verdicts: ReviewVerdict[]; verdictText: string; timeline: string; ran: string[]; record: unknown[]}>;
+  findings: Finding[]; text: string; verdicts: ReviewVerdict[]; verdictText: string; timeline: string; ran: string[]; record: unknown[];
+  /** what the review could not read (the film's regions, when they threw): said, never a silent "no regions" */ notes: string[]}>;
 /** A scene's `differs`, checked: {time?, scale?, analogy?, shown: the labels' words, said?: the phrases}; null when it declares none. A refusal names the fix. */
 export function readDiffers(spec: StoryboardScene['differs'] | null, where?: string): {time?: number; scale?: string; analogy?: string; shown: readonly string[]; said?: readonly string[]} | null;
 /** A time factor in words: 30 is "Time shown 30 times faster", 0.04 "Time shown 25 times slower". */

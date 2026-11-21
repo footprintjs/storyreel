@@ -124,6 +124,16 @@ export function compileLayout(film, spec, span = {from: 0, to: film.total}) {
       ctx.restore();
     },
     /**
+     * A point in output pixels back on the film's 1600×900 frame at t: picture(ctx, t)'s placing, undone. The review reads
+     * words in output pixels and asks the film what is drawn there (film.regionsAt, on the frame), so a finding can name
+     * the recipe entry under a word.
+     */
+    frameAt(t, [x, y]) {
+      const [bx, by, bw, bh] = f.film, X = x / k, Y = y / k, window = crop ? cropWindow(crop, t, f.crop) : null;
+      if (window) { const s = bw / window.w; return [(X - bx) / s + window.x0, (Y - by) / s + window.y0]; }
+      return [(X - bx) * 1600 / bw, (Y - by) * 900 / bh];
+    },
+    /**
      * The bands at t; a still (the poster, a thumbnail) takes the title band without a caption. `caption` given (an edit:
      * edit.mjs · captionInCut) is the one drawn instead of the one at t — null for none.
      */

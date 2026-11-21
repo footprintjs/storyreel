@@ -72,9 +72,19 @@ export function compileWhiteboard(spec, clock, motion = {cameraSpeed: 1}) {
 }
 
 const measurer = createCanvas(8, 8).getContext('2d');
-/** Where an item is drawn on the board, and what to call it: {box, label} (for the preview studio's hit test). */
+/**
+ * The shapes that frame words inside them (a box, a ring, a speech bubble, a tag): each such shape of an item is a room,
+ * so a word wholly inside one is its label, not laid over it — a table of rects and lines with words in its cells, a
+ * title box with an underline, "SALE" on a tag (the review's words-over-drawing check).
+ */
+const HOLDS = new Set(['rect', 'ellipse', 'bubble', 'tag']);
+/**
+ * Where an item is drawn on the board, and what to call it: {box, label, drawing?, holds?} (for the preview studio's hit
+ * test, and for the review: `drawing` marks ink that is not words, so words laid over it and a drawing half off the
+ * board can be found and named by their item; `holds` the boxes of its shapes that frame words, HOLDS).
+ */
 function placeOf(item) {
-  if (item.eureka) { const [x, y] = item.eureka; return {box: [x - 95, y - 95, x + 95, y + 110], label: 'eureka'}; }
+  if (item.eureka) { const [x, y] = item.eureka; return {box: [x - 95, y - 95, x + 95, y + 110], label: 'eureka', drawing: true}; }
   if (typeof item.write === 'string') {
     const size = item.size ?? 48, align = item.align ?? 'left';
     measurer.font = `700 ${size}px Caveat`; const w = measurer.measureText(item.write).width;
@@ -86,7 +96,10 @@ function placeOf(item) {
   const points = shapesOf.flatMap(([kind, ...args]) => SHAPES[kind]?.(...args) ?? []).flat();
   if (!points.length) return {box: null, label: ''};
   const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
-  return {box: [Math.min(...xs) - pad, Math.min(...ys) - pad, Math.max(...xs) + pad, Math.max(...ys) + pad], label: shapesOf.map(([kind]) => kind).join(', ')};
+  const rooms = shapesOf.filter(([kind]) => HOLDS.has(kind)).map(([kind, ...args]) => (SHAPES[kind]?.(...args) ?? []).flat()).filter(p => p.length)
+    .map(p => [Math.min(...p.map(q => q[0])), Math.min(...p.map(q => q[1])), Math.max(...p.map(q => q[0])), Math.max(...p.map(q => q[1]))]);
+  return {box: [Math.min(...xs) - pad, Math.min(...ys) - pad, Math.max(...xs) + pad, Math.max(...ys) + pad], label: shapesOf.map(([kind]) => kind).join(', '), drawing: true,
+    ...(rooms.length ? {holds: rooms} : {})};
 }
 
 /**
@@ -97,9 +110,10 @@ export function boardTexts(board) {
   return board.places.filter(p => p.write).map(p => ({text: p.label, from: p.at + p.dur, to: p.erase ? p.erase.at : Infinity, ...(p.erase ? {gone: p.erase.at + p.erase.dur} : {}), path: p.path}));
 }
 
-/** What the board shows at t, item by item: [{box, path: 'items[n]', label, name?}] (drawn, and not yet wiped away). */
+/** What the board shows at t, item by item: [{box, path: 'items[n]', label, name?, drawing?, holds?}] (drawn, and not yet wiped away). */
 export function boardRegions(board, t) {
-  return board.places.filter(p => p.box && t >= p.at && !(p.erase && t >= p.erase.at + p.erase.dur)).map(({box, path, label, name}) => ({box, path, label, ...(name ? {name} : {})}));
+  return board.places.filter(p => p.box && t >= p.at && !(p.erase && t >= p.erase.at + p.erase.dur))
+    .map(({box, path, label, name, drawing, holds}) => ({box, path, label, ...(name ? {name} : {}), ...(drawing ? {drawing} : {}), ...(holds ? {holds} : {})}));
 }
 
 /** The strongest spotlight at t, with its weight (0..1), or null. */

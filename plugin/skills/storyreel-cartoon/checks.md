@@ -21,6 +21,12 @@ the moment, the scene and the recipe entry, so the fix is a lookup, not a hunt. 
 The review's first line lists the checks that ran, by id (`review (hook, stale, still, slideshow, geometry,
 claims)`); a check runs only when the part has what it reads (no caption band, no caption check).
 
+Every finding names the recipe entry it is about and one change, on its own line: `0:02.3–0:11.8 board · words over a
+drawing: "over the figure" over "figure" (story.items[0]) · at story.items[1] · fix: move it 138 up, clear of "figure"
+(story.items[0]): set x, y to (300, 422)`. `at` is the entry as you wrote it (`stages[2].world.items[0]`,
+`pacing.holds`, `storyboard.scenes[1]`), and `fix` says the change in its own units — a new `x`, `y`, a beat keyed on
+`["scene", "a phrase"]` said there, a hold to add. Make that change; look at a frame only to confirm.
+
 | id | finding | what it means | the usual fix |
 |---|---|---|---|
 | `under-captions` | under the captions | words drawn where the caption band shows | move them up, or `focus.safe` / a crop |
@@ -40,6 +46,8 @@ claims)`); a check runs only when the part has what it reads (no caption band, n
 | `pure` | drawn differently twice | a moment drawn again, after later ones, gives another picture (the verdict below) | draw from `t` alone: seeded randomness, no clock, nothing kept between frames |
 | `contrast` | too faint to read | a word read at its best stands under 4.5:1 against what is behind it (3:1 when large; the verdict below) | darken or lighten the word, or a band behind it |
 | `claims` | no source | a number on screen has no source (the verdict below) | a fact, or an example scene |
+| `words-over-drawing` | words over a drawing | 30 % or more of a word lies on a drawing the whiteboard or the paper marks as ink (a word wholly inside a box, a ring or a bubble is its label) | move the words clear: the fix gives the item's new `x`, `y` |
+| `drawing-off-frame` | a drawing off the frame | a quarter or more of a drawing lies outside its world's sheet (or the frame, on the page) | move it in (its box's corner, every point shifted by the same), or shrink it |
 
 "Nothing changes", "nothing new" and the slideshow's "held still" are advice: a held title can be right, and then
 say why you keep it. Every other finding names something to fix: most are facts about the drawing (where a word

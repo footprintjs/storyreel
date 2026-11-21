@@ -59,7 +59,9 @@ test('a light grey word fails, and the finding names its ratio and the fix', asy
   assert.equal(verdict(r).verdict, 'failed');
   const found = r.findings.filter(f => f.kind === 'contrast');
   assert.equal(found.length, 1);
-  assert.match(found[0].what, /^"Read me" stands 2\.\d+:1 against what is behind it \(it needs 3:1, large\): darken or lighten the word, or put a band behind it$/, '32 px on the 1600 frame is 38 px at 1080: large');
+  assert.match(found[0].what, /^"Read me" stands 2\.\d+:1 against what is behind it \(it needs 3:1, large\)$/, '32 px on the 1600 frame is 38 px at 1080: large');
+  assert.equal(found[0].fix, 'darken or lighten it to 3:1 or more against what is behind it, or put a band behind it');
+  assert.equal(typeof found[0].where, 'string');
 });
 
 test('a large word needs 3:1, a small one 4.5:1', async () => {

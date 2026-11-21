@@ -252,7 +252,9 @@ export function differsMeasure(film, part, {wordsAt, heardIn = part, frameBox = 
   return {measured: {scenes: here.length, shown: here.filter(x => x.shown).length, said: here.filter(x => x.said).length, unstated: open.length, brief: open.filter(x => x.brief).length,
     neither: open.map(x => ({scene: x.d.scene, from: x.d.from, to: x.d.to, differs: declared(x.d), why: x.why})),
     says: here.map(x => ({scene: x.d.scene, shown: [...x.d.shown], said: [...(x.d.said ?? [])]}))},
-  hits: open.map(x => ({kind: 'differs', t: x.from, what: `scene ${x.d.scene} declares it differs from the real thing (${declared(x.d)}), and here neither shows it nor says it: ${x.why}`}))};
+  // where: the storyboard entry that declares it; fix: why it is not stated, each reason naming its fix (lineFix, phraseFix)
+  hits: open.map(x => ({kind: 'differs', t: x.from, what: `scene ${x.d.scene} declares it differs from the real thing (${declared(x.d)}), and here neither shows it nor says it`,
+    where: `storyboard.scenes[${x.d.index}].differs`, fix: x.why || 'show it on screen long enough to read (differs.shown), or say it in the voice (differs.said)'}))};
 }
 
 /** The verdict's summary: the counts, then the words themselves, so a reader can judge them. */

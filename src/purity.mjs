@@ -40,5 +40,6 @@ export const PURITY_VERDICT = Object.freeze({
   passed: 'every moment drawn again, in the other order, gives the same picture',
 });
 
-/** A changed moment as a finding's words (the review adds its scene). */
-export const PURITY_FINDING = 'drawn again after later moments, this moment gives another picture: make the kit draw from t alone — seeded randomness (never Math.random), no clock, nothing kept from the frame before';
+/** A changed moment as a finding's words (the review adds its scene and the recipe entry), and its fix, kept apart. */
+export const PURITY_FINDING = 'drawn again after later moments, this moment gives another picture';
+export const PURITY_FIX = 'make the kit draw from t alone — seeded randomness (never Math.random), no clock, nothing kept from the frame before';

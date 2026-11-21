@@ -25,6 +25,9 @@ export const reviewFilm = run => async s => {
   run.review = await run.does.review();
   s.reviewed = true;
   s.findings = run.review.findings.length;
+  // What each finding asks, as data: the recipe entry and the change (review.mjs gives both), so the record — and
+  // `storyreel log --run N --why fixes` — says what to edit without the reply's lines. Kept to as many as a run keeps keys.
+  s.fixes = run.review.findings.slice(0, KEYS_MOST).map(f => ({kind: f.kind, where: f.where ?? null, fix: f.fix ?? null}));
   run.fromPicture = problemsOf({review: run.review});
   s.pictureErrors = count(run.fromPicture, 'error'); s.pictureAdvice = count(run.fromPicture, 'advice');
   s.verdictsNotPassed = run.review.verdicts.filter(v => v.verdict !== 'passed').map(v => `${v.check}: ${v.verdict}`);

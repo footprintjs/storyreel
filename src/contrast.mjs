@@ -14,6 +14,7 @@
  *
  *   wordContrast(data, width, height, box) → {ratio, ink, ground, large} | null (a box too small, or off the frame)
  */
+import {quote} from './fix/text.mjs';
 
 /** The thresholds: the ratios WCAG asks, and what counts as large (a box's height, a share of the frame's). */
 export const CONTRAST = Object.freeze({normal: 4.5, large: 3, largeHeight: .016, ring: .3, inkPercentile: .95, seen: 1.1});
@@ -93,5 +94,9 @@ export const CONTRAST_VERDICT = Object.freeze({
   passed: 'every word read stands at least 4.5:1 against what is behind it (3:1 when large)',
 });
 
-/** A faint word as a finding's words. */
-export const contrastText = w => `"${w.text}" stands ${w.ratio}:1 against what is behind it (it needs ${w.needs}:1${w.large ? ', large' : ''}): darken or lighten the word, or put a band behind it`;
+/** A faint word as a finding's words, with its fix (contrastWhat, then contrastFix: the review keeps them apart). */
+export const contrastText = w => `${contrastWhat(w)}: darken or lighten the word, or put a band behind it`;
+/** What is faint, without the fix. */
+export const contrastWhat = w => `${quote(w.text)} stands ${w.ratio}:1 against what is behind it (it needs ${w.needs}:1${w.large ? ', large' : ''})`;
+/** The fix, with the ratio to reach. */
+export const contrastFix = w => `darken or lighten it to ${w.needs}:1 or more against what is behind it, or put a band behind it`;
