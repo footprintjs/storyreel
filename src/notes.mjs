@@ -14,6 +14,7 @@
  * Every note carries its words (`note`) and exactly one camera word. A note the film cannot honour
  * refuses the recipe, and every note is written into the making-of record.
  */
+import {frameZoom} from 'footprint-story/layout';
 import {inOut as ease} from './ease.mjs';
 
 const WORDS = ['speed', 'cut', 'push'];
@@ -117,8 +118,10 @@ function boxOf(n, named, t) {
  */
 function framing(n, box) {
   const p = n.push, size = p.size ?? 'medium', [x0, y0, x1, y1] = box, w = x1 - x0, h = y1 - y0;
-  const share = Math.max(w / 1600, h / 900), zoom = FRAMINGS[size] / share, pct = v => `${Math.round(v * 100)}%`;
-  const work = Object.keys(FRAMINGS).filter(s => FRAMINGS[s] / share >= ZOOM[0] && FRAMINGS[s] / share <= ZOOM[1]);
+  // how much of the frame the box fills (said in the refusals), and the zoom at which it fills a framing's share: the
+  // rule StoryDeck's cameras and the film's focus frame by (footprint-story/layout · frameZoom)
+  const share = Math.max(w / 1600, h / 900), zoomFor = s => frameZoom([w, h], [1600, 900], {share: FRAMINGS[s], least: -Infinity}), zoom = zoomFor(size), pct = v => `${Math.round(v * 100)}%`;
+  const work = Object.keys(FRAMINGS).filter(s => zoomFor(s) >= ZOOM[0] && zoomFor(s) <= ZOOM[1]);
   if (!(zoom >= ZOOM[0])) {
     throw new Error(`note "${n.note}": "${p.on}" already fills ${pct(share)} of the frame, so a ${size} framing would not push in; ${work.length ? `a ${work.join(' or ')} framing would` : 'no framing pushes in on it: leave the push out, or push on a smaller named thing'}`);
   }

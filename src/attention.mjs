@@ -31,6 +31,7 @@
  * box as it is at the key, not eased — and the seconds since that key; before the first key, on and thing null). `safe` ([x0, y0, x1, y1] on the 1600×900 frame) is where a framed thing may sit — a film with
  * burned-in captions keeps it above them ([0, 0, 1600, 700]); it is centred there and sized to it.
  */
+import {frameZoom} from 'footprint-story/layout';
 import {FRAMINGS} from './notes.mjs';
 import {track, pop, readFeel, settleTime} from './motion.mjs';
 import {inOut as ease} from './ease.mjs';
@@ -211,8 +212,10 @@ function readFocus(spec, {clock, named, strategies, pushes, theme}) {
     const size = k.size ?? 'medium';
     if (!Object.hasOwn(FRAMINGS, size)) throw new Error(`focus.keys[${i}].size is ${Object.keys(FRAMINGS).join(', ')} (how much of the frame "${names.join('" + "')}" fills), not ${JSON.stringify(size)}`);
     let box; try { box = around(names.map(n => named(n, t))); } catch (e) { throw new Error(`focus.keys[${i}]: ${e.message}`, {cause: e}); }
-    const [x0, y0, x1, y1] = box, share = Math.max((x1 - x0) / sw, (y1 - y0) / sh);
-    return {t, on, size, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, z: Math.max(1, Math.min(3, FRAMINGS[size] / share)), box: [...box], w: 1};
+    // the zoom at which the box fills its framing's share of the safe area, from 1× to 3×: footprint-story/layout ·
+    // frameZoom, the rule StoryDeck's cameras frame by too
+    const [x0, y0, x1, y1] = box;
+    return {t, on, size, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, z: frameZoom([x1 - x0, y1 - y0], [sw, sh], {share: FRAMINGS[size], least: 1, most: 3}), box: [...box], w: 1};
   });
   inOrder(keys, 'focus.keys');
   // A wide key sits at the frame's centre; a framed thing at the safe area's centre.

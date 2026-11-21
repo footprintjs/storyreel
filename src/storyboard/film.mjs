@@ -5,6 +5,7 @@
  */
 import {autoRules, spokenMap} from 'footprint-story';
 import {normSpeech} from 'footprint-story';
+import {wrapWords} from 'footprint-story/layout';
 
 const PER_STAGE = 3;       // what a summary stage draws side by side
 const MOST_ON_CARD = 96;   // what four lines of a card hold
@@ -25,15 +26,12 @@ function phraseOf(words, sceneText) {
   return null;
 }
 
-/** A title broken into the whiteboard's lines, each drawn on its own. */
-function titleLines(title) {
-  const lines = [];
-  for (const word of title.split(/\s+/)) {
-    if (lines.length && `${lines.at(-1)} ${word}`.length <= MOST_LINE) lines[lines.length - 1] += ` ${word}`;
-    else lines.push(word);
-  }
-  return lines;
-}
+/**
+ * A title broken into the whiteboard's lines, each drawn on its own: greedily, at most MOST_LINE characters a line
+ * (footprint-story/layout · wrapWords, the rule a film's title band and end card break by, measured here in characters).
+ * A storyboard's title is read trimmed (footprint-story/storyboard), so it never starts with a space.
+ */
+const titleLines = title => wrapWords(title.split(/\s+/), MOST_LINE, line => line.length);
 
 /** The whiteboard's first scene: the title in big writing, and the subtitle under it. */
 function titleStory(scene) {
