@@ -422,11 +422,11 @@ export interface Clock {
 /** What is drawn where: a box on the 1600×900 frame and the recipe entry that drew it; `name`, when a kit gives one, is what a push can frame (`on`). */
 /**
  * What is drawn where. `drawing`: the box is a drawing, not words (the whiteboard's shapes, the paper's marks and card) —
- * what the review's words-over-drawing and drawing-off-frame checks read; `holds`: a drawing that frames words inside it
- * (a rect, an ellipse, a bubble, the card), so words wholly inside it are its label, not laid over it; `sheet`: a world's
- * own box, the 1600×900 sheet its items' coordinates are written on.
+ * what the review's words-over-drawing and drawing-off-frame checks read; `holds`: the boxes of a drawing that frame
+ * words inside them (its rects, ellipses, bubbles and tags; the card), so a word wholly inside one is its label, not laid
+ * over it; `sheet`: a world's own box, the 1600×900 sheet its items' coordinates are written on.
  */
-export interface Region { box: [number, number, number, number]; path: string; label: string; name?: string; drawing?: true; holds?: true; sheet?: true }
+export interface Region { box: [number, number, number, number]; path: string; label: string; name?: string; drawing?: true; holds?: [number, number, number, number][]; sheet?: true }
 
 export type SoundType = 'tap' | 'slide' | 'settle' | 'question' | 'chime' | 'door' | 'step' | 'click' | 'whoosh' | 'crumble';
 /**

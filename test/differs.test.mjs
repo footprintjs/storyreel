@@ -109,7 +109,8 @@ test('the verdict: asked only of a film that declares; passed on screen, passed 
   assert.equal(v.verdict, 'failed', 'a part cut to lose the phrase');
   assert.deepEqual(v.measured.neither.map(u => [u.scene, u.differs]), [['one', 'time shown 30 times faster']]);
   assert.equal(v.summary, '1 scene differs: 0 on screen, 0 in the voice, 1 neither · one: in the voice "thirty times faster"');
-  assert.match(lost.text, /does not say how it differs: scene one declares it differs from the real thing \(time shown 30 times faster\), and here neither shows it nor says it · at storyboard\.scenes\[0\]\.differs · fix: the phrase "thirty times faster" falls outside this part: keep it in, or put the words on screen \(differs\.shown\)/);
+  // the line is 300 characters at most: its words are cut so the entry and the fix stay whole
+  assert.match(lost.text, /does not say how it differs: scene one declares it differs from the real thing \(time shown 30 times faster\), and here neither… · at storyboard\.scenes\[0\]\.differs · fix: the phrase "thirty times faster" falls outside this part: keep it in, or put the words on screen \(differs\.shown\)/);
   assert.equal(verdictOf(await reviewPart(voice, {from: voice.clock.start('two') + 1})).verdict, 'not run', 'a part with no such scene');
   // The verdict reads the frame, not the declaration: a label something hides is no label.
   const hidden = {...onScreen, frame() {}}, gone = verdictOf(await reviewPart(hidden));

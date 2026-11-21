@@ -47,6 +47,7 @@ import {claimsCount, unsourcedClaims, claimFix, drawnClaims, drawnLines, lingeri
 import {placesOf} from './fix/places.mjs';
 import {wordClear, wordInto} from './fix/words.mjs';
 import {wordsOverDrawings, drawingsOffFrame} from './fix/drawings.mjs';
+import {cutText, quote, unmarked, LINE_MOST, WHERE_MOST, FIX_MOST} from './fix/text.mjs';
 import {beatFix, holdsFix, geometryFix} from './fix/say.mjs';
 import {wordsIn, readingPace} from './reading.mjs';
 import {isDecorative, isCode} from './decorative.mjs';
@@ -274,14 +275,14 @@ function denseRuns(samples, maxWords) {
 export const REVIEW_CHECKS = Object.freeze({
   'under-captions': {label: 'Words under the captions', why: 'the layout shows captions', when: s => s.facts.captions,
     find: ({samples, layout, places, width, height}) => samples.flatMap(({t, words}) => !layout.captionAt(t) ? [] : words.filter(w => meet(w.quad, band(layout.boxes.captions)) > .05 * area(w.quad))
-      .map(w => ({kind: 'under-captions', t, what: `"${w.text}"`, ...wordClear(places, t, w, boxOf(layout.boxes.captions), [0, 0, width, height], 'the captions', {ways: ['up']})})))},
+      .map(w => ({kind: 'under-captions', t, what: quote(w.text), ...wordClear(places, t, w, boxOf(layout.boxes.captions), [0, 0, width, height], 'the captions', {ways: ['up'], others: words.filter(o => o !== w).map(o => o.box)})})))},
   'words-overlap': {label: 'Words over words', why: 'the part draws words', when: s => s.facts.words > 0,
     // The word drawn second lies on top: it is the one to move, clear of the first.
     find: ({samples, places, width, height}) => samples.flatMap(({t, words}) => words.flatMap((a, i) => words.slice(i + 1).filter(b => !same(a, b) && meet(a.quad, b.quad) > .2 * Math.min(area(a.quad), area(b.quad)))
-      .map(b => ({kind: 'words-overlap', t, what: `"${a.text}" and "${b.text}"`, ...wordClear(places, t, b, a.box, [0, 0, width, height], `"${a.text}" (${places.wordEntry(t, a).path})`)}))))},
+      .map(b => ({kind: 'words-overlap', t, what: `${quote(a.text)} and ${quote(b.text)}`, ...wordClear(places, t, b, a.box, [0, 0, width, height], `${quote(a.text)} (${cutText(places.wordEntry(t, a).path, WHERE_MOST)})`, {others: words.filter(o => o !== a && o !== b).map(o => o.box)})}))))},
   'cut-off': {label: 'Words cut off at the edge', why: 'the part draws words', when: s => s.facts.words > 0,
     find: ({samples, places, width, height}) => samples.flatMap(({t, words}) => words.filter(w => w.quad.some(([x, y]) => x < -2 || y < -2 || x > width + 2 || y > height + 2))
-      .map(w => ({kind: 'cut-off', t, what: `"${w.text}"`, ...wordInto(places, t, w, [0, 0, width, height])})))},
+      .map(w => ({kind: 'cut-off', t, what: quote(w.text), ...wordInto(places, t, w, [0, 0, width, height])})))},
   hook: {label: `A hook in the first ${REVIEW_DEFAULTS.hook} s`, why: 'the part starts the film', when: s => s.facts.from === 0 && s.facts.seconds >= REVIEW_DEFAULTS.hook,
     find: ({samples, hashes, places}) => {
       const first = samples.filter(x => x.t <= REVIEW_DEFAULTS.hook + 1e-9);
@@ -301,11 +302,11 @@ export const REVIEW_CHECKS = Object.freeze({
       // The pauses between spoken words (scene tails included) with no effect sound in them.
       const said = film.timings.scenes.flatMap((sc, i) => (sc.words ?? []).map(w => [film.clock.offsets[i] + w.start, film.clock.offsets[i] + w.end]))
         .filter(([a, b]) => b > window.from && a < window.to).sort((x, y) => x[0] - y[0]);
-      const sounds = (film.sounds ?? []).map(s => s.time), isQuiet = (from, to) => to - from >= minSilence && !sounds.some(t => t > from - .1 && t < to), quiet = [];
+      const sounds = (film.sounds ?? []).map(s => s.time), soundless = (from, to) => !sounds.some(t => t > from - .1 && t < to), isQuiet = (from, to) => to - from >= minSilence && soundless(from, to), quiet = [];
       for (let i = 1; i < said.length; i++) { const [from, to] = [said[i - 1][1], said[i][0]]; if (isQuiet(from, to)) quiet.push([from, to]); }
       if (quiet.length >= 2) return [];
       // The fix: the longest pauses that are not yet silences, each made a pacing hold (the voice's own file, not the recipe's).
-      const fix = holdsFix(places, window.from, window.to, {need: 2 - quiet.length, seconds: minSilence, quiet: isQuiet});
+      const fix = holdsFix(places, window.from, window.to, {need: 2 - quiet.length, seconds: minSilence, quiet: isQuiet, soundless});
       return samples.map(({t}) => ({kind: 'silences', t, what: `${quiet.length ? 'only one real silence' : 'no real silence'} (${minSilence} s or more with nothing playing)`, where: 'pacing.holds', fix}));
     }},
   // The picture moves, but nothing new comes (a frozen picture is the still check's).
@@ -422,15 +423,19 @@ export const REVIEW_CHECKS = Object.freeze({
   // draw that none of them holds (claims.mjs · drawnClaims: the words read once, for every check — no second drawing).
   claims: {label: 'Every number has a source', why: 'the film lists the numbers it shows', notRun: 'the film does not list the numbers it shows (compileFilm lists them as film.claims)',
     when: s => s.facts.claims,
-    measure: ({film, window, drawn, places}) => {
+    measure: ({film, window, drawn, places, samples}) => {
       const declared = film.claims.numbers.filter(c => c.at <= window.to + 1e-6 && c.to >= window.from - 1e-6);
       const claims = {...film.claims, numbers: [...declared, ...drawn]}, open = unsourcedClaims(claims);
       // where: the recipe entry that shows the number; a number said aloud is the scene's narration, one only drawn (no
       // entry lists it) is the entry drawing the picture then
       const ids = film.timings.scenes.map(sc => sc.id), t0 = c => Math.max(c.at, window.from);
-      const claimWhere = c => (c.path === 'captions' && ids.includes(c.scene) ? `storyboard.scenes[${ids.indexOf(c.scene)}].narration` : c.path && c.path !== 'drawn' && c.path !== 'captions' ? c.path : places.sceneEntry(t0(c)));
+      const drawnAt = c => {   // a number only drawn: the entry under the word that draws it, at the sample nearest its moment
+        const x = samples.reduce((best, y) => (Math.abs(y.t - t0(c)) < Math.abs(best.t - t0(c)) ? y : best), samples[0]), w = x?.words.find(v => String(v.text).includes(c.number));
+        return w ? places.wordEntry(x.t, w).path : places.sceneEntry(t0(c));
+      };
+      const claimWhere = c => (c.path === 'captions' && ids.includes(c.scene) ? `storyboard.scenes[${ids.indexOf(c.scene)}].narration` : c.path === 'drawn' ? drawnAt(c) : c.path && c.path !== 'captions' ? c.path : places.sceneEntry(t0(c)));
       return {measured: {...claimsCount(claims), drawn: drawn.length, ...(film.differs?.length ? {ownFigures: ownFigureLines(differsReached(film, window).map(x => x.d), film.lang ?? null)} : {}), unsourcedNumbers: open.map(c => ({number: c.number, scene: c.scene, path: c.path, at: c.at}))},
-        hits: open.map(c => ({kind: 'claims', t: Math.max(c.at, window.from), what: `"${c.number}" (${c.path === 'captions' ? 'said' : 'shown'} in scene ${c.scene}) has no source`, where: claimWhere(c), fix: claimFix(c)}))};
+        hits: open.map(c => ({kind: 'claims', t: Math.max(c.at, window.from), what: `${quote(c.number)} (${c.path === 'captions' ? 'said' : 'shown'} in scene ${c.scene}) has no source`, where: claimWhere(c), fix: claimFix(c)}))};
     },
     summary: m => (m.numbers ? `${m.numbers} number${m.numbers === 1 ? '' : 's'} on screen: ${m.sourced} sourced${m.unverified ? ` (${m.unverified} on a source nobody can follow: unverified)` : ''}, ${m.examples} in example scenes${m.factsGiven ? `, ${m.unsourced} with no source` : `, ${m.open - m.sourced} unchecked`}` : ''),
     verdict: film => (film.differs?.length ? DECLARING_CLAIMS_VERDICT : CLAIMS_VERDICT)},
@@ -498,7 +503,21 @@ export {readDiffers, timeWords, analogyWords, DIFFERS_VERDICT, DIFFERS_MOST, DIF
  * recipe entry the finding is about and `fix` the one change that clears it — said when the finding has them (every
  * built-in check gives both; a check of your own may leave them out).
  */
-export const findingsText = findings => findings.map(f => oneLine(`${clockTenths(f.from)}–${clockTenths(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}${f.where ? ` · at ${f.where}` : ''}${f.fix ? ` · fix: ${f.fix}` : ''}`)).join('\n');
+export const findingsText = findings => findings.map(findingLine).join('\n');
+/**
+ * One finding's line, at most LINE_MOST characters (the check's row): the time, scene and label, then its words, then
+ * `· at <where> · fix: <fix>` — the part an editor acts on, so it keeps its room and `what` is cut first. Every field is
+ * cut and made one line on its own, the reply's field mark (" · ") escaped inside it: no field can end early or forge one.
+ */
+function findingLine(f) {
+  const field = (text, most) => oneLine(unmarked(cutText(text, most)));
+  const head = `${clockTenths(f.from)}–${clockTenths(f.to)} ${field(f.scene ?? '', 40)} · ${LABEL[f.kind] ?? field(f.kind, 40)}: `;
+  const tail = `${f.where ? ` · at ${field(f.where, WHERE_MOST)}` : ''}${f.fix ? ` · fix: ${field(f.fix, FIX_MOST)}` : ''}`;
+  let most = Math.max(24, LINE_MOST - head.length - tail.length), what = field(f.what, most);
+  while (what.length > most && most > 1) what = field(f.what, --most);   // an escape made it longer: cut more of the words
+  const line = `${head}${what}${tail}`;
+  return line.length <= LINE_MOST ? line : `${head}${what}${tail.slice(0, LINE_MOST - head.length - what.length - 1)}…`;
+}
 
 /** The findings that are advice, not errors (a held title can be right): listed after the rest in a summary. */
 const ADVICE = new Set(['still', 'stale', 'slideshow', 'hook']);
@@ -535,7 +554,8 @@ function plainHits(hits, says = SAYS.find) {
     const wrong = h == null ? 'there is none (an empty slot)' : typeof h.kind !== 'string' ? 'kind must be a name (a string)' : !Number.isFinite(h.t) ? 't must be seconds on the film clock' : typeof h.what !== 'string' ? 'what must be words (a string)'
       : h.where !== undefined && typeof h.where !== 'string' ? 'where must be the recipe entry, as words (a string)' : h.fix !== undefined && typeof h.fix !== 'string' ? 'fix must be words (a string)' : null;
     if (wrong) throw new Error(`${says.hit} ${i}: ${wrong}; a hit is {kind, t, what, where?, fix?}`);
-    return {kind: h.kind, t: h.t, what: h.what, ...(h.where ? {where: h.where} : {}), ...(h.fix ? {fix: h.fix} : {})};
+    // where and fix are the film's words as much as ours: cut, so a hit (and the record that copies it) is small whatever the film
+    return {kind: h.kind, t: h.t, what: cutText(h.what, LINE_MOST), ...(h.where ? {where: cutText(h.where, WHERE_MOST)} : {}), ...(h.fix ? {fix: cutText(h.fix, FIX_MOST)} : {})};
   });
 }
 
@@ -543,23 +563,31 @@ function plainHits(hits, says = SAYS.find) {
 const SAYS = Object.freeze({find: {promise: 'find returned a promise', list: 'find must return a list of hits', hit: "find's hit"},
   measure: {promise: "measure's hits are a promise", list: "measure's hits must be a list of hits", hit: "measure's hit"}});
 /**
- * Hits on sample times → spans of the same thing (its kind, its words and its recipe entry), each with the scene it starts
- * in and the fix its first moment gave (a moving word's move is said where the span starts); a word's span shorter than `lasting`
- * is passing (a fade, a page turning) and dropped — never a hit of a picture check, of the record's own spans (an example
- * line beside real numbers: when the lines are up, not a frame), or of a verdict (`held`: a reason).
+ * Hits on sample times → spans of the same thing (its kind and its words), each with the scene it starts in; a word's
+ * span shorter than `lasting` is passing (a fade, a page turning) and dropped — never a hit of a picture check, of the
+ * record's own spans (an example line beside real numbers: when the lines are up, not a frame), or of a verdict (`held`:
+ * a reason). A span's recipe entry is the one most of its hits name (the first on a tie) and its fix that entry's first:
+ * a region that comes and goes over a word mid-span (a flash, a panel sliding in) never splits it, so no piece of it is
+ * lost to `lasting`.
  */
 function spans(film, hits, every, lasting) {
   const held = new Set(['still', 'hook', 'silences', 'stale', 'loop', 'example-lingers', ...hits.filter(h => h.held).map(h => h.kind)]);
   const groups = new Map();
-  const said = new Map();   // per group, the recipe entry and the fix of its first hit
-  for (const h of hits) { const k = `${h.kind}\u0000${h.what}\u0000${h.where ?? ''}`; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(h.t); if (!said.has(k) || h.t < said.get(k).t) said.set(k, {t: h.t, where: h.where, fix: h.fix}); }
+  for (const h of hits) { const k = `${h.kind}\u0000${h.what}`; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(h); }
   const sceneAt = t => { let id = null; film.timings.scenes.forEach((s, i) => { if (film.clock.offsets[i] <= t + 1e-6) id = s.id; }); return id; };
+  /** The entry most of a span's hits name, and the fix its first hit gave: {where?, fix?}. */
+  const saidOf = (group, from, to) => {
+    const inside = group.filter(h => h.t >= from - 1e-9 && h.t <= to + 1e-9).sort((a, b) => a.t - b.t), counts = new Map();
+    for (const h of inside) counts.set(h.where ?? '', (counts.get(h.where ?? '') ?? 0) + 1);
+    const where = [...counts].reduce((best, x) => (x[1] > best[1] ? x : best), ['', 0])[0], first = inside.find(h => (h.where ?? '') === where);
+    return {...(where ? {where} : {}), ...(first?.fix ? {fix: first.fix} : {})};
+  };
   const out = [];
-  for (const [k, times] of groups) {
-    const [kind, what] = k.split('\u0000'), ts = [...new Set(times)].sort((a, b) => a - b), {where, fix} = said.get(k), at = {...(where ? {where} : {}), ...(fix ? {fix} : {})};
+  for (const [k, group] of groups) {
+    const [kind, what] = k.split('\u0000'), ts = [...new Set(group.map(h => h.t))].sort((a, b) => a - b);
     let from = ts[0], last = ts[0];
-    for (const t of ts.slice(1)) { if (t - last > every * 1.5) { out.push({kind, from, to: last, what, ...at}); from = t; } last = t; }
-    out.push({kind, from, to: last, what, ...at});
+    for (const t of ts.slice(1)) { if (t - last > every * 1.5) { out.push({kind, from, to: last, what, ...saidOf(group, from, last)}); from = t; } last = t; }
+    out.push({kind, from, to: last, what, ...saidOf(group, from, last)});
   }
   return out.filter(f => held.has(f.kind) || f.to - f.from + every >= lasting - 1e-9).sort((a, b) => a.from - b.from || a.kind.localeCompare(b.kind)).map(f => ({...f, scene: sceneAt(f.from)}));
 }
@@ -579,7 +607,8 @@ function spans(film, hits, every, lasting) {
  * when it loops cleanly: look at a strip of the seam before changing it.
  * A window past the film's ends is held to the film. A check that fails (it throws, or answers with anything but
  * what it should) fails the review: one error names every check that failed and why.
- * Returns {window, facts, findings, text, verdicts, verdictText, timeline, ran, record}: findings [{kind, from, to, scene,
+ * Returns {window, facts, findings, text, verdicts, verdictText, timeline, ran, record, notes}: notes, what could not be
+ * read (the film's regions, when they threw); findings [{kind, from, to, scene,
  * what, where?, fix?}] on the film clock (where: the recipe entry; fix: the change), text as lines; verdicts [{check, label, verdict, why, measured, summary?}] — every verdict
  * check, in order, 'not run' when it did not fit the part — and verdictText as lines; the part's timeline (scenes and
  * beats), the checks that ran, and the review's own footprintjs record (each verdict's decide() evidence in it).
@@ -714,5 +743,8 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
   const answered = new Map((state.verdicts ?? []).map(v => [v.check, v]));
   const verdicts = Object.entries(checks).filter(([, c]) => typeof c.find !== 'function')
     .map(([id, c]) => answered.get(id) ?? {check: id, label: c.label, verdict: 'not run', why: c.notRun ?? `it does not fit the part (${c.why ?? c.label})`, measured: {}});
-  return {window, facts: state.facts ?? null, findings, text: findingsText(findings), verdicts, verdictText: verdictsText(verdicts), timeline: timelineText(partTimeline(film, window)), ran: state.ran ?? [], record: trace.getEntries()};
+  // What the review could not read, said rather than silently left out: the film's regions, when they threw (every
+  // finding is then named by its scene, and the drawing checks find nothing).
+  const trouble = review.places.trouble(), notes = trouble ? [`regions not read: ${trouble} — findings name no entry smaller than the picture, and the drawing checks saw no drawing`] : [];
+  return {window, facts: state.facts ?? null, findings, text: findingsText(findings), verdicts, verdictText: verdictsText(verdicts), timeline: timelineText(partTimeline(film, window)), ran: state.ran ?? [], record: trace.getEntries(), notes};
 }

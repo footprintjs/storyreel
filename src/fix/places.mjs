@@ -7,6 +7,7 @@
 // coordinates (film.pointAt: a world's sheet, or the page). A finding asks those two, so it names the entry and says the
 // change in the units the entry is written in. No second map of the picture is kept here.
 import {hitTest} from '../regions.mjs';
+import {cutText} from './text.mjs';
 
 const isBox = b => Array.isArray(b) && b.length === 4 && b.every(Number.isFinite);
 const areaOf = ([x0, y0, x1, y1]) => Math.max(0, x1 - x0) * Math.max(0, y1 - y0);
@@ -38,8 +39,9 @@ export function entryAt(recipe, path) {
  *   frameBox(t, box)    a box in output pixels (a word's) on the 1600×900 frame
  *   sceneEntry(t)       the recipe entry drawing the picture at t: the largest region there (its world, its page), or
  *                       the storyboard's scene when nothing says
- *   wordEntry(t, word)  the recipe entry that drew a word: of the regions holding its middle, one whose label is the word,
- *                       then the smallest that is not a drawing, then any; else sceneEntry. {path, region}
+ *   wordEntry(t, word)  the recipe entry that drew a word: of the regions its box meets, one whose label is the word
+ *                       exactly, then one whose label holds it, then any that is not a drawing — each time the one its
+ *                       box overlaps most, then the smallest — then any; else sceneEntry. {path, region}
  *   sheetOf(t, region)  the box its recipe coordinates live on: its world's (the region marked sheet its path is
  *                       inside, or itself when it is one), or the frame
  *   toRecipe(t, point)  a point of the frame in the recipe's own units (a world's sheet, or the page)
@@ -47,14 +49,21 @@ export function entryAt(recipe, path) {
  *   outDelta(t, p, d)   the same for a move of d output pixels from an output point (a word's)
  *   entry(path)         the recipe's value at a path (entryAt)
  *   said(from, to)      the words spoken in [from, to], in order: [{text, start, end, scene}]
+ *   sceneSaid(id)       every word spoken in scene `id`, in order, the same way
+ *   placesOf(id, p)     every place phrase p is said in scene `id` (the clock's own matching: clock.places), or null
+ *                       when the film cannot say
+ *   trouble()           why the film's regions could not be read (regionsAt threw), or null: said in the review's notes,
+ *                       never a silent "no regions"
  */
 export function placesOf(film, layout = null) {
   const kept = new Map();
+  let trouble = null;
   const regions = t => {
     const key = +t.toFixed(3);
     if (!kept.has(key)) {
       let found = [];
-      try { found = typeof film.regionsAt === 'function' ? film.regionsAt(t) : []; } catch { found = []; }   // a film that cannot say is a film with no regions
+      // A film whose regions throw is read as one with none — and the first error is kept, for the review to say.
+      try { found = typeof film.regionsAt === 'function' ? film.regionsAt(t) : []; } catch (e) { found = []; trouble ??= `film.regionsAt(${key}) threw: ${cutText(e?.message ?? e, 120)}`; }
       kept.set(key, (Array.isArray(found) ? found : []).filter(r => r && isBox(r.box) && typeof r.path === 'string' && r.path));
     }
     return kept.get(key);
@@ -69,9 +78,14 @@ export function placesOf(film, layout = null) {
     return `storyboard.scenes[${sceneIndex(t)}]`;
   };
   const wordEntry = (t, word) => {
-    const [x0, y0, x1, y1] = frameBox(t, word.box), holding = hitTest(regions(t), (x0 + x1) / 2, (y0 + y1) / 2);
-    const text = String(word.text).trim();
-    const region = holding.find(r => !r.drawing && String(r.label).includes(text) && text) ?? holding.find(r => !r.drawing) ?? holding[0] ?? null;
+    const box = frameBox(t, word.box), [x0, y0, x1, y1] = box, text = String(word.text).trim();
+    // The regions the word's box meets, most overlap first, then the smallest (hitTest's order on a tie): of two items
+    // labelled "sheep" the one under the word; a word half off the frame still meets the region it runs out of.
+    const order = new Map(hitTest(regions(t), (x0 + x1) / 2, (y0 + y1) / 2).map((r, k) => [r, k]));
+    const holding = regions(t).map(r => ({r, share: shareIn(box, r.box), area: areaOf(r.box), k: order.get(r) ?? Infinity})).filter(x => x.share > 0)
+      .sort((a, b) => b.share - a.share || a.k - b.k || a.area - b.area).map(x => x.r);
+    const words = holding.filter(r => !r.drawing), label = r => String(r.label).trim();
+    const region = (text && (words.find(r => label(r) === text) ?? words.find(r => label(r).includes(text)))) || words[0] || holding[0] || null;
     return {path: region?.path ?? sceneEntry(t), region};
   };
   const sheetOf = (t, region) => {
@@ -88,7 +102,9 @@ export function placesOf(film, layout = null) {
   const delta = (t, [x, y], [dx, dy]) => { const a = toRecipe(t, [x, y]), b = toRecipe(t, [x + dx, y + dy]); return [b[0] - a[0], b[1] - a[1]]; };
   /** A move of d output pixels from an output point, in the recipe's units (through the frame). */
   const outDelta = (t, p, d) => { const a = frame(t, p), b = frame(t, [p[0] + d[0], p[1] + d[1]]); return delta(t, a, [b[0] - a[0], b[1] - a[1]]); };
-  const said = (from, to) => scenes.flatMap((sc, i) => (sc.words ?? []).map(w => ({text: w.text, start: offsets[i] + w.start, end: offsets[i] + w.end, scene: sc.id})))
-    .filter(w => w.end > from && w.start < to).sort((a, b) => a.start - b.start);
-  return {regions, frameBox, sceneEntry, wordEntry, sheetOf, toRecipe, delta, outDelta, entry: path => entryAt(film.recipe, path), said};
+  const all = scenes.flatMap((sc, i) => (sc.words ?? []).map(w => ({text: w.text, start: offsets[i] + w.start, end: offsets[i] + w.end, scene: sc.id}))).sort((a, b) => a.start - b.start);
+  const said = (from, to) => all.filter(w => w.end > from && w.start < to);
+  const sceneSaid = id => all.filter(w => w.scene === id);
+  const phrasePlaces = (id, phrase) => { try { return typeof film.clock?.places === 'function' ? film.clock.places(id, phrase) : null; } catch { return null; } };
+  return {regions, frameBox, sceneEntry, wordEntry, sheetOf, toRecipe, delta, outDelta, entry: path => entryAt(film.recipe, path), said, sceneSaid, placesOf: phrasePlaces, trouble: () => trouble};
 }

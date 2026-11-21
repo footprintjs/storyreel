@@ -97,7 +97,8 @@ const inside = (film, t) => Math.max(0, Math.min(film.total - .001, t));
 /** Each scene's settled picture (film.moments). */
 const settled = film => film.moments().filter(m => m.kind === 'settled').map(m => ({t: m.t, label: m.label}));
 /** The findings of a review of these kinds, as lines. */
-const findingLines = (review, kinds) => (review?.findings ?? []).filter(f => kinds.includes(f.kind)).map(f => `${secs(f.from)} ${f.kind}: ${f.what}`);
+// (each with its fix, as the review says it: the fix moved out of `what`, so a line without it would lose it)
+const findingLines = (review, kinds) => (review?.findings ?? []).filter(f => kinds.includes(f.kind)).map(f => `${secs(f.from)} ${f.kind}: ${f.what}${f.fix ? ` (fix: ${f.fix})` : ''}`);
 
 /** What each look lays out: (film, {review, record, opening}) → {stills: [{t, label}], evidence: [line]}. */
 const LAYOUTS = {

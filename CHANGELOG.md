@@ -40,6 +40,12 @@
   `check` after upgrading counts those findings once as fixed and new. `PURITY_FINDING` is the words alone
   (`PURITY_FIX` beside it); `contrastWhat` / `contrastFix`, `lingerWhat` / `lingerFix` are new beside the old texts. The
   layout gains `frameAt(t, [x, y])`. The whiteboard's code changed, so pieces a cache holds are drawn again once.
+- **Bounded, and one line each.** `where` is cut to 80 characters, `fix` to 200, a film's word or label quoted in them
+  to 40, and a finding's line to 300 with its `· at … · fix: …` kept (its words are cut first). A film's word is quoted
+  with its quotes and the field mark escaped. A span is grouped by its kind and words, as before, and named by the entry
+  most of its hits name. Region `holds` is a list of boxes (a drawing's rooms), not `true`. A review returns `notes`
+  (the film's regions, when `regionsAt` throws), printed by `storyreel review` and `check`. The types say all of it
+  (`Finding.where/fix`, `ReviewHit`, `Review.places`, `samples[].zoomed`, `Region.holds/sheet/drawing`).
 
 ## 0.33.0 — one reader of a run's record, with StoryDeck
 
