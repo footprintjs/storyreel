@@ -49,6 +49,24 @@
   most of its hits name. Region `holds` is a list of boxes (a drawing's rooms), not `true`. A review returns `notes`
   (the film's regions, when `regionsAt` throws), printed by `storyreel review` and `check`. The types say all of it
   (`Finding.where/fix`, `ReviewHit`, `Review.places`, `samples[].zoomed`, `Region.holds/sheet/drawing`).
+## 0.34.0 — line breaking and a scene that differs: the rules live in the story library
+
+- **StoryReel now needs footprint-story `^0.18.0`** (it was `^0.14.2`).
+- **Breaking words across a width is footprint-story's** (`footprint-story/layout` · `wrapWords`, `narrowestWidth`):
+  the title band's balanced lines (`layout.mjs`), the end card (`endcard.mjs`), the summary cards
+  (`kits/paper/paper.mjs`) and a caption's balancing (`captions.mjs`) each wrote it; they call the one rule now, each
+  line still measured whole as the canvas draws it. A caption's own breaking (each word's width summed, word indexes)
+  and a chip's (a word too wide broken between graphemes) stay here: they are other rules.
+- **The rules a scene that differs is held to, and its default words, are footprint-story's** (`differsProblem`,
+  `differsLines`, `timeProblem`, `differsEnglish`, `differsFactors`, `timeWords`, `analogyWords` and the bounds), the
+  same ones StoryDeck uses. Reading a scene's `differs`, every sentence of a refusal, the labels as drawn and the
+  verdict stay here, word for word; `review`'s exports are the same names.
+- Nothing a film draws, says, checks or records changes. Checked by building every example film and 144 outputs
+  before and after — the four examples' frames (48 each, 800 px wide) and records; 60 title bands with captions in every
+  format, with and without a zone to keep clear; 40 storyboards whose scenes declare how they differ; 40 end cards —
+  every frame hash, record (its run ids and times aside) and refusal compared; and function for function against
+  0.33.0's `readDiffers`, `differsOf`, `saidPhrases`, `ownFigure` (40,000 generated inputs), `drawEndCard` and
+  `captionFit` (10,000, every drawing call compared).
 
 ## 0.33.0 — one reader of a run's record, with StoryDeck
 

@@ -9,6 +9,7 @@
  *   a file     — WebVTT or SRT beside the video (footprint-story · captionFile), for players that show their
  *                own captions (YouTube, LinkedIn and X take a file): longer cues, broken at sentences, two lines at most
  */
+import {narrowestWidth} from 'footprint-story/layout';
 import {fitBlock} from './zones.mjs';
 
 /**
@@ -60,11 +61,8 @@ function captionLines(ctx, caption, [x, y, w, h], size, {balance = false} = {}) 
     return out;
   };
   let lines = wrapAt(w - size);
-  if (balance && lines.length > 1) {
-    let lo = 0, hi = w - size;
-    for (let i = 0; i < 12; i++) { const mid = (lo + hi) / 2; if (wrapAt(mid).length > lines.length) lo = mid; else hi = mid; }
-    lines = wrapAt(hi);
-  }
+  // balanced: at the narrowest width that keeps as many lines (footprint-story/layout · narrowestWidth, as a title's)
+  if (balance && lines.length > 1) lines = wrapAt(narrowestWidth(w - size, lines.length, mid => wrapAt(mid).length));
   const lineH = size * 1.25, top = y + h / 2 - (lines.length * lineH) / 2;
   const placed = lines.map((line, n) => {
     const lw = line.reduce((s, i, k) => s + widths[i] + (k ? space : 0), 0);

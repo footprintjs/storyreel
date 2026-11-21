@@ -5,15 +5,13 @@
  * `box` (the layout's film box: the title band above stays). Pure: the same card every time, for any moment of it.
  */
 
+import {wrapWords} from 'footprint-story/layout';
+
 const SANS = '"Helvetica Neue", Helvetica, Arial, sans-serif';
 const DEFAULTS = {bg: '#f3eee3', panel: '#fffaf0', edge: '#d8cfbd', ink: '#23211c', accent: '#c4553f', dim: '#6b665c'};
 
-/** Words wrapped greedily into lines no wider than `width` (a word wider than that has a line to itself). */
-function wrap(ctx, text, width) {
-  const out = [''];
-  for (const word of text.split(/\s+/).filter(Boolean)) { const next = out.at(-1) ? `${out.at(-1)} ${word}` : word; if (ctx.measureText(next).width > width && out.at(-1)) out.push(word); else out[out.length - 1] = next; }
-  return out;
-}
+/** Words wrapped greedily into lines no wider than `width` (a word wider than that has a line to itself): footprint-story/layout · wrapWords, each line measured as the canvas draws it. */
+const wrap = (ctx, text, width) => wrapWords(text.split(/\s+/).filter(Boolean), width, line => ctx.measureText(line).width);
 
 /**
  * The card into ctx (output pixels): `lines` (1–4 texts), `box` [x, y, w, h] where it sits, `theme` the film's
