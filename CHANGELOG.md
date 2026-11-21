@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.34.0 — a film draws a deck's map, every finding names its fix, and the shared rules come from the story library
 
 - **`footprint-storyreel/kits/isometric`: StoryDeck's isometric maps in a film** (`isometricKit`, pass it in `kits`).
   Blocks and cylinders on a floor, floors with their names, groups, cables between blocks and ports, and packets riding
@@ -49,9 +49,6 @@
   most of its hits name. Region `holds` is a list of boxes (a drawing's rooms), not `true`. A review returns `notes`
   (the film's regions, when `regionsAt` throws), printed by `storyreel review` and `check`. The types say all of it
   (`Finding.where/fix`, `ReviewHit`, `Review.places`, `samples[].zoomed`, `Region.holds/sheet/drawing`).
-## 0.34.0 — line breaking and a scene that differs: the rules live in the story library
-## 0.34.0 — line breaking, framing and a scene that differs: the rules live in the story library
-
 - **StoryReel now needs footprint-story `^0.18.0`** (it was `^0.14.2`).
 - **Breaking words across a width is footprint-story's** (`footprint-story/layout` · `wrapWords`, `narrowestWidth`).
   It was written separately in the title band's balanced lines (`layout.mjs`), the end card (`endcard.mjs`), the
