@@ -35,9 +35,10 @@ export function rideOf(w, length, from) {
   const [least, most] = ISO_LIMITS.seconds, ease = w.ride, along = length * (1 + ease[0] + ease[1]);
   let seconds = w.seconds;
   if (w.perSecond) {
-    const asked = along / w.perSecond;
+    const asked = along / w.perSecond, slowest = Math.ceil((along / most) * 10) / 10, fastest = Math.floor((along / least) * 10) / 10;
+    // a line too short to give a range of px speeds that round to a tenth (StoryDeck's rule: under 1 px, give seconds)
+    if (!(length >= 1) || !(fastest > 0) || fastest < slowest) throw new Error(`${w.who}: speed "${w.perSecond}px": its line is ${+length.toFixed(1)} px long, too short for a speed in px a second — give it its seconds (3)`);
     if (!(asked >= least && asked <= most)) {
-      const slowest = Math.ceil((along / most) * 10) / 10, fastest = Math.floor((along / least) * 10) / 10;
       throw new Error(`${w.who}: speed "${w.perSecond}px": its line is ${Math.round(length)} px long, so a run would take ${+asked.toFixed(2)} s, and a run takes ${least} to ${most} s — give it ${slowest}px to ${fastest}px, or its seconds (3)`);
     }
     seconds = rideSeconds(length, w.perSecond, ease);

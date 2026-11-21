@@ -366,7 +366,7 @@
    {
     "t": 11.86,
     "kind": "moving",
-    "label": "mid the wipe into desk"
+    "label": "mid the fade into desk"
    },
    {
     "t": 16.48,
@@ -376,7 +376,7 @@
   ],
   "pushes": [
    {
-    "across": "mid the wipe into desk",
+    "across": "mid the fade into desk",
     "at": 11.86,
     "from": {
      "scene": "map",
@@ -388,7 +388,7 @@
      "phrase": "Under",
      "nth": 0
     },
-    "says": "note \"push across mid the wipe into desk\": the push runs from 10.18 s to 13.36 s, across the wipe into desk (11.46 s); a push stays on one picture: end it before 11.46 s, or start it after the change"
+    "says": "note \"push across mid the fade into desk\": the push runs from 10.18 s to 13.36 s, across the fade into desk (11.46 s); a push stays on one picture: end it before 11.46 s, or start it after the change"
    },
    {
     "across": "start of desk",
@@ -403,7 +403,7 @@
      "phrase": "Under",
      "nth": 0
     },
-    "says": "note \"push across start of desk\": the push runs from 10.18 s to 13.36 s, across the wipe into desk (11.46 s); a push stays on one picture: end it before 11.46 s, or start it after the change"
+    "says": "note \"push across start of desk\": the push runs from 10.18 s to 13.36 s, across the fade into desk (11.46 s); a push stays on one picture: end it before 11.46 s, or start it after the change"
    }
   ]
  }

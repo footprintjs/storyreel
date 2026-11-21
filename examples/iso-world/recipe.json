@@ -125,7 +125,7 @@
   {
    "type": "world",
    "scene": "desk",
-   "enter": "wipe",
+   "enter": "fade",
    "world": {
     "kit": "isometric",
     "grid": {
@@ -258,7 +258,10 @@
      "map",
      "reads the database"
     ],
-    "on": "db",
+    "on": [
+     "api",
+     "db"
+    ],
     "size": "medium"
    },
    {

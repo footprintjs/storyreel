@@ -30,16 +30,62 @@ export const TONES = Object.freeze(['ok', 'warn', 'bad']);
  */
 export const ISO_LIMITS = Object.freeze({pieces: 256, packets: 6, seconds: Object.freeze([0.5, 60]), rest: 60, trail: Object.freeze([0.5, 24]),
   label: 120, wireLabel: 60, name: 64, usualSize: Object.freeze([2, 2, 1]), runSeconds: 3});
-const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+/** The one hex-colour rule (draw.mjs reads it too). */
+export const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+/** The most entries a list the world holds may have before it is read (a port list, an at, a trail): far past any map. */
+const MOST_ITEMS = 4096;
 /** A name a wire's arrow can say: letters, digits, `_` and `-` — no space and no dot (the dot names a port: "sw.p1"). */
 const NAME = /^[\p{L}\p{N}_-]+$/u;
 /** A label is plain words: a control, a direction mark or a character that draws nothing reads differently on screen and in a note. */
-const UNPLAIN = /\p{Cc}|(?!‍)\p{Cf}|[\uD800-\uDFFF]/u;
+const UNPLAIN = /\p{Cc}|(?!\u{200D})\p{Cf}|[\uD800-\uDFFF]/u;
+/** What folds to one space in a label: tabs, line ends, and the line and paragraph separators (U+2028, U+2029). */
+const FOLD = /[\t\n\r\p{Zl}\p{Zp}]+/gu;
 
 const own = (o, k) => Object.hasOwn(o, k) && o[k] !== undefined;
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const nums = (v, lengths) => Array.isArray(v) && lengths.includes(v.length) && v.every(Number.isFinite);
-const shown = (v) => { const s = JSON.stringify(v) ?? String(v); return s.length > 60 ? `${s.slice(0, 59)}…` : s; };
+/** A value as a refusal quotes it: JSON, at most 60 characters, one line (a value thousands of letters long gives a short refusal). */
+export const shown = (v) => {
+  let s; try { s = JSON.stringify(v) ?? String(v); } catch { s = Object.prototype.toString.call(v); }
+  s = s.replace(/[\p{Zl}\p{Zp}]/gu, ' ');
+  return s.length > 60 ? `${s.slice(0, 59)}…` : s;
+};
+
+/** A refusal raised while a value is copied as plain data: passed on as it is, never wrapped twice. */
+class PlainRefusal extends Error {}
+/** One own field's value, never through a getter. */
+function field(o, k, who) {
+  const d = Object.getOwnPropertyDescriptor(o, k);
+  if (!d) return undefined;
+  if (d.get || d.set) throw new PlainRefusal(`${who} is a getter — write it as a plain value (JSON)`);
+  return d.value;
+}
+/**
+ * A recipe value copied as plain data, each field read once by its own value: a getter is never run (refused, in
+ * words), a list longer than MOST_ITEMS is refused before its entries are read, and what throws while it is read
+ * (a proxy's trap) is refused naming the entry. WHY: the kit reads a field more than once (to check it, then to use
+ * it); a getter could answer differently each time, and its throw would surface as someone else's error.
+ */
+function plain(v, who, depth = 0) {
+  if (v === null || typeof v !== 'object') return v;
+  try {
+    if (depth > 6) throw new PlainRefusal(`${who} is nested too deeply — write a world's entries as plain data a few levels deep`);
+    if (Array.isArray(v)) {
+      const n = Object.getOwnPropertyDescriptor(v, 'length').value;
+      if (n > MOST_ITEMS) throw new PlainRefusal(`${who} is a list of at most ${MOST_ITEMS} entries — this one has ${n}`);
+      const items = Array.from({length: n}, (_, i) => plain(field(v, String(i), `${who}[${i}]`), `${who}[${i}]`, depth + 1));
+      // a list of plain words and numbers, every entry read by its own value, is handed on as itself: the film knows an
+      // anchor (["map", "the API"]) by the very list the recipe wrote, to name its entry in the record (film/clock.mjs)
+      return items.every((x) => x === null || typeof x !== 'object') ? v : items;
+    }
+    const keys = Object.keys(v);
+    if (keys.length > MOST_ITEMS) throw new PlainRefusal(`${who} has at most ${MOST_ITEMS} keys — this one has ${keys.length}`);
+    return Object.fromEntries(keys.map((k) => { const at = `${who}.${shown(k).slice(1, -1)}`; return [k, plain(field(v, k, at), at, depth + 1)]; }));
+  } catch (e) {
+    if (e instanceof PlainRefusal) throw e;
+    throw new PlainRefusal(`${who} could not be read as plain data (${shown(String(e?.message ?? e))}) — write it as JSON`, {cause: e});
+  }
+}
 /** An at as an anchor is written: [scene, phrase, plus?] or {scene, phrase, …} (the clock checks the phrase). */
 export const anchorLike = (a) => (Array.isArray(a) ? a.length >= 2 && a.length <= 3 && typeof a[0] === 'string' && typeof a[1] === 'string' && (a.length === 2 || Number.isFinite(a[2]))
   : isObject(a) && typeof a.scene === 'string' && typeof a.phrase === 'string');
@@ -51,7 +97,7 @@ function keysOf(o, keys, who) {
 function words(v, who, key, most) {
   if (v === undefined) return null;
   if (typeof v !== 'string' || !v.trim()) throw new Error(`${who}: ${key} is words ("Server") — not ${shown(v)}`);
-  const text = v.replace(/[\t\n\r]+/g, ' ').trim();
+  const text = v.replace(FOLD, ' ').trim();
   if ([...text].length > most) throw new Error(`${who}: ${key} is at most ${most} letters — this one has ${[...text].length}: shorten it`);
   if (UNPLAIN.test(text)) throw new Error(`${who}: ${key} is plain words — take out the control or direction character in it`);
   return text;
@@ -68,8 +114,8 @@ function nameOf(v, who, required) {
 }
 function groupOf(v, who) {
   if (v === undefined || v === null) return null;
-  if (typeof v !== 'string' || !v.trim() || v.length > 100) throw new Error(`${who}: group names the group it belongs to ("backend"), 1 to 100 letters — not ${shown(v)}`);
-  return v;
+  if (typeof v !== 'string' || !v.trim()) throw new Error(`${who}: group names the group it belongs to ("backend") — not ${shown(v)}`);
+  return words(v, who, 'group', 100);
 }
 
 /** One block (or cylinder), checked: {name, kind, at|null, size, label, small, color, tone, group, ports, appear, path, who}. */
@@ -93,7 +139,7 @@ function readBlock(b, i, where) {
   let ports = [];
   if (own(b, 'ports')) {
     if (!Array.isArray(b.ports)) throw new Error(`${who}: ports is a list, [{"name": "p1", "at": [x, y, z]}] in its own tiles (x along its width, y along its depth, z up from its base)`);
-    b.ports.forEach((p, k) => keysOf(p, ['name', 'at', 'face'], `${who}: ports[${k}]`));
+    b.ports.forEach((p, k) => { keysOf(p, ['name', 'at', 'face'], `${who}: ports[${k}]`); nameOf(p.name, `${who}: ports[${k}]`, true); });
     try { ports = readPorts(b.ports, size, kind === 'cylinder', `"${name}"`).map(({name: n, at: a, face, seen}) => ({name: n, at: [...a], face, seen})); } catch (e) {
       throw new Error(`${who}: ${e.message.replace(/^isometric: /, '')}`, {cause: e});
     }
@@ -107,7 +153,7 @@ function readFloor(f, i, where) {
   keysOf(f, FLOOR_KEYS, first);
   const name = nameOf(f.name, first, false), who = name ? `${first} ("${name}")` : first;
   if (own(f, 'size') && !(nums(f.size, [2]) && f.size.every((n) => Number.isInteger(n) && n >= 1 && n <= 256))) throw new Error(`${who}: size is [cols, rows], whole numbers 1 to 256 — not ${shown(f.size)}`);
-  if (own(f, 'at') && !nums(f.at, [2])) throw new Error(`${who}: at is its far corner, [col, row] — not ${shown(f.at)}`);
+  if (own(f, 'at') && !(nums(f.at, [2]) && f.at.every((n) => Math.abs(n) <= 1e6))) throw new Error(`${who}: at is its far corner, [col, row], no number further than 1000000 from 0 — not ${shown(f.at)}`);
   if (own(f, 'at') && !own(f, 'size')) throw new Error(`${who}: a floor with an at needs its size too ([8, 5]) — or give neither, and it is fitted round the blocks`);
   if (own(f, 'color') && !HEX.test(f.color)) throw new Error(`${who}: color is a hex colour for its ground ("#eef3f8") — not ${shown(f.color)}`);
   return {name, at: own(f, 'at') ? [...f.at] : own(f, 'size') ? [0, 0] : null, size: own(f, 'size') ? [...f.size] : null, label: words(f.label, who, 'label', MOST_FLOOR_LABEL),
@@ -119,29 +165,34 @@ function readFloor(f, i, where) {
  * trailing number (a bend) that draws it straight: {from: {block, port}, to: {block, port}, straight}.
  */
 export function readArrow(arrow, who, blocks) {
-  const form = '"you to server" (a block\'s name, or "block.port", at each end; "you to server 0" draws it straight)';
+  const form = '"you to server" (a block\'s name, or "block.port", at each end; a bend after it, "you to server 0", draws it straight, "you to server 40" curved 40 px)';
   if (typeof arrow !== 'string') throw new Error(`${who}: arrow is ${form} — not ${shown(arrow)}`);
   const m = /^\s*(\S+)\s+to\s+(\S+)(?:\s+(-?\d+(?:\.\d+)?))?\s*$/.exec(arrow);
   if (!m) throw new Error(`${who}: arrow is ${form} — not ${shown(arrow)}`);
+  const list = (names) => shown(names.join(', ') || 'none').slice(1, -1);
   const end = (text) => {
     const byName = blocks.find((b) => b.name === text);
     if (byName) return {block: byName, port: null};
     const dot = text.lastIndexOf('.'), block = dot > 0 ? blocks.find((b) => b.name === text.slice(0, dot)) : null;
-    if (!block) throw new Error(`${who}: arrow "${arrow}" names "${text.slice(0, dot > 0 ? dot : undefined)}", which is no block here — the blocks are ${blocks.map((b) => b.name).join(', ') || 'none'}`);
+    if (!block) throw new Error(`${who}: arrow ${shown(arrow)} names ${shown(text.slice(0, dot > 0 ? dot : undefined))}, which is no block here — the blocks are ${list(blocks.map((b) => b.name))}`);
     const port = text.slice(dot + 1);
-    if (!block.ports.some((p) => p.name === port)) throw new Error(`${who}: arrow "${arrow}": ${block.name} has no port "${port}" — ${block.ports.length ? `its ports are ${block.ports.map((p) => p.name).join(', ')}` : `give it ports ([{"name": "${port}", "at": [x, y, z]}])`}`);
+    if (!block.ports.some((p) => p.name === port)) throw new Error(`${who}: arrow ${shown(arrow)}: ${block.name} has no port ${shown(port)} — ${block.ports.length ? `its ports are ${list(block.ports.map((p) => p.name))}` : 'give it ports ([{"name": "p1", "at": [x, y, z]}])'}`);
     return {block, port};
   };
   const from = end(m[1]), to = end(m[2]);
-  if (from.block === to.block) throw new Error(`${who}: arrow "${arrow}" joins ${from.block.name} to itself — name another block at one end ("arrow": "${from.block.name} to ${blocks.find((b) => b !== from.block)?.name ?? 'other'}")`);
-  return {from, to, straight: m[3] !== undefined};
+  if (from.block === to.block) throw new Error(`${who}: arrow ${shown(arrow)} joins ${from.block.name} to itself — name another block at one end ("arrow": "${from.block.name} to ${blocks.find((b) => b !== from.block)?.name ?? 'other'}")`);
+  const bend = m[3] === undefined ? null : Number(m[3]);
+  // StoryDeck's rule (deck/transforms.js): a wire to a port runs along the floor, and a bend draws it straight
+  if (bend !== null && (from.port || to.port)) throw new Error(`${who}: arrow ${shown(arrow)}: a wire to a port runs along the floor, and a bend draws it straight — take the bend out`);
+  if (bend !== null && Math.abs(bend) > 2000) throw new Error(`${who}: arrow ${shown(arrow)}: a bend is how far the wire curves off its straight line, -2000 to 2000 px — not ${bend}`);
+  return {from, to, straight: bend !== null, bend: bend ?? 0};
 }
 
 /** One wire, checked: {name, arrow, label, head, packets, seconds|null, perSecond|null, ride, rest, trail, behind, appear, start, path, who}. */
 function readWire(w, i, where, blocks) {
   const path = `wires[${i}]`, first = `${where}: isometric ${path}`;
   keysOf(w, WIRE_KEYS, first);
-  const name = nameOf(w.name, first, false), who = `${first}${name ? ` ("${name}")` : typeof w.arrow === 'string' ? ` (${w.arrow.trim()})` : ''}`;
+  const name = nameOf(w.name, first, false), who = `${first}${name ? ` ("${name}")` : typeof w.arrow === 'string' ? ` (${shown(w.arrow.trim()).slice(1, -1)})` : ''}`;
   const arrow = readArrow(w.arrow, who, blocks);
   if (own(w, 'head') && w.head !== 'none') throw new Error(`${who}: head is "none" for a plain line that runs its whole length — or leave it out for an arrow's head`);
   const packets = w.packets ?? 0, [least, most] = ISO_LIMITS.seconds;
@@ -180,23 +231,33 @@ function readGrid(g, where) {
   if (g === undefined || g === 'fit') return null;
   const who = `${where}: isometric grid`;
   keysOf(g, GRID_KEYS, who);
-  const tile = g.tile;
-  if (!(Number.isFinite(tile) && tile > 0) && !(nums(tile, [2]) && tile.every((n) => n > 0))) throw new Error(`${who}: tile is a tile's width in px (120), or [width, height] for another angle — not ${shown(tile)}`);
-  if (!nums(g.at, [2])) throw new Error(`${who}: at is where the floor's far corner stands on the frame, [x, y] — not ${shown(g.at)}`);
-  if (own(g, 'rise') && !(Number.isFinite(g.rise) && g.rise > 0)) throw new Error(`${who}: rise is a unit of height in px, above 0 — not ${shown(g.rise)}`);
+  const tile = g.tile, sides = Number.isFinite(tile) ? [tile, tile / 2] : tile;
+  if (!(nums(sides, [2]) && sides[0] >= 8 && sides[0] <= 2000 && sides[1] > 0 && sides[1] <= sides[0])) throw new Error(`${who}: tile is a tile's width in px, 8 to 2000 (120), or [width, height] for another angle, the height above 0 and no more than the width — not ${shown(tile)}`);
+  if (!(nums(g.at, [2]) && g.at.every((n) => Math.abs(n) <= 1e6))) throw new Error(`${who}: at is where the floor's far corner stands on the frame, [x, y], no number further than 1000000 from 0 — not ${shown(g.at)}`);
+  if (own(g, 'rise') && !(Number.isFinite(g.rise) && g.rise > 0 && g.rise <= 5000)) throw new Error(`${who}: rise is a unit of height in px, above 0 and at most 5000 — not ${shown(g.rise)}`);
   return {tile, origin: [...g.at], ...(own(g, 'rise') ? {rise: g.rise} : {})};
 }
 
 /** The world's entry, checked: {blocks, floors, wires, grid, area, strict}. `where` names the recipe entry (`stage map`, `the story`). */
-export function readMap(spec, where) {
-  keysOf(spec, WORLD_KEYS, `${where}: the isometric world`);
-  for (const key of ['blocks', 'floors', 'wires']) if (own(spec, key) && !Array.isArray(spec[key])) throw new Error(`${where}: isometric ${key} is a list — not ${shown(spec[key])}`);
+export function readMap(given, where) {
+  const top = `${where}: the isometric world`;
+  if (!isObject(given)) throw new Error(`${top} is an object of ${WORLD_KEYS.join(', ')} — not ${shown(given)}`);
+  // the lists' lengths first, by their own values: a world of a million wires is refused before one is read
+  const length = (key) => {
+    const v = field(given, key, `${where}: isometric ${key}`);
+    if (v === undefined) return 0;
+    if (!Array.isArray(v)) throw new Error(`${where}: isometric ${key} is a list — not ${shown(v)}`);
+    return Object.getOwnPropertyDescriptor(v, 'length').value;
+  };
+  const counts = {blocks: length('blocks'), floors: length('floors'), wires: length('wires')};
+  if (counts.blocks + counts.floors > ISO_LIMITS.pieces) throw new Error(`${where}: an isometric world holds at most ${ISO_LIMITS.pieces} blocks and floors, and this one has ${counts.blocks + counts.floors} — split it into two worlds`);
+  if (counts.wires > MOST_ROUTES) throw new Error(`${where}: an isometric world lays at most ${MOST_ROUTES} wires, and this one has ${counts.wires} — split it into two worlds`);
+  const spec = plain(given, `${where}: isometric`);
+  keysOf(spec, WORLD_KEYS, top);
   const blocks = (spec.blocks ?? []).map((b, i) => readBlock(b, i, where));
   if (!blocks.length) throw new Error(`${where}: an isometric world draws blocks on a floor — give it blocks: [{"name": "you"}, {"name": "server"}]`);
   const floors = (spec.floors ?? []).map((f, i) => readFloor(f, i, where));
-  if (blocks.length + floors.length > ISO_LIMITS.pieces) throw new Error(`${where}: an isometric world holds at most ${ISO_LIMITS.pieces} blocks and floors, and this one has ${blocks.length + floors.length} — split it into two worlds`);
   const wires = (spec.wires ?? []).map((w, i) => readWire(w, i, where, blocks));
-  if (wires.length > MOST_ROUTES) throw new Error(`${where}: an isometric world lays at most ${MOST_ROUTES} wires, and this one has ${wires.length} — split it into two worlds`);
   // one name, one piece: a camera frames a piece by its name, and a wire's arrow says it
   const named = [...blocks, ...floors, ...wires].filter((p) => p.name);
   for (const [k, p] of named.entries()) {

@@ -4,14 +4,15 @@
  * where it is written straight or has no way. Plain numbers in, plain numbers out.
  *
  * StoryDeck's numbers (deck/cable.js, deck/transforms.js), unchanged: a cable's end stands 6 px off the foot it touches,
- * its corners are rounded 0.4 of a tile, its line stops four fifths of an 18 px arrow's head short of the tip, and its
+ * a straight wire's 6 px off the outline (GAP), two straight wires on one pair at most 80 px apart (LANE), at least 12 px
+ * of wire between two blocks, its corners are rounded 0.4 of a tile, its line stops four fifths of an 18 px arrow's head short of the tip, and its
  * label stands on it on a plate, at the first of 13 places from its middle where no block is over it and no other
  * cable runs through (deck/cable.js · labelPlace, carried here: footprint-story keeps "a label's place on a way" out).
  * WHY those numbers and not our own: the film's cable is the deck's cable.
  */
 import {rounded} from 'footprint-story/isometric';
 
-export const ISO_CABLE = Object.freeze({clear: 6, corner: 0.4, head: 18, sample: 6, walkMost: 512, label: Object.freeze({size: 18, char: 12, pad: 4}), edge: 3, tip: 16, looks: 60_000_000});
+export const ISO_CABLE = Object.freeze({clear: 6, gap: 6, lane: 80, least: 12, corner: 0.4, head: 18, sample: 6, walkMost: 512, label: Object.freeze({size: 18, char: 12, pad: 4}), edge: 3, tip: 16, looks: 60_000_000});
 /** Where a label may stand along its cable: the middle first, then a twentieth further to each side by turns, a fifth to four fifths of the way (deck/cable.js · LABEL_PLACES). */
 export const LABEL_PLACES = Object.freeze(Array.from({length: 13}, (_, k) => +(0.5 + (k % 2 ? -1 : 1) * Math.ceil(k / 2) * 0.05).toFixed(2)));
 
@@ -35,21 +36,6 @@ export function inside(outline, [x, y]) {
   }
   return odd;
 }
-
-/** Where the segment from `a` (inside an outline) towards `b` leaves the outline: the last crossing of its edges, or `a`. */
-function exitPoint(outline, a, b) {
-  let best = 0;
-  for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
-    const p = outline[j], q = outline[i], d = [b[0] - a[0], b[1] - a[1]], e = [q[0] - p[0], q[1] - p[1]], den = d[0] * e[1] - d[1] * e[0];
-    if (Math.abs(den) < 1e-12) continue;
-    const s = ((p[0] - a[0]) * e[1] - (p[1] - a[1]) * e[0]) / den, u = ((p[0] - a[0]) * d[1] - (p[1] - a[1]) * d[0]) / den;
-    if (s >= 0 && s <= 1 && u >= 0 && u <= 1) best = Math.max(best, s);
-  }
-  return [a[0] + (b[0] - a[0]) * best, a[1] + (b[1] - a[1]) * best];
-}
-
-/** A port's place on the frame: its block's corner plus the port's own tiles. */
-const portPoint = (grid, block, name) => { const p = block.ports.find((q) => q.name === name); const at = grid.at(block.at[0] + p.at[0], block.at[1] + p.at[1], block.at[2] + p.at[2]); return [at.x, at.y]; };
 
 /**
  * One laid wire on the frame (a route with points): {points, way, length, tile, ends, leads, unseen} — `points` its way
@@ -75,14 +61,76 @@ function cableOf(w, grid, tile) {
   return {points, way, length: way.length, tile, ends, leads, unseen: route.unseen.map(([lo, hi]) => [start + lo * tile, start + hi * tile])};
 }
 
-/** A wire drawn straight, through the air: from where a line between the two leaves one outline to where it meets the other (a port end: the port). */
-function straightOf(w, grid) {
-  const {from, to} = w.arrow, mid = (b) => b.shape.centre;
-  const a0 = from.port ? portPoint(grid, from.block, from.port) : mid(from.block), b0 = to.port ? portPoint(grid, to.block, to.port) : mid(to.block);
-  const a = from.port ? a0 : exitPoint(from.block.shape.outline, a0, b0), b = to.port ? b0 : exitPoint(to.block.shape.outline, b0, a0);
-  const back = w.head ? ISO_CABLE.head * 0.8 : 0, by = Math.max(0, Math.min(back, dist(a, b) - 1));
-  const way = rounded([a, off(b, a, by)], 0);
-  return {points: [a, b], way, length: way.length, tile: 0, ends: [null, null], leads: [null, null], unseen: []};
+/**
+ * How far a ray from `p` (inside an outline) along the unit vector `u` runs before it leaves the outline, through
+ * whichever side it crosses: Infinity when it crosses none (deck/boxes.js · exitOutline, carried here).
+ */
+export function exitOutline(points, [px, py], [ux, uy]) {
+  let least = Infinity;
+  points.forEach(([ax, ay], i) => {
+    const [bx, by] = points[(i + 1) % points.length], ex = bx - ax, ey = by - ay, cross = ux * ey - uy * ex;
+    if (Math.abs(cross) < 1e-12) return;   // the ray runs along this side: it leaves by another
+    const t = ((ax - px) * ey - (ay - py) * ex) / cross, along = ((ax - px) * uy - (ay - py) * ux) / cross;
+    if (t > 1e-9 && along >= -1e-9 && along <= 1 + 1e-9) least = Math.min(least, t);
+  });
+  return least;
+}
+
+/**
+ * A quadratic curve from `a` to `e` drawn towards `c`, as a way: {start, pieces, length, at(share)} — the shape
+ * `rounded` gives, so a straight wire is drawn and ridden as a cable is (a packet stands at a share of its length).
+ * Walked in 64 straight runs, as StoryDeck measures a curve (deck/rides.js · curveLength).
+ */
+export function curveWay(a, c, e, runs = 64) {
+  const pts = Array.from({length: runs + 1}, (_, k) => { const t = k / runs; return [0, 1].map((i) => (1 - t) * (1 - t) * a[i] + 2 * (1 - t) * t * c[i] + t * t * e[i]); });
+  const along = [0];
+  for (let k = 1; k <= runs; k++) along.push(along[k - 1] + dist(pts[k - 1], pts[k]));
+  const length = along[runs];
+  const at = (share) => {
+    const want = Math.max(0, Math.min(1, share)) * length;
+    let k = 1;
+    while (k < runs && along[k] < want) k++;
+    const span = along[k] - along[k - 1], u = span > 0 ? (want - along[k - 1]) / span : 0;
+    return [pts[k - 1][0] + (pts[k][0] - pts[k - 1][0]) * u, pts[k - 1][1] + (pts[k][1] - pts[k - 1][1]) * u];
+  };
+  return {start: [...a], pieces: [{corner: [...c], to: [...e]}], length, at};
+}
+
+/**
+ * The wires drawn straight, through the air — written with a bend ("a to b 0", "a to b 40"), or with no way along the
+ * floor — by StoryDeck's rule (deck/transforms.js · wiresBetween, carried here): the wires joining one pair are spread
+ * across the line between the two blocks' middles, LANE apart at most and inside both, those running one way first
+ * (each keeps to its left); each runs from GAP px off one block's outline to GAP px off the other's, and fewer than 12
+ * px between is refused (the blocks touch or overlap). A bend curves it that many px off its straight line.
+ */
+function layStraight(map, wires) {
+  const {gap, lane: LANE, least} = ISO_CABLE, middle = (b) => [b.shape.box.x + b.shape.box.w / 2, b.shape.box.y + b.shape.box.h / 2];
+  const pairOf = (w) => [w.arrow.from.block.name, w.arrow.to.block.name].sort().join('\u{0}'), lanes = new Map();
+  for (const w of wires) lanes.set(pairOf(w), [...(lanes.get(pairOf(w)) ?? []), w]);
+  for (const [key, list] of lanes) { const along = (w) => w.arrow.from.block.name === key.split('\u{0}')[0]; lanes.set(key, [...list.filter(along), ...list.filter((w) => !along(w))]); }
+  for (const w of wires) {
+    const [A, B] = [w.arrow.from.block, w.arrow.to.block].sort((p, q) => (p.name < q.name ? -1 : 1)), ca = middle(A), cb = middle(B), len = dist(ca, cb);
+    if (len === 0) throw new Error(`${w.who}: ${A.name} and ${B.name} share a middle on the frame — move one of them (give it another at)`);
+    const u = [(cb[0] - ca[0]) / len, (cb[1] - ca[1]) / len], n = [-u[1], u[0]], neg = (v) => [-v[0], -v[1]];
+    const across = (b) => Math.min(exitOutline(b.shape.outline, middle(b), n), exitOutline(b.shape.outline, middle(b), neg(n)));
+    const lane = lanes.get(pairOf(w)), k = lane.indexOf(w), most = Math.max(0, Math.min(across(A), across(B)) - 8);
+    const step = lane.length > 1 ? Math.min(LANE, (2 * most) / (lane.length - 1)) : 0, off = (k - (lane.length - 1) / 2) * step;
+    const pa = [ca[0] + n[0] * off, ca[1] + n[1] * off], pb = [cb[0] + n[0] * off, cb[1] + n[1] * off];
+    const ta = exitOutline(A.shape.outline, pa, u) + gap, tb = exitOutline(B.shape.outline, pb, neg(u)) + gap;
+    if (!(len - ta - tb >= least)) {
+      const why = w.route?.why;
+      throw new Error(why ? `${w.who}: no way along the floor was laid for it (${why}), and ${A.name} and ${B.name} are too close for a straight wire between them — move them apart (at)`
+        : `${w.who}: ${A.name} and ${B.name} are too close for a wire between them (they touch or overlap) — move them apart (at)`);
+    }
+    const start = [pa[0] + u[0] * ta, pa[1] + u[1] * ta], end = [pb[0] - u[0] * tb, pb[1] - u[1] * tb];
+    const [a, e] = w.arrow.from.block === A ? [start, end] : [end, start];
+    // one curve with one control point beside the middle of the run, `bend` px off it (deck/transforms.js · wireSvg)
+    const dx = e[0] - a[0], dy = e[1] - a[1], l = Math.hypot(dx, dy) || 1, bend = w.arrow.bend;
+    const c = [(a[0] + e[0]) / 2 - (dy / l) * bend, (a[1] + e[1]) / 2 + (dx / l) * bend];
+    const tl = dist(c, e) || 1, back = w.head ? ISO_CABLE.head * 0.8 : 0, tip = [e[0] - ((e[0] - c[0]) / tl) * back, e[1] - ((e[1] - c[1]) / tl) * back];
+    const way = curveWay(a, c, tip);
+    w.cable = {points: [a, c, e], way, length: way.length, tile: 0, ends: [null, null], leads: [null, null], unseen: []};
+  }
 }
 
 /** The half-size of a label's plate: a generous width a letter, the line's height, a little air (deck/transforms.js · labelBox). */
@@ -117,12 +165,13 @@ function labelAt(cable, half, hides, runs, looks) {
 }
 
 /**
- * Every wire on the frame: w.cable (cableOf or straightOf), and w.labelAt / w.labelHalf for one with a label. A wire is
+ * Every wire on the frame: w.cable (cableOf, or layStraight's curve), and w.labelAt / w.labelHalf for one with a label. A wire is
  * straight when it is written so, or when the map found it no way (its route's `why`).
  */
 export function layCables(map) {
   const {grid} = map, o = grid.at(0, 0), x = grid.at(1, 0), tile = Math.hypot(x.x - o.x, x.y - o.y);
-  for (const w of map.wires) w.cable = w.route?.points ? cableOf(w, grid, tile) : straightOf(w, grid);
+  for (const w of map.wires) if (w.route?.points) w.cable = cableOf(w, grid, tile);
+  layStraight(map, map.wires.filter((w) => !w.route?.points));
   const walks = map.wires.map((w) => walk(w.cable.way)), hides = map.blocks.map((b) => b.shape.outline), looks = {left: ISO_CABLE.looks};
   map.wires.forEach((w, i) => {
     if (!w.label) return;

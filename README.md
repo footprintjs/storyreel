@@ -3499,6 +3499,8 @@ const myKit = {name: 'cartoon', story: {
       texts() { return []; },                 // optional, for the reading check: [{text, from, to, gone?, path}] (gone: its last ink, an eraser's end)
       parts(t) { return {segments: {}}; },    // optional, for the geometry audit: {segments, regions, apart} (see Three verdicts)
       sounds: [{time: clock.at(['story', 'But wait']), type: 'chime'}],
+      notes: [],                              // optional: what it found and the fix, [{level: 'warn' | 'info', path, message}] → film.kitNotes and the record
+      summary: {},                            // optional: a few plain counts the film's record keeps beside the world's entry
     };
   }}};
 

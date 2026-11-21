@@ -15,9 +15,10 @@
  *
  * What a film reads of it: `regionsAt(t)` (every block, floor and wire by its name, so a push or a camera move frames
  * "server"; each label by its own path), `texts()` (every label, for the reading check), `parts(t)` (each packet
- * mounted on the stretch of its cable it rides, for the geometry audit: a packet off its cable fails it), and `notes`
- * (what the kit says of the map, worded with the fix) and `map` (the record: placed by whom, the tile, every block's
- * place, every cable's corners, length and hidden stretches). With `strict: true` a warning refuses the film.
+ * mounted on the stretch of its cable it rides, for the geometry audit: a packet off its cable fails it), `notes`
+ * (what the kit says of the map, worded with the fix: the film carries them as `film.kitNotes`, and its record beside
+ * the world's entry), `summary` (the counts the record keeps) and `map` (the whole record: placed by whom, the tile,
+ * every block's place, every cable's corners, length and hidden stretches). With `strict: true` a warning refuses.
  */
 import {readMap} from './read.mjs';
 import {buildMap} from './build.mjs';
@@ -59,10 +60,14 @@ export function compileIsometric(spec, context) {
   map.grid0 = map.grid;
   buildMap(map, where);
   layCables(map);
-  const at = (anchor) => (anchor === null ? null : clock.at(anchor));
-  for (const p of [...map.blocks, ...map.floors, ...map.wires]) p.appearAt = at(p.appear);
+  // each anchor resolved in the name of the piece that wrote it: a phrase the voice never says names blocks[2].appear
+  const at = (p, key) => {
+    if (p[key] === null) return null;
+    try { return clock.at(p[key]); } catch (e) { throw new Error(`${p.who}: ${key}: ${e.message}`, {cause: e}); }
+  };
+  for (const p of [...map.blocks, ...map.floors, ...map.wires]) p.appearAt = at(p, 'appear');
   for (const w of map.wires) {
-    const start = at(w.start) ?? w.appearAt ?? 0;
+    const start = at(w, 'start') ?? w.appearAt ?? 0;
     w.riding = rideOf(w, w.cable.length, start);
   }
   const notes = Object.freeze(notesOf(map).map((n) => Object.freeze(n)));
@@ -75,6 +80,9 @@ export function compileIsometric(spec, context) {
     sounds: [],
     notes,
     map: Object.freeze(recordOf(map)),
+    // what the film's record keeps of this world (film/summaries.mjs · buildSummary): a few counts, never the map itself
+    summary: Object.freeze({placed: map.placed, tile: map.grid.tile[0], blocks: map.blocks.length, floors: map.floors.length, wires: map.wires.length,
+      along: map.wires.filter((w) => w.route?.points).length, packets: map.wires.reduce((n, w) => n + w.packets, 0)}),
     draw: (c, t) => drawMap(c, map, t, look),
     // every piece by its name, once it has come in: a push or a camera move frames "server"; a label by its own path
     regionsAt: (t) => [

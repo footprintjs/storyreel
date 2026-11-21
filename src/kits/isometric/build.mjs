@@ -38,11 +38,12 @@ function placeBlocks(map, where) {
  * kit's. A wire written straight (a trailing bend) is not laid. Gives each wire {route} — the kit's answer (its `why`
  * when it has no way) — or {route: null} for a straight one.
  */
-function layWires(map) {
+function layWires(map, where) {
   const things = map.blocks.map((b, i) => ({name: String(i), at: b.at, size: b.size, round: b.kind === 'cylinder', ...(b.ports.length ? {ports: b.ports.map(({name, at, face}) => ({name, at, face}))} : {})}));
   const idOf = (b) => String(map.blocks.indexOf(b)), end = ({block, port}) => (port ? {thing: idOf(block), port} : idOf(block));
   const asked = map.wires.filter((w) => !w.arrow.straight);
-  const found = asked.length ? routes(things, asked.map((w) => [end(w.arrow.from), end(w.arrow.to)])) : [];
+  let found = [];
+  try { found = asked.length ? routes(things, asked.map((w) => [end(w.arrow.from), end(w.arrow.to)])) : []; } catch (e) { throw new Error(`${where}: the isometric wires cannot be laid: ${e.message.replace(/^isometric: /, '')} — check each wire's arrow and the blocks' ports`, {cause: e}); }
   const nameOf = (id) => map.blocks[Number(id)].name;
   for (const w of map.wires) {
     const k = asked.indexOf(w), r = k < 0 ? null : found[k];
@@ -68,15 +69,19 @@ function fitFloors(map, reach) {
 
 /**
  * The grid: written in numbers, or fitted so the blocks — and the floor their wires reach, and every floor that names a
- * group or has a label (a film shows its whole frame: a label run off it is a label nobody reads) — fill the area.
+ * group or has a label — fill the area. WHY a labelled floor is held too (StoryDeck holds only a group's floor, and lets
+ * any other run past the slide, where a click's camera can frame it): a film shows its whole frame, and a floor's name
+ * run off it is a name nobody reads.
  */
-function gridOf(map) {
-  if (map.grid) return isometric(map.grid);
+function gridOf(map, where) {
+  // the grid's own refusal, in the entry's name: isometric() and gridFor() say what is wrong with a number, never where
+  const named = (what, make) => { try { return make(); } catch (e) { throw new Error(`${where}: isometric ${what}: ${e.message.replace(/^isometric: /, '')}`, {cause: e}); } };
+  if (map.grid) return named('grid', () => isometric(map.grid));
   const [x0, y0, x1, y1] = map.area, inset = Math.min(ISO_FIT.inset, (x1 - x0) / 4, (y1 - y0) / 4);
   const held = map.floors.filter((f) => f.group !== null || f.label).flatMap(({at: [c, r], size: [w, d]}) => [[c, r, 0], [c + w, r, 0], [c, r + d, 0], [c + w, r + d, 0]]);
   const grouped = map.blocks.some((b) => b.group !== null);
-  return gridFor(map.blocks.map((b) => ({at: b.at, size: b.size})), [x0 + inset, y0 + inset, x1 - inset, y1 - inset],
-    {most: ISO_FIT.most, least: grouped ? ISO_FIT.grouped : ISO_FIT.least, also: [...reachOf(map), ...held]});
+  return named('picture (fitted into the area)', () => gridFor(map.blocks.map((b) => ({at: b.at, size: b.size})), [x0 + inset, y0 + inset, x1 - inset, y1 - inset],
+    {most: ISO_FIT.most, least: grouped ? ISO_FIT.grouped : ISO_FIT.least, also: [...reachOf(map), ...held]}));
 }
 
 /** A round thing's outline as points round it: the upper half of its top, then the lower half of its foot (StoryDeck's roundOutline). */
@@ -110,9 +115,10 @@ function shapeBlocks(map, grid) {
 /** Each floor's tile lines and outline on the frame, and where its label lies, clear of what is drawn over it (`covers`). */
 function shapeFloors(map, grid, covers) {
   for (const f of map.floors) {
-    const g = grid.floor({cols: f.size[0], rows: f.size[1], at: f.at});
+    let g;
+    try { g = grid.floor({cols: f.size[0], rows: f.size[1], at: f.at}); } catch (e) { throw new Error(`${f.who}: ${e.message.replace(/^isometric: /, '')}`, {cause: e}); }
     f.shape = {outline: g.outline.map(({x, y}) => [x, y]), lines: g.lines, box: g.box};
-    f.place = f.label ? floorLabelPlace({at: f.at, size: f.size}, grid, f.label, covers) : null;
+    try { f.place = f.label ? floorLabelPlace({at: f.at, size: f.size}, grid, f.label, covers) : null; } catch (e) { throw new Error(`${f.who}: its label: ${e.message.replace(/^isometric: /, '')}`, {cause: e}); }
   }
 }
 
@@ -122,9 +128,9 @@ function shapeFloors(map, grid, covers) {
  */
 export function buildMap(map, where) {
   placeBlocks(map, where);
-  layWires(map);
+  layWires(map, where);
   fitFloors(map, reachOf(map));
-  const grid = gridOf(map);
+  const grid = gridOf(map, where);
   shapeBlocks(map, grid);
   const order = grid.backToFront(map.blocks, (b) => ({at: b.at, size: b.size}));
   Object.assign(map, {grid, order});

@@ -10,6 +10,8 @@ import {arrange, arrangeByGroup, routes, wordsToFit, isometric} from 'footprint-
 import {rideProfile} from 'footprint-story/motion';
 import {compileFilm, evenTimings, frameHashes, loadTheme} from '../src/index.mjs';
 import {geometryOf} from '../src/geometry.mjs';
+import {reviewPart} from '../src/review.mjs';
+import {rideOf} from '../src/kits/isometric/ride.mjs';
 import {isometricKit, compileIsometric, ISO_FIT, onStops} from '../src/kits/isometric/index.mjs';
 import {compileExample} from './golden.mjs';
 
@@ -110,4 +112,64 @@ test('the kit is passed in kits and named by a world', async () => {
   const one = await compileFilm({storyboard: sb, timings: evenTimings(sb), recipe: {story: {kit: 'isometric', blocks: [{name: 'a', label: 'A'}, {name: 'b', label: 'B'}], wires: [{arrow: 'a to b', packets: 1}]}}, kits: [isometricKit]});
   assert.ok(one.regionsAt(0.5).some((r) => r.name === 'b' && r.path === 'story.blocks[1]'));
   await assert.rejects(compileFilm({storyboard: sb, timings: evenTimings(sb), recipe: {story: {kit: 'isometric', blocks: [{name: 'a', at: [0, 0]}, {name: 'b'}]}}, kits: [isometricKit]}), /the story: isometric "b" has no at/);
+});
+
+test('notes reach the film and its record: film.kitNotes with recipe paths, and the world\'s summary and notes beside its entry', async () => {
+  const sb = {scenes: [{id: 'one', narration: 'A map with a wire behind a tall block.'}]};
+  const story = {kit: 'isometric', blocks: [{name: 'app', at: [0, 0]}, {name: 'logs', at: [3, 3], size: [2, 2, 3]}, {name: 'db', at: [5, 6]}], wires: [{arrow: 'app to db'}]};
+  const one = await compileFilm({storyboard: sb, timings: evenTimings(sb), recipe: {story}, kits: [isometricKit], record: true});
+  assert.ok(one.kitNotes.length && one.kitNotes.every((n) => n.kit === 'isometric' && n.path.startsWith('story.')), 'each note names its recipe entry from the top');
+  assert.ok(one.kitNotes.some((n) => n.level === 'warn' && n.path === 'story.wires[0]'));
+  const said = one.record.snapshot.sharedState['world.story'];
+  assert.deepEqual(said.summary, {placed: 'hand', tile: said.summary.tile, blocks: 3, floors: 0, wires: 1, along: 1, packets: 0});
+  assert.ok(said.notes.some((line) => line.startsWith('warn: the story: isometric wires[0]')));
+  assert.equal(film.kitNotes.length, 0, 'the example says nothing: the list is there, and empty');
+  const plain = await compileFilm({storyboard: sb, timings: evenTimings(sb), recipe: {story: {kit: 'whiteboard', items: []}}});
+  assert.ok(!('kitNotes' in plain), 'a film whose kits keep no notes is as it was');
+});
+
+test('straight wires, StoryDeck\'s rule: 6 px off each outline, a bend curves, two on one pair take lanes, too close is refused', () => {
+  const pair = (wires, at = [6, 0]) => worldOf({blocks: [{name: 'a', at: [0, 0]}, {name: 'b', at}], wires});
+  const [one] = pair([{arrow: 'a to b 0', head: 'none'}]).map.cables, [bent] = pair([{arrow: 'a to b 40', head: 'none'}]).map.cables;
+  assert.equal(one.along, false);
+  const mid = [(bent.points[0][0] + bent.points[2][0]) / 2, (bent.points[0][1] + bent.points[2][1]) / 2];
+  assert.ok(Math.abs(Math.hypot(bent.points[1][0] - mid[0], bent.points[1][1] - mid[1]) - 40) < 0.2 && bent.length > one.length, 'a bend of 40: the curve\'s control point stands 40 px off the middle of its run');
+  const [there, back] = pair([{arrow: 'a to b 0'}, {arrow: 'b to a 0'}]).map.cables;
+  // measured across the line between the two blocks (the lanes' offset), not along it
+  const [s0, s1] = [there.points[0], there.points[2]], run = Math.hypot(s1[0] - s0[0], s1[1] - s0[1]), n = [-(s1[1] - s0[1]) / run, (s1[0] - s0[0]) / run];
+  const apart = Math.abs((back.points[2][0] - s0[0]) * n[0] + (back.points[2][1] - s0[1]) * n[1]);
+  assert.ok(apart > 20 && apart <= 80 + 1e-6, `a request and its answer lie in two lanes, at most 80 px apart (${apart.toFixed(1)})`);
+  assert.throws(() => pair([{arrow: 'a to b 0'}], [0.5, 0]), /isometric wires\[0\] \(a to b 0\): a and b (are too close for a wire between them|share a middle)/);
+  assert.throws(() => worldOf({blocks: [{name: 'a', at: [0, 0], ports: [{name: 'p', at: [2, 1, 0.5]}]}, {name: 'b', at: [6, 0]}], wires: [{arrow: 'a.p to b 0'}]}), /a wire to a port runs along the floor, and a bend draws it straight — take the bend out/);
+  const lifted = worldOf({blocks: [{name: 'a', at: [0, 0]}, {name: 'b', at: [6, 0, 2]}], wires: [{arrow: 'a to b'}]});
+  assert.equal(lifted.map.cables[0].along, false, 'two heights: drawn straight, outline to outline');
+  assert.match(lifted.notes[0].message, /drawn straight, through the air, not along the floor: the two stand at different heights/);
+});
+
+test('refusals stay short and name the entry: long values quoted to 60 characters, numbers bounded, getters never run', () => {
+  const long = 'x'.repeat(5000);
+  for (const spec of [{blocks: [{name: 'a'}, {name: 'b'}], wires: [{arrow: `a to ${long}`}]}, {blocks: [{name: 'a', group: long}]}, {blocks: [{name: 'a', label: `one${String.fromCodePoint(0x2028)}two`}], grid: {tile: 1e200, at: [0, 0]}}]) {
+    let message = '';
+    try { worldOf(spec, 'stage map'); } catch (e) { message = e.message; }
+    assert.ok(message.startsWith('stage map: isometric') && message.length < 400, `short and named: ${message.slice(0, 120)}`);
+  }
+  assert.equal(worldOf({blocks: [{name: 'a', label: `one${String.fromCodePoint(0x2028)}two`}]}).map.blocks[0].lines.join(' '), 'one two', 'a line separator folds to a space');
+  assert.throws(() => worldOf({blocks: [{name: 'a'}], grid: {tile: 1e-300, at: [0, 0]}}), /isometric grid: tile is a tile's width in px, 8 to 2000/);
+  assert.throws(() => worldOf({blocks: [{name: 'a'}], grid: {tile: 120, at: [1e308, 0]}}), /isometric grid: at is where the floor's far corner stands/);
+  assert.throws(() => worldOf({blocks: [{name: 'a'}], grid: {tile: 120, at: [0, 0], rise: 1e300}}), /isometric grid: rise is a unit of height in px, above 0 and at most 5000/);
+  assert.throws(() => worldOf({blocks: [{name: 'a'}], floors: [{at: [1e300, 0], size: [2, 2]}]}), /isometric floors\[0\]: at is its far corner, \[col, row\], no number further than 1000000/);
+  assert.throws(() => worldOf({blocks: [{name: 'a', appear: ['map', 'nobody says this']}]}), /isometric blocks\[0\] \("a"\): appear: /);
+  assert.throws(() => worldOf({blocks: Array.from({length: 300}, (_, i) => ({name: `b${i}`}))}), /holds at most 256 blocks and floors, and this one has 300/);
+  assert.throws(() => worldOf({blocks: [{name: 'a'}], wires: Array.from({length: 2000}, () => 'not even read')}), /lays at most 1024 wires, and this one has 2000/);
+  let ran = 0;
+  const sneaky = {name: 'a', get label() { ran += 1; return 'A'; }};
+  assert.throws(() => worldOf({blocks: [sneaky]}), /blocks\[0\]\.label is a getter — write it as a plain value/);
+  assert.equal(ran, 0, 'the getter never ran');
+  assert.throws(() => rideOf({packets: 1, perSecond: 200, seconds: null, ride: [0, 0], rest: null, behind: false, who: 'stage map: isometric wires[0]'}, 0.02, 0), /stage map: isometric wires\[0\]: speed "200px": its line is 0 px long, too short for a speed in px a second — give it its seconds/);
+});
+
+test('words stand out: the example passes the film\'s contrast check, and every verdict of its first scene', async () => {
+  const r = await reviewPart(film, {from: 0, to: 12});
+  for (const v of r.verdicts) assert.equal(v.verdict, 'passed', `${v.check}: ${v.verdict} — ${JSON.stringify(r.findings.filter((f) => f.kind === v.check).slice(0, 2))}`);
+  assert.ok(r.verdicts.some((v) => v.check === 'contrast'));
 });

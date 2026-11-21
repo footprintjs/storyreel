@@ -14,7 +14,7 @@ export function filmOf(state) {
   const {guesses, stepsTrack, teaser, storyPathName, storySpec, stages, stageKitNames, clock, timings, sounds, foundUsed, listening, frame, beats, noted,
     used, notesApplied, attention, camerawork, reading, reads, posterAt, moments, regionsAt, pointAt, paper, shotsPlanned, watching, asked, progression,
     rubricRule, pace, rows, inputs, stringHashes, mouthsAt, partsAt, pictureClock, differsUp, labelsAt, lines, pictureChanges, claims, filmLang, directed,
-    allKits, direction} = state;
+    allKits, direction, storyWorld} = state;
   // What is drawn over every shot for a while: the guess cards, from their question to the card gone.
   const overlays = Object.freeze([...guesses.map((g, n) => Object.freeze({path: `guesses[${n}]`, from: g.start, to: g.until + .5})),
     ...(stepsTrack ? [Object.freeze({path: 'stepsTrack', from: stepsTrack.from, to: stepsTrack.until + .5})] : [])]);
@@ -41,5 +41,20 @@ export function filmOf(state) {
     // the director's keys where they landed, frozen.
     recipe: deepFreeze(structuredClone(directed)), kits: Object.freeze(Object.fromEntries(allKits.map(k => [k.name, k]))), drawnBy,
     // What the director proposed, where each key landed, and why (director.mjs): only when the recipe asks for it.
-    ...(direction ? {director: directorRecord(direction)} : {})};
+    ...(direction ? {director: directorRecord(direction)} : {}),
+    // What the kits say of the worlds they built (a world's `notes`: [{level, path, message}], each naming its recipe
+    // entry and the fix): only when a world says anything at all, so a film whose kits keep no notes is as it was.
+    ...kitNotesOf(storyPathName, storyWorld, stages)};
+}
+
+/**
+ * Every world's `notes` (an optional kit field: what it found and how to fix it, worded), with each note's path
+ * made the recipe's (`story.wires[2]`, `stages[1].world.blocks[0]`): {kitNotes} when any world has a notes list, else {}.
+ * WHY on the film: a warning that lives only on the world is a warning nobody reads; a kit that refuses would lose a
+ * film over something a person may choose to keep.
+ */
+function kitNotesOf(storyPath, storyWorld, stages) {
+  const worlds = [[storyPath, storyWorld], ...stages.map((st, i) => [`stages[${i}].world`, st.world])].filter(([, w]) => Array.isArray(w?.instance?.notes));
+  if (!worlds.length) return {};
+  return {kitNotes: Object.freeze(worlds.flatMap(([at, w]) => w.instance.notes.map((n) => Object.freeze({level: n.level, path: `${at}.${n.path}`, message: n.message, kit: w.kit}))))};
 }

@@ -505,6 +505,8 @@ export interface Film {
   kits: Readonly<Record<string, Kit | ContextKit>>;
   /** Which kit draws each recipe entry, by path ('story', 'stages[2]'); a built-in stage, drawn by the engine itself, is absent. */
   drawnBy: Readonly<Record<string, string>>;
+  /** What the kits say of the worlds they built (each world's `notes`), each path the recipe's ('story.wires[2]'): present only when a world keeps notes. */
+  kitNotes?: readonly {readonly level: 'warn' | 'info'; readonly path: string; readonly message: string; readonly kit: string}[];
   /** The focus keys and emphasis words as they frame and show the picture (a cached piece's key holds the ones that reach it), or null. */
   attentionFrames: {focus: {strategy: string; feel: unknown; safe: number[]; keys: {t: number; on: string; size: string | null; cx: number; cy: number; z: number; sx: number; sy: number; box: number[]; w: number}[]} | null;
     emphasis: {strategy: string; feel: unknown; words: {t: number; text: string; next: number}[]} | null} | null;
@@ -582,6 +584,10 @@ export interface StoryWorld {
   drawLayer?(ctx: any, t: number, name: string, spot: unknown): void;
   /** When the kit's own camera moves (seconds on the film's clock): a push note and a camera move take turns with it (the cartoon kit's camera keys). */
   cameraMoves?: readonly {from: number; to: number}[];
+  /** What the kit found in the world it built, each naming its entry (relative to the world) and the fix: the film carries them as film.kitNotes, and its record beside the world. */
+  notes?: readonly {level: 'warn' | 'info'; path: string; message: string}[];
+  /** A few plain counts the film's record keeps beside the world's entry (film/summaries.mjs · buildSummary). */
+  summary?: Readonly<Record<string, string | number | boolean | null>>;
 }
 
 /**

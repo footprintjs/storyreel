@@ -13,8 +13,14 @@
   focus or a camera move frames it by name; its labels reach the reading check; each packet is mounted on its cable
   for the geometry audit. A map that cannot be drawn as written is refused, naming the entry and the fix; what does
   not lie well (a wire behind a block, a hairpin at a port, a name too long for its top, a floor's name covered) is
-  said in the world's `notes`, and `strict: true` refuses it. A worked example, `examples/iso-world`, is pinned in
-  `test/golden.json` and `test/behaviour.json` (the other films' pins are unchanged).
+  said in the world's `notes`, and `strict: true` refuses it. Straight wires follow StoryDeck's rule (6 px off each
+  outline, lanes for two on one pair, a bend that curves, too close refused). A worked example, `examples/iso-world`, is
+  pinned in `test/golden.json`, `test/behaviour.json` and `test/fixtures/unmarked.json` (the other films' pins are
+  unchanged), and passes the film's verdicts, contrast among them.
+- **A world may say what it found: `notes` and `summary`** (optional kit fields). The film carries every world's notes
+  as `film.kitNotes` (`{level, path, message, kit}`, each path from the recipe's top), present only when some world
+  keeps a notes list; the compile's record keeps a world's `summary` counts and its notes beside its entry
+  (`world.story`, `stage.stages[i]`). A film whose kits offer neither is as it was.
 - **StoryReel now needs footprint-story `^0.17.1`** (it was `^0.14.2`): the version with the ride numbers, hairpins,
   floor labels and groups the kit uses.
 

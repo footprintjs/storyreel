@@ -37,7 +37,17 @@ await compileFilm({storyboard, timings, recipe, kits: [isometricKit]});
 | `data-head="none"` · `data-packets` · `data-speed="260px"` | `head` · `packets` · `speed` | speed: seconds a run (3) or `"260px"` a second |
 | `data-ride="ease-ends 0.15 0.2"` · `data-rest="end 1s"` | `ride: [0.15, 0.2]` · `rest: 1` | |
 | `data-trail="3px …"` · `data-behind="fade"` | `trail: {width, color}` · `behind: "fade"` | |
-| `data-iso-grid="120 at 960 240"` / `"fit"` | `grid: {tile, at, rise?}` / `"fit"` | fitted by default (into `area`, the whole frame unless given) |
+| `data-iso-grid="120 at 960 240"` / `"fit"` | `grid: {tile, at, rise?}` / `"fit"` | fitted by default (into `area`, the whole frame unless given); a tile 8 to 2000 px |
+
+**A labelled floor is held in the fitted picture.** StoryDeck fits its picture to the blocks, their cables and a group's
+floor, and lets any other floor run past the slide (a click's camera frames what it shows). A film shows its whole frame
+and has no click, so here every floor with a `label` is held too: a floor's name run off the frame is a name nobody reads.
+
+**Straight wires** (written with a bend, or with no way along the floor, such as two blocks at different heights) follow
+StoryDeck's rule: each runs from 6 px off one block's outline to 6 px off the other's, two on one pair spread into lanes
+at most 80 px apart (a request and its answer, each keeping to its left), a bend of 40 curves it 40 px off its straight
+line, fewer than 12 px of wire between the blocks is refused (they touch or overlap: move them apart), and a port with a
+bend is refused (a wire to a port runs along the floor).
 
 What a film adds, where a deck has clicks: `appear` (an anchor: the piece comes in over 0.35 s, and is named from then),
 a wire's `start` (when its packets begin; else when it appears, else the film's start) and `strict` (a warning refuses).
@@ -50,8 +60,17 @@ a wire's `start` (when its packets begin; else when it appears, else the film's 
 - `parts(t)`: each packet's centre mounted on the stretch of its cable it rides, for the geometry audit.
 - `notes`: what the kit says of the map, each `{level, path, message}` with the fix — a wire that passes behind a block,
   shares a lane, crosses three or more, turns four or more times, doubles back at a port, or is drawn straight and why; a
-  name that does not fit its top; a floor's name that does not fit or finds its edge covered. `map`: the record (who
-  placed the blocks, the tile, every block's place and fitted name, every cable's corners, length and hidden stretches).
+  name that does not fit its top; a floor's name that does not fit or finds its edge covered. The film carries every
+  world's notes as `film.kitNotes` (each path from the recipe's top: `story.wires[2]`), and the compile's record keeps
+  them, with the world's `summary` (placed by whom, the tile, how many blocks, floors, wires, cables along the floor,
+  packets), beside the world's entry (`world.story`, `stage.stages[1]`). `strict: true` refuses the film on a warning.
+- `map`: the whole record on the world (every block's place and fitted name, every cable's corners, length and hidden
+  stretches), for a test or a tool that reads the world itself.
+
+Every refusal names the entry (`stage map: isometric wires[2] ("w3")`) and the fix; a value it quotes is cut to 60
+characters; a field is read once, by its own value (a getter is refused, never run); the lists' lengths (256 blocks and
+floors, 1024 wires) are checked before an entry is read; the grid's and the router's own refusals come back in the
+entry's name.
 
 ## Files
 
@@ -65,9 +84,25 @@ a wire's `start` (when its packets begin; else when it appears, else the film's 
 | `notes.mjs` | what the kit says, in words |
 | `draw.mjs` | the canvas painting, StoryDeck's look in the film's theme |
 
-Carried from StoryDeck rather than shared (footprint-story leaves them out): a cable label's place on its cable
-(`deck/cable.js · labelPlace`, 13 places from the middle), a round thing's outline, and the cable-on-the-frame numbers
-(6 px off a foot, corners 0.4 of a tile, an 18 px head).
+**Carried from StoryDeck** rather than shared — footprint-story leaves them out today, and they are to move there in a
+later step, so a deck and a film keep one copy:
+
+| here | from StoryDeck |
+|---|---|
+| `cables.mjs · LABEL_PLACES`, `labelAt` | `deck/cable.js · LABEL_PLACES`, `labelPlace` (a cable label's place on its cable) |
+| `cables.mjs · labelHalf` | `deck/transforms.js · labelBox` |
+| `cables.mjs · ISO_CABLE` | `deck/cable.js` and `deck/transforms.js` numbers: CLEAR, GAP, LANE, the 12 px least, CORNER, HEAD, SAMPLE, WALK_MOST, LABEL, EDGE, TIP, LABEL_LOOKS |
+| `cables.mjs · exitOutline` | `deck/boxes.js · exitOutline` |
+| `cables.mjs · layStraight` | `deck/transforms.js · wiresBetween` (straight wires: GAP, lanes, the too-close refusal) and `wireSvg` (the bend's curve) |
+| `cables.mjs · curveWay` | `deck/rides.js · curveLength` (a curve walked in 64 runs) |
+| `build.mjs · roundOutline` | `deck/iso.js · roundOutline` |
+| `ride.mjs · seenAt` | `deck/rides.js · seenOf` (CSS there, a number at t here) |
+| `ride.mjs · onStops` | CSS `linear()`, which StoryDeck's stops are written as (`deck/rides.js · easing`) |
+| `draw.mjs · drawHead` | `deck/transforms.js · headAt` |
+
+What the film does otherwise, each said where it is done: a tone is a pale tint of the theme's colour; a floor's name
+is whole ink on a halo of the ground, a little heavier (the film's contrast check reads slanted words); the small line
+is fitted; the grid is fitted when blocks are placed by hand too.
 
 **Not here:** icons beside a floor's name (`data-icon`), footprints and pictures standing on the floor
 (`data-footprint`), floor kept clear under words (`data-keep-clear`), packets that keep their size through a camera

@@ -14,10 +14,11 @@
  * its block for the same reason); a block in front still covers it.
  */
 import {packetsAt, PACKET_RADIUS} from './ride.mjs';
-import {walk} from './cables.mjs';
+import {walk, ISO_CABLE} from './cables.mjs';
+import {HEX} from './read.mjs';
 
 /** StoryDeck's colours where the theme has none: a block's tone, the glow of a packet. And how long a piece takes to come in. */
-export const ISO_LOOK = Object.freeze({tone: '#d9e4f3', glow: '#e8a33d', line: 2.5, grid: 0.16, cable: 4, label: 0.72, smallInk: 0.68, appear: 0.35});
+export const ISO_LOOK = Object.freeze({tone: '#d9e4f3', glow: '#e8a33d', line: 2.5, grid: 0.16, cable: 4, label: 1, smallInk: 0.68, appear: 0.35});
 
 const channels = (hex) => { const h = hex.length === 4 ? `#${[...hex.slice(1)].map((c) => c + c).join('')}` : hex; return [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); };
 /** `hex` mixed with `other` by `share` of the other (CSS color-mix in srgb). */
@@ -26,7 +27,7 @@ const withAlpha = (hex, alpha) => `rgba(${channels(hex).join(',')},${alpha})`;
 
 /** The colours a world draws with, from the film's theme (its palette), StoryDeck's tokens where the theme has none. */
 export function lookOf(theme) {
-  const p = theme?.palette ?? {}, type = theme?.type ?? {}, hex = (v, or) => (/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(v ?? '') ? v : or);
+  const p = theme?.palette ?? {}, type = theme?.type ?? {}, hex = (v, or) => (HEX.test(v ?? '') ? v : or);
   return {bg: hex(p.bg, '#f5f7fa'), ink: hex(p.ink, '#14181f'), muted: hex(p.dim, '#5d6673'), glow: ISO_LOOK.glow, tones: {ok: hex(p.available, '#1a7a3e'), warn: hex(p.unknown, '#8f5c00'), bad: hex(p.reject, '#c0322b')},
     sans: type.sans ?? '"Avenir Next",Arial,sans-serif', mono: type.mono ?? 'Menlo,monospace'};
 }
@@ -45,8 +46,19 @@ function drawFloor(c, f, look) {
   // flat on the floor along its front edge: the label's lines, their block's foot on the edge (CSS: matrix, then translateY(-100%))
   const {x, y, matrix: [a, b, cc, d], size, lines: words} = f.place, lh = size * 1.15;
   c.save(); c.translate(x, y); c.transform(a, b, cc, d, 0, 0);
-  c.fillStyle = withAlpha(look.ink, ISO_LOOK.label); c.font = `700 ${size}px ${look.sans}`; c.textAlign = 'left'; c.textBaseline = 'middle';
+  c.font = `700 ${size}px ${look.sans}`; c.textAlign = 'left'; c.textBaseline = 'middle';
+  // a halo of the ground under the letters (as a wire's label has its plate): the tile lines stop at the words, which
+  // read against the ground alone; and the ink is whole (StoryDeck draws 72%) — at 72% over the grid the film's contrast
+  // check measured 2:1
+  c.lineWidth = Math.max(4, size * 0.3); c.lineJoin = 'round'; c.strokeStyle = f.color ?? look.bg;
+  words.forEach((line, i) => c.strokeText(line, 0, -lh * words.length + (i + 0.5) * lh));
+  c.fillStyle = withAlpha(look.ink, ISO_LOOK.label);
   words.forEach((line, i) => c.fillText(line, 0, -lh * words.length + (i + 0.5) * lh));
+  // a little weight on the letters (a stroke of the ink, 6% of the size): words laid flat on the floor are read slantwise,
+  // thinner than they stand, and in the box round a slanted line the letters are a small share — the film's contrast check
+  // read the plain weight at 2.7:1, under the 3:1 large words need
+  c.lineWidth = Math.max(1, size * 0.06); c.strokeStyle = c.fillStyle;
+  words.forEach((line, i) => c.strokeText(line, 0, -lh * words.length + (i + 0.5) * lh));
   c.restore();
 }
 
@@ -76,7 +88,7 @@ function drawBlock(c, b, look) {
 
 /** An arrow's head at `tip`, pointing from `before` (deck/transforms.js · headAt). */
 function drawHead(c, tip, before, colour) {
-  const far = Math.hypot(tip[0] - before[0], tip[1] - before[1]) || 1, ux = (tip[0] - before[0]) / far, uy = (tip[1] - before[1]) / far, H = 18;
+  const far = Math.hypot(tip[0] - before[0], tip[1] - before[1]) || 1, ux = (tip[0] - before[0]) / far, uy = (tip[1] - before[1]) / far, H = ISO_CABLE.head;
   const back = [tip[0] - ux * H, tip[1] - uy * H], nx = -uy * H * 0.6, ny = ux * H * 0.6;
   c.fillStyle = colour; c.beginPath(); c.moveTo(tip[0], tip[1]); c.lineTo(back[0] + nx, back[1] + ny); c.lineTo(back[0] - nx, back[1] - ny); c.closePath(); c.fill();
 }
@@ -109,7 +121,7 @@ const passOf = (w, share) => (w.cable.leads[0] !== null && share < w.cable.leads
 function drawLabel(c, w, look) {
   const [x, y] = w.labelAt, [hx, hy] = w.labelHalf;
   c.fillStyle = look.bg; c.beginPath(); c.roundRect(x - hx, y - hy, 2 * hx, 2 * hy, 6); c.fill();
-  c.font = `600 18px ${look.mono}`; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.font = `600 ${ISO_CABLE.label.size}px ${look.mono}`; c.textAlign = 'center'; c.textBaseline = 'middle';
   c.lineWidth = 6; c.lineJoin = 'round'; c.strokeStyle = look.bg; c.strokeText(w.label.toUpperCase(), x, y);
   c.fillStyle = look.muted; c.fillText(w.label.toUpperCase(), x, y);
 }
