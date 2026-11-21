@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
-import {arrange, arrangeByGroup, routes, wordsToFit, isometric} from 'footprint-story/isometric';
+import {arrange, arrangeByGroup, routes, wordsToFit, isometric, CABLE} from 'footprint-story/isometric';
 import {rideProfile} from 'footprint-story/motion';
 import {compileFilm, evenTimings, frameHashes, loadTheme} from '../src/index.mjs';
 import {geometryOf} from '../src/geometry.mjs';
@@ -187,4 +187,16 @@ test('a busy world places every label by the rule: 48 blocks, 160 labelled wires
   const atMiddle = map.wires.slice(105).filter((w) => JSON.stringify(w.labelAt) === JSON.stringify(w.cable.way.at(0.5)));
   assert.equal(atMiddle.length, 3, 'of the 55 labels 0.34.0 left at their middles, 3 stand there by the rule (the middle is clear)');
   assert.ok(map.wires.every((w) => Array.isArray(w.labelAt)), 'every label placed');
+});
+
+test('a cable\'s line stops where its head begins by StoryDeck\'s rule, a short last run too (0.36.0)', async () => {
+  // a world spread wide enough that a tile is 53.67 px and a cable's last run, into its foot, 20.83 px: 0.35.0 pulled
+  // its line back at most half that (10.4 px), StoryDeck (footprint-story · cableWay) the head's whole 14.4 px
+  const {readMap} = await import('../src/kits/isometric/read.mjs'), {buildMap} = await import('../src/kits/isometric/build.mjs'), {layCables} = await import('../src/kits/isometric/cables.mjs');
+  const map = readMap({kit: 'isometric', blocks: [{name: 'a', at: [0, 0]}, {name: 'b', at: [16, 2]}, {name: 'c', at: [0, 16]}], wires: [{name: 'w', arrow: 'a to b'}]}, 'wide');
+  buildMap(map, 'wide');
+  layCables(map);
+  const {points, way} = map.wires[0].cable, tip = points.at(-1), before = points.at(-2), dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+  assert.ok(dist(tip, before) < 2 * CABLE.head * CABLE.headShort, `the last run is short: ${dist(tip, before)} px`);
+  assert.ok(Math.abs(dist(way.at(1), tip) - CABLE.head * CABLE.headShort) < 1e-9, `the line stops the head's 14.4 px short of the tip: ${dist(way.at(1), tip)}`);
 });

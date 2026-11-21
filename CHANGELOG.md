@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.36.0 — a cable's line stops for its head as a deck's does
+
+A laid cable's line now stops where its arrow's head begins by StoryDeck's rule, from footprint-story 0.20.0
+(`cableWay`): the head's 14.4 px short of the tip, never past 1 px short of the last run's start. 0.35.0 pulled the
+line back at most half its last run, so where that run was shorter than 28.8 px — a cable's short run into its foot,
+common once a world is spread wide and its tiles are small — the film's line ran on nearer the tip than the deck's.
+
+**Pictures change** where that happens. Over 1,500 generated worlds (7,165 wires, 5,708 with a head; a before/after
+run, not checked in), 1,502 line ends moved under the head, by up to 3.98 px (most by that much, where the tiles are
+smallest), and the corner before such a run is rounded a little tighter. Because a label's place is asked along its
+cable and clear of the others, 860 of 3,634 labels moved: half by under 2 px, 134 by more than 5 px (a different place
+on the cable won). 734 of the 1,500 worlds had a change. In `examples/iso-world` one cable (`c2`, labelled uplink)
+ends in a short run: from 11.7 s on its line stops sooner under its head and its last corner is a little tighter, so
+`test/golden.json` is re-recorded for those 11 frames (no other example frame changed).
+
+- `kits/isometric/cables.mjs` · `cableOf` calls `footprint-story/isometric` · `cableWay` for its line.
+- Needs `footprint-story ^0.20.0`.
+
 ## 0.35.0 — the isometric kit's cable pieces come from the story library
 
 What `kits/isometric` carried from StoryDeck now lives once in footprint-story 0.19.0, and StoryDeck imports the same
