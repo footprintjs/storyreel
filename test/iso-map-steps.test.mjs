@@ -45,7 +45,14 @@ const DIFFERENCES = {blocks: [
 floors: [{label: 'The whole system, end to end'}, {name: 'w', group: 'workers', label: 'Workers'}, {size: [3, 3]}],
 wires: [{arrow: 'web.out to queue'}, {arrow: 'web to cache 0'}, {arrow: 'queue to jobs', name: 'q'}, {arrow: 'jobs to mail'}]};
 
-const WORLDS = {'the story': recipe.story, 'stage desk': recipe.stages[0].world, 'differences': DIFFERENCES};
+/**
+ * Placed by hand and listed front first, the front block standing over the back one on the frame: the paint order is
+ * the built map's (the back first), not the order written. (Blocks far apart may be painted in any order: backToFront
+ * orders only what overlaps.)
+ */
+const FRONT_FIRST = {blocks: [{name: 'front', at: [2, 2], label: 'Front'}, {name: 'back', at: [0, 0], label: 'Back'}]};
+
+const WORLDS = {'the story': recipe.story, 'stage desk': recipe.stages[0].world, 'differences': DIFFERENCES, 'front first': FRONT_FIRST};
 
 test('the kit\'s built map is buildIsoMap\'s, with the film policy, for the example\'s worlds and a map of every difference', () => {
   for (const [where, world] of Object.entries(WORLDS)) {
@@ -71,6 +78,7 @@ test('each piece reads the built map\'s own entries, never a copy; the grid is m
     });
     map.wires.forEach((w, i) => assert.equal(w.route, built.routes[i]));
     assert.deepEqual(map.order.map((b) => b.name), built.order);
+    if (where === 'front first') assert.deepEqual(built.order, ['back', 'front'], 'the furthest first, whatever order the recipe wrote');
     assert.equal(map.placed, built.placed);
     assert.deepEqual([map.grid.tile, map.grid.origin, map.grid.rise], [built.view.tile, built.view.origin, built.view.rise], `${where}: the grid from the built map's numbers`);
   }
@@ -83,6 +91,12 @@ test('no file of the kit runs a map step itself: placement, routes, the grid, fa
     const source = readFileSync(kitDir + file, 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
     // the name itself, imported or called — not a key of what was built (`built.routes`)
     for (const step of STEPS) assert.ok(!new RegExp(`(?<![.\\w$])${step}\\b`).test(source), `${file} names ${step}: a copy of a map step`);
+    // and by what it imports: every name from footprint-story/isometric is named (never `import *` or a dynamic import,
+    // through which `ns.wordsToFit(…)` would pass the look above), and none of them is a step
+    assert.ok(!/import\s*\*\s*as\s+\w+\s+from\s+['"]footprint-story\/isometric['"]|import\(\s*['"]footprint-story\/isometric['"]/.test(source), `${file} imports footprint-story/isometric whole: name what it uses`);
+    for (const [, names] of source.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]footprint-story\/isometric['"]/g)) {
+      for (const name of names.split(',').map((n) => n.trim().split(/\s+as\s+/)[0]).filter(Boolean)) assert.ok(!STEPS.includes(name), `${file} imports ${name}: a map step`);
+    }
   }
   assert.match(readFileSync(kitDir + 'build.mjs', 'utf8'), /buildIsoMap\(specOf\(map, where\), ISO_FIT\)/);
 });

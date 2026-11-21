@@ -15,7 +15,7 @@ kit's pieces. footprint-story took the kit's 0.38.0 steps over and pinned them, 
   step itself.
 - **`ISO_FIT` is footprint-story's film policy** (`ISO_MAP_POLICIES.film`): the fitting numbers are under `fit`
   (`ISO_FIT.fit.most`, … `margin`), beside `name`, `small`, `clear` and `hold`. Before, they stood at its top
-  (`ISO_FIT.most`). `name` and `clear` are where they were. The type says so.
+  (`ISO_FIT.most`). `name`, `small` and `clear` are where they were; `hold` is new. The type says so.
 - Needs `footprint-story ^0.24.0`.
 
 **Refusal words** that changed, each still naming the recipe entry and the fix:
