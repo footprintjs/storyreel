@@ -14,6 +14,7 @@ export {checkText, verdictLine, sinceLine, CHECK_TOP} from './text.mjs';
 export {problemsOf, sinceLast, ADVICE_KINDS, ROW_MOST, KEYS_MOST} from './problems.mjs';
 export {checkChart, CHECK_VERDICTS} from './chart.mjs';
 export {VERDICT_RULES} from './stages.mjs';
+export {runMaps, mapLines, MAPS_MOST} from './maps.mjs';
 
 /**
  * Run one check. `does`: the work, given by the caller (tools.mjs gives the project's):

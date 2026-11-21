@@ -34,7 +34,7 @@ import {momentAt, sceneTime, sceneIds, placeOf, HUNDREDTH} from './momenttext.mj
 import {formatScale} from './layout.mjs';
 import {hashOf} from './hash.mjs';
 import {reviewPart, reviewSummary, findingsText, REVIEW_DEFAULTS, SUMMARY_TOP} from './review.mjs';
-import {checkFilm, CHECK_TOP} from './check/index.mjs';
+import {checkFilm, runMaps, mapLines, CHECK_TOP} from './check/index.mjs';
 import {keepRun, keepFailedRun, lastCheck, logText, listRuns, pendingRecord, dropPending, LOG_LINES} from './runlog.mjs';
 import {whyText} from './why.mjs';
 export {saveRun, keepRun, listRuns, logText, RUNS, RUNS_KEPT, RUNS_LISTED} from './runlog.mjs';
@@ -564,11 +564,15 @@ export async function check(project, args = {}) {
   let done, pending = null;
   try { pending = pendingRecord(out); } catch { /* an out folder that cannot hold a record: the check goes on without one */ }
   try { done = await checkFilm(does, {all: yes(args.full), more: 'full (--full) lists every one', record: pending}); } catch (e) { if (pending) dropPending(pending); keepFailedRun(out, 'check', e); throw e; }
+  // each isometric world's map built again by the map flow, each run's record kept beside the check's (check/maps.mjs):
+  // a film with no such world runs nothing more
+  const maps = film?.mapRuns ? await runMaps(film.mapRuns, {recordFor: () => pendingRecord(out)}) : {maps: [], skipped: 0};
   // its run: its own record, the review's verdicts with what they measured (log --check), and what the next check compares with
   const unsaved = keepRun(out, {feature: 'check', summary: done.text.split('\n')[0], record: done.record, verdicts: reviewed?.verdicts ?? null, check: {verdict: done.verdict, round: done.round, keys: done.keys, film: which},
-    ...(done.recorded ? {kept: {file: pending, control: done.control}} : {})});
+    ...(done.recorded ? {kept: {file: pending, control: done.control}} : {}), ...(film ? {worlds: film.drawnBy} : {}), ...(maps.maps.length ? {maps: maps.maps} : {})});
   if (pending && (unsaved || !done.recorded)) dropPending(pending);
-  return `${done.text}${unsaved ? `\n(${shownLine(unsaved)})` : ''}`;
+  for (const m of maps.maps) if (m.file && unsaved) dropPending(m.file);
+  return [done.text, ...mapLines(maps, {saved: !unsaved}), ...(unsaved ? [`(${shownLine(unsaved)})`] : [])].join('\n');
 }
 
 /** The notes the person left in the studio, read beside the recipe's file the film reads (studio/feedback-tool.mjs). */
@@ -594,8 +598,11 @@ export async function log(flags = {}) {
     for (const other of ['only', 'check']) if (flags[other] !== undefined) throw new Error(`--why answers by itself: leave --${other} out (or ask it in a call of its own)`);
     const runs = listRuns(out), r = runs.find(x => x.id === String(flags.run)) ?? (/^\d+$/.test(String(flags.run)) ? runs.find(x => x.n === Number(flags.run)) : undefined);
     if (!r) throw new Error(`there is no run ${flags.run}: the runs are 1–${runs.length}, or a run's id (storyreel log lists them)`);
-    return await whyText(r, yes(flags.why) ? '' : String(flags.why), {all: yes(flags.all)}) + note;
+    // --map: one of the run's maps, its own record walked instead of the run's (why.mjs · mapWhy)
+    if (flags.map !== undefined && yes(flags.map)) throw new Error('--map names one of the run\'s maps by its world\'s place in the recipe (--map story, --map \'stages[1]\')');
+    return await whyText(r, yes(flags.why) ? '' : String(flags.why), {all: yes(flags.all), ...(flags.map !== undefined ? {map: String(flags.map)} : {})}) + note;
   }
+  if (flags.map !== undefined) throw new Error('--map picks the record --why reads: ask with --why (--run 1 --why at --map story)');
   return logText(out, {run: flags.run === undefined || yes(flags.run) ? null : flags.run, only: flags.only ?? null, check: flags.check ?? null, all: yes(flags.all)}) + note;
 }
 
@@ -608,7 +615,8 @@ export const TOOLS = Object.freeze({
   log: {run: log, load: 'flags', about: 'How a result was made: the project\'s runs, newest first (a review, an apply, a note, a Try, a render), each done or refused; one run\'s stages, what each wrote and decided, with the rule that matched and the values it read; a verdict\'s evidence, each item measured. Read it before re-running or looking at pictures. On the command line, --folder reads the runs in a folder with no project: a breakdown\'s or a remake\'s.',
     args: {run: 'a run\'s number from the list, to show that run (default: the list)', only: 'with run: decisions, errors or steps (every entry as the record says it); default: each stage once, what it wrote and decided',
       check: 'with run: a verdict\'s name (contrast, slideshow, …): everything its check measured, each item',
-      why: 'with run: a value the run wrote (verdict, errors, …): what it is, the stage that wrote it, the decision that let that stage run and what each had read, walked back from the run\'s own record (a check keeps one)', all: `true for every line (default: the first ${LOG_LINES})`}},
+      why: 'with run: a value the run wrote (verdict, errors, …): what it is, the stage that wrote it, the decision that let that stage run and what each had read, walked back from the run\'s own record (a check keeps one)',
+      map: 'with why: one of the run\'s maps, by its world\'s place in the recipe (story, stages[1]): why it is so, from that map\'s own record — at (where the blocks stand), view (the grid), names (each name\'s lines and size), … (a check keeps one per isometric world)', all: `true for every line (default: the first ${LOG_LINES})`}},
   check: {run: check, load: 'config', about: `The one call after an edit, and nothing rendered: every keyed phrase checked, the film read as text (the review's checks and verdicts) and what the edit redraws, in one reply. The first line is the verdict: clean, fix <n>, or broken (the film does not compile). Then what to fix, worst first, each with where it is (the first ${CHECK_TOP}; the rest counted), what was not run, and what changed since the check before (fixed, new, the round of fixing).`,
     args: {full: 'true for every problem (default: the first, the rest counted by kind)'}},
   review: {run: review, about: `What is wrong, read from the picture as text: words under the captions, over each other, cut off at the edge, the picture frozen for ${REVIEW_DEFAULTS.stillFor} s, nothing new for ${REVIEW_DEFAULTS.newEvery} s while it moves. Times on the film clock. Then three verdicts (passed, failed, or not run): no slideshow, drawn parts hold together, every number on screen has a source. With rubric: each point of a rubric laid out with its stills and evidence, to score; with scores and by, the scores recorded in the render's making-of.json.`,

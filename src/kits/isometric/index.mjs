@@ -18,10 +18,12 @@
  * mounted on the stretch of its cable it rides, for the geometry audit: a packet off its cable fails it), `notes`
  * (what the kit says of the map, worded with the fix: the film carries them as `film.kitNotes`, and its record beside
  * the world's entry), `summary` (the counts the record keeps) and `map` (the whole record: placed by whom, the tile,
- * every block's place, every cable's corners, length and hidden stretches). With `strict: true` a warning refuses.
+ * every block's place, every cable's corners, length and hidden stretches) and `mapRun` (the map built again by
+ * footprint-story's map flow, a run whose record says why: flow.mjs). With `strict: true` a warning refuses.
  */
 import {readMap} from './read.mjs';
 import {buildMap} from './build.mjs';
+import {mapRun} from './flow.mjs';
 import {walkWay} from 'footprint-story/isometric';
 import {layCables} from './cables.mjs';
 import {notesOf} from './notes.mjs';
@@ -78,6 +80,8 @@ export function compileIsometric(spec, context) {
     sounds: [],
     notes,
     map: Object.freeze(recordOf(map)),
+    // the map built again by footprint-story's map flow, its run recorded: `storyreel check` runs it (flow.mjs, check/maps.mjs)
+    mapRun: mapRun(map),
     // what the film's record keeps of this world (film/summaries.mjs · buildSummary): a few counts, never the map itself
     summary: Object.freeze({placed: map.placed, tile: map.grid.tile[0], blocks: map.blocks.length, floors: map.floors.length, wires: map.wires.length,
       along: map.wires.filter((w) => w.route?.points).length, packets: map.wires.reduce((n, w) => n + w.packets, 0)}),

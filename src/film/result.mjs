@@ -44,7 +44,24 @@ export function filmOf(state) {
     ...(direction ? {director: directorRecord(direction)} : {}),
     // What the kits say of the worlds they built (a world's `notes`: [{level, path, message}], each naming its recipe
     // entry and the fix): only when a world says anything at all, so a film whose kits keep no notes is as it was.
-    ...kitNotesOf(storyPathName, storyWorld, stages)};
+    ...kitNotesOf(storyPathName, storyWorld, stages),
+    // The worlds whose map can be built again as a footprintjs run, for its record (a world's `mapRun`): only when one can.
+    ...mapRunsOf(storyPathName, storyWorld, stages)};
+}
+
+/** The recipe's worlds as [path, world]: the story's (its path `story`), then each stage's (`stages[1]`). */
+const worldsOf = (storyPath, storyWorld, stages) => [[storyPath, storyWorld], ...stages.map((st, i) => [`stages[${i}]`, st.world])];
+
+/**
+ * Every world that can run its map again as a footprintjs chart (an optional kit field, `mapRun(options)`: the
+ * isometric kit's, kits/isometric/flow.mjs), named by its recipe path (`story`, `stages[1]`): {mapRuns: [{name, kit,
+ * run}]} when any has one, else {}. WHY on the film: a world is compiled on a synchronous path and a run is not, so the
+ * run is handed out for a caller that can wait (`storyreel check`, check/maps.mjs). A film with no such world is as it was.
+ */
+function mapRunsOf(storyPath, storyWorld, stages) {
+  const runs = worldsOf(storyPath, storyWorld, stages).filter(([, w]) => typeof w?.instance?.mapRun === 'function')
+    .map(([name, w]) => Object.freeze({name, kit: w.kit, run: w.instance.mapRun}));
+  return runs.length ? {mapRuns: Object.freeze(runs)} : {};
 }
 
 /**
@@ -54,7 +71,7 @@ export function filmOf(state) {
  * film over something a person may choose to keep.
  */
 function kitNotesOf(storyPath, storyWorld, stages) {
-  const worlds = [[storyPath, storyWorld], ...stages.map((st, i) => [`stages[${i}].world`, st.world])].filter(([, w]) => Array.isArray(w?.instance?.notes));
+  const worlds = worldsOf(storyPath, storyWorld, stages).map(([at, w]) => [at === storyPath ? at : `${at}.world`, w]).filter(([, w]) => Array.isArray(w?.instance?.notes));
   if (!worlds.length) return {};
   return {kitNotes: Object.freeze(worlds.flatMap(([at, w]) => w.instance.notes.map((n) => Object.freeze({level: n.level, path: `${at}.${n.path}`, message: n.message, kit: w.kit}))))};
 }

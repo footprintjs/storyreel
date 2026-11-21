@@ -75,6 +75,26 @@ built map against `buildIsoMap`'s and that no kit file runs a step itself.
   down to 12 px, and every labelled floor held in a fitted picture (below). The style's paint list is built too; the
   kit paints its own look (`draw.mjs`) until a world's recipe takes a style.
 
+## Why a map is so: its own record (from 0.40.0)
+
+`storyreel check` builds each isometric world's map again with footprint-story's map flow (`flow.mjs` · `mapRun`:
+`runMapFlow(map.spec, ISO_FIT)`, the very spec `buildIsoMap` was handed) and keeps that run's record, so an agent asks
+why a block stands where it does, why the grid is fitted, why a name is that size, and is answered from the record:
+
+```
+$ storyreel log --run 1 --why at --map 'stages[0]'
+at = [[0,5,0],[5,1,0],[11,1,0]]
+place: hand (hand#2) [wrote: at]
+  read (read#0) ← via blocks [wrote: who, blocks, floors, wires, written, area, style, policy]
+    ⚠ also consumed args — slice may be incomplete here
+  place (place#1) ← [control: every block has an at: the map placed them] [wrote: placed, placedWhy]
+    ↳ read#0 (see above)
+```
+
+WHY twice: a world is compiled on a synchronous path and a footprintjs run is not (footprint-story's
+`docs/design/2026-11-map-flow.md`). The map flow's map must equal the kit's built map; the check compares them and says
+a difference aloud (`drift`). See `../../check/README.md` · Asking why a map is so.
+
 ## What a film reads of it
 
 - `regionsAt(t)`: each block, floor and wire by `name` (`story.blocks[3]`, `stages[0].world.wires[1]`), each label by
@@ -89,6 +109,8 @@ built map against `buildIsoMap`'s and that no kit file runs a step itself.
   packets), beside the world's entry (`world.story`, `stage.stages[1]`). `strict: true` refuses the film on a warning.
 - `map`: the whole record on the world (every block's place and fitted name, every cable's corners, length and hidden
   stretches), for a test or a tool that reads the world itself.
+- `mapRun({sink, recorders})`: the map built again by the map flow, a run whose record says why (`flow.mjs`); the film
+  hands each such world's out as `film.mapRuns` (`[{name, kit, run}]`, named by its recipe path), for `storyreel check`.
 
 Every refusal names the entry (`stage map: isometric wires[2] ("w3")`) and the fix; a value it quotes is cut to 60
 characters; a field is read once, by its own value (a getter is refused, never run); the lists' lengths (256 blocks and
@@ -102,6 +124,7 @@ entry's name.
 | `index.mjs` | the kit: compile, regions, texts, parts, the record |
 | `read.mjs` | the recipe entry checked, every refusal naming the entry and the fix |
 | `build.mjs` | the read map handed to footprint-story's `buildIsoMap`, and what it built joined onto the pieces |
+| `flow.mjs` | the same spec run through footprint-story's map flow, for its record; where its map parts from the kit's |
 | `cables.mjs` | each wire on the frame: the cable's rounded line, a straight wire, a lead's share, a label's place (footprint-story's rules) |
 | `ride.mjs` | the packets at t, from the shared ride numbers |
 | `notes.mjs` | what the kit says, in words |

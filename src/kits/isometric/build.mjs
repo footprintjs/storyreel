@@ -47,14 +47,17 @@ export function specOf(map, where) {
  * ({box, centre, outline, faces}: the faces are the style's shape items), `fitted` and `smallFitted` (a block's name
  * and small line), a floor's `at`, `size`, `shape` and label `place`, a wire's `route` (null: written straight) — and
  * the map its `grid` (made again from the built map's numbers: the built map holds no function), `order` (the blocks,
- * furthest first) and `built` (the built map itself, frozen). Mutates the read map and returns it.
+ * furthest first), `built` (the built map itself, frozen) and `spec` (what buildIsoMap was handed, for the map flow:
+ * flow.mjs). Mutates the read map and returns it.
  */
 export function buildMap(map, where) {
+  // the spec is kept on the map (`spec`): the map flow is handed this very spec, never one made again (flow.mjs)
+  const spec = specOf(map, where);
   let built;
-  try { built = buildIsoMap(specOf(map, where), ISO_FIT); } catch (e) { throw new Error(`${where}: ${String(e?.message ?? e).replace(/^isometric: /, '')}`, {cause: e}); }
+  try { built = buildIsoMap(spec, ISO_FIT); } catch (e) { throw new Error(`${where}: ${String(e?.message ?? e).replace(/^isometric: /, '')}`, {cause: e}); }
   map.blocks.forEach((b, i) => Object.assign(b, {at: built.at[i], shape: built.shapes[i], fitted: built.names[i], smallFitted: built.smalls[i]}));
   map.floors.forEach((f, i) => Object.assign(f, {at: built.floorTiles[i].at, size: built.floorTiles[i].size, shape: built.floorShapes[i], place: built.floorLabels[i]}));
   map.wires.forEach((w, i) => { w.route = built.routes[i]; });
   const byName = new Map(map.blocks.map((b) => [b.name, b]));
-  return Object.assign(map, {built, placed: built.placed, grid: isometric(built.view), order: built.order.map((name) => byName.get(name))});
+  return Object.assign(map, {spec, built, placed: built.placed, grid: isometric(built.view), order: built.order.map((name) => byName.get(name))});
 }
