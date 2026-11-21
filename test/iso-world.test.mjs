@@ -200,3 +200,20 @@ test('a cable\'s line stops where its head begins by StoryDeck\'s rule, a short 
   assert.ok(dist(tip, before) < 2 * CABLE.head * CABLE.headShort, `the last run is short: ${dist(tip, before)} px`);
   assert.ok(Math.abs(dist(way.at(1), tip) - CABLE.head * CABLE.headShort) < 1e-9, `the line stops the head's 14.4 px short of the tip: ${dist(way.at(1), tip)}`);
 });
+
+test('a lead into a port holds the deck\'s share of its line: through its floor corner, from where the head begins (0.37.0)', async () => {
+  // 0.36.0 took the straight run of the lead's points to the floor point, before the pull — short of the floor corner
+  const {readMap} = await import('../src/kits/isometric/read.mjs'), {buildMap} = await import('../src/kits/isometric/build.mjs'), {layCables} = await import('../src/kits/isometric/cables.mjs');
+  const {cableLead} = await import('footprint-story/isometric');
+  const map = readMap({kit: 'isometric', blocks: [{name: 'a', at: [0, 0], size: [2, 1.4, 0.3], ports: [{name: 'p', at: [2, 0.7, 0.15]}]}, {name: 'b', at: [6, 4], size: [2, 2, 0.4], ports: [{name: 'q', at: [0.6, 2, 0.2]}]}], wires: [{name: 'w', arrow: 'a.p to b.q'}]}, 'leads');
+  buildMap(map, 'leads');
+  layCables(map);
+  const c = map.wires[0].cable, back = CABLE.head * CABLE.headShort;
+  for (const k of [0, 1]) {
+    if (c.leads[k] === null) continue;
+    const lead = cableLead({points: c.points, radius: CABLE.corner * c.tile}, k, c.ends[k].count, k ? back : 0);
+    assert.equal(c.leads[k], Math.min(1, lead.length / c.length), `end ${k}: cableLead's share`);
+    assert.ok(lead.pieces.at(-1).corner, `end ${k}: the lead ends with its floor corner`);
+  }
+  assert.ok(c.leads.some((v) => v !== null), 'the map has a lead to ask');
+});

@@ -93,6 +93,7 @@ import the one copy, so a deck and a film draw the same cable):
 | `cables.mjs` · a straight wire: its lanes, its ends 6 px off each outline, too close refused, its bend, its curve | `/isometric` · `lanesOf`, `straightRun`, `bentWire`, `curveWay` (and `exitOutline` beneath) |
 | `cables.mjs` · the cable's numbers (6 px clear, corners 0.4 of a tile, the 18 px head's four fifths) | `/isometric` · `CABLE` |
 | `cables.mjs` · a laid cable's line, stopped where its head begins (from 0.36.0: never past 1 px short of its last run's start, as StoryDeck stops it — before, at most half that run) | `/isometric` · `cableWay` |
+| `cables.mjs` · a lead into a port on a seen side: the share of the line drawn again over its block, where a packet passes onto it (from 0.37.0: through its floor corner, from where the head begins — before, the straight run of its points to the floor point) | `/isometric` · `cableLead` |
 | `build.mjs` · a cylinder's outline | `/isometric` · `roundOutline` |
 | `ride.mjs` · a packet's share at t (CSS's `linear()` read at a moment) and how much of it shows past a block | `/motion` · `onStops`, `seenAt` |
 | `draw.mjs` · the arrow head's corners (only the painting is here) | `/isometric` · `arrowHead`, `headingOf` |

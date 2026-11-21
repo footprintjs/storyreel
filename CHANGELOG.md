@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.37.0 — a lead into a port is the deck's lead
+
+A lead into a port on a seen side — the stretch of a cable drawn again over its block, where a packet passes onto it —
+now holds the share of the line footprint-story 0.21.0's `cableLead` gives, as StoryDeck 0.31.0's does: out of the
+port, down its riser and through its floor corner, on the line as drawn (at a headed end, from where the head begins).
+0.36.0 took the straight run of the lead's points to the floor point, before the line was stopped for its head — short
+of the floor corner, whose upper part a block's face can cover too.
+
+**Pictures change** on cables into ports on a seen side. Over 1,399 generated worlds with ports (a before/after run,
+not checked in), 3,633 of 3,666 leads changed length: 5.1 px at the median, 21.3 px at most; no label moved. In
+`examples/iso-world` its cables into ports change from 11.7 s on (the frames before show no lead), and
+`test/golden.json` is re-recorded for those 11 frames (no other example frame changed).
+
+- `kits/isometric/cables.mjs` · `cableOf` takes each lead's share from `footprint-story/isometric` · `cableLead`.
+- Needs `footprint-story ^0.21.0`.
+
 ## 0.36.0 — a cable's line stops for its head as a deck's does
 
 A laid cable's line now stops where its arrow's head begins by StoryDeck's rule, from footprint-story 0.20.0
