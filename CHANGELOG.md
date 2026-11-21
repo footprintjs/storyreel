@@ -19,11 +19,17 @@ held to 0.34.0's copy by footprint-story's property tests.
 - **Gone from `footprint-storyreel/kits/isometric`:** `ISO_CABLE`, `LABEL_PLACES` and `onStops` — import `CABLE` and
   `LABEL_PLACES` from `footprint-story/isometric`, `onStops` from `footprint-story/motion` (the same numbers; `CABLE`
   also names `gap`, `lane`, `laneInset`, `least` and `headShort`).
-- **One difference, StoryDeck's rule taken:** a cable's label is now asked against every block whose outline's box
-  reaches its plate, as StoryDeck's is. 0.34.0's copy asked only a block with a corner within 200 px of the label, so a
-  large block covering the label with all its corners further off was passed over and the label stood under it. No
-  frame of the example or of the generated worlds and films above moved; in a probe of 1,500 worlds with blocks up to 7
-  tiles a side, one label moved in 3 of them, from under a block to StoryDeck's place.
+- **Two differences, StoryDeck's rule taken** (frames of the example and of the generated worlds and films above are
+  unchanged):
+  1. A cable's label is asked against every block whose outline's box reaches its plate. 0.34.0's copy asked only a
+     block with a corner within 200 px of the label, so a large block covering the label with all its corners further
+     off was passed over and the label stood under it. In a probe of 1,500 worlds with blocks up to 7 tiles a side, one
+     label moved in 3 of them, from under a block to StoryDeck's place.
+  2. The label search spends its looks as StoryDeck's does (the blocks and cables near a place, and a look an entry).
+     0.34.0's charged every point of every other cable at every place tried, so a busy world — over about a hundred
+     labelled cables — ran out of looks, and every later label fell to its cable's middle whatever stood there. They are
+     now placed by the rule: on a lattice of 48 blocks with 160 labelled wires, 52 labels (wires 105 to 159) move; the
+     case is pinned in `test/iso-world.test.mjs`.
 - `footprint-story` 0.19.0 or later. `package-lock.json` still resolves 0.18.0: resolve it once 0.19.0 is published.
 
 ## 0.34.0 — a film draws a deck's map, every finding names its fix, and the shared rules come from the story library

@@ -174,3 +174,17 @@ test('words stand out: the example passes the film\'s contrast check, and every 
   for (const v of r.verdicts) assert.equal(v.verdict, 'passed', `${v.check}: ${v.verdict} — ${JSON.stringify(r.findings.filter((f) => f.kind === v.check).slice(0, 2))}`);
   assert.ok(r.verdicts.some((v) => v.check === 'contrast'));
 });
+
+test('a busy world places every label by the rule: 48 blocks, 160 labelled wires — none runs out of looks (0.35.0)', async () => {
+  // 0.34.0 charged its label search far more than StoryDeck does, ran out of looks on a map this busy, and put every
+  // label from wire 105 on at its cable's middle (55 of them); footprint-story's labelPlace spends as StoryDeck does
+  const {readMap} = await import('../src/kits/isometric/read.mjs'), {buildMap} = await import('../src/kits/isometric/build.mjs'), {layCables} = await import('../src/kits/isometric/cables.mjs');
+  const blocks = Array.from({length: 48}, (_, k) => ({name: `n${k}`, at: [(k % 8) * 4, Math.floor(k / 8) * 4], size: [1.5, 1.5, 1]}));
+  const wires = Array.from({length: 160}, (_, k) => { const a = k % 48; let b = (7 * k + 5) % 48; if (b === a) b = (k + 1) % 48; return {name: `w${k}`, arrow: `n${a} to n${b}`, label: 'API gateway'}; });
+  const map = readMap({kit: 'isometric', blocks, wires}, 'busy');
+  buildMap(map, 'busy');
+  layCables(map);
+  const atMiddle = map.wires.slice(105).filter((w) => JSON.stringify(w.labelAt) === JSON.stringify(w.cable.way.at(0.5)));
+  assert.equal(atMiddle.length, 3, 'of the 55 labels 0.34.0 left at their middles, 3 stand there by the rule (the middle is clear)');
+  assert.ok(map.wires.every((w) => Array.isArray(w.labelAt)), 'every label placed');
+});
