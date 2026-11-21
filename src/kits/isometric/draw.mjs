@@ -14,7 +14,7 @@
  * its block for the same reason); a block in front still covers it.
  */
 import {packetsAt, PACKET_RADIUS} from './ride.mjs';
-import {walk, ISO_CABLE} from './cables.mjs';
+import {arrowHead, headingOf, walkWay, CABLE} from 'footprint-story/isometric';
 import {HEX} from './read.mjs';
 
 /** StoryDeck's colours where the theme has none: a block's tone, the glow of a packet. And how long a piece takes to come in. */
@@ -86,11 +86,10 @@ function drawBlock(c, b, look) {
   if (sf) { c.font = `500 ${sf.size}px ${look.sans}`; c.fillStyle = withAlpha(look.ink, ISO_LOOK.smallInk); c.fillText(sf.lines.join(' '), cx, top + lines.length * lh + 2 + (small - 2) / 2); }
 }
 
-/** An arrow's head at `tip`, pointing from `before` (deck/transforms.js · headAt). */
+/** An arrow's head at `tip`, pointing from `before`: its corners are footprint-story/isometric's (arrowHead), a deck's head's too; only the painting is here. */
 function drawHead(c, tip, before, colour) {
-  const far = Math.hypot(tip[0] - before[0], tip[1] - before[1]) || 1, ux = (tip[0] - before[0]) / far, uy = (tip[1] - before[1]) / far, H = ISO_CABLE.head;
-  const back = [tip[0] - ux * H, tip[1] - uy * H], nx = -uy * H * 0.6, ny = ux * H * 0.6;
-  c.fillStyle = colour; c.beginPath(); c.moveTo(tip[0], tip[1]); c.lineTo(back[0] + nx, back[1] + ny); c.lineTo(back[0] - nx, back[1] - ny); c.closePath(); c.fill();
+  const [t, l, r] = arrowHead(tip, headingOf(before, tip), CABLE.head);
+  c.fillStyle = colour; c.beginPath(); c.moveTo(t[0], t[1]); c.lineTo(l[0], l[1]); c.lineTo(r[0], r[1]); c.closePath(); c.fill();
 }
 
 /** A cable's whole line (its rounded pieces), or the stretch of it from share `from` to `to` (walked). */
@@ -99,7 +98,7 @@ function strokeWay(c, way, from = 0, to = 1) {
   if (from === 0 && to === 1) {
     c.moveTo(...way.start);
     for (const piece of way.pieces) { if (piece.corner) c.quadraticCurveTo(piece.corner[0], piece.corner[1], piece.to[0], piece.to[1]); else c.lineTo(...piece.to); }
-  } else walk(way, from, to).forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y)));
+  } else walkWay(way, from, to).forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y)));
   c.stroke();
 }
 
@@ -121,7 +120,7 @@ const passOf = (w, share) => (w.cable.leads[0] !== null && share < w.cable.leads
 function drawLabel(c, w, look) {
   const [x, y] = w.labelAt, [hx, hy] = w.labelHalf;
   c.fillStyle = look.bg; c.beginPath(); c.roundRect(x - hx, y - hy, 2 * hx, 2 * hy, 6); c.fill();
-  c.font = `600 ${ISO_CABLE.label.size}px ${look.mono}`; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.font = `600 ${CABLE.label.size}px ${look.mono}`; c.textAlign = 'center'; c.textBaseline = 'middle';
   c.lineWidth = 6; c.lineJoin = 'round'; c.strokeStyle = look.bg; c.strokeText(w.label.toUpperCase(), x, y);
   c.fillStyle = look.muted; c.fillText(w.label.toUpperCase(), x, y);
 }

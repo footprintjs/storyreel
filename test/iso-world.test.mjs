@@ -12,7 +12,8 @@ import {compileFilm, evenTimings, frameHashes, loadTheme} from '../src/index.mjs
 import {geometryOf} from '../src/geometry.mjs';
 import {reviewPart} from '../src/review.mjs';
 import {rideOf} from '../src/kits/isometric/ride.mjs';
-import {isometricKit, compileIsometric, ISO_FIT, onStops} from '../src/kits/isometric/index.mjs';
+import {isometricKit, compileIsometric, ISO_FIT} from '../src/kits/isometric/index.mjs';
+import {onStops} from 'footprint-story/motion';
 import {compileExample} from './golden.mjs';
 
 const dir = fileURLToPath(new URL('../examples/iso-world/', import.meta.url));

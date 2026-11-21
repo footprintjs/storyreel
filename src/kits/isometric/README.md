@@ -79,26 +79,22 @@ entry's name.
 | `index.mjs` | the kit: compile, regions, texts, parts, the record |
 | `read.mjs` | the recipe entry checked, every refusal naming the entry and the fix |
 | `build.mjs` | placement, routes, grid, floors, faces, fitted names, painting order |
-| `cables.mjs` | each wire on the frame: the cable's rounded line, a straight wire, a lead's share, a label's place |
+| `cables.mjs` | each wire on the frame: the cable's rounded line, a straight wire, a lead's share, a label's place (footprint-story's rules) |
 | `ride.mjs` | the packets at t, from the shared ride numbers |
 | `notes.mjs` | what the kit says, in words |
 | `draw.mjs` | the canvas painting, StoryDeck's look in the film's theme |
 
-**Carried from StoryDeck** rather than shared — footprint-story leaves them out today, and they are to move there in a
-later step, so a deck and a film keep one copy:
+**From footprint-story, as StoryDeck has them** (they were carried here from StoryDeck until 0.35.0; both tools now
+import the one copy, so a deck and a film draw the same cable):
 
-| here | from StoryDeck |
+| here | footprint-story |
 |---|---|
-| `cables.mjs · LABEL_PLACES`, `labelAt` | `deck/cable.js · LABEL_PLACES`, `labelPlace` (a cable label's place on its cable) |
-| `cables.mjs · labelHalf` | `deck/transforms.js · labelBox` |
-| `cables.mjs · ISO_CABLE` | `deck/cable.js` and `deck/transforms.js` numbers: CLEAR, GAP, LANE, the 12 px least, CORNER, HEAD, SAMPLE, WALK_MOST, LABEL, EDGE, TIP, LABEL_LOOKS |
-| `cables.mjs · exitOutline` | `deck/boxes.js · exitOutline` |
-| `cables.mjs · layStraight` | `deck/transforms.js · wiresBetween` (straight wires: GAP, lanes, the too-close refusal) and `wireSvg` (the bend's curve) |
-| `cables.mjs · curveWay` | `deck/rides.js · curveLength` (a curve walked in 64 runs) |
-| `build.mjs · roundOutline` | `deck/iso.js · roundOutline` |
-| `ride.mjs · seenAt` | `deck/rides.js · seenOf` (CSS there, a number at t here) |
-| `ride.mjs · onStops` | CSS `linear()`, which StoryDeck's stops are written as (`deck/rides.js · easing`) |
-| `draw.mjs · drawHead` | `deck/transforms.js · headAt` |
+| `cables.mjs` · a cable's label, its plate and the looks a map's labels share | `/isometric` · `labelPlace`, `labelHalf`, `held`, `walkWay`, `LABEL_PLACES`, `CABLE` |
+| `cables.mjs` · a straight wire: its lanes, its ends 6 px off each outline, too close refused, its bend, its curve | `/isometric` · `lanesOf`, `straightRun`, `bentWire`, `curveWay` (and `exitOutline` beneath) |
+| `cables.mjs` · the cable's numbers (6 px clear, corners 0.4 of a tile, the 18 px head's four fifths) | `/isometric` · `CABLE` |
+| `build.mjs` · a cylinder's outline | `/isometric` · `roundOutline` |
+| `ride.mjs` · a packet's share at t (CSS's `linear()` read at a moment) and how much of it shows past a block | `/motion` · `onStops`, `seenAt` |
+| `draw.mjs` · the arrow head's corners (only the painting is here) | `/isometric` · `arrowHead`, `headingOf` |
 
 What the film does otherwise, each said where it is done: a tone is a pale tint of the theme's colour; a floor's name
 is whole ink on a halo of the ground, a little heavier (the film's contrast check reads slanted words); the small line

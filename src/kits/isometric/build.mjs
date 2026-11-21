@@ -8,7 +8,7 @@
  *
  * Tiles in, frame px out (the 1600×900 sheet). The cables are put on the frame by cables.mjs.
  */
-import {arrange, arrangeByGroup, floorLabelPlace, gridFor, isometric, routes, wordsToFit, GROUP_MARGIN} from 'footprint-story/isometric';
+import {arrange, arrangeByGroup, floorLabelPlace, gridFor, isometric, roundOutline, routes, wordsToFit, GROUP_MARGIN} from 'footprint-story/isometric';
 
 /**
  * StoryDeck's numbers (deck/iso.js), unchanged: a fitted tile 96 to 160 px wide (64 at least for a map of groups), the
@@ -84,19 +84,14 @@ function gridOf(map, where) {
     {most: ISO_FIT.most, least: grouped ? ISO_FIT.grouped : ISO_FIT.least, also: [...reachOf(map), ...held]}));
 }
 
-/** A round thing's outline as points round it: the upper half of its top, then the lower half of its foot (StoryDeck's roundOutline). */
-function roundOutline(top, bottom, steps = 12) {
-  const arc = (e, from) => Array.from({length: steps + 1}, (_, i) => { const a = from + (Math.PI * i) / steps; return [e.cx + e.rx * Math.cos(a), e.cy + e.ry * Math.sin(a)]; });
-  return [...arc(top, Math.PI), ...arc(bottom, 0)];
-}
-
 /** Each block's faces on the frame, its outline, the middle of its top and its name fitted there: block.shape. */
 function shapeBlocks(map, grid) {
   for (const b of map.blocks) {
     const thing = {at: b.at, size: b.size};
+    // a round thing's outline: footprint-story/isometric · roundOutline, the edge a deck's cylinder has too
     if (b.kind === 'cylinder') {
       const c = grid.cylinder(thing);
-      b.shape = {kind: 'cylinder', top: c.top, bottom: c.bottom, centre: [c.centre.x, c.centre.y], box: c.box, outline: roundOutline(c.top, c.bottom), room: (high) => grid.room({...thing, round: true}, high)};
+      b.shape = {kind: 'cylinder', top: c.top, bottom: c.bottom, centre: [c.centre.x, c.centre.y], box: c.box, outline: roundOutline(c.top, c.bottom).map(({x, y}) => [x, y]), room: (high) => grid.room({...thing, round: true}, high)};
     } else {
       const k = grid.block(thing), xy = (list) => list.map(({x, y}) => [x, y]);
       b.shape = {kind: 'block', top: xy(k.top), left: xy(k.left), right: xy(k.right), centre: [k.centre.x, k.centre.y], box: k.box, outline: xy(k.outline), room: (high) => grid.room(thing, high)};

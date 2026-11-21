@@ -22,16 +22,16 @@
  */
 import {readMap} from './read.mjs';
 import {buildMap} from './build.mjs';
-import {layCables, walk} from './cables.mjs';
+import {walkWay} from 'footprint-story/isometric';
+import {layCables} from './cables.mjs';
 import {notesOf} from './notes.mjs';
 import {rideOf, packetsAt} from './ride.mjs';
 import {drawMap, lookOf, inAt} from './draw.mjs';
 
 export {ISO_LIMITS, readArrow} from './read.mjs';
 export {ISO_FIT} from './build.mjs';
-export {ISO_CABLE, LABEL_PLACES} from './cables.mjs';
 export {ISO_LOOK} from './draw.mjs';
-export {PACKET_RADIUS, onStops} from './ride.mjs';
+export {PACKET_RADIUS} from './ride.mjs';
 export {NOTE_FROM} from './notes.mjs';
 
 const boxOf = (points) => { const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; };
@@ -74,7 +74,7 @@ export function compileIsometric(spec, context) {
   const warned = notes.filter((n) => n.level === 'warn');
   if (map.strict && warned.length) throw new Error(`${where}: the isometric map has ${warned.length} warning${warned.length === 1 ? '' : 's'} (strict: true): ${warned.slice(0, 3).map((n) => n.message.slice(where.length + 2)).join('; ')}${warned.length > 3 ? `; and ${warned.length - 3} more` : ''}`);
   const look = lookOf(theme), shownAt = (p, t) => p.appearAt === null || t >= p.appearAt;   // named from its moment on, as it starts to come in
-  const walks = map.wires.map((w) => walk(w.cable.way));
+  const walks = map.wires.map((w) => walkWay(w.cable.way));
   return {
     hang: 1,
     sounds: [],
