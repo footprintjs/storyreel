@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.39.0 — the isometric kit builds its maps with footprint-story's steps
+
+The isometric kit no longer carries its own copy of the map's steps. `kits/isometric/build.mjs` hands the read map to
+footprint-story 0.24.0's `buildIsoMap(spec, ISO_MAP_POLICIES.film)` — the one copy of place, route, fitFloors, grid,
+shape, names, order and floorLabels, which a deck will build its maps with too — and joins what it built onto the
+kit's pieces. footprint-story took the kit's 0.38.0 steps over and pinned them, so **no frame changes**:
+`test/golden.json` is the same, and every film draws as it did.
+
+- `build.mjs` is the adapter now (`specOf`, `buildMap`); its steps are gone. Each piece reads the built map's own
+  frozen entries (a block's faces are the style's shape items, which `draw.mjs` traces); the grid is made again from
+  the built map's numbers. `test/iso-map-steps.test.mjs` checks, for the example's worlds and a map of every
+  difference, that the kit's built map equals `buildIsoMap`'s from a hand-written spec, and that no kit file runs a
+  step itself.
+- **`ISO_FIT` is footprint-story's film policy** (`ISO_MAP_POLICIES.film`): the fitting numbers are under `fit`
+  (`ISO_FIT.fit.most`, … `margin`), beside `name`, `small`, `clear` and `hold`. Before, they stood at its top
+  (`ISO_FIT.most`). `name` and `clear` are where they were. The type says so.
+- Needs `footprint-story ^0.24.0`.
+
+**Refusal words** that changed, each still naming the recipe entry and the fix:
+
+- A map whose blocks cannot be placed from their wires: `stage map: the isometric map: the blocks cannot be placed
+  from their wires: …` (was `stage map: the isometric blocks cannot be placed from their wires: …`).
+- Wires that cannot be laid: `stage map: the isometric map: the wires cannot be laid: … — check each wire's ends and
+  the blocks' ports` (was `stage map: the isometric wires cannot be laid: … — check each wire's arrow and …`).
+- A picture that cannot be fitted into the area: `stage map: the isometric map: its picture (fitted into the area): …`
+  (was `stage map: isometric picture (fitted into the area): …`). A written grid the grid refuses: `stage map: the
+  isometric map's grid: …` (was `stage map: isometric grid: …`; the kit's own checks of a grid, which come first, are
+  unchanged).
+- A cylinder whose width and depth differ by less than a billionth: refused as any other cylinder that is not round,
+  `stage map: isometric blocks[2] ("db"): a cylinder is round — …` (before, the kit let it through and the grid then
+  refused it in its own words, `isometric: a cylinder is round: …`, with no entry named). Width and depth are now equal
+  exactly, as footprint-story's spec reads a cylinder.
+
+Every other refusal reads as before, a floor's included. A floor with a size and no `at` still stands at `[0, 0]`.
+
 ## 0.38.0 — a writer picks how a title and a block's name break
 
 - **`layout.header.break`**: `"even"` (the usual, what every film had: as many lines as filling them takes, as alike

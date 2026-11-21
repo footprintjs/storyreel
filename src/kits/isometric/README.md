@@ -2,10 +2,9 @@
 
 **Why:** a system drawn as blocks on a floor seen from a corner reads at a glance, and a talk often has it twice: on a
 slide (StoryDeck) and in a film (StoryReel). This kit draws the same map the same way, because every number comes from
-`footprint-story`: `/isometric` places the blocks (`arrange`, `arrangeByGroup`), lays the cables (`routes`, with ports),
-fits the grid (`gridFor`), the floors' names (`floorLabelPlace`) and the blocks' names (`wordsToFit` with `grid.room`),
-orders the painting (`backToFront`) and rounds each cable and stops it for its head (`cableWay`); `/motion` rides the packets (`rideProfile`,
-`rideSeconds`, `withHold`, `showStops`, `hiddenRamps`). The kit only draws on the canvas and words what it finds.
+`footprint-story`: `/isometric` builds the map (`buildIsoMap`, the map's steps, with the film's policy) and rounds each
+cable and stops it for its head (`cableWay`); `/motion` rides the packets (`rideProfile`, `rideSeconds`, `withHold`,
+`showStops`, `hiddenRamps`). The kit only draws on the canvas and words what it finds.
 
 ```js
 import {isometricKit} from 'footprint-storyreel/kits/isometric';
@@ -53,6 +52,29 @@ bend is refused (a wire to a port runs along the floor).
 What a film adds, where a deck has clicks: `appear` (an anchor: the piece comes in over 0.35 s, and is named from then),
 a wire's `start` (when its packets begin; else when it appears, else the film's start) and `strict` (a warning refuses).
 
+## The map's steps: footprint-story's (from 0.39.0)
+
+`build.mjs` hands the read map to `footprint-story/isometric` · `buildIsoMap(spec, ISO_MAP_POLICIES.film)` and joins
+what it built back onto the kit's pieces. The steps are footprint-story's, in its order: `place` (by the map, or from
+the wires: `arrange` / `arrangeByGroup`), `route` (`routes`, with ports), `fitFloors`, `grid` (written, or `gridFor`
+into the area), `shape` (each piece's faces, box, centre and outline: the style's `shape` column), `names`
+(`wordsToFit` in the room a top has), `order` (`backToFront`) and `floorLabels` (`floorLabelPlace`). Until 0.38.0 the
+kit carried its own copy of them; footprint-story took that copy over in 0.24.0 and pinned it, so the frames did not
+change when the kit moved onto it (`test/golden.json` is the same), and `test/iso-map-steps.test.mjs` checks the kit's
+built map against `buildIsoMap`'s and that no kit file runs a step itself.
+
+- **The spec** (`build.mjs` · `specOf`): the read map as plain data. Each piece's `who` is the kit's entry words less
+  the recipe entry (`isometric blocks[2] ("db")`); a refusal comes back with the entry put in front (`stage map: …`),
+  so it reads as the kit's always did. A floor with a size and no `at` is handed at `[0, 0]` (read.mjs): the spec takes
+  a floor's place and size together. A written grid is handed as `{tile, origin, rise?}`.
+- **The built map** (`map.built`, frozen plain data, no function): each block's `at`, `shape` (`faces`: a block's
+  `left`, `right` and `top` polygons; a cylinder's `side` path and `top` ellipse), `fitted` and `smallFitted`; each
+  floor's `at`, `size`, `shape` (its `ground` polygon and `grid` lines) and label `place`; each wire's `route` (null:
+  written straight); the paint `order`. The kit's grid is made again from its numbers (`isometric(built.view)`).
+- **The policy** (`ISO_FIT` = `ISO_MAP_POLICIES.film`): StoryDeck's tile range and names, a film's small line fitted
+  down to 12 px, and every labelled floor held in a fitted picture (below). The style's paint list is built too; the
+  kit paints its own look (`draw.mjs`) until a world's recipe takes a style.
+
 ## What a film reads of it
 
 - `regionsAt(t)`: each block, floor and wire by `name` (`story.blocks[3]`, `stages[0].world.wires[1]`), each label by
@@ -79,7 +101,7 @@ entry's name.
 |---|---|
 | `index.mjs` | the kit: compile, regions, texts, parts, the record |
 | `read.mjs` | the recipe entry checked, every refusal naming the entry and the fix |
-| `build.mjs` | placement, routes, grid, floors, faces, fitted names, painting order |
+| `build.mjs` | the read map handed to footprint-story's `buildIsoMap`, and what it built joined onto the pieces |
 | `cables.mjs` | each wire on the frame: the cable's rounded line, a straight wire, a lead's share, a label's place (footprint-story's rules) |
 | `ride.mjs` | the packets at t, from the shared ride numbers |
 | `notes.mjs` | what the kit says, in words |
@@ -95,7 +117,6 @@ import the one copy, so a deck and a film draw the same cable):
 | `cables.mjs` · the cable's numbers (6 px clear, corners 0.4 of a tile, the 18 px head's four fifths) | `/isometric` · `CABLE` |
 | `cables.mjs` · a laid cable's line, stopped where its head begins (from 0.36.0: never past 1 px short of its last run's start, as StoryDeck stops it — before, at most half that run) | `/isometric` · `cableWay` |
 | `cables.mjs` · a lead into a port on a seen side: the share of the line drawn again over its block, where a packet passes onto it (from 0.37.0: through its floor corner, from where the head begins — before, the straight run of its points to the floor point) | `/isometric` · `cableLead` |
-| `build.mjs` · a cylinder's outline | `/isometric` · `roundOutline` |
 | `ride.mjs` · a packet's share at t (CSS's `linear()` read at a moment) and how much of it shows past a block | `/motion` · `onStops`, `seenAt` |
 | `draw.mjs` · the arrow head's corners (only the painting is here) | `/isometric` · `arrowHead`, `headingOf` |
 

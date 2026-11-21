@@ -74,8 +74,8 @@ export function compileIsometric(spec: IsometricSpec, context: Pick<KitContext, 
 export const isometricKit: ContextKit;
 /** The limits: pieces a world, packets a wire, a run's seconds, a rest, a trail's width, label letters, a name's letters, a block's usual size, a run's usual seconds. */
 export const ISO_LIMITS: Readonly<{pieces: number; packets: number; seconds: readonly [number, number]; rest: number; trail: readonly [number, number]; label: number; wireLabel: number; name: number; usualSize: readonly [number, number, number]; runSeconds: number}>;
-/** StoryDeck's fitting numbers: tile range, grouped least, inset, floor margin, name and small sizes, the share of a top's room a name takes. */
-export const ISO_FIT: Readonly<{most: number; least: number; grouped: number; inset: number; margin: number; name: Readonly<{size: number; least: number}>; small: Readonly<{size: number; least: number}>; clear: number}>;
+/** The numbers the kit builds its maps with: footprint-story's film policy (ISO_MAP_POLICIES.film) — tile range, grouped least, inset, floor margin under `fit`; name and small sizes; the share of a top's room a name takes; which floors a fitted picture holds. */
+export const ISO_FIT: Readonly<{fit: Readonly<{most: number; least: number; grouped: number; inset: number; margin: number}>; name: Readonly<{size: number; least: number}>; small: Readonly<{size: number; least: number}> | null; clear: number; hold: 'groups' | 'groups-and-labels'}>;
 /** The look where the theme has none. */
 export const ISO_LOOK: Readonly<{tone: string; glow: string; line: number; grid: number; cable: number; label: number; smallInk: number; appear: number}>;
 /** A running packet's radius, px. */

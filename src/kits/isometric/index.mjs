@@ -45,7 +45,7 @@ function floorLabelBox(f) {
 
 /** What the kit made, for the record and for whoever checks it (a test, an agent): plain numbers, rounded to a tenth of a px. */
 function recordOf(map) {
-  return {placed: map.placed, tile: map.grid.tile[0], fitted: !map.grid0,
+  return {placed: map.placed, tile: map.grid.tile[0], fitted: map.built.grid === 'fitted',
     blocks: map.blocks.map((b) => ({name: b.name, kind: b.kind, at: [...b.at], size: [...b.size], ...(b.fitted ? {lines: [...b.fitted.lines], nameSize: b.fitted.size, fits: b.fitted.fits} : {}), ...(b.rule ? {break: b.rule} : {})})),
     floors: map.floors.map((f) => ({name: f.name, at: [...f.at], size: [...f.size], ...(f.place ? {lines: [...f.place.lines], fits: f.place.fits, covered: f.place.covered} : {})})),
     cables: map.wires.map((w) => ({name: w.name, from: w.arrow.from.block.name, to: w.arrow.to.block.name, along: Boolean(w.route?.points), ...(w.route?.ports?.some(Boolean) ? {ports: [...w.route.ports]} : {}),
@@ -56,9 +56,7 @@ function recordOf(map) {
 /** The world, compiled: `spec` the recipe's world entry; `context` the kit context (clock, theme, where). */
 export function compileIsometric(spec, context) {
   const {clock, theme, where = 'the isometric world'} = context;
-  const map = readMap(spec ?? {}, where);
-  map.grid0 = map.grid;
-  buildMap(map, where);
+  const map = buildMap(readMap(spec ?? {}, where), where);
   layCables(map);
   // each anchor resolved in the name of the piece that wrote it: a phrase the voice never says names blocks[2].appear
   const at = (p, key) => {
