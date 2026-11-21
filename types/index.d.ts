@@ -763,7 +763,8 @@ export interface UiReport {zones: ZoneRect[]; covered: 'report' | 'refuse'; face
  */
 export interface Layout {
   format: FormatName;
-  header?: {title: string; sub?: string; box?: Box} | false;
+  /** `break`: how the title breaks — 'even' (the usual: as many lines as filling takes, as alike as they allow) or 'fill' (each line as full as it goes); footprint-story/layout's BREAK_RULES. */
+  header?: {title: string; sub?: string; box?: Box; break?: 'even' | 'fill'} | false;
   captions?: boolean | {maxWords?: number; size?: number; box?: Box};
   /** Portrait and vertical: the crop's keys (CropKey), or 'focus' (it follows the film throughout). */
   crop?: CropKey[] | 'focus';

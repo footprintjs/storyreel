@@ -29,6 +29,7 @@ await compileFilm({storyboard, timings, recipe, kits: [isometricKit]});
 | `data-at="col row [lift]"` | `at` | every block or none: with none, placed from the wires |
 | `data-size="wide deep high"` | `size` | `[2, 2, 1]` when left out; a floor `[cols, rows]`, fitted round its blocks when left out |
 | `<b>` / `<small>` | `label` / `small` | the name fitted to the top (26 px, two lines, down to 16); the small line under it (18 down to 12) |
+| `data-break` | `break` | where the name's two lines part: `"even"` (the usual: alike) or `"fill"` (the first line full) — footprint-story's named rules; the record's block names it |
 | `--iso-color`, class `ok`/`warn`/`bad` | `color` / `tone` | a tone is the theme's colour as a pale tint, so the ink name stays readable |
 | `data-iso-group` | `group` | groups placed group by group; a floor with the group is fitted round them |
 | `data-ports="p1: 0.4 2 0.3"` | `ports: [{name, at, face?}]` | checked by `readPorts` |

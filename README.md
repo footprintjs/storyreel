@@ -1402,6 +1402,12 @@ A layout is data, checked like a recipe: an unknown key refuses, a header in the
 refuses (it has no band), a crop key out of spoken order refuses. Only the landscape format takes an
 `intro`.
 
+How the title breaks is a named rule, `header.break`: `"even"` (the usual) sets as many lines as filling them takes,
+as alike as that many lines allow ("The map tells us where / the packets go next");
+`"fill"` fills each line as full as it goes ("The map tells us where the / packets go next"), as the end card does.
+Both are footprint-story/layout's `wrapWords` rules, so a deck that breaks a title breaks it alike; any other value
+refuses.
+
 ### The app's own UI: safe zones, as data
 
 A Short is watched inside an app that draws over it: a bar at the top, a strip with the channel's name and the post's

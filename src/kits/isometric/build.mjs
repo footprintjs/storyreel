@@ -96,8 +96,9 @@ function shapeBlocks(map, grid) {
       const k = grid.block(thing), xy = (list) => list.map(({x, y}) => [x, y]);
       b.shape = {kind: 'block', top: xy(k.top), left: xy(k.left), right: xy(k.right), centre: [k.centre.x, k.centre.y], box: k.box, outline: xy(k.outline), room: (high) => grid.room(thing, high)};
     }
-    // the name made to fit the top: one line at 26 px, else two, else smaller down to 16 (the same rule a deck uses)
-    b.fitted = b.label ? wordsToFit(b.label, (high) => ISO_FIT.clear * b.shape.room(high), ISO_FIT.name) : null;
+    // the name made to fit the top: one line at 26 px, else two, else smaller down to 16 (the same rule a deck uses),
+    // the two lines parted by the block's break rule when it gives one ("fill" or "even", a deck's data-break)
+    b.fitted = b.label ? wordsToFit(b.label, (high) => ISO_FIT.clear * b.shape.room(high), b.rule ? {...ISO_FIT.name, break: b.rule} : ISO_FIT.name) : null;
     // the small line under it, on one line in the room the top has at the stack's foot (the diamond narrows below its
     // middle): a deck leaves its <small> as written; a film's frame is smaller, and a line off its block reads as noise
     if (b.small) {

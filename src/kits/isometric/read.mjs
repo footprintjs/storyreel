@@ -4,7 +4,7 @@
  *
  * The words are StoryDeck's (README "Blocks on a floor"), as data: a deck's `data-k` is `name`, `data-iso` is `kind`,
  * `data-at`/`data-size` are `at`/`size`, `data-iso-group` is `group`, `data-ports` is `ports`, a block's `<b>` and
- * `<small>` are `label` and `small`, a floor's `data-label` is `label`, a wire's `data-arrow="lap.rj45 to sw.p1"` is
+ * `<small>` are `label` and `small`, its `data-break` is `break`, a floor's `data-label` is `label`, a wire's `data-arrow="lap.rj45 to sw.p1"` is
  * `arrow` (the same grammar, a trailing bend "0" drawing it straight), and `data-head`, `data-packets`, `data-speed`,
  * `data-ride`, `data-rest`, `data-trail`, `data-behind` are `head`, `packets`, `speed`, `ride`, `rest`, `trail`,
  * `behind`. WHY the same words: a map written for a deck is written for a film by moving its attributes into keys.
@@ -14,10 +14,11 @@
  */
 import {readPorts, readThing, MOST_FLOOR_LABEL, MOST_ROUTES} from 'footprint-story/isometric';
 import {MOST_EASE} from 'footprint-story/motion';
+import {BREAK_RULES} from 'footprint-story/layout';
 
 /** The keys an isometric world takes (beside `kit`), each piece's keys, and the limits. */
 export const WORLD_KEYS = Object.freeze(['kit', 'blocks', 'floors', 'wires', 'grid', 'area', 'strict']);
-const BLOCK_KEYS = Object.freeze(['name', 'kind', 'at', 'size', 'label', 'small', 'color', 'tone', 'group', 'ports', 'appear']);
+const BLOCK_KEYS = Object.freeze(['name', 'kind', 'at', 'size', 'label', 'small', 'break', 'color', 'tone', 'group', 'ports', 'appear']);
 const FLOOR_KEYS = Object.freeze(['name', 'at', 'size', 'label', 'color', 'group', 'appear']);
 const WIRE_KEYS = Object.freeze(['name', 'arrow', 'label', 'head', 'packets', 'speed', 'ride', 'rest', 'trail', 'behind', 'appear', 'start']);
 const GRID_KEYS = Object.freeze(['tile', 'at', 'rise']);
@@ -118,7 +119,7 @@ function groupOf(v, who) {
   return words(v, who, 'group', 100);
 }
 
-/** One block (or cylinder), checked: {name, kind, at|null, size, label, small, color, tone, group, ports, appear, path, who}. */
+/** One block (or cylinder), checked: {name, kind, at|null, size, label, small, rule|null, color, tone, group, ports, appear, path, who}. */
 function readBlock(b, i, where) {
   const path = `blocks[${i}]`, first = `${where}: isometric ${path}`;
   keysOf(b, BLOCK_KEYS, first);
@@ -136,6 +137,9 @@ function readBlock(b, i, where) {
   if (own(b, 'color') && own(b, 'tone')) throw new Error(`${who}: give it a color or a tone, not both`);
   const small = words(b.small, who, 'small', ISO_LIMITS.label), label = words(b.label, who, 'label', ISO_LIMITS.label);
   if (small && !label) throw new Error(`${who}: small is the line under its label — give it a label too`);
+  // how its label breaks onto two lines: a deck's data-break, footprint-story's named rules ("even" the usual)
+  if (own(b, 'break') && !BREAK_RULES.includes(b.break)) throw new Error(`${who}: break is ${BREAK_RULES.map((r) => `"${r}"`).join(' or ')} — "fill" sets the label's first line as full as it goes, "even" (the usual) makes the two lines alike; not ${shown(b.break)}`);
+  if (own(b, 'break') && !label) throw new Error(`${who}: break says how its label breaks onto two lines — give it a label too`);
   let ports = [];
   if (own(b, 'ports')) {
     if (!Array.isArray(b.ports)) throw new Error(`${who}: ports is a list, [{"name": "p1", "at": [x, y, z]}] in its own tiles (x along its width, y along its depth, z up from its base)`);
@@ -144,7 +148,7 @@ function readBlock(b, i, where) {
       throw new Error(`${who}: ${e.message.replace(/^isometric: /, '')}`, {cause: e});
     }
   }
-  return {name, kind, at, size: [...size], label, small, color: b.color ?? null, tone: b.tone ?? null, group: groupOf(b.group, who), ports, appear: appearOf(b.appear, who), path, who};
+  return {name, kind, at, size: [...size], label, small, rule: own(b, 'break') ? b.break : null, color: b.color ?? null, tone: b.tone ?? null, group: groupOf(b.group, who), ports, appear: appearOf(b.appear, who), path, who};
 }
 
 /** One floor, checked: {name, at|null, size|null, label, color, group, appear, path, who}. */

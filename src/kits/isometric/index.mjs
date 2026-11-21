@@ -46,7 +46,7 @@ function floorLabelBox(f) {
 /** What the kit made, for the record and for whoever checks it (a test, an agent): plain numbers, rounded to a tenth of a px. */
 function recordOf(map) {
   return {placed: map.placed, tile: map.grid.tile[0], fitted: !map.grid0,
-    blocks: map.blocks.map((b) => ({name: b.name, kind: b.kind, at: [...b.at], size: [...b.size], ...(b.fitted ? {lines: [...b.fitted.lines], nameSize: b.fitted.size, fits: b.fitted.fits} : {})})),
+    blocks: map.blocks.map((b) => ({name: b.name, kind: b.kind, at: [...b.at], size: [...b.size], ...(b.fitted ? {lines: [...b.fitted.lines], nameSize: b.fitted.size, fits: b.fitted.fits} : {}), ...(b.rule ? {break: b.rule} : {})})),
     floors: map.floors.map((f) => ({name: f.name, at: [...f.at], size: [...f.size], ...(f.place ? {lines: [...f.place.lines], fits: f.place.fits, covered: f.place.covered} : {})})),
     cables: map.wires.map((w) => ({name: w.name, from: w.arrow.from.block.name, to: w.arrow.to.block.name, along: Boolean(w.route?.points), ...(w.route?.ports?.some(Boolean) ? {ports: [...w.route.ports]} : {}),
       points: w.cable.points.map(([x, y]) => [round1(x), round1(y)]), length: round1(w.cable.length), unseen: w.cable.unseen.map(([lo, hi]) => [round1(lo), round1(hi)]),
