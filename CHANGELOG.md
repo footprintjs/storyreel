@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.34.0 — a film draws a deck's map, every finding names its fix, and the shared rules come from the story library
 
 - **`footprint-storyreel/kits/isometric`: StoryDeck's isometric maps in a film** (`isometricKit`, pass it in `kits`).
   Blocks and cylinders on a floor, floors with their names, groups, cables between blocks and ports, and packets riding
@@ -49,6 +49,39 @@
   most of its hits name. Region `holds` is a list of boxes (a drawing's rooms), not `true`. A review returns `notes`
   (the film's regions, when `regionsAt` throws), printed by `storyreel review` and `check`. The types say all of it
   (`Finding.where/fix`, `ReviewHit`, `Review.places`, `samples[].zoomed`, `Region.holds/sheet/drawing`).
+- **StoryReel now needs footprint-story `^0.18.0`** (it was `^0.14.2`).
+- **Breaking words across a width is footprint-story's** (`footprint-story/layout` · `wrapWords`, `narrowestWidth`).
+  It was written separately in the title band's balanced lines (`layout.mjs`), the end card (`endcard.mjs`), the
+  summary cards (`kits/paper/paper.mjs`), a caption's balancing (`captions.mjs`) and a storyboard film's whiteboard
+  title (`storyboard/film.mjs` · `titleLines`, measured in characters). Each now calls the one rule, each line still
+  measured whole as it is drawn. A whiteboard title would break differently only if it began with a space, and a
+  storyboard's title is read trimmed, so none does. A caption's own breaking (each word's width summed, word indexes)
+  and a chip's (a word too wide broken between graphemes) stay here: they are other rules.
+- **Framing a named thing is footprint-story's** (`footprint-story/layout` · `frameZoom`), the rule StoryDeck's cameras
+  frame by: the focus camera's keys (`attention.mjs`) and a push on a named thing (`notes.mjs`). The film computed
+  the framing's share ÷ the larger of box ÷ frame; the kit computes the share × the smaller of frame ÷ box. That is
+  the same rule with its operations in another order, so the answer can move in its last bit. What changes, on purpose
+  and once:
+  - a push's zoom, rounded to 3 places, is now the exact value rounded where the old order fell just under a tie.
+    Among every whole-pixel box on the frame (1,808,768 pushes a film accepts) one size does this: a `close` push on
+    a thing 384 px tall now zooms ×1.688 (the exact 1.6875) where it zoomed ×1.687. No push is newly refused or
+    newly accepted.
+  - the "needs ×N.N" figure in a push refusal can read one tenth higher at the same kind of tie (525 of 250,830
+    refused whole-pixel boxes).
+  - a focus key's zoom moves in its last bit, which showed in no drawn frame. A cached picture drawn with focus is
+    drawn again once.
+- **The rules a scene that differs is held to, and its default words, are footprint-story's** (`differsProblem`,
+  `differsLines`, `timeProblem`, `differsEnglish`, `differsFactors`, `timeWords`, `analogyWords` and the bounds), the
+  same ones StoryDeck uses. Reading a scene's `differs`, every sentence of a refusal, the labels as drawn and the
+  verdict stay here, word for word; `review`'s exports are the same names.
+- Apart from the push framing above, nothing a film draws, says, checks or records changes. Checked by building
+  every example film and 204 outputs before and after: the four examples' frames (48 each, 800 px wide) and records;
+  60 title bands with captions in every format, with and without a zone to keep clear; 40 storyboards whose scenes
+  declare how they differ; 60 storyboard films from the conversation example, their titles rewritten (spaces before,
+  after and doubled); 40 end cards. Every frame hash, record (its run ids and times aside) and refusal was compared.
+  Then function by function against 0.33.0: `readDiffers`, `differsOf`, `saidPhrases`, `ownFigure` (40,000 generated
+  inputs), `drawEndCard` and `captionFit` (10,000, every drawing call compared), and the focus camera (30,000
+  generated films: every record the same, 2% of view values different in the last bit only).
 
 ## 0.33.0 — one reader of a run's record, with StoryDeck
 

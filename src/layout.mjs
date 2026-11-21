@@ -32,6 +32,7 @@
  * (zones.mjs · uiFindings).
  */
 import {captionChunks, captionAt} from 'footprint-story';
+import {wrapWords, narrowestWidth} from 'footprint-story/layout';
 import {spokenTracks, drawCaption, captionFit} from './captions.mjs';
 import {inOut} from './ease.mjs';
 import {FOLLOW, keepWhole, filmSpeakers} from './follow.mjs';
@@ -300,19 +301,15 @@ export function cropWindow(keys, t, [cw, ch]) {
   return {x0: Math.max(0, Math.min(1600 - w, x - w / 2)), y0, w, h};
 }
 
-/** Words wrapped greedily into lines no wider than `width` (a word wider than that has a line to itself). */
-function wrap(ctx, words, width) {
-  const out = [''];
-  for (const word of words) { const next = out.at(-1) ? `${out.at(-1)} ${word}` : word; if (ctx.measureText(next).width > width && out.at(-1)) out.push(word); else out[out.length - 1] = next; }
-  return out;
-}
-/** Wrapped, then balanced: the narrowest width that keeps the same number of lines, so no line ends with a word alone. */
+/**
+ * Wrapped greedily (each line measured whole, as the canvas draws it), then balanced: the narrowest width that keeps
+ * the same number of lines, so no line ends with a word alone. Both rules are footprint-story/layout's (wrapWords,
+ * narrowestWidth), the ones the end card and the summary cards break by too.
+ */
 function balancedLines(ctx, text, width) {
-  const words = text.split(/\s+/).filter(Boolean), lines = wrap(ctx, words, width);
+  const words = text.split(/\s+/).filter(Boolean), measure = line => ctx.measureText(line).width, lines = wrapWords(words, width, measure);
   if (lines.length < 2) return lines;
-  let lo = 0, hi = width;
-  for (let i = 0; i < 12; i++) { const mid = (lo + hi) / 2; if (wrap(ctx, words, mid).length > lines.length) lo = mid; else hi = mid; }
-  return wrap(ctx, words, hi);
+  return wrapWords(words, narrowestWidth(width, lines.length, w => wrapWords(words, w, measure).length), measure);
 }
 
 /**

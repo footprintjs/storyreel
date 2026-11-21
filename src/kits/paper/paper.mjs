@@ -5,6 +5,7 @@
  */
 import {INK, lightBulb, drawStrokes, drawIcon, ease} from '../whiteboard/board.mjs';
 import {code} from '../../decorative.mjs';
+import {wrapWords} from 'footprint-story/layout';
 
 /**
  * Where the card sits as it moves (aside for the first stage, into a kit's scene): its box on the
@@ -349,11 +350,8 @@ function drawRecall(c, P, image, x, y, w, h) {
   c.save(); c.beginPath(); c.roundRect(x, y, w, h, 12); c.clip(); c.drawImage(image, x, y, w, h); c.restore();
   c.strokeStyle = P.C.edge; c.lineWidth = 2; c.beginPath(); c.roundRect(x, y, w, h, 12); c.stroke();
 }
-const wrap = (P, text, size, width) => {
-  const lines = [''];
-  for (const wd of text.split(' ')) { const next = lines.at(-1) ? `${lines.at(-1)} ${wd}` : wd; if (P.measure(next, size, {display: true, weight: 600}) > width && lines.at(-1)) lines.push(wd); else lines[lines.length - 1] = next; }
-  return lines;
-};
+/** A card's words greedily on lines no wider than `width`, split at single spaces: footprint-story/layout · wrapWords, each line measured as the painter draws it. */
+const wrap = (P, text, size, width) => wrapWords(text.split(' '), width, line => P.measure(line, size, {display: true, weight: 600}));
 
 /**
  * The summary: first a hero (a lesson frame, large, with the name of what it shows), then three
