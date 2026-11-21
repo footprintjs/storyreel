@@ -513,6 +513,8 @@ export interface Film {
   drawnBy: Readonly<Record<string, string>>;
   /** What the kits say of the worlds they built (each world's `notes`), each path the recipe's ('story.wires[2]'): present only when a world keeps notes. */
   kitNotes?: readonly {readonly level: 'warn' | 'info'; readonly path: string; readonly message: string; readonly kit: string}[];
+  /** The worlds whose map can be built again as a footprintjs run, for its record (each world's `mapRun`), named by recipe path ('story', 'stages[1]'): present only when a world has one. `storyreel check` runs them. */
+  mapRuns?: readonly {readonly name: string; readonly kit: string; run(options?: {sink?: unknown; recorders?: readonly unknown[]}): Promise<{snapshot: unknown; differs: string | null}>}[];
   /** The focus keys and emphasis words as they frame and show the picture (a cached piece's key holds the ones that reach it), or null. */
   attentionFrames: {focus: {strategy: string; feel: unknown; safe: number[]; keys: {t: number; on: string; size: string | null; cx: number; cy: number; z: number; sx: number; sy: number; box: number[]; w: number}[]} | null;
     emphasis: {strategy: string; feel: unknown; words: {t: number; text: string; next: number}[]} | null} | null;
@@ -594,6 +596,8 @@ export interface StoryWorld {
   notes?: readonly {level: 'warn' | 'info'; path: string; message: string}[];
   /** A few plain counts the film's record keeps beside the world's entry (film/summaries.mjs · buildSummary). */
   summary?: Readonly<Record<string, string | number | boolean | null>>;
+  /** The world's map built again as a footprintjs run, for its record (the isometric kit's: footprint-story's map flow); `differs`: null, or where its map parts from the one drawn. The film hands it out as film.mapRuns. */
+  mapRun?(options?: {sink?: unknown; recorders?: readonly unknown[]}): Promise<{snapshot: unknown; differs: string | null}>;
 }
 
 /**

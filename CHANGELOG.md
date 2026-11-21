@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.40.0 — ask why a map is so, from its own record
+
+A film with isometric worlds now keeps, for each world, a record of how its map was built, and `storyreel log` answers
+from it: why a block stands where it does, why the grid is fitted, why a name is that size.
+
+```
+$ storyreel check
+…
+maps: story, stages[0] — why a block stands where it does: storyreel log --run <id> --why at --map story
+$ storyreel log --run <id> --why at --map story
+at = [[1.5,16,0],[4.5,13,0],[10.5,6.5,0],[11.5,1.5,0],[16,6,0]]
+place: build (build#2) [wrote: at]
+  read (read#0) ← via who [wrote: who, blocks, floors, wires, written, area, style, policy]
+    ⚠ also consumed args — slice may be incomplete here
+  place (place#1) ← [control: no block has an at: the build places them from their wires, group by group (1 group)] [wrote: placed, placedWhy]
+```
+
+- **Where it runs: `storyreel check`.** The compile still draws with `buildIsoMap` (0.39.0). The check also runs each
+  world's map through footprint-story 0.24.0's map flow (`runMapFlow`, a footprintjs chart of the same steps), handed
+  the very spec and policy the kit handed `buildIsoMap` (`build.mjs` keeps it as `spec`; `flow.mjs` · `mapRun`). Each
+  map's run keeps its own record, beside the check's: `.storyreel/runs/<run>.map-<k>.record.jsonl` (a record holds one
+  run; a file is named by the map's place in the list, never by the recipe's words). WHY the check: it is the agent's
+  loop after an edit and already keeps a record that `log --why` reads.
+- **`log --why <key> --map <world>`**: the world by its place in the recipe (`story`, `'stages[1]'`), as the check's
+  findings name entries. A flag of its own, because `--why` still names a value by its own name. `--why view` answers
+  through the grid's decision, `--why names` through the names step, and a map placed by hand says so. An unknown map
+  names the run's maps; a run with none names its film's worlds and their kits.
+- **The two maps must be equal.** The check compares the map flow's map with the kit's; a difference is a `drift`
+  line in the reply (where they first part, both values) and heads every answer for that map. It counts in no verdict
+  (the film draws the kit's map), but it is never silent.
+- **Nothing new for a film with no isometric world**: no map is run and the check's reply is as it was. The film
+  carries `mapRuns` (`[{name, kit, run}]`) only when a world can run its map; a kit's world may expose `mapRun`.
+- A record that cannot be written never costs the check: the reply says `map story: its record was not kept`. At most
+  32 maps a check; a feature's old runs take their map records with them. A kit's `mapRun` that throws, returns no
+  map or does not finish within 30 s is a `drift` line, never a failed check.
+- The reply's call names the check's run by its id (`--run <id>`), as the log's own calls do; `keepRun` takes
+  `{saved(id)}` to tell a feature the id. The spec handed to `buildIsoMap` and the map flow is frozen at every level.
+- **A check's run file now carries `maps` and `worlds`** (the film's worlds and their kits, `film.drawnBy`), empty when
+  there are none: the reply for a film without an isometric world is unchanged, its run file is not. A check kept
+  before 0.40.0 has neither, and `--map` says it was kept before map records were.
+- The `log` tool's MCP schema grew by the `map` argument's description (not measured by the agent-cost baseline).
+- Frames unchanged (`test/golden.json` is the same). What an agent reads on the main path is unchanged (the farm film
+  has no isometric world), so the agent-cost baseline is not touched.
+
 ## 0.39.0 — the isometric kit builds its maps with footprint-story's steps
 
 The isometric kit no longer carries its own copy of the map's steps. `kits/isometric/build.mjs` hands the read map to

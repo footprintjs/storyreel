@@ -7,8 +7,9 @@
  * back through the record instead of re-running it or looking at pictures. The render's own making-of.json in that
  * folder is listed beside them. A run that failed leaves its record too, with what it failed on.
  *
- *   saveRun(out, {feature, summary, record, verdicts?, failure?})  → the file written (a feature keeps its newest RUNS_KEPT)
- *   keepRun(out, run)                                     → null, or why it was not saved: what a feature calls, for its answer is the result and the run a record beside it
+ *   saveRun(out, {feature, summary, record, verdicts?, failure?, maps?, worlds?})  → the file written (a feature keeps its newest RUNS_KEPT)
+ *                                                         maps: a check's map runs, each record moved beside the run (mapRecordBeside)
+ *   keepRun(out, run, {saved?})                           → null, or why it was not saved (saved(id): told the id once saved): what a feature calls, for its answer is the result and the run a record beside it
  *   keepFailedRun(out, feature, error, summary?)          → the same, for an error carrying its record (withRecord)
  *   withRecord(error, trace)                              → the error, carrying the record so far (error.record)
  *   logCall(folder)                                       → the call that reads a folder's runs, to print
@@ -106,6 +107,28 @@ const keptControl = control => Object.fromEntries(Object.entries(control ?? {}).
 /** The same, read back from a file: only what keptControl writes. */
 const readControl = control => (control && typeof control === 'object' && !Array.isArray(control) ? keptControl(Object.fromEntries(Object.entries(control).slice(0, CONTROL_MOST))) : {});
 
+/**
+ * A map's record file, beside the run's own: `<run>.map-<k>.record.jsonl`, k its place in the run's list of maps. WHY a
+ * file each: a record holds one run (footprint-story/record · WHY_LIMITS), and each map flow is a run of its own. WHY
+ * by number: a world's name is the recipe's; a file's name is never made from it.
+ */
+export const mapRecordBeside = (runFile, k) => runFile.replace(/\.json$/, `.map-${k}.record.jsonl`);
+const MAP_RECORD = /\.map-\d{1,3}\.record\.jsonl$/;
+/** How many maps a run keeps (check/maps.mjs · MAPS_MOST runs no more), and the most worlds it names. */
+export const MAPS_KEPT = 32, WORLDS_KEPT = 300;
+/** A world's name as a run keeps it: its recipe path, made by the compile (`story`, `whiteboard`, `stages[3]`), never other text. */
+export const WORLD_NAME = /^(?:story|whiteboard|stages\[\d{1,5}\])$/;
+const kitName = kit => cut(oneLine(String(kit ?? '')), 60);
+/** The maps a run keeps: {name, kit, control, differs?} each, bounded; `differs` where the map flow's map parted from the kit's (check/maps.mjs). */
+const keptMaps = maps => (maps ?? []).filter(m => m && WORLD_NAME.test(m.name)).slice(0, MAPS_KEPT)
+  .map(m => ({name: m.name, kit: kitName(m.kit), control: keptControl(m.control), ...(typeof m.differs === 'string' ? {differs: cut(oneLine(m.differs), SAID_CHARS)} : {})}));
+/** The worlds a run's film has, {name: kit} (film.drawnBy): what a question about a map it does not keep is answered with. */
+const keptWorlds = worlds => Object.fromEntries(Object.entries(worlds ?? {}).filter(([name]) => WORLD_NAME.test(name)).slice(0, WORLDS_KEPT).map(([name, kit]) => [name, kitName(kit)]));
+/** The same, read back from a file: only what keptMaps writes, each with its record file when it is there. */
+const readMaps = (maps, file) => (Array.isArray(maps) && maps.length <= MAPS_KEPT ? keptMaps(maps.filter(m => m && typeof m === 'object' && typeof m.name === 'string')) : [])
+  .map((m, k) => ({...m, ...(existsSync(mapRecordBeside(file, k)) ? {recordFile: mapRecordBeside(file, k)} : {})}));
+const readWorlds = worlds => (worlds && typeof worlds === 'object' && !Array.isArray(worlds) ? keptWorlds(Object.fromEntries(Object.entries(worlds).slice(0, WORLDS_KEPT))) : {});
+
 /** What a check keeps for the check after it (check/problems.mjs · sinceLast): its verdict, its round and its problems' keys, bounded. */
 const CHECK_KEYS = 300, CHECK_KEY = 200;
 const keptCheck = c => ({film: cut(String(c.film ?? ''), 40), verdict: String(c.verdict), round: Number.isInteger(c.round) && c.round > 0 ? c.round : 1, keys: (c.keys ?? []).slice(0, CHECK_KEYS).map(k => cut(String(k), CHECK_KEY))});
@@ -117,14 +140,17 @@ const readCheck = c => (c && typeof c === 'object' && typeof c.verdict === 'stri
  * Save one run of a feature into the out folder's runs: {feature, summary, record, verdicts?, failure?} — `failure` what
  * it failed on, said in its summary and as its last entry. Returns the file written.
  */
-export function saveRun(out, {feature, summary = '', record = [], verdicts = null, failure = null, check = null, kept = null, at = new Date()}) {
+export function saveRun(out, {feature, summary = '', record = [], verdicts = null, failure = null, check = null, kept = null, maps = null, worlds = null, at = new Date()}) {
   if (!FEATURE.test(feature)) throw new Error(`saveRun: feature is a short lowercase name (review, render, breakdown), not ${JSON.stringify(feature)}`);
   const dir = outputFolder(out, RUNS), stamp = at.toISOString().replace(/[:.]/g, '-');
   const file = path.join(dir, `${stamp}-${feature}.${randomBytes(3).toString('hex')}.json`);   // two saves in one millisecond: two runs
   const fail = failure === null ? null : cut(String(failure), SAID_CHARS), said = cut(String(summary), SAID_CHARS);
-  writeOutput(file, runText({feature, at: at.toISOString(), summary: fail === null ? said : `${said ? `${said} — ` : ''}failed: ${fail}`, ...(verdicts ? {verdicts: keptVerdicts(verdicts)} : {}), ...(check ? {check: keptCheck(check)} : {}), ...(kept ? {control: keptControl(kept.control)} : {})}, plainEntries(record), fail));
+  writeOutput(file, runText({feature, at: at.toISOString(), summary: fail === null ? said : `${said ? `${said} — ` : ''}failed: ${fail}`, ...(verdicts ? {verdicts: keptVerdicts(verdicts)} : {}), ...(check ? {check: keptCheck(check)} : {}), ...(kept ? {control: keptControl(kept.control)} : {}),
+    ...(worlds ? {worlds: keptWorlds(worlds)} : {}), ...(maps ? {maps: keptMaps(maps)} : {})}, plainEntries(record), fail));
   // the run's own record, written as it ran (a file beside the run's, under its name): what `log --why` walks back over
   if (kept?.file) try { writeOutput(recordBeside(file), {move: kept.file}); } catch { /* the run is saved; it says it kept no record */ }
+  // each map's record (check/maps.mjs), by its place in the list keptMaps wrote: a map whose file is not there kept none
+  keptMaps(maps).forEach((m, k) => { const from = maps.find(x => x?.name === m.name)?.file; if (from) try { writeOutput(mapRecordBeside(file, k), {move: from}); } catch { /* that map says it kept no record */ } });
   dropOldRuns(dir, feature, path.basename(file));
   return file;
 }
@@ -134,17 +160,25 @@ function dropOldRuns(dir, feature, kept) {
   try {
     // two processes may drop at once: one file gone under the other is no failure, and the run itself is saved by now
     const runs = readdirSync(dir).filter(n => n !== kept && RUN_FILE.exec(n)?.[1] === feature && lstatSync(path.join(dir, n), {throwIfNoEntry: false})?.isFile()).sort();
-    for (const name of runs.slice(0, Math.max(0, runs.length - (RUNS_KEPT - 1)))) { rmSync(path.join(dir, name), {force: true}); rmSync(recordBeside(path.join(dir, name)), {force: true}); }
+    const maps = readdirSync(dir).filter(n => MAP_RECORD.test(n));
+    for (const name of runs.slice(0, Math.max(0, runs.length - (RUNS_KEPT - 1)))) {
+      rmSync(path.join(dir, name), {force: true}); rmSync(recordBeside(path.join(dir, name)), {force: true});
+      for (const map of maps.filter(n => n.startsWith(`${name.slice(0, -'.json'.length)}.map-`))) rmSync(path.join(dir, map), {force: true});
+    }
   } catch { /* the next run drops what this one could not */ }
 }
 
 /**
  * Save a run a feature has made, never throwing: the feature's answer is the result and its run a record beside it, so
  * a run that cannot be saved (an out folder others can change, a read-only disk) never costs the answer. Returns null,
- * or why it was not saved, for the feature to say.
+ * or why it was not saved, for the feature to say. `saved(id)`: told the run's id once it is saved, for a feature
+ * whose answer offers a call that names it (an offered call names a run by its id: its number moves).
  */
-export function keepRun(out, run) {
-  try { saveRun(out, run); return null; } catch (e) { return `this ${run.feature}'s run was not saved for storyreel log: ${e?.message ?? e}`; }
+export function keepRun(out, run, {saved = null} = {}) {
+  let file;
+  try { file = saveRun(out, run); } catch (e) { return `this ${run.feature}'s run was not saved for storyreel log: ${e?.message ?? e}`; }
+  try { saved?.(path.basename(file, '.json')); } catch { /* the run is saved: what the feature does with its id is its own */ }
+  return null;
 }
 
 /** Whatever was thrown, in words: never a throw itself. */
@@ -190,6 +224,7 @@ function savedRun(file) {
   return {id: path.basename(file, '.json'), feature: r.feature, at: new Date(r.at).toISOString(), summary: oneLine(r.summary ?? ''), file, entries: readEntries(r.entries),
     ...(Number.isInteger(r.omitted) ? {omitted: r.omitted} : {}), ...(readCheck(r.check) ? {check: readCheck(r.check)} : {}),
     ...(existsSync(recordBeside(file)) ? {recordFile: recordBeside(file), control: readControl(r.control)} : {}),
+    ...(r.maps !== undefined ? {maps: readMaps(r.maps, file)} : {}), ...(r.worlds !== undefined ? {worlds: readWorlds(r.worlds)} : {}),
     ...(r.verdicts ? {verdicts: r.verdicts.map(v => ({check: oneLine(v.check), label: oneLine(v.label ?? v.check), verdict: oneLine(v.verdict ?? ''), why: oneLine(v.why ?? ''), measured: v.measured, ...(v.dropped === true ? {dropped: true} : {}), ...(v.summary ? {summary: oneLine(v.summary)} : {})}))} : {})};
 }
 

@@ -841,6 +841,9 @@ How it decides, and its chart: [src/check/README.md](src/check/README.md).
 A check keeps its record, so the log can say where a value came from without running anything again:
 `npx storyreel log --run 1 --why verdict` gives the value, the stage that wrote it, the rule that chose that stage
 and what the rule read, walked back (`--why errors`, `--why round`, any value a stage wrote).
+A film with isometric worlds keeps each map's own record too: `npx storyreel log --run 1 --why at --map story` says
+why the blocks stand where they do, through the place step and the decision that let it run (`--why view` the grid,
+`--why names` a name's size): [src/check/README.md](src/check/README.md) · Asking why a map is so.
 
 - **Reading time.** Every line meant to be read — titles, footers, list lines, captions, the board's
   writing, guess questions and answers, the push-in caption — must stay up, whole, about **0.3 s a word**

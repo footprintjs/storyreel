@@ -66,6 +66,7 @@ default["clean"]
 | `stages.mjs` | what each stage does; the verdict's rules (`VERDICT_RULES`), decided with `decide()` |
 | `problems.mjs` | the problems as one list (`problemsOf`), and one check beside the one before (`sinceLast`) |
 | `text.mjs` | the reply (`checkText`) |
+| `maps.mjs` | each isometric world's map built again by the map flow, its run's record kept (`runMaps`), and what the reply says of them (`mapLines`) |
 
 The work itself is given by the caller (`does`: `anchors`, `review`, `changes`, `before`), so this folder knows
 nothing of a project's files: `tools.mjs · check` gives the project's, and a test gives fakes.
@@ -108,6 +109,60 @@ stage wrote is said so. The walk is foottrace's (`sliceForKey`), over the file a
   first, and then a value it lacks is "not found in what could be read".
 - A record is removed with its run (the newest 50 checks are kept). One a killed check left pending is cleared by a
   later check, an hour on.
+
+## Asking why a map is so
+
+A film with isometric worlds (`../kits/isometric/`) has each world's map built twice: by the compile, with
+footprint-story's `buildIsoMap`, to draw it; and by the check, with footprint-story's map flow (`runMapFlow`, a
+footprintjs chart of the same steps), so a run's record holds a real run of them. Each map's run keeps its own record,
+beside the check's: `.storyreel/runs/<run>.map-<k>.record.jsonl`, k its place in the run's list (a record holds one
+run; a file is never named by a world's name). `--map` picks which record `--why` reads, by the world's place in the
+recipe (`story`, `'stages[1]'` — quoted in a shell):
+
+```
+$ storyreel log --run 1 --why at --map story
+at = [[1.5,16,0],[4.5,13,0],[10.5,6.5,0],[11.5,1.5,0],[16,6,0]]
+place: build (build#2) [wrote: at]
+  read (read#0) ← via who [wrote: who, blocks, floors, wires, written, area, style, policy]
+    ⚠ also consumed args — slice may be incomplete here
+  place (place#1) ← [control: no block has an at: the build places them from their wires, group by group (1 group)] [wrote: placed, placedWhy]
+    ↳ read#0 (see above)
+(a stage also uses what it is given from outside the run's own state: the record holds what stages read and wrote, and no more)
+```
+
+**The ⚠ line.** `⚠ also consumed args — slice may be incomplete here` is foottrace's honest mark on the `read` step: it
+takes the spec and the policy as the run's input (`$getArgs`), not from the run's state, so no earlier step wrote what
+it read and the walk ends there. That is the whole cause: what `read` took is the recipe's world entry (here `story`),
+as the kit read it, with the film's policy. Every answer for a map ends at `read` for that reason.
+
+`--why view` answers through the grid's decision (`[control: no grid is written: it is fitted so the picture fills the
+area]`), `--why names` through the names step (each name's lines and size), and a map placed by hand says so
+(`place: hand … [control: every block has an at: the map placed them]`). The keys are the map steps' (a key no step
+writes lists them). From a real run of `test/fixtures/iso-world`, pinned by `test/map-record.test.mjs`.
+
+**Why a flag, not `--why story.at`.** `--why` names a value by its own name, as it always has; which record it reads
+is another choice, so it has its own flag. **Why in the check.** The check is the agent's loop after an edit, and it
+already keeps a record per run that `log --why` reads; the make pipeline keeps a making-of, not a record per run.
+
+- **The same spec, the same policy.** The kit keeps the spec it handed `buildIsoMap` (`build.mjs` · `buildMap`, `spec`)
+  and hands that very spec, with `ISO_MAP_POLICIES.film`, to the map flow (`flow.mjs` · `mapRun`): never one made again.
+- **The two maps must be equal.** footprint-story pins it with a property test; the check compares them again. A
+  difference is a `drift` line in the reply (where they first part, both values) and heads every answer for that map.
+  It counts in no verdict: the film draws the kit's map, so it is no fault of the film's, but it is never silent.
+- **Nothing new for a film with no map.** Only a world whose kit hands out a `mapRun` is run (`film.mapRuns`, absent
+  otherwise); a check's reply for such a film is as it was. At most 32 maps a check (`maps.mjs` · `MAPS_MOST`); the
+  rest are counted.
+- **A record that cannot be written never costs the check.** The map is still built and compared, and the reply says
+  `map story: its record was not kept`; asked later, that map says it kept none.
+- **A kit's `mapRun` is trusted for nothing.** One that throws, returns no map, or does not finish within 30 s
+  (`maps.mjs` · `MAP_RUN_MS`) is a `drift` line saying so; the check goes on, and a record it began is removed.
+- **The call the reply offers names the run by its id** (`storyreel log --run <id> --why at --map story`), of the first
+  map that kept a record: a run's number moves when another is saved.
+- A check kept before 0.40.0 kept no map records, and `--map` says so (run `storyreel check` again). From 0.40.0 a
+  check's run file always carries `maps` and `worlds` (the film's worlds and their kits), empty when there are none.
+  `--why` with no key and `--map` lists what a map's steps write.
+- **Refusals name what there is**: an unknown map names the run's maps; a run with none names its film's worlds and
+  their kits (`run 1 kept no map: its film has no isometric world — its worlds are story (whiteboard)`).
 
 **Broken, never thrown.** Whatever stops the film from compiling, as every other tool compiles it, is the `broken`
 line. Only what is no film at all (no config, a config that throws) is an error of the command.
