@@ -76,16 +76,10 @@ export const isometricKit: ContextKit;
 export const ISO_LIMITS: Readonly<{pieces: number; packets: number; seconds: readonly [number, number]; rest: number; trail: readonly [number, number]; label: number; wireLabel: number; name: number; usualSize: readonly [number, number, number]; runSeconds: number}>;
 /** StoryDeck's fitting numbers: tile range, grouped least, inset, floor margin, name and small sizes, the share of a top's room a name takes. */
 export const ISO_FIT: Readonly<{most: number; least: number; grouped: number; inset: number; margin: number; name: Readonly<{size: number; least: number}>; small: Readonly<{size: number; least: number}>; clear: number}>;
-/** StoryDeck's cable numbers. */
-export const ISO_CABLE: Readonly<{clear: number; corner: number; head: number; sample: number; walkMost: number; label: Readonly<{size: number; char: number; pad: number}>; edge: number; tip: number; looks: number}>;
-/** Where a cable's label may stand along it: shares, the middle first. */
-export const LABEL_PLACES: readonly number[];
 /** The look where the theme has none. */
 export const ISO_LOOK: Readonly<{tone: string; glow: string; line: number; grid: number; cable: number; label: number; smallInk: number; appear: number}>;
 /** A running packet's radius, px. */
 export const PACKET_RADIUS: number;
-/** A value on stops [[time, value], …], straight between and held past the ends. */
-export function onStops(stops: readonly (readonly [number, number])[], u: number): number;
 /** When a crossing count and a turn count are said. */
 export const NOTE_FROM: Readonly<{crosses: number; turns: number}>;
 /** A wire's arrow read against the blocks: its two ends and whether it is drawn straight. */

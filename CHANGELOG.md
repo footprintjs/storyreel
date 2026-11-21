@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.35.0 — the isometric kit's cable pieces come from the story library
+
+What `kits/isometric` carried from StoryDeck now lives once in footprint-story 0.19.0, and StoryDeck imports the same
+copy, so a deck and a film place a cable's label, draw a straight wire and ride a packet with one set of rules.
+Frames and records are as on 0.34.0: `examples/iso-world` (60 frames, its kit notes and its compile record), 1,500
+generated isometric worlds (each world's map record, notes, summary, regions, texts, packet parts and four frames)
+and 24 generated films (16 frames each) were made before and after and compared byte for byte; and each piece is
+held to 0.34.0's copy by footprint-story's property tests.
+
+- `cables.mjs` · `labelAt`, `labelHalf`, `walk`, `inside`, `LABEL_PLACES`, `ISO_CABLE` → `footprint-story/isometric`
+  (`labelPlace`, `labelHalf`, `walkWay`, `held`, `LABEL_PLACES`, `CABLE`); `exitOutline`, `curveWay` and
+  `layStraight`'s rule → `exitOutline`, `curveWay`, `lanesOf`, `straightRun`, `bentWire`. Every refusal stays here,
+  word for word.
+- `build.mjs` · `roundOutline` → `footprint-story/isometric · roundOutline`.
+- `ride.mjs` · `onStops`, `seenAt` → `footprint-story/motion · onStops`, `seenAt`.
+- `draw.mjs` · `drawHead`'s corners → `footprint-story/isometric · arrowHead`, `headingOf` (the painting stays here).
+- **Gone from `footprint-storyreel/kits/isometric`:** `ISO_CABLE`, `LABEL_PLACES` and `onStops` — import `CABLE` and
+  `LABEL_PLACES` from `footprint-story/isometric`, `onStops` from `footprint-story/motion` (the same numbers; `CABLE`
+  also names `gap`, `lane`, `laneInset`, `least` and `headShort`).
+- **Two differences, StoryDeck's rule taken** (frames of the example and of the generated worlds and films above are
+  unchanged):
+  1. A cable's label is asked against every block whose outline's box reaches its plate. 0.34.0's copy asked only a
+     block with a corner within 200 px of the label, so a large block covering the label with all its corners further
+     off was passed over and the label stood under it. In a probe of 1,500 worlds with blocks up to 7 tiles a side, one
+     label moved in 3 of them, from under a block to StoryDeck's place.
+  2. The label search spends its looks as StoryDeck's does (the blocks and cables near a place, and a look an entry).
+     0.34.0's charged every point of every other cable at every place tried, so a busy world — over about a hundred
+     labelled cables — ran out of looks, and every later label fell to its cable's middle whatever stood there. They are
+     now placed by the rule: on a lattice of 48 blocks with 160 labelled wires, 52 labels (wires 105 to 159) move; the
+     case is pinned in `test/iso-world.test.mjs`.
+- `footprint-story` 0.19.0 or later. `package-lock.json` still resolves 0.18.0: resolve it once 0.19.0 is published.
+
 ## 0.34.0 — a film draws a deck's map, every finding names its fix, and the shared rules come from the story library
 
 - **`footprint-storyreel/kits/isometric`: StoryDeck's isometric maps in a film** (`isometricKit`, pass it in `kits`).
