@@ -45,9 +45,10 @@ test('a review picks its checks by what the part has, runs each as its own subfl
   assert.equal(one('words-overlap').length + one('under-captions').length, 2, 'nothing else: the title overlaps nothing, and is clear of the captions');
   // Each line names the recipe entry (this kit draws its world whole: "story") and the one change that clears it, in
   // the entry's own units (the layout is 1920 wide; the recipe's frame is 1600): in from the edge, with a gap.
-  assert.match(r.text, /^0:00\.0–0:\d\d\.\d talk · cut off at the edge: "Edge" · at story · fix: move it 71 left$/m);
-  assert.match(r.text, /^0:02\.0–0:03\.8 talk · words over words: "Alpha" and "Beta" · at story · fix: move it 36 down, clear of "Alpha" \(story\)$/m);
-  assert.match(r.text, /^0:05\.0–0:06\.8 talk · under the captions: "Under" · at story · fix: move it 121 up, clear of the captions$/m, 'the captions are cleared upward only');
+  // (each move's distance follows the words' measured widths, which differ with the platform's fonts: said as \d+)
+  assert.match(r.text, /^0:00\.0–0:\d\d\.\d talk · cut off at the edge: "Edge" · at story · fix: move it \d+ left$/m);
+  assert.match(r.text, /^0:02\.0–0:03\.8 talk · words over words: "Alpha" and "Beta" · at story · fix: move it \d+ down, clear of "Alpha" \(story\)$/m);
+  assert.match(r.text, /^0:05\.0–0:06\.8 talk · under the captions: "Under" · at story · fix: move it \d+ up, clear of the captions$/m, 'the captions are cleared upward only');
   assert.deepEqual([overlap, under, edge, still].map(f => f.where), ['story', 'story', 'story', 'story'], 'every finding carries its entry as data');
   assert.match(still.fix, /^key something alive \(a move, a drawing, a reveal\) on \["talk","[^"]+"\] \(said at 0:\d\d\.\d\)$/, 'a stretch with nothing moving: a beat keyed on a phrase said there, as the recipe keys it');
   assert.equal(r.facts.captions, true);
