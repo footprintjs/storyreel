@@ -41,9 +41,13 @@ import {differsMeasure, differsReached, differsSummary, labelMark, ownFigureLine
 import {overlapOf} from './zones.mjs';
 import {slideshowOf, pacedRule, slideshowVerdict} from './slideshow.mjs';
 import {geometryOf, breakText, GEOMETRY_VERDICT} from './geometry.mjs';
-import {purityOf, PURITY_FINDING, PURITY_VERDICT} from './purity.mjs';
-import {wordContrast, wordArea, needs, faintWords, contrastText, CONTRAST_VERDICT} from './contrast.mjs';
-import {claimsCount, unsourcedClaims, claimText, drawnClaims, drawnLines, lingeringExamples, lingerText, HOLD, CLAIMS_VERDICT} from './claims.mjs';
+import {purityOf, PURITY_FINDING, PURITY_FIX, PURITY_VERDICT} from './purity.mjs';
+import {wordContrast, wordArea, needs, faintWords, contrastWhat, contrastFix, CONTRAST_VERDICT} from './contrast.mjs';
+import {claimsCount, unsourcedClaims, claimFix, drawnClaims, drawnLines, lingeringExamples, lingerWhat, lingerFix, HOLD, CLAIMS_VERDICT} from './claims.mjs';
+import {placesOf} from './fix/places.mjs';
+import {wordClear, wordInto} from './fix/words.mjs';
+import {wordsOverDrawings, drawingsOffFrame} from './fix/drawings.mjs';
+import {beatFix, holdsFix, geometryFix} from './fix/say.mjs';
 import {wordsIn, readingPace} from './reading.mjs';
 import {isDecorative, isCode} from './decorative.mjs';
 
@@ -157,6 +161,8 @@ function meet(subject, clipper) {
   return out.length > 2 ? area(out) : 0;
 }
 const band = ([x, y, w, h]) => corners([x, y, x + w, y + h]);
+/** A layout box [x, y, w, h] as [x0, y0, x1, y1]. */
+const boxOf = ([x, y, w, h]) => [x, y, x + w, y + h];
 const same = (a, b) => a.text === b.text && a.box.every((v, i) => Math.abs(v - b.box[i]) <= 4);   // drawn twice: an outline, a shadow
 
 /**
@@ -208,9 +214,10 @@ const pct = share => `${Math.round(share * 100)} %`;
 
 /**
  * The checks, each a strategy: label, why (said when it is picked), when(scope) (picked when true: scope.facts
- * holds {seconds, captions, words, parts, claims, freezes?, lingers?}), find(review) → [{kind, t, what}] from the shared samples. Same shape
- * for a check of your own, passed in reviewPart's `checks`. find answers at once, and its hits are copied as {kind, t,
- * what} (plainHits): a find that throws or returns anything else fails the review, naming the check. review.picked says
+ * holds {seconds, captions, words, parts, claims, freezes?, lingers?, drawings?}), find(review) → [{kind, t, what, where?, fix?}] from the
+ * shared samples: `where` the recipe entry the finding is about (review.places names it: fix/places.mjs) and `fix` the one
+ * change that clears it — every built-in check gives both. Same shape for a check of your own, passed in reviewPart's
+ * `checks`. find answers at once, and its hits are copied as {kind, t, what, where?, fix?} (plainHits): a find that throws or returns anything else fails the review, naming the check. review.picked says
  * which checks run beside it, so one can leave a finding to another (stale leaves a frozen picture to still). A
  * check's `what` names one stretch: hits with the same kind and `what` merge into one span.
  *
@@ -245,52 +252,65 @@ export function wordsOnScreen(words) {
 const QUOTE = 90;
 /**
  * The runs of samples with more than `maxWords` words on screen, each said once — its peak's count and the words it
- * counted, quoted up to QUOTE characters — so every sample of a run is the same finding.
+ * counted, quoted up to QUOTE characters, and the fix: how many words to cut — so every sample of a run is the same
+ * finding. `peak` keeps the moment and the words, for the recipe entry that draws the most of them.
  */
 function denseRuns(samples, maxWords) {
   const runs = [];
   samples.forEach(({t, words}, i) => {
     const seen = wordsOnScreen(words);
     if (seen.count <= maxWords) return;
-    const run = runs.at(-1)?.last === i - 1 ? runs.at(-1) : (runs.push({times: [], peak: seen}), runs.at(-1));
+    const run = runs.at(-1)?.last === i - 1 ? runs.at(-1) : (runs.push({times: [], peak: {...seen, t, words}}), runs.at(-1));
     run.times.push(t); run.last = i;
-    if (seen.count > run.peak.count) run.peak = seen;
+    if (seen.count > run.peak.count) run.peak = {...seen, t, words};
   });
   return runs.map(({times, peak}) => {
     const said = peak.lines.map(l => l.replace(/\s+/g, ' ').trim()).join(' / ');
-    return {times, what: `${peak.count} words on screen, more than ${maxWords} (captions count, code does not): "${said.length > QUOTE ? `${said.slice(0, QUOTE)}…` : said}"; cut words, or show them in turn`};
+    return {times, peak, what: `${peak.count} words on screen, more than ${maxWords} (captions count, code does not): "${said.length > QUOTE ? `${said.slice(0, QUOTE)}…` : said}"`,
+      fix: `cut ${peak.count - maxWords} words or more, or show them in turn (a reveal on the phrases that say them)`};
   });
 }
 
 export const REVIEW_CHECKS = Object.freeze({
   'under-captions': {label: 'Words under the captions', why: 'the layout shows captions', when: s => s.facts.captions,
-    find: ({samples, layout}) => samples.flatMap(({t, words}) => !layout.captionAt(t) ? [] : words.filter(w => meet(w.quad, band(layout.boxes.captions)) > .05 * area(w.quad)).map(w => ({kind: 'under-captions', t, what: `"${w.text}"`})))},
+    find: ({samples, layout, places, width, height}) => samples.flatMap(({t, words}) => !layout.captionAt(t) ? [] : words.filter(w => meet(w.quad, band(layout.boxes.captions)) > .05 * area(w.quad))
+      .map(w => ({kind: 'under-captions', t, what: `"${w.text}"`, ...wordClear(places, t, w, boxOf(layout.boxes.captions), [0, 0, width, height], 'the captions', {ways: ['up']})})))},
   'words-overlap': {label: 'Words over words', why: 'the part draws words', when: s => s.facts.words > 0,
-    find: ({samples}) => samples.flatMap(({t, words}) => words.flatMap((a, i) => words.slice(i + 1).filter(b => !same(a, b) && meet(a.quad, b.quad) > .2 * Math.min(area(a.quad), area(b.quad))).map(b => ({kind: 'words-overlap', t, what: `"${a.text}" and "${b.text}"`}))))},
+    // The word drawn second lies on top: it is the one to move, clear of the first.
+    find: ({samples, places, width, height}) => samples.flatMap(({t, words}) => words.flatMap((a, i) => words.slice(i + 1).filter(b => !same(a, b) && meet(a.quad, b.quad) > .2 * Math.min(area(a.quad), area(b.quad)))
+      .map(b => ({kind: 'words-overlap', t, what: `"${a.text}" and "${b.text}"`, ...wordClear(places, t, b, a.box, [0, 0, width, height], `"${a.text}" (${places.wordEntry(t, a).path})`)}))))},
   'cut-off': {label: 'Words cut off at the edge', why: 'the part draws words', when: s => s.facts.words > 0,
-    find: ({samples, width, height}) => samples.flatMap(({t, words}) => words.filter(w => w.quad.some(([x, y]) => x < -2 || y < -2 || x > width + 2 || y > height + 2)).map(w => ({kind: 'cut-off', t, what: `"${w.text}"`})))},
+    find: ({samples, places, width, height}) => samples.flatMap(({t, words}) => words.filter(w => w.quad.some(([x, y]) => x < -2 || y < -2 || x > width + 2 || y > height + 2))
+      .map(w => ({kind: 'cut-off', t, what: `"${w.text}"`, ...wordInto(places, t, w, [0, 0, width, height])})))},
   hook: {label: `A hook in the first ${REVIEW_DEFAULTS.hook} s`, why: 'the part starts the film', when: s => s.facts.from === 0 && s.facts.seconds >= REVIEW_DEFAULTS.hook,
-    find: ({samples, hashes}) => {
+    find: ({samples, hashes, places}) => {
       const first = samples.filter(x => x.t <= REVIEW_DEFAULTS.hook + 1e-9);
-      return first.length > 1 && first.every(x => hashes[x.t] === hashes[first[0].t]) ? first.map(x => ({kind: 'hook', t: x.t, what: `nothing moves in the first ${REVIEW_DEFAULTS.hook} s`})) : [];
+      if (!(first.length > 1 && first.every(x => hashes[x.t] === hashes[first[0].t]))) return [];
+      const fix = `make something move before ${REVIEW_DEFAULTS.hook} s: ${beatFix(places, 0, REVIEW_DEFAULTS.hook, {at: 0, what: 'a drawing or a camera move'})}`, where = places.sceneEntry(0);
+      return first.map(x => ({kind: 'hook', t: x.t, what: `nothing moves in the first ${REVIEW_DEFAULTS.hook} s`, where, fix}));
     }},
   'text-density': {label: 'Too much to read at once', why: 'the part draws words', when: s => s.facts.words > 0,
-    find: ({samples, maxWords}) => denseRuns(samples, maxWords).flatMap(run => run.times.map(t => ({kind: 'text-density', t, what: run.what})))},
+    find: ({samples, maxWords, places}) => denseRuns(samples, maxWords).flatMap(run => {
+      // where: the entry that draws the most of the words at the run's peak
+      const by = new Map(); for (const w of run.peak.words) { const p = places.wordEntry(run.peak.t, w).path; by.set(p, (by.get(p) ?? 0) + 1); }
+      const where = [...by].sort((a, b) => b[1] - a[1])[0]?.[0] ?? places.sceneEntry(run.peak.t);
+      return run.times.map(t => ({kind: 'text-density', t, what: run.what, where, fix: run.fix}));
+    })},
   silences: {label: 'Real silences', why: 'the part is spoken and long enough to need a breath', when: s => s.facts.spoken && s.facts.seconds >= REVIEW_DEFAULTS.breath,
-    find: ({film, window, samples, minSilence}) => {
+    find: ({film, window, samples, minSilence, places}) => {
       // The pauses between spoken words (scene tails included) with no effect sound in them.
       const said = film.timings.scenes.flatMap((sc, i) => (sc.words ?? []).map(w => [film.clock.offsets[i] + w.start, film.clock.offsets[i] + w.end]))
         .filter(([a, b]) => b > window.from && a < window.to).sort((x, y) => x[0] - y[0]);
-      const sounds = (film.sounds ?? []).map(s => s.time), quiet = [];
-      for (let i = 1; i < said.length; i++) {
-        const [from, to] = [said[i - 1][1], said[i][0]];
-        if (to - from >= minSilence && !sounds.some(t => t > from - .1 && t < to)) quiet.push([from, to]);
-      }
-      return quiet.length >= 2 ? [] : samples.map(({t}) => ({kind: 'silences', t, what: `${quiet.length ? 'only one real silence' : 'no real silence'} (${minSilence} s or more with nothing playing): give the film a breath before its peak`}));
+      const sounds = (film.sounds ?? []).map(s => s.time), isQuiet = (from, to) => to - from >= minSilence && !sounds.some(t => t > from - .1 && t < to), quiet = [];
+      for (let i = 1; i < said.length; i++) { const [from, to] = [said[i - 1][1], said[i][0]]; if (isQuiet(from, to)) quiet.push([from, to]); }
+      if (quiet.length >= 2) return [];
+      // The fix: the longest pauses that are not yet silences, each made a pacing hold (the voice's own file, not the recipe's).
+      const fix = holdsFix(places, window.from, window.to, {need: 2 - quiet.length, seconds: minSilence, quiet: isQuiet});
+      return samples.map(({t}) => ({kind: 'silences', t, what: `${quiet.length ? 'only one real silence' : 'no real silence'} (${minSilence} s or more with nothing playing)`, where: 'pacing.holds', fix}));
     }},
   // The picture moves, but nothing new comes (a frozen picture is the still check's).
   stale: {label: 'Nothing new', why: 'the part is long enough to need something new every few seconds', when: s => s.facts.seconds > s.facts.newEvery,
-    find: ({film, window, samples, newEvery, frozen, picked}) => {
+    find: ({film, window, samples, newEvery, frozen, picked, places}) => {
       // What is new: a scene starting, a beat landing (the recipe acting on a phrase), a word that was not on screen a
       // moment before. A gap runs from one new moment (or the window's edge) to the next and holds the samples between
       // them: a new moment's own sample shows something new, so it is in no gap; the window's edges are in one.
@@ -304,12 +324,13 @@ export const REVIEW_CHECKS = Object.freeze({
         const [a, b] = [edges[i - 1], edges[i]];
         if (!(b - a > newEvery)) continue;
         const what = `nothing new for ${(b - a).toFixed(1)} s since ${clockTenths(a)} (no scene, no beat, no new words)`;   // its own words: two gaps never merge into one span
-        out.push(...samples.filter(x => x.t >= a - 1e-9 && x.t <= b + 1e-9 && quiet(x.t)).map(x => ({kind: 'stale', t: x.t, what})));
+        const where = places.sceneEntry(a), fix = beatFix(places, a, b);
+        out.push(...samples.filter(x => x.t >= a - 1e-9 && x.t <= b + 1e-9 && quiet(x.t)).map(x => ({kind: 'stale', t: x.t, what, where, fix})));
       }
       return out;
     }},
   loop: {label: 'The loop seam', why: 'the part is made to loop', when: s => s.facts.loop && s.facts.seconds > .1,
-    find: ({film, part, minAlpha}) => {
+    find: ({film, part, minAlpha, places}) => {
       // A clip that loops goes from its end straight to its start: what it shows at its end must be what it shows at its
       // start (motion that runs on comes round to where it began), or the loop jumps. The part is its own scenes, not
       // their handles. Its end is read at its last moment (justBefore) — a frame is a pure function of time, so that is
@@ -318,23 +339,29 @@ export const REVIEW_CHECKS = Object.freeze({
       // alike) and as words (wordsSaid).
       const end = Math.max(part.from, justBefore(part.to));
       if (wordsSaid(film, part.from, minAlpha) === wordsSaid(film, end, minAlpha) && alike(cellsAt(film, part.from), cellsAt(film, end))) return [];
-      return [{kind: 'loop', t: onClock(film, Math.max(part.from, part.to - .001)), what: 'the end is not the start: the loop jumps'}];   // said in the part's last millisecond, so in its own scene
+      const t = onClock(film, Math.max(part.from, part.to - .001));   // said in the part's last millisecond, so in its own scene
+      return [{kind: 'loop', t, what: 'the end is not the start: the loop jumps', where: places.sceneEntry(t),
+        fix: `end on the picture it starts with: what moves must be back by ${clockTenths(part.to)} where it was at ${clockTenths(part.from)}, or trim the part to whole cycles`}];
     }},
   // A camera's freeze (camerawork.mjs) holds the picture while the voice goes on: a drawing the voice names under it
   // arrives only when the freeze ends, and a mouth on screen stays still while its speaker talks.
   'frozen-voice': {label: 'A freeze over the voice', why: 'the part has a camera freeze', when: s => (s.facts.freezes ?? 0) > 0,
     find: ({film, window, samples}) => freezesIn(film, window).flatMap(f => {
-      const said = frozenWords(film, f), named = (film.beats ?? []).filter(b => b.t > f.at && b.t < f.until && drawsSomething(b.path)).map(b => `"${b.path}"`);
+      const said = frozenWords(film, f), held = (film.beats ?? []).filter(b => b.t > f.at && b.t < f.until && drawsSomething(b.path)), named = held.map(b => `"${b.path}"`);
       const what = [...(named.length ? [`the voice names ${[...new Set(named)].join(', ')} while the picture is frozen (it appears when the freeze ends)`] : []), ...(said ? [`a mouth stays still while ${said} speaks`] : [])].join('; ');
       if (!what) return [];
+      // The fix: the freeze ends before the first thing it holds back, or that thing waits for the freeze.
+      const first = held.length ? Math.min(...held.map(b => b.t)) : null;
+      const fix = first !== null ? `end the freeze before ${clockTenths(first)} (its until), or key ${[...new Set(named)].join(', ')} after ${clockTenths(f.until)}` : `move the freeze off the line: end it before the voice speaks, or start it after ${clockTenths(f.until)}`;
       const inside = samples.filter(x => x.t >= f.at && x.t < f.until);
-      return (inside.length ? inside : [{t: Math.max(window.from, Math.min(window.to, f.at))}]).map(x => ({kind: 'frozen-voice', t: x.t, what: `${f.path} from ${clockTenths(f.at)}: ${what}`}));
+      return (inside.length ? inside : [{t: Math.max(window.from, Math.min(window.to, f.at))}]).map(x => ({kind: 'frozen-voice', t: x.t, what: `${f.path} from ${clockTenths(f.at)}: ${what}`, where: f.path, fix}));
     })},
   // The picture is frozen: the same frame for stillFor seconds or more.
   still: {label: 'Nothing changes', why: 'the part is long enough to stand still', when: s => s.facts.seconds >= s.facts.stillFor,
-    find: ({samples, frozen}) => frozen.flatMap(({from, to}) => {
+    find: ({samples, frozen, places}) => frozen.flatMap(({from, to}) => {
       const what = `the picture does not change for ${(to - from).toFixed(1)} s from ${clockTenths(from)}`;   // its own words: two stretches never merge into one span
-      return samples.filter(x => x.t >= from && x.t <= to).map(x => ({kind: 'still', t: x.t, what}));
+      const where = places.sceneEntry(from), fix = beatFix(places, from, to, {what: 'something alive (a move, a drawing, a reveal)'});
+      return samples.filter(x => x.t >= from && x.t <= to).map(x => ({kind: 'still', t: x.t, what, where, fix}));
     })},
   // The shots do not move inside themselves (slideshow.mjs). Stale's opposite, not its double: stale asks whether
   // anything NEW comes (a scene, a beat, a word) while the picture moves; this asks whether the picture MOVES between the
@@ -343,14 +370,15 @@ export const REVIEW_CHECKS = Object.freeze({
   // is said once — but it still counts as dead.
   slideshow: {label: 'No slideshow', why: 'the part is long enough to hold a shot', notRun: 'the part is too short to hold a shot (stillFor)',
     when: s => s.facts.seconds >= s.facts.stillFor,
-    measure: ({film, window, every, samples, greys, frozen, picked}) => {
+    measure: ({film, window, every, samples, greys, frozen, picked, places}) => {
       // held to the film's pace (its recipe's: a lesson's when it names none)
       const {rule, spare} = pacedRule(film);
       const m = slideshowOf(film, {from: window.from, to: window.to, every, rule, spare, times: samples.map(x => x.t), frameAt: t => greys.get(t)});
       const left = picked.includes('still') ? frozen : [], named = t => left.some(r => t >= r.from - 1e-9 && t < r.to - 1e-9);
-      const dead = m.deadShots.flatMap(s => s.deadAt.filter(t => !named(t)).map(t => ({kind: 'slideshow', t, what: `${s.where} holds still: ${pct(s.deadShare)} of its ${s.seconds.toFixed(1)} s is dead (still for more than ${rule.hold} s at a time)`})));
+      const fix = `give the shot motion inside it at least every ${rule.hold} s: a camera move, or a drawing or a reveal keyed on its phrases`, at = (s, t) => ({where: s.path ?? places.sceneEntry(t), fix});
+      const dead = m.deadShots.flatMap(s => s.deadAt.filter(t => !named(t)).map(t => ({kind: 'slideshow', t, what: `${s.where} holds still: ${pct(s.deadShare)} of its ${s.seconds.toFixed(1)} s is dead (still for more than ${rule.hold} s at a time)`, ...at(s, t)})));
       // A deck (slides swapped every few seconds) holds no stretch past `hold`: its findings are its still steps.
-      const deck = m.stillShare > rule.still ? m.stillShots.flatMap(s => s.stillAt.filter(t => !named(t) && !s.deadAt.includes(t)).map(t => ({kind: 'slideshow', t, what: `${s.where} is still ${pct(s.stillShare)} of its ${s.seconds.toFixed(1)} s, in stretches of ${rule.hold} s or less (a deck of slides)`}))) : [];
+      const deck = m.stillShare > rule.still ? m.stillShots.flatMap(s => s.stillAt.filter(t => !named(t) && !s.deadAt.includes(t)).map(t => ({kind: 'slideshow', t, what: `${s.where} is still ${pct(s.stillShare)} of its ${s.seconds.toFixed(1)} s, in stretches of ${rule.hold} s or less (a deck of slides)`, ...at(s, t)}))) : [];
       return {measured: {shots: m.shots, seconds: m.seconds, still: m.still, stillShare: m.stillShare, dead: m.dead, deadShare: m.deadShare,
         deadShots: m.deadShots.map(({where, scene, seconds, dead, deadShare}) => ({where, scene, seconds, dead, deadShare}))}, hits: [...dead, ...deck]};
     },
@@ -363,16 +391,16 @@ export const REVIEW_CHECKS = Object.freeze({
     measure: ({film, window}) => {
       const g = geometryOf(film, {from: window.from, to: window.to});
       return {measured: {moments: g.samples, parts: g.parts, checks: g.checked.mounts + g.checked.pairs + g.checked.planted, broken: g.worst.length, worst: g.worst},
-        hits: g.breaks.map(b => ({kind: 'geometry', t: b.t, what: breakText(b)}))};
+        hits: g.breaks.map(b => ({kind: 'geometry', t: b.t, what: breakText(b), where: b.path, fix: geometryFix(b)}))};
     },
     summary: m => `${m.parts} parts at ${m.moments} moments${m.broken ? `; ${m.worst.slice(0, 3).map(w => `${w.text}${w.px !== undefined ? ` (${w.px} px at ${clockTenths(w.t)})` : ` (at ${clockTenths(w.t)})`}`).join('; ')}${m.broken > 3 ? `; and ${m.broken - 3} more` : ''}` : ''}`,
     verdict: GEOMETRY_VERDICT},
   // Each moment draws the same picture, whatever was drawn before (purity.mjs): a few samples drawn again, last first.
   pure: {label: 'Every moment draws the same', why: 'the part has moments to draw again', notRun: 'the part has fewer than two moments to draw again',
     when: s => s.facts.samples >= 2,
-    measure: ({film, samples, hashes}) => {
+    measure: ({film, samples, hashes, places}) => {
       const p = purityOf(film, {times: samples.map(x => x.t), hashes, width: 160});
-      return {measured: {moments: p.moments, changed: p.changed.length, at: p.changed}, hits: p.changed.map(t => ({kind: 'pure', t, what: PURITY_FINDING}))};
+      return {measured: {moments: p.moments, changed: p.changed.length, at: p.changed}, hits: p.changed.map(t => ({kind: 'pure', t, what: PURITY_FINDING, where: places.sceneEntry(t), fix: PURITY_FIX}))};
     },
     summary: m => `${m.moments} moments drawn again${m.changed ? `; ${m.changed} gave another picture, first at ${clockTenths(m.at[0])}` : ''}`,
     verdict: PURITY_VERDICT},
@@ -380,12 +408,12 @@ export const REVIEW_CHECKS = Object.freeze({
   // the frame's own pixels at every sample.
   contrast: {label: 'Words stand out', why: 'the part draws words', notRun: 'the part draws no word to read',
     when: s => s.facts.words > 0,
-    measure: ({samples}) => {
+    measure: ({samples, places}) => {
       const {words, low, unseen, closest} = faintWords(samples), lowest = low.reduce((m, w) => (m === null || w.ratio < m.ratio ? w : m), null);
       const word = w => (w ? {text: w.text, ratio: w.ratio, needs: w.needs, t: w.t} : null);
       // the evidence, item by item: each faint word (the first FAINT_KEPT, the rest counted: faintNotListed) and the closest call
       return {measured: {words, unseen, low: low.length, lowest: word(lowest), closest: word(closest), faint: low.slice(0, FAINT_KEPT).map(word), ...(low.length > FAINT_KEPT ? {faintNotListed: low.length - FAINT_KEPT} : {})},
-        hits: low.map(w => ({kind: 'contrast', t: w.t, what: contrastText(w)}))};
+        hits: low.map(w => ({kind: 'contrast', t: w.t, what: contrastWhat(w), where: places.wordEntry(w.t, w).path, fix: contrastFix(w)}))};
     },
     summary: m => `${m.words} word${m.words === 1 ? '' : 's'} measured${m.unseen ? ` (${m.unseen} never seen: clipped or not revealed)` : ''}${m.low ? `; ${m.low} too faint, the faintest "${m.lowest.text}" ${m.lowest.ratio}:1 at ${clockTenths(m.lowest.t)}` : ''}`,
     verdict: CONTRAST_VERDICT},
@@ -394,11 +422,15 @@ export const REVIEW_CHECKS = Object.freeze({
   // draw that none of them holds (claims.mjs · drawnClaims: the words read once, for every check — no second drawing).
   claims: {label: 'Every number has a source', why: 'the film lists the numbers it shows', notRun: 'the film does not list the numbers it shows (compileFilm lists them as film.claims)',
     when: s => s.facts.claims,
-    measure: ({film, window, drawn}) => {
+    measure: ({film, window, drawn, places}) => {
       const declared = film.claims.numbers.filter(c => c.at <= window.to + 1e-6 && c.to >= window.from - 1e-6);
       const claims = {...film.claims, numbers: [...declared, ...drawn]}, open = unsourcedClaims(claims);
+      // where: the recipe entry that shows the number; a number said aloud is the scene's narration, one only drawn (no
+      // entry lists it) is the entry drawing the picture then
+      const ids = film.timings.scenes.map(sc => sc.id), t0 = c => Math.max(c.at, window.from);
+      const claimWhere = c => (c.path === 'captions' && ids.includes(c.scene) ? `storyboard.scenes[${ids.indexOf(c.scene)}].narration` : c.path && c.path !== 'drawn' && c.path !== 'captions' ? c.path : places.sceneEntry(t0(c)));
       return {measured: {...claimsCount(claims), drawn: drawn.length, ...(film.differs?.length ? {ownFigures: ownFigureLines(differsReached(film, window).map(x => x.d), film.lang ?? null)} : {}), unsourcedNumbers: open.map(c => ({number: c.number, scene: c.scene, path: c.path, at: c.at}))},
-        hits: open.map(c => ({kind: 'claims', t: Math.max(c.at, window.from), what: claimText(c)}))};
+        hits: open.map(c => ({kind: 'claims', t: Math.max(c.at, window.from), what: `"${c.number}" (${c.path === 'captions' ? 'said' : 'shown'} in scene ${c.scene}) has no source`, where: claimWhere(c), fix: claimFix(c)}))};
     },
     summary: m => (m.numbers ? `${m.numbers} number${m.numbers === 1 ? '' : 's'} on screen: ${m.sourced} sourced${m.unverified ? ` (${m.unverified} on a source nobody can follow: unverified)` : ''}, ${m.examples} in example scenes${m.factsGiven ? `, ${m.unsourced} with no source` : `, ${m.open - m.sourced} unchecked`}` : ''),
     verdict: film => (film.differs?.length ? DECLARING_CLAIMS_VERDICT : CLAIMS_VERDICT)},
@@ -418,10 +450,17 @@ export const REVIEW_CHECKS = Object.freeze({
   // An example line that stays up into a scene that is not example data keeps its label (claims.mjs · labelSpans): beside
   // a real number there, the label seems to cover it too (claims.mjs · lingeringExamples). Said while both are on screen.
   'example-lingers': {label: 'Example data over real numbers', why: 'an example line stays up into a scene that is not example data', when: s => (s.facts.lingers ?? 0) > 0,
-    find: ({samples, lingers}) => lingers.filter(g => g.numbers.length).flatMap(g => {
-      const what = lingerText(g), both = t => t >= g.from - 1e-9 && t <= g.to + 1e-9 && g.numbers.some(c => t >= c.at - 1e-9 && t <= c.to + 1e-9);
-      return samples.filter(x => both(x.t)).map(x => ({kind: 'example-lingers', t: x.t, what}));
+    find: ({film, samples, lingers}) => lingers.filter(g => g.numbers.length).flatMap(g => {
+      const ex = film.timings.scenes.findIndex(sc => sc.id === g.example);
+      const what = lingerWhat(g), where = g.paths?.[0] ?? `storyboard.scenes[${ex}]`, fix = lingerFix(g, clockTenths(g.from)), both = t => t >= g.from - 1e-9 && t <= g.to + 1e-9 && g.numbers.some(c => t >= c.at - 1e-9 && t <= c.to + 1e-9);
+      return samples.filter(x => both(x.t)).map(x => ({kind: 'example-lingers', t: x.t, what, where, fix}));
     })},
+  // Two checks on what a kit draws (fix/drawings.mjs): the whiteboard and the paper say which of their regions are
+  // drawings (Region.drawing), so words laid over one, and one run off its sheet, are named by their recipe entry.
+  'words-over-drawing': {label: 'Words over a drawing', why: 'the part draws words and a kit says where its drawings are', when: s => s.facts.words > 0 && (s.facts.drawings ?? 0) > 0,
+    find: wordsOverDrawings},
+  'drawing-off-frame': {label: 'A drawing off the frame', why: 'a kit says where its drawings are', when: s => (s.facts.drawings ?? 0) > 0,
+    find: drawingsOffFrame},
 });
 
 /** The camera's freezes that reach the window: {path, at, until}. */
@@ -442,18 +481,24 @@ function frozenWords(film, f) {
 }
 
 const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes', hook: 'no hook', 'text-density': 'too much to read', silences: 'no breath', stale: 'nothing new', loop: 'the loop jumps', 'frozen-voice': 'a freeze over the voice',
-  slideshow: 'held still', geometry: 'the drawing breaks', pure: 'drawn differently twice', contrast: 'too faint to read', differs: 'does not say how it differs', claims: 'no source', 'example-lingers': 'example data over real numbers'};
+  slideshow: 'held still', geometry: 'the drawing breaks', pure: 'drawn differently twice', contrast: 'too faint to read', differs: 'does not say how it differs', claims: 'no source', 'example-lingers': 'example data over real numbers',
+  'words-over-drawing': 'words over a drawing', 'drawing-off-frame': 'a drawing off the frame'};
 /** How many faint words the contrast verdict keeps as evidence, each with its ratio (low counts them all). */
 export const FAINT_KEPT = 50;
 
 /** What a verdict check's scope keeps for itself: never a measured value's name. */
 const MACHINERY = new Set(['hits', 'failed', 'measured', 'verdict', 'why', 'summary']);
-/** The findings as lines: "1:21.5–1:23.0 chapters · under the captions: \"requests in\"". */
 export {verdictsText};
 export {purityOf, PURITY_VERDICT} from './purity.mjs';
 export {wordContrast, luminance, contrastRatio, faintWords, CONTRAST, CONTRAST_VERDICT} from './contrast.mjs';
 export {readDiffers, timeWords, analogyWords, DIFFERS_VERDICT, DIFFERS_MOST, DIFFERS_SAID_MOST, DIFFERS_TIME_MOST} from './differs.mjs';
-export const findingsText = findings => findings.map(f => oneLine(`${clockTenths(f.from)}–${clockTenths(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}`)).join('\n');
+/**
+ * The findings as lines, each one line (oneLine: a scene id, a word or a path from the film never starts another):
+ * "1:21.5–1:23.0 chapters · under the captions: \"requests in\" · at stages[2].title · fix: move it 48 up". `at` is the
+ * recipe entry the finding is about and `fix` the one change that clears it — said when the finding has them (every
+ * built-in check gives both; a check of your own may leave them out).
+ */
+export const findingsText = findings => findings.map(f => oneLine(`${clockTenths(f.from)}–${clockTenths(f.to)} ${f.scene ?? ''} · ${LABEL[f.kind] ?? f.kind}: ${f.what}${f.where ? ` · at ${f.where}` : ''}${f.fix ? ` · fix: ${f.fix}` : ''}`)).join('\n');
 
 /** The findings that are advice, not errors (a held title can be right): listed after the rest in a summary. */
 const ADVICE = new Set(['still', 'stale', 'slideshow', 'hook']);
@@ -478,17 +523,19 @@ export function reviewSummary(r, {more = 'the full review lists every one'} = {}
 }
 
 /**
- * What a check found, as plain {kind, t, what}: all the review's record can copy and its report reads. Anything else
- * is refused, saying what find returned instead — a promise (a check reads the shared samples and answers at once),
- * no list, or a hit without its name, its time or its words.
+ * What a check found, as plain {kind, t, what, where?, fix?}: all the review's record can copy and its report reads.
+ * Anything else is refused, saying what find returned instead — a promise (a check reads the shared samples and answers
+ * at once), no list, a hit without its name, its time or its words, or a `where` (the recipe entry) or `fix` (the change)
+ * that is not words.
  */
 function plainHits(hits, says = SAYS.find) {
   if (typeof hits?.then === 'function') { Promise.resolve(hits).catch(() => {}); throw new Error(`${says.promise}: a check reads the shared samples and returns its hits, [{kind, t, what}]`); }
   if (!Array.isArray(hits)) throw new Error(`${says.list}, [{kind, t, what}], not ${hits === null ? 'null' : typeof hits}`);
   return Array.from(hits, (h, i) => {   // every slot, a hole too (map would pass it by)
-    const wrong = h == null ? 'there is none (an empty slot)' : typeof h.kind !== 'string' ? 'kind must be a name (a string)' : !Number.isFinite(h.t) ? 't must be seconds on the film clock' : typeof h.what !== 'string' ? 'what must be words (a string)' : null;
-    if (wrong) throw new Error(`${says.hit} ${i}: ${wrong}; a hit is {kind, t, what}`);
-    return {kind: h.kind, t: h.t, what: h.what};
+    const wrong = h == null ? 'there is none (an empty slot)' : typeof h.kind !== 'string' ? 'kind must be a name (a string)' : !Number.isFinite(h.t) ? 't must be seconds on the film clock' : typeof h.what !== 'string' ? 'what must be words (a string)'
+      : h.where !== undefined && typeof h.where !== 'string' ? 'where must be the recipe entry, as words (a string)' : h.fix !== undefined && typeof h.fix !== 'string' ? 'fix must be words (a string)' : null;
+    if (wrong) throw new Error(`${says.hit} ${i}: ${wrong}; a hit is {kind, t, what, where?, fix?}`);
+    return {kind: h.kind, t: h.t, what: h.what, ...(h.where ? {where: h.where} : {}), ...(h.fix ? {fix: h.fix} : {})};
   });
 }
 
@@ -496,21 +543,23 @@ function plainHits(hits, says = SAYS.find) {
 const SAYS = Object.freeze({find: {promise: 'find returned a promise', list: 'find must return a list of hits', hit: "find's hit"},
   measure: {promise: "measure's hits are a promise", list: "measure's hits must be a list of hits", hit: "measure's hit"}});
 /**
- * Hits on sample times → spans of the same thing, each with the scene it starts in; a word's span shorter than `lasting`
+ * Hits on sample times → spans of the same thing (its kind, its words and its recipe entry), each with the scene it starts
+ * in and the fix its first moment gave (a moving word's move is said where the span starts); a word's span shorter than `lasting`
  * is passing (a fade, a page turning) and dropped — never a hit of a picture check, of the record's own spans (an example
  * line beside real numbers: when the lines are up, not a frame), or of a verdict (`held`: a reason).
  */
 function spans(film, hits, every, lasting) {
   const held = new Set(['still', 'hook', 'silences', 'stale', 'loop', 'example-lingers', ...hits.filter(h => h.held).map(h => h.kind)]);
   const groups = new Map();
-  for (const h of hits) { const k = `${h.kind}\u0000${h.what}`; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(h.t); }
+  const said = new Map();   // per group, the recipe entry and the fix of its first hit
+  for (const h of hits) { const k = `${h.kind}\u0000${h.what}\u0000${h.where ?? ''}`; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(h.t); if (!said.has(k) || h.t < said.get(k).t) said.set(k, {t: h.t, where: h.where, fix: h.fix}); }
   const sceneAt = t => { let id = null; film.timings.scenes.forEach((s, i) => { if (film.clock.offsets[i] <= t + 1e-6) id = s.id; }); return id; };
   const out = [];
   for (const [k, times] of groups) {
-    const [kind, what] = k.split('\u0000'), ts = [...new Set(times)].sort((a, b) => a - b);
+    const [kind, what] = k.split('\u0000'), ts = [...new Set(times)].sort((a, b) => a - b), {where, fix} = said.get(k), at = {...(where ? {where} : {}), ...(fix ? {fix} : {})};
     let from = ts[0], last = ts[0];
-    for (const t of ts.slice(1)) { if (t - last > every * 1.5) { out.push({kind, from, to: last, what}); from = t; } last = t; }
-    out.push({kind, from, to: last, what});
+    for (const t of ts.slice(1)) { if (t - last > every * 1.5) { out.push({kind, from, to: last, what, ...at}); from = t; } last = t; }
+    out.push({kind, from, to: last, what, ...at});
   }
   return out.filter(f => held.has(f.kind) || f.to - f.from + every >= lasting - 1e-9).sort((a, b) => a.from - b.from || a.kind.localeCompare(b.kind)).map(f => ({...f, scene: sceneAt(f.from)}));
 }
@@ -531,7 +580,7 @@ function spans(film, hits, every, lasting) {
  * A window past the film's ends is held to the film. A check that fails (it throws, or answers with anything but
  * what it should) fails the review: one error names every check that failed and why.
  * Returns {window, facts, findings, text, verdicts, verdictText, timeline, ran, record}: findings [{kind, from, to, scene,
- * what}] on the film clock, text as lines; verdicts [{check, label, verdict, why, measured, summary?}] — every verdict
+ * what, where?, fix?}] on the film clock (where: the recipe entry; fix: the change), text as lines; verdicts [{check, label, verdict, why, measured, summary?}] — every verdict
  * check, in order, 'not run' when it did not fit the part — and verdictText as lines; the part's timeline (scenes and
  * beats), the checks that ran, and the review's own footprintjs record (each verdict's decide() evidence in it).
  */
@@ -552,7 +601,9 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
   // a verdict may depend on the film (the slideshow's on its pace): read for this film, once
   checks = Object.fromEntries(Object.entries(checks).filter(([, c]) => c.asked?.(film) ?? true).map(([id, c]) => [id, typeof c.verdict === 'function' ? {...c, verdict: c.verdict(film)} : c]));
   for (const [id, c] of Object.entries(checks)) if (typeof c.find !== 'function') readVerdict(c.verdict, `review check "${id}": verdict`);
-  const review = {film, window, part: own, layout: framed, width: framed?.width ?? 1600, height: framed?.height ?? 900, every, stillFor, maxWords, minSilence, newEvery, minAlpha, samples: [], hashes: {}, greys: new Map(), frozen: [], drawn: [], lingers: [], picked: []};
+  // places: where a finding is in the recipe (fix/places.mjs: the film's own regions and pointAt), for every check's where and fix
+  const review = {film, window, part: own, layout: framed, width: framed?.width ?? 1600, height: framed?.height ?? 900, every, stillFor, maxWords, minSilence, newEvery, minAlpha, samples: [], hashes: {}, greys: new Map(), frozen: [], drawn: [], lingers: [], picked: [],
+    places: placesOf(film, framed)};
   let findings = [];
   const read = async s => {
     const times = []; for (let t = window.from; t <= window.to + 1e-9; t += every) times.push(onClock(film, t));
@@ -571,7 +622,7 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
     const sampleAt = (t, measure = false) => {
       const zoomed = (film.focusAt?.(t)?.z ?? 1) > 1.001 || (film.cameraAt?.(t)?.z ?? 1) > 1.001, frame = readFrame(film, t, {layout: framed});
       const drawn = frame.words.filter(w => w.alpha >= minAlpha && shown(w, zoomed)), words = drawn.filter(legible);
-      return {t, words, marks: drawn.filter(w => !legible(w) && mark(w)), ...(measure ? {contrasts: wordContrasts(words, frame.canvas)} : {})};
+      return {t, words, marks: drawn.filter(w => !legible(w) && mark(w)), zoomed, ...(measure ? {contrasts: wordContrasts(words, frame.canvas)} : {})};
     };
     review.samples = times.map(t => sampleAt(t, true));
     // frameHashes keys a moment by its millisecond, and the film's end can sit a hair under its own (21.2999…97 is
@@ -597,9 +648,11 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
     // A kit that gives its parts (geometry.mjs) at a sample: one whose parts(t) throws gives them too, so the geometry
     // check is picked and names the error.
     const drawsParts = t => { try { return (film.partsAt?.(t) ?? []).length > 0; } catch { return true; } };
+    // The samples where a kit says it draws something (a region marked drawing): the two drawing checks read them.
+    const drawings = times.filter(t => review.places.regions(t).some(r => r.drawing)).length;
     s.facts = {from: window.from, to: window.to, seconds: +(window.to - window.from).toFixed(3), stillFor, newEvery, loop: Boolean(loop), captions: Boolean(framed?.boxes.captions), samples: times.length, words: review.samples.reduce((n, x) => n + x.words.length, 0),
       spoken: film.timings.scenes.some((sc, i) => (sc.words ?? []).some(w => film.clock.offsets[i] + w.end > window.from && film.clock.offsets[i] + w.start < window.to)),
-      parts: times.filter(drawsParts).length, claims: Boolean(film.claims),
+      parts: times.filter(drawsParts).length, claims: Boolean(film.claims), ...(drawings ? {drawings} : {}),
       ...(freezesIn(film, window).length ? {freezes: freezesIn(film, window).length} : {}), ...(film.differs?.length ? {differs: differsReached(film, own).length} : {}), ...(review.lingers.length ? {lingers: review.lingers.length} : {})};
     s.ran = []; s.hits = []; s.failed = []; s.verdicts = [];
   };

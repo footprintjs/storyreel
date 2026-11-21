@@ -43,8 +43,13 @@ test('a review picks its checks by what the part has, runs each as its own subfl
   assert.ok(edge && edge.what === '"Edge"' && edge.from === 0, JSON.stringify(edge));
   assert.ok(still && near(still.from, 8) && still.to > 13, JSON.stringify(still));
   assert.equal(one('words-overlap').length + one('under-captions').length, 2, 'nothing else: the title overlaps nothing, and is clear of the captions');
-  assert.match(r.text, /^0:00\.0–0:\d\d\.\d talk · cut off at the edge: "Edge"$/m);
-  assert.match(r.text, /^0:02\.0–0:03\.8 talk · words over words: "Alpha" and "Beta"$/m);
+  // Each line names the recipe entry (this kit draws its world whole: "story") and the one change that clears it, in
+  // the entry's own units: the layout is 1920 wide, the frame 1600, so 82 output pixels are 69 of the recipe's.
+  assert.match(r.text, /^0:00\.0–0:\d\d\.\d talk · cut off at the edge: "Edge" · at story · fix: move it 69 left$/m);
+  assert.match(r.text, /^0:02\.0–0:03\.8 talk · words over words: "Alpha" and "Beta" · at story · fix: move it 36 down, clear of "Alpha" \(story\)$/m);
+  assert.match(r.text, /^0:05\.0–0:06\.8 talk · under the captions: "Under" · at story · fix: move it 121 up, clear of the captions$/m, 'the captions are cleared upward only');
+  assert.deepEqual([overlap, under, edge, still].map(f => f.where), ['story', 'story', 'story', 'story'], 'every finding carries its entry as data');
+  assert.match(still.fix, /^key something alive \(a move, a drawing, a reveal\) on \["talk","[^"]+"\] \(said at 0:\d\d\.\d\)$/, 'a stretch with nothing moving: a beat keyed on a phrase said there, as the recipe keys it');
   assert.equal(r.facts.captions, true);
   assert.ok(r.record.some(e => /pick-checks/i.test(JSON.stringify(e))), 'the review leaves its own record');
 });
@@ -72,8 +77,12 @@ test('a director\'s checks: no hook when nothing moves in the first 3 s; too muc
   const r = await reviewPart(tight);
   const of = kind => r.findings.filter(f => f.kind === kind);
   assert.ok(of('hook').length === 1 && of('hook')[0].from === 0 && near(of('hook')[0].to, 3), JSON.stringify(of('hook')));
-  assert.ok(of('text-density').length === 1 && near(of('text-density')[0].from, 10) && near(of('text-density')[0].to, 12.75) && /^64 words on screen, more than 35 \(captions count, code does not\): "this is line 0 of a long block \/ this is line 1 of a long block \/ this is line 2 of a long…"; cut words, or show them in turn$/.test(of('text-density')[0].what), of('text-density')[0]?.what);
-  assert.match(of('silences')[0]?.what ?? '', /^no real silence \(0\.8 s or more with nothing playing\)/);
+  assert.ok(of('text-density').length === 1 && near(of('text-density')[0].from, 10) && near(of('text-density')[0].to, 12.75) && /^64 words on screen, more than 35 \(captions count, code does not\): "this is line 0 of a long block \/ this is line 1 of a long block \/ this is line 2 of a long…"$/.test(of('text-density')[0].what), of('text-density')[0]?.what);
+  assert.deepEqual([of('text-density')[0].where, of('text-density')[0].fix], ['story', 'cut 29 words or more, or show them in turn (a reveal on the phrases that say them)'], 'the fix says how many words to cut');
+  assert.match(of('hook')[0].fix, /^make something move before 3 s: key a drawing or a camera move on \["a","word0 word1 word2"\] \(said at 0:00\.3\)$/);
+  assert.match(of('silences')[0]?.what ?? '', /^no real silence \(0\.8 s or more with nothing playing\)$/);
+  assert.equal(of('silences')[0].where, 'pacing.holds');
+  assert.match(of('silences')[0].fix, /^add \{"scene":"a","after":"[^"]+","seconds":0\.8\} and \{"scene":"[ab]","after":"[^"]+","seconds":0\.8\} to pacing\.holds: a breath before the peak$/, 'two silences wanted, none there: two holds, each after a phrase said before its pause');
   const paused = await compileFilm({storyboard: board, timings: evenTimings(board, {wordSeconds: .5, tail: 1.5}), recipe: {story: {kit: 'still-start'}}, kits: [kit]});
   assert.match((await reviewPart(paused)).findings.find(f => f.kind === 'silences')?.what ?? '', /^only one real silence/, 'the pause between the two scenes is one breath');
 });
@@ -104,7 +113,8 @@ test('too much to read counts words as a reader does: draws joined into lines, a
   assert.equal((await dense(kitOf('six', 6))).length, 0, '6 lines are 30 words (66 draws, and 60 by the old count of every draw\'s pieces)');
   const eight = await dense(kitOf('eight', 8));
   assert.equal(eight.length, 1, 'one finding for the run, not one per sample');
-  assert.match(eight[0].what, /^40 words on screen, more than 35 \(captions count, code does not\): "const total = items[^"]*…"; cut words, or show them in turn$/, 'a sign is no word; the quote is the lines it counted, cut short');
+  assert.match(eight[0].what, /^40 words on screen, more than 35 \(captions count, code does not\): "const total = items[^"]*…"$/, 'a sign is no word; the quote is the lines it counted, cut short');
+  assert.equal(eight[0].fix, 'cut 5 words or more, or show them in turn (a reveal on the phrases that say them)');
   assert.equal((await dense(kitOf('coded', 8, true))).length, 0, 'code is studied, not read at once: it is not counted');
   assert.equal(wordsOnScreen([{text: 'a = b', box: [0, 0, 50, 20]}, {text: '.', box: [60, 0, 62, 20]}]).count, 2);
 });
@@ -286,7 +296,9 @@ test('a check answers with its hits, [{kind, t, what}]: anything else fails the 
     [async () => { throw new Error('too late'); }, /"mine": find returned a promise/],
     [() => 7, /"mine": find must return a list of hits, \[\{kind, t, what\}\], not number/],
     [() => {}, /"mine": find must return a list of hits, \[\{kind, t, what\}\], not undefined/],
-    [() => [{kind: 'x', t: NaN, what: 'w'}], /"mine": find's hit 0: t must be seconds on the film clock; a hit is \{kind, t, what\}/],
+    [() => [{kind: 'x', t: NaN, what: 'w'}], /"mine": find's hit 0: t must be seconds on the film clock; a hit is \{kind, t, what, where\?, fix\?\}/],
+    [() => [{kind: 'x', t: 1, what: 'w', where: 3}], /"mine": find's hit 0: where must be the recipe entry, as words \(a string\)/],
+    [() => [{kind: 'x', t: 1, what: 'w', fix: {}}], /"mine": find's hit 0: fix must be words \(a string\)/],
     [() => [{kind: 'x', t: 1, what: Symbol('w')}], /"mine": find's hit 0: what must be words \(a string\)/],
     [() => [, {kind: 'x', t: 1, what: 'w'}], /"mine": find's hit 0: there is none \(an empty slot\)/],   // eslint-disable-line no-sparse-arrays
   ]) await assert.rejects(mine(find), said);

@@ -109,7 +109,7 @@ test('the verdict: asked only of a film that declares; passed on screen, passed 
   assert.equal(v.verdict, 'failed', 'a part cut to lose the phrase');
   assert.deepEqual(v.measured.neither.map(u => [u.scene, u.differs]), [['one', 'time shown 30 times faster']]);
   assert.equal(v.summary, '1 scene differs: 0 on screen, 0 in the voice, 1 neither · one: in the voice "thirty times faster"');
-  assert.match(lost.text, /does not say how it differs: scene one declares it differs from the real thing \(time shown 30 times faster\), and here neither shows it nor says it: the phrase "thirty times faster" falls outside this part: keep it in, or put the words on screen \(differs\.shown\)/);
+  assert.match(lost.text, /does not say how it differs: scene one declares it differs from the real thing \(time shown 30 times faster\), and here neither shows it nor says it · at storyboard\.scenes\[0\]\.differs · fix: the phrase "thirty times faster" falls outside this part: keep it in, or put the words on screen \(differs\.shown\)/);
   assert.equal(verdictOf(await reviewPart(voice, {from: voice.clock.start('two') + 1})).verdict, 'not run', 'a part with no such scene');
   // The verdict reads the frame, not the declaration: a label something hides is no label.
   const hidden = {...onScreen, frame() {}}, gone = verdictOf(await reviewPart(hidden));
@@ -298,10 +298,10 @@ test('the verdict reads the label as drawn: its own words, whole, inside the fil
   assert.equal(measure([word({differs: {scene: 2, line: 0, piece: 0, pieces: 2}})]).measured.unstated, 1, 'half of it');
   const off = measure([word({box: [-514, 10, 981, 40]})]);
   assert.equal(off.measured.unstated, 1);
-  assert.match(off.hits[0].what, /its label "Time shown 30 times faster" runs past the edge of what is shown: shorten it \(differs\.shown\), widen the crop, or say it in the voice/);
+  assert.match(off.hits[0].fix, /its label "Time shown 30 times faster" runs past the edge of what is shown: shorten it \(differs\.shown\), widen the crop, or say it in the voice/);
   const under = measure([word()], {coveredBy: () => 'top bar'});
   assert.equal(under.measured.unstated, 1);
-  assert.match(under.hits[0].what, /its label "Time shown 30 times faster" is under the top bar: move the top bar, or say it in the voice/);
+  assert.match(under.hits[0].fix, /its label "Time shown 30 times faster" is under the top bar: move the top bar, or say it in the voice/);
   // Through a film: words that only read like the label are not the label.
   const film = await filmOf({time: 30}), forged = {...film, frame(ctx) { ctx.font = '24px sans-serif'; ctx.fillText(TIME, 900, 40); }};
   assert.equal(verdictOf(await reviewPart(forged)).verdict, 'failed');

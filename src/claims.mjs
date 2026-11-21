@@ -334,13 +334,18 @@ export function exampleScenes(storyboard) {
  * `gone` when it has one (an eraser wipes the line over its own time: the label stays until the wipe ends, never only
  * until it starts). shown: as findClaims takes it, each with `gone` or not; scenes: each scene's span, [{from, to}];
  * examples: exampleScenes(storyboard). Returns the spans, merged where the same words run on, in time order: [{from, to,
- * words, scene}] (scene: the index of the example scene it is for).
+ * words, scene, paths?}] (scene: the index of the example scene it is for; paths: the shown lines' recipe entries).
  */
 export function labelSpans(shown, {examples = [], scenes = []} = {}) {
   const spans = [...scenes.flatMap((s, i) => (examples[i] ? [{from: s.from, to: s.to, words: examples[i], scene: i}] : [])),
-    ...shown.filter(s => examples[s.scene]).map(s => ({from: s.at, to: Math.max(s.at, s.to, s.gone ?? s.to), words: examples[s.scene], scene: s.scene}))].sort((a, b) => a.from - b.from);
+    ...shown.filter(s => examples[s.scene]).map(s => ({from: s.at, to: Math.max(s.at, s.to, s.gone ?? s.to), words: examples[s.scene], scene: s.scene, ...(typeof s.path === 'string' && !['captions', 'drawn'].includes(s.path) ? {paths: [s.path]} : {})}))].sort((a, b) => a.from - b.from);
+  // `paths`: the recipe entries of the lines that hold the label up (what a finding asks to erase), merged with the span;
+  // a number said aloud (captions) or only drawn has no entry to erase.
   const out = [];
-  for (const s of spans) { const last = out.at(-1); if (last && last.words === s.words && s.from <= last.to + 1e-6) last.to = Math.max(last.to, s.to); else out.push({...s}); }
+  for (const s of spans) {
+    const last = out.at(-1);
+    if (last && last.words === s.words && s.from <= last.to + 1e-6) { last.to = Math.max(last.to, s.to); if (s.paths) last.paths = [...new Set([...(last.paths ?? []), ...s.paths])]; } else out.push({...s});
+  }
   return out;
 }
 /** Whether the label is up over all of [from, to] (labelSpans). */
@@ -357,19 +362,24 @@ export function labelledOver(labels, from, to) {
  * read). labels: claims.labels; numbers: the claims on screen (declared and drawn); scenes: each scene's span, [{from,
  * to}]; examples: exampleScenes(storyboard); ids: the scenes' ids. Returns each stretch where a label is up in a scene
  * that is not example data, [{scene, example, from, to, numbers}] in time order — `scene` the real scene's id, `example`
- * the example scene's, `numbers` the claims outside example data on screen in the stretch (none: nothing is covered).
+ * the example scene's, `numbers` the claims outside example data on screen in the stretch (none: nothing is covered),
+ * `paths` (when known) the recipe entries of the lines that keep the label up.
  */
 export function lingeringExamples({labels = [], numbers = []} = {}, {scenes = [], examples = [], ids = []} = {}) {
   const out = [];
   for (const l of labels) scenes.forEach((sc, j) => {
     const from = Math.max(l.from, sc.from), to = Math.min(l.to, sc.to);
     if (examples[j] || !(to - from > 1e-6)) return;
-    out.push({scene: ids[j] ?? null, example: ids[l.scene] ?? null, from, to, numbers: numbers.filter(c => !c.example && c.at < to - 1e-6 && c.to > from + 1e-6)});
+    out.push({scene: ids[j] ?? null, example: ids[l.scene] ?? null, from, to, numbers: numbers.filter(c => !c.example && c.at < to - 1e-6 && c.to > from + 1e-6), ...(l.paths?.length ? {paths: [...l.paths]} : {})});
   });
   return out.sort((a, b) => a.from - b.from);
 }
-/** One lingering example line beside real numbers, in words, with the fix. */
-export const lingerText = g => `an example line lingers into scene ${g.scene} beside real numbers (${[...new Set(g.numbers.map(c => c.number))].join(', ')}): erase it before the scene`;
+/** One lingering example line beside real numbers, in words, with the fix (lingerWhat, then lingerFix: the review keeps them apart). */
+export const lingerText = g => `${lingerWhat(g)}: erase it before the scene`;
+/** What lingers, without the fix. */
+export const lingerWhat = g => `an example line lingers into scene ${g.scene} beside real numbers (${[...new Set(g.numbers.map(c => c.number))].join(', ')})`;
+/** The fix, naming the lines' recipe entries when they are known (`paths`) and when the scene starts (`at`, said by the caller). */
+export const lingerFix = (g, at) => `erase ${g.paths?.length ? g.paths.join(', ') : 'it'} before scene ${g.scene} starts (${at})`;
 
 /**
  * Where a fact's words stand in a line: [[from, to)] — case ignored, a space matching any spacing ("60 Hz" is "60Hz"),

@@ -420,7 +420,13 @@ export interface Clock {
 }
 
 /** What is drawn where: a box on the 1600×900 frame and the recipe entry that drew it; `name`, when a kit gives one, is what a push can frame (`on`). */
-export interface Region { box: [number, number, number, number]; path: string; label: string; name?: string }
+/**
+ * What is drawn where. `drawing`: the box is a drawing, not words (the whiteboard's shapes, the paper's marks and card) —
+ * what the review's words-over-drawing and drawing-off-frame checks read; `holds`: a drawing that frames words inside it
+ * (a rect, an ellipse, a bubble, the card), so words wholly inside it are its label, not laid over it; `sheet`: a world's
+ * own box, the 1600×900 sheet its items' coordinates are written on.
+ */
+export interface Region { box: [number, number, number, number]; path: string; label: string; name?: string; drawing?: true; holds?: true; sheet?: true }
 
 export type SoundType = 'tap' | 'slide' | 'settle' | 'question' | 'chime' | 'door' | 'step' | 'click' | 'whoosh' | 'crumble';
 /**
@@ -776,6 +782,8 @@ export const FORMAT_NAMES: readonly FormatName[];
 /** A layout compiled for a film: the output size, where the film and the bands are, and the two drawing passes. */
 export function compileLayout(film: Film, layout: Layout, span?: {from: number; to: number}): {width: number; height: number; format: FormatName;
   boxes: {film: Box; header?: Box; captions?: Box}; picture(ctx: any, t: number): void;
+  /** A point in output pixels back on the film's 1600×900 frame at t (picture's placing, undone). */
+  frameAt(t: number, point: [number, number]): [number, number];
   /** The bands at t; `caption` given (an edit's) is drawn instead of the one at t, null for none. */
   overlay(ctx: any, t: number, options?: {still?: boolean; caption?: unknown | null}): void;
   /** The bands' paper. */

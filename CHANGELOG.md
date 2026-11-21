@@ -23,6 +23,23 @@
   (`world.story`, `stage.stages[i]`). A film whose kits offer neither is as it was.
 - **StoryReel now needs footprint-story `^0.17.1`** (it was `^0.14.2`): the version with the ride numbers, hairpins,
   floor labels and groups the kit uses.
+- **Every finding says where and what to change.** A review finding (and so every `check` line) now carries `where`, the
+  recipe entry it is about as the author wrote it (`story.items[1]`, `stages[2].world.items[0]`, `pacing.holds`,
+  `storyboard.scenes[1]`), and `fix`, one concrete change in that entry's own units: `move it 138 up, clear of "figure"
+  (story.items[0]): set x, y to (300, 422)`, `key a beat on ["farm", "she stops by"]`, `add {"scene": …, "after": …,
+  "seconds": 0.8} to pacing.holds`. The line says both: `… · at story.items[1] · fix: …`, still one line whatever the
+  film's words. Read from the film's own regions and `pointAt` (`src/fix/`). The check's record keeps them as data:
+  `storyreel log --run N --why fixes`. A check of your own may give `where` and `fix` too (words; anything else refuses).
+- **Two new checks: words over a drawing, and a drawing off the frame** (`words-over-drawing`, `drawing-off-frame`).
+  The whiteboard's regions and the paper's (its marks, its card) now say which boxes are drawings (`drawing: true`, and
+  `holds: true` for one that frames words), and a world's own region is its `sheet`, so words laid on a drawing and a
+  drawing a quarter or more off its sheet are found, named by their item, with the move (or the size) that fixes them.
+  They run only on a film whose kit marks drawings; a film's other checks are unchanged.
+- **Changed words.** The fix moved out of `what` for `text-density`, `silences`, `pure`, `contrast`, `claims`,
+  `differs` and `example-lingers` (into `fix`); a `claims` finding says "shown in" / "said in" its scene. So the first
+  `check` after upgrading counts those findings once as fixed and new. `PURITY_FINDING` is the words alone
+  (`PURITY_FIX` beside it); `contrastWhat` / `contrastFix`, `lingerWhat` / `lingerFix` are new beside the old texts. The
+  layout gains `frameAt(t, [x, y])`. The whiteboard's code changed, so pieces a cache holds are drawn again once.
 
 ## 0.33.0 — one reader of a run's record, with StoryDeck
 

@@ -57,19 +57,23 @@ export function regionsStage(state) {
     const say = {title: () => [`${sp}.title`, st.title], panel: () => [sp, st.file ?? st.title], footer: () => [`${sp}.footer`, st.footer?.text],
       line: i => [lineEntry(st, i), st.lines[i].map(([text]) => text).join('').trim()], mark: k => [`${sp}.marks[${k}]`, st.marks[k].icon],
       focus: k => [`${sp}.focus[${k}]`, `lines ${st.focus[k].lines.join('–')}`], list: n => [`${sp}.list[${n}]`, st.list[n].what]};
-    for (const b of stageBoxes(spec)) { const [path, label] = say[b.part](b.index); out.push({box: b.box, path, label: String(label ?? '')}); }
-    for (const r of st.kit?.regions?.(st.handle, t, push ? kitCardBox() : null) ?? []) out.push({box: r.box, path: `${sp}.${r.path}`, label: r.label ?? '', ...(r.name ? {name: r.name} : {})});
+    // A mark is an icon, ink that is not words: the review finds words laid over it and one half off the frame (Region.drawing).
+    for (const b of stageBoxes(spec)) { const [path, label] = say[b.part](b.index); out.push({box: b.box, path, label: String(label ?? ''), ...(b.part === 'mark' ? {drawing: true} : {})}); }
+    for (const r of st.kit?.regions?.(st.handle, t, push ? kitCardBox() : null) ?? []) out.push({box: r.box, path: `${sp}.${r.path}`, label: r.label ?? '', ...(r.name ? {name: r.name} : {}), ...drawn(r)});
     return out;
   }
   function cardRegions(t, now) {
     const move = Math.max(0, Math.min(1, (t - MOVE0) / (MOVE1 - MOVE0))), {box, camera} = cardPlacement(geo, card, {move, center: now.centre, aside: moveTo, loop: centrePlace}), v = about(camera);
-    return [{box: through(v, box), path: 'card', label: card.header ?? 'the card'}, ...cardRowBoxes(geo, card).map(r => ({box: through(v, r.box), path: `card.rows[${r.index}]`, label: r.label}))];
+    // The card is a drawing that holds its rows: a word inside it is its own, one laid across its edge is over it.
+    return [{box: through(v, box), path: 'card', label: card.header ?? 'the card', drawing: true, holds: true}, ...cardRowBoxes(geo, card).map(r => ({box: through(v, r.box), path: `card.rows[${r.index}]`, label: r.label}))];
   }
   function guessBox(g, t) {
     const text = g.answer && t >= g.end + GUESS_FLIP ? g.answer : g.question, w = Math.min(1440, measure.measure(text, 54, {display: true, weight: 700}) + 230), cy = GUESS_PLACES[g.place];
     return [800 - w / 2, cy - 75, 800 + w / 2, cy + 75];
   }
-  /** What is drawn where at t: [{box: [x0, y0, x1, y1], path, label}] on the frame, in drawing order. */
+  /** A kit's word that a region is a drawing (and holds words inside it), passed on only when it says so: true and nothing else. */
+  const drawn = r => ({...(r.drawing === true ? {drawing: true} : {}), ...(r.drawing === true && r.holds === true ? {holds: true} : {})});
+  /** What is drawn where at t: [{box: [x0, y0, x1, y1], path, label, name?, drawing?, holds?}] on the frame, in drawing order. */
   function regionsAt(t) {
     if (teaser && t >= teaser.at) return [{box: [0, 0, 1600, 900], path: `${stagePath(recapStage)}.teaser`, label: 'the teaser'}];
     // In a steps track's rewind cue the picture is an earlier moment's (drawFrame): its regions are that moment's.
@@ -96,8 +100,9 @@ export function regionsStage(state) {
   }
   /** A world's regions on the frame: the world itself, then each thing its kit says it draws (regionsAt), through the world's view. */
   function worldRegions(world, t) {
-    const out = [{box: through(world.view, [0, 0, 1600, 900]), path: world.path, label: `the ${world.w.kit} world`}];
-    for (const r of world.w.instance.regionsAt?.(Math.min(t, world.until)) ?? []) out.push({box: through(world.view, r.box), path: `${world.path}.${r.path}`, label: r.label ?? '', ...(r.name ? {name: r.name} : {})});
+    // `sheet`: this box is the 1600×900 sheet the world's items are written on (fix/places.mjs · sheetOf holds a drawing to it).
+    const out = [{box: through(world.view, [0, 0, 1600, 900]), path: world.path, label: `the ${world.w.kit} world`, sheet: true}];
+    for (const r of world.w.instance.regionsAt?.(Math.min(t, world.until)) ?? []) out.push({box: through(world.view, r.box), path: `${world.path}.${r.path}`, label: r.label ?? '', ...(r.name ? {name: r.name} : {}), ...drawn(r)});
     return out;
   }
   /** One shot's regions at t, on screen or not (a film without a pushIn): its world's, or its stages' on the page. */

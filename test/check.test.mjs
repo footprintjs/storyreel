@@ -81,7 +81,7 @@ test('the chart is drawn in the folder\'s README from the chart itself', () => {
 test('storyreel check on a project: one reply, kept for the log, and the next check says what changed', async t => {
   const out = tempDir('check', t);
   const first = await check(await readInputs({cwd: project, out}));
-  assert.match(first, /^fix 1 — 1 error\nthe whole film: 0\.00–[\d.]+ s of [\d.]+ s — read: [\w, -]+\nfix {2}0:02\.0–0:03\.8 one · words over words: "Alpha" and "Beta"\nnot run · Drawn parts hold together: .*\nchanges: 2 of 2 pieces changed \(0:09 of 0:09\)\nsince the run before: this is the first check kept for this film$/);
+  assert.match(first, /^fix 1 — 1 error\nthe whole film: 0\.00–[\d.]+ s of [\d.]+ s — read: [\w, -]+\nfix {2}0:02\.0–0:03\.8 one · words over words: "Alpha" and "Beta" · at story · fix: move it 36 down, clear of "Alpha" \(story\)\nnot run · Drawn parts hold together: .*\nchanges: 2 of 2 pieces changed \(0:09 of 0:09\)\nsince the run before: this is the first check kept for this film$/);
   const kept = listRuns(out).find(r => r.feature === 'check').check;
   assert.deepEqual({...kept, keys: kept.keys.map(k => /^[0-9a-f]{16}$/.test(k))}, {film: kept.film, verdict: 'fix', round: 1, keys: [true]});
   assert.deepEqual(lastCheck(out, kept.film), kept);
@@ -155,6 +155,10 @@ test('a check keeps its record, and the log says why a value is so — walked ba
   assert.match(errors, /^errors = 1\ncount the errors \(errors#3\) \[wrote: errors\]\n {2}read the phrases \(phrases#0\) ← via phraseErrors .*\n {2}read the picture \(picture#1\) ← via pictureErrors /);
   // a cause shown is a read that happened: the advice is added from the advice, and the round from nothing the record holds
   assert.match(await log({cwd: project, out, run: '1', why: 'advice'}), /← via phraseAdvice .*\n.*← via pictureAdvice /);
+  // each finding's recipe entry and fix are data in the record, beside the count: asked for, they come back as written
+  const fixes = await log({cwd: project, out, run: '1', why: 'fixes'});
+  assert.match(fixes.split('\n')[0], /^fixes = \[\{"kind":"words-overlap","where":"story","fix":"move it 36 down, clear of \\"Alpha\\" \(story\)"\}\]$/);
+  assert.match(fixes, /read the picture \(picture#1\) \[wrote: .*fixes/);
   assert.doesNotMatch(await log({cwd: project, out, run: '1', why: 'round'}), /← via/);
   // what the record cannot explain is said so, never guessed
   assert.equal(await log({cwd: project, out, run: '1', why: 'nothing'}), 'nothing: no stage of this run wrote it (storyreel log --run 1 --only steps lists what each wrote)');

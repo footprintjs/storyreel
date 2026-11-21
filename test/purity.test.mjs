@@ -49,7 +49,9 @@ test('a kit that keeps state between frames fails, and each changed moment names
   assert.ok(verdict(r).measured.changed > 0);
   const found = r.findings.filter(f => f.kind === 'pure');
   assert.ok(found.length > 0);
-  assert.match(found[0].what, /make the kit draw from t alone — seeded randomness \(never Math\.random\), no clock, nothing kept from the frame before/);
+  assert.equal(found[0].what, 'drawn again after later moments, this moment gives another picture');
+  assert.match(found[0].fix, /^make the kit draw from t alone — seeded randomness \(never Math\.random\), no clock, nothing kept from the frame before$/);
+  assert.equal(typeof found[0].where, 'string');
   assert.equal(found[0].scene, 'move');
 });
 

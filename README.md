@@ -827,7 +827,7 @@ reads the film as text (the review's checks and verdicts) and counts what the ed
 ```
 fix 1 — 1 error
 the whole film: 0.00–9.04 s of 9.04 s — read: under-captions, words-overlap, cut-off, …
-fix  0:02.0–0:03.8 one · words over words: "Alpha" and "Beta"
+fix  0:02.0–0:03.8 one · words over words: "Alpha" and "Beta" · at story · fix: move it 36 down, clear of "Alpha" (story)
 not run · Drawn parts hold together: no kit on screen gives its parts (parts(t))
 changes: 2 of 2 pieces changed (0:09 of 0:09)
 since the run before: 1 fixed, 0 new · round 2
@@ -2377,11 +2377,16 @@ run it.
   import {reviewPart} from 'footprint-storyreel/review';
   const r = await reviewPart(film, {part: {scenes: ['chapters']}, layout: {format: 'landscape', captions: true}});
   console.log(r.timeline); console.log(r.text);
-  // 2:02.5–2:05.3 chapters · under the captions: "one turn"
+  // 2:02.5–2:05.3 chapters · under the captions: "one turn" · at stages[2].title · fix: move it 48 up, clear of the captions
   ```
+  Every finding names the recipe entry it is about (`where`: `story.items[1]`, `stages[2].world.items[0]`,
+  `pacing.holds`, or the storyboard's scene) and one change that clears it (`fix`, in that entry's own units: a new
+  `x`, `y`, a beat keyed on a phrase said there, a hold to add), read from the film's own regions
+  ([src/fix/README.md](src/fix/README.md)). The whiteboard and the paper mark their drawings, so two more checks
+  name them: words laid over a drawing (`words-over-drawing`) and a drawing run off its sheet (`drawing-off-frame`).
   The review is a footprintjs flowchart: a selector picks each check by what the part has (no caption band, no
   caption check), each check runs as its own subflow, and `r.record` says what ran and why. A check of your own
-  is `{label, why, when(scope), find(review)}` in `checks`; `find` answers at once with its hits, `[{kind, t, what}]`.
+  is `{label, why, when(scope), find(review)}` in `checks`; `find` answers at once with its hits, `[{kind, t, what, where?, fix?}]`.
   A check that throws, or answers with anything else (a promise, no list, a hit without its time or its words),
   fails the review with one error naming every check that failed, so a review that returns has run every check it
   picked. Three checks answer with a verdict — no slideshow, drawn parts that hold together, every number with a
