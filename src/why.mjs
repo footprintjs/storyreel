@@ -25,6 +25,7 @@ export const WHY_LINES = WHY_LIMITS.lines, WHY_VALUE = WHY_LIMITS.value, RECORD_
  * says which features do. Returns text.
  */
 export async function whyText(run, key, {all = false, map = null} = {}) {
+  if (map !== null && (typeof key !== 'string' || !key.trim())) throw new Error(`--why names a value of the map, one of what its steps write: ${MAP_KEYS.join(', ')}`);
   if (typeof key !== 'string' || !key.trim()) throw new Error('--why names a value of the run, one of what its stages wrote (storyreel log --run 1 --only steps lists them)');
   if (/[.[\]]/.test(key)) throw new Error(`--why names a value by its own name (verdict, errors), not a part of one: ${JSON.stringify(key.trim().slice(0, 60))}`);
   if (map !== null) return mapWhy(run, key, map, {all});
@@ -46,6 +47,9 @@ async function mapWhy(run, key, map, {all}) {
   const maps = run.maps ?? [], worlds = Object.entries(run.worlds ?? {});
   if (!maps.length) {
     if (run.feature !== 'check') throw new Error(`run ${run.n} (${run.feature}) kept no map: a check keeps one for each isometric world (storyreel check, then storyreel log --run 1 --why at --map story)`);
+    // a check from 0.40.0 on writes its maps, even none: a run with no list was kept before maps were
+    if (run.maps === undefined) throw new Error(`run ${run.n} was kept before 0.40.0, which kept no map records: run storyreel check again, then ask that run`);
+    if (/^broken\b/.test(run.summary ?? '')) throw new Error(`run ${run.n} kept no map: its film did not compile, so no map was built`);
     throw new Error(`run ${run.n} kept no map: its film has no isometric world${worlds.length ? ` — its worlds are ${worlds.map(([name, kit]) => `${name} (${kit})`).join(', ')}` : ', and no world drawn by a kit'}`);
   }
   const m = maps.find(x => x.name === map.trim());

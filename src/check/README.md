@@ -130,6 +130,11 @@ place: build (build#2) [wrote: at]
 (a stage also uses what it is given from outside the run's own state: the record holds what stages read and wrote, and no more)
 ```
 
+**The ⚠ line.** `⚠ also consumed args — slice may be incomplete here` is foottrace's honest mark on the `read` step: it
+takes the spec and the policy as the run's input (`$getArgs`), not from the run's state, so no earlier step wrote what
+it read and the walk ends there. That is the whole cause: what `read` took is the recipe's world entry (here `story`),
+as the kit read it, with the film's policy. Every answer for a map ends at `read` for that reason.
+
 `--why view` answers through the grid's decision (`[control: no grid is written: it is fitted so the picture fills the
 area]`), `--why names` through the names step (each name's lines and size), and a map placed by hand says so
 (`place: hand … [control: every block has an at: the map placed them]`). The keys are the map steps' (a key no step
@@ -149,6 +154,13 @@ already keeps a record per run that `log --why` reads; the make pipeline keeps a
   rest are counted.
 - **A record that cannot be written never costs the check.** The map is still built and compared, and the reply says
   `map story: its record was not kept`; asked later, that map says it kept none.
+- **A kit's `mapRun` is trusted for nothing.** One that throws, returns no map, or does not finish within 30 s
+  (`maps.mjs` · `MAP_RUN_MS`) is a `drift` line saying so; the check goes on, and a record it began is removed.
+- **The call the reply offers names the run by its id** (`storyreel log --run <id> --why at --map story`), of the first
+  map that kept a record: a run's number moves when another is saved.
+- A check kept before 0.40.0 kept no map records, and `--map` says so (run `storyreel check` again). From 0.40.0 a
+  check's run file always carries `maps` and `worlds` (the film's worlds and their kits), empty when there are none.
+  `--why` with no key and `--map` lists what a map's steps write.
 - **Refusals name what there is**: an unknown map names the run's maps; a run with none names its film's worlds and
   their kits (`run 1 kept no map: its film has no isometric world — its worlds are story (whiteboard)`).
 

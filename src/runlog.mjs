@@ -9,7 +9,7 @@
  *
  *   saveRun(out, {feature, summary, record, verdicts?, failure?, maps?, worlds?})  → the file written (a feature keeps its newest RUNS_KEPT)
  *                                                         maps: a check's map runs, each record moved beside the run (mapRecordBeside)
- *   keepRun(out, run)                                     → null, or why it was not saved: what a feature calls, for its answer is the result and the run a record beside it
+ *   keepRun(out, run, {saved?})                           → null, or why it was not saved (saved(id): told the id once saved): what a feature calls, for its answer is the result and the run a record beside it
  *   keepFailedRun(out, feature, error, summary?)          → the same, for an error carrying its record (withRecord)
  *   withRecord(error, trace)                              → the error, carrying the record so far (error.record)
  *   logCall(folder)                                       → the call that reads a folder's runs, to print
@@ -171,10 +171,14 @@ function dropOldRuns(dir, feature, kept) {
 /**
  * Save a run a feature has made, never throwing: the feature's answer is the result and its run a record beside it, so
  * a run that cannot be saved (an out folder others can change, a read-only disk) never costs the answer. Returns null,
- * or why it was not saved, for the feature to say.
+ * or why it was not saved, for the feature to say. `saved(id)`: told the run's id once it is saved, for a feature
+ * whose answer offers a call that names it (an offered call names a run by its id: its number moves).
  */
-export function keepRun(out, run) {
-  try { saveRun(out, run); return null; } catch (e) { return `this ${run.feature}'s run was not saved for storyreel log: ${e?.message ?? e}`; }
+export function keepRun(out, run, {saved = null} = {}) {
+  let file;
+  try { file = saveRun(out, run); } catch (e) { return `this ${run.feature}'s run was not saved for storyreel log: ${e?.message ?? e}`; }
+  try { saved?.(path.basename(file, '.json')); } catch { /* the run is saved: what the feature does with its id is its own */ }
+  return null;
 }
 
 /** Whatever was thrown, in words: never a throw itself. */

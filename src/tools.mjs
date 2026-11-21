@@ -568,11 +568,13 @@ export async function check(project, args = {}) {
   // a film with no such world runs nothing more
   const maps = film?.mapRuns ? await runMaps(film.mapRuns, {recordFor: () => pendingRecord(out)}) : {maps: [], skipped: 0};
   // its run: its own record, the review's verdicts with what they measured (log --check), and what the next check compares with
+  // `worlds` and `maps` are written for every check (empty when there are none), so a run kept before 0.40.0 is told apart
+  let id = null;
   const unsaved = keepRun(out, {feature: 'check', summary: done.text.split('\n')[0], record: done.record, verdicts: reviewed?.verdicts ?? null, check: {verdict: done.verdict, round: done.round, keys: done.keys, film: which},
-    ...(done.recorded ? {kept: {file: pending, control: done.control}} : {}), ...(film ? {worlds: film.drawnBy} : {}), ...(maps.maps.length ? {maps: maps.maps} : {})});
+    ...(done.recorded ? {kept: {file: pending, control: done.control}} : {}), worlds: film?.drawnBy ?? {}, maps: maps.maps}, {saved: saved => { id = saved; }});
   if (pending && (unsaved || !done.recorded)) dropPending(pending);
   for (const m of maps.maps) if (m.file && unsaved) dropPending(m.file);
-  return [done.text, ...mapLines(maps, {saved: !unsaved}), ...(unsaved ? [`(${shownLine(unsaved)})`] : [])].join('\n');
+  return [done.text, ...mapLines(maps, {run: id}), ...(unsaved ? [`(${shownLine(unsaved)})`] : [])].join('\n');
 }
 
 /** The notes the person left in the studio, read beside the recipe's file the film reads (studio/feedback-tool.mjs). */

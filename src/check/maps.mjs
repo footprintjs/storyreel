@@ -12,24 +12,54 @@ import {fileSink} from 'footprintjs/sinks';
 import {controlDepRecorder} from 'footprintjs/trace';
 import {controlEdges} from 'footprint-story/record';
 import {row} from './problems.mjs';
+import {dropPending} from '../runlog.mjs';
 
 /** The most maps a check runs: past it the rest are counted, not run (runlog.mjs keeps as many). */
 export const MAPS_MOST = 32;
 
-/** One map's run: {name, kit, file, recorded, control, differs?} — `file` the record written (null when none was kept). */
-async function runOne({name, kit, run}, file) {
+/** How long one map's run may take before it is given up (ms): a map is built in well under a second; a kit's run that never settles must not hang the check. */
+export const MAP_RUN_MS = 30_000;
+
+/** A run's answer as the check can use it: {snapshot, differs} with a commit log and a string or null, or why not. */
+function readMade(made) {
+  if (!made || typeof made !== 'object') return {failed: 'the map run returned no map'};
+  const {snapshot, differs} = made;
+  if (!snapshot || typeof snapshot !== 'object' || !Array.isArray(snapshot.commitLog)) return {failed: 'the map run returned no run (no snapshot with its commit log)'};
+  if (differs !== null && typeof differs !== 'string') return {failed: 'the map run did not say whether its map is the kit\'s'};
+  return {snapshot, differs};
+}
+
+/** `promise`, or a rejection after `ms`: the timer is cleared either way, and never holds the process open. */
+function within(promise, ms) {
+  let timer;
+  const late = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`the map run did not finish within ${ms / 1000} s`)), ms); timer.unref?.(); });
+  return Promise.race([promise, late]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * One map's run: {name, kit, file, recorded, control, differs?} — `file` the record written (null when none was kept;
+ * a file begun and not kept is removed). Never throws: a kit's `mapRun` is a public field, so whatever it does — throws,
+ * returns nothing, never settles — is a failure said aloud (`differs`), and the check goes on.
+ */
+async function runOne({name, kit, run}, file, ms) {
   let sink = null;
   try { sink = file ? fileSink(file) : null; } catch { /* no record: the map is still built, and compared */ }
   const control = controlDepRecorder();
-  let made = null, failed = null;
-  try { made = await run({...(sink ? {sink} : {}), recorders: [control]}); } catch (e) { failed = String(e?.message ?? e); }
-  let recorded = Boolean(sink) && !failed;
-  try { await sink?.close(); } catch { recorded = false; }
+  let made = {failed: null};
+  try { made = readMade(await within(Promise.resolve().then(() => run({...(sink ? {sink} : {}), recorders: [control]})), ms)); } catch (e) { made = {failed: thrownText(e)}; }
+  let recorded = Boolean(sink) && !made.failed;
+  try { await within(Promise.resolve(sink?.close()), ms); } catch { recorded = false; }
+  if (file && !recorded) dropPending(file);
   // which decision let each step run, as plain data beside the record (footprint-story/record · controlEdges)
   let edges = {};
-  try { edges = made ? controlEdges(made.snapshot.commitLog, control) : {}; } catch { /* the record still answers, without the decisions' words */ }
-  const differs = failed ? `the map flow failed where the kit built the map: ${failed}` : made.differs;
+  try { edges = made.failed ? {} : controlEdges(made.snapshot.commitLog, control); } catch { /* the record still answers, without the decisions' words */ }
+  const differs = made.failed ? `the map flow failed where the kit built the map: ${made.failed}` : made.differs;
   return {name, kit, file: recorded ? file : null, recorded, control: edges, ...(differs ? {differs} : {})};
+}
+
+/** Whatever was thrown, in words: never a throw itself. */
+function thrownText(e) {
+  try { return String(e?.message ?? e); } catch { return 'something that cannot be said in words was thrown'; }
 }
 
 /**
@@ -37,27 +67,29 @@ async function runOne({name, kit, run}, file) {
  * k-th map's record is written to while it runs (runlog.mjs · pendingRecord), or a throw: then that map keeps none.
  * Returns {maps: [{name, kit, file, recorded, control, differs?}], skipped}.
  */
-export async function runMaps(mapRuns, {recordFor = () => null} = {}) {
+export async function runMaps(mapRuns, {recordFor = () => null, ms = MAP_RUN_MS} = {}) {
   const asked = Array.isArray(mapRuns) ? mapRuns : [], maps = [];
   for (const one of asked.slice(0, MAPS_MOST)) {
     let file = null;
     try { file = recordFor(maps.length); } catch { /* an out folder that cannot hold a record: the map is built without one */ }
-    maps.push(await runOne(one, file));
+    maps.push(await runOne(one ?? {}, file, ms));
   }
   return {maps, skipped: Math.max(0, asked.length - MAPS_MOST)};
 }
 
 /**
- * What the check's reply says of its maps, one line each at most: a drift aloud, a record not kept, then how to ask
- * (`saved`: false when the check's run itself was not saved, so there is nothing to ask). Nothing when the film has no map.
+ * What the check's reply says of its maps, one line each at most: a drift aloud, a record not kept, then how to ask,
+ * the run named by its id (`run`: the check's run id; a run's number moves when another is saved, its id never), of
+ * the first map that kept a record. `run` null: the check's run was not saved, so there is nothing to ask. Nothing
+ * when the film has no map.
  */
-export function mapLines({maps, skipped}, {saved = true} = {}) {
+export function mapLines({maps, skipped}, {run = null} = {}) {
   if (!maps.length) return [];
-  const names = maps.map(m => m.name);
+  const names = maps.map(m => m.name), saved = run !== null, asked = maps.find(m => m.recorded);
   return [
     ...maps.filter(m => m.differs).map(m => row(`drift · map ${m.name}: footprint-story's map flow did not build the map the kit drew — ${m.differs} (the film draws the kit's; report it to footprint-story)`)),
     ...(saved ? maps.filter(m => !m.recorded).map(m => `map ${m.name}: its record was not kept, so log --why cannot answer for it`) : []),
     ...(skipped ? [`maps: ${skipped} more not run (a check runs the first ${MAPS_MOST})`] : []),
-    ...(saved ? [`maps: ${names.join(', ')} — why a block stands where it does: storyreel log --run 1 --why at --map ${names[0]}`] : []),
+    ...(saved && asked ? [`maps: ${names.join(', ')} — why a block stands where it does: storyreel log --run ${run} --why at --map ${/^\w+$/.test(asked.name) ? asked.name : `'${asked.name}'`}`] : []),
   ];
 }

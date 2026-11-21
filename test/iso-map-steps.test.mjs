@@ -99,7 +99,7 @@ test('no file of the kit runs a map step itself: placement, routes, the grid, fa
     }
   }
   // the spec the kit builds with is the one it keeps for the map flow (flow.mjs): made once
-  assert.match(readFileSync(kitDir + 'build.mjs', 'utf8'), /const spec = specOf\(map, where\);\n[\s\S]*buildIsoMap\(spec, ISO_FIT\)/);
+  assert.match(readFileSync(kitDir + 'build.mjs', 'utf8'), /const spec = frozen\(specOf\(map, where\)\);\n[\s\S]*buildIsoMap\(spec, ISO_FIT\)/);
   assert.match(readFileSync(kitDir + 'flow.mjs', 'utf8'), /runMapFlow\(map\.spec, ISO_FIT,/);
 });
 

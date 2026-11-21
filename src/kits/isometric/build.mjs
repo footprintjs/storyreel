@@ -18,6 +18,9 @@ import {buildIsoMap, isometric, ISO_MAP_POLICIES} from 'footprint-story/isometri
  */
 export const ISO_FIT = ISO_MAP_POLICIES.film;
 
+/** A plain value frozen at every level (the spec: lists and objects of numbers and words). */
+const frozen = (v) => { if (v && typeof v === 'object' && !Object.isFrozen(v)) { Object.freeze(v); Object.values(v).forEach(frozen); } return v; };
+
 /** What the spec names the whole map in a refusal: "stage map: the isometric map: the wires cannot be laid: …". */
 const MAP_WHO = 'the isometric map';
 
@@ -51,8 +54,9 @@ export function specOf(map, where) {
  * flow.mjs). Mutates the read map and returns it.
  */
 export function buildMap(map, where) {
-  // the spec is kept on the map (`spec`): the map flow is handed this very spec, never one made again (flow.mjs)
-  const spec = specOf(map, where);
+  // the spec is kept on the map (`spec`): the map flow is handed this very spec, never one made again (flow.mjs).
+  // Frozen, every level, so nothing can change it between the build and the map flow's run of it.
+  const spec = frozen(specOf(map, where));
   let built;
   try { built = buildIsoMap(spec, ISO_FIT); } catch (e) { throw new Error(`${where}: ${String(e?.message ?? e).replace(/^isometric: /, '')}`, {cause: e}); }
   map.blocks.forEach((b, i) => Object.assign(b, {at: built.at[i], shape: built.shapes[i], fitted: built.names[i], smallFitted: built.smalls[i]}));

@@ -21,7 +21,8 @@ const mapFiles = out => readdirSync(path.join(out, ...RUNS)).filter(n => /\.map-
 test('a check keeps a record for each map, and log --why --map answers from it: the place step and its decision, the grid\'s, a name\'s size', async t => {
   const out = tempDir('map-why', t);
   const said = await check(await readInputs({cwd: project, out}));
-  assert.match(said, /\nmaps: story, stages\[0\] — why a block stands where it does: storyreel log --run 1 --why at --map story$/);
+  // the call offered names the run by its id (a run's number moves when another is saved)
+  assert.ok(said.endsWith(`\nmaps: story, stages[0] — why a block stands where it does: storyreel log --run ${listRuns(out)[0].id} --why at --map story`), said.split('\n').at(-1));
   assert.doesNotMatch(said, /drift|not kept/);
   assert.equal(mapFiles(out).length, 2, 'one record a map, beside the run');
   assert.deepEqual(readdirSync(path.join(out, ...RUNS)).filter(n => n.startsWith('pending-')), [], 'nothing left pending');
@@ -53,6 +54,13 @@ test('refusals name what there is: an unknown map, --map without --why, a bare -
   await assert.rejects(ask(out, 'at', '../../etc'), /run 1 has no map "\.\.\/\.\.\/etc": its maps are story, stages\[0\]/);
   await assert.rejects(log({cwd: project, out, run: '1', map: 'story'}), /--map picks the record --why reads: ask with --why/);
   await assert.rejects(ask(out, 'at', true), /--map names one of the run's maps by its world's place in the recipe/);
+  // --why with no key, with --map: the keys a map's steps write, not the check's steps
+  await assert.rejects(ask(out, true, 'story'), /^Error: --why names a value of the map, one of what its steps write: placed, placedWhy, at, routes, .*floorPaints$/);
+  // a check kept before 0.40.0 (no maps, no worlds in its file) is not said to have no isometric world
+  const run = listRuns(out)[0], saved = JSON.parse(readFileSync(run.file, 'utf8')), {maps: _maps, worlds: _worlds, ...old} = saved;
+  writeFileSync(run.file, JSON.stringify(old));
+  await assert.rejects(ask(out, 'at', 'story'), {message: 'run 1 was kept before 0.40.0, which kept no map records: run storyreel check again, then ask that run'});
+  writeFileSync(run.file, JSON.stringify(saved));
   // the check's own record is read as before when no map is named
   assert.match(await log({cwd: project, out, run: '1', why: 'verdict'}), /^verdict = "fix"\n/);
   // a map whose record is gone says so, never another map's answer
@@ -90,7 +98,7 @@ test('the map flow builds the very map the kit drew; a difference is found, and 
   // the check's reply says it first, as a drift; a map flow that fails where the kit built the map is one too
   const {maps} = await runMaps([{name: 'story', kit: 'isometric', run: mapRun(kit)}, {name: 'stages[0]', kit: 'isometric', run: async () => { throw new Error('a step refused'); }}]);
   assert.deepEqual(maps.map(m => m.differs), ['placed: "build" here, "hand" in the kit\'s', 'the map flow failed where the kit built the map: a step refused']);
-  const lines = mapLines({maps, skipped: 0});
+  const lines = mapLines({maps, skipped: 0}, {run: 'r1'});
   assert.match(lines[0], /^drift · map story: footprint-story's map flow did not build the map the kit drew — placed: "build" here, "hand" in the kit's \(the film draws the kit's; report it to footprint-story\)$/);
   assert.match(lines[1], /^drift · map stages\[0\]: .*a step refused/);
 });
@@ -102,7 +110,8 @@ test('a record that cannot be written never costs the check: the map is still bu
   assert.deepEqual(maps.map(m => [m.name, m.recorded, m.file, m.differs ?? null]), [['story', false, null, null], ['stages[0]', false, null, null]]);
   const thrown = await runMaps(film.mapRuns.slice(0, 1), {recordFor: () => { throw new Error('no room'); }});
   assert.equal(thrown.maps[0].recorded, false);
-  assert.deepEqual(mapLines({maps, skipped: 0}).slice(0, 2), ['map story: its record was not kept, so log --why cannot answer for it', 'map stages[0]: its record was not kept, so log --why cannot answer for it']);
+  assert.equal(mapLines({maps, skipped: 0}, {run: 'r1'}).length, 2, 'no map kept a record: no call is offered');
+  assert.deepEqual(mapLines({maps, skipped: 0}, {run: 'r1'}).slice(0, 2), ['map story: its record was not kept, so log --why cannot answer for it', 'map stages[0]: its record was not kept, so log --why cannot answer for it']);
   // a whole out folder that cannot be written to: the check still answers, and says its run was not saved (nothing to ask)
   const out = path.join(dir, 'out');
   mkdirSync(path.join(out, ...RUNS), {recursive: true}); chmodSync(path.join(out, ...RUNS), 0o500);
@@ -136,4 +145,26 @@ test('a run\'s maps read back as a file anyone may have written: a name not the 
   writeFileSync(mapRecordBeside(first, 0), '');
   for (let k = 1; k < RUNS_KEPT + 1; k++) saveRun(out, {feature: 'check', at: new Date(old.getTime() + k * 1000)});
   assert.ok(!readdirSync(dir).some(n => n.startsWith(path.basename(first, '.json'))), 'the oldest run and its map record are gone');
+});
+
+test('a kit\'s mapRun is trusted for nothing: one that returns no map, throws, is no function or never settles is a failure said aloud, and the check goes on', async t => {
+  const dir = tempDir('map-hostile-run', t), recordFor = k => path.join(dir, `pending-${k}.record.jsonl`);
+  const runs = [{name: 'story', kit: 'x', run: async () => undefined}, {name: 'stages[0]', kit: 'x', run: () => { throw new Error('boom'); }},
+    {name: 'stages[1]', kit: 'x', run: 'not a function'}, {name: 'stages[2]', kit: 'x', run: async () => ({snapshot: {commitLog: []}, differs: 7})},
+    {name: 'stages[3]', kit: 'x', run: () => new Promise(() => {})}];
+  const {maps} = await runMaps(runs, {recordFor, ms: 200});
+  assert.deepEqual(maps.map(m => m.differs.replace(/^the map flow failed where the kit built the map: /, '')), ['the map run returned no map', 'boom', 'run is not a function',
+    'the map run did not say whether its map is the kit\'s', 'the map run did not finish within 0.2 s']);
+  assert.ok(maps.every(m => !m.recorded && m.file === null));
+  assert.deepEqual(readdirSync(dir), [], 'a record begun and not kept is removed, never left pending');
+  // the bound a check gives each map's run (said in src/check/README.md)
+  const {MAP_RUN_MS} = await import('../src/check/maps.mjs');
+  assert.equal(MAP_RUN_MS, 30_000);
+});
+
+test('the spec handed to the map flow is the one the kit built with, frozen at every level', async () => {
+  const {readMap} = await import('../src/kits/isometric/read.mjs'), {buildMap} = await import('../src/kits/isometric/build.mjs');
+  const map = buildMap(readMap(JSON.parse(readFileSync(fileURLToPath(new URL('../examples/iso-world/recipe.json', import.meta.url)), 'utf8')).story, 'the story'), 'the story');
+  assert.ok(Object.isFrozen(map.spec) && Object.isFrozen(map.spec.blocks) && Object.isFrozen(map.spec.blocks[0]) && Object.isFrozen(map.spec.blocks[0].size) && Object.isFrozen(map.spec.area));
+  assert.throws(() => { map.spec.blocks[0].size[0] = 9; }, TypeError);
 });

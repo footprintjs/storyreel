@@ -8,8 +8,8 @@ from it: why a block stands where it does, why the grid is fitted, why a name is
 ```
 $ storyreel check
 …
-maps: story, stages[0] — why a block stands where it does: storyreel log --run 1 --why at --map story
-$ storyreel log --run 1 --why at --map story
+maps: story, stages[0] — why a block stands where it does: storyreel log --run <id> --why at --map story
+$ storyreel log --run <id> --why at --map story
 at = [[1.5,16,0],[4.5,13,0],[10.5,6.5,0],[11.5,1.5,0],[16,6,0]]
 place: build (build#2) [wrote: at]
   read (read#0) ← via who [wrote: who, blocks, floors, wires, written, area, style, policy]
@@ -33,7 +33,14 @@ place: build (build#2) [wrote: at]
 - **Nothing new for a film with no isometric world**: no map is run and the check's reply is as it was. The film
   carries `mapRuns` (`[{name, kit, run}]`) only when a world can run its map; a kit's world may expose `mapRun`.
 - A record that cannot be written never costs the check: the reply says `map story: its record was not kept`. At most
-  32 maps a check; a feature's old runs take their map records with them.
+  32 maps a check; a feature's old runs take their map records with them. A kit's `mapRun` that throws, returns no
+  map or does not finish within 30 s is a `drift` line, never a failed check.
+- The reply's call names the check's run by its id (`--run <id>`), as the log's own calls do; `keepRun` takes
+  `{saved(id)}` to tell a feature the id. The spec handed to `buildIsoMap` and the map flow is frozen at every level.
+- **A check's run file now carries `maps` and `worlds`** (the film's worlds and their kits, `film.drawnBy`), empty when
+  there are none: the reply for a film without an isometric world is unchanged, its run file is not. A check kept
+  before 0.40.0 has neither, and `--map` says it was kept before map records were.
+- The `log` tool's MCP schema grew by the `map` argument's description (not measured by the agent-cost baseline).
 - Frames unchanged (`test/golden.json` is the same). What an agent reads on the main path is unchanged (the farm film
   has no isometric world), so the agent-cost baseline is not touched.
 
