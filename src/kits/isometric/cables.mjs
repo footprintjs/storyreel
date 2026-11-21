@@ -6,12 +6,12 @@
  * The numbers and the rules are footprint-story/isometric's, as StoryDeck's are (moved there from both tools in
  * 0.35.0): a cable's end stands CABLE.clear (6) px off the foot it touches, its corners are rounded CABLE.corner of a
  * tile, its line stops CABLE.headShort of an 18 px head short of the tip (cableWay, from 0.36.0: before, a short last
- * run was pulled back at most half its length); a straight wire's lanes, ends and bend are
+ * run was pulled back at most half its length); a lead into a port on a seen side holds the share cableLead gives (0.37.0); a straight wire's lanes, ends and bend are
  * lanesOf, straightRun and bentWire, and its curve is curveWay; a label's plate is labelHalf and its place on the
  * cable labelPlace (the first of 13 places from its middle where no block is over it and no other cable runs through).
  * WHY those and not our own: the film's cable is the deck's cable.
  */
-import {bentWire, cableWay, curveWay, held, labelHalf, labelPlace, lanesOf, straightRun, walkWay, CABLE} from 'footprint-story/isometric';
+import {bentWire, cableLead, cableWay, curveWay, held, labelHalf, labelPlace, lanesOf, straightRun, walkWay, CABLE} from 'footprint-story/isometric';
 
 const dist = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
 const length = (list) => list.slice(1).reduce((sum, p, i) => sum + dist(list[i], p), 0);
@@ -34,11 +34,13 @@ function cableOf(w, grid, tile) {
   const riser = (p) => (p[2] ?? lift) > lift + 1e-9;
   const ends = [0, 1].map((k) => (ports[k] ? {seen: route.feet[k] === 'right' || route.feet[k] === 'left', count: riser(k ? path.at(-1) : path[0]) ? 3 : 2} : null));
   // its line stops where the head begins, by StoryDeck's rule (cableWay: never past 1 px short of the last run's start)
-  const way = cableWay({points, radius: CABLE.corner * tile}, w.head ? CABLE.head * CABLE.headShort : 0);
-  // a lead's share: the run out of the port, its riser and on to the floor point (what a block in front of the port does not cover)
-  const leadPx = (k) => (ends[k] ? length(k ? points.slice(-ends[k].count) : points.slice(0, ends[k].count)) : 0);
-  const leads = [0, 1].map((k) => (ends[k]?.seen ? Math.min(1, leadPx(k) / way.length) : null));
-  const start = leadPx(0);
+  const back = w.head ? CABLE.head * CABLE.headShort : 0, cable = {points, radius: CABLE.corner * tile}, way = cableWay(cable, back);
+  // a lead's share of the line, as StoryDeck's (cableLead, from 0.37.0): out of the port, its riser and through its floor
+  // corner (whose upper part a block's face can cover too), on the line as drawn — at a headed end, from where the head
+  // begins. Before, the straight run to the floor point, on the points before the pull.
+  const leads = [0, 1].map((k) => (ends[k]?.seen ? Math.min(1, cableLead(cable, k, ends[k].count, k ? back : 0).length / way.length) : null));
+  // where the floor's own measures (the route's unseen stretches, in tiles) start: after the lead's straight points, as StoryDeck's cablesOn counts them
+  const start = ends[0] ? length(points.slice(0, ends[0].count)) : 0;
   return {points, way, length: way.length, tile, ends, leads, unseen: route.unseen.map(([lo, hi]) => [start + lo * tile, start + hi * tile])};
 }
 
