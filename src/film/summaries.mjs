@@ -10,13 +10,19 @@ export function inputsSummary({recipe, storyboard, clock, notes, strings}) {
   const lines = Object.fromEntries(storyboard.scenes.map(sc => [sc.id, {start: +clock.start(sc.id).toFixed(3), end: +clock.end(sc.id).toFixed(3)}]));
   return {reads: [], writes: {recipe: Object.keys(recipe), lines, notes: {written: (recipe.notes ?? []).length, speed: notes.speed}, ...(strings ? {strings} : {})}};
 }
+/**
+ * What a world says of itself for the record, when its kit offers it: `summary` (a few plain counts) and `notes` (its
+ * warnings and advice, each a line). Absent for a kit that offers neither, so every other record is as it was.
+ */
+const worldSays = (instance) => ({...(instance?.summary && typeof instance.summary === 'object' ? {summary: {...instance.summary}} : {}),
+  ...(Array.isArray(instance?.notes) && instance.notes.length ? {notes: instance.notes.map((n) => `${n.level}: ${n.message}`)} : {})});
 /** One key per world and per stage: its kit, its scene and its recipe path (a built-in stage is drawn by the paper kit). */
-export function buildSummary(storyPath, storyKit, stages, stageKitNames, plan) {
+export function buildSummary(storyPath, storyKit, stages, stageKitNames, plan, storyWorld = null) {
   // A shot's intent and its facts ride with it (absent when it states none), so a slice from a stage says what it was for.
   // The plan is in film order; each entry is found by its recipe path, so a recipe that lists its stages out of order still records each stage's own.
   const said = path => { const u = plan.find(x => x.path === path); return {...(u?.intent ? {intent: u.intent} : {}), ...(u?.continuity ? {continuity: u.continuity} : {}), ...(u?.questions ? {questions: u.questions} : {}), ...(u?.ledger ? {ledger: u.ledger} : {})}; };
-  const writes = {[`world.${storyPath}`]: {kit: storyKit, path: storyPath, ...said(storyPath)}};
-  stages.forEach((st, i) => { writes[`stage.stages[${i}]`] = {type: st.type, kit: st.world?.kit ?? stageKitNames[st.type] ?? 'paper', scene: st.scene, path: `stages[${i}]`, ...said(`stages[${i}]`)}; });
+  const writes = {[`world.${storyPath}`]: {kit: storyKit, path: storyPath, ...said(storyPath), ...worldSays(storyWorld?.instance)}};
+  stages.forEach((st, i) => { writes[`stage.stages[${i}]`] = {type: st.type, kit: st.world?.kit ?? stageKitNames[st.type] ?? 'paper', scene: st.scene, path: `stages[${i}]`, ...said(`stages[${i}]`), ...worldSays(st.world?.instance)}; });
   return {reads: ['recipe', 'lines'], writes};
 }
 /** Each guess's pause and when its card is gone, each director's note as applied, and each camera move as played. */

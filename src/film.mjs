@@ -111,7 +111,7 @@ async function* compileSteps({storyboard, board, timings, recipe, data, capture,
   await buildStages(state);
   placeCard(state);
   planShots(state);
-  yield step('build-worlds-and-stages', () => buildSummary(state.storyPathName, state.storySpec.kit, state.stages, state.stageKitNames, state.plan));
+  yield step('build-worlds-and-stages', () => buildSummary(state.storyPathName, state.storySpec.kit, state.stages, state.stageKitNames, state.plan, state.storyWorld));
 
   rowOfShots(state);
   readGuesses(state);

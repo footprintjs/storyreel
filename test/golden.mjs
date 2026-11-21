@@ -5,6 +5,7 @@
 import {readFileSync, writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {compileFilm, evenTimings, paceTimings, cartoonKit, frameHashes} from '../src/index.mjs';
+import {isometricKit} from '../src/kits/isometric/index.mjs';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 /**
@@ -20,6 +21,8 @@ export const FILMS = {
   worlds: {tail: .8, kits: [cartoonKit], pacing: 'pacing.json', strings: 'strings/en.json'},
   // A recap strip of the film's own frames (recalls) and a teaser: the tail leaves the teaser room to reach the next title.
   recap: {tail: 2.6, kits: []},
+  // StoryDeck's isometric maps in a film: blocks placed from their wires, a labelled group floor, ports, packets riding.
+  'iso-world': {tail: 1.5, kits: [isometricKit]},
 };
 
 /** An example compiled as pinned; `recipe` replaces its recipe (e.g. one with an extra note); `record` as compileFilm's. */
