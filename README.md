@@ -3481,7 +3481,7 @@ A studio whose recipe file is not known (no `--recipe`, no `recipe.json` beside 
  "world": {"kit": "kinetic", "scene": "beat", "words": ["Every", "beat", "lands", "cut"], "flip": true, "sound": "tap"}}
 ```
 
-- **isometric** (story or world stage) — StoryDeck's maps in a film: blocks and cylinders on a floor seen from a
+- **isometric** (story or world stage) — StoryDeck's maps in a film: blocks, cylinders and balls on a floor seen from a
   corner, floors with their names, groups, cables between blocks and ports, packets riding the cables. The recipe uses
   StoryDeck's words as keys (`name`, `kind`, `at`, `size`, `label`, `group`, `ports`; a wire's `arrow: "lap.rj45 to
   sw.p1"`, `packets`, `speed: "260px"`, `ride`, `rest`, `trail`, `behind`), and every number is footprint-story's
@@ -3491,9 +3491,12 @@ A studio whose recipe file is not known (no `--recipe`, no `recipe.json` beside 
   (`{"line": {"name": "ink", "width": 5}}` outlined, `{"line": "none"}` no outline; left out, today's look). A wrong
   map is refused naming the entry and the fix, and what does not lie well is said in the world's `notes` (`strict:
   true` refuses it). `motion` moves a block by intent in footprint-story's words (`{"piece": "box", "do": "fall"}`,
-  `{"piece": "ball", "do": "throw", "to": "server"}`): footprint-story decides the model, the duration and the curve.
+  `{"piece": "ball", "do": "throw", "to": "server"}`) — `fall`, `throw`, `hang`, `settle`, `reach`, and `roll` (a
+  `kind: "ball"`), `slide` and `tumble` (a ball, or a block end over end): footprint-story decides the model, the
+  duration and the curve, and a roll's or a tumble's turn is drawn as the grid sees it. A turn the kit cannot draw truly
+  (a block or a cylinder rolling) is refused with the fix.
   `import {isometricKit} from 'footprint-storyreel/kits/isometric'`; the keys: src/kits/isometric/README.md;
-  `node examples/iso-world/make.mjs`, `node examples/iso-motion/make.mjs`.
+  `node examples/iso-world/make.mjs`, `node examples/iso-motion/make.mjs`, `node examples/iso-roll/make.mjs`.
 
 ```json
 {"type": "world", "scene": "map", "world": {"kit": "isometric",

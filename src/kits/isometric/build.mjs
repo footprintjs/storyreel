@@ -11,6 +11,7 @@
  * Tiles in, frame px out (the 1600×900 sheet). The cables are put on the frame by cables.mjs.
  */
 import {buildIsoMap, isometric, ISO_MAP_POLICIES} from 'footprint-story/isometric';
+import {ballPicture, centreOf, UNTURNED} from './turn.mjs';
 
 /**
  * The kit's numbers: footprint-story's film policy, StoryReel 0.38.0's own numbers moved there — a fitted tile 96 to
@@ -30,12 +31,14 @@ const MAP_WHO = 'the isometric map';
  * (`isometric blocks[2] ("db")`): the spec's refusals start with it, and buildMap puts the entry (`stage map: `) back,
  * so a refusal reads as the kit's always did. WHY not the whole words: a spec's `who` is at most 200 letters, and the
  * entry's name is the film's, of any length. A wire names its ends' blocks by name (one name, one piece: read.mjs).
+ * A ball (the film's own kind, read.mjs · KINDS) is handed on as the cylinder round it: placed, ordered, routed to and
+ * named on its top as that cylinder, which holds the whole ball.
  */
 export function specOf(map, where) {
   const who = (p) => p.who.slice(where.length + 2);   // read.mjs words every piece `${where}: isometric <path>…`
   return {
     who: MAP_WHO,
-    blocks: map.blocks.map((b) => ({name: b.name, kind: b.kind, at: b.at, size: b.size, label: b.label, small: b.small, rule: b.rule, group: b.group,
+    blocks: map.blocks.map((b) => ({name: b.name, kind: b.kind === 'ball' ? 'cylinder' : b.kind, at: b.at, size: b.size, label: b.label, small: b.small, rule: b.rule, group: b.group,
       ports: b.ports.map(({name, at, face}) => ({name, at, face})), who: who(b)})),
     // a floor with a size and no at was put at [0, 0] by read.mjs: the spec takes a floor's at and size together
     floors: map.floors.map((f) => ({name: f.name, at: f.at, size: f.size, label: f.label, group: f.group, who: who(f)})),
@@ -67,6 +70,12 @@ export function buildMap(map, where) {
   map.blocks.forEach((b, i) => Object.assign(b, {at: built.at[i], shape: built.shapes[i], paint: built.paints[i], fitted: built.names[i], smallFitted: built.smalls[i]}));
   map.floors.forEach((f, i) => Object.assign(f, {at: built.floorTiles[i].at, size: built.floorTiles[i].size, shape: built.floorShapes[i], paint: built.floorPaints[i], place: built.floorLabels[i]}));
   map.wires.forEach((w, i) => { w.route = built.routes[i]; });
-  const byName = new Map(map.blocks.map((b) => [b.name, b]));
-  return Object.assign(map, {spec, built, placed: built.placed, grid: isometric(built.view), order: built.order.map((name) => byName.get(name))});
+  const byName = new Map(map.blocks.map((b) => [b.name, b])), grid = isometric(built.view);
+  // a ball's shape is the ball's, not its cylinder's: its outline what is drawn (a camera frames it, a cable is hidden
+  // behind it), its centre its middle (its name is written there: on the cylinder's top it would float over the ball)
+  for (const b of map.blocks.filter((x) => x.kind === 'ball')) {
+    const ball = ballPicture(grid, centreOf(b), b.size[0] / 2, UNTURNED), xs = ball.outline.map((p) => p[0]), ys = ball.outline.map((p) => p[1]);
+    b.shape = Object.freeze({...b.shape, centre: ball.centre, outline: ball.outline, box: {x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys)}});
+  }
+  return Object.assign(map, {spec, built, placed: built.placed, grid, order: built.order.map((name) => byName.get(name))});
 }

@@ -24,7 +24,7 @@ await compileFilm({storyboard, timings, recipe, kits: [isometricKit]});
 | deck (`map.html`) | recipe | |
 |---|---|---|
 | `data-k` | `name` | one word (no space, no dot); a camera frames the piece by it |
-| `data-iso="block"` / `"cylinder"` | `kind` | `block` when left out |
+| `data-iso="block"` / `"cylinder"` | `kind` | `block` when left out; `"ball"` is the film's own (below) |
 | `data-at="col row [lift]"` | `at` | every block or none: with none, placed from the wires |
 | `data-size="wide deep high"` | `size` | `[2, 2, 1]` when left out; a floor `[cols, rows]`, fitted round its blocks when left out |
 | `<b>` / `<small>` | `label` / `small` | the name fitted to the top (26 px, two lines, down to 16); the small line under it (18 down to 12) |
@@ -182,7 +182,7 @@ The box falls under gravity onto the floor under it (0.46 s: `ballistic`, the us
 | `model` | `"bounce"`, `{"name": "bounce", "squash": 0.2}` | one of footprint-story's models for the family, when the usual is not wanted (a fix footprint-story gives is written here as it says it) |
 | `accept` | `["arc"]` | critics whose findings this move keeps, when what they find is meant (a straight slide): shown as accepted and recorded, never a fault. Each must be one the move's model is checked by, or `reel:contact` |
 
-**What a block can do in a film now** (`motion-read.mjs` · `MOTION_DOS`, footprint-story 0.30):
+**What a block can do in a film now** (`motion-read.mjs` · `MOTION_DOS`, footprint-story 0.31):
 
 | do | it moves | the usual model | also |
 |---|---|---|---|
@@ -191,10 +191,66 @@ The box falls under gravity onto the floor under it (0.46 s: `ballistic`, the us
 | `hang` | on a rope from the pin `from` (above its top: a lower pin is refused) to its top, swinging until it rests below the pin; the rope is drawn and framed with the block | `verlet` | |
 | `settle` | to `to` on the motion spring | `spring` | its `feel` |
 | `reach` | to `to` on one smooth push, its seconds from Fitts's law (a block's top face's width across the frame is the target) | `min-jerk` | its `bend` |
+| `roll` (0.44.0) | a **ball** along the level it rests on (the floor, or a block's top) to `to`, turning by distance / radius, slowed to rest exactly there by rolling resistance | `no-slip` | its `resistance`, `gravity` |
+| `slide` (0.44.0) | any block along the level it rests on to `to`, slowed to rest exactly there by kinetic friction, never turning | `coulomb` | its `kinetic`, `static`, `gravity` |
+| `tumble` (0.44.0) | a **ball** or a **block** through the air spinning, landing its foot on `to` (a block's top or the floor, no higher than it starts), then rolling on (a ball) or sliding on (a block) to rest along the same way | `free-spin` | its `resistance` (a ball's roll on), `kinetic`, `static` (a block's slide on), `gravity` |
 
-`draw`, `write` and `sketch` move a pen's point along a line, not a block: refused, saying so. **roll, slide and
-tumble** arrive with footprint-story 0.31: each is one row in `MOTION_DOS` and one in `motion.mjs` · `INTENT_OF`, and
-a test pins that the two tables agree.
+`draw`, `write` and `sketch` move a pen's point along a line, not a block: refused, saying so. Each word is one row in
+`MOTION_DOS` and one in `motion.mjs` · `INTENT_OF`, and a test pins that the two tables agree.
+
+```json
+"blocks": [{"name": "ball", "kind": "ball", "label": "Ball", "at": [1, 6]}, {"name": "crate", "label": "Crate", "at": [1, 1], "size": [1.4, 1.4, 1]},
+           {"name": "shelf", "at": [7, 1], "size": [2, 2, 1.5]}, {"name": "cube", "at": [7.5, 1.5, 1.5], "size": [1, 1, 1]}],
+"motion": [{"piece": "ball", "do": "roll", "to": [6, 6.5]},
+           {"piece": "crate", "do": "slide", "to": [4, 2.2], "at": ["roll", "A crate slides"]},
+           {"piece": "cube", "do": "tumble", "to": [8, 4.5], "at": ["roll", "the cube tumbles"]}]
+```
+
+**Rolling, sliding and tumbling are planned side on along their way** (`motion-side.mjs`). These models move a body
+along a level floor under gravity, and a floor seen from a corner is no level line on the frame (a roll planned there
+would run down a 27° slope). So each is footprint-story's intent in the upright plane through the body's way — x along
+the way from where it starts, y down — in the world's own px, a tile's true length (its width over √2: a level line
+across the frame is drawn at its true length, and heights in that plane are the same px, so distance / radius is a true
+turn). The kit takes the radius and shape from the block (a ball's half width; a block tumbles as a `box` its half
+height) and lays each sample back on the floor along the way. The author writes intent only: `to`, and `wrap`, `model`,
+`accept` as for any move. `motionIntents` holds these side-on intents as footprint-story was handed them.
+
+- A **roll** and a **slide** keep to the level they start on: the block must rest on it (one in the air is refused:
+  fall it first), its middle over that top at both ends (a way off the top's edge is refused), and `to` at that level (a
+  block's name is the middle of its top, a level up: refused, saying which tiles beside it). footprint-story picks the
+  start speed that brings it to rest exactly on `to`; it relies on what it rests on standing still.
+- A **tumble** flies down onto `to` (a block's top, or the floor; to tiles in the air, or up, is refused) and then
+  rolls or slides on as footprint-story's landing rule says: where it comes to rest is footprint-story's, the last
+  sample of its own plan of the intent (planned alone before the next move is placed from it; the list's plan gives the
+  same move). An end off the top it landed on is refused, naming how far it went on and the fix (land it on the floor,
+  or slow it: `model: {"name": "free-spin", "resistance": …}`). A **block** tumbles end over end about one of its own
+  edges, so its way runs along a row or a column, and it is as long along its way as it is high — then every face it
+  lands on shows the very block again, and at rest it is drawn as built (pinned to the pixel). Otherwise refused, saying
+  which `to` or `size` would do.
+- **What can be drawn turning, and what is refused** (`motion-read.mjs` · `TURNING_KINDS`): a roll turns a ball; a tumble a
+  ball or a block. A block does not roll (it tips over its edges); a cylinder stands on its flat end and the kit draws it
+  only upright, so it can neither roll on its rim nor tumble end over end and land rolling — each is refused naming the
+  entry and the fix (make it a ball, slide it, throw it). WHY refused: a picture turned on the frame is a turn about the
+  line to the viewer, which no body on this floor makes; a turn the film cannot show truly is said, never faked.
+
+**A turn is drawn as the grid sees it** (`turn.mjs`). A body rolling along its way turns about the level line in the floor
+across it (up × the way), by the angle the sample gives — a roll's distance / radius, a tumble's spin — never worked out
+again. Its corners (a block) or its marks (a ball) are turned in tiles and put on the frame by the grid's own numbers, so a
+cube tumbling shows its faces turning, each toned by the way it faces as the built faces are (blended, so a face turning
+from top to side darkens smoothly, and square on it is the built colour exactly), and a ball shows the halves of its two
+marks that face the viewer turning forward. A piece's turns follow one another: a ball rolled twice turns on from where
+its first roll left it. While a body turns its **name is hidden** (a name on its top would be no part of a body turning
+end over end), from the move's start to its end, and it is not listed to read then; at rest it is drawn again (a block
+on its top face, a ball on its middle). A turning block is swept for `reel:contact` as the box its turned corners fill
+over each short stretch (a cube a corner on reaches √2 of its half side), so it never passes through a block unseen.
+
+**A ball** (`kind: "ball"`, the film's own: StoryDeck draws none yet) is round every way — its size `[d, d, d]`, `[1, 1,
+1]` when left out. The map is built with it as the cylinder round it (placed, ordered, routed to and its name fitted as
+that cylinder, which holds the whole ball), and the kit draws the ball itself: its outline (the great circle across the
+way to the viewer — a circle on the usual grid), filled as a top is, two marks in the ink at half strength, its edge, and
+its name on its middle; its shape (what a camera frames, what hides a cable) is the ball's own. A ball has no ports (a
+wire joins it at its foot), and is drawn in today's look only: a world with a `style` and a ball is refused (footprint-
+story's styles paint blocks and cylinders). Everything is a paint list painted by `paint.mjs`, as a built block is.
 
 **Where things are** (`motion.mjs`, `motion-place.mjs`): a block moves by its **foot** (the middle of its footprint, at
 its lift), in the built map's tiles put on the frame by its grid. Moves are placed in the order they begin, each from
@@ -227,9 +283,9 @@ is a piece's last move.
 
 **Drawn at the sampled place.** The kit draws the very block (its faces, names and colours are the built map's) under a
 transform: moved by the sample, and scaled about its foot by a bounce's squash. A camera frames it where it is
-(`regionsAt`). **No angle is drawn yet:** footprint-story 0.30's block moves give an angle, but none is a body's turn —
-a throw's and a fall's is the heading of the flight, a hang's the heading of its rope's last link — and a block that
-stood upright would jump to it. tumble (0.31) turns a body; its row will say so.
+(`regionsAt`), turned as it is. **Only a roll's and a tumble's angle is drawn** (above): footprint-story's other block
+moves give an angle too, but none is a body's turn — a throw's and a fall's is the heading of the flight, a hang's the
+heading of its rope's last link — and a block that stood upright would jump to it.
 
 **Painted in its place.** At each frame a moving block takes its place in the back-to-front order where it is now:
 footprint-story's `grid.backToFront` over every block, the moved one at its current place (`motion.mjs` · `footTiles`
@@ -253,8 +309,8 @@ widest letters (a test measures "MW", "WWW" and a full-width "Ｗ" in the host's
 the same words.
 
 **A world with no motion is exactly as it was**: nothing is planned, its record and summary have no `motions`, no run
-is handed out, and every frame is the same (`test/golden.json` is unchanged; the example `examples/iso-motion` adds its
-own pins).
+is handed out, and every frame is the same (`test/golden.json` is unchanged; the examples `examples/iso-motion` and
+`examples/iso-roll` add their own pins).
 
 **The record keeps footprint-story's decisions, as its data**: the world's `map.motions` has each move's `path`,
 `piece`, `do`, `at` (its start on the film's clock), `seconds`, `model`, `by` (`usual` or `named`), `reason`
@@ -266,7 +322,9 @@ the compile's record) the few words of each. `motionIntents` is what footprint-s
 chart (`motionRun`: `footprint-story/humanflow` · `runHumanFlow`, the very intents `planIntents` was handed) and keeps
 that run's record, so `storyreel log --run <id> --why duration-1 --motion story` says why `motion[1]` takes its time,
 from the record alone (`../../check/README.md` · Asking why a move is so). The two plans must be equal; a difference is
-a `drift` line. **What footprint-story's critics find** (`jerk`, `arc`, `spacing`, `contact`, `volume`, `stretch`)
+a `drift` line. **What footprint-story's critics find** (`jerk`, `arc`, `spacing`, `contact`, `volume`, `stretch`, and
+from 0.44.0 `roll-slip` — a drawn turn astray from distance / radius — and `spin` — a drawn angle that jumps, or a spin
+that changes in flight; a spin too fast for any track to read is said as a `note`)
 reaches the check's reply at the critic's own level, naming the entry and the fix in footprint-story's words: a `warn`
 (a body through a block, a straight slide) is a finding to fix, so a check never reads clean over it; a `note` is
 advice; a critic the entry names in `accept` is shown as accepted, with no fix, and the check can read clean
@@ -322,6 +380,8 @@ entry's name.
 | `motion.mjs` | each entry made a footprint-story intent on the frame, planned (`planIntents`), timed on the clock and sampled at t (with its place for the paint order); its record, findings and run |
 | `motion-place.mjs` | where things are while pieces move: a block's foot and top, what a fall lands on, the frame, a moving foot's place in tiles, what a block passes through |
 | `motion-cover.mjs` | which names a moved block covers, and when: not drawn, not listed to read, said (`reel:covers`) |
+| `motion-side.mjs` | roll, slide and tumble: each a footprint-story intent side on along its way in the world's px, its checks of levels and edges, and its samples laid back on the floor |
+| `turn.mjs` | a body turned where it is, as the grid sees it: a turn as a matrix in tiles, a turned block's faces and a ball's outline and marks, their paint lists, a turning block's reach |
 | `words.mjs` | how both readers quote a value and check keys and anchors (`shown`, `keysOf`, `anchorLike`): its own module, so the kit's modules import no cycle (a test pins it) |
 
 **From footprint-story, as StoryDeck has them** (they were carried here from StoryDeck until 0.35.0; both tools now
@@ -346,4 +406,4 @@ is fitted; the grid is fitted when blocks are placed by hand too.
 move (`data-keep-size`), wires from a block to a flat piece, and a way for `storyreel check` to list the kit's notes
 (they are on the world: `notes`; `strict` turns a warning into a refusal). The example: `examples/iso-world`, built and
 checked by `test/iso-world.test.mjs` and pinned in `test/golden.json`; the moving one, `examples/iso-motion`, by
-`test/iso-motion.test.mjs`, pinned there too.
+`test/iso-motion.test.mjs`, pinned there too; the rolling one, `examples/iso-roll`, by `test/iso-roll.test.mjs`.

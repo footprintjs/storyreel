@@ -4,6 +4,7 @@
  *
  *   {"piece": "box", "do": "fall", "at": ["map", "the box drops"]}
  *   {"piece": "ball", "do": "throw", "to": "server", "wrap": [{"wrapper": "anticipate"}]}
+ *   {"piece": "ball", "do": "roll", "to": [6, 6]}
  *
  * The words are footprint-story's (`footprint-story/human`): `do` is an intent's own word, `wrap` its wrappers and
  * `model` a model it knows, handed on as they are. WHY its words: the author writes intent only, and the tool that knows
@@ -30,11 +31,11 @@ export const REEL_CRITICS = Object.freeze(['reel:contact', 'reel:covers']);
 const CRITIC_NAMES = Object.freeze([...HUMAN_CRITICS, ...REEL_CRITICS]);
 
 /**
- * What a film's world lets a block do (footprint-story 0.30): each `do` word and the places it takes — `to` where it
- * ends (a block's name or tiles), `from` a hang's pin. WHY these five: each moves a whole block from one place to
- * another, and its model gives a place at every moment. `draw`, `write` and `sketch` move a pen's point along a line,
- * not a block (refused, saying so). roll, slide and tumble come with footprint-story 0.31: each is one row here and one
- * in motion.mjs · INTENT_OF, nothing else.
+ * What a film's world lets a block do (footprint-story 0.31): each `do` word and the places it takes — `to` where it
+ * ends (a block's name or tiles), `from` a hang's pin. WHY these eight: each moves a whole block from one place to
+ * another, and its model gives a place at every moment (a roll and a tumble a turn too). `draw`, `write` and `sketch`
+ * move a pen's point along a line, not a block (refused, saying so). Each word is one row here and one in motion.mjs ·
+ * INTENT_OF (a test pins that the two agree).
  */
 export const MOTION_DOS = Object.freeze({
   fall: Object.freeze({to: false, from: false}),
@@ -42,6 +43,22 @@ export const MOTION_DOS = Object.freeze({
   hang: Object.freeze({to: false, from: true}),
   settle: Object.freeze({to: true, from: false}),
   reach: Object.freeze({to: true, from: false}),
+  roll: Object.freeze({to: true, from: false}),
+  slide: Object.freeze({to: true, from: false}),
+  tumble: Object.freeze({to: true, from: false}),
+});
+/**
+ * The kinds of block a move that turns its body can be drawn turning (turn.mjs), and why the rest cannot, with the fix.
+ * A roll turns on a rim, so only a ball has one; a tumble turns end over end and lands rolling (a ball) or sliding on a
+ * face (a block: motion-side.mjs checks its way and its sides). WHY refused rather than drawn some other way: the kit
+ * draws a cylinder only upright, and a picture turned on the frame is a turn about the line to the viewer, which no body
+ * on this floor makes — a turn the film cannot show truly is said, never faked.
+ */
+export const TURNING_KINDS = Object.freeze({roll: Object.freeze(['ball']), tumble: Object.freeze(['ball', 'block'])});
+const CANNOT_TURN = Object.freeze({
+  'roll block': 'a block does not roll — it would tip over its edges, not turn on a rim: slide it (do: "slide"), tumble it (do: "tumble"), or make it a ball (kind: "ball")',
+  'roll cylinder': 'a cylinder stands on its flat end and the kit draws it upright, so it cannot be drawn rolling on its rim — make it a ball (kind: "ball"), or slide it (do: "slide")',
+  'tumble cylinder': 'a cylinder tumbling end over end would land on its rim and roll on, and the kit draws a cylinder only upright — make it a ball (kind: "ball") or a block, or throw it (do: "throw")',
 });
 /** The footprint-story words a block cannot do: each moves a pen, and why that is no move of a block. */
 const PEN_DOS = Object.freeze(['draw', 'write', 'sketch']);
@@ -92,6 +109,7 @@ function readMotion(m, i, where, {blocks, floors, wires}) {
     if (typeof doWord === 'string' && Object.hasOwn(HUMAN_DOS, doWord)) throw new Error(`${who}: do "${doWord}" is footprint-story's, and not yet a block's in a film — a block takes do ${dos}`);
     throw new Error(`${who}: do says what the block does, ${dos} (footprint-story's words) — not ${shown(doWord)}`);
   }
+  if (Object.hasOwn(TURNING_KINDS, doWord) && !TURNING_KINDS[doWord].includes(piece.kind)) throw new Error(`${who}: ${CANNOT_TURN[`${doWord} ${piece.kind}`]}`);
   const at = own(m, 'at') ? m.at : null;
   if (at !== null && !anchorLike(at)) throw new Error(`${who}: at is when the move begins, an anchor ["scene", "phrase"] (or ["scene", "phrase", seconds after]) — not ${shown(at)}; leave it out to begin when the block appears`);
   const place = (key) => {

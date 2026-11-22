@@ -1,0 +1,6 @@
+{
+  "title": "Rolling, sliding, tumbling",
+  "scenes": [
+    {"id": "roll", "title": "Moved by intent", "narration": "A ball rolls across the floor. A crate slides to a stop. Then the cube tumbles off the shelf, and slides to rest. Nothing here was timed by hand."}
+  ]
+}

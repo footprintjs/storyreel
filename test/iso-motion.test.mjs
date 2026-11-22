@@ -112,8 +112,8 @@ test('refusals name the entry and the fix', () => {
     [[{piece: 'box', do: 'fall', speed: 2}], /^Error: stage s: isometric motion\[0\] takes piece, do, at, to, from, wrap, model, accept — not "speed"$/],
     [[{do: 'fall'}], /isometric motion\[0\]: piece names the block that moves \("box"\) — the blocks are box, ball, server; not undefined/],
     [[{piece: 'crate', do: 'fall'}], /piece names "crate", which is no block here — the blocks are box, ball, server/],
-    [[{piece: 'box', do: 'roll'}], /motion\[0\] \("box"\): do says what the block does, "fall", "throw", "hang", "settle" or "reach" \(footprint-story's words\) — not "roll"/],
-    [[{piece: 'box', do: 'draw'}], /do "draw" moves a pen's point along a line, not a block — a block takes do "fall", "throw", "hang", "settle" or "reach"/],
+    [[{piece: 'box', do: 'wobble'}], /motion\[0\] \("box"\): do says what the block does, "fall", "throw", "hang", "settle", "reach", "roll", "slide" or "tumble" \(footprint-story's words\) — not "wobble"/],
+    [[{piece: 'box', do: 'draw'}], /do "draw" moves a pen's point along a line, not a block — a block takes do "fall", "throw", "hang", "settle", "reach", "roll", "slide" or "tumble"/],
     [[{piece: 'ball', do: 'fall'}], /motion\[0\] \("ball"\): a fall drops the block from where it stands, and it stands on the floor already — lift it first \(its at: \[col, row, 3\]\), or throw it/],
     [[{piece: 'box', do: 'fall', to: 'server'}], /a fall takes no to — it falls straight down to the floor below it: take to out/],
     [[{piece: 'ball', do: 'throw'}], /a throw needs to, where it ends: a block's name \("box"\) or tiles \(\[col, row\]\)/],
@@ -140,7 +140,7 @@ test('refusals name the entry and the fix', () => {
 });
 
 test('the families a film lets a block do are one table: what motion-read takes is what the planner has a row for', () => {
-  assert.deepEqual(Object.keys(MOTION_DOS), ['fall', 'throw', 'hang', 'settle', 'reach']);
+  assert.deepEqual(Object.keys(MOTION_DOS), ['fall', 'throw', 'hang', 'settle', 'reach', 'roll', 'slide', 'tumble']);
   assert.deepEqual(PLANNED_DOS, Object.keys(MOTION_DOS));
 });
 
@@ -353,7 +353,7 @@ test('an entry accepts a critic it means: the finding is shown as accepted, the 
   assert.deepEqual(w.map.motions[3].accepted, ['arc']);
   assert.ok(!('accepted' in w.map.motions[0]), 'only an entry that accepts one says so');
   const blocks = [{name: 'box', at: [2, 2, 3]}];
-  assert.throws(() => worldOf({blocks, motion: [{piece: 'box', do: 'fall', accept: ['wobble']}]}, 'stage s'), /accept names "wobble", which is no critic — the critics are jerk, pen-speed, arc, spacing, volume, contact, stretch, pen-lifts, stroke-order, hatch-gaps, reel:contact/);
+  assert.throws(() => worldOf({blocks, motion: [{piece: 'box', do: 'fall', accept: ['wobble']}]}, 'stage s'), /accept names "wobble", which is no critic — the critics are jerk, pen-speed, arc, spacing, volume, contact, stretch, pen-lifts, stroke-order, hatch-gaps, roll-slip, spin, reel:contact, reel:covers$/);
   assert.throws(() => worldOf({blocks, motion: [{piece: 'box', do: 'fall', accept: ['arc']}]}, 'stage s'), /accept names "arc", which its move \(ballistic\) is not checked by — its critics are spacing, contact, reel:contact/);
   assert.throws(() => worldOf({blocks, motion: [{piece: 'box', do: 'fall', accept: 'arc'}]}, 'stage s'), /accept is a list of the critics whose findings this move keeps, \["arc"\]/);
 });
