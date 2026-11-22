@@ -27,6 +27,9 @@ export type StoryboardScene = {id: string; title?: string; /** Who says the scen
   & ({/** What is said. Marks in it are never said nor shown: {name} a moment a beat or a hold names ("{hop}"), {@who} the speaker of the quoted line right after it ({@mom}"…": script.mjs; the voice step writes each word's speaker from it). */ narration: string; silent?: never}
     | {silent: Direction[]; narration?: never});
 
+/** A camera focus's flight to one key, as the film's record keeps it (flight/steps.mjs): footprint-story/shot · planCameraMove's choice and reason. */
+export interface FocusFlight {kind: 'slerp' | 'arc' | 'cut'; rule: string; seconds: number; limitedBy?: 'turn' | 'slide' | 'zoom' | 'least'; reason: string; cutShort?: {after: number; by: string}; accepted?: string[]}
+
 export interface Storyboard {
   title?: string;
   /** Where the numbers on screen (and the claims in words) come from (claims.mjs): a JSON file inside the film's root, or the list itself. */
@@ -207,7 +210,11 @@ export interface Recipe {
   /** What the sound asks of the ear (listening.mjs): 'report' (the default: film.listening lists it) or 'refuse'. */
   listening?: 'report' | 'refuse';
   /** Where the viewer looks (attention.mjs): keys name a thing in the picture (or "wide") on a beat; the strategy shows it (camera, spotlight, dim, none, or your own). */
-  focus?: {strategy: string | string[]; feel?: string | {k: number; d: number}; safe?: [number, number, number, number]; keys: {at: Beat; /** A named thing, several (the box round all of them), or "wide". */ on: string | string[]; size?: 'medium' | 'close' | 'insert'}[]};
+  focus?: {strategy: string | string[]; /** A focus that does not move the camera only: a camera focus flies at the pace footprint-story's planner sets. */ feel?: string | {k: number; d: number}; safe?: [number, number, number, number];
+    keys: {at: Beat; /** A named thing, several (the box round all of them), or "wide". */ on: string | string[]; size?: 'medium' | 'close' | 'insert';
+      /** A camera focus only: how the camera reaches this shot — "fly" (the default: footprint-story/shot · planCameraMove plans its path and seconds) or "cut" (there at once). */ do?: 'fly' | 'cut';
+      /** A camera focus only: the flight's own length, 0.2–60 s (left out, the planner sets it). */ seconds?: number;
+      /** A camera focus only: the critics this flight keeps as written (shown as accepted, never a fault). */ accept?: ('in-sight' | 'turn-speed' | 'travel-speed' | 'line-of-action' | 'horizon' | 'reel:cut-short')[]}[]};
   /** Words put in front of the viewer on their beat (pop: big, then a label in the corner; corner; none; or your own). */
   emphasis?: {strategy: string; feel?: string | {k: number; d: number}; words: {at: Beat; text: string; until?: Beat}[]};
   /** Camera moves by name (camera.mjs · CAMERA_MOVES), in the order they start: one picture each, one camera (they take turns with a moving focus and the pushes). */
@@ -464,7 +471,7 @@ export interface Film {
   /** The director's notes as applied, in the order written. */
   notes: Record<string, unknown>[];
   /** The recipe's focus and emphasis as placed on the clock (strategy, keys/words with their times), or null. */
-  attention: {focus?: {strategy: string; keys: {t: number; on: string | string[]; size?: string}[]}; emphasis?: {strategy: string; words: {t: number; text: string}[]}} | null;
+  attention: {focus?: {strategy: string; keys: {t: number; on: string | string[]; size?: string; /** A camera focus's flight to this key: footprint-story's kind, rule, seconds, the limit that set them and its reason; `cutShort` when the next key landed first. */ flight?: FocusFlight}[]}; emphasis?: {strategy: string; words: {t: number; text: string}[]}} | null;
   /** Where the focus is at t (the camera's point and zoom, the named thing's box, how focused 0–1), or null without a focus. */
   focusAt: ((t: number) => {cx: number; cy: number; z: number; box: [number, number, number, number]; w: number}) | null;
   /** The recipe's camera moves as played (camerawork.mjs), or null without them. */
@@ -518,8 +525,11 @@ export interface Film {
   /** The worlds whose pieces move by intent (each world's `motionRun` and `motionFindings`), named by recipe path, each finding's path the recipe's ('story.motion[1]'): present only when a world moves. `storyreel check` runs them; the review's `motion` check reads the findings. */
   motionRuns?: readonly {readonly name: string; readonly kit: string; readonly findings: readonly {readonly path: string; readonly from: number; readonly to: number; readonly critic: string; readonly level: string; readonly what: string; readonly fix: string}[];
     run(options?: {sink?: unknown; recorders?: readonly unknown[]}): Promise<{snapshot: unknown; differs: string | null}>}[];
-  /** The focus keys and emphasis words as they frame and show the picture (a cached piece's key holds the ones that reach it), or null. */
-  attentionFrames: {focus: {strategy: string; feel: unknown; safe: number[]; keys: {t: number; on: string; size: string | null; cx: number; cy: number; z: number; sx: number; sy: number; box: number[]; w: number}[]} | null;
+  /** The focus's flights between its shots, run again as a footprintjs run for its record (flight/run.mjs): present only when the focus moves the camera. `storyreel check` runs it; the review's `motion` check reads the findings (paths 'focus.keys[1]'). */
+  cameraRuns?: readonly {readonly name: 'focus'; readonly kit: string; readonly findings: readonly {readonly path: string; readonly from: number; readonly to: number; readonly critic: string; readonly level: string; readonly what: string; readonly fix: string}[];
+    run(options?: {sink?: unknown; recorders?: readonly unknown[]}): Promise<{snapshot: unknown; differs: string | null}>}[];
+  /** The focus keys and emphasis words as they frame and show the picture (a cached piece's key holds the ones that reach it), or null. `feel` is absent for a camera focus, whose keys carry their flights. */
+  attentionFrames: {focus: {strategy: string; feel?: unknown; safe: number[]; keys: {t: number; on: string; size: string | null; cx: number; cy: number; z: number; sx: number; sy: number; box: number[]; w: number; flight?: {kind: string; seconds: number; from: number[]; cutShort?: number}}[]} | null;
     emphasis: {strategy: string; feel: unknown; words: {t: number; text: string; next: number}[]} | null} | null;
   /** The mouths drawn at t (each kit on screen that draws one says so: mouthsAt), with the recipe entry that drew it. */
   mouthsAt(t: number): {who: string | null; open: number; path: string}[];

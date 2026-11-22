@@ -69,7 +69,8 @@ default["clean"]
 | `text.mjs` | the reply (`checkText`) |
 | `maps.mjs` | each isometric world's map built again by the map flow, its run's record kept (`runMaps`), and what the reply says of them (`mapLines`) |
 | `motions.mjs` | each world's moves run again through footprint-story's intent decider, its run's record kept (`runMotions`), and what the reply says of them (`motionLines`) |
-| `flowrun.mjs` | one kit run, recorded and trusted for nothing (`runRecorded`, `runAll`): the rules maps and motions share |
+| `cameras.mjs` | the focus camera's flights between shots run again as a chart, its run's record kept (`runCameras`), and what the reply says of them (`cameraLines`) |
+| `flowrun.mjs` | one kit run, recorded and trusted for nothing (`runRecorded`, `runAll`): the rules maps, motions and cameras share |
 
 The work itself is given by the caller (`does`: `anchors`, `review`, `changes`, `before`), so this folder knows
 nothing of a project's files: `tools.mjs · check` gives the project's, and a test gives fakes.
@@ -210,6 +211,37 @@ a map: `read` takes the intents as the run's input; what it took is the recipe's
   cannot be written costs nothing; at most 32 worlds a check (`MOTIONS_MOST`).
 - **Nothing new for a film that moves nothing**: no run, no record, no line in the reply. From 0.43.0 a check's run file
   always carries `motions`, empty when there are none; a check kept before says so when asked with `--motion`.
+
+## Asking why a flight is so
+
+A film whose focus flies the camera between its shots (`../flight/`, `"focus": {"strategy": "camera", …}`) has its
+flights planned twice: by the compile, with footprint-story's `planCameraMove`, to draw them; and by the check, as a
+footprintjs chart of the very same steps (`../flight/run.mjs` · read → plan → check), so a run's record holds a real
+run of them. Its record lies beside the check's: `.storyreel/runs/<run>.camera-<k>.record.jsonl`. `--camera focus`
+picks it; each flight is asked by its own key, `flight-<k>` for `focus.keys[k]`:
+
+```
+$ storyreel log --run 1 --why flight-0 --camera focus
+flight-0 = {"path":"focus.keys[0]","at":1.06,"kind":"slerp","rule":"small-turn","seconds":3.31,"limitedBy":"zoom","comfortSeconds":3.31,"secondsGiven":false,"from":{"cx":800,"cy":450,"z":1},"to":{"cx":600,"cy":375,"z":3},"reason":"do: 'fly' → slerp: the look turns 0°, at most 45°, so it keeps its height and does not turn, over 3.31 s of minimum jerk, set by its zoom, how fast the subject grows or shrinks — at its fastest it turns 0°/s (limit 45), slides 0.4 frame heights a second (limit 1) and zooms 1.9× a second (limit 2×)"}
+plan (plan#1) [wrote: flights, flight-0, flight-1, flight-2]
+  read (read#0) ← via shots [wrote: shots]
+    ⚠ also consumed args — slice may be incomplete here
+(a stage also uses what it is given from outside the run's own state: the record holds what stages read and wrote, and no more)
+```
+
+`findings-<k>` says what the critics found on that flight. From a real run of `test/fixtures/focus-flight`, pinned by
+`test/flight.test.mjs`. The ⚠ line means here what it means for a map: `read` takes the shots as the run's input — the
+focus keys, each framed by the compile (where the camera points, how close, what it frames).
+
+- **The same shots, the same plan.** The compile keeps the shots it planned and hands those very ones to the chart; a
+  difference is a `drift` line in the reply and heads every answer.
+- **The critics' findings are the review's**, in the `motion` check beside a world's moves: footprint-story's
+  (`in-sight`, `turn-speed`, `travel-speed`, `line-of-action`, `horizon`) and the reel's own `reel:cut-short` (a key
+  landing before the flight above it arrives), each at its own level, naming the key and the fix; one its key accepts
+  (`"accept": ["travel-speed"]`) is advice, shown as accepted.
+- **The same safety rules** (`flowrun.mjs`), bounded at 30 s (`cameras.mjs` · `CAMERA_RUN_MS`). **Nothing new for a film
+  whose focus flies nothing**: no run, no record, no line. From 0.47.0 a check's run file always carries `cameras`,
+  empty when there are none; a check kept before says so when asked with `--camera`.
 
 **Broken, never thrown.** Whatever stops the film from compiling, as every other tool compiles it, is the `broken`
 line. Only what is no film at all (no config, a config that throws) is an error of the command.

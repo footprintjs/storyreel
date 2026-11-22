@@ -466,11 +466,12 @@ export const REVIEW_CHECKS = Object.freeze({
     find: wordsOverDrawings},
   'drawing-off-frame': {label: 'A drawing off the frame', why: 'a kit says where its drawings are', when: s => (s.facts.drawings ?? 0) > 0,
     find: drawingsOffFrame},
-  // What footprint-story's critics found in a world's moves (kits/isometric/motion.mjs): each names its motion entry and
-  // the fix in footprint-story's words, over the samples the move spans (held: spans · held). Its level is the critic's
-  // own, mapped onto the reel's (MOTION_KINDS): a critic's `warn` (a body through the floor, a straight slide) is a
-  // finding to fix, so a check never reads clean over it; only its `note` is advice.
-  motion: {label: 'Moves that read wrong', why: 'a world moves its pieces by intent', when: s => (s.facts.motions ?? 0) > 0,
+  // What footprint-story's critics found in a world's moves (kits/isometric/motion.mjs) and in the focus camera's flights
+  // between shots (flight/steps.mjs): each names its entry (a motion entry, a focus key) and the fix, over the samples
+  // the move spans (held: spans · held). Its level is the critic's own, mapped onto the reel's (MOTION_KINDS): a critic's
+  // `warn` (a body through the floor, a camera that loses its subject) is a finding to fix, so a check never reads clean
+  // over it; only its `note` is advice. WHY one check: a camera's flight is a move too, read by the same kind of critic.
+  motion: {label: 'Moves that read wrong', why: 'a world moves its pieces by intent, or the focus flies the camera between shots', when: s => (s.facts.motions ?? 0) + (s.facts.flights ?? 0) > 0,
     find: ({film, window, samples}) => motionsIn(film, window).flatMap(f => {
       const at = samples.filter(x => x.t >= f.from - 1e-9 && x.t <= f.to + 1e-9).map(x => x.t);
       const kind = MOTION_KINDS[f.level] ?? 'motion';   // a level footprint-story adds later is a finding to fix until it is mapped
@@ -484,8 +485,8 @@ export const REVIEW_CHECKS = Object.freeze({
  * fix, `motion-note` is advice, and `motion-accepted` (a critic its entry names in `accept`) is shown as accepted, advice.
  */
 export const MOTION_KINDS = Object.freeze({warn: 'motion', note: 'motion-note', accepted: 'motion-accepted'});
-/** The critics' findings of the film's moving worlds (film.motionRuns) whose moves reach the window. */
-const motionsIn = (film, window) => (film.motionRuns ?? []).flatMap(m => m.findings ?? []).filter(f => f.to >= window.from - 1e-9 && f.from <= window.to + 1e-9);
+/** The critics' findings of the film's moving worlds (film.motionRuns) and its focus's flights (film.cameraRuns) whose moves reach the window. */
+const motionsIn = (film, window) => [...(film.motionRuns ?? []), ...(film.cameraRuns ?? [])].flatMap(m => m.findings ?? []).filter(f => f.to >= window.from - 1e-9 && f.from <= window.to + 1e-9);
 
 /** The camera's freezes that reach the window: {path, at, until}. */
 const freezesIn = (film, window) => (film.camera?.moves ?? []).filter(m => m.move === 'freeze' && m.played !== 'off' && m.until > window.from && m.at < window.to);
@@ -707,7 +708,7 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
       spoken: film.timings.scenes.some((sc, i) => (sc.words ?? []).some(w => film.clock.offsets[i] + w.end > window.from && film.clock.offsets[i] + w.start < window.to)),
       parts: times.filter(drawsParts).length, claims: Boolean(film.claims), ...(drawings ? {drawings} : {}),
       ...(freezesIn(film, window).length ? {freezes: freezesIn(film, window).length} : {}), ...(film.differs?.length ? {differs: differsReached(film, own).length} : {}), ...(review.lingers.length ? {lingers: review.lingers.length} : {}),
-      ...(film.motionRuns?.length ? {motions: film.motionRuns.length} : {})};
+      ...(film.motionRuns?.length ? {motions: film.motionRuns.length} : {}), ...(film.cameraRuns?.length ? {flights: film.cameraRuns.length} : {})};
     s.ran = []; s.hits = []; s.failed = []; s.verdicts = [];
   };
   // The picks go on the review too, so a check can leave a finding to another that runs. A when() that throws is a

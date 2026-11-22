@@ -18,7 +18,12 @@
 // And one record per world whose pieces move by intent, its moves run again through footprint-story's intent decider
 // (check/motions.mjs): `--motion story` reads that one, so `--why duration-1 --motion story` says why motion[1] takes
 // its time — the law's numbers, the plan, and the rule that chose its model.
+//
+// And one record of the focus camera's flights between shots, run again as a chart of the steps the compile ran
+// (check/cameras.mjs, flight/run.mjs): `--camera focus` reads that one, so `--why flight-1 --camera focus` says why
+// focus.keys[1]'s flight takes its time — footprint-story's reason, its kind, its seconds and the limit that set them.
 import {whyFromRecord, WHY_LIMITS} from 'footprint-story/record';
+import {FLIGHT_KEYS, PER_FLIGHT} from './flight/steps.mjs';
 import {ISO_MAP_STEPS} from 'footprint-story/isometric';
 import {HUMAN_STEPS, PER_INTENT} from 'footprint-story/human';
 
@@ -29,14 +34,16 @@ export const WHY_LINES = WHY_LIMITS.lines, WHY_VALUE = WHY_LIMITS.value, RECORD_
  * Why `key` is what it is in a run. `run`: a saved run (runlog.mjs · listRuns) — one that kept no record says so, and
  * says which features do. Returns text.
  */
-export async function whyText(run, key, {all = false, map = null, motion = null} = {}) {
-  if (map !== null && motion !== null) throw new Error('--map and --motion each pick the record --why reads: give one of them');
+export async function whyText(run, key, {all = false, map = null, motion = null, camera = null} = {}) {
+  if ([map, motion, camera].filter(x => x !== null).length > 1) throw new Error('--map, --motion and --camera each pick the record --why reads: give one of them');
+  if (camera !== null && (typeof key !== 'string' || !key.trim())) throw new Error(`--why names a value of the flights, one of what their steps write: ${CAMERA_LISTED}`);
   if (map !== null && (typeof key !== 'string' || !key.trim())) throw new Error(`--why names a value of the map, one of what its steps write: ${MAP_KEYS.join(', ')}`);
   if (motion !== null && (typeof key !== 'string' || !key.trim())) throw new Error(`--why names a value of the moves, one of what their steps write: ${MOTION_LISTED}`);
   if (typeof key !== 'string' || !key.trim()) throw new Error('--why names a value of the run, one of what its stages wrote (storyreel log --run 1 --only steps lists them)');
   if (/[.[\]]/.test(key)) throw new Error(`--why names a value by its own name (verdict, errors), not a part of one: ${JSON.stringify(key.trim().slice(0, 60))}`);
   if (map !== null) return mapWhy(run, key, map, {all});
   if (motion !== null) return motionWhy(run, key, motion, {all});
+  if (camera !== null) return cameraWhy(run, key, camera, {all});
   if (!run.recordFile) throw new Error(`run ${run.n} (${run.feature}) kept no record, so it cannot say why: a check keeps one (storyreel check, then storyreel log --run 1 --why verdict)`);
   return whyFromRecord({file: run.recordFile, control: run.control, key, run: `run ${run.n}`, all, more: 'add --all', listed: `storyreel log --run ${run.n} --only steps lists what each wrote`});
 }
@@ -92,4 +99,28 @@ async function motionWhy(run, key, motion, {all}) {
   const said = await whyFromRecord({file: m.recordFile, control: m.control, key, run: `run ${run.n} motion ${m.name}`, all, more: 'add --all', listed: `the moves' steps write ${MOTION_LISTED}`});
   // a run whose moves parted from the compile's is said before its answer: the film draws the compile's
   return m.differs ? `(this run did not plan the moves the kit drew: ${m.differs})\n${said}` : said;
+}
+
+const CAMERA_LISTED = `${FLIGHT_KEYS.join(', ')}, and for focus.keys[k] alone ${PER_FLIGHT.map(k => `${k}-<k>`).join(', ')} (flight-0: why focus.keys[0]'s flight takes its time)`;
+
+/**
+ * Why `key` is what it is in a run's camera flights (`camera`: what flies it, `focus`). The same rules as a map's: every
+ * refusal names what there is, and the name asked is only compared with the names kept.
+ */
+async function cameraWhy(run, key, camera, {all}) {
+  if (typeof camera !== 'string' || !camera.trim()) throw new Error('--camera names what flies the camera: --camera focus (the film\'s focus)');
+  const kept = run.cameras ?? [];
+  if (!kept.length) {
+    if (run.feature !== 'check') throw new Error(`run ${run.n} (${run.feature}) kept no flights: a check keeps one record when the film's focus flies the camera (storyreel check, then storyreel log --run 1 --why flight-0 --camera focus)`);
+    // a check from 0.47.0 on writes its cameras, even none: a run with no list was kept before flights were recorded
+    if (run.cameras === undefined) throw new Error(`run ${run.n} was kept before 0.47.0, which kept no camera records: run storyreel check again, then ask that run`);
+    if (/^broken\b/.test(run.summary ?? '')) throw new Error(`run ${run.n} kept no flights: its film did not compile, so nothing was planned`);
+    throw new Error(`run ${run.n} kept no flights: its film's focus does not fly the camera (a "camera" focus does: {"focus": {"strategy": "camera", "keys": [...]}})`);
+  }
+  const c = kept.find(x => x.name === camera.trim());
+  if (!c) throw new Error(`run ${run.n} has no flights for ${quoted(camera)}: what flies its camera is ${kept.map(x => x.name).join(', ')}`);
+  if (!c.recordFile) throw new Error(`run ${run.n}'s flights for ${c.name} kept no record (it could not be written when the check ran), so they cannot say why`);
+  const said = await whyFromRecord({file: c.recordFile, control: c.control, key, run: `run ${run.n} camera ${c.name}`, all, more: 'add --all', listed: `the flights' steps write ${CAMERA_LISTED}`});
+  // a run whose flights parted from the compile's is said before its answer: the film draws the compile's
+  return c.differs ? `(this run did not plan the flights the film draws: ${c.differs})\n${said}` : said;
 }

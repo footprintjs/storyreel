@@ -287,12 +287,14 @@ test('"director": "off", or none, is the film exactly as without one — same fr
 });
 
 test('a kit with no direction: the framing lands in the film\'s own focus — unless the recipe moves the camera itself', async () => {
-  const f = await film({story: {kit: 'plain'}, director: 'on'});
+  // twice the voice's time: the focus's flights are footprint-story's (a close-up 3.31 s each way), and at a word a second
+  // the camera would still be flying to Sam's face when Mia answers, so the director would leave the two-shot out
+  const f = await film({story: {kit: 'plain'}, director: 'on'}, {timings: evenTimings(storyboard, {wordSeconds: 2})});
   assert.deepEqual(f.director.pictures.map(p => p.camera), ['focus']);
   assert.deepEqual(f.director.placed.map(p => p.path), ['focus']);
   assert.equal(f.attention.focus.strategy, 'camera');
   assert.deepEqual(f.attention.focus.keys.map(k => k.on), ['mia', 'sam.face', ['sam', 'mia'], 'lamp', 'sam.face', 'wide', 'mia.face', 'sam'], 'the film\'s focus frames the two together (and, spanning the film, keeps no establishing hold)');
-  const pair = f.focusAt(f.attention.focus.keys[2].t + 3).box, [mx0, , mx1] = BOXES.mia, [sx0, , sx1] = BOXES.sam;
+  const two = f.attention.focus.keys[2], pair = f.focusAt(two.t + two.flight.seconds).box, [mx0, , mx1] = BOXES.mia, [sx0, , sx1] = BOXES.sam;
   assert.ok(Math.abs(pair[0] - Math.min(mx0, sx0)) < 1 && Math.abs(pair[2] - Math.max(mx1, sx1)) < 1, 'a two-shot frames the box round both');
   assert.ok(f.beats.some(b => b.path === 'focus.keys[2].at'), 'each focus key\'s beat names its entry');
   const blocked = await film({story: {kit: 'plain'}, director: 'on', notes: [{note: 'push', push: {at: [800, 450], zoom: 1.2, from: ['door', 'Mia tries'], to: ['door', 'Sam laughs']}}]});
@@ -356,7 +358,8 @@ test('"auto" frames each picture where it can: a world that takes keys in its sp
 
 test('the focus over two pictures: back to wide as the second comes, a key no gap leaves out', async () => {
   const board = {scenes: [{id: 'a', narration: 'Night falls here. {@sam}"Is it late?"'}, {id: 'b', narration: 'The yard is dark. The lamp is on.'}]};
-  const quick = evenTimings(board, {wordSeconds: .3, tail: .3});
+  // slow enough for a close-up's flights: footprint-story's planner takes 3.31 s each way to sam's face and back
+  const quick = evenTimings(board, {wordSeconds: 2.4, tail: .3});
   const kit = (name, names) => ({name, story: {compile: () => ({hang: 1, regionsAt: () => regions.filter(r => names.includes(r.name)), draw: c => { c.fillStyle = '#ddd'; c.fillRect(0, 0, 1600, 900); }})}});
   const f = await compileFilm({storyboard: board, timings: quick, recipe: {story: {kit: 'ka'}, stages: [{type: 'world', scene: 'b', world: {kit: 'kb'}}], director: 'on'}, kits: [kit('ka', ['sam', 'sam.face']), kit('kb', ['lamp'])]});
   const keys = f.attention.focus.keys, b = f.clock.start('b');

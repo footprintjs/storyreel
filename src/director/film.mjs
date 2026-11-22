@@ -18,10 +18,6 @@ import {planFraming} from './framing.mjs';
 import {planMoods} from './moods.mjs';
 import {kitDirection, pictures, landWorld, cameraTaken, cameraKey, specPath} from './land.mjs';
 import {readScript, speakersOf, listenersOf, recordKey} from './record.mjs';
-import {settleTime, readFeel} from '../motion.mjs';
-
-/** How long the focus's camera takes to arrive (its default feel, heavy): a change of picture's wide key lands that long before it. */
-const SETTLE = settleTime(readFeel('heavy'));
 
 /** The shot grammar's settings, as the planner takes them. */
 export const grammar = ({table, gap, lead, closeUps, exchange}) => ({table, gap, lead, closeUps, exchange});
@@ -69,20 +65,22 @@ export function directWorlds(settings, {storyboard, timings, clock, recipe, stor
 
 /**
  * The framing of the pictures the film's focus directs, once every picture is built. `names(t)` is what the picture
- * names at t (a Set); `ownCamera(path)` whether that picture's world moves its own camera (its cameraMoves). The focus
- * goes back to wide at every change of picture — a key no gap leaves out, landing the time its spring takes to arrive
+ * names at t (a Set); `ownCamera(path)` whether that picture's world moves its own camera (its cameraMoves);
+ * `flight(from, to)` the seconds the focus's camera flies from one key to the next (attention.mjs · keyFlightSeconds:
+ * footprint-story's planner), so no key comes before the flight to the one above it arrives. The focus
+ * goes back to wide at every change of picture — a key no gap leaves out, landing the flight back's seconds
  * before the change, so the new picture opens wide — frames nothing over a picture a world's camera
  * directs, and leaves a picture whose camera is taken (cameraTaken) unframed, each key there kept with why. Adds the
  * proposals to `direction`; returns the placement ({path: 'focus', key: 'focus', value}), or null.
  */
-export function directFocus(direction, {recipe, storyboard, names, ownCamera = () => false}) {
+export function directFocus(direction, {recipe, storyboard, names, ownCamera = () => false, flight = null}) {
   const focusPictures = direction.shown.filter(p => p.by === 'focus');
   if (!focusPictures.length) return null;
   const {settings, clock} = direction, ids = storyboard.scenes.map(s => s.id), at = (scene, t) => names(t ?? 0);
   const pictureOf = new Map(direction.shown.flatMap(p => p.scenes.map(id => [id, p])));
-  const changes = new Map(direction.shown.slice(1).map(p => [p.scenes[0], clock.start(p.scenes[0]) - SETTLE]));
+  const changes = new Map(direction.shown.slice(1).map(p => [p.scenes[0], clock.start(p.scenes[0])]));
   const skip = new Set(direction.shown.filter(p => p.by !== 'focus').flatMap(p => p.scenes));
-  const framing = planFraming(ids.map(id => direction.reads.get(id)), {names: at, people: direction.people, groups: true, starts: new Set(), changes, skip, ...grammar(settings)});
+  const framing = planFraming(ids.map(id => direction.reads.get(id)), {names: at, people: direction.people, groups: true, starts: new Set(), changes, flight, skip, ...grammar(settings)});
   const takenIn = new Map(focusPictures.map(p => [p.path, cameraTaken(recipe, {landing: 'focus', path: p.path, spec: p.spec, decl: p.decl, moves: ownCamera(p.path)})]));
   const whyNot = k => (k.rule === 'picture' ? null : takenIn.get(pictureOf.get(k.scene)?.path) ?? null);
   const kept = framing.keys.filter(k => !whyNot(k));

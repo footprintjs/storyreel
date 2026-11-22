@@ -847,6 +847,9 @@ why the blocks stand where they do, through the place step and the decision that
 A world whose blocks move by intent keeps its moves' record the same way: `npx storyreel log --run 1 --why duration-1
 --motion story` says why `motion[1]` takes its time — the law's numbers, the plan, the rule that chose its model
 (`model-<i>`, `findings-<i>`): [src/check/README.md](src/check/README.md) · Asking why a move is so.
+A focus that flies the camera between its shots keeps its flights' record: `npx storyreel log --run 1 --why flight-0
+--camera focus` says why `focus.keys[0]`'s flight takes its time — footprint-story's reason, its kind, its seconds and
+the limit that set them (`findings-<k>`): [src/check/README.md](src/check/README.md) · Asking why a flight is so.
 
 - **Reading time.** Every line meant to be read — titles, footers, list lines, captions, the board's
   writing, guess questions and answers, the push-in caption — must stay up, whole, about **0.3 s a word**
@@ -1667,15 +1670,15 @@ The recipe says WHAT the voice is about and WHEN — a beat and a thing the kit 
 strategy says HOW, so the same film can be shown another way by changing one word:
 
 ```json
-"focus": {"strategy": "camera", "feel": "heavy", "keys": [
+"focus": {"strategy": "camera", "keys": [
   {"at": ["leak", "leaves the building"], "on": "database", "size": "medium"},
-  {"at": ["turn", "the front door"], "on": "wide"}]},
+  {"at": ["turn", "the front door"], "on": "wide", "do": "cut"}]},
 "emphasis": {"strategy": "pop", "words": [{"at": ["rules", "acts as"], "text": "YOUR RULES"}]}
 ```
 
-- **Focus strategies** (`footprint-storyreel/attention` · `FOCUS`): `camera` eases the camera to frame the named
+- **Focus strategies** (`footprint-storyreel/attention` · `FOCUS`): `camera` flies the camera to frame the named
   thing (medium, close, insert — as a director's push; `"wide"` is the whole frame; `"on": ["mia", "sam"]` frames the
-  box round several), `spotlight` darkens the rest,
+  box round several: see [The camera's flights between shots](#the-cameras-flights-between-shots)), `spotlight` darkens the rest,
   `dim` veils the rest in the paper, `circle` draws a teacher's marker loop round the named thing as the voice names it
   (it draws itself at each key and is gone at `"wide"`; the theme's `palette.marker`, else a bright pink), `none`. A camera focus and the director's push notes cannot share the camera,
   and the recipe's camera moves take turns with a moving focus ([Camera moves by name](#camera-moves-by-name)).
@@ -1687,11 +1690,51 @@ strategy says HOW, so the same film can be shown another way by changing one wor
   the top corner until the next words; `corner` is the label only; `none`.
 - **Your own strategy** has the same shape, by name: `compileFilm({…, strategies: {focus: {mine: {show(ctx, view,
   paint, theme)}}, emphasis: {mine: {draw(ctx, t, word, theme)}}}})`.
-- **Every move is a spring** (`footprint-storyreel/motion`): named feels — `snappy`, `default`, `heavy` (cameras),
+- **Springs** (`footprint-storyreel/motion`): named feels — `snappy`, `default`, `heavy` (a veil's, the default),
   `playful` (pops) — or `{k, d}`; `spring(t, feel)`, `pop(t, at)`, and `track(t, keys)` for a value with many
-  targets (one spring per change, so it never jumps). Kits use the same functions for their own motion.
-  `settleTime(feel)` is how long a feel's spring takes to arrive (within half a percent: `heavy` about 0.8 s) —
-  when a move on that feel stops moving, which is how the camera's moves know when a moving focus has settled.
+  targets (one spring per change, so it never jumps). Kits use the same functions for their own motion. A focus that
+  does not move the camera (`spotlight`, `dim`, `circle`) eases on its `feel`; a `camera` focus takes none (its flights
+  are planned, below). `settleTime(feel)` is how long a feel's spring takes to arrive (within half a percent: `heavy`
+  about 0.8 s).
+
+### The camera's flights between shots
+
+Each key of a `camera` focus is a shot. The author says what it frames (`on`, `size`) and, when it matters, how the
+camera gets there; footprint-story (`footprint-story/shot` · `planCameraMove`) decides the path and the time, the same
+planner StoryDeck can ask; StoryReel draws it. **Why:** tuning a camera path until nothing is lost and nothing rushes
+costs many tries; a rule table picks the move, the minimum-jerk law times it, and critics say what still looks wrong.
+
+```json
+"focus": {"strategy": "camera", "keys": [
+  {"at": ["map", "reads the database"], "on": ["api", "db"], "size": "medium"},
+  {"at": ["map", "to the logs"], "on": "wide"},
+  {"at": ["desk", "Under the desk"], "on": "switch", "size": "close", "seconds": 2.5, "accept": ["travel-speed"]},
+  {"at": ["desk", "up to the router"], "on": "wide", "do": "cut"}]}
+```
+
+- **`do`**: `"fly"` (left out, the default) or `"cut"` (there at once, no path). `"orbit"` is refused: footprint-story's
+  orbit circles the subject in 3D, and a StoryReel picture is drawn flat, seen from the front (for depth, a layered
+  world's camera move `orbit` slides its layers). **`seconds`** (0.2–60) flies over a length of its own; left out, the
+  planner's. **`accept`**: the critics this flight keeps as written (`in-sight`, `turn-speed`, `travel-speed`,
+  `line-of-action`, `horizon`, `reel:cut-short`): shown as accepted, never a fault.
+- **How it flies.** StoryReel frames each shot (`footprint-story/layout` · `frameZoom` within `safe`, from 1× to 3×) and
+  hands the two framings to the planner as cameras seen from the front, level, through the normal lens — a point of
+  the picture lands exactly where the framing puts it. So a flight never turns: it is a `slerp` of 0°, its target
+  sliding in a line and its zoom growing by equal ratios, over minimum jerk. Its seconds are the fewest that keep the
+  slide under 1 frame height a second and the growth under 2× a second (at 90% of each, footprint-story's numbers),
+  at least 0.5 s; a fly that would take longer than 12 s is a cut. A framing ×3 takes 3.31 s; a two-shot ×1.3, under a
+  second. The picture still covers the frame at every moment (the framed point moves in as far as the edges ask).
+- **One move at a time.** A key that lands before the flight to the key above it has arrived cuts that one short: the
+  next sets off from where the camera is, from rest — a jolt — and the check says so (`reel:cut-short`, a finding to
+  fix, with the time to move the key by). The camera list's moves take turns with a flight, from its key until it
+  arrives. The director spaces its focus keys by the same flights, and lands the wide key for a new picture the flight
+  back's seconds before it.
+- **The record.** `film.attention.focus.keys[k].flight`: `{kind, rule, seconds, limitedBy, reason, cutShort?}`, the
+  reason in the planner's words ("do: 'fly' → slerp: the look turns 0°, … over 2.12 s of minimum jerk, set by its
+  zoom …"). `storyreel check` runs the same steps as a footprintjs chart and keeps its record:
+  `storyreel log --run 1 --why flight-0 --camera focus` says why `focus.keys[0]`'s flight takes its time,
+  `findings-<k>` what its critics found. The critics' findings are the review's `motion` check, at the critic's own
+  level, each naming its key and the fix in the recipe's words.
 - **Drawn on twos** (`heldTime(t, 'twos')`): a hand-drawn cartoon holds each drawing for two frames while its camera
   moves on every frame; a figure that changes on every frame slides like a puppet. A kit works out everything about
   a figure (its pose, its place, its mouth) from `heldTime(t)` and leaves the camera and the room on `t`. Timings:
@@ -1814,7 +1857,7 @@ The moves (`footprint-storyreel/camera` · `CAMERA_MOVES`), a catalog like the t
 - **One picture, one camera.** A move (handheld aside) stays on one picture: one that runs across a hand-over, an
   entrance, a cut, the push-in or the teaser refuses, as a push does. Its framing holds until the picture changes,
   then eases back to the whole frame over the change (at a cut, at once), so every new picture opens wide. A film has
-  one camera: a move cannot run while a moving focus (the `camera` strategy, from each key until its spring settles),
+  one camera: a move cannot run while a moving focus (the `camera` strategy, from each key until its flight arrives),
   a push note (while it eases in or out), a world's spotlight or a world's own camera moves it (a kit says when its
   camera moves with `cameraMoves: [{from, to}]`: the cartoon kit's `camera` keys do — a push note takes turns with
   them too), and two moves cannot move the same thing at once (a pan and a dutch may). They take turns, and they compose: the push moves the picture, the focus frames it, and the camera's

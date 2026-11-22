@@ -3,14 +3,17 @@
  * recipe says WHAT the voice is about and WHEN (a beat and a named thing); the strategy says HOW, so the same
  * film can be shown another way tomorrow by changing one word.
  *
- *   "focus": {"strategy": "camera", "feel": "heavy", "keys": [
+ *   "focus": {"strategy": "camera", "keys": [
  *     {"at": ["leak", "leaves the building"], "on": "database", "size": "medium"},
- *     {"at": ["turn", "the front door"], "on": "wide"},
+ *     {"at": ["turn", "the front door"], "on": "wide", "do": "cut"},
  *     {"at": ["talk", "Is it late"], "on": ["mia", "sam"]}]}     several things together: the box round all of them
  *   "emphasis": {"strategy": "pop", "words": [{"at": ["rules", "acts as"], "text": "YOUR RULES"}]}
  *
- * Focus (FOCUS): `camera` eases the camera to frame the named thing (sizes as a director's push: medium, close,
- * insert; `on: "wide"` is the whole frame); `spotlight` darkens the rest; `dim` lays a veil of the paper over the
+ * Focus (FOCUS): `camera` flies the camera to frame the named thing (sizes as a director's push: medium, close,
+ * insert; `on: "wide"` is the whole frame); each key is a shot, and the flight between two shots is footprint-story's
+ * (footprint-story/shot · planCameraMove, flight/steps.mjs): its path and its seconds, by minimum jerk under its limits.
+ * A key says only how its shot is reached: `do` "fly" (the default) or "cut", `seconds` to fly over a length of its own,
+ * `accept` the critics it keeps as written. `spotlight` darkens the rest; `dim` lays a veil of the paper over the
  * rest; `circle` draws a teacher's marker loop round the named thing as the voice names it (it draws itself in under
  * half a second at each key, round each named thing in turn, and is gone at a "wide" key; the theme's palette.marker,
  * else a bright pink); `none`. A list composes them in order — ["camera", "dim"] moves the camera and veils the rest
@@ -18,8 +21,8 @@
  * A film has one camera: a moving focus and the director's push notes refuse each other, and the recipe's camera
  * moves (camerawork.mjs) take turns with a moving focus — never both at once; the camera's view is the outer lens,
  * so it frames whatever the focus has framed.
- * Every move is a spring (motion.mjs · FEELS), so a camera that is still easing toward one thing
- * turns smoothly toward the next. Emphasis (EMPHASIS): `pop` lands the words big on their beat, then settles them
+ * A focus that does not move the camera eases its veil or its loop on a spring (motion.mjs · FEELS; `feel`); a camera
+ * focus takes no feel: its pace is the planner's. Emphasis (EMPHASIS): `pop` lands the words big on their beat, then settles them
  * into a label in the top corner until the next words; `corner` is the label only; `label` sits the words on the
  * thing in focus (above its top-left corner, travelling with the camera), or at the top middle with no focus, gliding
  * between the two as the focus comes and goes; `none`.
@@ -32,13 +35,22 @@
  * burned-in captions keeps it above them ([0, 0, 1600, 700]); it is centred there and sized to it.
  */
 import {frameZoom} from 'footprint-story/layout';
+import {CAMERA_CRITICS} from 'footprint-story/shot';
 import {FRAMINGS} from './notes.mjs';
-import {track, pop, readFeel, settleTime} from './motion.mjs';
+import {track, pop, readFeel} from './motion.mjs';
+import {planFlights, viewAt as flightViewAt, movingOf, flightSeconds, WIDE_VIEW, REEL_FLIGHT_CRITICS} from './flight/steps.mjs';
+import {flightRunOf} from './flight/run.mjs';
 import {inOut as ease} from './ease.mjs';
 import {rgba, isHex} from './colour.mjs';
 
 const W = 1600, H = 900;
 const FOCUS_KEYS = ['strategy', 'feel', 'keys', 'safe'], KEY_KEYS = ['at', 'on', 'size'];
+/** What a key of a focus that moves the camera may say besides: how its shot is reached (`do`, `seconds`) and the critics it accepts. */
+const FLIGHT_WORDS = ['do', 'seconds', 'accept'];
+/** How a key's shot is reached: footprint-story plans a fly; a cut is the key's own. */
+export const FLIGHT_DOS = Object.freeze(['fly', 'cut']);
+/** The critics a key may accept: footprint-story's camera critics and the reel's own. */
+export const FLIGHT_CRITICS = Object.freeze([...CAMERA_CRITICS, ...REEL_FLIGHT_CRITICS]);
 const EMPHASIS_KEYS = ['strategy', 'feel', 'words'], WORD_KEYS = ['at', 'text', 'until'];
 const clamp01 = v => Math.max(0, Math.min(1, v));
 
@@ -183,6 +195,26 @@ function pick(kind, name, builtIn, mine, needs) {
 const around = boxes => [Math.min(...boxes.map(b => b[0])), Math.min(...boxes.map(b => b[1])), Math.max(...boxes.map(b => b[2])), Math.max(...boxes.map(b => b[3]))];
 const inOrder = (list, kind) => list.forEach((k, i) => { if (i && k.t < list[i - 1].t) throw new Error(`${kind}[${i}] comes before the one above it; list them in the order they are spoken`); });
 
+/**
+ * How a key frames the things it names (their boxes as drawn at the key): the box round them, centred in the safe area
+ * at the zoom that makes it fill its framing's share, from 1× to 3× — footprint-story/layout · frameZoom, the rule
+ * StoryDeck's cameras frame by too. A view {cx, cy, z, sx, sy, box, w}; the wide key is WIDE_VIEW.
+ */
+export function framedView(boxes, size, safe = [0, 0, W, H]) {
+  const box = around(boxes), [x0, y0, x1, y1] = box;
+  return {cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, z: frameZoom([x1 - x0, y1 - y0], [safe[2] - safe[0], safe[3] - safe[1]], {share: FRAMINGS[size], least: 1, most: 3}),
+    sx: (safe[0] + safe[2]) / 2, sy: (safe[1] + safe[3]) / 2, box: [...box], w: 1};
+}
+
+/**
+ * How long a camera focus takes to fly from one key to the next, as the film will plan it (flight/steps.mjs): a key is
+ * {on (a name, names or "wide"), size?, t}, null the whole frame before any key. What the director spaces its keys by.
+ */
+export function keyFlightSeconds(from, to, named) {
+  const view = k => (!k || k.on === 'wide' ? WIDE_VIEW : framedView([k.on].flat().map(n => named(n, k.t)), k.size ?? 'medium'));
+  return flightSeconds(view(from), view(to));
+}
+
 /** The focus as written, checked and placed on the clock: {strategy, viewAt(t), show(ctx, t, paint), record}. */
 function readFocus(spec, {clock, named, strategies, pushes, theme}) {
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) throw new Error('focus must be {strategy, keys: [{at, on, size?}], feel?}');
@@ -193,48 +225,87 @@ function readFocus(spec, {clock, named, strategies, pushes, theme}) {
   if (parts.filter(p => p.moves).length > 1) throw new Error(`focus.strategy lists ${parts.filter(p => p.moves).map(p => `"${p.name}"`).join(' and ')}: only one of them may move the camera`);
   const strategy = parts.length === 1 ? parts[0] : {name: parts.map(p => p.name).join('+'), moves: parts.some(p => p.moves),
     show: (ctx, v, paint, theme) => parts.reduceRight((inner, p) => c => p.show(c, v, inner, theme), paint)(ctx)};
-  const feel = readFeel(spec.feel ?? 'heavy');
+  // A camera focus flies at the pace footprint-story plans (flight/steps.mjs): a spring's feel would be a second pace.
+  if (strategy.moves && spec.feel !== undefined) throw new Error(`focus.feel: the focus "${strategy.name}" moves the camera, and the camera flies between its keys at the pace footprint-story's camera planner sets (footprint-story/shot · planCameraMove), so it takes no feel: leave feel out (a key's "seconds" gives one flight a length of its own)`);
+  const feel = strategy.moves ? null : readFeel(spec.feel ?? 'heavy');
   const safe = spec.safe ?? [0, 0, W, H];
   if (!(Array.isArray(safe) && safe.length === 4 && safe.every(Number.isFinite) && safe[0] >= 0 && safe[1] >= 0 && safe[2] <= W && safe[3] <= H && safe[2] - safe[0] >= 200 && safe[3] - safe[1] >= 200))
     throw new Error('focus.safe is [x0, y0, x1, y1] on the 1600×900 frame, at least 200 × 200: where a framed thing may sit (e.g. [0, 0, 1600, 700] above burned-in captions)');
-  const [sw, sh] = [safe[2] - safe[0], safe[3] - safe[1]], [scx, scy] = [(safe[0] + safe[2]) / 2, (safe[1] + safe[3]) / 2];
   if (strategy.moves && pushes.length) throw new Error(`focus "${strategy.name}" moves the camera, and the director's notes push it too: a film has one camera — leave the push notes out, or show the focus with "spotlight" or "dim"`);
   if (!Array.isArray(spec.keys) || !spec.keys.length) throw new Error('focus.keys is a list of {at: beat, on: a named thing or "wide", size?}');
   const keys = spec.keys.map((k, i) => {
     if (!k || typeof k !== 'object' || Array.isArray(k)) throw new Error(`focus.keys[${i}] must be {at, on, size?}`);
-    for (const key of Object.keys(k)) if (!KEY_KEYS.includes(key)) throw new Error(`focus.keys[${i}] has unsupported key ${key} (a key is {at, on, size?})`);
+    for (const key of Object.keys(k)) {
+      if (FLIGHT_WORDS.includes(key) && !strategy.moves) throw new Error(`focus.keys[${i}].${key}: the focus "${strategy.name}" does not move the camera, so no flight reaches its keys; ${key} belongs to a camera focus ("strategy": "camera")`);
+      if (!KEY_KEYS.includes(key) && !FLIGHT_WORDS.includes(key)) throw new Error(`focus.keys[${i}] has unsupported key ${key} (a key is {at, on, size?${strategy.moves ? ', do?, seconds?, accept?' : ''}})`);
+    }
+    const flight = strategy.moves ? readFlight(k, `focus.keys[${i}]`) : null;
     const names = Array.isArray(k.on) ? k.on : [k.on];
     if (!names.length || !names.every(n => typeof n === 'string' && n)) throw new Error(`focus.keys[${i}].on names a thing in the picture (a kit names things in regionsAt), several of them (a list: the box round all of them), or "wide"`);
     if (Array.isArray(k.on) && names.includes('wide')) throw new Error(`focus.keys[${i}].on lists "wide", which is the whole frame, not a thing: write "on": "wide" alone, or list the things to frame`);
     const on = names.length === 1 ? names[0] : [...names];   // a list of one is its one name
     const t = clock.at(k.at);
-    if (on === 'wide') { if (k.size !== undefined) throw new Error(`focus.keys[${i}]: "wide" is the whole frame; leave the size out`); return {t, on: 'wide', cx: W / 2, cy: H / 2, z: 1, box: [0, 0, W, H], w: 0}; }
+    if (on === 'wide') { if (k.size !== undefined) throw new Error(`focus.keys[${i}]: "wide" is the whole frame; leave the size out`); return {t, on: 'wide', ...WIDE_VIEW, box: [...WIDE_VIEW.box], flight, things: []}; }
     const size = k.size ?? 'medium';
     if (!Object.hasOwn(FRAMINGS, size)) throw new Error(`focus.keys[${i}].size is ${Object.keys(FRAMINGS).join(', ')} (how much of the frame "${names.join('" + "')}" fills), not ${JSON.stringify(size)}`);
-    let box; try { box = around(names.map(n => named(n, t))); } catch (e) { throw new Error(`focus.keys[${i}]: ${e.message}`, {cause: e}); }
-    // the zoom at which the box fills its framing's share of the safe area, from 1× to 3×: footprint-story/layout ·
-    // frameZoom, the rule StoryDeck's cameras frame by too
-    const [x0, y0, x1, y1] = box;
-    return {t, on, size, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, z: frameZoom([x1 - x0, y1 - y0], [sw, sh], {share: FRAMINGS[size], least: 1, most: 3}), box: [...box], w: 1};
+    let boxes; try { boxes = names.map(n => named(n, t)); } catch (e) { throw new Error(`focus.keys[${i}]: ${e.message}`, {cause: e}); }
+    return {t, on, size, ...framedView(boxes, size, safe), flight, things: names.map((name, n) => ({name, box: [...boxes[n]]}))};
   });
   inOrder(keys, 'focus.keys');
-  // A wide key sits at the frame's centre; a framed thing at the safe area's centre.
-  keys.forEach(k => { k.sx = k.on === 'wide' ? W / 2 : scx; k.sy = k.on === 'wide' ? H / 2 : scy; });
-  const along = pick => [[0, pick({cx: W / 2, cy: H / 2, z: 1, sx: W / 2, sy: H / 2, box: [0, 0, W, H], w: 0})], ...keys.map(k => [k.t, pick(k)])];
-  const tracks = {cx: along(k => k.cx), cy: along(k => k.cy), z: along(k => k.z), sx: along(k => k.sx), sy: along(k => k.sy), w: along(k => k.w), box: [0, 1, 2, 3].map(i => along(k => k.box[i]))};
-  /** Where the focus is at t: the camera's point, zoom and place on the frame (the picture always covers the frame), the box, how focused. */
-  const viewAt = t => {
-    const z = Math.max(1, track(t, tracks.z, feel)), sx = track(t, tracks.sx, feel), sy = track(t, tracks.sy, feel), key = keys.findLast(k => t >= k.t);
-    return {cx: Math.min(W - (W - sx) / z, Math.max(sx / z, track(t, tracks.cx, feel))), cy: Math.min(H - (H - sy) / z, Math.max(sy / z, track(t, tracks.cy, feel))), z, sx, sy,
-      box: tracks.box.map(b => track(t, b, feel)), w: clamp01(track(t, tracks.w, feel)), on: key?.on ?? null, thing: key ? key.box : null, since: key ? t - key.t : null};
-  };
-  // While it moves the camera: from each key until its spring settles (the camera's moves take turns with it: camerawork.mjs).
-  const moving = strategy.moves ? keys.map((k, key) => ({from: k.t, to: k.t + settleTime(feel), key, on: [k.on].flat().join('" + "')})) : [];
-  return {strategy: strategy.name, moves: Boolean(strategy.moves), moving, viewAt, show: (ctx, t, paint) => strategy.show(ctx, viewAt(t), paint, theme),
-    record: {strategy: strategy.name, ...(spec.safe ? {safe} : {}), keys: keys.map(k => ({t: +k.t.toFixed(3), on: k.on, ...(k.size ? {size: k.size} : {})}))},
-    // Each key as it frames the picture (where the camera points, how close, the box it holds): what a cached piece's key holds.
-    frames: {strategy: strategy.name, feel, safe, ...(parts.some(p => p.code) ? {code: parts.map(p => p.code ?? p.name)} : {}),
-      keys: keys.map(k => ({t: k.t, on: k.on, size: k.size ?? null, cx: k.cx, cy: k.cy, z: k.z, sx: k.sx, sy: k.sy, box: [...k.box], w: k.w}))}};
+  const key = t => keys.findLast(k => t >= k.t);
+  const held = (v, t) => { const k = key(t); return {...v, on: k?.on ?? null, thing: k ? k.box : null, since: k ? t - k.t : null}; };
+  let viewAt, moving = [], flights = null, run = null;
+  if (strategy.moves) {
+    // Each key a shot; the flight between two shots is footprint-story's (flight/steps.mjs), the same steps the check runs.
+    const shots = keys.map((k, i) => ({path: `focus.keys[${i}]`, t: k.t, on: k.on === 'wide' ? [] : [k.on].flat(), view: {cx: k.cx, cy: k.cy, z: k.z, sx: k.sx, sy: k.sy, box: [...k.box], w: k.w},
+      do: k.flight.do, seconds: k.flight.seconds, accept: k.flight.accept, things: k.things}));
+    flights = planFlights({shots});
+    run = Object.freeze({name: 'focus', kit: strategy.name, run: flightRunOf({shots}, flights), findings: flights.findings});
+    /** Where the focus is at t: the flight's camera (kept covering the frame), its veil's box and how focused, the key it is on. */
+    viewAt = t => held(flightViewAt(flights.flights, t), t);
+    // While it moves the camera: from each key until its flight arrives (the camera's moves take turns with it: camerawork.mjs).
+    moving = movingOf(flights.flights).map(m => ({...m, on: [keys[m.key].on].flat().join('" + "')}));
+  } else {
+    const along = pick => [[0, pick({cx: W / 2, cy: H / 2, z: 1, sx: W / 2, sy: H / 2, box: [0, 0, W, H], w: 0})], ...keys.map(k => [k.t, pick(k)])];
+    const tracks = {cx: along(k => k.cx), cy: along(k => k.cy), z: along(k => k.z), sx: along(k => k.sx), sy: along(k => k.sy), w: along(k => k.w), box: [0, 1, 2, 3].map(i => along(k => k.box[i]))};
+    /** Where the focus is at t, on its springs (it moves no camera, so only its veil, its loop and a label read it). */
+    viewAt = t => {
+      const z = Math.max(1, track(t, tracks.z, feel)), sx = track(t, tracks.sx, feel), sy = track(t, tracks.sy, feel);
+      return held({cx: Math.min(W - (W - sx) / z, Math.max(sx / z, track(t, tracks.cx, feel))), cy: Math.min(H - (H - sy) / z, Math.max(sy / z, track(t, tracks.cy, feel))), z, sx, sy,
+        box: tracks.box.map(b => track(t, b, feel)), w: clamp01(track(t, tracks.w, feel))}, t);
+    };
+  }
+  const flightOf = i => flights?.[`flight-${i}`] ?? null;
+  return {strategy: strategy.name, moves: Boolean(strategy.moves), moving, viewAt, show: (ctx, t, paint) => strategy.show(ctx, viewAt(t), paint, theme), ...(run ? {run} : {}),
+    record: {strategy: strategy.name, ...(spec.safe ? {safe} : {}), keys: keys.map((k, i) => ({t: +k.t.toFixed(3), on: k.on, ...(k.size ? {size: k.size} : {}), ...(flightOf(i) ? {flight: flightSummary(flightOf(i), k.flight)} : {})}))},
+    // Each key as it frames the picture (where the camera points, how close, the box it holds, and how its flight goes):
+    // what a cached piece's key holds.
+    frames: {strategy: strategy.name, ...(feel ? {feel} : {}), safe, ...(parts.some(p => p.code) ? {code: parts.map(p => p.code ?? p.name)} : {}),
+      keys: keys.map((k, i) => ({t: k.t, on: k.on, size: k.size ?? null, cx: k.cx, cy: k.cy, z: k.z, sx: k.sx, sy: k.sy, box: [...k.box], w: k.w,
+        ...(flightOf(i) ? {flight: flightFrame(flights.flights[i])} : {})}))}};
+}
+
+/**
+ * A key's flight as a cached piece's key holds it: how it goes, how long, and where it sets off from (the view on
+ * screen as its key lands — which an earlier key, or one cutting it short, decides: a piece drawn mid-flight changes
+ * with them).
+ */
+const flightFrame = f => ({kind: f.kind, seconds: f.seconds, from: [f.from.cx, f.from.cy, f.from.z, f.from.sx, f.from.sy], ...(f.cutShort ? {cutShort: f.cutShort.after} : {})});
+
+/** What the film's record keeps of a key's flight: how it was reached and why (footprint-story's reason), its seconds and what set them. */
+const flightSummary = (f, asked) => ({kind: f.kind, rule: f.rule, seconds: f.seconds, ...(f.limitedBy ? {limitedBy: f.limitedBy} : {}), reason: f.reason,
+  ...(f.cutShort ? {cutShort: f.cutShort} : {}), ...(asked.accept.length ? {accepted: [...asked.accept]} : {})});
+
+/** A camera focus key's flight words: {do, seconds (or null), accept}, each checked, naming the key. */
+function readFlight(k, where) {
+  const how = k.do ?? 'fly';
+  if (how === 'orbit') throw new Error(`${where}.do: "orbit" circles the subject in 3D (footprint-story/shot), and a picture here is drawn flat, seen from the front, so it cannot be drawn from round its side: fly ("do": "fly", or leave do out) or cut; for depth in a world with layers, the camera list's "orbit" slides them`);
+  if (!FLIGHT_DOS.includes(how)) throw new Error(`${where}.do is ${FLIGHT_DOS.map(d => `"${d}"`).join(' or ')} (how the camera reaches this shot: "fly", the default, is planned by footprint-story; "cut" is there at once), not ${JSON.stringify(k.do)}`);
+  if (k.seconds !== undefined && how === 'cut') throw new Error(`${where}: a cut takes no time, so it takes no seconds: leave seconds out, or fly ("do": "fly")`);
+  if (k.seconds !== undefined && !(typeof k.seconds === 'number' && k.seconds >= .2 && k.seconds <= 60)) throw new Error(`${where}.seconds is how long the flight to this shot takes, a number from 0.2 to 60 (left out, footprint-story's camera planner sets it), not ${JSON.stringify(k.seconds)}`);
+  const accept = k.accept ?? [];
+  if (!Array.isArray(accept) || !accept.every(c => FLIGHT_CRITICS.includes(c)) || new Set(accept).size !== accept.length) throw new Error(`${where}.accept lists the critics this flight keeps as written, each once: ${FLIGHT_CRITICS.join(', ')} (not ${JSON.stringify(k.accept)})`);
+  return {do: how, seconds: k.seconds ?? null, accept: [...accept]};
 }
 
 /** The emphasis as written, checked and placed on the clock: {strategy, draw(ctx, t), record}. */

@@ -107,7 +107,9 @@ export function segmentMaterial(film, seg, {recipe, storyboard = null, pixels, c
     // and the last one before each stretch it draws, by what it shows (a spring adds nothing before its key and has
     // settled long before the margin ends, so an earlier key, or one after the piece, changes none of its frames).
     attention: focus || emphasis ? {
-      focus: focus && {strategy: focus.strategy, feel: focus.feel, safe: focus.safe, code: focus.code ?? null, keys: reaching(focus.keys).map(k => [k.on, k.size ?? null, round(k.cx), round(k.cy), round(k.z), round(k.sx), round(k.sy), k.box.map(round), round(k.w), when(k.t)])},
+      // a camera focus's key carries its flight (attention.mjs · flightFrame): how it goes, how long, where it sets off from
+      focus: focus && {strategy: focus.strategy, feel: focus.feel, safe: focus.safe, code: focus.code ?? null, keys: reaching(focus.keys).map(k => [k.on, k.size ?? null, round(k.cx), round(k.cy), round(k.z), round(k.sx), round(k.sy), k.box.map(round), round(k.w), when(k.t),
+        ...(k.flight ? [[k.flight.kind, round(k.flight.seconds), k.flight.from.map(round), k.flight.cutShort === undefined ? null : round(k.flight.cutShort)]] : [])])},
       emphasis: emphasis && {strategy: emphasis.strategy, feel: emphasis.feel, code: emphasis.code ?? null, words: reaching(emphasis.words).map(w => [w.text, when(w.t), when(w.next)])}} : undefined,
     // The crop of a format that shows part of the frame (layout.mjs · cropKeys): each key near it, and the last before.
     // (A key's y and jump, layout.mjs · fill and follow, only where a key has them: every other key is keyed as it was.)

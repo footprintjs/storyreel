@@ -6,8 +6,8 @@
  *   scene     a new scene in the same picture opens wide. A world's camera starts each world wide by itself, and
  *             keeps that establishing shot through the world's first sentence (nothing is framed there but a key
  *             moment: `starts`). The film's focus spans every picture, so it goes back to wide for each change of
- *             picture (`changes`: arriving wide as the new picture comes) — a key no gap ever leaves out — and frames
- *             nothing over a picture it does not direct (`skip`).
+ *             picture (`changes`: arriving wide as the new picture comes, the flight back's seconds before it) — a key
+ *             no gap ever leaves out — and frames nothing over a picture it does not direct (`skip`).
  *   line      a speaker's line a shot rule names (rules.mjs: by default a question or an exclamation) frames their face
  *             at the rule's size — the region "<who>.face", else "<who>" — within the close-up budget: only the first
  *             such line of a turn that follows someone else (another speaker or the narrator), at most
@@ -29,9 +29,11 @@
  * Every key lands on a sentence's beat, `lead` seconds before its words (a scene's first sentence: on them) — and only
  * where the picture names what it frames at that moment: a thing first drawn on its own words is framed on them, with
  * no lead, and one not there yet is left out, with why. One camera
- * move at a time: a key comes at least `gap` seconds after the one before it (with the voice's timings), or it is left
- * out — unless it is a line's or an exchange's own framing and the key before it is a lower one, which it takes the
- * place of. Every key left out or held back is kept, with why, so the record says what the director did not do. Pure.
+ * move at a time: a key comes at least `gap` seconds after the one before it (with the voice's timings) and, when the
+ * camera's flights are known (`flight`: the film's focus, whose flights footprint-story plans), not before the flight to
+ * the one before it has arrived — or it is left out, unless it is a line's or an exchange's own framing and the key
+ * before it is a lower one, which it takes the place of. A key the change of picture leaves no time to land on and fly
+ * back from is left out too, so the new picture opens wide. Every key left out or held back is kept, with why, so the record says what the director did not do. Pure.
  */
 import {matchLine, wordsOf} from './rules.mjs';
 
@@ -145,28 +147,47 @@ function turnAt(read, n, turn, exchange) {
  * (sentences.mjs · readScene), in film order; `names`: a Set, a function (scene, t) → Set, or null (not known);
  * `people`: every speaker in the film; `table`: the rules (their aliases too); `groups`: whether the camera frames
  * several names together (a two-shot); `starts`: the scenes whose first sentence keeps the establishing shot (a world's
- * camera: its first scene, the default); `changes`: scene → seconds where the wide key for a new picture lands (the
- * film's focus; never before the key ahead of it); `skip`: scenes it does not frame; the gap, the lead, the close-up budget and the exchange
- * window (FRAMING).
+ * camera: its first scene, the default); `changes`: scene → seconds where a new picture starts (the film's focus: its
+ * wide key lands the flight back's seconds before, never before the key ahead of it); `flight(from, to)`: the seconds the
+ * camera takes from one key to the next (from null: the whole frame before any key), or null when the camera's flights
+ * are not known here (a world's own camera); `skip`: scenes it does not frame; the gap, the lead, the close-up budget
+ * and the exchange window (FRAMING).
  */
-export function planFraming(scenes, {names = null, people = new Set(), table, groups = true, starts = null, changes = new Map(), skip = new Set(), gap = FRAMING.gap, lead = FRAMING.lead, closeUps = FRAMING.closeUps, exchange = FRAMING.exchange}) {
+export function planFraming(scenes, {names = null, people = new Set(), table, groups = true, starts = null, changes = new Map(), flight = null, skip = new Set(), gap = FRAMING.gap, lead = FRAMING.lead, closeUps = FRAMING.closeUps, exchange = FRAMING.exchange}) {
   const keys = [], dropped = [], aliases = table.aliases ?? {}, fresh = starts ?? new Set(scenes.slice(0, 1).map(r => r.scene));
   const last = () => keys.at(-1) ?? WIDE;
+  // When the flight to the k-th key arrives: its key's time and the flight from the one before (0 when flights are not known).
+  const lands = k => keys[k].t + (flight && keys[k].t !== null ? flight(keys[k - 1] ?? null, keys[k]) : 0);
   const place = (key, rank) => {
     const prev = keys.at(-1);
     if (rank === RANK.picture) { keys.push(key); return true; }
-    if (prev && key.t !== null && prev.t !== null && key.t - prev.t < gap) {
-      if (!(rank >= RANK.line && RANK[prev.rule] < RANK.line)) { dropped.push({...key, why: `${(key.t - prev.t).toFixed(2)} s after the ${prev.rule} key on "${[prev.on].flat().join('" + "')}": one camera move at a time (gap ${gap} s)`}); return false; }
+    const arrives = prev ? lands(keys.length - 1) : -Infinity;
+    if (prev && key.t !== null && prev.t !== null && (key.t - prev.t < gap || key.t < arrives)) {
+      const on = `"${[prev.on].flat().join('" + "')}"`, why = key.t - prev.t < gap ? `${(key.t - prev.t).toFixed(2)} s after the ${prev.rule} key on ${on}: one camera move at a time (gap ${gap} s)`
+        : `the camera is still flying to the ${prev.rule} key on ${on} (it arrives at ${arrives.toFixed(2)} s): one camera move at a time`;
+      if (!(rank >= RANK.line && RANK[prev.rule] < RANK.line)) { dropped.push({...key, why}); return false; }
       keys.pop(); dropped.push({...prev, why: `the ${key.rule} key on "${[key.on].flat().join('" + "')}" ${(key.t - prev.t).toFixed(2)} s later takes its place`});
     }
     keys.push(key); return true;
+  };
+  /** Where the wide key for a picture starting at `start` lands: the flight back's seconds before it, leaving out a key with no time to land and fly back. */
+  const backBefore = (start, scene) => {
+    const back = () => (flight ? flight(last(), WIDE) : 0);
+    while (flight && keys.length && last().on !== 'wide' && last().t !== null && start - back() < lands(keys.length - 1)) {
+      const k = keys.pop();
+      dropped.push({...k, why: `the picture changes at ${start.toFixed(2)} s (${scene}): no time to arrive on "${[k.on].flat().join('" + "')}" and fly back to wide before it`});
+    }
+    return start - back();
   };
   /** Whether the place names everything a framing frames at t (wide: always; names not known: on trust). */
   const shows = (frame, scene, t) => frame.on === 'wide' || [frame.on].flat().every(n => has(known(names, t, scene), n));
   scenes.forEach((read, j) => {
     const shown = new Set(), first = read.sentences[0];
     let closes = 0, turn = null;
-    if (first && changes.has(read.scene) && last().on !== 'wide') place(pictureKey(first, Math.max(changes.get(read.scene), last().t ?? -Infinity)), RANK.picture);
+    if (first && changes.has(read.scene) && last().on !== 'wide') {
+      const t0 = backBefore(changes.get(read.scene), read.scene);
+      if (last().on !== 'wide') place(pictureKey(first, Math.max(t0, last().t ?? -Infinity)), RANK.picture);
+    }
     if (skip.has(read.scene)) return;
     read.sentences.forEach((s, n) => {
       const opens = n === 0, at = opens || !lead ? s.at : withPlus(s.at, -lead), t = s.t === null ? null : s.t - (opens ? 0 : lead);

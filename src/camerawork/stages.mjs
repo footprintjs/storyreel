@@ -61,7 +61,7 @@ export function oneCamera(s, {focus = null, pushes = [], spotlight = () => null,
     if (before && m.at < before.until) throw new Error(`${m.path} (${m.move}) starts at ${m.at.toFixed(2)} s while ${before.path} (${before.move}) still moves the camera's ${AXIS_WORDS[axis]} (until ${before.until.toFixed(2)} s); one move at a time on each: start it after, or move something else`);
     lanes.set(key, m);
   }
-  const others = [...(focus?.moving ?? []).map(w => ({...w, what: `the focus (focus.keys[${w.key}], on "${w.on}") is moving the camera`, fix: 'start the move after it settles, or show the focus with "spotlight" or "dim"'})),
+  const others = [...(focus?.moving ?? []).map(w => ({...w, what: `the focus (focus.keys[${w.key}], on "${w.on}") is moving the camera`, fix: 'start the move after it arrives, or show the focus with "spotlight" or "dim"'})),
     ...pushes.flatMap(p => [[p.a, p.a + p.seconds], [p.b, p.b + p.seconds]].map(([from, to]) => ({from, to, what: `the push "${p.note}" is moving the camera`, fix: 'start the move after it has eased, or move the push'})))];
   for (const m of work.moves) {
     if (!MOVING.has(m.family)) continue;

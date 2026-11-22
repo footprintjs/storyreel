@@ -13,7 +13,7 @@ import {directFocus} from '../director/film.mjs';
 import {applyPlacements} from '../director/land.mjs';
 import {planCamera} from '../camerawork.mjs';
 import {placePushes, pushAt} from '../notes.mjs';
-import {readAttention} from '../attention.mjs';
+import {readAttention, keyFlightSeconds} from '../attention.mjs';
 import {compose, about} from '../regions.mjs';
 import {onlyNames, recipePaths} from './util.mjs';
 
@@ -34,7 +34,9 @@ export async function cameraStage(state) {
   // The director's framing in the film's focus (when its keys land there): what the picture names at each moment.
   // A world whose own camera moves (its kit's cameraMoves) takes no framing from the focus (one camera).
   const ownCamera = path => Boolean((path === storyPathName ? story : stages[+path.slice(7, -1)]?.world?.instance)?.cameraMoves?.length);
-  const focusPlaced = direction ? directFocus(direction, {recipe: state.recipe, storyboard, names: t => onlyNames(regionsUnder(t)), ownCamera}) : null;
+  // The director spaces the focus's keys by the camera's flights, as the film will plan them (attention.mjs · keyFlightSeconds).
+  const flight = (a, b) => keyFlightSeconds(a, b, named);
+  const focusPlaced = direction ? directFocus(direction, {recipe: state.recipe, storyboard, names: t => onlyNames(regionsUnder(t)), ownCamera, flight}) : null;
   if (focusPlaced) { state.directed = applyPlacements(state.directed, [focusPlaced]); state.recipe = applyPlacements(state.recipe, [focusPlaced]); for (const [value, path] of recipePaths({focus: state.recipe.focus})) state.entries.set(value, path); }
   const recipe = state.recipe;
   const pushes = state.pushes = placePushes(notes.pushes, {clock, speed: notes.speed, changes: pictureChanges(), spotlight: spotlightAt, kitCamera: kitCameraIn, total: clock.total, named});
