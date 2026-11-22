@@ -417,5 +417,24 @@
    }
   ],
   "pushes": []
+ },
+ "iso-roll": {
+  "reading": [
+   {
+    "path": "story.blocks[0].label",
+    "text": "Ball",
+    "at": 12.175,
+    "seconds": 0.64,
+    "needs": 1
+   }
+  ],
+  "moments": [
+   {
+    "t": 6.41,
+    "kind": "settled",
+    "label": "Moved by intent"
+   }
+  ],
+  "pushes": []
  }
 }

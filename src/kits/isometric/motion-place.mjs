@@ -5,6 +5,7 @@
  *
  *   footOf(at, size) / topOf(at, size) / cornerOf(foot, size)   a block's foot and top from its corner `at`, and back
  *   landingUnder(at, size, others)                              the highest top under a block that is not above it
+ *   overTop(foot, under)                                        whether a foot is over that top (the floor holds everywhere)
  *   offFrame(px)                                                null, or how far off the 1600×900 frame a point is
  *   drawnOff(outline, rope)                                     what of a drawn block (or its rope) is off the frame
  *   footTiles(grid)                                             a moving foot's place from where it is on the frame
@@ -33,18 +34,26 @@ const overlap = (a0, a1, b0, b1) => Math.max(0, Math.min(a1, b1) - Math.max(a0, 
 
 /**
  * Where a block falls to: the highest top of the `others` ({block, at} each, at a corner) whose footprint overlaps its
- * own and which is not above its foot, else the floor — {lift, block}, block null for the floor. WHY the highest: a box
- * dropped over a server lands on the server, never through it to the floor.
+ * own and which is not above its foot, else the floor — {lift, block, at}, block null for the floor, `at` that block's
+ * corner (null for the floor). WHY the highest: a box dropped over a server lands on the server, never through it to the
+ * floor.
  */
 export function landingUnder(at, size, others) {
-  let best = {lift: 0, block: null};
+  let best = {lift: 0, block: null, at: null};
   for (const o of others) {
     const top = (o.at[2] ?? 0) + o.block.size[2];
     if (top > (at[2] ?? 0) + SAME || top <= best.lift) continue;
-    if (overlap(at[0], at[0] + size[0], o.at[0], o.at[0] + o.block.size[0]) > SAME && overlap(at[1], at[1] + size[1], o.at[1], o.at[1] + o.block.size[1]) > SAME) best = {lift: top, block: o.block};
+    if (overlap(at[0], at[0] + size[0], o.at[0], o.at[0] + o.block.size[0]) > SAME && overlap(at[1], at[1] + size[1], o.at[1], o.at[1] + o.block.size[1]) > SAME) best = {lift: top, block: o.block, at: o.at};
   }
   return best;
 }
+
+/**
+ * Whether a foot (the middle of a footprint, tiles) is over what holds it ({block, at}: landingUnder's): inside that
+ * block's top, edges included, or anywhere on the floor. WHY its middle: a body whose middle is past the edge of the top
+ * it rests on would tip off it, however much of its footprint still overlaps the top.
+ */
+export const overTop = (foot, under) => !under.block || [0, 1].every((k) => foot[k] >= under.at[k] - SAME && foot[k] <= under.at[k] + under.block.size[k] + SAME);
 
 /** The frame the moves are planned and drawn on: the film's 1600×900 sheet. */
 export const FRAME = Object.freeze([1600, 900]);

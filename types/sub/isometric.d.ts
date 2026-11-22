@@ -2,14 +2,15 @@ import type {StoryWorld, ContextKit, KitContext} from '../index.js';
 
 /** An anchor on the film's clock: [scene, phrase] or [scene, phrase, seconds after]. */
 export type IsoAnchor = [string, string] | [string, string, number] | {scene: string; phrase: string; edge?: 'start' | 'end'; plus?: number; nth?: number};
-/** A block (or a cylinder) on the floor: StoryDeck's data-k, data-iso, data-at, data-size, <b>, <small>, --iso-color, class ok/warn/bad, data-iso-group, data-ports. */
+/** A block (or a cylinder, or a ball: the film's own) on the floor: StoryDeck's data-k, data-iso, data-at, data-size, <b>, <small>, --iso-color, class ok/warn/bad, data-iso-group, data-ports. */
 export interface IsoBlockSpec {
   /** one word a wire's arrow can say (no space, no dot): what a camera frames */
   name: string;
-  kind?: 'block' | 'cylinder';
+  /** 'ball' (0.44.0): round every way, the one that rolls; StoryDeck draws none yet, no ports, today's look only */
+  kind?: 'block' | 'cylinder' | 'ball';
   /** [col, row] or [col, row, lift]; give every block one, or none (then they are placed from the wires) */
   at?: [number, number] | [number, number, number];
-  /** [wide, deep, high] in tiles ([2, 2, 1]); a cylinder's width and depth are equal */
+  /** [wide, deep, high] in tiles ([2, 2, 1]; a ball [1, 1, 1]); a cylinder's width and depth are equal, a ball's all three */
   size?: [number, number, number];
   /** its name on its top, fitted (one line at 26 px, two, then smaller to 16) */
   label?: string;
@@ -68,15 +69,17 @@ export type IsoPlace = string | [number, number] | [number, number, number];
 /**
  * One move of a block, written as intent in footprint-story's words: `do` fall (straight down to the floor under it),
  * throw (onto `to`, through the air), hang (on a rope from the pin `from`, swinging to rest below it), settle or reach
- * (to `to`). The tool decides the model, the duration and the curve.
+ * (to `to`); roll (a ball along the level it rests on to `to`, turning), slide (any block along its level to `to`) or
+ * tumble (a ball, or a block end over end along a row or a column, landing on `to` and rolling or sliding on). The tool
+ * decides the model, the duration and the curve.
  */
 export interface IsoMotionSpec {
   /** the block that moves, by its name; a block a wire joins cannot move */
   piece: string;
-  do: 'fall' | 'throw' | 'hang' | 'settle' | 'reach';
+  do: 'fall' | 'throw' | 'hang' | 'settle' | 'reach' | 'roll' | 'slide' | 'tumble';
   /** when it begins (when the block appears; else the film's start) */
   at?: IsoAnchor;
-  /** where it ends: a throw's, a settle's and a reach's (a fall and a hang take none) */
+  /** where it ends: a throw's, a settle's, a reach's, a roll's, a slide's, a tumble's (a fall and a hang take none) */
   to?: IsoPlace;
   /** a hang's pin (only a hang takes one) */
   from?: IsoPlace;
@@ -110,7 +113,7 @@ export interface IsoNote { readonly level: 'warn' | 'info'; readonly path: strin
 /** The map as built: who placed it, the tile, every block, floor and cable (frame px, rounded to a tenth). */
 export interface IsoRecord {
   readonly placed: 'build' | 'hand'; readonly tile: number; readonly fitted: boolean; readonly style: IsoStyleRecord;
-  readonly blocks: readonly {name: string; kind: 'block' | 'cylinder'; at: number[]; size: number[]; lines?: string[]; nameSize?: number; fits?: boolean}[];
+  readonly blocks: readonly {name: string; kind: 'block' | 'cylinder' | 'ball'; at: number[]; size: number[]; lines?: string[]; nameSize?: number; fits?: boolean}[];
   readonly floors: readonly {name: string | null; at: number[]; size: number[]; lines?: string[]; fits?: boolean; covered?: boolean}[];
   readonly cables: readonly {name: string | null; from: string; to: string; along: boolean; ports?: (string | null)[]; points: [number, number][]; length: number; unseen: [number, number][]; behind?: string[]; crosses?: number; shared?: number; bends?: number; period?: number}[];
   /** each move of a world with a motion (absent when it has none) */
@@ -118,25 +121,25 @@ export interface IsoRecord {
 }
 /** The world compiled: StoryWorld (draw, regionsAt, texts, parts) with the kit's notes and the map's record. */
 export function compileIsometric(spec: IsometricSpec, context: Pick<KitContext, 'clock'> & {theme?: unknown; where?: string}): StoryWorld & {notes: readonly IsoNote[]; map: IsoRecord;
-  /** a world with a motion: what footprint-story's critics found, and the intents it was handed (frame px) */
+  /** a world with a motion: what footprint-story's critics found, and the intents it was handed (frame px; a roll's, a slide's and a tumble's side on along its way, in the world's px) */
   motionFindings?: readonly IsoMotionFinding[]; motionIntents?: readonly Readonly<Record<string, unknown>>[]};
 /** The isometric kit: pass it in `kits`; a world stage or the story names it (`kit: 'isometric'`). */
 export const isometricKit: ContextKit;
 /** The limits: pieces a world, packets a wire, a run's seconds, a rest, a trail's width, label letters, a name's letters, a block's usual size, a run's usual seconds. */
-export const ISO_LIMITS: Readonly<{pieces: number; packets: number; seconds: readonly [number, number]; rest: number; trail: readonly [number, number]; label: number; wireLabel: number; name: number; usualSize: readonly [number, number, number]; runSeconds: number}>;
+export const ISO_LIMITS: Readonly<{pieces: number; packets: number; seconds: readonly [number, number]; rest: number; trail: readonly [number, number]; label: number; wireLabel: number; name: number; usualSize: readonly [number, number, number]; ballSize: readonly [number, number, number]; runSeconds: number}>;
 /** The numbers the kit builds its maps with: footprint-story's film policy (ISO_MAP_POLICIES.film) — tile range, grouped least, inset, floor margin under `fit`; name and small sizes; the share of a top's room a name takes; which floors a fitted picture holds. */
 export const ISO_FIT: Readonly<{fit: Readonly<{most: number; least: number; grouped: number; inset: number; margin: number}>; name: Readonly<{size: number; least: number}>; small: Readonly<{size: number; least: number}> | null; clear: number; hold: 'groups' | 'groups-and-labels'}>;
 /** The look where the theme has none. */
-export const ISO_LOOK: Readonly<{tone: string; glow: string; line: number; grid: number; cable: number; label: number; smallInk: number; appear: number; rope: number}>;
+export const ISO_LOOK: Readonly<{tone: string; glow: string; line: number; grid: number; cable: number; label: number; smallInk: number; appear: number; rope: number; mark: number; markLine: number}>;
 /** What a block can do in a film (footprint-story's words), and the places each takes: `to` where it ends, `from` a hang's pin. */
-export const MOTION_DOS: Readonly<Record<'fall' | 'throw' | 'hang' | 'settle' | 'reach', Readonly<{to: boolean; from: boolean}>>>;
+export const MOTION_DOS: Readonly<Record<'fall' | 'throw' | 'hang' | 'settle' | 'reach' | 'roll' | 'slide' | 'tumble', Readonly<{to: boolean; from: boolean}>>>;
 /** The keys a motion entry takes. */
 export const MOTION_KEYS: readonly string[];
 /** The most motion entries a world holds (footprint-story's most intents). */
 export const MOST_MOTIONS: number;
 /** The frame the moves are planned on: [1600, 900]. */
 export const MOTION_FRAME: readonly [number, number];
-/** The kit's own critics beside footprint-story's: "reel:contact", a move that passes through another block. */
+/** The kit's own critics beside footprint-story's: "reel:contact", a move that passes through another block; "reel:covers", one that comes to rest over another's name. */
 export const REEL_CRITICS: readonly string[];
 /** A running packet's radius, px. */
 export const PACKET_RADIUS: number;

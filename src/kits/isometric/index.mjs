@@ -23,8 +23,9 @@
  * footprint-story's map flow, a run whose record says why: flow.mjs). With `strict: true` a warning refuses.
  *
  * `motion` moves blocks by intent ({"piece": "box", "do": "fall"}): footprint-story decides each move's model, duration
- * and curve (motion.mjs), the block is drawn where the samples put it, framed there, and the world's record names each
- * move's model, reason and seconds. A world with no motion is exactly as it was.
+ * and curve (motion.mjs), the block is drawn where the samples put it — turned, for a roll or a tumble (turn.mjs) —
+ * framed there, and the world's record names each move's model, reason and seconds. A world with no motion is exactly as
+ * it was. A `ball` (kind) is the film's own round block, the one that rolls.
  */
 import {readMap} from './read.mjs';
 import {buildMap} from './build.mjs';
@@ -34,7 +35,7 @@ import {layCables} from './cables.mjs';
 import {notesOf} from './notes.mjs';
 import {rideOf, packetsAt} from './ride.mjs';
 import {drawMap, lookOf, inAt} from './draw.mjs';
-import {posed} from './motion-place.mjs';
+import {drawnOutline} from './turn.mjs';
 import {planMotions} from './motion.mjs';
 
 export {ISO_LIMITS, readArrow} from './read.mjs';
@@ -118,9 +119,9 @@ export function compileIsometric(spec, context) {
   };
   // whether a moved block covers a block's name at t (motion-cover.mjs): its name is then neither drawn nor listed to read
   const hiddenAt = (b, t) => (motion?.hidden.get(b) ?? []).some(([from, to]) => t >= from && t < to);
-  // a block's outline where it is drawn at t: as built, or where its move has put it
+  // a block's outline where it is drawn at t: as built, or where its move has put it, turned as it is (turn.mjs)
   // (and a hanging block's rope with it: a camera that frames the block frames what it hangs from)
-  const outlineAt = (b, t) => { const pose = motion?.poseAt(b, t) ?? null; return pose ? [...b.shape.outline.map((p) => posed(p, pose)), ...(pose.rope ?? [])] : b.shape.outline; };
+  const outlineAt = (b, t) => { const pose = motion?.poseAt(b, t) ?? null; return pose ? [...drawnOutline(b, pose, map.grid), ...(pose.rope ?? [])] : b.shape.outline; };
   const walks = map.wires.map((w) => walkWay(w.cable.way));
   return {
     hang: 1,

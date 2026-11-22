@@ -21,14 +21,17 @@ import {packetsAt, PACKET_RADIUS} from './ride.mjs';
 import {arrowHead, headingOf, walkWay, CABLE} from 'footprint-story/isometric';
 import {HEX} from './read.mjs';
 import {paintItems, mix, rgba as withAlpha} from './paint.mjs';
+import {ballPicture, ballPaint, boxPicture, boxPaint, centreOf, onFace, UNTURNED} from './turn.mjs';
+import {posed} from './motion-place.mjs';
 
 /**
  * StoryDeck's colours where the theme has none: a block's tone, the glow of a packet. And how long a piece takes to come in,
- * and how wide a hanging block's rope is drawn (the ink, as wide as an edge).
+ * and how wide a hanging block's rope is drawn (the ink, as wide as an edge); a ball's marks, the ink at `mark`, `markLine`
+ * px wide (ours: a deck draws no ball).
  * `line` and `grid` are the usual style's edge width and tile-line alpha (footprint-story's `ink` line choice): the paint
  * list carries them, and test/iso-paint.test.mjs pins that the two still agree.
  */
-export const ISO_LOOK = Object.freeze({tone: '#d9e4f3', glow: '#e8a33d', line: 2.5, grid: 0.16, cable: 4, label: 1, smallInk: 0.68, appear: 0.35, rope: 2.5});
+export const ISO_LOOK = Object.freeze({tone: '#d9e4f3', glow: '#e8a33d', line: 2.5, grid: 0.16, cable: 4, label: 1, smallInk: 0.68, appear: 0.35, rope: 2.5, mark: 0.5, markLine: 2});
 
 /** The colours a world draws with, from the film's theme (its palette), StoryDeck's tokens where the theme has none. */
 export function lookOf(theme) {
@@ -63,24 +66,53 @@ function drawFloor(c, f, look) {
   c.restore();
 }
 
-/** A block's faces (or a cylinder's side and top): its paint list, in the kit's colours. Then its name on its top. */
-function drawBlock(c, b, look, named = true) {
-  // the list holds each face's recipe (top 20% toward white, sides toward black) and no colour: the kit picks the base
-  // and the ink here, so the built map stays the deck's (paint.mjs says why). A tone is the theme's ok / warn / bad
-  // colour as a pale tint (60% white): a block's name is ink on its top, and the theme's tones are ink-dark — on the
-  // tone itself the name would fail the film's contrast check (StoryDeck colours the block the tone)
-  const tone = b.color ?? (b.tone ? mix(look.tones[b.tone], '#ffffff', 0.6) : ISO_LOOK.tone), s = b.shape;
-  paintItems(c, b.paint, {base: tone, ink: look.ink});
-  // a name a moved block covers is not drawn (motion-cover.mjs): under that block it is no word to read, and a few
-  // letters left peeking out past it read as a word too faint to read
-  if (!named || !b.fitted?.lines.length) return;
-  // the name upright on the top's middle, its lines as wordsToFit broke them; the small line beneath it
+/**
+ * A block's colour: its own, else its tone, else the usual. A tone is the theme's ok / warn / bad colour as a pale tint
+ * (60% white): a block's name is ink on its top, and the theme's tones are ink-dark — on the tone itself the name would
+ * fail the film's contrast check (StoryDeck colours the block the tone).
+ */
+const toneOf = (b, look) => b.color ?? (b.tone ? mix(look.tones[b.tone], '#ffffff', 0.6) : ISO_LOOK.tone);
+
+/** A block's name upright at `[cx, cy]` (its top's middle; a ball's middle), its lines as wordsToFit broke them, the small line beneath. */
+function drawName(c, b, look, [cx, cy]) {
   const {lines, size} = b.fitted, lh = size * 1.15, sf = b.smallFitted, small = sf ? sf.size * 1.15 + 2 : 0, height = lines.length * lh + small;
-  const [cx, cy] = s.centre, top = cy - height / 2;
+  const top = cy - height / 2;
   c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = look.ink;
   c.font = `700 ${size}px ${look.sans}`;
   lines.forEach((line, i) => c.fillText(line, cx, top + (i + 0.5) * lh));
   if (sf) { c.font = `500 ${sf.size}px ${look.sans}`; c.fillStyle = withAlpha(look.ink, ISO_LOOK.smallInk); c.fillText(sf.lines.join(' '), cx, top + lines.length * lh + 2 + (small - 2) / 2); }
+}
+
+/** A block's faces (or a cylinder's side and top): its paint list, in the kit's colours. Then its name on its top. A ball is drawBall's. */
+function drawBlock(c, b, look, named = true, grid = null) {
+  if (b.kind === 'ball') { drawBall(c, b, look, grid, UNTURNED, null, named); return; }
+  // the list holds each face's recipe (top 20% toward white, sides toward black) and no colour: the kit picks the base
+  // and the ink here, so the built map stays the deck's (paint.mjs says why)
+  paintItems(c, b.paint, {base: toneOf(b, look), ink: look.ink});
+  // a name a moved block covers is not drawn (motion-cover.mjs): under that block it is no word to read, and a few
+  // letters left peeking out past it read as a word too faint to read
+  if (!named || !b.fitted?.lines.length) return;
+  drawName(c, b, look, b.shape.centre);
+}
+
+/**
+ * A ball, turned by `turn` (turn.mjs) and moved by `pose` (null: as built): its paint list (turn.mjs · ballPaint: its
+ * fill, the marks that show its turn, its edge), painted as every list is, then its name on its middle. Every point is
+ * turn.mjs's, put where the pose moves the ball (motion-place · posed: a bounce's squash too).
+ */
+function drawBall(c, b, look, grid, turn, pose, named) {
+  const ball = ballPicture(grid, centreOf(b), b.size[0] / 2, turn), at = (p) => (pose ? posed(p, pose) : p);
+  paintItems(c, ballPaint(ball, at, ISO_LOOK), {base: toneOf(b, look), ink: look.ink});
+  if (named && b.fitted?.lines.length) drawName(c, b, look, at(ball.centre));
+}
+
+/**
+ * A block turned off its faces (a tumble in the air): the paint list of its turned corners' seen faces (turn.mjs ·
+ * boxPaint, each toned as the built faces are by the way it faces), moved by its pose. No name: a name is hidden while
+ * its body turns (motion.mjs).
+ */
+function drawTurnedBlock(c, b, look, grid, turn, pose) {
+  paintItems(c, boxPaint(boxPicture(grid, centreOf(b), b.size, turn), (p) => posed(p, pose), ISO_LOOK), {base: toneOf(b, look), ink: look.ink});
 }
 
 /** An arrow's head at `tip`, pointing from `before`: its corners are footprint-story/isometric's (arrowHead), a deck's head's too; only the painting is here. */
@@ -126,16 +158,19 @@ function drawLabel(c, w, look) {
 /**
  * A block that moves by intent, at its pose: its rope first when it hangs (the ink, from the pin to its top), then the
  * block itself, scaled about its pivot (a bounce's squash) and moved there. The block is drawn as it always is, only
- * under that transform: its faces, names and colours are the built map's.
+ * under that transform: its faces, names and colours are the built map's. A ball is drawn turned as its pose says, and a
+ * block turned off its faces as its turned corners (turn.mjs); a block turned onto a face again is the built block.
  */
-function drawPosed(c, b, pose, look, named = true) {
+function drawPosed(c, b, pose, look, named, grid) {
   if (pose.rope) {
     c.strokeStyle = look.ink; c.lineWidth = ISO_LOOK.rope; c.lineCap = 'round'; c.lineJoin = 'round';
     c.beginPath(); pose.rope.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.stroke();
   }
+  if (b.kind === 'ball') { drawBall(c, b, look, grid, pose.turn ?? UNTURNED, pose, named); return; }
+  if (pose.turn && !onFace(pose.turn)) { drawTurnedBlock(c, b, look, grid, pose.turn, pose); return; }
   const [px, py] = pose.pivot;
   c.save(); c.translate(px + pose.dx, py + pose.dy); c.scale(pose.sx, pose.sy); c.translate(-px, -py);
-  drawBlock(c, b, look, named);
+  drawBlock(c, b, look, named, grid);
   c.restore();
 }
 
@@ -165,8 +200,8 @@ export function drawMap(c, map, t, look, moved = null) {
   for (const b of order) {
     const pose = poseOf?.(b) ?? null;
     // a moving block is joined by no wire (motion-read.mjs): it has no lead to draw, only itself at its pose, in its place in the order
-    if (pose) { faded(inAt(b.appearAt, t), () => drawPosed(c, b, pose, look, named(b))); continue; }
-    faded(inAt(b.appearAt, t), () => drawBlock(c, b, look, named(b)));
+    if (pose) { faded(inAt(b.appearAt, t), () => drawPosed(c, b, pose, look, named(b), map.grid)); continue; }
+    faded(inAt(b.appearAt, t), () => drawBlock(c, b, look, named(b), map.grid));
     map.wires.forEach((w, i) => {
       for (const [k, end] of [[0, 'from'], [1, 'to']]) {
         if (w.arrow[end].block !== b || w.cable.leads[k] === null) continue;

@@ -28,15 +28,21 @@ const BLOCK_KEYS = Object.freeze(['name', 'kind', 'at', 'size', 'label', 'small'
 const FLOOR_KEYS = Object.freeze(['name', 'at', 'size', 'label', 'color', 'group', 'appear']);
 const WIRE_KEYS = Object.freeze(['name', 'arrow', 'label', 'head', 'packets', 'speed', 'ride', 'rest', 'trail', 'behind', 'appear', 'start']);
 const GRID_KEYS = Object.freeze(['tile', 'at', 'rise']);
-export const KINDS = Object.freeze(['block', 'cylinder']);
+/**
+ * The kinds of block: StoryDeck's two, and `ball` (0.44.0), the film's own — a round thing that can roll, which neither a
+ * block nor an upright cylinder can be drawn doing (motion-read.mjs · TURNING_KINDS). A deck draws no ball yet; the map
+ * is built with it as the cylinder round it (build.mjs), and the kit draws the ball itself (draw.mjs, turn.mjs).
+ */
+export const KINDS = Object.freeze(['block', 'cylinder', 'ball']);
 export const TONES = Object.freeze(['ok', 'warn', 'bad']);
 /**
  * The limits, StoryDeck's where it has one: 256 pieces a map (iso.js · MOST_ISO_PIECES), 6 packets a wire and a run
  * of 0.5 to 60 s (transforms.js, rides.js), a rest of at most 60 s, a trail 0.5 to 24 px wide; a block a 2 × 2 × 1
- * when it gives no size (iso.js · USUAL_SIZE); a run 3 s when the wire gives no speed (transforms.js · wireOptions).
+ * when it gives no size (iso.js · USUAL_SIZE), a ball 1 × 1 × 1 (ours: a deck has none); a run 3 s when the wire gives
+ * no speed (transforms.js · wireOptions).
  */
 export const ISO_LIMITS = Object.freeze({pieces: 256, packets: 6, seconds: Object.freeze([0.5, 60]), rest: 60, trail: Object.freeze([0.5, 24]),
-  label: 120, wireLabel: 60, name: 64, usualSize: Object.freeze([2, 2, 1]), runSeconds: 3});
+  label: 120, wireLabel: 60, name: 64, usualSize: Object.freeze([2, 2, 1]), ballSize: Object.freeze([1, 1, 1]), runSeconds: 3});
 /** The one hex-colour rule (draw.mjs reads it too). */
 export const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 /** The most entries a list the world holds may have before it is read (a port list, an at, a trail): far past any map. */
@@ -117,13 +123,14 @@ function readBlock(b, i, where) {
   const name = nameOf(b.name, first, true), who = `${first} ("${name}")`;
   const kind = b.kind ?? 'block';
   if (!KINDS.includes(kind)) throw new Error(`${who}: kind is ${KINDS.join(' or ')} — not ${shown(b.kind)}`);
-  const size = own(b, 'size') ? b.size : [...ISO_LIMITS.usualSize];
+  const size = own(b, 'size') ? b.size : [...(kind === 'ball' ? ISO_LIMITS.ballSize : ISO_LIMITS.usualSize)];
   if (!nums(size, [3])) throw new Error(`${who}: size is [wide, deep, high] in tiles ([2, 2, 1]) — not ${shown(b.size)}`);
   if (own(b, 'at') && !nums(b.at, [2, 3])) throw new Error(`${who}: at is where it stands, [col, row] on the floor (a third number lifts it) — not ${shown(b.at)}`);
   const at = own(b, 'at') ? [b.at[0], b.at[1], b.at[2] ?? 0] : null;
   try { readThing({at: at ?? [0, 0], size}, `a ${kind}`); } catch (e) { throw new Error(`${who}: ${e.message.replace(/^isometric: /, '')}`, {cause: e}); }
   // exactly equal, as footprint-story's map spec reads a cylinder (0.39.0: a billionth apart passed here, and the grid then refused it)
   if (kind === 'cylinder' && size[0] !== size[1]) throw new Error(`${who}: a cylinder is round — its size is [wide, wide, high], the same width and depth (not ${shown(size)})`);
+  if (kind === 'ball' && !(size[0] === size[1] && size[1] === size[2])) throw new Error(`${who}: a ball is round every way — its size is [wide, wide, wide], one number three times (not ${shown(size)})`);
   if (own(b, 'color') && !HEX.test(b.color)) throw new Error(`${who}: color is a hex colour ("#bcd6f3") — its top is drawn lighter and its sides darker; not ${shown(b.color)}`);
   if (own(b, 'tone') && !TONES.includes(b.tone)) throw new Error(`${who}: tone is ${TONES.join(', ')} (the theme's colours for each) — not ${shown(b.tone)}`);
   if (own(b, 'color') && own(b, 'tone')) throw new Error(`${who}: give it a color or a tone, not both`);
@@ -133,6 +140,8 @@ function readBlock(b, i, where) {
   if (own(b, 'break') && !BREAK_RULES.includes(b.break)) throw new Error(`${who}: break is ${BREAK_RULES.map((r) => `"${r}"`).join(' or ')} — "fill" sets the label's first line as full as it goes, "even" (the usual) makes the two lines alike; not ${shown(b.break)}`);
   if (own(b, 'break') && !label) throw new Error(`${who}: break says how its label breaks onto two lines — give it a label too`);
   let ports = [];
+  // a port is a point on a block's side; a ball's side is a sphere the map's ports do not know: a wire joins it at its foot
+  if (own(b, 'ports') && kind === 'ball') throw new Error(`${who}: a ball has no ports — a wire joins it at its foot: take ports out`);
   if (own(b, 'ports')) {
     if (!Array.isArray(b.ports)) throw new Error(`${who}: ports is a list, [{"name": "p1", "at": [x, y, z]}] in its own tiles (x along its width, y along its depth, z up from its base)`);
     b.ports.forEach((p, k) => { keysOf(p, ['name', 'at', 'face'], `${who}: ports[${k}]`); nameOf(p.name, `${who}: ports[${k}]`, true); });
@@ -314,6 +323,9 @@ export function readMap(given, where) {
   }
   if (own(spec, 'strict') && typeof spec.strict !== 'boolean') throw new Error(`${where}: isometric strict is true (a warning about the map refuses the film) or false`);
   const grid = readGrid(spec.grid, where), style = readStyle(spec.style, where);
+  // a ball is drawn by the kit in today's look (draw.mjs); a style paints the map's own pieces, which knows no ball
+  const ball = blocks.find((b) => b.kind === 'ball');
+  if (ball && style) throw new Error(`${ball.who}: a ball is drawn in today's look, and this world names a style (footprint-story's styles paint blocks and cylinders, not a ball yet) — take style out, or make it a cylinder (kind: "cylinder")`);
   if (grid && own(spec, 'area')) throw new Error(`${where}: isometric area is where a fitted picture goes; this grid is written in numbers — give one or the other`);
   // the pieces that move by intent (motion-read.mjs): [] when the world moves none, and then nothing else changes
   const motion = readMotions(spec.motion, where, {blocks, floors, wires});

@@ -13,6 +13,9 @@
  * footprint, at its lift). A fall drops it straight down onto the highest top under it, else the floor; a throw, a
  * settle and a reach end with its foot on `to` — a block's top (the middle of it, where that block stands when the move
  * begins) or tiles. A hang ties a rope to its TOP and swings it to rest below the pin (`from`), which must be above it.
+ * A roll, a slide and a tumble go along a level, planned side on in the upright plane through their way, in the world's
+ * own px (motion-side.mjs): a roll and a slide stay on the level they rest on, a tumble lands on `to` and rolls or slides
+ * on; a roll and a tumble turn the body, drawn in three dimensions (turn.mjs).
  * Moves are placed in the order they begin, each piece from where its last move left it, so a target that moved earlier
  * is aimed at where it went. A move whose way passes through another block is a finding (`reel:contact`).
  *
@@ -24,7 +27,9 @@ import {planIntents, sampleMove} from 'footprint-story/human';
 import {firstDifference} from './flow.mjs';
 import {coversOf} from './motion-cover.mjs';
 import {MOTION_DOS, REEL_CRITICS} from './motion-read.mjs';
-import {footOf, topOf, cornerOf, landingUnder, offFrame, drawnOff, footTiles, sweptThrough, posed, FRAME} from './motion-place.mjs';
+import {footOf, topOf, cornerOf, landingUnder, offFrame, drawnOff, footTiles, sweptThrough, FRAME} from './motion-place.mjs';
+import {SIDE_ROWS, sideFoot, worldPx} from './motion-side.mjs';
+import {UNTURNED, turnAxis, turning, compose, isUnturned, reachOver, drawnOutline} from './turn.mjs';
 
 /** The frame the moves are planned on: the film's 1600×900 sheet, the size every world draws on. */
 export const MOTION_FRAME = FRAME;
@@ -41,8 +46,10 @@ const tilesText = (t) => `[${t.map((v) => round3(v)).join(', ')}]`;
  * `at` its corner, `piece` the block, `target(place, key)` a written place in tiles (a block's top where it stands now),
  * `others` the other blocks where they stand ({block, at}). `end` is where the foot stands after (tiles), null when only
  * the swing knows (a hang: the piece's last move); `tie` the point the samples move (its foot, or its top for a hang);
- * `leans` the blocks the move relies on standing still (its target, what it lands on). WHY one row a word: roll, slide
- * and tumble (footprint-story 0.31) are one row each.
+ * `leans` the blocks the move relies on standing still (its target, what it lands on). A side-on row (motion-side.mjs:
+ * roll, slide, tumble) adds `side` (how its samples lie back on the floor: motion-side · sideFoot) and `turns` (whether it
+ * turns the body), and a tumble `endOf(sample)` in place of `end`: where it rests is its plan's last sample. `unit` in
+ * `place` is the world's own px in a tile (motion-side · worldPx). WHY one row a word: each family is its row, nothing else.
  */
 export const INTENT_OF = Object.freeze({
   fall: (e, {px, foot, at, piece, others}) => {
@@ -68,6 +75,7 @@ export const INTENT_OF = Object.freeze({
     const to = target(e.to, 'to');
     return {intent: {from: px(foot), to: px(to), ...(e.to.block ? {target: topWidth(e.to.block)} : {})}, end: to, tie: 'foot', leans: e.to.block ? [e.to.block] : []};
   },
+  ...SIDE_ROWS,
 });
 
 /** footprint-story's refusal in the kit's words: its "human: " off, the entry's name in front when it does not say it. */
@@ -86,7 +94,7 @@ function placeMoves(map, motions, starts, where) {
   // a block's top face's width across the frame: its east corner to its west for a block, the ellipse's width for a cylinder
   const topWidth = (b) => (b.kind === 'cylinder' ? b.shape.box.w : Math.max(1, map.grid.at(b.at[0] + b.size[0], b.at[1], 0).x - map.grid.at(b.at[0], b.at[1] + b.size[1], 0).x));
   // where each block's corner is now: its built `at`, then where its last move left it; null once it hangs (its rest unknown)
-  const now = new Map(map.blocks.map((b) => [b, [b.at[0], b.at[1], b.at[2] ?? 0]])), lastOf = new Map();
+  const now = new Map(map.blocks.map((b) => [b, [b.at[0], b.at[1], b.at[2] ?? 0]])), lastOf = new Map(), unit = worldPx(map.grid);
   const intents = new Array(motions.length), spans = new Array(motions.length);
   const order = motions.map((_, i) => i).sort((a, b) => starts[a] - starts[b] || a - b);
   for (const i of order) {
@@ -112,15 +120,26 @@ function placeMoves(map, motions, starts, where) {
       const since = lastOf.has(rider.block) ? `since ${motions[lastOf.get(rider.block)].path}` : 'as built';
       throw new Error(`${m.who}: it moves "${piece.name}" from under "${rider.block.name}", which rests on its top ${since}, and would leave it on nothing — move "${rider.block.name}" off first (a motion for it before ${round3(starts[i])} s), or anchor this move before "${rider.block.name}" lands there`);
     }
-    const made = INTENT_OF[m.do](m, {px, foot, at, piece, target, others, topWidth});
+    const made = INTENT_OF[m.do](m, {px, foot, at, piece, target, others, topWidth, unit});
     intents[i] = {do: m.do, name: piece.name, who: m.who.slice(where.length + 2), ...made.intent, ...(m.wrap.length ? {wrap: m.wrap} : {}), ...(m.model !== null ? {model: m.model} : {})};
+    // a tumble rests wherever it rolls or slides on to after it lands: footprint-story's plan of this very intent says
+    // where (its last sample), before the next move is placed from it. The decider plans each intent alone, so the
+    // whole list's plan later gives the same move (a test pins it)
+    const end = made.endOf ? made.endOf(lastSample(intents[i], m, where)) : made.end;
     // the foot's way in tiles, for its place in the paint order and the pass-through check (poseAt · footTiles); a hang
     // swings towards below its pin, which is all that is known of its end before it is planned
-    spans[i] = {from: foot, to: made.end ?? [...target(m.from, 'from').slice(0, 2), 0], end: made.end, tie: made.tie, leans: made.leans};
-    now.set(piece, made.end ? cornerOf(made.end, piece.size) : null);
+    spans[i] = {from: foot, to: end ?? [...target(m.from, 'from').slice(0, 2), 0], end, tie: made.tie, leans: made.leans, ...(made.side ? {side: made.side, turns: made.turns} : {})};
+    now.set(piece, end ? cornerOf(end, piece.size) : null);
     lastOf.set(piece, i);
   }
   return {intents, spans};
+}
+
+/** One intent planned alone by footprint-story, and its last sample: where the move ends. Its refusal in the entry's name. */
+function lastSample(intent, entry, where) {
+  let one;
+  try { one = planIntents([intent], {frame: [...MOTION_FRAME]}); } catch (e) { throw refusal(e, where, entry); }
+  return sampleMove(one.moves[0], one.durations[0].seconds);
 }
 
 /**
@@ -144,6 +163,13 @@ export function planMotions(map, motions, clock, where) {
     throw refusal(e, where, culprit);
   }
   const moves = motions.map((m, i) => ({path: m.path, piece: m.piece, do: m.do, start: starts[i], seconds: planned.durations[i].seconds, move: planned.moves[i], ...spans[i]}));
+  // a side-on move's rest is known before the list is planned (a roll's and a slide's `to`; a tumble's from its intent
+  // planned alone: placeMoves): the list's plan must end it there too, within a millionth of a tile, or the block would
+  // jump at its end — said, never drawn
+  for (const m of moves.filter((x) => x.side && x.end)) {
+    const end = sideFoot(m.side, sampleMove(m.move, m.seconds));
+    if (end.some((v, k) => Math.abs(v - m.end[k]) > 1e-6)) throw new Error(`${motions[moves.indexOf(m)].who}: footprint-story planned this move to end at tiles ${tilesText(end)} in its list and at ${tilesText(m.end)} alone — the kit cannot draw both: report it to footprint-story`);
+  }
   const until = (m) => m.start + m.seconds;
   for (const [i, m] of moves.entries()) {
     // one move at a time a piece, and the blocks a move relies on (its target, what it lands on) stand still meanwhile:
@@ -162,7 +188,24 @@ export function planMotions(map, motions, clock, where) {
   const poseAt = poseAtOf(moves, map);
   keepOnFrame(map, moves, motions, poseAt);
   const through = throughFindings(map, moves, poseAt), covers = coversOf(map, moves.map((m) => ({...m, times: samplesOf(m)})), poseAt);
-  return {intents: frozen(intents), planned, moves, ...recordsOf(motions, moves, planned, [...through, ...covers.findings]), hidden: covers.hidden, poseAt, run: runOf(intents, planned)};
+  return {intents: frozen(intents), planned, moves, ...recordsOf(motions, moves, planned, [...through, ...covers.findings]), hidden: turningHidden(covers.hidden, moves), poseAt, run: runOf(intents, planned)};
+}
+
+/**
+ * The names hidden at each moment: those a resting block covers (motion-cover.mjs), and a turning body's own while it
+ * turns — from its roll's or tumble's start to its end. WHY: a name is drawn on a body's top as built; a body turning end
+ * over end has no top that stays its top, and a name left upright on it would be no part of the body it names. At rest
+ * again it is drawn on the top it has (a block lands on a face; a ball's name sits on its middle). Spans in order, joined.
+ */
+function turningHidden(covered, moves) {
+  const hidden = new Map(covered);
+  for (const m of moves.filter((x) => x.turns)) hidden.set(m.piece, [...(hidden.get(m.piece) ?? []), [m.start, m.start + m.seconds]]);
+  for (const [b, spans] of hidden) {
+    const joined = [];
+    for (const [a, z] of [...spans].sort((x, y) => x[0] - y[0])) { if (joined.length && a <= joined.at(-1)[1]) joined.at(-1)[1] = Math.max(joined.at(-1)[1], z); else joined.push([a, z]); }
+    hidden.set(b, joined);
+  }
+  return hidden;
 }
 
 /**
@@ -186,10 +229,12 @@ function keepOnFrame(map, moves, motions, poseAt) {
     if (m.piece.shape.outline.some((p) => offFrame(p))) continue;
     for (const t of samplesOf(m)) {
       const pose = poseAt(m.piece, t);
-      const off = drawnOff(m.piece.shape.outline.map((p) => posed(p, pose)), pose.rope ?? []);
+      const off = drawnOff(drawnOutline(m.piece, pose, map.grid), pose.rope ?? []);
       if (!off) continue;
       const foot = footOf(pose.at, m.piece.size);
-      throw new Error(`${motions[i].who}: its way leaves the frame — at ${round3(t - m.start)} s ${off.part === 'block' ? 'the block' : 'its rope'} is ${off.off} (its foot at tiles ${tilesText(foot)}) — ${m.tie === 'top' ? 'a pin nearer the blocks, or lower (from)' : 'a nearer to, or one lower on the frame'}`);
+      // a tumble rests where it rolls or slides on to: the fix may be to slow it once it lands (footprint-story's option)
+      const fix = m.tie === 'top' ? 'a pin nearer the blocks, or lower (from)' : m.do === 'tumble' ? `a nearer to, or slow it once it lands (model: {"name": "free-spin", "${m.piece.kind === 'ball' ? 'resistance' : 'kinetic'}": …})` : 'a nearer to, or one lower on the frame';
+      throw new Error(`${motions[i].who}: its way leaves the frame — at ${round3(t - m.start)} s ${off.part === 'block' ? 'the block' : 'its rope'} is ${off.off} (its foot at tiles ${tilesText(foot)}) — ${fix}`);
     }
   }
 }
@@ -207,15 +252,43 @@ function throughFindings(map, moves, poseAt) {
     const times = samplesOf(m), rest = map.blocks.filter((b) => b !== m.piece);
     let worst = null;
     for (let k = 1; k < times.length; k += 1) {
-      const [t0, t1] = [times[k - 1], times[k]];
-      const hit = sweptThrough(m.piece.size, placeAt(m.piece, t0), placeAt(m.piece, t1), rest.map((b) => ({block: b, from: placeAt(b, t0), to: placeAt(b, t1)})));
-      if (hit && (!worst || hit.depth > worst.depth)) worst = {...hit, t: t0 + hit.share * (t1 - t0)};
+      for (const [t0, t1, size, from, to] of stretchesOf(m, times[k - 1], times[k], poseAt, placeAt)) {
+        const hit = sweptThrough(size, from, to, rest.map((b) => ({block: b, from: placeAt(b, t0), to: placeAt(b, t1)})));
+        if (hit && (!worst || hit.depth > worst.depth)) worst = {...hit, t: t0 + hit.share * (t1 - t0)};
+      }
     }
     if (!worst) return [];
-    const fix = m.tie === 'top' ? `move "${worst.block.name}" out of its swing, or the pin (from) so it swings clear` : m.do === 'throw' ? `throw it to a place clear of "${worst.block.name}", or move "${worst.block.name}" out of its way`
+    const fix = m.tie === 'top' ? `move "${worst.block.name}" out of its swing, or the pin (from) so it swings clear` : m.do === 'throw' || m.do === 'tumble' ? `${m.do} it to a place clear of "${worst.block.name}", or move "${worst.block.name}" out of its way`
       : `move it round "${worst.block.name}": a to clear of it, or throw it over (do: "throw")`;
     return [{intent: i, critic: 'reel:contact', level: 'warn', what: `at ${round3(worst.t - m.start)} s it goes ${round3(worst.depth)} tiles into "${worst.block.name}" — it passes through a block`, fix}];
   });
+}
+
+/**
+ * How far a corner of a turning block may swing between two of the stretches it is swept on, beyond the box it fills
+ * over each (tiles): a tenth of THROUGH_MOST (motion-place.mjs), so the box never reads as passing through what it misses.
+ */
+const TURN_STEP = 0.005;
+
+/**
+ * The stretches a move's block is swept on between two samples (`t0`, `t1`), each [t0, t1, size, from, to] (corners in
+ * tiles): the one stretch at its own size, or for a block turning end over end (a tumble), shorter stretches, each at the
+ * box its turned corners fill over that stretch (turn.mjs · reachOver: along its way and up). WHY: a block turning
+ * reaches past its own box — a cube a corner on reaches √2 of its half side — and what it passes through is what it
+ * fills; a ball fills its own box however it turns.
+ */
+function stretchesOf(m, t0, t1, poseAt, placeAt) {
+  if (!(m.turns && m.piece.kind === 'block')) return [[t0, t1, m.piece.size, placeAt(m.piece, t0), placeAt(m.piece, t1)]];
+  const half = m.piece.size[2] / 2, along = Math.abs(m.side.heading[0]) > Math.abs(m.side.heading[1]) ? 0 : 1, angle = (t) => poseAt(m.piece, t).angle;
+  const n = Math.max(1, Math.ceil((half * Math.abs(angle(t1) - angle(t0))) / TURN_STEP)), out = [];
+  for (let j = 0; j < n; j += 1) {
+    const [a, b] = [t0 + (j / n) * (t1 - t0), t0 + ((j + 1) / n) * (t1 - t0)], reach = 2 * half * reachOver(angle(a), angle(b));
+    const size = [...m.piece.size]; size[along] = reach; size[2] = reach;
+    // the box it fills sits round its middle: its corner is the middle less half of it each way
+    const corner = (t) => { const at = placeAt(m.piece, t); return [0, 1, 2].map((k) => at[k] + m.piece.size[k] / 2 - size[k] / 2); };
+    out.push([a, b, size, corner(a), corner(b)]);
+  }
+  return out;
 }
 
 /**
@@ -248,9 +321,14 @@ function recordsOf(motions, moves, planned, through) {
  * its corner as a built block's `at`: what the paint order and the pass-through check are worked out from). After its
  * last move it stays where that ended.
  *
- * WHY no angle: footprint-story 0.30's block moves give one, but none is a body's turn — a throw's and a fall's is the
- * heading of its flight, a hang's the heading of its rope's last link — and a block that stood upright would jump to
- * it. tumble (0.31) turns a body: its row in INTENT_OF will say so, and the pose will carry its angle.
+ * A roll's or a tumble's pose also carries `turn` (the body's turn as a matrix in tiles: turn.mjs) and `angle` (the
+ * sample's own, while that move runs); a body once turned keeps its turn after (`turn` absent: as built).
+ *
+ * WHY a turn only for those: footprint-story's other block moves give an angle too, but none is a body's turn — a
+ * throw's and a fall's is the heading of its flight, a hang's the heading of its rope's last link — and a block that
+ * stood upright would jump to it. A roll's angle is distance / radius and a tumble's its spin: each the turn about the
+ * line across its way (motion-side.mjs), taken from the sample, never worked out again. A piece's turns follow one
+ * another: each move turns the body from where its last turn left it, so a ball rolled twice never jumps back.
  */
 function poseAtOf(moves, map) {
   const px = (t) => { const p = map.grid.at(t[0], t[1], t[2] ?? 0); return [p.x, p.y]; }, footAt = footTiles(map.grid);
@@ -258,18 +336,27 @@ function poseAtOf(moves, map) {
   for (const m of moves) tracks.set(m.piece, [...(tracks.get(m.piece) ?? []), m].sort((a, b) => a.start - b.start));
   // each piece's foot and top on the frame where it was built: what its samples are measured from
   const built = new Map([...tracks.keys()].map((b) => [b, {foot: px(footOf(b.at, b.size)), top: px(topOf(b.at, b.size))}]));
+  // the body's turn as each move begins: its earlier moves' turns, one after another, each as its plan ended
+  const before = new Map(), turnOf = (m, s) => compose(turning(turnAxis(m.side.heading), s.angle), before.get(m));
+  for (const list of tracks.values()) {
+    let turn = UNTURNED;
+    for (const m of list) { before.set(m, turn); if (m.turns) turn = turnOf(m, sampleMove(m.move, m.seconds)); }
+  }
   return (piece, t) => {
     const list = tracks.get(piece);
     if (!list || t < list[0].start) return null;
     const m = list.findLast((x) => x.start <= t), s = sampleMove(m.move, Math.min(m.seconds, t - m.start));
     const pivot = built.get(piece)[m.tie], {foot, top} = built.get(piece);
     // the foot on the frame now: the sample itself, or for a hang (tied at its top, drawn upright) as far below it as built;
-    // once the move has ended its place is the one it was planned to end on, exactly (worked back from the frame, a
-    // ball resting on a top could come out a billionth under it, inside the block it stands on, and be ordered behind it)
+    // a side-on move's sample laid back on the floor along its way (motion-side · sideFoot). Once the move has ended its
+    // place is the one it was planned to end on, exactly (worked back from the frame, a ball resting on a top could come
+    // out a billionth under it, inside the block it stands on, and be ordered behind it)
     const ended = t >= m.start + m.seconds && m.end !== null;
-    const [c, r, lift] = ended ? m.end : footAt([s.x, s.y + (m.tie === 'top' ? foot[1] - top[1] : 0)], m, Math.min(1, (t - m.start) / m.seconds));
-    return {dx: s.x - pivot[0], dy: s.y - pivot[1], pivot, sx: s.sx ?? 1, sy: s.sy ?? 1, ...(m.tie === 'top' ? {rope: s.points} : {}),
-      at: cornerOf([c, r, lift], piece.size)};
+    const place = ended ? m.end : m.side ? sideFoot(m.side, s) : footAt([s.x, s.y + (m.tie === 'top' ? foot[1] - top[1] : 0)], m, Math.min(1, (t - m.start) / m.seconds));
+    const [dx, dy] = m.side ? [px(place)[0] - foot[0], px(place)[1] - foot[1]] : [s.x - pivot[0], s.y - pivot[1]];
+    const turn = m.turns ? turnOf(m, s) : before.get(m);
+    return {dx, dy, pivot, sx: s.sx ?? 1, sy: s.sy ?? 1, ...(m.tie === 'top' ? {rope: s.points} : {}),
+      at: cornerOf(place, piece.size), ...(isUnturned(turn) ? {} : {turn}), ...(m.turns ? {angle: s.angle} : {})};
   };
 }
 

@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.44.0 — pieces roll, slide and tumble
+
+An isometric world's `motion` entry can now `roll`, `slide` and `tumble`, with footprint-story (now `^0.31.0`). As
+before, the author writes intent only — a piece, what it does, where it ends — and footprint-story decides the model,
+the duration and the curve: a roll without slipping that turns by distance / radius and comes to rest exactly on its
+place, a slide slowed by friction, a spinning flight that lands and rolls or slides on. The kit draws each turn as the
+grid sees it. A new block kind, `ball`, is the round thing that rolls. **No frame changes** for a film without these
+moves: `test/golden.json` keeps every pin it had, and gains the new example's.
+
+```json
+"blocks": [{"name": "ball", "kind": "ball", "label": "Ball", "at": [1, 6]},
+           {"name": "crate", "label": "Crate", "at": [1, 1], "size": [1.4, 1.4, 1]},
+           {"name": "shelf", "at": [7, 1], "size": [2, 2, 1.5]}, {"name": "cube", "at": [7.5, 1.5, 1.5], "size": [1, 1, 1]}],
+"motion": [{"piece": "ball", "do": "roll", "to": [6, 6.5]},
+           {"piece": "crate", "do": "slide", "to": [4, 2.2], "at": ["roll", "A crate slides"]},
+           {"piece": "cube", "do": "tumble", "to": [8, 4.5], "at": ["roll", "the cube tumbles"]}]
+```
+
+- **What an author can now write** (`kits/isometric/motion-read.mjs` · `MOTION_DOS`): `roll` — a ball along the level
+  it rests on (the floor, or a block's top) to `to`; `slide` — any block along its level to `to`, never turning;
+  `tumble` — a ball, or a block end over end, through the air onto `to` (a block's top or the floor), then rolling or
+  sliding on to rest. `wrap`, `model` (`{"name": "no-slip", "resistance": 0.1}`, `{"name": "coulomb", "kinetic": 0.4}`,
+  `{"name": "free-spin", …}`) and `accept` work as for every move.
+- **A ball** (`kind: "ball"`): round every way (`size: [d, d, d]`, `[1, 1, 1]` when left out). The map is built with it
+  as the cylinder round it; the kit draws the ball itself — its outline, two marks that show its turn, its name on its
+  middle. StoryDeck has no ball yet. A ball has no ports, and a world with a `style` and a ball is refused (the styles
+  paint blocks and cylinders).
+- **Planned side on along the way** (`motion-side.mjs`): a floor seen from a corner is no level line on the frame, so
+  each of these moves is footprint-story's intent in the upright plane through the body's way, in the world's own px (a
+  tile's true length), and its samples are laid back on the floor. The radius, the shape and the floor come from the
+  block. A tumble rests where its own plan's last sample says.
+- **The turn is drawn as the grid sees it** (`turn.mjs`): a body turns about the level line across its way, by the
+  sample's angle, never worked out again; a cube's faces turn and are toned by the way they face, a ball's marks turn
+  forward, and a ball rolled twice turns on from where it stopped. While a body turns its name is hidden (not drawn, not
+  listed to read), and it is drawn again at rest. Everything is a paint list, painted by the kit's one painter.
+- **What cannot be drawn truly is refused**, naming the entry and the fix: a block or a cylinder asked to roll, a
+  cylinder asked to tumble, a block tumbling across a row and a column, or longer along its way than it is high; a roll
+  or a slide from the air, to another level or off the top it rests on; a tumble up, onto air, or rolling on off its top;
+  `to` where it already stands.
+- **Everything 0.43.0 holds, holds for these**: `reel:contact` sweeps every stretch (a turning block as the box its
+  turned corners fill), no block moves from under a rider, the drawn outline stays on the frame (a tumble that rolls on
+  off it says how to slow it), `reel:covers`, `accept`, the record (`map.motions`), `storyreel check`'s run and
+  `storyreel log --why duration-<i> --motion <world>`. footprint-story's new critics, `roll-slip` and `spin`, reach the
+  check's reply at their own level, naming the entry and the fix; a spin too fast to read is a note.
+- A new example, `examples/iso-roll` (a ball rolls and rolls back, a crate slides, a cube tumbles off a shelf), pinned in
+  `test/golden.json`; `test/iso-roll.test.mjs`. Types: `kind: 'ball'`, the three `do` words, `ISO_LIMITS.ballSize`,
+  `ISO_LOOK.mark` / `markLine`.
+
 ## 0.43.0 — a world's pieces move by intent
 
 An isometric world's recipe takes `motion`: a list of moves, each naming a block and what it does in

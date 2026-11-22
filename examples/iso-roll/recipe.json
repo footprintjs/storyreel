@@ -1,0 +1,18 @@
+{
+ "story": {
+  "kit": "isometric",
+  "blocks": [
+   {"name": "ball", "kind": "ball", "label": "Ball", "at": [1, 6]},
+   {"name": "crate", "label": "Crate", "at": [1, 1], "size": [1.4, 1.4, 1], "tone": "warn"},
+   {"name": "shelf", "label": "Shelf", "at": [7, 1], "size": [2, 2, 1.5]},
+   {"name": "cube", "label": "Cube", "at": [7.5, 1.5, 1.5], "size": [1, 1, 1], "tone": "ok"}
+  ],
+  "floors": [{"name": "room", "label": "The room"}],
+  "motion": [
+   {"piece": "ball", "do": "roll", "to": [6, 6.5], "at": ["roll", "A ball rolls"]},
+   {"piece": "crate", "do": "slide", "to": [4, 2.2], "at": ["roll", "A crate slides"]},
+   {"piece": "cube", "do": "tumble", "to": [8, 4.5], "at": ["roll", "the cube tumbles"]},
+   {"piece": "ball", "do": "roll", "to": [3, 6], "at": ["roll", "Nothing here"]}
+  ]
+ }
+}
