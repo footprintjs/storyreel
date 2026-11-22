@@ -21,6 +21,10 @@
  * the world's entry), `summary` (the counts the record keeps) and `map` (the whole record: placed by whom, the tile,
  * every block's place, every cable's corners, length and hidden stretches) and `mapRun` (the map built again by
  * footprint-story's map flow, a run whose record says why: flow.mjs). With `strict: true` a warning refuses.
+ *
+ * `motion` moves blocks by intent ({"piece": "box", "do": "fall"}): footprint-story decides each move's model, duration
+ * and curve (motion.mjs), the block is drawn where the samples put it, framed there, and the world's record names each
+ * move's model, reason and seconds. A world with no motion is exactly as it was.
  */
 import {readMap} from './read.mjs';
 import {buildMap} from './build.mjs';
@@ -29,13 +33,16 @@ import {walkWay} from 'footprint-story/isometric';
 import {layCables} from './cables.mjs';
 import {notesOf} from './notes.mjs';
 import {rideOf, packetsAt} from './ride.mjs';
-import {drawMap, lookOf, inAt} from './draw.mjs';
+import {drawMap, lookOf, inAt, posed} from './draw.mjs';
+import {planMotions} from './motion.mjs';
 
 export {ISO_LIMITS, readArrow} from './read.mjs';
 export {ISO_FIT} from './build.mjs';
 export {ISO_LOOK} from './draw.mjs';
 export {PACKET_RADIUS} from './ride.mjs';
 export {NOTE_FROM} from './notes.mjs';
+export {MOTION_DOS, MOTION_KEYS, MOST_MOTIONS} from './motion-read.mjs';
+export {MOTION_FRAME} from './motion.mjs';
 
 const boxOf = (points) => { const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; };
 const round1 = (v) => Math.round(v * 10) / 10;
@@ -85,27 +92,35 @@ export function compileIsometric(spec, context) {
   const notes = Object.freeze(notesOf(map).map((n) => Object.freeze(n)));
   const warned = notes.filter((n) => n.level === 'warn');
   if (map.strict && warned.length) throw new Error(`${where}: the isometric map has ${warned.length} warning${warned.length === 1 ? '' : 's'} (strict: true): ${warned.slice(0, 3).map((n) => n.message.slice(where.length + 2)).join('; ')}${warned.length > 3 ? `; and ${warned.length - 3} more` : ''}`);
+  // the blocks that move by intent: every move decided by footprint-story (motion.mjs), timed on the film's clock; none
+  // written, nothing planned, and the world is drawn, framed and recorded exactly as before worlds took a motion
+  const motion = map.motion.length ? planMotions(map, map.motion, clock, where) : null;
   const look = lookOf(theme), shownAt = (p, t) => p.appearAt === null || t >= p.appearAt;   // named from its moment on, as it starts to come in
+  // a block's outline where it is drawn at t: as built, or where its move has put it
+  const outlineAt = (b, t) => { const pose = motion?.poseAt(b, t) ?? null; return pose ? b.shape.outline.map((p) => posed(p, pose)) : b.shape.outline; };
   const walks = map.wires.map((w) => walkWay(w.cable.way));
   return {
     hang: 1,
     sounds: [],
     notes,
-    map: Object.freeze(recordOf(map)),
+    map: Object.freeze({...recordOf(map), ...(motion ? {motions: motion.record} : {})}),
     // the map built again by footprint-story's map flow, its run recorded: `storyreel check` runs it (flow.mjs, check/maps.mjs)
     mapRun: mapRun(map),
+    // the moves run again through footprint-story's intent decider as a chart, its run recorded (`storyreel check`:
+    // check/motions.mjs), and what its critics found, each naming its entry and the fix (the review's `motion` check)
+    ...(motion ? {motionRun: motion.run, motionFindings: motion.findings, motionIntents: motion.intents} : {}),
     // what the film's record keeps of this world (film/summaries.mjs · buildSummary): a few counts and the style it was
     // built in, never the map itself
     summary: Object.freeze({placed: map.placed, tile: map.grid.tile[0], style: styleOf(map), blocks: map.blocks.length, floors: map.floors.length, wires: map.wires.length,
-      along: map.wires.filter((w) => w.route?.points).length, packets: map.wires.reduce((n, w) => n + w.packets, 0)}),
-    draw: (c, t) => drawMap(c, map, t, look),
+      along: map.wires.filter((w) => w.route?.points).length, packets: map.wires.reduce((n, w) => n + w.packets, 0), ...(motion ? {motions: motion.summary} : {})}),
+    draw: motion ? (c, t) => drawMap(c, map, t, look, (b) => motion.poseAt(b, t)) : (c, t) => drawMap(c, map, t, look),
     // every piece by its name, once it has come in: a push or a camera move frames "server"; a label by its own path
     regionsAt: (t) => [
       ...map.floors.flatMap((f) => (shownAt(f, t) ? [{box: boxOf(f.shape.outline), path: f.path, label: f.label ?? `floor ${f.name ?? f.path}`, ...(f.name ? {name: f.name} : {})},
         ...(f.place ? [{box: floorLabelBox(f), path: `${f.path}.label`, label: f.label}] : [])] : [])),
       ...map.wires.flatMap((w, i) => (shownAt(w, t) ? [{box: boxOf(walks[i]), path: w.path, label: w.label ?? `${w.arrow.from.block.name} to ${w.arrow.to.block.name}`, ...(w.name ? {name: w.name} : {})},
         ...(w.label ? [{box: [w.labelAt[0] - w.labelHalf[0], w.labelAt[1] - w.labelHalf[1], w.labelAt[0] + w.labelHalf[0], w.labelAt[1] + w.labelHalf[1]], path: `${w.path}.label`, label: w.label}] : [])] : [])),
-      ...map.order.filter((b) => shownAt(b, t)).map((b) => ({box: boxOf(b.shape.outline), path: b.path, label: b.label ?? b.name, name: b.name})),
+      ...map.order.filter((b) => shownAt(b, t)).map((b) => ({box: boxOf(outlineAt(b, t)), path: b.path, label: b.label ?? b.name, name: b.name})),
     ],
     // every label, from when it has come in: the block's name and its small line, a floor's name, a cable's label
     texts: () => [

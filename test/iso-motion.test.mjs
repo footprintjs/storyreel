@@ -1,0 +1,250 @@
+// A world's pieces moved by intent (src/kits/isometric/motion-read.mjs, motion.mjs; src/check/motions.mjs): the author
+// writes what happens, footprint-story decides each move's model, duration and curve, the kit places it on the frame and
+// draws the block where the samples put it. Its record names each move's model, reason and seconds; a check runs the
+// moves through footprint-story's chart and keeps a record that `log --why --motion` answers from; the critics' findings
+// reach the check's reply naming the entry and the fix. A world with no motion is exactly as it was.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync, readdirSync} from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {planIntents, sampleMove} from 'footprint-story/human';
+import {frameHashes, loadTheme} from '../src/index.mjs';
+import {compileIsometric, MOTION_DOS, MOTION_FRAME} from '../src/kits/isometric/index.mjs';
+import {PLANNED_DOS} from '../src/kits/isometric/motion.mjs';
+import {readInputs, check, log} from '../src/tools.mjs';
+import {listRuns, RUNS} from '../src/runlog.mjs';
+import {runMotions, motionLines} from '../src/check/index.mjs';
+import {compileExample} from './golden.mjs';
+import {tempDir} from './tmp.mjs';
+
+const dir = fileURLToPath(new URL('../examples/iso-motion/', import.meta.url));
+const recipe = JSON.parse(readFileSync(dir + 'recipe.json', 'utf8'));
+const film = await compileExample('iso-motion');
+const theme = loadTheme('paper');
+const worldOf = (spec, where = 'the story') => compileIsometric(spec, {clock: film.clock, theme, where});
+const story = worldOf(recipe.story);
+const project = fileURLToPath(new URL('./fixtures/iso-motion/', import.meta.url));
+const ask = (out, why, motion, more = {}) => log({cwd: project, out, run: '1', why, motion, ...more});
+const motionFiles = out => readdirSync(path.join(out, ...RUNS)).filter(n => /\.motion-\d+\.record\.jsonl$/.test(n));
+const near = (a, b, what) => assert.ok(Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6, `${what}: ${a} is not ${b}`);
+const at = (phrase, plus = 0) => film.clock.at(['drop', phrase]) + plus;
+
+test('the record names each move\'s model, how it was chosen, its reason and its seconds: footprint-story\'s own data', () => {
+  assert.deepEqual(story.map.motions.map(m => [m.path, m.piece, m.do, m.model, m.by, m.wrappers]), [
+    ['motion[0]', 'box', 'fall', 'ballistic', 'usual', []],
+    ['motion[1]', 'ball', 'throw', 'ballistic', 'usual', ['anticipate']],
+    ['motion[2]', 'box', 'settle', 'spring', 'usual', []]]);
+  assert.match(story.map.motions[0].reason, /^do: 'fall' → ballistic, the usual for do: 'fall' — a fall of [\d.]+ px onto the floor at y [\d.]+ from rest, over 0\.\d+ s under 1960 px\/s²$/);
+  assert.match(story.map.motions[1].reason, /then anticipate: a pull back of 8% of its distance/);
+  assert.equal(story.map.motions[0].at, +at('It falls to the floor').toFixed(3), 'it begins at its anchor');
+  // the summary keeps the few words of each, beside the world's entry in the compile's record
+  assert.deepEqual(story.summary.motions.map(m => Object.keys(m)), [0, 1, 2].map(() => ['piece', 'do', 'model', 'at', 'seconds']));
+  // the moves are footprint-story's: planIntents over the intents the kit handed it gives the very seconds recorded
+  const again = planIntents(story.motionIntents, {frame: [...MOTION_FRAME]});
+  assert.deepEqual(again.durations.map(d => +d.seconds.toFixed(3)), story.map.motions.map(m => m.seconds));
+  assert.deepEqual(again.moves.map(m => m.reason), story.map.motions.map(m => m.reason));
+  assert.deepEqual(story.motionFindings, [], 'the example moves well: no critic finds fault');
+  assert.deepEqual(film.motionRuns.map(m => [m.name, m.kit, m.findings.length]), [['story', 'isometric', 0]]);
+});
+
+test('placed from the built map: a fall drops the box\'s foot straight to the floor under it, a throw lands the ball on the server\'s top', () => {
+  // a grid written in numbers, so a world and its "after" picture stand on the very same floor
+  const grid = {tile: 100, at: [800, 150]}, server = {name: 'server', at: [6, 1], size: [2, 2, 1.6]};
+  const box = {name: 'box', at: [1, 1, 3]}, ball = {name: 'ball', kind: 'cylinder', at: [1, 5], size: [1.2, 1.2, 0.6]};
+  const w = worldOf({grid, blocks: [box, ball, server], motion: [{piece: 'box', do: 'fall'}, {piece: 'ball', do: 'throw', to: 'server'}]});
+  const region = (world, name, t) => world.regionsAt(t).find(r => r.name === name).box.map(v => +v.toFixed(6));
+  const [fall, toss] = w.map.motions, end = Math.max(fall.seconds, toss.seconds) + 0.01;
+  // the box after its fall is the box built standing on the floor; the ball after its throw, a ball built on the server's top
+  const landed = worldOf({grid, blocks: [{...box, at: [1, 1]}, {...ball, at: [6 + 1 - 0.6, 1 + 1 - 0.6, 1.6]}, server]});
+  assert.deepEqual(region(w, 'box', end), region(landed, 'box', 0), 'the box lands exactly where a block on the floor stands');
+  assert.deepEqual(region(w, 'ball', end), region(landed, 'ball', 0), 'the ball lands on the middle of the server\'s top');
+  assert.equal(region(w, 'box', fall.seconds / 2)[0], region(w, 'box', 0)[0], 'straight down: not one pixel sideways');
+  assert.ok(region(w, 'box', fall.seconds / 2)[1] > region(w, 'box', 0)[1], 'half way through, lower');
+  // the ball goes up before it comes down onto the server: its highest point is above both ends
+  const tops = Array.from({length: 40}, (_, k) => region(w, 'ball', k * toss.seconds / 40)[1]);
+  assert.ok(Math.min(...tops) < Math.min(region(w, 'ball', 0)[1], region(w, 'ball', end)[1]) - 20, 'thrown through the air, over an arc');
+});
+
+test('timed on the film\'s clock: as built before its anchor, moving from it, and where it ended after; a camera frames the block where it is', () => {
+  const w = worldOf(recipe.story), still = worldOf({...recipe.story, motion: undefined});
+  const t0 = at('It falls to the floor');
+  for (const t of [0, 1, t0 - 0.05]) assert.deepEqual(w.regionsAt(t), still.regionsAt(t), `at ${t} s nothing has moved`);
+  assert.notDeepEqual(w.regionsAt(t0 + 0.3), still.regionsAt(t0 + 0.3), 'once it begins, the box is framed where it falls');
+  // the camera key on ["ball", "server"] frames the ball where it landed
+  const t = at('lands on top', 0.5), ball = film.regionsAt(t).find(r => r.name === 'ball'), server = film.regionsAt(t).find(r => r.name === 'server');
+  assert.ok(ball.box[3] <= server.box[3] && ball.box[1] < server.box[1] + 40, 'the ball is on the server, and framed there');
+});
+
+test('the same intents give the same moves and the same frames, drawn in any order; the frames are pinned in golden.json', async () => {
+  const twice = worldOf(recipe.story);
+  assert.deepEqual(twice.map.motions, story.map.motions);
+  const times = Array.from({length: 14}, (_, k) => +((k + 0.5) * film.total / 14).toFixed(3));
+  const first = frameHashes(film, {times, width: 320}), again = frameHashes(await compileExample('iso-motion'), {times: [...times].reverse(), width: 320});
+  for (const t of times) assert.equal(again[t], first[t], `the frame at ${t} s is the same, drawn again last first`);
+  const golden = JSON.parse(readFileSync(new URL('./golden.json', import.meta.url), 'utf8'));
+  assert.ok(golden['iso-motion'], 'iso-motion is pinned');
+});
+
+test('a world with no motion is as it was: no motions in its record or summary, no run handed out, the same drawing', () => {
+  const still = worldOf({...recipe.story, motion: undefined}), empty = worldOf({...recipe.story, motion: []});
+  for (const w of [still, empty]) {
+    assert.ok(!('motions' in w.map) && !('motions' in w.summary), 'nothing about motion is recorded');
+    assert.ok(!('motionRun' in w) && !('motionFindings' in w), 'nothing is handed out');
+  }
+  assert.deepEqual(empty.map, still.map);
+});
+
+test('a film with no motion hands out no motion run, and its check says nothing of motion', async t => {
+  const plain = await compileExample('iso-world');
+  assert.ok(!('motionRuns' in plain), 'the film has no motion runs');
+  const out = tempDir('motion-none', t);
+  const said = await check(await readInputs({cwd: project, out, plain: 'true'}));
+  assert.doesNotMatch(said, /motions?[: ]|move that reads/);
+  assert.deepEqual(motionFiles(out), []);
+  await assert.rejects(ask(out, 'duration-0', 'story', {plain: 'true'}), {message: 'run 1 kept no moves: no world of its film has a motion — its worlds are story (isometric)'});
+});
+
+test('refusals name the entry and the fix', () => {
+  const blocks = [{name: 'box', at: [2, 2, 3]}, {name: 'ball', at: [0, 6]}, {name: 'server', at: [8, 2], size: [2, 2, 1.6]}];
+  const cases = [
+    [[{piece: 'box', do: 'fall', speed: 2}], /^Error: stage s: isometric motion\[0\] takes piece, do, at, to, from, wrap, model — not "speed"$/],
+    [[{do: 'fall'}], /isometric motion\[0\]: piece names the block that moves \("box"\) — the blocks are box, ball, server; not undefined/],
+    [[{piece: 'crate', do: 'fall'}], /piece names "crate", which is no block here — the blocks are box, ball, server/],
+    [[{piece: 'box', do: 'roll'}], /motion\[0\] \("box"\): do says what the block does, "fall", "throw", "hang", "settle" or "reach" \(footprint-story's words\) — not "roll"/],
+    [[{piece: 'box', do: 'draw'}], /do "draw" moves a pen's point along a line, not a block — a block takes do "fall", "throw", "hang", "settle" or "reach"/],
+    [[{piece: 'ball', do: 'fall'}], /motion\[0\] \("ball"\): a fall drops the block from where it stands, and it stands on the floor \(lift 0\) — lift it first \(its at: \[col, row, 3\]\), or throw it/],
+    [[{piece: 'box', do: 'fall', to: 'server'}], /a fall takes no to — it falls straight down to the floor below it: take to out/],
+    [[{piece: 'ball', do: 'throw'}], /a throw needs to, where it ends: a block's name \("box"\) or tiles \(\[col, row\]\)/],
+    [[{piece: 'ball', do: 'throw', to: 'ball'}], /to names the piece itself — name another block, or give tiles/],
+    [[{piece: 'ball', do: 'throw', to: 'cloud'}], /to names "cloud", which is no block here — the blocks are box, ball, server; or give tiles/],
+    [[{piece: 'ball', do: 'throw', to: [1, 2, -1]}], /to's lift is how high above the floor, 0 or more — not -1/],
+    [[{piece: 'ball', do: 'hang'}], /a hang needs from, the pin it hangs from/],
+    [[{piece: 'ball', do: 'throw', to: 'server', at: 'soon'}], /at is when the move begins, an anchor \["scene", "phrase"\] .* not "soon"; leave it out to begin when the block appears/],
+    [[{piece: 'ball', do: 'throw', to: 'server', at: ['drop', 'no such words']}], /^Error: stage s: isometric motion\[0\] \("ball"\): at: /],
+    [[{piece: 'ball', do: 'throw', to: 'server', wrap: {wrapper: 'anticipate'}}], /wrap is a list of at most 4 wrappers, \[\{"wrapper": "anticipate"\}\]/],
+    [[{piece: 'ball', do: 'throw', to: 'server', wrap: [{wrapper: 'wobble'}]}], /^Error: stage s: isometric motion\[0\] \("ball"\)'s wrap\[0\] is \{wrapper, …its options\}, the wrapper 'anticipate', 'follow-through', 'hold', 'overshoot' — not "wobble"$/],
+    [[{piece: 'ball', do: 'throw', to: 'server', model: 'min-jerk'}], /^Error: stage s: isometric motion\[0\] \("ball"\): the model "min-jerk" is for a reach, and this intent is do: 'throw' .* name a throw model: "ballistic", "bounce"$/],
+    [[{piece: 'ball', do: 'settle', to: 'server', model: {name: 'spring', feel: 'bouncy'}}], /^Error: stage s: isometric motion\[0\] \("ball"\): model "spring"'s feel is one of snappy, default, heavy, playful — not "bouncy"$/],
+    [[{piece: 'box', do: 'fall'}, {piece: 'box', do: 'throw', to: 'server'}], /motion\[1\] \("box"\): it begins at 0 s, as motion\[0\] does — a piece makes one move at a time: anchor one later/],
+    [[{piece: 'box', do: 'fall', at: ['drop', 'It falls']}, {piece: 'box', do: 'throw', to: 'server', at: ['drop', 'It falls', 0.1]}], /motion\[1\] \("box"\): it begins at [\d.]+ s, while motion\[0\] still moves "box" until [\d.]+ s \(footprint-story planned it 0\.\d+ s\) — anchor it at [\d.]+ s or later: a later phrase, or \["scene", "phrase", 0\.\d+\] after this one/],
+    [[{piece: 'ball', do: 'hang', from: [0, 4, 4]}, {piece: 'ball', do: 'settle', to: 'server', at: ['drop', 'timed by hand']}], /motion\[1\] \("ball"\): it follows motion\[0\], a hang, which ends wherever its swing settles — a hang is a piece's last move/],
+    [[{piece: 'server', do: 'settle', to: [1, 1]}], /motion\[0\] \("server"\): wires\[0\] joins "server": its cable is laid on the floor to where "server" stands and would not follow it — move a block no wire joins, or take the wire off/, {wires: [{arrow: 'ball to server'}]}],
+    [{piece: 'box'}, /isometric motion is a list of moves, \[\{"piece": "box", "do": "fall"\}\]/],
+    [Array.from({length: 65}, () => ({piece: 'box', do: 'fall'})), /an isometric world holds at most 64 motions, and this one has 65 — split it into two worlds/],
+  ];
+  for (const [motion, message, more] of cases) assert.throws(() => worldOf({blocks, ...(more ?? {}), motion}, 'stage s'), message, JSON.stringify(motion).slice(0, 80));
+  // a floor named as the piece: a motion moves a block
+  assert.throws(() => worldOf({blocks, floors: [{name: 'rug', label: 'Rug'}], motion: [{piece: 'rug', do: 'fall'}]}, 'stage s'), /piece "rug" is floors\[0\] — a motion moves a block \(a packet later\): name a block, box, ball, server/);
+});
+
+test('the families a film lets a block do are one table: what motion-read takes is what the planner has a row for', () => {
+  assert.deepEqual(Object.keys(MOTION_DOS), ['fall', 'throw', 'hang', 'settle', 'reach']);
+  assert.deepEqual(PLANNED_DOS, Object.keys(MOTION_DOS));
+});
+
+test('a hang draws its rope from the pin to the block\'s top and leaves it hanging below; a bounce squashes it; a reach aims at a block\'s top', () => {
+  const grid = {tile: 100, at: [800, 150]}, blocks = [{name: 'sign', at: [4, 4, 0]}, {name: 'box', at: [1, 1, 3]}, {name: 'server', at: [8, 2], size: [2, 2, 1.6]}];
+  const w = worldOf({grid, blocks, motion: [{piece: 'sign', do: 'hang', from: [2, 4, 4]}, {piece: 'box', do: 'fall', model: {name: 'bounce', squash: 0.2}}]});
+  assert.deepEqual(w.map.motions.map(m => m.model), ['verlet', 'bounce']);
+  // drawn on a recording canvas: the rope starts at the pin
+  const [hang] = w.motionIntents, calls = [];
+  const rec = new Proxy({}, {get: (_, k) => (typeof k === 'string' ? (...a) => { calls.push([k, ...a]); return {width: 10}; } : undefined), set: (_, k, v) => { calls.push(['=' + String(k), v]); return true; }});
+  w.draw(rec, 1);
+  assert.ok(calls.some(([k, x, y]) => k === 'moveTo' && Math.abs(x - hang.from[0]) < 1e-9 && Math.abs(y - hang.from[1]) < 1e-9), 'the rope is drawn from the pin');
+  // at rest its top is where the swing left the rope's end: footprint-story's last sample of the very same intent
+  const move = planIntents([hang]).moves[0], rest = sampleMove(move, move.plan.seconds), box = w.regionsAt(move.plan.seconds + 1).find(r => r.name === 'sign').box;
+  near([(box[0] + box[2]) / 2, box[1] + 50], [rest.x, rest.y], 'the sign\'s top is the rope\'s end');
+  // a bounce squashes the box at a landing, wider for a moment
+  const squash = w.map.motions[1], widths = Array.from({length: 200}, (_, k) => w.regionsAt(k * squash.seconds / 200).find(r => r.name === 'box').box).map(b => b[2] - b[0]);
+  assert.ok(Math.max(...widths) > Math.min(...widths) + 1, 'at a landing it is wider: squashed');
+  // a reach to a block reads its top's width for Fitts's law
+  const r = worldOf({blocks, motion: [{piece: 'box', do: 'reach', to: 'server'}]}).map.motions[0];
+  assert.match(r.reason, /to a [\d.]+ px target(?! \(the usual)/);
+});
+
+test('the review\'s motion check: a finding is held over its move however short, advice naming the entry and the fix; none outside its window', async () => {
+  const {reviewPart, REVIEW_CHECKS} = await import('../src/review.mjs');
+  const short = {path: 'story.motion[0]', from: 3, to: 3.05, critic: 'jerk', level: 'warn', what: 'its move has 3 speed peaks', fix: "use do: 'reach'"};
+  const moved = {...film, motionRuns: [{name: 'story', kit: 'isometric', run: film.motionRuns[0].run, findings: [short]}]};
+  const r = await reviewPart(moved, {checks: {motion: REVIEW_CHECKS.motion}});
+  assert.deepEqual(r.ran, ['motion']);
+  assert.deepEqual(r.findings.map(f => [f.kind, f.what, f.where, f.fix]), [['motion', 'jerk: its move has 3 speed peaks', 'story.motion[0]', "use do: 'reach'"]]);
+  assert.deepEqual((await reviewPart(moved, {from: 6, to: 9, checks: {motion: REVIEW_CHECKS.motion}})).findings, [], 'a move outside the window is not said');
+  assert.deepEqual((await reviewPart(await compileExample('iso-world'), {checks: {motion: REVIEW_CHECKS.motion}})).ran, [], 'not picked for a film that moves nothing');
+});
+
+test('a check runs the moves through footprint-story\'s chart, keeps its record, and log --why --motion answers from it', async t => {
+  const out = tempDir('motion-why', t);
+  const said = await check(await readInputs({cwd: project, out}));
+  assert.ok(said.endsWith(`\nmotions: story — why a move takes its time: storyreel log --run ${listRuns(out)[0].id} --why duration-0 --motion story (model-<i>: why its model; findings-<i>: what its critics found)`), said.split('\n').at(-1));
+  assert.match(said, /^clean/);
+  assert.doesNotMatch(said, /drift|not kept/);
+  assert.equal(motionFiles(out).length, 1, 'one record a world that moves, beside the run');
+  assert.deepEqual(readdirSync(path.join(out, ...RUNS)).filter(n => n.startsWith('pending-')), [], 'nothing left pending');
+  // why the throw takes its time: its seconds and the law's numbers, written by the wrap step, through the plan and the choice
+  const duration = (await ask(out, 'duration-1', 'story')).split('\n');
+  assert.match(duration[0], /^duration-1 = \{"seconds":[01]\.\d+,"across":\d+(\.\d+)?,"apex":[\d.]+,"apexDefaulted":true,"angle":[\d.]+,.*"wrappers":"anticipate","planned":0\.\d+\}$/);
+  assert.equal(duration[1], 'wrap (wrap#3) [wrote: moves, durations, duration-0, duration-1, duration-2]');
+  assert.match(duration.join('\n'), /choose \(choose#1\) ← via choices ← \[control: this package's models plan every move — isometric motion\[0\] \("box"\): fall → ballistic \(usual\); isometric motion\[1\] \("ball"\): throw → ballistic \(usual\)/);
+  // why the box's model: written by choose
+  assert.match(await ask(out, 'model-0', 'story'), /^model-0 = \{"model":"ballistic","family":"fall","by":"usual","rule":"the intent names none: its family's usual","own":false\}\nchoose \(choose#1\)/);
+  // a key no step writes names those that are
+  assert.match(await ask(out, 'nothing', 'story'), /the moves' steps write intents, wraps, frame, choices, chose, choseWhy, plans, moves, durations, tracks, checks, findings, and for motion\[i\] alone model-<i>, duration-<i>, findings-<i>/);
+});
+
+test('refusals of --motion name what there is', async t => {
+  const out = tempDir('motion-refused', t);
+  await check(await readInputs({cwd: project, out}));
+  await assert.rejects(ask(out, 'duration-0', 'stages[0]'), {message: 'run 1 has no moves for "stages[0]": its worlds that move are story'});
+  await assert.rejects(log({cwd: project, out, run: '1', motion: 'story'}), /--motion picks the record --why reads: ask with --why/);
+  await assert.rejects(ask(out, 'duration-0', true), /--motion names one of the run's worlds that move by its place in the recipe/);
+  await assert.rejects(ask(out, true, 'story'), /^Error: --why names a value of the moves, one of what their steps write: intents, wraps, frame, /);
+  await assert.rejects(ask(out, 'duration-0', 'story', {map: 'story'}), /--map and --motion each pick the record --why reads: give one of them/);
+  // a check kept before 0.43.0 (no motions in its file) is told apart
+  const {writeFileSync} = await import('node:fs');
+  const run = listRuns(out)[0], saved = JSON.parse(readFileSync(run.file, 'utf8')), {motions: _motions, ...old} = saved;
+  writeFileSync(run.file, JSON.stringify(old));
+  await assert.rejects(ask(out, 'duration-0', 'story'), {message: 'run 1 was kept before 0.43.0, which kept no motion records: run storyreel check again, then ask that run'});
+  writeFileSync(run.file, JSON.stringify(saved));
+  const {rmSync} = await import('node:fs');
+  rmSync(listRuns(out)[0].motions[0].recordFile);
+  await assert.rejects(ask(out, 'duration-0', 'story'), /run 1's moves for story kept no record \(it could not be written when the check ran\)/);
+});
+
+test('a critic\'s finding reaches the check\'s reply as advice naming the entry and the fix', async t => {
+  const out = tempDir('motion-finding', t);
+  const said = await check(await readInputs({cwd: project, out, straight: 'true'}));
+  assert.match(said, /^clean — nothing to fix · 1 piece of advice\n/, 'advice: the film still draws; the move is the author\'s');
+  assert.match(said, /\nnote 0:\d\d\.\d–0:\d\d\.\d drop · a move that reads wrong: arc: its move runs straight \(it bows 0\.0% of its length\) — .* · at story\.motion\[3\] · fix: bow it: model: \{name: 'min-jerk', bend: 0\.06\}\n/);
+  assert.match(await ask(out, 'findings-3', 'story', {straight: 'true'}), /^findings-3 = \[\{"critic":"arc","level":"warn","fix":"bow it: model: \{name: 'min-jerk', bend: 0\.06\}"\}\]\nfindings \(findings#6\)/);
+});
+
+test('a kit\'s motionRun is trusted for nothing: one that throws, returns nothing or never settles is said aloud, and the check goes on', async () => {
+  const {motions} = await runMotions([
+    {name: 'story', kit: 'isometric', run: async () => { throw new Error('boom'); }},
+    {name: 'stages[0]', kit: 'isometric', run: async () => null},
+    {name: 'stages[1]', kit: 'isometric', run: () => new Promise(() => {})},
+    {name: 'stages[2]', kit: 'isometric', run: film.motionRuns[0].run},
+  ], {ms: 200});
+  assert.deepEqual(motions.map(m => m.differs ?? null), ['the motion flow failed where the kit planned the moves: boom', 'the motion flow failed where the kit planned the moves: the motion run returned no motion',
+    'the motion flow failed where the kit planned the moves: the motion run did not finish within 0.2 s', null]);
+  const lines = motionLines({motions, skipped: 0}, {run: 'r1'});
+  assert.match(lines[0], /^drift · motion story: footprint-story's intent decider did not plan the moves the kit drew — .*boom \(the film draws the kit's; report it to footprint-story\)$/);
+  assert.deepEqual(motionLines({motions: [], skipped: 0}, {run: 'r1'}), [], 'nothing said when nothing moves');
+  // the compile's moves and the chart's are equal
+  assert.equal((await film.motionRuns[0].run()).differs, null);
+});
+
+test('the intents are footprint-story\'s words on the frame: the box falls from its foot to the floor under it, the ball is thrown to the server\'s top', () => {
+  const [fall, toss] = story.motionIntents, server = story.regionsAt(0).find(r => r.name === 'server').box;
+  assert.deepEqual(Object.keys(fall), ['do', 'name', 'who', 'from', 'floor']);
+  assert.equal(fall.who, 'isometric motion[0] ("box")', 'its words for where it was written, the recipe entry');
+  assert.ok(fall.floor > fall.from[1], 'the floor is below the box');
+  assert.deepEqual(Object.keys(toss), ['do', 'name', 'who', 'from', 'to', 'wrap']);
+  assert.ok(Math.abs(toss.to[0] - (server[0] + server[2]) / 2) < 1e-6, 'it lands on the middle of the server\'s top');
+  assert.ok(toss.to[1] < (server[1] + server[3]) / 2, 'on its top, not its foot');
+  // the samples the kit draws are footprint-story's: the fall's last sample is its floor
+  const move = planIntents([fall]).moves[0];
+  near([sampleMove(move, move.plan.seconds).x, sampleMove(move, move.plan.seconds).y], [fall.from[0], fall.floor], 'the fall ends on its floor');
+});

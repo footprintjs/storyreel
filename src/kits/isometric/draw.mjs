@@ -23,11 +23,12 @@ import {HEX} from './read.mjs';
 import {paintItems, mix, rgba as withAlpha} from './paint.mjs';
 
 /**
- * StoryDeck's colours where the theme has none: a block's tone, the glow of a packet. And how long a piece takes to come in.
+ * StoryDeck's colours where the theme has none: a block's tone, the glow of a packet. And how long a piece takes to come in,
+ * and how wide a hanging block's rope is drawn (the ink, as wide as an edge).
  * `line` and `grid` are the usual style's edge width and tile-line alpha (footprint-story's `ink` line choice): the paint
  * list carries them, and test/iso-paint.test.mjs pins that the two still agree.
  */
-export const ISO_LOOK = Object.freeze({tone: '#d9e4f3', glow: '#e8a33d', line: 2.5, grid: 0.16, cable: 4, label: 1, smallInk: 0.68, appear: 0.35});
+export const ISO_LOOK = Object.freeze({tone: '#d9e4f3', glow: '#e8a33d', line: 2.5, grid: 0.16, cable: 4, label: 1, smallInk: 0.68, appear: 0.35, rope: 2.5});
 
 /** The colours a world draws with, from the film's theme (its palette), StoryDeck's tokens where the theme has none. */
 export function lookOf(theme) {
@@ -119,8 +120,35 @@ function drawLabel(c, w, look) {
   c.fillStyle = look.muted; c.fillText(w.label.toUpperCase(), x, y);
 }
 
-/** The whole map at t on the 1600×900 sheet. `appearAt`: each piece's moment (seconds, or null: from the start). */
-export function drawMap(c, map, t, look) {
+/** A point of a block as built, where its pose puts it (motion.mjs · poseAt): scaled about the pivot, then moved. */
+export const posed = ([x, y], {dx, dy, pivot: [px, py], sx, sy}) => [px + (x - px) * sx + dx, py + (y - py) * sy + dy];
+
+/**
+ * A block that moves by intent, at its pose: its rope first when it hangs (the ink, from the pin to its top), then the
+ * block itself, scaled about its pivot (a bounce's squash) and moved there. The block is drawn as it always is, only
+ * under that transform: its faces, names and colours are the built map's.
+ */
+function drawPosed(c, b, pose, look) {
+  if (pose.rope) {
+    c.strokeStyle = look.ink; c.lineWidth = ISO_LOOK.rope; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.beginPath(); pose.rope.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.stroke();
+  }
+  const [px, py] = pose.pivot;
+  c.save(); c.translate(px + pose.dx, py + pose.dy); c.scale(pose.sx, pose.sy); c.translate(-px, -py);
+  drawBlock(c, b, look);
+  c.restore();
+}
+
+/**
+ * The whole map at t on the 1600×900 sheet. `appearAt`: each piece's moment (seconds, or null: from the start).
+ * `poseOf(block)`: where a block that moves by intent is at t (motion.mjs · poseAt), or null while it stands as built;
+ * absent for a world with no motion, which is then drawn exactly as before worlds took one.
+ *
+ * WHY a moving block is drawn after every other: the back-to-front order is the built map's, worked out once for blocks
+ * standing still; a block in flight, or come to rest on another's top, is in front of what it passes. A block that
+ * lands on the floor behind another is drawn in front of it too — a known limit, said in the README.
+ */
+export function drawMap(c, map, t, look, poseOf = null) {
   c.save();
   c.fillStyle = look.bg; c.fillRect(0, 0, 1600, 900);
   const faded = (alpha, paint) => { if (alpha <= 0) return; c.save(); c.globalAlpha *= alpha; paint(); c.restore(); };
@@ -135,7 +163,11 @@ export function drawMap(c, map, t, look) {
   }));
   map.wires.forEach((w) => { if (w.label) faded(inAt(w.appearAt, t), () => drawLabel(c, w, look)); });
   // the blocks back to front; after each, the leads into its seen ports and the packets on them
+  const moving = [];
   for (const b of map.order) {
+    const pose = poseOf?.(b) ?? null;
+    // a moving block is joined by no wire (motion-read.mjs): it has no lead to draw, and it is drawn last, at its pose
+    if (pose) { moving.push([b, pose]); continue; }
     faded(inAt(b.appearAt, t), () => drawBlock(c, b, look));
     map.wires.forEach((w, i) => {
       for (const [k, end] of [[0, 'from'], [1, 'to']]) {
@@ -149,5 +181,6 @@ export function drawMap(c, map, t, look) {
       }
     });
   }
+  for (const [b, pose] of moving) faded(inAt(b.appearAt, t), () => drawPosed(c, b, pose, look));
   c.restore();
 }

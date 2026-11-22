@@ -153,6 +153,92 @@ WHY twice: a world is compiled on a synchronous path and a footprintjs run is no
 `docs/design/2026-11-map-flow.md`). The map flow's map must equal the kit's built map; the check compares them and says
 a difference aloud (`drift`). See `../../check/README.md` · Asking why a map is so.
 
+## A world's pieces move by intent (from 0.43.0)
+
+**Why:** a block that falls, a ball thrown onto a server — tuned by hand, each move takes many tries (a duration, an
+ease, keyframes) and differs run to run. Here the author writes only what happens, in footprint-story's words, and
+footprint-story's intent decider (`footprint-story/human` · `planIntents`) decides the rest: the model, the duration
+from a law, the curve. The kit says only where things are, and draws the block where the samples put it.
+
+```json
+{"type": "world", "scene": "drop", "world": {"kit": "isometric",
+  "blocks": [{"name": "box", "at": [1, 1, 3]}, {"name": "ball", "kind": "cylinder", "at": [1, 6], "size": [1.2, 1.2, 0.6]},
+             {"name": "server", "at": [8, 2], "size": [2, 2, 1.6]}],
+  "motion": [{"piece": "box", "do": "fall", "at": ["drop", "It falls to the floor"]},
+             {"piece": "ball", "do": "throw", "to": "server", "at": ["drop", "the ball is thrown"], "wrap": [{"wrapper": "anticipate"}]}]}}
+```
+
+The box falls under gravity onto the floor under it (0.46 s: `ballistic`, the usual for a fall); the ball is thrown at
+45° onto the middle of the server's top, with a wind-up first (`ballistic` and `anticipate`). Nothing was timed.
+
+| key | | |
+|---|---|---|
+| `piece` | a block's name | the block that moves; a floor or a wire is refused (a packet later), and so is a block a wire joins (its cable is laid to where it stands and would not follow it) |
+| `do` | `fall` · `throw` · `hang` · `settle` · `reach` | footprint-story's word for the move (below) |
+| `at` | an anchor | when the move begins; left out, when the block appears, else the film's start |
+| `to` | a block's name or tiles | where it ends: a block's name is the middle of its top (it ends standing on it), tiles `[col, row]` or `[col, row, lift]` a place in the world. A throw, a settle and a reach need one; a fall and a hang take none |
+| `from` | a block's name or tiles | a hang's pin (only a hang takes one) |
+| `wrap` | `[{"wrapper": "anticipate"}]` | footprint-story's wrappers, innermost first: `anticipate`, `follow-through`, `hold`, `overshoot`, with their options (at most 4) |
+| `model` | `"bounce"`, `{"name": "bounce", "squash": 0.2}` | one of footprint-story's models for the family, when the usual is not wanted (a fix footprint-story gives is written here as it says it) |
+
+**What a block can do in a film now** (`motion-read.mjs` · `MOTION_DOS`, footprint-story 0.30):
+
+| do | it moves | the usual model | also |
+|---|---|---|---|
+| `fall` | straight down from where it stands to the floor under its foot (lift 0) | `ballistic` | `bounce` (and its `squash`, drawn: the block flattens at a landing, its area kept) |
+| `throw` | through the air, its foot landing on `to` | `ballistic` (the usual apex: a 45° throw) | `bounce` (lands on the line its target stands on and bounces to rest) |
+| `hang` | on a rope from the pin `from` to its top, swinging until it rests below the pin; the rope is drawn | `verlet` | |
+| `settle` | to `to` on the motion spring | `spring` | its `feel` |
+| `reach` | to `to` on one smooth push, its seconds from Fitts's law (a block's top's width is the target) | `min-jerk` | its `bend` |
+
+`draw`, `write` and `sketch` move a pen's point along a line, not a block: refused, saying so. **roll, slide and
+tumble** arrive with footprint-story 0.31: each is one row in `MOTION_DOS` and one in `motion.mjs` · `INTENT_OF`, and
+a test pins that the two tables agree.
+
+**Where things are** (`motion.mjs`): a block moves by its **foot** (the middle of its footprint, at its lift), in the
+built map's tiles put on the frame by its grid. A fall's floor is the grid's lift 0 under its foot; a block already on
+the floor cannot fall (lift it). A hang ties the rope to its **top**. The intents are planned on the 1600×900 frame.
+
+**Timed on the film's clock.** A move begins at its anchor and lasts what footprint-story planned. A block is drawn as
+built until its first move begins, moves along the samples, and stays where its last move ended. A piece's moves run
+one after another, each from where the one before left it (the box can fall, then be thrown): two that overlap in time
+are refused with both times and the seconds footprint-story planned, and a hang (which ends wherever its swing settles)
+is a piece's last move.
+
+**Drawn at the sampled place.** The kit draws the very block (its faces, names and colours are the built map's) under a
+transform: moved by the sample, and scaled about its foot by a bounce's squash. A camera frames it where it is
+(`regionsAt`). **No angle is drawn yet:** footprint-story 0.30's block moves give an angle, but none is a body's turn —
+a throw's and a fall's is the heading of the flight, a hang's the heading of its rope's last link — and a block that
+stood upright would jump to it. tumble (0.31) turns a body; its row will say so. **A moving block is drawn in front of
+every other** from the moment it starts (in flight, or come to rest on another's top, it is in front); one that lands on
+the floor behind another is drawn in front of it too — a known limit.
+
+**A world with no motion is exactly as it was**: nothing is planned, its record and summary have no `motions`, no run
+is handed out, and every frame is the same (`test/golden.json` is unchanged; the example `examples/iso-motion` adds its
+own pins).
+
+**The record keeps footprint-story's decisions, as its data**: the world's `map.motions` has each move's `path`,
+`piece`, `do`, `at` (its start on the film's clock), `seconds`, `model`, `by` (`usual` or `named`), `reason`
+(footprint-story's sentence: "do: 'fall' → ballistic, the usual for do: 'fall' — a fall of 205.8 px onto the floor at y
+377.2 from rest, over 0.46 s under 1960 px/s²") and `wrappers`; its `summary.motions` (kept beside the world's entry in
+the compile's record) the few words of each. `motionIntents` is what footprint-story was handed.
+
+**Why a move is so: its own record.** `storyreel check` runs each moving world's intents through footprint-story's
+chart (`motionRun`: `footprint-story/humanflow` · `runHumanFlow`, the very intents `planIntents` was handed) and keeps
+that run's record, so `storyreel log --run <id> --why duration-1 --motion story` says why `motion[1]` takes its time,
+from the record alone (`../../check/README.md` · Asking why a move is so). The two plans must be equal; a difference is
+a `drift` line. **What footprint-story's critics find** (`jerk`, `arc`, `spacing`, `contact`, `volume`, `stretch`)
+reaches the check's reply as advice, naming the entry and the fix in footprint-story's words:
+
+```
+note 0:11.8–0:12.5 drop · a move that reads wrong: arc: its move runs straight (it bows 0.0% of its length) — … · at story.motion[3] · fix: bow it: model: {name: 'min-jerk', bend: 0.06}
+```
+
+Every refusal names the entry and the fix (`stage drop: isometric motion[0] ("ball"): a fall drops the block from
+where it stands, and it stands on the floor (lift 0) — lift it first (its at: [col, row, 3]), or throw it`), and
+footprint-story's own refusals come back in the entry's name. At most 64 moves a world (footprint-story's
+`MOST_INTENTS`).
+
 ## What a film reads of it
 
 - `regionsAt(t)`: each block, floor and wire by `name` (`story.blocks[3]`, `stages[0].world.wires[1]`), each label by
@@ -169,6 +255,8 @@ a difference aloud (`drift`). See `../../check/README.md` · Asking why a map is
   stretches), for a test or a tool that reads the world itself.
 - `mapRun({sink, recorders})`: the map built again by the map flow, a run whose record says why (`flow.mjs`); the film
   hands each such world's out as `film.mapRuns` (`[{name, kit, run}]`, named by its recipe path), for `storyreel check`.
+- `motionRun({sink, recorders})` and `motionFindings`: a moving world's intents run through footprint-story's chart, and
+  what its critics found (`motion.mjs`); the film hands them out as `film.motionRuns` (`[{name, kit, run, findings}]`).
 
 Every refusal names the entry (`stage map: isometric wires[2] ("w3")`) and the fix; a value it quotes is cut to 60
 characters; a field is read once, by its own value (a getter is refused, never run); the lists' lengths (256 blocks and
@@ -188,6 +276,8 @@ entry's name.
 | `notes.mjs` | what the kit says, in words |
 | `draw.mjs` | the canvas drawing, StoryDeck's look in the film's theme: the paint lists through `paint.mjs`, the rest by hand |
 | `paint.mjs` | the one canvas painter: a piece's paint list traced, filled and stroked as the list says |
+| `motion-read.mjs` | the `motion` entries checked, every refusal naming the entry and the fix; what a block can do (`MOTION_DOS`) |
+| `motion.mjs` | each entry made a footprint-story intent on the frame, planned (`planIntents`), timed on the clock and sampled at t; its record, findings and run |
 
 **From footprint-story, as StoryDeck has them** (they were carried here from StoryDeck until 0.35.0; both tools now
 import the one copy, so a deck and a film draw the same cable):
@@ -210,4 +300,5 @@ is fitted; the grid is fitted when blocks are placed by hand too.
 (`data-footprint`), floor kept clear under words (`data-keep-clear`), packets that keep their size through a camera
 move (`data-keep-size`), wires from a block to a flat piece, and a way for `storyreel check` to list the kit's notes
 (they are on the world: `notes`; `strict` turns a warning into a refusal). The example: `examples/iso-world`, built and
-checked by `test/iso-world.test.mjs` and pinned in `test/golden.json`.
+checked by `test/iso-world.test.mjs` and pinned in `test/golden.json`; the moving one, `examples/iso-motion`, by
+`test/iso-motion.test.mjs`, pinned there too.

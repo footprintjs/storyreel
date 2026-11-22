@@ -48,9 +48,10 @@ drawing: "over the figure" over "figure" (story.items[0]) · at story.items[1] �
 | `claims` | no source | a number on screen has no source (the verdict below) | a fact, or an example scene |
 | `words-over-drawing` | words over a drawing | 30 % or more of a word lies on a drawing the whiteboard or the paper marks as ink (a word wholly inside a box, a ring or a bubble is its label) | move the words clear: the fix gives the item's new `x`, `y` |
 | `drawing-off-frame` | a drawing off the frame | a quarter or more of a drawing lies outside its world's sheet (or the frame, on the page) | move it in (its box's corner, every point shifted by the same), or shrink it |
+| `motion` | a move that reads wrong | footprint-story's critics find fault with an isometric world's move (`jerk`, `arc`, `spacing`, `contact`, `volume`, `stretch`) — advice, over the time the move runs | what its fix says, in footprint-story's words, written in that `motion` entry (`model: {name: 'min-jerk', bend: 0.06}`) |
 
-"Nothing changes", "nothing new" and the slideshow's "held still" are advice: a held title can be right, and then
-say why you keep it. Every other finding names something to fix: most are facts about the drawing (where a word
+"Nothing changes", "nothing new", the slideshow's "held still" and "a move that reads wrong" are advice: a held
+title can be right, and a move is the author's to keep — then say why you keep it. Every other finding names something to fix: most are facts about the drawing (where a word
 landed, when), while `silences` is about the voice's pauses, `claims` about sources and `hook` about the opening.
 
 ## The three verdicts

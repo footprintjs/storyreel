@@ -15,6 +15,7 @@ export {problemsOf, sinceLast, ADVICE_KINDS, ROW_MOST, KEYS_MOST} from './proble
 export {checkChart, CHECK_VERDICTS} from './chart.mjs';
 export {VERDICT_RULES} from './stages.mjs';
 export {runMaps, mapLines, MAPS_MOST} from './maps.mjs';
+export {runMotions, motionLines, MOTIONS_MOST} from './motions.mjs';
 
 /**
  * Run one check. `does`: the work, given by the caller (tools.mjs gives the project's):
