@@ -844,6 +844,9 @@ and what the rule read, walked back (`--why errors`, `--why round`, any value a 
 A film with isometric worlds keeps each map's own record too: `npx storyreel log --run 1 --why at --map story` says
 why the blocks stand where they do, through the place step and the decision that let it run (`--why view` the grid,
 `--why names` a name's size): [src/check/README.md](src/check/README.md) · Asking why a map is so.
+A world whose blocks move by intent keeps its moves' record the same way: `npx storyreel log --run 1 --why duration-1
+--motion story` says why `motion[1]` takes its time — the law's numbers, the plan, the rule that chose its model
+(`model-<i>`, `findings-<i>`): [src/check/README.md](src/check/README.md) · Asking why a move is so.
 
 - **Reading time.** Every line meant to be read — titles, footers, list lines, captions, the board's
   writing, guess questions and answers, the push-in caption — must stay up, whole, about **0.3 s a word**
@@ -3487,8 +3490,10 @@ A studio whose recipe file is not known (no `--recipe`, no `recipe.json` beside 
   the camera (`"focus": {"keys": [{"on": "db", …}]}`); `style` names the look, footprint-story's style row
   (`{"line": {"name": "ink", "width": 5}}` outlined, `{"line": "none"}` no outline; left out, today's look). A wrong
   map is refused naming the entry and the fix, and what does not lie well is said in the world's `notes` (`strict:
-  true` refuses it). `import {isometricKit} from
-  'footprint-storyreel/kits/isometric'`; the keys: src/kits/isometric/README.md; `node examples/iso-world/make.mjs`.
+  true` refuses it). `motion` moves a block by intent in footprint-story's words (`{"piece": "box", "do": "fall"}`,
+  `{"piece": "ball", "do": "throw", "to": "server"}`): footprint-story decides the model, the duration and the curve.
+  `import {isometricKit} from 'footprint-storyreel/kits/isometric'`; the keys: src/kits/isometric/README.md;
+  `node examples/iso-world/make.mjs`, `node examples/iso-motion/make.mjs`.
 
 ```json
 {"type": "world", "scene": "map", "world": {"kit": "isometric",

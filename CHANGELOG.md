@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.43.0 — a world's pieces move by intent
+
+An isometric world's recipe takes `motion`: a list of moves, each naming a block and what it does in
+footprint-story's words. The author writes intent only; footprint-story (now `^0.30.0`) decides the model, the
+duration from a law and the curve (`footprint-story/human` · `planIntents`). The kit says only where things are and
+draws the block where the samples put it. **No frame changes** for a film with no `motion`: `test/golden.json` keeps
+every pin it had, and gains the new example's.
+
+```json
+"motion": [{"piece": "box", "do": "fall", "at": ["drop", "It falls to the floor"]},
+           {"piece": "ball", "do": "throw", "to": "server", "wrap": [{"wrapper": "anticipate"}]}]
+```
+
+- **What a block can do now** (`kits/isometric/motion-read.mjs` · `MOTION_DOS`): `fall` (straight down to the floor
+  under its foot), `throw` (through the air onto `to`), `hang` (on a rope from the pin `from`, swinging to rest below
+  it; the rope is drawn), `settle` and `reach` (to `to`). `to` and `from` are a block's name (the middle of its top) or
+  tiles. `wrap` takes footprint-story's wrappers and `model` one of its models (`"bounce"`, its squash drawn). `draw`,
+  `write` and `sketch` move a pen, not a block, and are refused saying so; roll, slide and tumble arrive with
+  footprint-story 0.31 as one row in each of two tables.
+- **Placed from the built map, timed on the film's clock** (`motion.mjs`): a block moves by its foot, a fall's floor is
+  the grid's lift 0 under it, a throw lands on its target's top, and a move begins at its anchor (else when the block
+  appears). A piece's moves run one after another; two that overlap are refused, and a hang is a piece's last. No angle
+  is drawn yet: none of these models gives a body's turn. A moving block is drawn in front of the others from its start.
+- **The record** names each move's model, how it was chosen, footprint-story's reason, its seconds and its start
+  (`map.motions`; `summary.motions` beside the world's entry in the compile's record).
+- **`storyreel check`** runs each moving world's intents through footprint-story's chart (`runHumanFlow`) and keeps its
+  record (`<run>.motion-<k>.record.jsonl`), under the map runs' safety rules, now one module (`check/flowrun.mjs`):
+  `storyreel log --run <id> --why duration-1 --motion story` says why `motion[1]` takes its time. What the critics find
+  (`jerk`, `arc`, `spacing`, `contact`, …) is the review's new `motion` check: advice naming the entry and the fix.
+- **Refusals name the entry and the fix**, footprint-story's own in the entry's name: a block a wire joins, one on the
+  floor asked to fall, a missing `to`, a pen's word, overlapping moves, a model or wrapper footprint-story refuses.
+- A new example, `examples/iso-motion` (a box falls, a ball is thrown onto the server, the box settles), pinned in
+  `test/golden.json`; `test/iso-motion.test.mjs`. Types: `IsometricSpec.motion` (`IsoMotionSpec`), `IsoRecord.motions`,
+  `film.motionRuns`, `StoryWorld.motionRun` / `motionFindings`. `ISO_LOOK.rope`. The isometric world's keys gain
+  `motion`, so its refusal of an unknown key lists it.
+
 ## 0.42.0 — an isometric world takes a style
 
 An isometric world's recipe takes `style`: a row of footprint-story's named style choices (`isoStyle`, 0.25.0), a
