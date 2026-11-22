@@ -105,7 +105,7 @@ that row as it is:
   from each other.
 - **Refused in the kit's words** (`read.mjs` · `readStyle`), naming the entry: a column there is not
   (`stage map: isometric style takes the columns shape, shading, line, palette, texture, effects (a column left out
-  keeps today's look), or a look ({"look": "outlined", "line-art", "paper-grain" or "duotone"}) — not "colour"`), a
+  keeps today's look), or a look ({"look": "outlined", "line-art", "paper-grain", "duotone" or "sketchy"}) — not "colour"`), a
   choice there is not, listing those there are (`… style: line has no choice "dashed" — the line choices are "ink",
   "none", "contour" or "human:sketchy"`), and an option the choice does not take or a value out of its range, in
   footprint-story's words (`… style: line "ink" takes a width from 0.5 to 20 px — not 50`).
@@ -115,8 +115,8 @@ that row as it is:
 
 ## Named looks (from 0.49.0)
 
-A world can name one of footprint-story's looks — a style row under a name (`ISO_LOOKS`, footprint-story 0.34 and
-0.35) — in place of writing its columns:
+A world can name one of footprint-story's looks — a style row under a name (`ISO_LOOKS`, footprint-story 0.34, 0.35
+and 0.37) — in place of writing its columns:
 
 ```json
 {"kit": "isometric", "style": {"look": "duotone"}, "blocks": [{"name": "you", "label": "You"}, {"name": "db", "kind": "cylinder", "tone": "ok"}]}
@@ -128,10 +128,11 @@ A world can name one of footprint-story's looks — a style row under a name (`I
 | `line-art` | `shading: "paper"`, `line: {"name": "contour", "width": 3, "inner": 1.25}` | ink lines on paper, nothing else |
 | `paper-grain` | `texture: "human:grain"` | today's look printed on paper, a fine seeded grain over every face |
 | `duotone` | `palette: "duotone"` | two inks on paper: lines in the ink, faces tints of the accent; a toned block (ok / warn / bad) keeps its colour |
+| `sketchy` (0.50.0) | `shading: "paper"`, `line: "human:sketchy"`, `texture: {"name": "human:hatch", "spacing": 28}` | drawn by hand: white faces, every edge drawn as a pen goes (silhouette, then inner edges), the left sides hatched and the right cross-hatched, the lit tops clear |
 
 - **A column written beside the look replaces its entry**, whole (`{"look": "line-art", "line": {"name": "contour",
   "width": 4}}`). Refused in footprint-story's words, naming the entry: a look that is none (`stage map: isometric
-  style: look is one of "outlined", "line-art", "paper-grain", "duotone" (a row of choices under a name), or none —
+  style: look is one of "outlined", "line-art", "paper-grain", "duotone", "sketchy" (a row of choices under a name), or none —
   not "glitter"`), and a look whose every column the row writes (`… look "duotone" sets palette, and the row writes it
   itself, so the look draws nothing — drop the look, or the palette written beside it`).
 - **On the film's ground** (`looks.mjs` · `groundedStyle`). The ground is the theme's (`lookOf(theme).bg`), dark when
@@ -146,16 +147,20 @@ A world can name one of footprint-story's looks — a style row under a name (`I
   leaves a face the page colours as it is (where the kit's ok / warn / bad tones live), so a world in the duotone
   hands each block with no tone its colour (its own, else the kit's tone) and the duotone prints it as a tint. Toned
   blocks and floors stay the page's. No other world hands a colour: its spec is as it was.
-- **A name is written in the ink that reads on its face** (`looks.mjs` · `nameInk`): the theme's ink when it stands
-  4.5 : 1 on the block's top (every light theme, every tone: no pinned picture moved), else the ground when it reads
-  better — on a dark theme a name on a pale tone was drawn light on light, where the contrast check could not even see
-  it. StoryReel's contrast check reads each look clean on the paper theme and on a dark one, each look's scene alone
+- **A name is written in the ink that reads on its face** (`draw.mjs` · `drawName`, footprint-story's `readableInk`
+  since 0.50.0 — the rule StoryReel 0.49.0 had as its own `nameInk`, moved there so a deck and a film choose alike, its
+  result pinned equal to StoryReel's: no pinned picture moved): the theme's ink when it stands 4.5 : 1 on the block's
+  top (every light theme, every tone), else the ground when it reads better — on a dark theme a name on a pale tone was
+  drawn light on light, where the contrast check could not even see it. StoryReel's contrast check reads each look clean on the paper theme and on a dark one, each look's scene alone
   (`test/iso-looks.test.mjs` pins the closest word: 5.08 to 6.91 : 1, against 4.5 : 1 needed).
+- **Sketchy is drawn within the stroke budget**: the example's sketchy world draws its few hundred strokes with no note
+  (the hatch 28 px apart: footprint-story's 64-block world draws 1,246 strokes, under the 2,000 note); its seams too
+  (below: a ball).
 - **The grain's marks count against the stroke budget** (`notes.mjs` · `MARKS_PER_STROKE`, 32 marks a stroke: a mark is
   one segment of a path stroked once a face, a stroke a ring filled). A world's summary keeps `marks` beside `strokes`
   (absent when none: the floor's tile lines are the map's own). `bench/strokes.mjs`: the 64-block world in each look
   0.5 to 2.0 ms a frame (plain 0.6); fine grain on 256 big blocks (264,278 marks) 68 ms, a note.
-- `examples/iso-looks` names each look on a stage of its own, pinned in `test/golden.json`.
+- `examples/iso-looks` names each of the five looks on a stage of its own, pinned in `test/golden.json`.
 
 ## The painter: the map's paint list on a canvas (from 0.41.0)
 
@@ -325,13 +330,19 @@ end over end), from the move's start to its end, and it is not listed to read th
 on its top face, a ball on its middle). A turning block is swept for `reel:contact` as the box its turned corners fill
 over each short stretch (a cube a corner on reaches √2 of its half side), so it never passes through a block unseen.
 
-**A ball** (`kind: "ball"`, the film's own: StoryDeck draws none yet) is round every way — its size `[d, d, d]`, `[1, 1,
-1]` when left out. The map is built with it as the cylinder round it (placed, ordered, routed to and its name fitted as
-that cylinder, which holds the whole ball), and the kit draws the ball itself: its outline (the great circle across the
-way to the viewer — a circle on the usual grid), filled as a top is, two marks in the ink at half strength, its edge, and
-its name on its middle; its shape (what a camera frames, what hides a cable) is the ball's own. A ball has no ports (a
-wire joins it at its foot), and is drawn in today's look only: a world with a `style` and a ball is refused (footprint-
-story's styles paint blocks and cylinders). Everything is a paint list painted by `paint.mjs`, as a built block is.
+**A ball** (`kind: "ball"`, the film's own) is round every way — its size `[d, d, d]`, `[1, 1, 1]` when left out. The
+map is built with it as the cylinder round it (placed, ordered, routed to and its name fitted as that cylinder, which
+holds the whole ball: footprint-story's map build takes no ball yet). **footprint-story paints the ball** (0.50.0,
+`ball.mjs`; footprint-story 0.37's `paintPiece` with `kind: "ball"`) in the world's style — any style or look: its
+outline (the great circle across the way to the viewer — a circle on the usual grid) a face as a top is, edged, and its
+two seams the line's marks (today's look: the ink at half, 2 px); its name on its middle in the ink that reads on that
+face; its shape (what a camera frames, what hides a cable) the ball's own. A turned ball's list takes the turned marks in
+place of its seams (the level seam first, `turn.mjs` · `ballPicture`), and a moved one has every point put where its
+pose says. A ball has no ports (a wire joins it at its foot). A line that draws a ball's seams by hand
+(`human:sketchy`, the `sketchy` look) plans them as built, with no seam to turn, so a roll or a tumble of such a ball is
+refused, naming the fix (`… a roll turns the ball, and this world's line "human:sketchy" draws a ball's seams by hand as
+it is built — they could not be drawn turning: throw it (do: "throw") or slide it (do: "slide"), or write another line
+beside the look ("line": "ink")`); a throw or a slide is drawn by hand as it goes.
 
 **Where things are** (`motion.mjs`, by footprint-story's place rules — `/isometric` · `footOf`, `landingUnder`, `ridesOn`, `offFrame`, `drawnOff`): a block moves by its **foot** (the middle of its footprint, at
 its lift), in the built map's tiles put on the frame by its grid. Moves are placed in the order they begin, each from
@@ -464,7 +475,8 @@ entry's name.
 | `motion.mjs` | each entry made a footprint-story intent on the frame, planned (`planIntents`), timed on the clock and sampled at t (with its place for the paint order); its record, findings and run |
 | `motion-cover.mjs` | which names a moved block covers, and when (footprint-story's rule at each sample): not drawn, not listed to read, said (`reel:covers`) |
 | `motion-side.mjs` | roll, slide and tumble: each a footprint-story intent side on along its way in the world's px, its checks of levels and edges (footprint-story's `sideFoot` lays its samples back on the floor) |
-| `turn.mjs` | a body turned where it is, as the grid sees it: a turn as a matrix in tiles, a turned block's faces and a ball's outline and marks, their paint lists, a turning block's reach |
+| `turn.mjs` | a body turned where it is, as the grid sees it: a turn as a matrix in tiles, a turned block's faces (its paint list) and a ball's outline and marks, a turning block's reach |
+| `ball.mjs` | a ball painted by footprint-story in the world's style; its list turned (the turned marks for its seams) and moved; a turning move of a ball whose seams are drawn by hand refused |
 | `words.mjs` | how both readers quote a value and check keys and anchors (`shown`, `keysOf`, `anchorLike`): its own module, so the kit's modules import no cycle (a test pins it) |
 
 **From footprint-story, as StoryDeck has them** (they were carried here from StoryDeck until 0.35.0; both tools now

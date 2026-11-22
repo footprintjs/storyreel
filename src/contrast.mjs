@@ -19,13 +19,19 @@ import {quote} from './fix/text.mjs';
 /** The thresholds: the ratios WCAG asks, and what counts as large (a box's height, a share of the frame's). */
 export const CONTRAST = Object.freeze({normal: 4.5, large: 3, largeHeight: .016, ring: .3, inkPercentile: .95, seen: 1.1});
 
-/** WCAG relative luminance of an sRGB colour (0–255 channels): 0 black, 1 white. */
+/**
+ * WCAG relative luminance of an sRGB colour (0–255 channels): 0 black, 1 white.
+ * WHY its own, beside footprint-story's `luminance` and `contrastRatio` (0.38.0, which choose a block's name's ink:
+ * draw.mjs): those read a colour written `#rrggbb`, and this check reads the frame's pixel bytes, a word's box and ring
+ * at a time — tens of thousands of pixels a word, too many to write out as text and parse again. The same WCAG 2
+ * formula (footprint-story pins its ratios equal to StoryReel's to the last bit); the review's exports keep these forms.
+ */
 export function luminance(r, g, b) {
   const lin = c => { const s = c / 255; return s <= .04045 ? s / 12.92 : ((s + .055) / 1.055) ** 2.4; };
   return .2126 * lin(r) + .7152 * lin(g) + .0722 * lin(b);
 }
 
-/** The contrast ratio of two luminances: 1 (the same) to 21 (black on white). */
+/** The contrast ratio of two luminances (not colours: footprint-story's takes two colours): 1 (the same) to 21 (black on white). */
 export const contrastRatio = (a, b) => (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
 
 /**

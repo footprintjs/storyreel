@@ -20,6 +20,7 @@ const WORLDS = {
   'line-art': {look: 'line-art'},
   'paper-grain': {look: 'paper-grain'},
   duotone: {look: 'duotone'},
+  sketchy: {look: 'sketchy'},
 };
 // the grain at its finest over big faces: 256 blocks 3 tiles wide, spacing 4 (notes.mjs · MARKS_PER_STROKE)
 const BIG = Array.from({length: 256}, (_, i) => ({name: `g${i}`, at: [(i % 16) * 4.8, Math.floor(i / 16) * 4.8], size: [3, 3, 1]}));

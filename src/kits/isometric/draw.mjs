@@ -18,21 +18,20 @@
  * its block for the same reason); a block in front still covers it.
  */
 import {packetsAt, PACKET_RADIUS} from './ride.mjs';
-import {arrowHead, headingOf, walkWay, CABLE} from 'footprint-story/isometric';
+import {arrowHead, headingOf, walkWay, readableInk, CABLE} from 'footprint-story/isometric';
 import {HEX} from './read.mjs';
 import {paintItems, fillColour, mix, rgba as withAlpha} from './paint.mjs';
-import {nameInk} from './looks.mjs';
-import {ballPicture, ballPaint, boxPicture, boxPaint, centreOf, onFace, UNTURNED} from './turn.mjs';
+import {boxPicture, boxPaint, centreOf, onFace, UNTURNED} from './turn.mjs';
+import {ballItemsAt, posedItems} from './ball.mjs';
 import {posed} from 'footprint-story/isometric';
 
 /**
  * StoryDeck's colours where the theme has none: a block's tone, the glow of a packet. And how long a piece takes to come in,
- * and how wide a hanging block's rope is drawn (the ink, as wide as an edge); a ball's marks, the ink at `mark`, `markLine`
- * px wide (ours: a deck draws no ball).
+ * and how wide a hanging block's rope is drawn (the ink, as wide as an edge).
  * `line` and `grid` are the usual style's edge width and tile-line alpha (footprint-story's `ink` line choice): the paint
  * list carries them, and test/iso-paint.test.mjs pins that the two still agree.
  */
-export const ISO_LOOK = Object.freeze({tone: '#d9e4f3', glow: '#e8a33d', line: 2.5, grid: 0.16, cable: 4, label: 1, smallInk: 0.68, appear: 0.35, rope: 2.5, mark: 0.5, markLine: 2});
+export const ISO_LOOK = Object.freeze({tone: '#d9e4f3', glow: '#e8a33d', line: 2.5, grid: 0.16, cable: 4, label: 1, smallInk: 0.68, appear: 0.35, rope: 2.5});
 
 /** The colours a world draws with, from the film's theme (its palette), StoryDeck's tokens where the theme has none. */
 export function lookOf(theme) {
@@ -83,12 +82,15 @@ const toneOf = (b, look) => b.color ?? (b.tone ? mix(look.tones[b.tone], '#fffff
 
 /**
  * A block's name upright at `[cx, cy]` (its top's middle; a ball's middle), its lines as wordsToFit broke them, the small
- * line beneath, in the ink that reads on `face`, the colour of what it stands on (looks.mjs · nameInk: the theme's ink,
- * unless the ground reads better there).
+ * line beneath, in the ink that reads on `face`, the colour of what it stands on: footprint-story's `readableInk` (0.38.0)
+ * over the theme's ink, then the ground — the theme's ink when it reads at WCAG's 4.5 : 1 on the face (every light theme,
+ * on every tone), else the ground when it reads better — and the theme's ink when the face is null (no fill of its own).
+ * WHY chosen against the face: the kit's faces are pale tints, and a dark theme's light ink writes a name on them that
+ * the review's contrast check cannot even see.
  */
 function drawName(c, b, look, [cx, cy], face) {
   const {lines, size} = b.fitted, lh = size * 1.15, sf = b.smallFitted, small = sf ? sf.size * 1.15 + 2 : 0, height = lines.length * lh + small;
-  const top = cy - height / 2, ink = nameInk(face, look);
+  const top = cy - height / 2, ink = face === null ? look.ink : readableInk(face, [look.ink, look.bg]).ink;
   c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = ink;
   c.font = `700 ${size}px ${look.sans}`;
   lines.forEach((line, i) => c.fillText(line, cx, top + (i + 0.5) * lh));
@@ -100,7 +102,7 @@ const topColour = (b, base) => { const top = b.paint.find((it) => it.role === 't
 
 /** A block's faces (or a cylinder's side and top): its paint list, in the kit's colours. Then its name on its top. A ball is drawBall's. */
 function drawBlock(c, b, look, t, named = true, grid = null) {
-  if (b.kind === 'ball') { drawBall(c, b, look, grid, UNTURNED, null, named); return; }
+  if (b.kind === 'ball') { drawBall(c, b, look, t, grid, UNTURNED, null, named); return; }
   // the list holds each face's recipe (top 20% toward white, sides toward black) and no colour: the kit picks the base
   // and the ink here, so the built map stays the deck's (paint.mjs says why)
   const base = toneOf(b, look);
@@ -112,15 +114,15 @@ function drawBlock(c, b, look, t, named = true, grid = null) {
 }
 
 /**
- * A ball, turned by `turn` (turn.mjs) and moved by `pose` (null: as built): its paint list (turn.mjs · ballPaint: its
- * fill, the marks that show its turn, its edge), painted as every list is, then its name on its middle. Every point is
- * turn.mjs's, put where the pose moves the ball (footprint-story · posed: a bounce's squash too).
+ * A ball, turned by `turn` (turn.mjs) and moved by `pose` (null: as built): its paint list, footprint-story's in the
+ * world's style (build.mjs, ball.mjs), its seams turned as the ball is (ball.mjs · ballItemsAt) and every point put where
+ * the pose moves the ball (footprint-story · posed: a bounce's squash too), painted as every list is; then its name on
+ * its middle, in the ink that reads on its face.
  */
-function drawBall(c, b, look, grid, turn, pose, named) {
-  const ball = ballPicture(grid, centreOf(b), b.size[0] / 2, turn), at = (p) => (pose ? posed(p, pose) : p);
-  const base = toneOf(b, look);
-  paintItems(c, ballPaint(ball, at, ISO_LOOK), {base, ink: look.ink});
-  if (named && b.fitted?.lines.length) drawName(c, b, look, at(ball.centre), base);
+function drawBall(c, b, look, t, grid, turn, pose, named) {
+  const base = toneOf(b, look), items = ballItemsAt(b, grid, turn);
+  paintItems(c, pose ? posedItems(items, pose) : items, {base, ink: look.ink, now: sinceStart(b.appearAt, t)});
+  if (named && b.fitted?.lines.length) drawName(c, b, look, pose ? posed(b.shape.centre, pose) : b.shape.centre, topColour(b, base));
 }
 
 /**
@@ -183,7 +185,7 @@ function drawPosed(c, b, pose, look, t, named, grid) {
     c.strokeStyle = look.ink; c.lineWidth = ISO_LOOK.rope; c.lineCap = 'round'; c.lineJoin = 'round';
     c.beginPath(); pose.rope.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.stroke();
   }
-  if (b.kind === 'ball') { drawBall(c, b, look, grid, pose.turn ?? UNTURNED, pose, named); return; }
+  if (b.kind === 'ball') { drawBall(c, b, look, t, grid, pose.turn ?? UNTURNED, pose, named); return; }
   if (pose.turn && !onFace(pose.turn)) { drawTurnedBlock(c, b, look, grid, pose.turn, pose); return; }
   const [px, py] = pose.pivot;
   c.save(); c.translate(px + pose.dx, py + pose.dy); c.scale(pose.sx, pose.sy); c.translate(-px, -py);

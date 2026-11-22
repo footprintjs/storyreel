@@ -36,6 +36,7 @@ import {notesOf, drawnNotes, strokeCount, markCount} from './notes.mjs';
 import {rideOf, packetsAt} from './ride.mjs';
 import {drawMap, lookOf, inAt} from './draw.mjs';
 import {groundedStyle} from './looks.mjs';
+import {handSeamsRefused} from './ball.mjs';
 import {drawnOutline} from './turn.mjs';
 import {planMotions} from './motion.mjs';
 
@@ -122,6 +123,8 @@ export function compileIsometric(spec, context) {
   if (map.strict && warned.length) throw new Error(`${where}: the isometric map has ${warned.length} warning${warned.length === 1 ? '' : 's'} (strict: true): ${warned.slice(0, 3).map((n) => n.message.slice(where.length + 2)).join('; ')}${warned.length > 3 ? `; and ${warned.length - 3} more` : ''}`);
   // the blocks that move by intent: every move decided by footprint-story (motion.mjs), timed on the film's clock; none
   // written, nothing planned, and the world is drawn, framed and recorded exactly as before worlds took a motion
+  // a ball turned by its move needs seams it can turn: a line that draws them by hand has none (ball.mjs)
+  handSeamsRefused(map.motion, map.built.style.row.line);
   const motion = map.motion.length ? planMotions(map, map.motion, clock, where) : null;
   const shownAt = (p, t) => p.appearAt === null || t >= p.appearAt;   // named from its moment on, as it starts to come in
   // the moving blocks' poses at t, and the paint order with each where it is now: footprint-story's back-to-front order

@@ -199,10 +199,18 @@ test('refusals name the entry and the fix', () => {
     [{piece: 'ball', do: 'roll', to: [5, 6], model: {name: 'no-slip', resistance: 7}}, /^Error: stage s: isometric motion\[0\] \("ball"\): model "no-slip"'s resistance is /],
   ];
   for (const [motion, message] of cases) assert.throws(() => worldOf({grid, blocks, motion: [motion]}, 'stage s'), message, JSON.stringify(motion));
-  // a ball is round every way, has no ports, and is drawn only in today's look
+  // a ball is round every way and has no ports; a style paints it (0.50.0), but a line that draws its seams by hand
+  // cannot turn them, so a roll or a tumble of such a ball is refused, naming the fix
   assert.throws(() => worldOf({grid, blocks: [{...ball, size: [1, 1, 2]}]}, 'stage s'), /^Error: stage s: isometric blocks\[0\] \("ball"\): a ball is round every way — its size is \[wide, wide, wide\], one number three times \(not \[1,1,2\]\)$/);
   assert.throws(() => worldOf({grid, blocks: [{...ball, ports: [{name: 'p', at: [0.5, 0, 0.5]}]}]}, 'stage s'), /\("ball"\): a ball has no ports — a wire joins it at its foot: take ports out$/);
-  assert.throws(() => worldOf({grid, style: {line: 'none'}, blocks: [ball]}, 'stage s'), /\("ball"\): a ball is drawn in today's look, and this world names a style .* take style out, or make it a cylinder \(kind: "cylinder"\)$/);
+  assert.ok(worldOf({grid, style: {line: 'none'}, blocks: [ball]}, 'stage s'), 'a ball in a styled world is drawn');
+  for (const [style, move] of [[{look: 'sketchy'}, {piece: 'ball', do: 'roll', to: [5, 6]}], [{line: 'human:sketchy'}, {piece: 'ball', do: 'tumble', to: [5, 6]}]]) {
+    assert.throws(() => worldOf({grid, style, blocks: [ball], motion: [move]}, 'stage s'),
+      new RegExp(`^Error: stage s: isometric motion\\[0\\] \\("ball"\\): a ${move.do} turns the ball, and this world's line "human:sketchy" draws a ball's seams by hand as it is built — they could not be drawn turning: throw it \\(do: "throw"\\) or slide it \\(do: "slide"\\), or write another line beside the look \\("line": "ink"\\)$`), JSON.stringify(style));
+  }
+  // the fixes it names are drawn: the move with another line, or a slide by hand
+  assert.ok(worldOf({grid, style: {look: 'sketchy', line: 'ink'}, blocks: [ball], motion: [{piece: 'ball', do: 'roll', to: [5, 6]}]}, 'stage s'));
+  assert.ok(worldOf({grid, style: {look: 'sketchy'}, blocks: [ball], motion: [{piece: 'ball', do: 'slide', to: [5, 6]}]}, 'stage s'));
 });
 
 test('reel:contact sweeps a roll and a tumble: a wall in the way is found with the fix, a turning cube by the box it fills', () => {

@@ -3539,8 +3539,10 @@ A studio whose recipe file is not known (no `--recipe`, no `recipe.json` beside 
   the camera (`"focus": {"keys": [{"on": "db", …}]}`); `style` names the look, footprint-story's style row
   (`{"line": {"name": "ink", "width": 5}}` outlined, `{"line": "none"}` no outline; left out, today's look; `{"line":
   "human:sketchy", "texture": "human:hatch"}` drawn by hand, each piece as its pen goes from its moment), or one of its
-  named looks (`{"look": "outlined"}`, `"line-art"`, `"paper-grain"`, `"duotone"`; on a dark theme line-art and the
-  duotone take the theme's ground and ink, and names keep their contrast). A wrong
+  named looks (`{"look": "outlined"}`, `"line-art"`, `"paper-grain"`, `"duotone"`, `"sketchy"`; on a dark theme
+  line-art, sketchy and the duotone take the theme's ground and ink, and names keep their contrast). A ball is painted
+  in any style or look (footprint-story's ball); one drawn by hand cannot roll or tumble (its seams are drawn as built),
+  and is refused with the fix. A wrong
   map is refused naming the entry and the fix, and what does not lie well is said in the world's `notes` (`strict:
   true` refuses it). `motion` moves a block by intent in footprint-story's words (`{"piece": "box", "do": "fall"}`,
   `{"piece": "ball", "do": "throw", "to": "server"}`) — `fall`, `throw`, `hang`, `settle`, `reach`, and `roll` (a

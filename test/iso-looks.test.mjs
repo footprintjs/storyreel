@@ -1,8 +1,9 @@
-// A world names one of footprint-story's looks (0.34: outlined, line-art; 0.35: paper-grain, duotone) as its style,
+// A world names one of footprint-story's looks (0.34: outlined, line-art; 0.35: paper-grain, duotone; 0.37: sketchy) as its style,
 // `{"style": {"look": "duotone"}}` (src/kits/isometric/read.mjs · readStyle); the choices handed in are
 // footprint-story's own list (HUMAN_STYLE_CHOICES); a look on a dark ground takes the ground's colours where it has its
-// own (looks.mjs · groundedStyle), and a block's name is written in the ink that reads on its face (looks.mjs · nameInk),
-// so StoryReel's own contrast check reads every look clean on a light ground and a dark one. The grain's marks count
+// own (looks.mjs · groundedStyle), and a block's name is written in the ink that reads on its face (footprint-story's
+// readableInk, 0.38: draw.mjs · drawName), so StoryReel's own contrast check reads every look clean on a light ground and
+// a dark one. A ball is painted by footprint-story in every look (0.37: ball.mjs), pinned in each. The grain's marks count
 // against the 0.46 stroke budget (notes.mjs · MARKS_PER_STROKE).
 //
 // The small worlds' pictures hold no letters, so no font decides a pixel of them; the example film (examples/iso-looks)
@@ -13,7 +14,7 @@ import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {createCanvas} from '@napi-rs/canvas';
-import {USUAL_STYLE, ISO_LOOKS, DUOTONE} from 'footprint-story/isometric';
+import {USUAL_STYLE, ISO_LOOKS, DUOTONE, readableInk, contrastRatio} from 'footprint-story/isometric';
 import {HUMAN_STYLE_CHOICES} from 'footprint-story/human';
 import {compileFilm, evenTimings, loadTheme, validateTheme} from '../src/index.mjs';
 import {reviewPart, REVIEW_CHECKS} from '../src/review.mjs';
@@ -22,11 +23,11 @@ import {STYLE_CHOICES} from '../src/kits/isometric/read.mjs';
 import {lookOf, ISO_LOOK} from '../src/kits/isometric/draw.mjs';
 import * as READ from '../src/kits/isometric/read.mjs';
 import * as BUILD from '../src/kits/isometric/build.mjs';
-import {groundedStyle, nameInk, darkGround, ratioOf} from '../src/kits/isometric/looks.mjs';
+import {groundedStyle, darkGround} from '../src/kits/isometric/looks.mjs';
 import {markCount, drawnNotes, strokeNotes} from '../src/kits/isometric/notes.mjs';
 import {PINS_HERE} from './golden.mjs';
 
-const LOOKS = ['outlined', 'line-art', 'paper-grain', 'duotone'];
+const LOOKS = ['outlined', 'line-art', 'paper-grain', 'duotone', 'sketchy'];
 const paper = loadTheme('paper');
 // a dark theme: the paper theme's type and sizes, a night palette (ground #161b22, ink #e8e4da)
 const night = validateTheme({...structuredClone(paper), id: 'night', palette: {...paper.palette, bg: '#161b22', glow: '#1f2630', panel: '#1c222b', edge: '#3a4350', ink: '#e8e4da', dim: '#a8a294', card: '#1c222b', well: '#242b35'}});
@@ -63,15 +64,14 @@ test('the choices handed in are footprint-story\'s own list: the grain the paper
 
 test('a look that is none, or one the row overrides whole, is refused naming the entry and the fix (footprint-story\'s words)', () => {
   const refused = (style, pattern) => assert.throws(() => world(style), pattern, JSON.stringify(style));
-  refused({look: 'glitter'}, /^Error: stage map: isometric style: look is one of "outlined", "line-art", "paper-grain", "duotone" \(a row of choices under a name\), or none — not "glitter"$/);
+  refused({look: 'glitter'}, /^Error: stage map: isometric style: look is one of "outlined", "line-art", "paper-grain", "duotone", "sketchy" \(a row of choices under a name\), or none — not "glitter"$/);
   refused({look: 7}, /^Error: stage map: isometric style: look is one of .* — not 7$/);
   refused({look: 'duotone', palette: 'theme'}, /^Error: stage map: isometric style: look "duotone" sets palette, and the row writes it itself, so the look draws nothing — drop the look, or the palette written beside it$/);
   refused({look: 'line-art', shading: 'tones', line: 'ink'}, /look "line-art" sets shading and line, and the row writes each itself, so the look draws nothing — drop the look, or the shading and line written beside it$/);
   refused({look: 'duotone', texture: 'human:hatch'}, /^Error: stage map: isometric style: texture "human:hatch" cannot sit with palette "duotone" \(from the look "duotone": write palette beside it to change it\) — /);
   refused({look: 'paper-grain', texture: 'human:grain'}, /^Error: stage map: isometric style: look "paper-grain" sets texture, and the row writes it itself, so the look draws nothing — drop the look, or the texture written beside it$/);
   refused({texture: {name: 'human:grain', spacing: 2}}, /^Error: stage map: isometric style: texture "human:grain" takes a spacing from 4 to 200 px — not 2$/);
-  // a ball is drawn in today's look whatever the style (read.mjs)
-  assert.throws(() => world({look: 'outlined'}, paper, {blocks: [{name: 'ball', kind: 'ball'}], floors: [], wires: []}), /a ball is drawn in today's look, and this world names a style/);
+  refused({look: 'sketchy', shading: 'tones', line: 'ink', texture: 'none'}, /^Error: stage map: isometric style: look "sketchy" sets shading and line and texture, and the row writes each itself, so the look draws nothing — drop the look, or the shading and line and texture written beside it$/);
 });
 
 test('on a dark ground, line-art and duotone take its colours: the paper the ground, the duotone\'s ink the theme\'s', () => {
@@ -90,7 +90,9 @@ test('on a dark ground, line-art and duotone take its colours: the paper the gro
   assert.deepEqual(duo.summary.look, {name: 'duotone', ground: 'dark'});
   assert.deepEqual(duo.summary.style.options.palette, {accent: DUOTONE.accent, ink: look.ink, paper: look.bg});
   // the looks with no page colour of their own, and a column the recipe writes, are as written
-  for (const style of [{look: 'outlined'}, {look: 'paper-grain'}, {look: 'line-art', shading: 'tones'}]) assert.deepEqual(groundedStyle(style, look, 'w').style, style, JSON.stringify(style));
+  for (const style of [{look: 'outlined'}, {look: 'paper-grain'}, {look: 'line-art', shading: 'tones'}, {look: 'sketchy', shading: 'tones'}]) assert.deepEqual(groundedStyle(style, look, 'w').style, style, JSON.stringify(style));
+  // sketchy: its paper shading the ground, as line-art's; its hand-drawn line and hatch still its own
+  assert.deepEqual(groundedStyle({look: 'sketchy'}, look, 'w').style, {look: 'sketchy', shading: {name: 'paper', colour: look.bg}});
   assert.deepEqual(groundedStyle(null, look, 'w'), {style: null, look: null}, 'no style: today\'s look, nothing recorded');
   // on a light ground every look is handed as written
   for (const l of LOOKS) assert.deepEqual(groundedStyle({look: l}, lookOf(paper), 'w').style, {look: l});
@@ -126,15 +128,23 @@ test('a duotone world hands its untoned blocks\' colours to the build, so the du
 });
 
 test('a name is written in the ink that reads on its face: the theme\'s on every light-theme tone, the ground on a pale face of a dark theme', () => {
-  const light = lookOf(paper), dark = lookOf(night);
+  const light = lookOf(paper), dark = lookOf(night), ink = (face, look) => readableInk(face, [look.ink, look.bg]).ink;
   // the faces a name stands on: the usual tone, the ok / warn / bad tints, line-art's paper (StoryReel's tops, 20% to white)
   for (const face of ['#e1e9f5', '#d9e4f3', '#ffffff', '#c6e0d2', '#ead7bf', '#ecc6c3']) {
-    assert.equal(nameInk(face, light), light.ink, `${face}: the paper theme's ink`);
-    assert.equal(nameInk(face, dark), dark.bg, `${face}: on a dark theme, the ground`);
-    assert.ok(ratioOf(nameInk(face, dark), face) >= 4.5);
+    assert.equal(ink(face, light), light.ink, `${face}: the paper theme's ink`);
+    assert.equal(ink(face, dark), dark.bg, `${face}: on a dark theme, the ground`);
+    assert.ok(contrastRatio(ink(face, dark), face) >= 4.5);
   }
-  assert.equal(nameInk(dark.bg, dark), dark.ink, 'a face of the dark ground: the theme\'s ink');
-  assert.equal(nameInk(null, dark), dark.ink, 'no fill of its own: the ink');
+  assert.equal(ink(dark.bg, dark), dark.ink, 'a face of the dark ground: the theme\'s ink');
+  // and the kit draws every name in it: on the night ground each name and small line is written in the ground's colour
+  // (the faces are pale tones), at its whole ink or the small line's share of it
+  const c = recorder();
+  world(undefined, night, {blocks: WORLD.blocks.map((b) => ({...b, label: b.name.toUpperCase(), small: 'a note'}))}).draw(c, 10);
+  let fill = null; const written = [];
+  for (const op of c.ops) { if (op[0] === 'set' && op[1] === 'fillStyle') fill = op[2]; if (op[0] === 'fillText') written.push([op[1], fill]); }
+  const names = written.filter(([text]) => ['WEB', 'API', 'DB', 'a note'].includes(text));
+  assert.equal(names.length, 6, 'three names and three small lines');
+  for (const [text, colour] of names) assert.ok(colour === dark.bg || colour === `rgba(22,27,34,${ISO_LOOK.smallInk})`, `${text} in ${colour}`);
 });
 
 /** The example film on a theme: its recipe and storyboard, silent, as golden.mjs compiles it. */
@@ -161,8 +171,8 @@ test('StoryReel\'s contrast check reads every look clean, on a light ground and 
   // the word read nearest its threshold, per look and ground (fonts decide the pixels: pinned where pins compare)
   if (PINS_HERE) {
     assert.deepEqual(closest, {
-      'outlined light': 'a browser 5.08', 'line-art light': 'a browser 5.55', 'paper-grain light': 'a browser 5.08', 'duotone light': 'a browser 5.09',
-      'outlined dark': 'a browser 5.43', 'line-art dark': 'a browser 6.91', 'paper-grain dark': 'a browser 5.43', 'duotone dark': 'a browser 5.65',
+      'outlined light': 'a browser 5.08', 'line-art light': 'a browser 5.55', 'paper-grain light': 'a browser 5.08', 'duotone light': 'a browser 5.09', 'sketchy light': 'a browser 5.55',
+      'outlined dark': 'a browser 5.43', 'line-art dark': 'a browser 6.91', 'paper-grain dark': 'a browser 5.43', 'duotone dark': 'a browser 5.65', 'sketchy dark': 'a browser 6.91',
     });
   }
 });
@@ -183,18 +193,18 @@ function hashOf(style, theme) {
   return createHash('sha256').update(c.getImageData(0, 0, 1600, 900).data).digest('hex').slice(0, 16);
 }
 
-test('pixels: each look on each ground, pinned; four different pictures a ground, and every look differs from today\'s', () => {
+test('pixels: each look on each ground, pinned; five different pictures a ground, and every look differs from today\'s', () => {
   const hashes = {};
   for (const [ground, theme] of [['light', paper], ['dark', night]]) {
     const today = hashOf(undefined, theme), mine = LOOKS.map((look) => hashOf({look}, theme));
-    assert.equal(new Set([today, ...mine]).size, 5, `${ground}: five different pictures`);
+    assert.equal(new Set([today, ...mine]).size, 6, `${ground}: six different pictures`);
     LOOKS.forEach((look, i) => { hashes[`${look} ${ground}`] = mine[i]; });
   }
   assert.equal(hashOf({look: 'outlined'}, paper), hashOf({line: 'contour'}, paper), 'a look named and its row written out draw the same');
   if (PINS_HERE) {
     assert.deepEqual(hashes, {
-      'outlined light': '7881ee9881fbabdb', 'line-art light': 'f85f1b449b70a084', 'paper-grain light': '86e966a71eaff34d', 'duotone light': '4fcadd91a9265fb1',
-      'outlined dark': '5fbc457a3832f8cf', 'line-art dark': '82dd08c01448b891', 'paper-grain dark': '8f8d53263f6a9fe2', 'duotone dark': '86f55d18a28d0b2a',
+      'outlined light': '7881ee9881fbabdb', 'line-art light': 'f85f1b449b70a084', 'paper-grain light': '86e966a71eaff34d', 'duotone light': '4fcadd91a9265fb1', 'sketchy light': 'ab025ffb2779ea09',
+      'outlined dark': '5fbc457a3832f8cf', 'line-art dark': '82dd08c01448b891', 'paper-grain dark': '8f8d53263f6a9fe2', 'duotone dark': '86f55d18a28d0b2a', 'sketchy dark': '407d9b850a8f9540',
     });
   }
 });
@@ -213,4 +223,16 @@ test('the grain\'s marks count against the stroke budget: 32 marks a stroke, a n
   assert.throws(() => drawnNotes(0, STROKE_BUDGET.most * MARKS_PER_STROKE + 1, 'stage map'), /come to 20001 strokes, and a world draws at most 20000 — give the grain or the hatch a wider spacing \(texture: \{"name": "human:grain", "spacing": 32\}\), take the texture out, or draw fewer blocks$/);
   // the count is the built map's own: every `lines` item's segments but the floors' tile lines
   assert.equal(markCount({blocks: [{paint: [{item: 'lines', role: 'grain', segments: [[0, 0, 1, 1], [1, 1, 2, 2]]}]}], floors: [{paint: [{item: 'lines', role: 'grid', segments: [[0, 0, 9, 9]]}]}]}), 2);
+});
+
+test('the example film\'s sketchy world is drawn by hand within the stroke budget: no note, every look\'s notes empty', () => {
+  const recipe = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/iso-looks/recipe.json', import.meta.url)), 'utf8'));
+  const worlds = [recipe.story, ...recipe.stages.map((s) => s.world)];
+  assert.deepEqual(worlds.map((w) => w.style.look), LOOKS, 'one world a look, in order');
+  for (const spec of worlds) {
+    const w = compileIsometric(spec, {clock: {at: () => 0}, theme: paper, where: 'stage map'});
+    assert.deepEqual(w.notes, [], `${spec.style.look}: no note`);
+  }
+  const sketchy = compileIsometric(worlds.at(-1), {clock: {at: () => 0}, theme: paper, where: 'stage map'});
+  assert.ok(sketchy.summary.strokes > 0 && sketchy.summary.strokes + Math.ceil((sketchy.summary.marks ?? 0) / MARKS_PER_STROKE) < STROKE_BUDGET.note, `its strokes (${sketchy.summary.strokes}) under the note`);
 });

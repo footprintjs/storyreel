@@ -32,8 +32,9 @@ const WIRE_KEYS = Object.freeze(['name', 'arrow', 'label', 'head', 'packets', 's
 const GRID_KEYS = Object.freeze(['tile', 'at', 'rise']);
 /**
  * The kinds of block: StoryDeck's two, and `ball` (0.44.0), the film's own — a round thing that can roll, which neither a
- * block nor an upright cylinder can be drawn doing (motion-read.mjs · TURNING_KINDS). A deck draws no ball yet; the map
- * is built with it as the cylinder round it (build.mjs), and the kit draws the ball itself (draw.mjs, turn.mjs).
+ * block nor an upright cylinder can be drawn doing (motion-read.mjs · TURNING_KINDS). The map is built with it as the
+ * cylinder round it (build.mjs: footprint-story's map build takes no ball yet), and footprint-story paints the ball itself
+ * in the world's style (0.50.0, ball.mjs).
  */
 export const KINDS = Object.freeze(['block', 'cylinder', 'ball']);
 export const TONES = Object.freeze(['ok', 'warn', 'bad']);
@@ -344,9 +345,6 @@ export function readMap(given, where) {
   }
   if (own(spec, 'strict') && typeof spec.strict !== 'boolean') throw new Error(`${where}: isometric strict is true (a warning about the map refuses the film) or false`);
   const grid = readGrid(spec.grid, where), style = readStyle(spec.style, where);
-  // a ball is drawn by the kit in today's look (draw.mjs); a style paints the map's own pieces, which knows no ball
-  const ball = blocks.find((b) => b.kind === 'ball');
-  if (ball && style) throw new Error(`${ball.who}: a ball is drawn in today's look, and this world names a style (footprint-story's styles paint blocks and cylinders, not a ball yet) — take style out, or make it a cylinder (kind: "cylinder")`);
   if (grid && own(spec, 'area')) throw new Error(`${where}: isometric area is where a fitted picture goes; this grid is written in numbers — give one or the other`);
   // the pieces that move by intent (motion-read.mjs): [] when the world moves none, and then nothing else changes
   const motion = readMotions(spec.motion, where, {blocks, floors, wires});

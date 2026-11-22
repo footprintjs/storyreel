@@ -326,6 +326,89 @@
      }
     ]
    }
+  },
+  {
+   "type": "world",
+   "scene": "sketchy",
+   "enter": "fade",
+   "world": {
+    "kit": "isometric",
+    "style": {
+     "look": "sketchy"
+    },
+    "blocks": [
+     {
+      "name": "you",
+      "label": "You",
+      "small": "a browser",
+      "appear": [
+       "sketchy",
+       "the browser"
+      ]
+     },
+     {
+      "name": "api",
+      "label": "API",
+      "size": [
+       2,
+       2,
+       1.6
+      ],
+      "group": "back",
+      "tone": "ok",
+      "appear": [
+       "sketchy",
+       "the API"
+      ]
+     },
+     {
+      "name": "db",
+      "kind": "cylinder",
+      "label": "Database",
+      "size": [
+       1.8,
+       1.8,
+       1.2
+      ],
+      "group": "back",
+      "tone": "warn",
+      "appear": [
+       "sketchy",
+       "the database"
+      ]
+     }
+    ],
+    "floors": [
+     {
+      "group": "back",
+      "label": "Back room",
+      "appear": [
+       "sketchy",
+       "the API"
+      ]
+     }
+    ],
+    "wires": [
+     {
+      "arrow": "you to api",
+      "label": "HTTPS",
+      "packets": 1,
+      "appear": [
+       "sketchy",
+       "the API"
+      ]
+     },
+     {
+      "arrow": "api to db",
+      "label": "SQL",
+      "packets": 1,
+      "appear": [
+       "sketchy",
+       "the database"
+      ]
+     }
+    ]
+   }
   }
  ]
 }
