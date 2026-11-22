@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.41.0 — the isometric kit paints the map's paint list
+
+The isometric kit no longer draws a block's faces, a cylinder's side and top, or a floor's ground and tile lines face by
+face. It paints the built map's paint list — footprint-story 0.25.0's `style` step (`paints`, `floorPaints`), the
+same list a deck will paint as SVG — through one small canvas painter, `kits/isometric/paint.mjs` · `paintItems`.
+**No frame changes**: `test/golden.json` is the same, and every film draws as it did.
+
+- **The painter** traces each item of a list in order (a `polygon`, an `ellipse`, a `path` of moves, lines, arcs and
+  a close, or loose `lines`), fills it when its fill comes to a colour, and strokes it with the list's colour, alpha,
+  width, join and cap. It decides no shape and no colour; an item or a path step it does not know is refused.
+- **The colours stay the kit's.** The map is built with no colours, so the built map is the deck's, colour for colour:
+  a fill carries its recipe (`{mix: [toward, share], colour: null}`) and a stroke `colour: null`. At draw time the kit
+  picks a block's base (its `color`, its `tone`'s pale tint, or StoryDeck's tone), a floor's (its `color`, or none) and
+  the theme's ink, and the painter applies the recipe to them. A colour the list does give is drawn as given.
+- Each block and floor holds its list as `paint` (the built map's own entry, never a copy; `build.mjs` · `buildMap`).
+  `draw.mjs` keeps drawing names, labels, cables, packets and heads by hand.
+- `ISO_LOOK.line` and `ISO_LOOK.grid` now describe the usual style's edge width and tile-line alpha; the paint list
+  carries them, and `test/iso-paint.test.mjs` pins that the two agree.
+- Needs `footprint-story ^0.25.0`. A world's recipe does not take a `style` yet.
+
 ## 0.40.0 — ask why a map is so, from its own record
 
 A film with isometric worlds now keeps, for each world, a record of how its map was built, and `storyreel log` answers

@@ -1,6 +1,6 @@
 /**
  * build — the read map handed to footprint-story/isometric · buildIsoMap, and what it built joined back onto the kit's
- * pieces. The steps (place, route, fitFloors, grid, shape, names, order, floorLabels) are footprint-story's, the one
+ * pieces. The steps (place, route, fitFloors, grid, shape, names, order, floorLabels, style) are footprint-story's, the one
  * copy a deck builds its maps with too; the kit's numbers are its film policy (ISO_MAP_POLICIES.film). Nothing is
  * placed, fitted or drawn here. WHY: the kit carried its own copy of these steps until 0.38.0; one copy cannot drift.
  *
@@ -47,8 +47,9 @@ export function specOf(map, where) {
 
 /**
  * The map built (buildIsoMap with the film policy), and each piece given what the steps made for it — `at`, `shape`
- * ({box, centre, outline, faces}: the faces are the style's shape items), `fitted` and `smallFitted` (a block's name
- * and small line), a floor's `at`, `size`, `shape` and label `place`, a wire's `route` (null: written straight) — and
+ * ({box, centre, outline, faces}: the faces are the style's shape items), `paint` (its paint list: the style step's
+ * `paints` / `floorPaints`, what paint.mjs draws), `fitted` and `smallFitted` (a block's name and small line), a
+ * floor's `at`, `size`, `shape`, `paint` and label `place`, a wire's `route` (null: written straight) — and
  * the map its `grid` (made again from the built map's numbers: the built map holds no function), `order` (the blocks,
  * furthest first), `built` (the built map itself, frozen) and `spec` (what buildIsoMap was handed, for the map flow:
  * flow.mjs). Mutates the read map and returns it.
@@ -59,8 +60,8 @@ export function buildMap(map, where) {
   const spec = frozen(specOf(map, where));
   let built;
   try { built = buildIsoMap(spec, ISO_FIT); } catch (e) { throw new Error(`${where}: ${String(e?.message ?? e).replace(/^isometric: /, '')}`, {cause: e}); }
-  map.blocks.forEach((b, i) => Object.assign(b, {at: built.at[i], shape: built.shapes[i], fitted: built.names[i], smallFitted: built.smalls[i]}));
-  map.floors.forEach((f, i) => Object.assign(f, {at: built.floorTiles[i].at, size: built.floorTiles[i].size, shape: built.floorShapes[i], place: built.floorLabels[i]}));
+  map.blocks.forEach((b, i) => Object.assign(b, {at: built.at[i], shape: built.shapes[i], paint: built.paints[i], fitted: built.names[i], smallFitted: built.smalls[i]}));
+  map.floors.forEach((f, i) => Object.assign(f, {at: built.floorTiles[i].at, size: built.floorTiles[i].size, shape: built.floorShapes[i], paint: built.floorPaints[i], place: built.floorLabels[i]}));
   map.wires.forEach((w, i) => { w.route = built.routes[i]; });
   const byName = new Map(map.blocks.map((b) => [b.name, b]));
   return Object.assign(map, {spec, built, placed: built.placed, grid: isometric(built.view), order: built.order.map((name) => byName.get(name))});
