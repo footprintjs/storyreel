@@ -1,0 +1,15 @@
+{
+ "story": {
+  "kit": "isometric",
+  "style": {"line": {"name": "human:sketchy", "speed": 900}, "texture": {"name": "human:hatch", "spacing": 16}},
+  "blocks": [
+   {"name": "you", "label": "You", "appear": ["sketch", "First the browser"]},
+   {"name": "server", "label": "Server", "size": [2, 2, 1.6], "appear": ["sketch", "Then the server"]},
+   {"name": "db", "kind": "cylinder", "label": "Database", "size": [1.8, 1.8, 1.2], "appear": ["sketch", "Then the database"]}
+  ],
+  "wires": [
+   {"arrow": "you to server", "appear": ["sketch", "Then the server"]},
+   {"arrow": "server to db", "label": "SQL", "appear": ["sketch", "Then the database"]}
+  ]
+ }
+}

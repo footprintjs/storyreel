@@ -1,0 +1,6 @@
+{
+  "title": "A map drawn by hand",
+  "scenes": [
+    {"id": "sketch", "title": "Drawn by hand", "narration": "First the browser is drawn, line by line. Then the server, and its shading. Then the database it reads from. A hand drew each line in the order a hand would."}
+  ]
+}

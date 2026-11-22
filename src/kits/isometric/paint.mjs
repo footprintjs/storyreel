@@ -11,12 +11,11 @@
  * It decides no shape and no colour of its own.
  *
  * WHY a `stroke` is filled, not stroked: a canvas line has one width, and a hand's line thins and tapers along it. The
- * ring round it is footprint-story's (human · strokeOutline, the one geometry for a line of changing width, the ring
- * StoryDeck's SVG fills too); this painter fills that ring and, for a round cap, the circle of each end's width (the
- * ends are the painter's, strokeOutline says). WHY drawn by time: each point says when the pen is there (seconds from
- * the piece's start, rising), so a film draws the line as far as the pen has come — the ring of the points it has
- * reached, the same ring cut short, never a second curve. footprint-story gives no point between two of a stroke's
- * points at a time, so the line grows point by point (its points are a couple of px apart: plan.js walks every 2 px).
+ * geometry is all footprint-story's (human · strokeAt, strokeOutline: the one rule a deck's SVG and a film's canvas paint
+ * by): `strokeAt(points, now)` is the line as far as the pen has come (each point says when the pen is there, seconds
+ * from the piece's start; the pen's place between two points at `now`, so the line grows smoothly), and
+ * `strokeOutline(…, {cap})` the one ring round it, both ends capped. This painter only fills that ring — by the
+ * non-zero rule, a canvas's default, because the ring can cross itself at a round cap and even-odd would leave a hole.
  *
  * WHY one painter: a deck and a film paint the same list, so they draw the same picture; a new look (a style) needs a
  * new list, never new drawing code here. It was proven call for call equal to the kit's old face-by-face drawing
@@ -30,16 +29,21 @@
  * (a style's own palette, later) is drawn as given.
  */
 
-import {strokeOutline} from 'footprint-story/human';
+import {mixColour} from 'footprint-story/isometric';
+import {strokeAt, strokeOutline} from 'footprint-story/human';
 
-/** A hex colour's three channels, 0 to 255 (`#rgb` or `#rrggbb`: a recipe may write either). */
-const channels = (hex) => { const h = hex.length === 4 ? `#${[...hex.slice(1)].map((ch) => ch + ch).join('')}` : hex; return [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); };
+/**
+ * `hex` mixed with `other` by `share` of the other: footprint-story's mixColour (CSS color-mix in srgb, `#rgb` or
+ * `#rrggbb` either side, since 0.32.4), the one mix a deck and a film colour a face by.
+ */
+export const mix = mixColour;
 
-/** `hex` mixed with `other` by `share` of the other (CSS color-mix in srgb; footprint-story's mixColour, which takes `#rrggbb` only). */
-export const mix = (hex, other, share) => { const a = channels(hex), b = channels(other); return `#${a.map((v, i) => Math.round(v + (b[i] - v) * share).toString(16).padStart(2, '0')).join('')}`; };
-
-/** A hex colour at an alpha, as a canvas takes it. */
-export const rgba = (hex, alpha) => `rgba(${channels(hex).join(',')},${alpha})`;
+/**
+ * A hex colour at an alpha, as a canvas takes it: `rgba(r,g,b,alpha)`. WHY its own three channels here: footprint-story
+ * has no colour-at-an-alpha (its paint list keeps alpha beside the colour, and an SVG writes it as an opacity); the
+ * colour is read as `#rrggbb` through mixColour first (no mix: `#rgb` written out), so the one colour reader decides it.
+ */
+export const rgba = (hex, alpha) => { const h = mixColour(hex, hex, 0); return `rgba(${[1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(',')},${alpha})`; };
 
 /** An item traced as the canvas's current path. */
 function trace(c, it) {
@@ -70,37 +74,17 @@ function fillColour(fill, base) {
 const strokeColour = (s, ink) => { const colour = s.colour ?? ink; return s.alpha === 1 ? colour : rgba(colour, s.alpha); };
 
 /**
- * The points of a `stroke` item the pen has reached `now` seconds after its piece's start: the first points, up to the
- * last whose time is `now` or before (footprint-story checks the times rise along the item). The whole list when all
- * are reached, so a finished line is the very list.
- */
-export function reachedPoints(points, now) {
-  let n = 0;
-  while (n < points.length && points[n][3] <= now) n += 1;
-  return n === points.length ? points : points.slice(0, n);
-}
-
-/**
- * A `stroke` item drawn as far as the pen has come: the ring round the reached points (footprint-story · strokeOutline)
- * and, for a round cap, a circle of each end's width — one path, filled once in the stroke's colour, so the ring and its
- * ends never darken where they overlap at an alpha under 1. WHY each circle turns clockwise on the frame: the ring runs
- * up a stroke's left side and back down its right, which is clockwise on a y-down frame whatever way the stroke goes, so
- * the ends add to it under the canvas's nonzero rule; turned the other way they would cut a hole where they overlap it.
- * Nothing reached, nothing drawn; one point reached is the pen's touch: its end's dot.
+ * A `stroke` item drawn as far as the pen has come `now` (seconds from its piece's start): footprint-story's ring round
+ * the part drawn (strokeAt, then strokeOutline with the item's cap), one path filled once in the stroke's colour, so it
+ * never darkens itself at an alpha under 1. Nothing drawn yet, nothing filled.
  */
 function paintStroke(c, it, ink, now) {
-  const s = it.stroke;
-  // footprint-story's ring takes a round end and a cut one; a square end would be geometry made here, so it is refused
-  // (at any time: whether a list is drawn never hangs on the frame)
-  if (s.cap === 'square') throw new Error(`isometric kit: a stroke item's cap is "round" or "butt" — not "square" (footprint-story's strokeOutline gives no square end): give the stroke of "${it.of}" cap "round", as footprint-story's strokeItems does`);
-  const points = reachedPoints(it.points, now);
-  if (!points.length) return;
+  const ring = strokeOutline(strokeAt(it.points, now), {cap: it.stroke.cap});
+  if (!ring.length) return;
   c.beginPath();
-  if (points.length >= 2) { strokeOutline(points).forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.closePath(); }
-  if (s.cap === 'round') {
-    for (const [x, y, w] of points.length === 1 ? points : [points[0], points.at(-1)]) { c.moveTo(x + w / 2, y); c.arc(x, y, w / 2, 0, 2 * Math.PI); }
-  }
-  c.fillStyle = strokeColour(s, ink); c.fill();
+  ring.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y)));
+  c.closePath();
+  c.fillStyle = strokeColour(it.stroke, ink); c.fill('nonzero');
 }
 
 /**

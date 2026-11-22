@@ -3488,9 +3488,8 @@ A studio whose recipe file is not known (no `--recipe`, no `recipe.json` beside 
   (`/isometric` places, lays, fits and orders, and places a moving piece; `/motion` rides), so a deck and a film draw one map the same way. With no
   `at` the blocks are placed from the wires; `appear` brings a piece in on a phrase; every block and wire is named for
   the camera (`"focus": {"keys": [{"on": "db", …}]}`); `style` names the look, footprint-story's style row
-  (`{"line": {"name": "ink", "width": 5}}` outlined, `{"line": "none"}` no outline; left out, today's look; a
-  hand-drawn line in a piece's paint list is drawn as its pen goes, from the piece's moment — footprint-story's
-  `human:sketchy` and `human:hatch` wait on its map build taking a tool's choices). A wrong
+  (`{"line": {"name": "ink", "width": 5}}` outlined, `{"line": "none"}` no outline; left out, today's look; `{"line":
+  "human:sketchy", "texture": "human:hatch"}` drawn by hand, each piece as its pen goes from its moment). A wrong
   map is refused naming the entry and the fix, and what does not lie well is said in the world's `notes` (`strict:
   true` refuses it). `motion` moves a block by intent in footprint-story's words (`{"piece": "box", "do": "fall"}`,
   `{"piece": "ball", "do": "throw", "to": "server"}`) — `fall`, `throw`, `hang`, `settle`, `reach`, and `roll` (a
@@ -3498,7 +3497,7 @@ A studio whose recipe file is not known (no `--recipe`, no `recipe.json` beside 
   duration and the curve, and a roll's or a tumble's turn is drawn as the grid sees it. A turn the kit cannot draw truly
   (a block or a cylinder rolling) is refused with the fix.
   `import {isometricKit} from 'footprint-storyreel/kits/isometric'`; the keys: src/kits/isometric/README.md;
-  `node examples/iso-world/make.mjs`, `node examples/iso-motion/make.mjs`, `node examples/iso-roll/make.mjs`.
+  `node examples/iso-world/make.mjs`, `node examples/iso-motion/make.mjs`, `node examples/iso-roll/make.mjs`, `node examples/iso-sketch/make.mjs`.
 
 ```json
 {"type": "world", "scene": "map", "world": {"kit": "isometric",

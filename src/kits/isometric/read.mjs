@@ -17,6 +17,7 @@
  * refusal names the recipe entry; the choices and their options are footprint-story's, never listed again here.
  */
 import {readPorts, readThing, isoStyle, ISO_STYLE_COLUMNS, ISO_STYLE_CHOICES, MOST_FLOOR_LABEL, MOST_ROUTES} from 'footprint-story/isometric';
+import {sketchyLine, hatchTexture} from 'footprint-story/human';
 import {MOST_EASE} from 'footprint-story/motion';
 import {BREAK_RULES} from 'footprint-story/layout';
 import {readMotions} from './motion-read.mjs';
@@ -243,6 +244,17 @@ function readGrid(g, where) {
   return {tile, origin: [...g.at], ...(own(g, 'rise') ? {rise: g.rise} : {})};
 }
 
+/**
+ * The style choices the kit hands footprint-story beside its own: the two drawn by hand, `human:sketchy` (line) and
+ * `human:hatch` (texture), footprint-story/human's. WHY handed in: they are a tool's own choices (the isometric door
+ * never loads the human one), taken once the tool's painter draws `stroke` items — this kit's does (paint.mjs). One
+ * list, so the style check here, the map build (build.mjs) and the map flow `storyreel check` runs (flow.mjs) take the
+ * very same choices, and the record names them as it names the rest (`style.row`).
+ */
+export const STYLE_CHOICES = Object.freeze([sketchyLine, hatchTexture]);
+/** A column's choices by name: footprint-story's own, then the kit's handed ones. */
+const choiceNames = (column) => [...ISO_STYLE_CHOICES[column], ...STYLE_CHOICES.filter((c) => c.column === column).map((c) => c.name)];
+
 /** A choice's names as a refusal lists them: "ink" or "none"; "a", "b" or "c". */
 const either = (names) => names.map((n) => `"${n}"`).join(', ').replace(/, ([^,]*)$/, ' or $1');
 
@@ -263,7 +275,7 @@ function readStyle(s, where) {
   for (const k of Object.keys(s)) if (!ISO_STYLE_COLUMNS.includes(k)) throw new Error(`${who} takes the columns ${columns} (a column left out keeps today's look) — not ${shown(k)}`);
   // one entry: a choice's name, or {name, …its options}; its name one of the column's choices
   const entry = (v, column, at) => {
-    const names = ISO_STYLE_CHOICES[column];
+    const names = choiceNames(column);
     const name = typeof v === 'string' ? v : isObject(v) ? v.name : undefined, choices = names.length ? either(names) : 'none yet';
     // an entry written as an object is quoted by its name: the object itself would quote as "{}" when its name is a function
     if (isObject(v) && !own(v, 'name')) throw new Error(`${who}: ${at} names its choice, {"name": …, its options} — the ${column} choices are ${choices}; this one has no name`);
@@ -278,7 +290,7 @@ function readStyle(s, where) {
     s.effects.forEach((e, i) => entry(e, 'effects', `effects[${i}]`));
   }
   // footprint-story's own check: each choice's options (a width from 0.5 to 20 px …) and the pairings that cannot work
-  try { isoStyle(s); } catch (e) { throw new Error(`${who}: ${String(e?.message ?? e).replace(/^isometric: /, '').replace(/^the style's /, '')}`, {cause: e}); }
+  try { isoStyle(s, {choices: STYLE_CHOICES}); } catch (e) { throw new Error(`${who}: ${String(e?.message ?? e).replace(/^(?:isometric|human): /, '').replace(/^the style's /, '')}`, {cause: e}); }   // a handed choice refuses from footprint-story/human
   // a copy: the spec is frozen at every level (build.mjs), and a list the recipe wrote is handed on as itself by plain()
   return structuredClone(s);
 }

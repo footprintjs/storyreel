@@ -12,6 +12,7 @@
  */
 import {buildIsoMap, isometric, ISO_MAP_POLICIES} from 'footprint-story/isometric';
 import {ballPicture, centreOf, UNTURNED} from './turn.mjs';
+import {STYLE_CHOICES} from './read.mjs';
 
 /**
  * The kit's numbers: footprint-story's film policy, StoryReel 0.38.0's own numbers moved there — a fitted tile 96 to
@@ -66,7 +67,8 @@ export function buildMap(map, where) {
   // Frozen, every level, so nothing can change it between the build and the map flow's run of it.
   const spec = frozen(specOf(map, where));
   let built;
-  try { built = buildIsoMap(spec, ISO_FIT); } catch (e) { throw new Error(`${where}: ${String(e?.message ?? e).replace(/^isometric: /, '')}`, {cause: e}); }
+  // the kit's handed style choices beside the spec (read.mjs · STYLE_CHOICES): code, so never in the spec or the record
+  try { built = buildIsoMap(spec, ISO_FIT, {choices: STYLE_CHOICES}); } catch (e) { throw new Error(`${where}: ${String(e?.message ?? e).replace(/^isometric: /, '')}`, {cause: e}); }
   map.blocks.forEach((b, i) => Object.assign(b, {at: built.at[i], shape: built.shapes[i], paint: built.paints[i], fitted: built.names[i], smallFitted: built.smalls[i]}));
   map.floors.forEach((f, i) => Object.assign(f, {at: built.floorTiles[i].at, size: built.floorTiles[i].size, shape: built.floorShapes[i], paint: built.floorPaints[i], place: built.floorLabels[i]}));
   map.wires.forEach((w, i) => { w.route = built.routes[i]; });

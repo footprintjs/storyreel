@@ -1,32 +1,32 @@
 # Changelog
 
-## 0.46.0 — the isometric painter draws hand-drawn lines, timed
+## 0.46.0 — maps drawn by hand, each line as its pen goes
 
-footprint-story's paint list has a kind of item for a line drawn by hand: a `stroke`, with a width and a time per
-point. The isometric kit's painter (`kits/isometric/paint.mjs`) refused it until now; it draws it, with
-footprint-story (now `^0.32.1`, a test fix only upstream).
+An isometric world can be drawn by hand: footprint-story's `human:sketchy` line and `human:hatch` texture (now
+`^0.33.0`, which lets a tool hand its own choices to the map build). Each piece is drawn as its pen goes, from the
+moment it comes in.
 
 ```json
-{"item": "stroke", "role": "ink", "of": "server", "fill": null,
- "points": [[612, 301, 0.75, 0], [614, 302, 1.6, 0.02], [616, 303, 2.5, 0.04]],
- "stroke": {"colour": null, "alpha": 1, "width": 2.5, "join": "round", "cap": "round"}}
+{"type": "world", "scene": "sketch", "world": {"kit": "isometric",
+  "style": {"line": {"name": "human:sketchy", "speed": 900}, "texture": {"name": "human:hatch", "spacing": 16}},
+  "blocks": [{"name": "you", "label": "You", "appear": ["sketch", "First the browser"]},
+             {"name": "db", "kind": "cylinder", "label": "Database", "appear": ["sketch", "Then the database"]}],
+  "wires":  [{"arrow": "you to db"}]}}
 ```
 
-- **Filled, not stroked.** A canvas line has one width; a hand's line thins and tapers. The painter fills the ring
-  round it — footprint-story's `strokeOutline(points)` (`footprint-story/human`), the one geometry for a line of
-  changing width — and a circle of each end's width for a round cap, as one path filled once in the stroke's colour
-  (the theme's ink when it names none). A faint line is covered once over, ends and all, whichever way it runs.
-- **Drawn as the pen goes.** Each point's time is seconds from its piece's start. In a film the line is drawn as far as
-  the pen has come at the frame's time, from the piece's `appear` moment (else the film's start): the ring of the points
-  reached by then, whole once the last is reached. A painter given no time (a still) draws it whole.
-- **Refused, not guessed:** a `square` cap (footprint-story's ring has no square end; its `strokeItems` writes round caps).
-- **Not yet in a world.** footprint-story's hand-drawn styles, `human:sketchy` and `human:hatch`, are choices a tool
-  hands to `isoStyle`, and its map build (`buildIsoMap`, `runMapFlow`) does not take a tool's choices yet. A world that
-  names them is still refused in footprint-story's words (`stage map: isometric style: line has no choice
-  "human:sketchy" — the line choices are "ink" or "none"`); a test pins that refusal, to be turned round when the map
-  build takes the choices.
-- **No frame changes**: every pin in `test/golden.json` is unchanged. `test/iso-strokes.test.mjs` checks the ring to
-  1e-6, the cut by time, the coverage of a faint line, and pins one hand-drawn block's pictures.
+- **The painter draws footprint-story's `stroke` item** (a width and a time per point), which it refused before. A
+  canvas line has one width, so it fills a ring, and every number of it is footprint-story's:
+  `strokeOutline(strokeAt(points, now), {cap})` — the line as far as the pen has come (between two points too, so it
+  grows smoothly), capped at both ends. One fill, by the non-zero rule (the ring can cross itself at a round cap).
+  `now` is the frame's time less the piece's `appear` moment, else the film's start; a still draws the line whole.
+- **The two hand-drawn choices are handed in** (`kits/isometric/read.mjs` · `STYLE_CHOICES`) to the style check, the
+  map build and the map flow `storyreel check` runs, so the record names them (`style.row`) as it names the rest. Their
+  options are footprint-story's, and refused in its words naming the entry. Changed words: a refusal listing a
+  column's choices now lists these too (`the line choices are "ink", "none" or "human:sketchy"`).
+- **One colour mix:** the kit's own `mix` is footprint-story's `mixColour` (it reads `#rgb` since 0.32.4).
+- **New example** `examples/iso-sketch`, pinned in `test/golden.json` (and the behaviour pins). Every existing pin is
+  unchanged. `test/iso-strokes.test.mjs` checks the ring to 1e-6 at every cap and time, a faint line covered once
+  over, the record of a hand-drawn world, and pins one hand-drawn block's pictures.
 
 ## 0.45.0 — one copy of the moving-piece rules, and a hidden name fixed
 
