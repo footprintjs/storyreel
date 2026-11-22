@@ -263,7 +263,7 @@ The box falls under gravity onto the floor under it (0.46 s: `ballistic`, the us
 | `do` | `fall` · `throw` · `hang` · `settle` · `reach` | footprint-story's word for the move (below) |
 | `at` | an anchor | when the move begins; left out, when the block appears, else the film's start |
 | `to` | a block's name or tiles | where it ends: a block's name is the middle of its top (it ends standing on it), tiles `[col, row]` or `[col, row, lift]` a place in the world. A throw, a settle and a reach need one; a fall and a hang take none |
-| `from` | a block's name or tiles | a hang's pin (only a hang takes one) |
+| `from` | a block's name or tiles | a hang's pin (only a hang takes one). A block's name is never the middle of its top (the piece would rest inside the block): under a block in the air above the piece, the middle of its underside; beside any other, its top edge that faces the piece, on an arm out from it by half the piece's depth (below) |
 | `wrap` | `[{"wrapper": "anticipate"}]` | footprint-story's wrappers, innermost first: `anticipate`, `follow-through`, `hold`, `overshoot`, with their options (at most 4) |
 | `model` | `"bounce"`, `{"name": "bounce", "squash": 0.2}` | one of footprint-story's models for the family, when the usual is not wanted (a fix footprint-story gives is written here as it says it) |
 | `accept` | `["arc"]` | critics whose findings this move keeps, when what they find is meant (a straight slide): shown as accepted and recorded, never a fault. Each must be one the move's model is checked by, or `reel:contact` |
@@ -351,7 +351,17 @@ fall); a target block is aimed at **where it stands when the move begins** (a bo
 fell), and a move that relies on a block that moves meanwhile — its target, what it lands on — is refused with both
 times. A block that moves from under another resting on its top is refused, naming both entries: the rider would be
 left on nothing, and only the author knows whether it goes too (move it off first, or anchor the move before it lands).
-A hang ties the rope to its **top**; its pin must be above it. Tiles off the 1600×900 frame are refused in tiles,
+A hang ties the rope to its **top**; its pin must be above it. **A hang from a block** (`"from": "shelf"`, from 0.51.0;
+`motion-hang.mjs` · `hangPin`) is tied where a real one would be: to the middle of its **underside** when the block is
+in the air above the piece's top (a beam, a shelf on nothing), the piece hanging beneath it; else **beside** it — at its
+top, the middle of the edge that faces the piece, on an arm held out by half the piece's own depth across that edge,
+so at rest the piece hangs flush against that side, touching it and not inside it. The arm is drawn from the edge to
+the pin in the rope's ink, and framed with the rope. Before 0.51.0 a block's name was the middle of its top, as `to`
+takes it, and a piece hung there always rested inside the block (`reel:contact`, every time). The rope's length is
+where the piece starts, so a piece hung from one tile away swings past its rest and back into the block — and that is
+still a `reel:contact` warn: the rule picks where the rope is tied, never what the swing may do. The record names the
+block, the rule and the pin (`map.motions[i].hung`: `{on, rule: "under" | "beside", pin}`). A block whose top is not
+above the piece's is refused, naming a pin of tiles above it. Tiles off the 1600×900 frame are refused in tiles,
 naming where the blocks stand, and so is a way that leaves the frame as it is drawn — a throw's top, a swinging rope —
 checked at each sample, saying the moment, how far off and where its foot is then in tiles (a block the map itself
 draws off the frame is the map's to say).
