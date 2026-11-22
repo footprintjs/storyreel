@@ -11,7 +11,6 @@
  *   boxPicture(grid, centre, size, m)       a block turned by m: the faces seen ({points, normal}) and its outline
  *   ballPicture(grid, centre, radius, m)    a ball turned by m: its outline, its middle, and the seen halves of its marks
  *   boxPaint(picture, at, look)             a turned block's paint list: its seen faces, each toned by the way it faces
- *   ballPaint(picture, at, look)            a ball's paint list: its fill, its marks, its edge
  *   reachOver(a0, a1)                       how far a block turning from a0 to a1 reaches, as a share of its half side
  *   drawnOutline(b, pose, grid)             a block's outline on the frame at its pose, turned when it is
  *
@@ -24,8 +23,9 @@
  * great circles, the half of each that faces the viewer, as a beach ball's seams.
  *
  * WHY paint lists: the kit has one canvas painter (paint.mjs · paintItems), and draw.mjs traces no shape itself; a turned
- * body is handed to it as a list in footprint-story's paint-item shape (`polygon` and `path` items, each fill a recipe
- * over the kit's base colour and each stroke in the kit's ink), as a built block is.
+ * block is handed to it as a list in footprint-story's paint-item shape (`polygon` items, each fill a recipe over the
+ * kit's base colour and each stroke in the kit's ink), as a built block is. A ball's list is footprint-story's own
+ * (ball.mjs), its seams swapped for the marks ballPicture turns.
  */
 import {posed} from 'footprint-story/isometric';
 
@@ -154,20 +154,6 @@ export function boxPaint(picture, at, look) {
     const net = (0.2 * w[0] - 0.06 * w[1] - 0.18 * w[2]) / sum;
     return {item: 'polygon', points: points.map(at), fill: {mix: net >= 0 ? ['#ffffff', net] : ['#000000', -net], colour: null}, stroke};
   });
-}
-
-/**
- * A ball's paint list: its outline filled as a top is (20% toward white: its name is ink on it, as on a top), its marks
- * in the ink at `look.mark`, `look.markLine` wide, then its edge in the ink `look.line` wide — every point put where `at`
- * says (the pose's move and squash).
- */
-export function ballPaint(picture, at, look) {
-  const outline = picture.outline.map(at), path = (line) => [['move', ...line[0]], ...line.slice(1).map((p) => ['line', ...p])];
-  return [
-    {item: 'polygon', points: outline, fill: {mix: ['#ffffff', 0.2], colour: null}, stroke: null},
-    ...picture.marks.map((mark) => ({item: 'path', segments: path(mark.map(at)), fill: null, stroke: {colour: null, alpha: look.mark, width: look.markLine, join: 'round', cap: 'round'}})),
-    {item: 'polygon', points: outline, fill: null, stroke: {colour: null, alpha: 1, width: look.line, join: 'round', cap: 'butt'}},
-  ];
 }
 
 /**

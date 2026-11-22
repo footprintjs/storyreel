@@ -29,7 +29,7 @@ export const FILMS = {
   'iso-roll': {tail: 1.5, kits: [isometricKit]},
   // A map drawn by hand (footprint-story 0.33's human:sketchy and human:hatch): each piece drawn as its pen goes.
   'iso-sketch': {tail: 8, kits: [isometricKit]},
-  // One map in footprint-story's four named looks (0.34, 0.35): outlined, line-art, paper-grain, duotone, a stage each.
+  // One map in footprint-story's five named looks (0.34, 0.35, 0.37): outlined, line-art, paper-grain, duotone, sketchy, a stage each.
   'iso-looks': {tail: 1.5, kits: [isometricKit]},
 };
 

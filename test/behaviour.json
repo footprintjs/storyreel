@@ -482,9 +482,19 @@
     "label": "mid the fade into duotone"
    },
    {
-    "t": 33.76,
+    "t": 33.46,
     "kind": "settled",
     "label": "Duotone"
+   },
+   {
+    "t": 38.16,
+    "kind": "moving",
+    "label": "mid the fade into sketchy"
+   },
+   {
+    "t": 43.35,
+    "kind": "settled",
+    "label": "Sketchy"
    }
   ],
   "pushes": [
@@ -558,7 +568,7 @@
     },
     "to": {
      "scene": "duotone",
-     "phrase": "And",
+     "phrase": "Then",
      "nth": 0
     },
     "says": "note \"push across mid the fade into duotone\": the push runs from 27.08 s to 30.26 s, across the fade into duotone (28.36 s); a push stays on one picture: end it before 28.36 s, or start it after the change"
@@ -573,10 +583,40 @@
     },
     "to": {
      "scene": "duotone",
-     "phrase": "And",
+     "phrase": "Then",
      "nth": 0
     },
     "says": "note \"push across start of duotone\": the push runs from 27.08 s to 30.26 s, across the fade into duotone (28.36 s); a push stays on one picture: end it before 28.36 s, or start it after the change"
+   },
+   {
+    "across": "mid the fade into sketchy",
+    "at": 38.16,
+    "from": {
+     "scene": "duotone",
+     "phrase": "kept.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "sketchy",
+     "phrase": "And",
+     "nth": 0
+    },
+    "says": "note \"push across mid the fade into sketchy\": the push runs from 36.48 s to 39.66 s, across the fade into sketchy (37.76 s); a push stays on one picture: end it before 37.76 s, or start it after the change"
+   },
+   {
+    "across": "start of sketchy",
+    "at": 38.36,
+    "from": {
+     "scene": "duotone",
+     "phrase": "kept.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "sketchy",
+     "phrase": "And",
+     "nth": 0
+    },
+    "says": "note \"push across start of sketchy\": the push runs from 36.48 s to 39.66 s, across the fade into sketchy (37.76 s); a push stays on one picture: end it before 37.76 s, or start it after the change"
    }
   ]
  }

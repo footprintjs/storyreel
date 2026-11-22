@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.50.0 — a ball in any look, the look sketchy, a name's ink from footprint-story
+
+footprint-story is now `^0.38.0`. Three of StoryReel's own copies go to it: a block's name's ink, the ball's painter,
+and the refusal of a ball in a styled world. And a world can be drawn by hand as one look.
+
+```json
+{"type": "world", "scene": "map", "world": {"kit": "isometric", "style": {"look": "sketchy"},
+  "blocks": [{"name": "you", "label": "You"}, {"name": "ball", "kind": "ball", "label": "Ball"}, {"name": "db", "kind": "cylinder", "tone": "ok"}],
+  "wires":  [{"arrow": "you to db"}]}}
+```
+
+- **The look `sketchy`** (footprint-story 0.37): `"style": {"look": "sketchy"}` draws the map by hand: white faces,
+  every edge drawn as a pen goes, the left sides hatched and the right cross-hatched (the hatch 28 px apart). It needed
+  no new code: the kit already hands in footprint-story's `HUMAN_STYLE_CHOICES`. On a dark ground its paper is the
+  ground, as line-art's is. `examples/iso-looks` now shows five looks; the sketchy world draws its few hundred strokes
+  with no stroke-budget note (pinned). **Changed words:** the refusals that list the looks now name `"sketchy"` too.
+- **A ball in any style or look** (`kits/isometric/ball.mjs`, new): footprint-story 0.37 paints StoryReel's ball
+  (`paintPiece` with `kind: "ball"`, the same outline, middle, box and seams as the kit's), so the kit draws it with
+  that list in the world's style, and the refusal of a ball in a world with a style is gone. A turned ball (a roll, a
+  tumble) takes the turned marks in place of its seams, the level seam first; a moved one has every point put where
+  its pose says. A ball's name is written on its disc in the ink that reads on that face, as a block's is on its top.
+  A ball in each look is pinned on a light ground and a dark one (`test/iso-ball.test.mjs`).
+- **One new refusal:** a line that draws a ball's seams by hand (`human:sketchy`) plans them as the ball is built and
+  leaves no seam to turn, so a roll or a tumble of that ball is refused, naming the fix: `stage map: isometric
+  motion[0] ("ball"): a roll turns the ball, and this world's line "human:sketchy" draws a ball's seams by hand as it is
+  built — they could not be drawn turning: throw it (do: "throw") or slide it (do: "slide"), or write another line
+  beside the look ("line": "ink")`. A throw or a slide is drawn by hand as it goes. (A turned ball drawn by hand needs
+  footprint-story to paint a ball's turn: a library requirement.)
+- **A pinned picture moved, by at most 1/255 a channel:** footprint-story draws a ball's edge with its disc, before the
+  seams; the kit drew it after them. A seam ends running along the edge, so there the two orders blend the half-ink
+  seam and the edge's antialiased fringe a little differently. In `iso-roll` 23 of its 24 golden frames moved: about
+  50 to 65 pixels a 1920 × 1080 frame, each by 1 (of 255) in a channel; on the 1600 × 900 sheet every changed pixel
+  is within 3 px of a ball's rim (measured against 0.49.0's code over 38 moments). No other film moved but
+  `iso-looks`, which gained its sketchy scene (its golden, behaviour and readings pins re-recorded for it).
+- **A name's ink is footprint-story's `readableInk`** (0.38): the rule StoryReel 0.49.0 had as `looks.mjs` · `nameInk`
+  (the theme's ink when it stands 4.5 : 1 on the face, else the ground when it reads better) moved there for StoryDeck
+  too, its result pinned equal to StoryReel's. `nameInk` and `ratioOf` are gone from `looks.mjs`; `darkGround` reads
+  footprint-story's `luminance`. No pinned picture moved for it (every film re-pinned with the old example: only
+  `iso-roll`, above). `src/contrast.mjs` keeps its own `luminance(r, g, b)` and `contrastRatio` of two luminances:
+  the review's contrast check reads pixel bytes, tens of thousands a word, and footprint-story's take colours written
+  `#rrggbb` (the same WCAG formula).
+- **Removed:** `ISO_LOOK.mark` and `ISO_LOOK.markLine` (the kit's own ball seams; footprint-story's `SEAM` is the same
+  ink at half, 2 px under the usual 2.5 px line) and `turn.mjs` · `ballPaint`.
+
 ## 0.49.0 — a world names a look; a drawing too fast for a hand says so
 
 A world names one of footprint-story's looks (now `^0.36.0`) as its style, and a whiteboard drawing given too short a

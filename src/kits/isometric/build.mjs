@@ -10,8 +10,8 @@
  *
  * Tiles in, frame px out (the 1600×900 sheet). The cables are put on the frame by cables.mjs.
  */
-import {buildIsoMap, isometric, ISO_MAP_POLICIES} from 'footprint-story/isometric';
-import {ballPicture, centreOf, UNTURNED} from './turn.mjs';
+import {buildIsoMap, isometric, restyle, ISO_MAP_POLICIES} from 'footprint-story/isometric';
+import {paintBall} from './ball.mjs';
 import {STYLE_CHOICES} from './read.mjs';
 import {ISO_LOOK} from './draw.mjs';
 import {inDuotone} from './looks.mjs';
@@ -35,14 +35,15 @@ const MAP_WHO = 'the isometric map';
  * so a refusal reads as the kit's always did. WHY not the whole words: a spec's `who` is at most 200 letters, and the
  * entry's name is the film's, of any length. A wire names its ends' blocks by name (one name, one piece: read.mjs).
  * A ball (the film's own kind, read.mjs · KINDS) is handed on as the cylinder round it: placed, ordered, routed to and
- * named on its top as that cylinder, which holds the whole ball.
+ * named on its top as that cylinder, which holds the whole ball (buildIsoMap takes no ball yet); buildMap then paints the
+ * ball itself.
  * A world printed in the duotone palette hands each block with no tone its colour (`colours: {base}`: its own, else the
  * kit's tone), so the duotone tints it; a toned block keeps the page's colour (looks.mjs says why). No other world hands
  * any colour: its spec is as it was.
  */
 export function specOf(map, where) {
   const who = (p) => p.who.slice(where.length + 2);   // read.mjs words every piece `${where}: isometric <path>…`
-  const tinted = inDuotone(map.style), colours = (b) => (tinted && !b.tone ? {colours: {base: b.color ?? ISO_LOOK.tone}} : {});
+  const tinted = inDuotone(map.style), colours = (b) => { const c = coloursOf(tinted, b); return c ? {colours: c} : {}; };
   return {
     who: MAP_WHO,
     blocks: map.blocks.map((b) => ({name: b.name, kind: b.kind === 'ball' ? 'cylinder' : b.kind, at: b.at, size: b.size, label: b.label, small: b.small, rule: b.rule, group: b.group,
@@ -58,6 +59,9 @@ export function specOf(map, where) {
     ...(map.style ? {style: map.style} : {}),
   };
 }
+
+/** The colours a block hands the build: its base when the duotone tints it (untoned), else none (the page decides). */
+const coloursOf = (tinted, b) => (tinted && !b.tone ? {base: b.color ?? ISO_LOOK.tone} : undefined);
 
 /**
  * The map built (buildIsoMap with the film policy), and each piece given what the steps made for it — `at`, `shape`
@@ -79,11 +83,15 @@ export function buildMap(map, where) {
   map.floors.forEach((f, i) => Object.assign(f, {at: built.floorTiles[i].at, size: built.floorTiles[i].size, shape: built.floorShapes[i], paint: built.floorPaints[i], place: built.floorLabels[i]}));
   map.wires.forEach((w, i) => { w.route = built.routes[i]; });
   const byName = new Map(map.blocks.map((b) => [b.name, b])), grid = isometric(built.view);
-  // a ball's shape is the ball's, not its cylinder's: its outline what is drawn (a camera frames it, a cable is hidden
+  // a ball is painted by footprint-story in the style the map was built in (ball.mjs), with the colours its cylinder was
+  // handed; its shape is the ball's, not its cylinder's: its outline what is drawn (a camera frames it, a cable is hidden
   // behind it), its centre its middle (its name is written there: on the cylinder's top it would float over the ball)
-  for (const b of map.blocks.filter((x) => x.kind === 'ball')) {
-    const ball = ballPicture(grid, centreOf(b), b.size[0] / 2, UNTURNED), xs = ball.outline.map((p) => p[0]), ys = ball.outline.map((p) => p[1]);
-    b.shape = Object.freeze({...b.shape, centre: ball.centre, outline: ball.outline, box: {x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys)}});
+  const balls = map.blocks.filter((x) => x.kind === 'ball');
+  const style = balls.length ? restyle(built.style, {choices: STYLE_CHOICES}) : null, tinted = inDuotone(map.style);
+  for (const b of balls) {
+    const ball = paintBall(b, grid, style, coloursOf(tinted, b));
+    b.paint = ball.items;
+    b.shape = Object.freeze({...b.shape, centre: ball.centre, outline: ball.outline, box: ball.box});
   }
   return Object.assign(map, {spec, built, placed: built.placed, grid, order: built.order.map((name) => byName.get(name))});
 }

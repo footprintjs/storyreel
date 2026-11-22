@@ -6,7 +6,7 @@ export type IsoAnchor = [string, string] | [string, string, number] | {scene: st
 export interface IsoBlockSpec {
   /** one word a wire's arrow can say (no space, no dot): what a camera frames */
   name: string;
-  /** 'ball' (0.44.0): round every way, the one that rolls; StoryDeck draws none yet, no ports, today's look only */
+  /** 'ball' (0.44.0): round every way, the one that rolls; no ports; painted in any style (0.50.0) */
   kind?: 'block' | 'cylinder' | 'ball';
   /** [col, row] or [col, row, lift]; give every block one, or none (then they are placed from the wires) */
   at?: [number, number] | [number, number, number];
@@ -101,8 +101,8 @@ export interface IsoMotionRecord {
 export interface IsoMotionFinding { readonly path: string; readonly from: number; readonly to: number; readonly critic: string; readonly level: 'warn' | 'note' | 'accepted' | string; readonly what: string; readonly fix: string }
 /** One column's choice: its name, or {name, …its options} (footprint-story's isoStyle). */
 export type IsoStyleEntry = string | {name: string; [option: string]: string | number | boolean};
-/** footprint-story's named looks (0.34, 0.35): a style row under a name. */
-export type IsoLookName = 'outlined' | 'line-art' | 'paper-grain' | 'duotone';
+/** footprint-story's named looks (0.34, 0.35, 0.37): a style row under a name. */
+export type IsoLookName = 'outlined' | 'line-art' | 'paper-grain' | 'duotone' | 'sketchy';
 /** A style row as a world writes it: footprint-story's columns, each left out its usual choice, or a named look and the columns written beside it. */
 export interface IsoStyleRow { look?: IsoLookName; shape?: IsoStyleEntry; shading?: IsoStyleEntry; line?: IsoStyleEntry; palette?: IsoStyleEntry; texture?: IsoStyleEntry; effects?: IsoStyleEntry[] }
 /** The look a world named and the ground it was drawn on (a dark ground's colours go into line-art's paper and the duotone's inks). */
@@ -138,7 +138,7 @@ export const ISO_LIMITS: Readonly<{pieces: number; packets: number; seconds: rea
 /** The numbers the kit builds its maps with: footprint-story's film policy (ISO_MAP_POLICIES.film) — tile range, grouped least, inset, floor margin under `fit`; name and small sizes; the share of a top's room a name takes; which floors a fitted picture holds. */
 export const ISO_FIT: Readonly<{fit: Readonly<{most: number; least: number; grouped: number; inset: number; margin: number}>; name: Readonly<{size: number; least: number}>; small: Readonly<{size: number; least: number}> | null; clear: number; hold: 'groups' | 'groups-and-labels'}>;
 /** The look where the theme has none. */
-export const ISO_LOOK: Readonly<{tone: string; glow: string; line: number; grid: number; cable: number; label: number; smallInk: number; appear: number; rope: number; mark: number; markLine: number}>;
+export const ISO_LOOK: Readonly<{tone: string; glow: string; line: number; grid: number; cable: number; label: number; smallInk: number; appear: number; rope: number}>;
 /** What a block can do in a film (footprint-story's words), and the places each takes: `to` where it ends, `from` a hang's pin. */
 export const MOTION_DOS: Readonly<Record<'fall' | 'throw' | 'hang' | 'settle' | 'reach' | 'roll' | 'slide' | 'tumble', Readonly<{to: boolean; from: boolean}>>>;
 /** The keys a motion entry takes. */

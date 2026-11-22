@@ -1,14 +1,14 @@
 /**
- * looks — a world's named look on the film's ground, and the ink a block's name is written in.
+ * looks — a world's named look on the film's ground.
  *
  *   groundedStyle(style, look, who)  the style row as read (read.mjs · readStyle) → {style, look}: the row the map is
  *                                    built in, and what the record says of the look (`{name, ground}`, or null)
- *   nameInk(face, look)              the colour a name is written in on a face of colour `face`
+ *   darkGround(look)                 whether the film's ground is darker than its ink
  *   inDuotone(style)                 whether the map is printed in the duotone palette (its untoned blocks then hand
  *                                    the map build their colours: build.mjs · specOf)
  *
- * A look is footprint-story's (`ISO_LOOKS`: outlined, line-art, paper-grain, duotone), a style row under a name. Two of
- * them carry a page's colours, white paper and a navy ink, as their own: line-art's paper shading (`#ffffff`) and the
+ * A look is footprint-story's (`ISO_LOOKS`: outlined, line-art, paper-grain, duotone, sketchy), a style row under a name. Three of
+ * them carry a page's colours, white paper and a navy ink, as their own: line-art's and sketchy's paper shading (`#ffffff`) and the
  * duotone's paper and ink (`DUOTONE`). On a light ground they are drawn as named. On a dark one they take the film's:
  * the paper shading the ground (`shading: {name: "paper", colour}`) and the duotone the ground as its paper and the
  * theme's ink as its ink (`palette: {name: "duotone", paper, ink, accent}`), as footprint-story's 0.35.0 notes ask of a
@@ -28,21 +28,14 @@
  * draw.mjs · ISO_LOOK) is handed in, and the duotone prints it as a tint of its accent; a toned block, and every
  * floor (the ground the page lays), stay the page's. footprint-story's 0.35.0 notes ask exactly this of a tool.
  *
- * WHY a name's ink is chosen against its face: the kit's faces are its own tones (pale tints, the page's colour for a
- * block: paint.mjs), and a light ink on a dark ground writes a name on them that the review's contrast check cannot even
- * see. The theme's ink when it reads at WCAG's 4.5 : 1 on the face (every light theme, on every tone: the pictures are
- * as before); else the ground, when it reads better.
+ * A block's name's ink is footprint-story's rule (0.38.0, `readableInk`), asked where the name is drawn (draw.mjs ·
+ * drawName); the luminance the ground is judged by here is its `luminance`, the one WCAG measure a deck and a film share.
  */
-import {isoStyle, ISO_LOOKS, DUOTONE, mixColour} from 'footprint-story/isometric';
+import {isoStyle, ISO_LOOKS, DUOTONE, luminance} from 'footprint-story/isometric';
 import {STYLE_CHOICES} from './read.mjs';
-import {luminance, contrastRatio, CONTRAST} from '../../contrast.mjs';
 
-/** A colour's relative luminance, `#rgb` or `#rrggbb` (read through footprint-story's mixColour, the one colour reader). */
-const lum = (hex) => { const h = mixColour(hex, hex, 0); return luminance(...[1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16))); };
-/** WCAG's ratio of two colours. */
-export const ratioOf = (a, b) => contrastRatio(lum(a), lum(b));
-/** Whether the film's ground is dark: darker than the ink written on it. */
-export const darkGround = (look) => lum(look.bg) < lum(look.ink);
+/** Whether the film's ground is dark: darker than the ink written on it (WCAG's relative luminance, footprint-story's). */
+export const darkGround = (look) => luminance(look.bg) < luminance(look.ink);
 
 /** The colours a look's own column takes from a dark ground: by the choice the look names there. */
 const FROM_GROUND = Object.freeze({
@@ -72,13 +65,6 @@ export function groundedStyle(style, look, who) {
     throw new Error(`${who}: the look "${name}" on this dark ground (${look.bg}) takes the ground's colours (${Object.keys(taken).join(', ')}: ${JSON.stringify(taken)}), and then ${said} — write the ${Object.keys(taken).join(' and ')} out in place of the look, with colours that read on this ground`, {cause: e});
   }
   return {style: grounded, look: record};
-}
-
-/** The ink a name is written in on a face of colour `face` (null: no fill of its own, the ground): see the head. */
-export function nameInk(face, look) {
-  if (face === null) return look.ink;
-  const mine = ratioOf(look.ink, face);
-  return mine >= CONTRAST.normal || ratioOf(look.bg, face) <= mine ? look.ink : look.bg;
 }
 
 /** Whether a style (as handed to the build: a row, a look, or null) prints the map in the duotone palette. */
