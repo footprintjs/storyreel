@@ -3,7 +3,7 @@
 ## 0.46.0 — maps drawn by hand, each line as its pen goes
 
 An isometric world can be drawn by hand: footprint-story's `human:sketchy` line and `human:hatch` texture (now
-`^0.33.0`, which lets a tool hand its own choices to the map build). Each piece is drawn as its pen goes, from the
+`^0.33.1`, which lets a tool hand its own choices to the map build). Each piece is drawn as its pen goes, from the
 moment it comes in.
 
 ```json
@@ -34,6 +34,8 @@ moment it comes in.
 - **New example** `examples/iso-sketch`, pinned in `test/golden.json` (and the behaviour pins). Every existing pin is
   unchanged. `test/iso-strokes.test.mjs` checks the ring to 1e-6 at every cap and time, a faint line covered once
   over, the record of a hand-drawn world, and pins one hand-drawn block's pictures.
+- **`storyreel check`'s map record stays small** (footprint-story 0.33.1): a hand-drawn world's paint is kept as counts and
+  a digest, not every stroke point — a 64-block hatched world's record was 15 MB, and now is about 90 KB.
 
 ## 0.45.0 — one copy of the moving-piece rules, and a hidden name fixed
 

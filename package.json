@@ -309,7 +309,7 @@
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.9",
-    "footprint-story": "^0.33.0",
+    "footprint-story": "^0.33.1",
     "footprintjs": "^14.0.0",
     "foottrace": "^2.1.0",
     "perfect-freehand": "^1.2.3",
