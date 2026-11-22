@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.51.0 — the check says what the film knows: the director's drops, a world's notes; a hang from a block
+
+Four things StoryReel knew and `storyreel check` never said, or said wrong. Each finding names its recipe entry, its
+reason and its fix, at its own level: a warn is a `fix` line, a note is advice.
+
+```
+fix  0:01.9–0:01.9 a · left out by the director: the question key on "sam.face" (close) at "Is it late?" in the focus: the picture changes at 4.20 s (b): … · at director · fix: give the line 4.32 s more before the change, or frame it in a scene of its own
+fix  0:00.0–0:00.0 one · its world warns: the story: isometric wires[0] (app to db): passes behind logs: that stretch of it is hidden · at story.wires[0] · fix: move it or the two blocks (at) so there is floor to see between, or draw the wire straight ("arrow": "app to db 0")
+```
+
+- **What the director leaves out is a finding** (`src/fix/told.mjs`, the review's new `director` check). Each key in
+  `film.director.dropped` now carries a `level` and a `fix`, and the check says it at the moment it would have landed,
+  `at director`. **A warn (a fix):** a key the rules asked for and the voice's timing lost — too soon after the key
+  before (`give "They run." 1.00 s more after "Faster!" (a pause in the voice before it), or let the camera's keys come
+  closer ("director": {"gap": 1})`), the camera still flying to it (the seconds until it arrives), no time to fly in and
+  back before a change of picture (0.47.0's words, its seconds), a mood changing too soon after the last. **A note
+  (advice):** the director's own grammar held it back — the close-up budget (its fix the setting: `"director":
+  {"closeUps": {"perTurn": 2}}`), a new picture's establishing shot, a better key taking its place (`to keep both, give
+  … s more`), or nothing there to frame or act (a person not in the picture, a face the kit cannot act). WHY two
+  levels: a warn is a shot the film was asked for and does not get; a note is the director doing as its settings say,
+  and a film whose director only held keys back still reads `clean`. Each fix, followed, frames what it was about
+  (pinned, `test/told.test.mjs`). **Changed words:** the fly-back drop's `why` no longer ends with its fix; the fix is
+  its `fix` field (`test/director.test.mjs` pins the two apart, and the level).
+- **A world's own notes reach the check** (the review's new `world` check). `film.kitNotes` — an isometric map's wire
+  hidden behind a block, lying on another, doubling back or drawn straight for want of a way; a name that does not fit
+  its top or its floor's edge; a whiteboard's strokes past its budget — is said at the first moment its world is on
+  screen in the part, named by its entry (`at story.wires[0]`), its words naming the world (`the story: isometric
+  wires[0] (app to db): …`) and the kit's fix said apart: a `warn` is a fix (`its world warns`), an `info` advice (`its
+  world notes`). Each note now carries `fix` (the words after " — ", the message unchanged). **One new note:** a block
+  whose paper grain footprint-story thinned on a face too big for its marks (its paint item's role `grain-thinned`, an
+  `info`), its fix twice the spacing — written out as the style's own texture when the world names a look, which takes
+  none beside it (`"style": {"texture": {"name": "human:grain", "spacing": 32}} in place of "look": "paper-grain"`;
+  followed, the face is laid as the others: pinned).
+- **A hang from a block hangs from it** (`kits/isometric/motion-hang.mjs`). `"from": "<block>"` was the middle of the
+  block's top, as `to` takes a name, so a hanging piece always came to rest inside the block (`reel:contact`, every
+  time) and a block was no use as a pin. The rope is now tied where a real one would be: **under** a block in the air
+  above the piece, to the middle of its underside; else **beside** it, at the middle of the top edge facing the piece,
+  on an arm held out by half the piece's depth (drawn from the edge to the pin in the rope's ink, framed with the rope),
+  so the piece hangs flush against that side. The record names it (`map.motions[i].hung`: `{on, rule, pin}`). A swing
+  that really goes into a block still warns — a piece hung from a tile away swings past its rest into the block's side,
+  a crate in the way of the swing — and a block no higher than the piece is refused, naming a pin of tiles above it.
+  **Changed behaviour:** a film that hung a piece from a block draws it hanging beside or under the block (no example
+  did). Pinned in `test/iso-hang.test.mjs`, with 0.50.0's rule as tiles beside it for the warn it gave.
+- **`reel:covers` reads the outline as drawn** (`motion-cover.mjs`). A resting block's cover was its outline as built,
+  moved, even when its pose turns it; it is now `turn.mjs` · `drawnOutline`, the outline a camera frames and the frame
+  check reads, handed to footprint-story's `hiddenNames`. Pinned both ways with a rest turned an eighth of a turn (it
+  hides a name its built outline would not; and the other way), `test/iso-covers.test.mjs`. A tumble rests on a face,
+  where the drawn block is the block built there, so no film's cover moved.
+- **No pinned picture moved.** No example film has a director or a world note, so the golden frames, the behaviour pins
+  and every example's check are as they were; the one moved test pin is the fly-back drop's words above.
+
 ## 0.50.0 — a ball in any look, the look sketchy, a name's ink from footprint-story
 
 footprint-story is now `^0.38.0`. Three of StoryReel's own copies go to it: a block's name's ink, the ball's painter,
