@@ -1,0 +1,331 @@
+{
+ "story": {
+  "kit": "isometric",
+  "style": {
+   "look": "outlined"
+  },
+  "blocks": [
+   {
+    "name": "you",
+    "label": "You",
+    "small": "a browser",
+    "appear": [
+     "outlined",
+     "the browser"
+    ]
+   },
+   {
+    "name": "api",
+    "label": "API",
+    "size": [
+     2,
+     2,
+     1.6
+    ],
+    "group": "back",
+    "tone": "ok",
+    "appear": [
+     "outlined",
+     "the API"
+    ]
+   },
+   {
+    "name": "db",
+    "kind": "cylinder",
+    "label": "Database",
+    "size": [
+     1.8,
+     1.8,
+     1.2
+    ],
+    "group": "back",
+    "tone": "warn",
+    "appear": [
+     "outlined",
+     "the database"
+    ]
+   }
+  ],
+  "floors": [
+   {
+    "group": "back",
+    "label": "Back room",
+    "appear": [
+     "outlined",
+     "the API"
+    ]
+   }
+  ],
+  "wires": [
+   {
+    "arrow": "you to api",
+    "label": "HTTPS",
+    "packets": 1,
+    "appear": [
+     "outlined",
+     "the API"
+    ]
+   },
+   {
+    "arrow": "api to db",
+    "label": "SQL",
+    "packets": 1,
+    "appear": [
+     "outlined",
+     "the database"
+    ]
+   }
+  ]
+ },
+ "stages": [
+  {
+   "type": "world",
+   "scene": "line-art",
+   "enter": "fade",
+   "world": {
+    "kit": "isometric",
+    "style": {
+     "look": "line-art"
+    },
+    "blocks": [
+     {
+      "name": "you",
+      "label": "You",
+      "small": "a browser",
+      "appear": [
+       "line-art",
+       "the browser"
+      ]
+     },
+     {
+      "name": "api",
+      "label": "API",
+      "size": [
+       2,
+       2,
+       1.6
+      ],
+      "group": "back",
+      "tone": "ok",
+      "appear": [
+       "line-art",
+       "the API"
+      ]
+     },
+     {
+      "name": "db",
+      "kind": "cylinder",
+      "label": "Database",
+      "size": [
+       1.8,
+       1.8,
+       1.2
+      ],
+      "group": "back",
+      "tone": "warn",
+      "appear": [
+       "line-art",
+       "the database"
+      ]
+     }
+    ],
+    "floors": [
+     {
+      "group": "back",
+      "label": "Back room",
+      "appear": [
+       "line-art",
+       "the API"
+      ]
+     }
+    ],
+    "wires": [
+     {
+      "arrow": "you to api",
+      "label": "HTTPS",
+      "packets": 1,
+      "appear": [
+       "line-art",
+       "the API"
+      ]
+     },
+     {
+      "arrow": "api to db",
+      "label": "SQL",
+      "packets": 1,
+      "appear": [
+       "line-art",
+       "the database"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "type": "world",
+   "scene": "paper-grain",
+   "enter": "fade",
+   "world": {
+    "kit": "isometric",
+    "style": {
+     "look": "paper-grain"
+    },
+    "blocks": [
+     {
+      "name": "you",
+      "label": "You",
+      "small": "a browser",
+      "appear": [
+       "paper-grain",
+       "the browser"
+      ]
+     },
+     {
+      "name": "api",
+      "label": "API",
+      "size": [
+       2,
+       2,
+       1.6
+      ],
+      "group": "back",
+      "tone": "ok",
+      "appear": [
+       "paper-grain",
+       "the API"
+      ]
+     },
+     {
+      "name": "db",
+      "kind": "cylinder",
+      "label": "Database",
+      "size": [
+       1.8,
+       1.8,
+       1.2
+      ],
+      "group": "back",
+      "tone": "warn",
+      "appear": [
+       "paper-grain",
+       "the database"
+      ]
+     }
+    ],
+    "floors": [
+     {
+      "group": "back",
+      "label": "Back room",
+      "appear": [
+       "paper-grain",
+       "the API"
+      ]
+     }
+    ],
+    "wires": [
+     {
+      "arrow": "you to api",
+      "label": "HTTPS",
+      "packets": 1,
+      "appear": [
+       "paper-grain",
+       "the API"
+      ]
+     },
+     {
+      "arrow": "api to db",
+      "label": "SQL",
+      "packets": 1,
+      "appear": [
+       "paper-grain",
+       "the database"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "type": "world",
+   "scene": "duotone",
+   "enter": "fade",
+   "world": {
+    "kit": "isometric",
+    "style": {
+     "look": "duotone"
+    },
+    "blocks": [
+     {
+      "name": "you",
+      "label": "You",
+      "small": "a browser",
+      "appear": [
+       "duotone",
+       "the browser"
+      ]
+     },
+     {
+      "name": "api",
+      "label": "API",
+      "size": [
+       2,
+       2,
+       1.6
+      ],
+      "group": "back",
+      "tone": "ok",
+      "appear": [
+       "duotone",
+       "the API"
+      ]
+     },
+     {
+      "name": "db",
+      "kind": "cylinder",
+      "label": "Database",
+      "size": [
+       1.8,
+       1.8,
+       1.2
+      ],
+      "group": "back",
+      "tone": "warn",
+      "appear": [
+       "duotone",
+       "the database"
+      ]
+     }
+    ],
+    "floors": [
+     {
+      "group": "back",
+      "label": "Back room",
+      "appear": [
+       "duotone",
+       "the API"
+      ]
+     }
+    ],
+    "wires": [
+     {
+      "arrow": "you to api",
+      "label": "HTTPS",
+      "packets": 1,
+      "appear": [
+       "duotone",
+       "the API"
+      ]
+     },
+     {
+      "arrow": "api to db",
+      "label": "SQL",
+      "packets": 1,
+      "appear": [
+       "duotone",
+       "the database"
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

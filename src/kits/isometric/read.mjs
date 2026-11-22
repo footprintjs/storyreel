@@ -13,11 +13,12 @@
  * packets begin to ride) — a deck has clicks for both; a film has its voice. And `motion`: blocks that move by intent,
  * read by motion-read.mjs.
  *
- * `style` is footprint-story's style row as it is (`isoStyle`: a named choice per column), checked here only so a
- * refusal names the recipe entry; the choices and their options are footprint-story's, never listed again here.
+ * `style` is footprint-story's style row as it is (`isoStyle`: a named choice per column, or a named look and the
+ * columns written beside it), checked here only so a refusal names the recipe entry; the choices, the looks and their
+ * options are footprint-story's, never listed again here.
  */
-import {readPorts, readThing, isoStyle, ISO_STYLE_COLUMNS, ISO_STYLE_CHOICES, MOST_FLOOR_LABEL, MOST_ROUTES} from 'footprint-story/isometric';
-import {sketchyLine, hatchTexture} from 'footprint-story/human';
+import {readPorts, readThing, isoStyle, ISO_STYLE_COLUMNS, ISO_STYLE_CHOICES, ISO_LOOKS, MOST_FLOOR_LABEL, MOST_ROUTES} from 'footprint-story/isometric';
+import {HUMAN_STYLE_CHOICES} from 'footprint-story/human';
 import {MOST_EASE} from 'footprint-story/motion';
 import {BREAK_RULES} from 'footprint-story/layout';
 import {readMotions} from './motion-read.mjs';
@@ -245,34 +246,42 @@ function readGrid(g, where) {
 }
 
 /**
- * The style choices the kit hands footprint-story beside its own: the two drawn by hand, `human:sketchy` (line) and
- * `human:hatch` (texture), footprint-story/human's. WHY handed in: they are a tool's own choices (the isometric door
- * never loads the human one), taken once the tool's painter draws `stroke` items — this kit's does (paint.mjs). One
- * list, so the style check here, the map build (build.mjs) and the map flow `storyreel check` runs (flow.mjs) take the
- * very same choices, and the record names them as it names the rest (`style.row`).
+ * The style choices the kit hands footprint-story beside its own: every one footprint-story/human ships
+ * (`HUMAN_STYLE_CHOICES`: `human:sketchy` (line), `human:hatch` and `human:grain` (texture)). WHY handed in: they are a
+ * tool's own choices (the isometric door never loads the human one), taken once the tool's painter draws what they
+ * paint — this kit's draws `stroke` and `lines` items (paint.mjs). WHY footprint-story's own list and not one written
+ * here: a choice it adds is taken without a change (0.35.0 added the grain the `paper-grain` look names). One list, so
+ * the style check here, the map build (build.mjs) and the map flow `storyreel check` runs (flow.mjs) take the very same
+ * choices, and the record names them as it names the rest (`style.row`).
  */
-export const STYLE_CHOICES = Object.freeze([sketchyLine, hatchTexture]);
+export const STYLE_CHOICES = HUMAN_STYLE_CHOICES;
 /** A column's choices by name: footprint-story's own, then the kit's handed ones. */
 const choiceNames = (column) => [...ISO_STYLE_CHOICES[column], ...STYLE_CHOICES.filter((c) => c.column === column).map((c) => c.name)];
 
 /** A choice's names as a refusal lists them: "ink" or "none"; "a", "b" or "c". */
 const either = (names) => names.map((n) => `"${n}"`).join(', ').replace(/, ([^,]*)$/, ' or $1');
 
+/** The looks by name, as a refusal lists them: "outlined", "line-art", "paper-grain" or "duotone" (footprint-story's ISO_LOOKS). */
+const LOOKS = Object.keys(ISO_LOOKS);
+
 /**
  * The world's style as written, or null (today's look): a row of footprint-story's named choices, one per column —
- * `{"line": {"name": "ink", "width": 5}}`, `{"line": "none"}` — a column left out its usual choice. Handed to the map
- * build as it is (build.mjs · specOf); footprint-story's `isoStyle` makes the style from it.
+ * `{"line": {"name": "ink", "width": 5}}`, `{"line": "none"}` — a column left out its usual choice; or a named look
+ * (`{"look": "duotone"}`, footprint-story's ISO_LOOKS), a column written beside it replacing the look's entry for that
+ * column. Handed to the map build as it is (build.mjs · specOf), but for the page's colours on a dark ground
+ * (looks.mjs); footprint-story's `isoStyle` makes the style from it.
  *
  * WHY the columns and the choices' names are checked here, from footprint-story's own lists (ISO_STYLE_COLUMNS,
  * ISO_STYLE_CHOICES): a wrong word is the commonest mistake, and its refusal should name this entry and list the words
- * there are, in the kit's words. What only a choice knows (its options, their ranges, a pairing that cannot work) is
- * left to `isoStyle`, run once here so its refusal too comes back in the entry's name, before anything is built.
+ * there are, in the kit's words. What only a choice or a look knows (its options, their ranges, a pairing that cannot
+ * work, a look the row overrides whole) is left to `isoStyle`, run once here so its refusal too comes back in the
+ * entry's name, before anything is built.
  */
 function readStyle(s, where) {
   if (s === undefined) return null;
-  const who = `${where}: isometric style`, columns = ISO_STYLE_COLUMNS.join(', ');
-  if (!isObject(s)) throw new Error(`${who} is a row of style choices, a column each ({"line": {"name": "ink", "width": 5}} for an outlined look, {"line": "none"} for none): the columns are ${columns} — not ${shown(s)}`);
-  for (const k of Object.keys(s)) if (!ISO_STYLE_COLUMNS.includes(k)) throw new Error(`${who} takes the columns ${columns} (a column left out keeps today's look) — not ${shown(k)}`);
+  const who = `${where}: isometric style`, columns = ISO_STYLE_COLUMNS.join(', '), looks = either(LOOKS);
+  if (!isObject(s)) throw new Error(`${who} is a row of style choices, a column each ({"line": {"name": "ink", "width": 5}} for an outlined look, {"line": "none"} for none), or a look ({"look": "line-art"}): the columns are ${columns}, the looks ${looks} — not ${shown(s)}`);
+  for (const k of Object.keys(s)) if (k !== 'look' && !ISO_STYLE_COLUMNS.includes(k)) throw new Error(`${who} takes the columns ${columns} (a column left out keeps today's look), or a look ({"look": ${looks}}) — not ${shown(k)}`);
   // one entry: a choice's name, or {name, …its options}; its name one of the column's choices
   const entry = (v, column, at) => {
     const names = choiceNames(column);

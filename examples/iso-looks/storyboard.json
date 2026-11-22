@@ -1,0 +1,25 @@
+{
+ "title": "One map, four looks",
+ "scenes": [
+  {
+   "id": "outlined",
+   "title": "Outlined",
+   "narration": "One map in four looks. First outlined: the browser, then the API, then the database, each with a bold line round it, like a sticker."
+  },
+  {
+   "id": "line-art",
+   "title": "Line art",
+   "narration": "Then line art: the browser, then the API, then the database, in ink lines on paper and nothing else."
+  },
+  {
+   "id": "paper-grain",
+   "title": "Paper grain",
+   "narration": "Then printed on paper: the browser, then the API, then the database, a fine grain over every face."
+  },
+  {
+   "id": "duotone",
+   "title": "Duotone",
+   "narration": "And duotone: the browser, then the API, then the database, two inks on paper, the colours that mean something kept."
+  }
+ ]
+}

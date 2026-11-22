@@ -101,18 +101,26 @@ export interface IsoMotionRecord {
 export interface IsoMotionFinding { readonly path: string; readonly from: number; readonly to: number; readonly critic: string; readonly level: 'warn' | 'note' | 'accepted' | string; readonly what: string; readonly fix: string }
 /** One column's choice: its name, or {name, …its options} (footprint-story's isoStyle). */
 export type IsoStyleEntry = string | {name: string; [option: string]: string | number | boolean};
-/** A style row as a world writes it: footprint-story's columns, each left out its usual choice. */
-export interface IsoStyleRow { shape?: IsoStyleEntry; shading?: IsoStyleEntry; line?: IsoStyleEntry; palette?: IsoStyleEntry; texture?: IsoStyleEntry; effects?: IsoStyleEntry[] }
+/** footprint-story's named looks (0.34, 0.35): a style row under a name. */
+export type IsoLookName = 'outlined' | 'line-art' | 'paper-grain' | 'duotone';
+/** A style row as a world writes it: footprint-story's columns, each left out its usual choice, or a named look and the columns written beside it. */
+export interface IsoStyleRow { look?: IsoLookName; shape?: IsoStyleEntry; shading?: IsoStyleEntry; line?: IsoStyleEntry; palette?: IsoStyleEntry; texture?: IsoStyleEntry; effects?: IsoStyleEntry[] }
+/** The look a world named and the ground it was drawn on (a dark ground's colours go into line-art's paper and the duotone's inks). */
+export interface IsoLookRecord { readonly name: IsoLookName; readonly ground: 'light' | 'dark' }
 /** The style a map was built in, as footprint-story records it: every column's name, and the options written. */
 export interface IsoStyleRecord {
   readonly row: {readonly shape: string; readonly shading: string; readonly line: string; readonly palette: string; readonly texture: string; readonly effects: readonly string[]};
   readonly options: Readonly<Record<string, unknown>>;
+  /** the look the row came from, as footprint-story records it (absent when none; a duotone on a dark ground is written out, so absent there too: see IsoRecord.look) */
+  readonly look?: IsoLookName;
 }
 /** What the kit says of the map it built, each naming the recipe entry and the fix. */
 export interface IsoNote { readonly level: 'warn' | 'info'; readonly path: string; readonly message: string }
 /** The map as built: who placed it, the tile, every block, floor and cable (frame px, rounded to a tenth). */
 export interface IsoRecord {
   readonly placed: 'build' | 'hand'; readonly tile: number; readonly fitted: boolean; readonly style: IsoStyleRecord;
+  /** the look the world named, and on which ground (absent when it names none) */
+  readonly look?: IsoLookRecord;
   readonly blocks: readonly {name: string; kind: 'block' | 'cylinder' | 'ball'; at: number[]; size: number[]; lines?: string[]; nameSize?: number; fits?: boolean}[];
   readonly floors: readonly {name: string | null; at: number[]; size: number[]; lines?: string[]; fits?: boolean; covered?: boolean}[];
   readonly cables: readonly {name: string | null; from: string; to: string; along: boolean; ports?: (string | null)[]; points: [number, number][]; length: number; unseen: [number, number][]; behind?: string[]; crosses?: number; shared?: number; bends?: number; period?: number}[];
@@ -143,6 +151,10 @@ export const MOTION_FRAME: readonly [number, number];
 export const REEL_CRITICS: readonly string[];
 /** A running packet's radius, px. */
 export const PACKET_RADIUS: number;
+/** A world's hand-drawn strokes: a note from `note`, refused past `most`. */
+export const STROKE_BUDGET: Readonly<{note: number; most: number}>;
+/** How many texture marks (the grain's) count as one stroke against STROKE_BUDGET: 32. */
+export const MARKS_PER_STROKE: number;
 /** When a crossing count and a turn count are said. */
 export const NOTE_FROM: Readonly<{crosses: number; turns: number}>;
 /** A wire's arrow read against the blocks: its two ends and whether it is drawn straight. */

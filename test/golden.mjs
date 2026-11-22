@@ -29,6 +29,8 @@ export const FILMS = {
   'iso-roll': {tail: 1.5, kits: [isometricKit]},
   // A map drawn by hand (footprint-story 0.33's human:sketchy and human:hatch): each piece drawn as its pen goes.
   'iso-sketch': {tail: 8, kits: [isometricKit]},
+  // One map in footprint-story's four named looks (0.34, 0.35): outlined, line-art, paper-grain, duotone, a stage each.
+  'iso-looks': {tail: 1.5, kits: [isometricKit]},
 };
 
 /** An example compiled as pinned; `recipe` replaces its recipe (e.g. one with an extra note); `record` as compileFilm's. */

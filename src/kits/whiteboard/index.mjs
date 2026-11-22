@@ -31,8 +31,13 @@ const SHAPES = {
   flashlight: (x, y, s = 1, dir = 1) => icons.flashlight(x, y, s, dir),
 };
 const ITEM_KEYS = new Set(['at', 'dur', 'draw', 'write', 'x', 'y', 'size', 'align', 'color', 'erase', 'seed', 'eureka', 'name', 'accept']);
-/** A eureka's bulb: its marker's width, its seconds (the glass, then the rays) — the times the bulb and its rays took before 0.48.0, end to end. */
-const EUREKA = Object.freeze({size: 5, seconds: .7});
+/**
+ * A eureka's bulb: its marker's width, its seconds (the glass, then the rays). 0.75 s since 0.49.0: footprint-story's
+ * `pace` critic (0.36.0) found the bulb drawn at 2.1× a hand's pace in the 0.7 s it took before (the times the bulb
+ * and its rays took before 0.48.0, end to end), and named 0.75 s, the least that a hand draws it in. An author cannot
+ * give a bulb a `dur`, so the kit gives it the seconds its own drawing needs.
+ */
+const EUREKA = Object.freeze({size: 5, seconds: .75});
 const clamp01 = n => Math.max(0, Math.min(1, n));
 const color = name => { if (name === undefined) return INK.black; if (!(name in INK)) throw new Error(`Unknown ink colour ${name} (the inks are ${Object.keys(INK).join(', ')})`); return INK[name]; };
 
@@ -63,7 +68,7 @@ export function compileWhiteboard(spec, clock, motion = {cameraSpeed: 1}) {
       // the bulb is one drawing: its glass and base first, then its rays (footprint-story's order: outline, then detail)
       const shapesOf = [...lightBulb(x, y, 1).map(p => shapeOf(p, {group: 'bulb'})), ...bulbRays(x, y, 1).map(p => shapeOf(p, {group: 'bulb', layer: 'detail'}))];
       drawn.push({item: items.push({at, color: INK.orange, erase}) - 1, ink: INK.orange});
-      drawings.push({path, who, at, seconds: EUREKA.seconds, shapes: shapesOf, size: EUREKA.size, seed: item.seed ?? 31, accept});
+      drawings.push({path, who, at, seconds: EUREKA.seconds, shapes: shapesOf, size: EUREKA.size, seed: item.seed ?? 31, accept, eureka: true});
       dings.push(at + .05);
       return;
     }

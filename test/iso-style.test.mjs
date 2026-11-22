@@ -78,18 +78,18 @@ test('a style is accepted as footprint-story writes it: a name, or {name, …opt
 
 test('a wrong style is refused, naming the entry, the words there are and the fix', () => {
   const refused = (style, pattern) => assert.throws(() => world(style), pattern, JSON.stringify(style));
-  refused('outlined', /^Error: stage map: isometric style is a row of style choices, a column each \(\{"line": \{"name": "ink", "width": 5\}\} for an outlined look, \{"line": "none"\} for none\): the columns are shape, shading, line, palette, texture, effects — not "outlined"$/);
+  refused('outlined', /^Error: stage map: isometric style is a row of style choices, a column each \(\{"line": \{"name": "ink", "width": 5\}\} for an outlined look, \{"line": "none"\} for none\), or a look \(\{"look": "line-art"\}\): the columns are shape, shading, line, palette, texture, effects, the looks "outlined", "line-art", "paper-grain" or "duotone" — not "outlined"$/);
   refused(['ink'], /stage map: isometric style is a row of style choices/);
-  refused({colour: 'red'}, /^Error: stage map: isometric style takes the columns shape, shading, line, palette, texture, effects \(a column left out keeps today's look\) — not "colour"$/);
-  refused({line: 'dashed'}, /^Error: stage map: isometric style: line has no choice "dashed" — the line choices are "ink", "none" or "human:sketchy"$/);
-  refused({shading: 'flat'}, /^Error: stage map: isometric style: shading has no choice "flat" — the shading choices are "tones"$/);
-  refused({line: {width: 5}}, /^Error: stage map: isometric style: line names its choice, \{"name": …, its options\} — the line choices are "ink", "none" or "human:sketchy"; this one has no name$/);
+  refused({colour: 'red'}, /^Error: stage map: isometric style takes the columns shape, shading, line, palette, texture, effects \(a column left out keeps today's look\), or a look \(\{"look": "outlined", "line-art", "paper-grain" or "duotone"\}\) — not "colour"$/);
+  refused({line: 'dashed'}, /^Error: stage map: isometric style: line has no choice "dashed" — the line choices are "ink", "none", "contour" or "human:sketchy"$/);
+  refused({shading: 'flat'}, /^Error: stage map: isometric style: shading has no choice "flat" — the shading choices are "tones" or "paper"$/);
+  refused({line: {width: 5}}, /^Error: stage map: isometric style: line names its choice, \{"name": …, its options\} — the line choices are "ink", "none", "contour" or "human:sketchy"; this one has no name$/);
   // a function is said as one, never its source (a refusal stays one line); an entry's bad name is quoted, not the entry
   refused({line: function line() {
  return 'ink';
-}}, /^Error: stage map: isometric style: line is a choice's name, or \{"name": …, its options\} — the line choices are "ink", "none" or "human:sketchy"; not a function$/);
-  refused({line: {name: () => 'ink'}}, /^Error: stage map: isometric style: line's name is a choice's name — the line choices are "ink", "none" or "human:sketchy"; not a function$/);
-  refused({line: {name: 7}}, /line's name is a choice's name — the line choices are "ink", "none" or "human:sketchy"; not 7$/);
+}}, /^Error: stage map: isometric style: line is a choice's name, or \{"name": …, its options\} — the line choices are "ink", "none", "contour" or "human:sketchy"; not a function$/);
+  refused({line: {name: () => 'ink'}}, /^Error: stage map: isometric style: line's name is a choice's name — the line choices are "ink", "none", "contour" or "human:sketchy"; not a function$/);
+  refused({line: {name: 7}}, /line's name is a choice's name — the line choices are "ink", "none", "contour" or "human:sketchy"; not 7$/);
   refused({line: 5}, /stage map: isometric style: line is a choice's name/);
   refused({effects: ['glow']}, /^Error: stage map: isometric style: effects\[0\] has no choice "glow" — there are no effects yet: leave effects out$/);
   refused({effects: 'glow'}, /^Error: stage map: isometric style: effects is a list of effects, each adding to the whole — not "glow"$/);
@@ -149,5 +149,5 @@ test('the record says the style each world was built in: the world\'s record, it
   assert.deepEqual(run.snapshot.sharedState.style, {row: USUAL_ROW, options: {line: {width: 5}}});
   // a refusal through the film names the recipe entry from the top
   await assert.rejects(compileFilm({storyboard: sb, timings: evenTimings(sb), recipe: {story: {kit: 'isometric', ...WORLD, style: {line: 'dashed'}}}, kits: [isometricKit]}),
-    /the story: isometric style: line has no choice "dashed" — the line choices are "ink", "none" or "human:sketchy"/);
+    /the story: isometric style: line has no choice "dashed" — the line choices are "ink", "none", "contour" or "human:sketchy"/);
 });

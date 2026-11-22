@@ -320,8 +320,9 @@ test('without music nothing changes: the same stages, record, inputs and FFmpeg 
   assert.deepEqual(record.pipeline.filter(e => e.type === 'stage' && e.depth === 0).map(e => e.stageId.split('~')[0]), ['check-inputs', 'pace-narration', 'compile-film', 'check-claims/check-claims', 'check-claims/verdict', 'check-claims/passed', 'plan-picture', 'render-picture', 'render-film', 'check-finished', 'place-narration']);
   assert.equal('music' in record, false);
   assert.deepEqual(Object.keys(record.loudness.roles), ['voice', 'effects']);
-  // The hashed inputs as on main, and the versions an approval locks (versions.mjs · lockedVersions).
-  assert.deepEqual(record.inputs, {storyboard: '390932da10154987', timings: '868ab614fc412af1', recipe: '9b351fe10b5a8e66', strings: null, data: null, theme: 'b5d0139a73be8b54', files: {'rule.ts': '8fc6d8dd3606be0f'}, pacing: '74234e98afe7498f', ...lockedVersions(), engine: storyreelCode()});
+  // The hashed inputs as on main, and the versions an approval locks (versions.mjs · lockedVersions). (0.49.0: hello's
+  // recipe gave its pebble bag the 1.33 s the pace critic named, so its hash moved.)
+  assert.deepEqual(record.inputs, {storyboard: '390932da10154987', timings: '868ab614fc412af1', recipe: '63c1c7870cd02c0d', strings: null, data: null, theme: 'b5d0139a73be8b54', files: {'rule.ts': '8fc6d8dd3606be0f'}, pacing: '74234e98afe7498f', ...lockedVersions(), engine: storyreelCode()});
   assert.deepEqual(readdirSync(out).sort(), ['chapters.txt', 'film.mp4', 'making-of.json'], 'beside the video, only the outputs');
   // FFmpeg is handed the real paths, the ones the render writes through (files.mjs · securePath).
   const calls = readFileSync(log, 'utf8').trim().split('\n').map(l => l.split('\x1f').filter(Boolean).map(a => a.split(realpathSync(work)).join('<work>').split(realpathSync(out)).join('<dir>')).join(' '));

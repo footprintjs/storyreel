@@ -5,7 +5,7 @@
     "erasers": {},
     "items": [
       {"at": ["story", "Mia sells lemonade"], "dur": 1.2, "draw": [["figure", 300, 620, 1.1]], "seed": 1},
-      {"at": ["story", "from a small stall"], "dur": 1.0, "draw": [["rect", 520, 420, 420, 300], ["line", 500, 420, 960, 420]], "seed": 2},
+      {"at": ["story", "from a small stall"], "dur": 2.44, "draw": [["rect", 520, 420, 420, 300], ["line", 500, 420, 960, 420]], "seed": 2},
       {"at": ["story", "from a small stall", 0.6], "dur": 0.8, "write": "LEMONADE", "x": 730, "y": 380, "size": 44, "align": "center", "color": "orange"},
       {"at": ["story", "she puts one cup on the shelf"], "dur": 0.8, "draw": [["line", 1100, 640, 1480, 640]], "seed": 3},
       {"at": ["story", "she puts one cup on the shelf", 0.6], "dur": 0.4, "draw": [["rect", 1120, 580, 36, 56]], "color": "blue", "seed": 4},

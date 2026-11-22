@@ -51,7 +51,7 @@ test('each drawing is footprint-story\'s plan of it, over the author\'s dur: its
   assert.deepEqual(planIntents(sketch.intents, {frame: [...BOARD_FRAME]}).moves.map(m => m.plan), sketch.sketches.map(s => s.plan));
   for (const [k, s] of sketch.sketches.entries()) {
     assert.equal(s.move.model, 'hand-sketch');
-    assert.ok(Math.abs(s.plan.seconds - [1.2, 0.8, 0.7][k]) < 1e-9, 'the drawing takes the author\'s dur (a eureka\'s bulb 0.7 s), lifts and all');
+    assert.ok(Math.abs(s.plan.seconds - [1.2, 0.8, 0.75][k]) < 1e-9, 'the drawing takes the author\'s dur (a eureka\'s bulb 0.75 s), lifts and all');
     assert.equal(s.plan.strokes.length, s.plan.least.outline + s.plan.least.detail, 'drawn in the fewest strokes its corners allow');
     assert.equal(s.plan.lifts.length, s.plan.strokes.length - 1, 'the pen lifts between strokes, and each lift takes time');
     assert.ok(s.plan.lifts.every(l => l.seconds > 0));
@@ -198,8 +198,53 @@ test('a drawing too big for one sketch is drawn in parts, one after another, end
   assert.deepEqual(planSketches(cut).sketches.map(s => s.plan.strokes.length), [1, 1, 1], 'each piece one stroke');
 });
 
-test('what the docs say is not checked yet: a dur too short is squeezed with no finding (a pace critic is to come from footprint-story)', () => {
-  const {sketch} = compileWhiteboard({items: [{at: 0, dur: 0.05, draw: [['figure', 300, 620, 1.1]]}]}, clock), {plan} = sketch.sketches[0];
+test('pace (footprint-story 0.36.0): a dur too short is a finding on its item whose fix names the dur it needs; following it clears it, accept keeps it', () => {
+  // the 34× squeeze 0.48.0 drew with no finding: a stick figure (natural 1.71 s) in 0.05 s
+  const figure = (extra) => compileWhiteboard({items: [{at: 0, dur: 0.05, draw: [['figure', 300, 620, 1.1]], ...extra}]}, clock).sketch;
+  const sketch = figure(), {plan} = sketch.sketches[0];
   assert.ok(Math.abs(plan.natural / plan.seconds - 34.29) < 0.01, `squeezed ${plan.natural / plan.seconds}×`);
-  assert.deepEqual(sketch.findings, [], 'no finding yet: when footprint-story adds a pace critic, this test is the one to change');
+  assert.deepEqual(sketch.findings, [{path: 'items[0]', from: 0, to: 0.05, critic: 'pace', level: 'warn',
+    what: 'its pen draws at 34.3× a hand\'s pace (13717 px a second along its lines, where a hand draws 400) — past 2×, it reads as a drawing played fast, not a hand drawing it',
+    fix: 'give it "dur": 0.86 or more (1.72 draws it at a hand\'s own pace)'}]);
+  // the fix's dur clears it (2× a hand's pace at most), and a drawing at its own pace finds nothing
+  assert.deepEqual(figure({dur: 0.86}).findings, []);
+  assert.deepEqual(figure({dur: 1.72}).findings, []);
+  // accept: ["pace"] keeps it as written, shown as accepted
+  const kept = figure({accept: ['pace']});
+  assert.equal(kept.findings[0].level, 'accepted');
+  assert.deepEqual(kept.summary.sketches[0].accepted, ['pace']);
+  // a eureka's bulb is drawn in its own 0.75 s, at a hand's pace (it ran 2.1× in the 0.7 s it took before 0.49.0)
+  const bulb = compileWhiteboard({items: [{at: 0, eureka: [800, 400]}]}, clock).sketch;
+  assert.deepEqual(bulb.findings, []);
+  assert.equal(bulb.sketches[0].plan.seconds, 0.75);
+  assert.ok(bulb.sketches[0].plan.natural / 0.75 <= 2, 'the bulb at 2× a hand\'s pace or less');
+});
+
+test('pace: the fix in the recipe\'s words for a drawing in parts (the dur that gives the part its seconds) and for a eureka\'s bulb', () => {
+  const finding = (intent, need, hand) => ({intent, critic: 'pace', level: 'warn', message: 'x: its pen draws at 3.0× a hand\'s pace', fix: `slow it: seconds: ${need} (or more; ${hand} draws it at a hand's own pace)`});
+  // a part takes its length's share of the item's dur: this one 0.5 s of a 2 s item (a quarter), so 1.01 s needs a dur of 4.04
+  const parts = [{path: 'items[0]', who: 'items[0] (part 2 of 4)', at: 0.5, seconds: 0.5, dur: 2, accept: [], part: [2, 4]}];
+  assert.equal(sketchFindings(parts, [finding(0, 1.01, 2.02)])[0].fix, 'give it "dur": 4.04 or more (8.08 draws it at a hand\'s own pace)');
+  // a whole drawing: footprint-story's seconds are its dur
+  assert.equal(sketchFindings([{path: 'items[3]', who: 'items[3]', at: 1, seconds: 0.9, accept: []}], [finding(0, 1.33, 2.65)])[0].fix, 'give it "dur": 1.33 or more (2.65 draws it at a hand\'s own pace)');
+  // a eureka's bulb has no dur to give
+  assert.match(sketchFindings([{path: 'items[9]', who: 'items[9]', at: 1, seconds: 0.75, accept: [], eureka: true}], [finding(0, 0.8, 1.6)])[0].fix, /^a eureka's bulb is drawn in its 0\.75 s — accept it \(accept: \["pace"\]\), or draw the bulb as a draw item of its own, its dur 0\.8 or more$/);
+  // too much for one move: footprint-story's words, its "parts" said as the board says it
+  const tooMuch = {...finding(0, 1, 2), fix: 'too much to draw at a hand\'s pace in one move (75.2 s; the most is 60): draw it in parts'};
+  assert.equal(sketchFindings([{path: 'items[0]', who: 'items[0]', at: 0, seconds: 1, accept: []}], [tooMuch])[0].fix, 'too much to draw at a hand\'s pace in one move (75.2 s; the most is 60): draw it in items of their own, one after another');
+});
+
+test('pace reaches storyreel check\'s motion check on its item, accepted as advice; the example films draw at a hand\'s pace', async () => {
+  const {reviewPart, REVIEW_CHECKS} = await import('../src/review.mjs'), {compileFilm, evenTimings} = await import('../src/index.mjs');
+  const storyboard = {scenes: [{id: 'board', narration: 'A shepherd stood on the hill.'}]};
+  const film = (accept) => compileFilm({storyboard, timings: evenTimings(storyboard), recipe: {story: {kit: 'whiteboard', items: [{at: ['board', 'A shepherd'], dur: 0.05, draw: [['figure', 300, 620, 1.1]], ...(accept ? {accept} : {})}]}}});
+  const motion = async (f) => (await reviewPart(f, {checks: {motion: REVIEW_CHECKS.motion}})).findings;
+  const said = 'pace: its pen draws at 34.3× a hand\'s pace (13717 px a second along its lines, where a hand draws 400) — past 2×, it reads as a drawing played fast, not a hand drawing it';
+  assert.deepEqual(await motion(await film()), [{kind: 'motion', from: 0.3, to: 0.3, what: said, where: 'story.items[0]', fix: 'give it "dur": 0.86 or more (1.72 draws it at a hand\'s own pace)', scene: 'board'}]);
+  assert.deepEqual(await motion(await film(['pace'])), [{kind: 'motion-accepted', from: 0.3, to: 0.3, what: `accepted: ${said}`, where: 'story.items[0]', scene: 'board'}]);
+  // hello's pebble rect, recap's stall and every eureka's bulb were given the seconds the fix named (0.49.0)
+  for (const name of ['hello', 'worlds', 'recap']) {
+    const f = await compileExample(name);
+    assert.deepEqual((f.motionRuns ?? []).flatMap((r) => r.findings.filter((x) => x.critic === 'pace')), [], `${name}: no pace finding`);
+  }
 });

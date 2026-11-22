@@ -467,7 +467,7 @@ export const REVIEW_CHECKS = Object.freeze({
   'drawing-off-frame': {label: 'A drawing off the frame', why: 'a kit says where its drawings are', when: s => (s.facts.drawings ?? 0) > 0,
     find: drawingsOffFrame},
   // What footprint-story's critics found in a world's moves (kits/isometric/motion.mjs), in a whiteboard's drawings
-  // (kits/whiteboard/sketch.mjs: pen-lifts, stroke-order, hatch-gaps) and in the focus camera's flights between shots
+  // (kits/whiteboard/sketch.mjs: pen-lifts, stroke-order, hatch-gaps, pace) and in the focus camera's flights between shots
   // (flight/steps.mjs): each names its entry (a motion entry, a focus key) and the fix, over the samples
   // the move spans (held: spans · held). Its level is the critic's own, mapped onto the reel's (MOTION_KINDS): a critic's
   // `warn` (a body through the floor, a camera that loses its subject) is a finding to fix, so a check never reads clean

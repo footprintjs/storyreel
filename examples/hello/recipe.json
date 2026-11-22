@@ -9,7 +9,7 @@
       {"at": ["story", "for every sheep"], "dur": 0.8, "draw": [["ellipse", 700, 560, 60, 38], ["ellipse", 760, 520, 22, 20]], "seed": 2},
       {"at": ["story", "for every sheep", 0.5], "dur": 0.8, "draw": [["ellipse", 880, 600, 60, 38], ["ellipse", 940, 560, 22, 20]], "seed": 3},
       {"at": ["story", "for every sheep", 1.0], "dur": 0.8, "draw": [["ellipse", 1060, 560, 60, 38], ["ellipse", 1120, 520, 22, 20]], "seed": 4},
-      {"at": ["story", "he dropped one pebble"], "dur": 0.9, "draw": [["rect", 1240, 430, 240, 280]], "seed": 5},
+      {"at": ["story", "he dropped one pebble"], "dur": 1.33, "draw": [["rect", 1240, 430, 240, 280]], "seed": 5},
       {"at": ["story", "one pebble in his bag"], "dur": 0.4, "draw": [["ellipse", 1300, 640, 16, 12]], "color": "blue", "size": 8, "seed": 6},
       {"at": ["story", "one pebble in his bag", 0.4], "dur": 0.4, "draw": [["ellipse", 1360, 640, 16, 12]], "color": "blue", "size": 8, "seed": 7},
       {"at": ["story", "one pebble in his bag", 0.8], "dur": 0.4, "draw": [["ellipse", 1420, 640, 16, 12]], "color": "blue", "size": 8, "seed": 8},

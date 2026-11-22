@@ -447,5 +447,137 @@
    }
   ],
   "pushes": []
+ },
+ "iso-looks": {
+  "reading": [],
+  "moments": [
+   {
+    "t": 5.35,
+    "kind": "settled",
+    "label": "Outlined"
+   },
+   {
+    "t": 11.1,
+    "kind": "moving",
+    "label": "mid the fade into line-art"
+   },
+   {
+    "t": 15.61,
+    "kind": "settled",
+    "label": "Line art"
+   },
+   {
+    "t": 20.12,
+    "kind": "moving",
+    "label": "mid the fade into paper-grain"
+   },
+   {
+    "t": 24.44,
+    "kind": "settled",
+    "label": "Paper grain"
+   },
+   {
+    "t": 28.76,
+    "kind": "moving",
+    "label": "mid the fade into duotone"
+   },
+   {
+    "t": 33.76,
+    "kind": "settled",
+    "label": "Duotone"
+   }
+  ],
+  "pushes": [
+   {
+    "across": "mid the fade into line-art",
+    "at": 11.1,
+    "from": {
+     "scene": "outlined",
+     "phrase": "sticker.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "line-art",
+     "phrase": "Then",
+     "nth": 0
+    },
+    "says": "note \"push across mid the fade into line-art\": the push runs from 9.42 s to 12.60 s, across the fade into line-art (10.70 s); a push stays on one picture: end it before 10.70 s, or start it after the change"
+   },
+   {
+    "across": "start of line-art",
+    "at": 11.3,
+    "from": {
+     "scene": "outlined",
+     "phrase": "sticker.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "line-art",
+     "phrase": "Then",
+     "nth": 0
+    },
+    "says": "note \"push across start of line-art\": the push runs from 9.42 s to 12.60 s, across the fade into line-art (10.70 s); a push stays on one picture: end it before 10.70 s, or start it after the change"
+   },
+   {
+    "across": "mid the fade into paper-grain",
+    "at": 20.12,
+    "from": {
+     "scene": "line-art",
+     "phrase": "else.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "paper-grain",
+     "phrase": "Then",
+     "nth": 0
+    },
+    "says": "note \"push across mid the fade into paper-grain\": the push runs from 18.44 s to 21.62 s, across the fade into paper-grain (19.72 s); a push stays on one picture: end it before 19.72 s, or start it after the change"
+   },
+   {
+    "across": "start of paper-grain",
+    "at": 20.32,
+    "from": {
+     "scene": "line-art",
+     "phrase": "else.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "paper-grain",
+     "phrase": "Then",
+     "nth": 0
+    },
+    "says": "note \"push across start of paper-grain\": the push runs from 18.44 s to 21.62 s, across the fade into paper-grain (19.72 s); a push stays on one picture: end it before 19.72 s, or start it after the change"
+   },
+   {
+    "across": "mid the fade into duotone",
+    "at": 28.76,
+    "from": {
+     "scene": "paper-grain",
+     "phrase": "face.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "duotone",
+     "phrase": "And",
+     "nth": 0
+    },
+    "says": "note \"push across mid the fade into duotone\": the push runs from 27.08 s to 30.26 s, across the fade into duotone (28.36 s); a push stays on one picture: end it before 28.36 s, or start it after the change"
+   },
+   {
+    "across": "start of duotone",
+    "at": 28.96,
+    "from": {
+     "scene": "paper-grain",
+     "phrase": "face.",
+     "nth": 0
+    },
+    "to": {
+     "scene": "duotone",
+     "phrase": "And",
+     "nth": 0
+    },
+    "says": "note \"push across start of duotone\": the push runs from 27.08 s to 30.26 s, across the fade into duotone (28.36 s); a push stays on one picture: end it before 28.36 s, or start it after the change"
+   }
+  ]
  }
 }

@@ -358,7 +358,7 @@ test('an entry accepts a critic it means: the finding is shown as accepted, the 
   assert.deepEqual(w.map.motions[3].accepted, ['arc']);
   assert.ok(!('accepted' in w.map.motions[0]), 'only an entry that accepts one says so');
   const blocks = [{name: 'box', at: [2, 2, 3]}];
-  assert.throws(() => worldOf({blocks, motion: [{piece: 'box', do: 'fall', accept: ['wobble']}]}, 'stage s'), /accept names "wobble", which is no critic — the critics are jerk, pen-speed, arc, spacing, volume, contact, stretch, pen-lifts, stroke-order, hatch-gaps, roll-slip, spin, reel:contact, reel:covers$/);
+  assert.throws(() => worldOf({blocks, motion: [{piece: 'box', do: 'fall', accept: ['wobble']}]}, 'stage s'), /accept names "wobble", which is no critic — the critics are jerk, pen-speed, arc, spacing, volume, contact, stretch, pen-lifts, stroke-order, hatch-gaps, pace, roll-slip, spin, reel:contact, reel:covers$/);
   assert.throws(() => worldOf({blocks, motion: [{piece: 'box', do: 'fall', accept: ['arc']}]}, 'stage s'), /accept names "arc", which its move \(ballistic\) is not checked by — its critics are spacing, contact, reel:contact/);
   assert.throws(() => worldOf({blocks, motion: [{piece: 'box', do: 'fall', accept: 'arc'}]}, 'stage s'), /accept is a list of the critics whose findings this move keeps, \["arc"\]/);
 });
