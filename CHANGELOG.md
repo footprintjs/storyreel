@@ -1,5 +1,62 @@
 # Changelog
 
+## 0.48.0 — the whiteboard draws with footprint-story's hand
+
+A whiteboard drawing is now drawn as a hand draws it, by footprint-story's plan (`footprint-story/human`, the
+`hand-sketch` model, `^0.33.1`): the order of its strokes, the pen's pace and width along each, and its lifts between
+them. The author still writes what to draw, when and for how long; StoryReel draws the ink and the marker.
+
+```json
+{"story": {"kit": "whiteboard", "items": [
+  {"at": ["story", "a shepherd"], "dur": 1.2, "draw": [["figure", 300, 620, 1.1]]},
+  {"at": ["story", "his bag"], "dur": 0.9, "draw": [["rect", 1240, 430, 240, 280]], "accept": ["pen-lifts"]}]}}
+```
+
+- **Before:** each item's strokes were drawn in the order its shapes were written, one after another along their
+  joined length, at one slow-fast-slow ease over the item's `dur`; the marker jumped from one stroke's end to the next
+  one's start in no time (no pen lift), drawn at the tip of the line; the wobble was StoryReel's own (1.6 px of noise
+  every 6 px), the width perfect-freehand's at one pressure. **Now** (`src/kits/whiteboard/sketch.mjs`): each `draw`
+  item, and each eureka's bulb, is a `do: 'sketch'` intent planned by footprint-story's intent decider. Its strokes go
+  from the top left, a line two shapes share once, in the fewest strokes the corners allow (Euler, Fleury: a stick
+  figure is 3 strokes, was 4); the pen slows into bends, thins when fast, tapers its ends, runs a hook past a sharp
+  corner, and lifts and reaches through the air between strokes. `dur` is the plan's `seconds`, lifts included, so
+  every item ends when it ended and the film's clock does not move. The ink is footprint-story's ring of each stroke as
+  far as the pen has come (`strokeOutline(strokeAt(points, now − start), {cap})`), filled by the isometric kit's one
+  stroke painter (`kits/isometric/paint.mjs · paintItems`, non-zero, a finished ring built once); the marker sits at
+  the plan's own sample — on the ink's end while drawing, in the air between strokes. A eureka's bulb is one drawing of
+  0.7 s, its glass first, then its rays.
+- **Shapes:** a shape that ends where it starts is closed (one stroke round). `rect` is square now, and `ellipse`, a
+  figure's head and a robot's eyes are closed rings (`board.mjs · shapes.ring`): the rect was skewed by a pixel or three
+  and the ellipse ran 4% past its start to look hand-drawn, and the hand's wobble and hooks are footprint-story's now.
+- **New item key `accept`** (a drawing only): the critics whose findings it keeps as written, as for motion. A name its
+  drawing is not checked by is refused, naming them (`pen-lifts, stroke-order, hatch-gaps`).
+- **The critics reach `storyreel check`** in the review's `motion` check, on the item (`story.items[3]`), at their own
+  level, the fix in the recipe's words (`give the lines that meet the same corner points …`). A board drawn well finds
+  nothing: every example board's findings are empty.
+- **`storyreel log --run 1 --why duration-0 --motion story`**: the check runs a board's drawings again through the intent
+  decider as a chart and keeps its record, as for a world's moves; `duration-<k>` is the k-th drawing (each draw item
+  and each eureka, in order): its strokes, lifts, the fewest its corners allow and its seconds; `model-<k>`,
+  `findings-<k>` as for a move. The film's record keeps each drawing's few numbers (`world.story.summary.sketches`).
+- **The stroke budget is 0.46's** (`STROKE_BUDGET`): a note from 2,000 strokes on a board, refused past 20,000
+  (`strokeNotes` takes another kit's words now; the isometric world's are unchanged).
+- **A drawing too big for one sketch** (past 1,024 shapes or 4,096 corners, or a line past 1,024 points) is drawn in
+  parts one after another, each its length's share of `dur`, so an item of 4,000 ticks still draws.
+- **Refused, new:** a drawing's `size` outside 0.25–20 px (the marker's width: footprint-story's range); a board of more
+  than 64 drawings or parts (footprint-story plans 64 in one list — draw some on a world stage of their own); `accept`
+  on words.
+- **Breaking (the `kits/whiteboard/board` subpath):** `drawStrokes(ctx, strokes, opts)` draws whole and takes no share
+  (was `drawStrokes(ctx, strokes, f, opts)`, returning the tip); `renderTimeline` items are `{at, draw(ctx, seconds), …}`
+  (was `draw(ctx, share)` with `dur`); `shapes.rect` is square, `shapes.ring` is new, `stickFigure`'s head and
+  `robotHead`'s eyes and antenna ball are rings. The paper kit's card frame and bulb are drawn exactly as before.
+- **Words are written as before** (clipped left to right, the marker at the edge): footprint-story has no letterforms to
+  plan a pen by — its `write` model takes a letter's pen points, and a font's outline would be traced as hollow letters.
+- **Golden pins:** only whiteboard films move. `hello` 4.14–16.56 s (its board: every drawing's order, pace and lifts;
+  0–2.76 s is before the first drawing and 17.9 s on is the push into the card and the code stage). `worlds` 3.07–6.15 s
+  (the story's board) and 33.8, 35.4 s (stage `again`, a whiteboard world). `recap` 2.37–14.21 s (its board), 28.43 s
+  (the summary card recalls a board frame), 30.8–52.1 s (the recap strip's recalled board frames and the teaser's rewind
+  of the board). `shepherd`, `iso-world`, `iso-motion`, `iso-roll` and `iso-sketch` draw exactly what they drew. The
+  slideshow check's still share moved (hello 0.631 → 0.622, recap 0.584 → 0.590); no dead share and no verdict moved.
+
 ## 0.47.0 — the camera flies between shots by footprint-story's plan
 
 Each key of a `camera` focus is a shot, and the camera's flight from one shot to the next is footprint-story's now

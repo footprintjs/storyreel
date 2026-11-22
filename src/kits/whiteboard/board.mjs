@@ -1,10 +1,14 @@
 /**
  * The whiteboard kit: a real board (aluminium frame, glossy surface, optional ghosts of old
- * writing), marker strokes that draw themselves stroke by stroke with the marker visible at the
- * tip, handwriting that is written on, and an eraser that wipes a region.
+ * writing), the shapes a drawing is made of (polylines in 1600×900 board units), handwriting that
+ * is written on, the marker in the hand, and an eraser that wipes a region.
+ *
+ * How a drawing is drawn as time goes — its stroke order, the pen's pace, width and lifts — is not
+ * here: it is footprint-story's (sketch.mjs hands the shapes to its `hand-sketch` model). This file
+ * keeps the board's own pictures: the surface, the shapes, the marker, the eraser, and a marker
+ * line drawn whole (the paper kit's frames and bulb).
  *
  * Everything is a pure function of time and a seed, so any frame can be drawn in any order.
- * A drawing is data: strokes (polylines in 1600×900 board units) plus handwritten text items.
  */
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
@@ -32,10 +36,21 @@ export function hand(points, seed = 1, wobble = 1.6, step = 6) {
   out.push(points.at(-1));
   return out;
 }
-/** Shapes as polylines. */
+/** The segments a closed ring is drawn with: 48, the old open ellipse's, so a ring is as round. */
+const RING_STEPS = 48;
+/**
+ * Shapes as polylines. A shape that ends exactly where it starts (a rect, a ring) is closed: the whiteboard hands it to
+ * footprint-story as one (sketch.mjs · shapeOf), so a hand draws it in one stroke round, its corner joined.
+ * WHY the rect is square and the ring shut (0.48.0; the rect was skewed by a pixel or three and the ellipse ran 4% past
+ * its start, to look hand-drawn): the hand's wobble and its run past a sharp corner are footprint-story's pen now (its
+ * tremor and hooks), so the shape is the one meant, and drawn by hand once, not made wonky twice.
+ */
 export const shapes = {
   line: (x0, y0, x1, y1) => [[x0, y0], [x1, y1]],
-  rect: (x, y, w, h) => [[x, y], [x + w, y + 1], [x + w - 1, y + h], [x + 1, y + h - 1], [x, y + 3]],
+  rect: (x, y, w, h) => [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]],
+  /** A closed ellipse from its top, clockwise: its last point is its first, exactly. */
+  ring: (cx, cy, rx, ry) => Array.from({length: RING_STEPS + 1}, (_, i) => { const a = -Math.PI / 2 + 2 * Math.PI * (i % RING_STEPS) / RING_STEPS; return [cx + rx * Math.cos(a), cy + ry * Math.sin(a)]; }),
+  /** An open arc (`sweep` radians from `a0`): the default runs a little past its start, as the paper kit's clock icon draws it. */
   ellipse: (cx, cy, rx, ry, a0 = -Math.PI / 2, sweep = Math.PI * 2.08) => Array.from({length: 49}, (_, i) => { const a = a0 + sweep * i / 48; return [cx + rx * Math.cos(a), cy + ry * Math.sin(a)]; }),
   arrow: (x0, y0, x1, y1, head = 18) => { const a = Math.atan2(y1 - y0, x1 - x0); return [[[x0, y0], [x1, y1]], [[x1 - head * Math.cos(a - .5), y1 - head * Math.sin(a - .5)], [x1, y1], [x1 - head * Math.cos(a + .5), y1 - head * Math.sin(a + .5)]]]; },
   tick: (x, y, s = 1) => [[x - 12 * s, y], [x - 3 * s, y + 10 * s], [x + 16 * s, y - 14 * s]],
@@ -70,15 +85,15 @@ export function drawIcon(ctx, name, x, y, s, color, width = 2) {
 
 /** A stick figure: head, body, arms, legs. `pose` 'stand' | 'point' (right arm raised). */
 export function stickFigure(x, y, s = 1, pose = 'stand') {
-  const head = shapes.ellipse(x, y - 118 * s, 26 * s, 28 * s);
+  const head = shapes.ring(x, y - 118 * s, 26 * s, 28 * s);
   const arms = pose === 'point' ? [[x - 48 * s, y - 40 * s], [x, y - 70 * s], [x + 52 * s, y - 104 * s]] : [[x - 44 * s, y - 30 * s], [x, y - 70 * s], [x + 44 * s, y - 30 * s]];
   return [head, [[x, y - 90 * s], [x, y - 10 * s]], arms, [[x - 34 * s, y + 70 * s], [x, y - 10 * s], [x + 34 * s, y + 70 * s]]];
 }
 /** A friendly AI head: rounded box, two eyes, an antenna. */
 export function robotHead(x, y, s = 1) {
   const w = 110 * s, h = 90 * s;
-  return [shapes.rect(x - w / 2, y - h / 2, w, h), shapes.ellipse(x - 22 * s, y - 6 * s, 9 * s, 11 * s), shapes.ellipse(x + 22 * s, y - 6 * s, 9 * s, 11 * s),
-    [[x - 18 * s, y + 24 * s], [x + 18 * s, y + 24 * s]], [[x, y - h / 2], [x, y - h / 2 - 26 * s]], shapes.ellipse(x, y - h / 2 - 34 * s, 8 * s, 8 * s),
+  return [shapes.rect(x - w / 2, y - h / 2, w, h), shapes.ring(x - 22 * s, y - 6 * s, 9 * s, 11 * s), shapes.ring(x + 22 * s, y - 6 * s, 9 * s, 11 * s),
+    [[x - 18 * s, y + 24 * s], [x + 18 * s, y + 24 * s]], [[x, y - h / 2], [x, y - h / 2 - 26 * s]], shapes.ring(x, y - h / 2 - 34 * s, 8 * s, 8 * s),
     [[x - 60 * s, y + h / 2 + 10 * s], [x - 70 * s, y + h / 2 + 90 * s]], [[x + 60 * s, y + h / 2 + 10 * s], [x + 70 * s, y + h / 2 + 90 * s]], [[x - 70 * s, y + h / 2 + 90 * s], [x + 70 * s, y + h / 2 + 90 * s]]];
 }
 /** An idea light bulb: glass open at the bottom, neck, base, filament. Rays come separately. */
@@ -130,36 +145,42 @@ export function drawBoard(ctx, {seed = 11, ghosts = 0} = {}) {
   ctx.restore();
 }
 
-/** Length-parametrised prefix of a polyline (0..1). Returns the partial line and its tip. */
-function prefix(points, f) {
-  if (f >= 1) return {pts: points, tip: points.at(-1), angle: 0};
+/** A polyline cut at `f` of its length (0..1): the first part. */
+function cutAt(points, f) {
+  if (f >= 1) return points;
   const lens = [0]; for (let i = 1; i < points.length; i++) lens.push(lens[i - 1] + Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]));
   const target = lens.at(-1) * f, out = [points[0]];
   for (let i = 1; i < points.length; i++) {
     if (lens[i] <= target) { out.push(points[i]); continue; }
-    const k = (target - lens[i - 1]) / (lens[i] - lens[i - 1] || 1), p = [points[i - 1][0] + (points[i][0] - points[i - 1][0]) * k, points[i - 1][1] + (points[i][1] - points[i - 1][1]) * k];
-    out.push(p); return {pts: out, tip: p, angle: Math.atan2(points[i][1] - points[i - 1][1], points[i][0] - points[i - 1][0])};
+    const k = (target - lens[i - 1]) / (lens[i] - lens[i - 1] || 1);
+    out.push([points[i - 1][0] + (points[i][0] - points[i - 1][0]) * k, points[i - 1][1] + (points[i][1] - points[i - 1][1]) * k]);
+    return out;
   }
-  return {pts: out, tip: out.at(-1), angle: 0};
+  return out;
 }
 
-/** Draw marker strokes up to fraction f of their total length; returns the tip if still drawing. */
-export function drawStrokes(ctx, strokes, f, {color = INK.black, size = 6, seed = 1} = {}) {
+/**
+ * Marker strokes drawn whole (the paper kit's storybook card frame and its bulb icon): each polyline given the board's
+ * seeded wobble (hand) and filled as perfect-freehand's outline of it. WHY only whole: a drawing drawn as time goes is
+ * footprint-story's now (sketch.mjs); these lines are on the page at once.
+ * WHY the running length (`left`): these frames are pinned, and this is the sum the timed drawing (≤ 0.47.0) took them
+ * by. At the last line it can come out a hair under that line's length, which cuts the line by a millionth of a pixel
+ * (cutAt) and leaves its end uncapped; filling each line whole instead moves about one frame in three by a pixel's
+ * anti-aliasing (tried on 400 cards and bulbs). So the paper's frames stay the frames they were.
+ */
+export function drawStrokes(ctx, strokes, {color = INK.black, size = 6, seed = 1} = {}) {
   const lines = strokes.map((s, i) => hand(s, seed * 97 + i));
   const lens = lines.map(l => l.reduce((n, p, i) => i ? n + Math.hypot(p[0] - l[i - 1][0], p[1] - l[i - 1][1]) : 0, 0));
-  const total = lens.reduce((a, b) => a + b, 0);
-  let budget = total * clamp01(f), tip = null;
+  let left = lens.reduce((a, b) => a + b, 0);
   ctx.save(); ctx.fillStyle = color;
   for (const [i, l] of lines.entries()) {
-    if (budget <= 0) break;
-    const part = prefix(l, Math.min(1, budget / (lens[i] || 1)));
-    budget -= lens[i];
-    const outline = getStroke(part.pts.map(p => [p[0], p[1], .5]), {size, thinning: .35, smoothing: .6, streamline: .45, simulatePressure: false, last: budget >= 0});
+    if (left <= 0) break;
+    const part = cutAt(l, Math.min(1, left / (lens[i] || 1)));
+    left -= lens[i];
+    const outline = getStroke(part.map(p => [p[0], p[1], .5]), {size, thinning: .35, smoothing: .6, streamline: .45, simulatePressure: false, last: left >= 0});
     if (outline.length) { ctx.beginPath(); outline.forEach(([x, y], k) => k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); ctx.fill(); }
-    if (budget < 0) tip = part.tip;
   }
   ctx.restore();
-  return f < 1 ? tip : null;
 }
 
 /** Handwriting written on left to right; returns the pen position while writing. */
@@ -195,15 +216,15 @@ export function drawEraser(ctx, x, y0, y1) {
 
 /**
  * Render a timeline of board items at time t. Each item:
- *   {at, dur, draw(ctx, f) → tip|null, color, erase?: {at, dur, box:[x0,y0,x1,y1]}}
- * An item draws progressively over [at, at+dur]; an erase wipes its box left to right.
- * The marker is shown at the tip of whatever is being drawn; the eraser while wiping.
+ *   {at, draw(ctx, s) → tip|null, color, erase?: {at, dur, box:[x0,y0,x1,y1]}}
+ * An item is drawn from `at` on, `s` seconds into it; its draw says how far it has come and gives the pen's tip while
+ * it is still being drawn (a sketch's from footprint-story's samples: sketch.mjs), null once it is done. An erase
+ * wipes its box left to right. The marker is shown at the tip of whatever is being drawn; the eraser while wiping.
  */
 export function renderTimeline(ctx, items, t) {
   let pen = null, eraser = null;
   for (const it of items) {
     if (t < it.at) continue;
-    const f = clamp01((t - it.at) / it.dur);
     const e = it.erase ? clamp01((t - it.erase.at) / it.erase.dur) : 0;
     if (e >= 1) continue;
     ctx.save();
@@ -212,9 +233,9 @@ export function renderTimeline(ctx, items, t) {
       ctx.beginPath(); ctx.rect(cut, 0, 1600, 900); ctx.clip();
       eraser = [cut, y0, y1];
     }
-    const tip = it.draw(ctx, ease(f));
+    const tip = it.draw(ctx, t - it.at);
     ctx.restore();
-    if (tip && f < 1) pen = {tip, color: it.color ?? INK.black};
+    if (tip) pen = {tip, color: it.color ?? INK.black};
   }
   if (eraser) drawEraser(ctx, ...eraser);
   if (pen) drawMarker(ctx, pen.tip, pen.color);

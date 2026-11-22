@@ -175,7 +175,10 @@ world's moves planned twice: by the compile, with footprint-story's `planIntents
 footprint-story's intent decider as a chart (`runHumanFlow`), so a run's record holds a real run of the same steps. Each
 world's run keeps its own record beside the check's: `.storyreel/runs/<run>.motion-<k>.record.jsonl`, k its place in
 the run's list (never a world's name). `--motion` picks which record `--why` reads, by the world's place in the recipe,
-as `--map` does; each move is asked by its own key, `duration-<i>` for `motion[i]`:
+as `--map` does; each move is asked by its own key, `duration-<i>` for `motion[i]`. A whiteboard's drawings are the
+same kind of run (`../kits/whiteboard/sketch.mjs`, `do: 'sketch'`, from 0.48.0): `--motion story` reads them, and
+`duration-<k>` is the k-th drawing (each draw item and each eureka, in order) — its strokes, lifts, the fewest its
+corners allow, and its seconds:
 
 ```
 $ storyreel log --run 1 --why duration-1 --motion story

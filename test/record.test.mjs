@@ -40,8 +40,19 @@ test('the record holds small values only, and survives structuredClone and JSON'
   const state = copy.snapshot.sharedState, recipe = recipeOf('worlds');
   // A shot's intent and facts ride with it (shots.mjs), so a slice from a stage says what the stage was for.
   const plan = st => ({...(st.intent ? {intent: st.intent} : {}), ...(st.continuity ? {continuity: {start: st.continuity.start ?? {}, end: st.continuity.end ?? {}}} : {})});
-  assert.deepEqual(state['world.story'], {kit: recipe.story.kit, path: 'story', ...plan(recipe.story)});
-  recipe.stages.forEach((st, i) => assert.deepEqual(state[`stage.stages[${i}]`], {type: st.type, kit: st.world?.kit ?? 'paper', scene: st.scene, path: `stages[${i}]`, ...plan(st)}));
+  // a whiteboard's summary (0.48.0): each drawing's strokes, lifts and seconds, footprint-story's plan of it, never its points
+  const {summary, ...world} = state['world.story'], drawn = recipe.story.items.flatMap((it, n) => (it.draw || it.eureka ? [`items[${n}]`] : []));
+  assert.deepEqual(world, {kit: recipe.story.kit, path: 'story', ...plan(recipe.story)});
+  assert.deepEqual(summary.sketches.map(s => s.path), drawn, 'one a drawing, in order; words written on have none');
+  assert.equal(summary.strokes, summary.sketches.reduce((n, s) => n + s.strokes, 0));
+  assert.ok(summary.sketches.every(s => s.strokes === s.least && s.lifts === s.strokes - 1 && Object.keys(s).every(k => ['path', 'at', 'seconds', 'strokes', 'lifts', 'least'].includes(k))));
+  // (a whiteboard world stage keeps its drawings' summary too, 0.48.0: one a drawing, in order)
+  recipe.stages.forEach((st, i) => {
+    const {summary: drew, ...stage} = state[`stage.stages[${i}]`];
+    assert.deepEqual(stage, {type: st.type, kit: st.world?.kit ?? 'paper', scene: st.scene, path: `stages[${i}]`, ...plan(st)});
+    const drawings = st.world?.kit === 'whiteboard' ? st.world.items.flatMap((it, n) => (it.draw || it.eureka ? [`items[${n}]`] : [])) : [];
+    assert.deepEqual(drew?.sketches.map(s => s.path) ?? [], drawings);
+  });
   assert.ok(recipe.stages.some(st => st.continuity) && recipe.story.intent, 'the worlds example states intents and facts, so this reaches them');
   assert.deepEqual(state['checks.continuity'].facts, {'sheep out': 3});
   assert.equal(state['checks.watching'].rule, 'report');
@@ -54,8 +65,9 @@ test('the record holds small values only, and survives structuredClone and JSON'
 
 test('record off (the default): the same film, no record, the same pixels as recorded', async () => {
   const off = await compileExample('hello'), on = await compileExample('hello', {record: true});
-  assert.deepEqual(Object.keys(off), FILM_KEYS, 'the return keys are unchanged');
-  assert.deepEqual(Object.keys(on), [...FILM_KEYS, 'record']);
+  // (a whiteboard that draws hands out its drawings' run, 0.48.0: motionRuns, last)
+  assert.deepEqual(Object.keys(off), [...FILM_KEYS, 'motionRuns'], 'the return keys are unchanged');
+  assert.deepEqual(Object.keys(on), [...FILM_KEYS, 'motionRuns', 'record']);
   assert.deepEqual(on.beats, off.beats);
   assert.deepEqual(on.notes, off.notes);
   // The claim holds on every machine: the recorded film draws the same pixels as the plain one. Against the

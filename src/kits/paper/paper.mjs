@@ -219,8 +219,8 @@ function storybookCard(c, x, y, w, h, fill, ink) {
   const g = c.createRadialGradient(x + w / 2, y + h / 2, Math.min(w, h) * .3, x + w / 2, y + h / 2, Math.max(w, h) * .62);
   g.addColorStop(0, 'rgba(120,90,40,0)'); g.addColorStop(1, 'rgba(120,90,40,.18)');
   c.fillStyle = g; c.beginPath(); c.roundRect(x, y, w, h, 18); c.fill();
-  drawStrokes(c, [roundedRectPoints(x + 7, y + 7, w - 14, h - 14, 14)], 1, {color: ink, size: 4.5, seed: 91});
-  drawStrokes(c, [roundedRectPoints(x + 13, y + 13, w - 26, h - 26, 11)], 1, {color: ink, size: 1.6, seed: 92});
+  drawStrokes(c, [roundedRectPoints(x + 7, y + 7, w - 14, h - 14, 14)], {color: ink, size: 4.5, seed: 91});
+  drawStrokes(c, [roundedRectPoints(x + 13, y + 13, w - 26, h - 26, 11)], {color: ink, size: 1.6, seed: 92});
 }
 
 /** How long each half of the reveal flip takes (the card closes on the question, opens on the answer). */
@@ -379,7 +379,7 @@ export function drawSummary(c, P, cards, closing, hero) {
       if (image && !(hero && i === hero.into && m < 1)) drawRecall(c, P, image, x + 18, y + 18, w - 36, (w - 36) * 9 / 16);
       else {
         c.strokeStyle = P.C.ink; c.fillStyle = P.C.ink; c.lineWidth = 3;
-        if (icon === 'bulb') drawStrokes(c, lightBulb(cx, y + 80, 1.1), 1, {color: INK.orange, size: 5, seed: 41});
+        if (icon === 'bulb') drawStrokes(c, lightBulb(cx, y + 80, 1.1), {color: INK.orange, size: 5, seed: 41});
         if (icon === 'code') P.text('{ }', cx, y + 96, 54, P.C.accent, {mono: true, weight: 700});
       }
       P.text(head ? `${i + 1}  ·  ${head}` : `${i + 1}`, cx, y + 262 - up, 22, P.C.accent, {mono: true, weight: 700});

@@ -151,8 +151,10 @@ test('the example films\' verdicts, as the README gives them', async () => {
   assert.deepEqual(verdicts, {
     // A whiteboard and a code stage, still between their reveals: held still for a third of their time, and moving for
     // the rest. The numbers they draw (the card's "sheep 1", a 0 in the code) have no facts to be checked against.
-    hello: {slideshow: ['passed', .324, .631, ['stage rule 0.75']], geometry: ['not run', 0], pure: ['passed', 0], contrast: ['passed', 0], claims: ['not run', 4, 4]},
-    recap: {slideshow: ['passed', .146, .584, ['the story 0.217', 'stage code 0.371']], geometry: ['not run', 0], pure: ['passed', 0], contrast: ['passed', 0], claims: ['not run', 12, 9]},
+    // (0.48.0: the board's drawings drawn by footprint-story's hand — its pace and lifts — so hello holds still 62.2% of
+    // its time, was 63.1%, and recap 59.0%, was 58.4%; no dead share moved.)
+    hello: {slideshow: ['passed', .324, .622, ['stage rule 0.75']], geometry: ['not run', 0], pure: ['passed', 0], contrast: ['passed', 0], claims: ['not run', 4, 4]},
+    recap: {slideshow: ['passed', .146, .59, ['the story 0.217', 'stage code 0.371']], geometry: ['not run', 0], pure: ['passed', 0], contrast: ['passed', 0], claims: ['not run', 12, 9]},
     // The cartoon kit gives its parts; its world moves all the time. Every built-in kit draws each moment the same.
     shepherd: {slideshow: ['passed', 0, 0, []], geometry: ['passed', 21], pure: ['passed', 0], contrast: ['passed', 0], claims: ['passed', 0, 0]},
     worlds: {slideshow: ['passed', 0, .341, []], geometry: ['passed', 17], pure: ['passed', 0], contrast: ['passed', 0], claims: ['not run', 3, 3]}});

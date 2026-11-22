@@ -162,6 +162,13 @@ assert.deepEqual(Object.keys(FIGURE_COLORS), ['skin', 'shirt', 'legs', 'shoes', 
 ## The whiteboard
 
 `{"story": {"kit": "whiteboard", "items": [{"at": ["story", "a shepherd"], "dur": 1.2, "draw": [["figure", 300, 620, 1.1]]}]}}`:
-marker drawings stroke by stroke (`figure`, `robot`, `rect`, `line`, `ellipse`, `bubble`, `tick`, `arrow`, `poly`),
+marker drawings drawn by hand (`figure`, `robot`, `rect`, `line`, `ellipse`, `bubble`, `tick`, `arrow`, `poly`),
 handwriting (`write`), a eureka, erasers and spotlights. `node_modules/footprint-storyreel/examples/hello/` is the
 smallest whole film with it.
+
+Write what to draw, `at` and `dur`; footprint-story decides the stroke order (top left first, a shared corner once,
+the fewest strokes the corners allow), the pen's pace and its lifts, and the drawing lands on its `dur`. Its critics
+(`pen-lifts`, `stroke-order`, `hatch-gaps`) show in `storyreel check`'s `motion` check on the item (`story.items[3]`)
+with the fix; `"accept": ["pen-lifts"]` keeps one as written. Lines that meet should share the corner point, so the
+pen runs on. Ask why with `storyreel log --run 1 --why duration-0 --motion story` (k counts the drawings: each draw
+item and each eureka, in order; words have none). `size` is the marker's width, 0.25 to 20.
