@@ -339,9 +339,14 @@ A phrase that is not in the narration refuses the recipe.
 }
 ```
 
-- `story.kit: "whiteboard"` — items drawn stroke by stroke (`figure`, `robot`, `rect`, `line`,
+- `story.kit: "whiteboard"` — items drawn by hand (`figure`, `robot`, `rect`, `line`,
   `ellipse`, `bubble`, `tick`, `arrow`, `poly`), handwriting (`write`), a eureka (`eureka: [x, y]`:
-  light bulb + chime), named erasers, spotlights with a camera push.
+  light bulb + chime), named erasers, spotlights with a camera push. A drawing's stroke order, the pen's pace and
+  its lifts are footprint-story's (`hand-sketch`): the item says what, when (`at`) and for how long (`dur`); the
+  marker sits on the pen's tip, and goes through the air between strokes. Its critics (`pen-lifts`, `stroke-order`,
+  `hatch-gaps`) cannot fire on a board's drawings today, and a `dur` too short is squeezed with no finding yet (a pace
+  critic is to come from footprint-story); `storyreel log --run 1 --why duration-0 --motion story` says why the first drawing takes its
+  strokes ([src/kits/whiteboard/README.md](src/kits/whiteboard/README.md)).
 - `pushIn` — after the story, the camera pushes into `card.prop` and it becomes a typed card.
 - `card` — rows of `{value, tone, note, source, tags}`; tones: `available` (known), `unknown`, `dim`.
   `source` is the SOURCE chip; `tags: [{label: 'WHEN', text: 'last night'}]` are small chips under the row.

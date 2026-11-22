@@ -39,12 +39,14 @@ export const strokeCount = (map) => [...map.blocks, ...map.floors].reduce((n, p)
 /**
  * A world's strokes against STROKE_BUDGET: [] under `note`, one note from it, a refusal past `most` — each naming the
  * world's style (`${where}: isometric style`) and the fix. `count`: strokeCount of the built map.
+ * The options are another kit's own words for the same budget (the whiteboard's drawings, kits/whiteboard/sketch.mjs) — who it
+ * is, what the strokes are of, the note's path and the fix; the isometric world's are the usual ones.
  */
-export function strokeNotes(count, where) {
-  const who = `${where}: isometric style`, fix = `give the hatch a wider spacing (texture: {"name": "human:hatch", "spacing": 16}), take the texture out, or draw fewer blocks`;
-  if (count > STROKE_BUDGET.most) throw new Error(`${who}: the map's hand-drawn lines come to ${count} strokes, and a world draws at most ${STROKE_BUDGET.most} — ${fix}`);
+export function strokeNotes(count, where, {who = `${where}: isometric style`, what = "the map's hand-drawn lines", path = 'style',
+  fix = `give the hatch a wider spacing (texture: {"name": "human:hatch", "spacing": 16}), take the texture out, or draw fewer blocks`} = {}) {
+  if (count > STROKE_BUDGET.most) throw new Error(`${who}: ${what} come to ${count} strokes, and a world draws at most ${STROKE_BUDGET.most} — ${fix}`);
   if (count < STROKE_BUDGET.note) return [];
-  return [{level: 'info', path: 'style', message: `${who}: the map's hand-drawn lines come to ${count} strokes (a note from ${STROKE_BUDGET.note}, refused past ${STROKE_BUDGET.most}): each frame fills every stroke drawn so far, so the film renders slower — to lighten it, ${fix}`}];
+  return [{level: 'info', path, message: `${who}: ${what} come to ${count} strokes (a note from ${STROKE_BUDGET.note}, refused past ${STROKE_BUDGET.most}): each frame fills every stroke drawn so far, so the film renders slower — to lighten it, ${fix}`}];
 }
 
 /** What there is to say of one wire's way: [{level, message}] (the entry is added by notesOf). */

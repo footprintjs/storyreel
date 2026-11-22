@@ -34,7 +34,7 @@ README's "A film from a conversation" has the steps. For a voice: `narrate --kit
 |---|---|
 | build a cartoon film, the main path, with a walking figure | the `storyreel-cartoon` skill ([its SKILL.md](../storyreel-cartoon/SKILL.md)) |
 | fix or polish a film that exists: timeline, review, part, still | the `storyreel-review` skill ([its SKILL.md](../storyreel-review/SKILL.md)) |
-| write a kit: what it returns, the built-in cartoon and whiteboard kits | [kits.md](../storyreel-cartoon/kits.md) |
+| write a kit: what it returns, the built-in cartoon and whiteboard kits (a whiteboard draws by footprint-story's hand: you give what and when) | [kits.md](../storyreel-cartoon/kits.md) |
 | motion by name: moves, eases, walks, acting, the animator's principles | [motion.md](../storyreel-cartoon/motion.md) |
 | camera moves by name: dolly, pan, orbit, rack focus; one camera at a time | [camera.md](../storyreel-cartoon/camera.md) |
 | cut between shots: a transition by name and what each one means (`torn`: leave the old page behind) | the package README, section Transitions: the catalog, `footprint-storyreel/transitions` · `TRANSITION_NAMES` |

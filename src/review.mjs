@@ -466,12 +466,13 @@ export const REVIEW_CHECKS = Object.freeze({
     find: wordsOverDrawings},
   'drawing-off-frame': {label: 'A drawing off the frame', why: 'a kit says where its drawings are', when: s => (s.facts.drawings ?? 0) > 0,
     find: drawingsOffFrame},
-  // What footprint-story's critics found in a world's moves (kits/isometric/motion.mjs) and in the focus camera's flights
-  // between shots (flight/steps.mjs): each names its entry (a motion entry, a focus key) and the fix, over the samples
+  // What footprint-story's critics found in a world's moves (kits/isometric/motion.mjs), in a whiteboard's drawings
+  // (kits/whiteboard/sketch.mjs: pen-lifts, stroke-order, hatch-gaps) and in the focus camera's flights between shots
+  // (flight/steps.mjs): each names its entry (a motion entry, a focus key) and the fix, over the samples
   // the move spans (held: spans · held). Its level is the critic's own, mapped onto the reel's (MOTION_KINDS): a critic's
   // `warn` (a body through the floor, a camera that loses its subject) is a finding to fix, so a check never reads clean
   // over it; only its `note` is advice. WHY one check: a camera's flight is a move too, read by the same kind of critic.
-  motion: {label: 'Moves that read wrong', why: 'a world moves its pieces by intent, or the focus flies the camera between shots', when: s => (s.facts.motions ?? 0) + (s.facts.flights ?? 0) > 0,
+  motion: {label: 'Moves that read wrong', why: 'a world moves its pieces by intent, a whiteboard draws by hand, or the focus flies the camera between shots', when: s => (s.facts.motions ?? 0) + (s.facts.flights ?? 0) > 0,
     find: ({film, window, samples}) => motionsIn(film, window).flatMap(f => {
       const at = samples.filter(x => x.t >= f.from - 1e-9 && x.t <= f.to + 1e-9).map(x => x.t);
       const kind = MOTION_KINDS[f.level] ?? 'motion';   // a level footprint-story adds later is a finding to fix until it is mapped

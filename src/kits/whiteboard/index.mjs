@@ -1,22 +1,27 @@
 /**
- * The whiteboard scene type: props drawn stroke by stroke on spoken phrases, erased by named
- * erasers, eureka beats (bulb + ding) and spotlights. Everything is data; this module only
- * interprets it (see docs/RECIPE.md).
+ * The whiteboard scene type: props drawn by hand on spoken phrases, erased by named erasers, eureka
+ * beats (bulb + ding) and spotlights. Everything is data; this module only interprets it (see
+ * README.md here).
  *
  *   {erasers: {name: {at, dur, box}}, defaultErase: name,
- *    items: [{at, dur, draw: [[shape, …numbers]] | write: text, x, y, size, align, color, erase, seed, size}
- *            | {at, eureka: [x, y], erase}],
+ *    items: [{at, dur, draw: [[shape, …numbers]] | write: text, x, y, size, align, color, erase, seed, accept}
+ *            | {at, eureka: [x, y], erase, accept}],
  *    spots: [{from, to, at: [x, y], r, zoom}]}
+ *
+ * A drawing (`draw`, and a eureka's bulb) is drawn as a hand draws it: footprint-story decides its stroke order, the
+ * pen's pace and its lifts, the author only what to draw, when and for how long (sketch.mjs). Words (`write`) are
+ * written on left to right, as before: footprint-story has no letters to draw them by.
  */
 import {createCanvas} from '@napi-rs/canvas';
-import {INK, shapes, icons, stickFigure, robotHead, bubble, lightBulb, bulbRays, drawGlow, drawStrokes, drawWriting, renderTimeline, drawBoard, ease} from './board.mjs';
+import {INK, shapes, icons, stickFigure, robotHead, bubble, lightBulb, bulbRays, drawGlow, drawWriting, renderTimeline, drawBoard, ease} from './board.mjs';
+import {planSketches, sketchDraw, shapeOf} from './sketch.mjs';
 
 const SHAPES = {
   figure: (x, y, s = 1, parts = 4, pose = 'stand') => stickFigure(x, y, s, pose).slice(0, parts),
   robot: (x, y, s = 1) => robotHead(x, y, s),
   rect: (x, y, w, h) => [shapes.rect(x, y, w, h)],
   line: (x0, y0, x1, y1) => [shapes.line(x0, y0, x1, y1)],
-  ellipse: (cx, cy, rx, ry) => [shapes.ellipse(cx, cy, rx, ry)],
+  ellipse: (cx, cy, rx, ry) => [shapes.ring(cx, cy, rx, ry)],
   bubble: (cx, cy, rx, ry, tx, ty) => bubble(cx, cy, rx, ry, tx, ty),
   tick: (x, y, s = 1) => [shapes.tick(x, y, s)],
   arrow: (x0, y0, x1, y1, head = 18) => shapes.arrow(x0, y0, x1, y1, head),
@@ -25,7 +30,10 @@ const SHAPES = {
   clock: (x, y, s = 1) => icons.clock(x, y, s),
   flashlight: (x, y, s = 1, dir = 1) => icons.flashlight(x, y, s, dir),
 };
-const ITEM_KEYS = new Set(['at', 'dur', 'draw', 'write', 'x', 'y', 'size', 'align', 'color', 'erase', 'seed', 'eureka', 'name']);
+const ITEM_KEYS = new Set(['at', 'dur', 'draw', 'write', 'x', 'y', 'size', 'align', 'color', 'erase', 'seed', 'eureka', 'name', 'accept']);
+/** A eureka's bulb: its marker's width, its seconds (the glass, then the rays) — the times the bulb and its rays took before 0.48.0, end to end. */
+const EUREKA = Object.freeze({size: 5, seconds: .7});
+const clamp01 = n => Math.max(0, Math.min(1, n));
 const color = name => { if (name === undefined) return INK.black; if (!(name in INK)) throw new Error(`Unknown ink colour ${name} (the inks are ${Object.keys(INK).join(', ')})`); return INK[name]; };
 
 export function compileWhiteboard(spec, clock, motion = {cameraSpeed: 1}) {
@@ -37,19 +45,25 @@ export function compileWhiteboard(spec, clock, motion = {cameraSpeed: 1}) {
     return erasers[name];
   };
   if (!Array.isArray(spec.items)) throw new Error(`whiteboard: items is the list of what the board draws ([] for an empty board), not ${JSON.stringify(spec.items)}`);
-  const items = [], dings = [], places = [];
+  // first every item read, its drawing (if it draws) handed on to be planned with the rest in one list (sketch.mjs);
+  // then the timeline, each drawing painted by its plan
+  const items = [], dings = [], places = [], drawings = [], drawn = [];
   spec.items.forEach((item, n) => {
     for (const key of Object.keys(item)) if (!ITEM_KEYS.has(key)) throw new Error(`whiteboard item ${n} has unsupported key ${key} (an item takes ${[...ITEM_KEYS].join(', ')})`);
     // A name makes the item a thing a push can frame and a transition can go through (regionsAt → name).
     if (item.name !== undefined && !(typeof item.name === 'string' && /^[a-z][a-zA-Z0-9-]*$/.test(item.name))) throw new Error(`whiteboard item ${n}: name is one word for the thing it draws (e.g. "pebble"), not ${JSON.stringify(item.name)}`);
-    const at = clock.at(item.at), erase = eraseOf(item);
-    places.push({at, erase, path: `items[${n}]`, dur: item.dur, write: typeof item.write === 'string', ...placeOf(item), ...(item.name ? {name: item.name} : {})});
+    const accept = item.accept ?? [];
+    if (!(Array.isArray(accept) && accept.every(a => typeof a === 'string' && a))) throw new Error(`whiteboard item ${n}: accept is a list of the critics whose findings this drawing keeps as written (e.g. ["pen-lifts"]), not ${JSON.stringify(item.accept)}`);
+    if (item.accept !== undefined && typeof item.write === 'string') throw new Error(`whiteboard item ${n}: accept is for a drawing's critics, and words written on (write) have none — leave accept out`);
+    const at = clock.at(item.at), erase = eraseOf(item), path = `items[${n}]`, who = `items[${n}]${item.name ? ` ("${item.name}")` : ''}`;
+    places.push({at, erase, path, dur: item.dur, write: typeof item.write === 'string', ...placeOf(item), ...(item.name ? {name: item.name} : {})});
     if (item.eureka) {
       const [x, y] = item.eureka;
-      items.push({at, dur: .5, draw: (ctx, f) => drawGlow(ctx, x, y + 8, 95, f), erase});
-      const bulb = lightBulb(x, y, 1), rays = bulbRays(x, y, 1);
-      items.push({at, dur: .45, color: INK.orange, draw: (ctx, f) => drawStrokes(ctx, bulb, f, {color: INK.orange, size: 5, seed: 31}), erase});
-      items.push({at: at + .4, dur: .3, color: INK.orange, draw: (ctx, f) => drawStrokes(ctx, rays, f, {color: INK.orange, size: 5, seed: 32}), erase});
+      items.push({at, draw: (ctx, s) => drawGlow(ctx, x, y + 8, 95, ease(clamp01(s / .5))), erase});
+      // the bulb is one drawing: its glass and base first, then its rays (footprint-story's order: outline, then detail)
+      const shapesOf = [...lightBulb(x, y, 1).map(p => shapeOf(p, {group: 'bulb'})), ...bulbRays(x, y, 1).map(p => shapeOf(p, {group: 'bulb', layer: 'detail'}))];
+      drawn.push({item: items.push({at, color: INK.orange, erase}) - 1, ink: INK.orange});
+      drawings.push({path, who, at, seconds: EUREKA.seconds, shapes: shapesOf, size: EUREKA.size, seed: item.seed ?? 31, accept});
       dings.push(at + .05);
       return;
     }
@@ -57,18 +71,20 @@ export function compileWhiteboard(spec, clock, motion = {cameraSpeed: 1}) {
     const ink = color(item.color);
     if (typeof item.write === 'string') {
       const opts = {size: item.size ?? 48, align: item.align ?? 'left', color: ink};
-      items.push({at, dur: item.dur, color: ink, draw: (ctx, f) => drawWriting(ctx, item.write, item.x, item.y, f, opts), erase});
+      items.push({at, color: ink, draw: (ctx, s) => drawWriting(ctx, item.write, item.x, item.y, ease(clamp01(s / item.dur)), opts), erase});
       return;
     }
     if (!Array.isArray(item.draw)) throw new Error(`whiteboard item ${n} draws nothing: give it write: "words", or draw: [[shape, …args], …] (the shapes are ${Object.keys(SHAPES).join(', ')})`);
-    const strokes = item.draw.flatMap(([kind, ...args]) => { if (!SHAPES[kind]) throw new Error(`Unknown shape ${kind} (the shapes are ${Object.keys(SHAPES).join(', ')})`); return SHAPES[kind](...args); });
-    const opts = {color: ink, size: item.size ?? 6, seed: item.seed ?? n + 1};
-    items.push({at, dur: item.dur, color: ink, draw: (ctx, f) => drawStrokes(ctx, strokes, f, opts), erase});
+    const lines = item.draw.flatMap(([kind, ...args]) => { if (!SHAPES[kind]) throw new Error(`Unknown shape ${kind} (the shapes are ${Object.keys(SHAPES).join(', ')})`); return SHAPES[kind](...args); });
+    drawn.push({item: items.push({at, color: ink, erase}) - 1, ink});
+    drawings.push({path, who, at, seconds: item.dur, shapes: lines.map(p => shapeOf(p)), size: item.size ?? 6, seed: item.seed ?? n + 1, accept});
   });
+  const sketch = planSketches(drawings);
+  sketch.byDrawing.forEach((parts, k) => { items[drawn[k].item].draw = sketchDraw(parts, drawn[k].ink); });
   // A spotlight is a camera move: it eases in and out at the film's camera speed (a director's note).
   const speed = motion.cameraSpeed ?? 1, spotEase = {in: .6 / speed, out: .7 / speed};
   const spots = (spec.spots ?? []).map(s => ({at: clock.at(s.from), until: clock.at(s.to), cx: s.at[0], cy: s.at[1], r: s.r, zoom: s.zoom ?? 1.09, ...spotEase}));
-  return {items, dings, spots, places};
+  return {items, dings, spots, places, sketch};
 }
 
 const measurer = createCanvas(8, 8).getContext('2d');
@@ -152,8 +168,16 @@ export const whiteboardKit = {
     compile(spec, clock, motion) {
       const board = compileWhiteboard(spec, clock, motion);
       const erasers = Object.values(spec.erasers ?? {}).map(e => ({time: clock.at(e.at) + (e.plus ?? 0), type: 'slide'}));
+      const {sketch} = board;
       return {hang: .9, spotAt: t => spotAt(board, t), draw: (c, t, spot) => drawWhiteboard(c, board, t, spot), regionsAt: t => boardRegions(board, t), texts: () => boardTexts(board),
-        sounds: [...board.dings.map(time => ({time, type: 'chime'})), ...erasers]};
+        sounds: [...board.dings.map(time => ({time, type: 'chime'})), ...erasers],
+        // the drawings run again through footprint-story's intent decider as a chart, its run recorded (`storyreel
+        // check`: check/motions.mjs, `log --why duration-<k> --motion whiteboard`), and what its critics found, each
+        // naming its item and the fix (the review's `motion` check) — as an isometric world hands out its moves
+        ...(sketch.run ? {motionRun: sketch.run, motionFindings: sketch.findings, motionIntents: sketch.intents} : {}),
+        // what the film's record keeps of the board (film/summaries.mjs): each drawing's strokes, lifts and seconds
+        ...(sketch.sketches.length ? {summary: sketch.summary} : {}),
+        ...(sketch.notes.length ? {notes: Object.freeze(sketch.notes.map(n => Object.freeze(n)))} : {})};
     },
   },
 };

@@ -17,7 +17,9 @@
 //
 // And one record per world whose pieces move by intent, its moves run again through footprint-story's intent decider
 // (check/motions.mjs): `--motion story` reads that one, so `--why duration-1 --motion story` says why motion[1] takes
-// its time — the law's numbers, the plan, and the rule that chose its model.
+// its time — the law's numbers, the plan, and the rule that chose its model. A whiteboard's drawings are planned by the
+// same decider (kits/whiteboard/sketch.mjs, `do: 'sketch'`), so `--why duration-0 --motion story` says how many strokes
+// and lifts its first drawing takes, the fewest its corners allow, and its seconds.
 //
 // And one record of the focus camera's flights between shots, run again as a chart of the steps the compile ran
 // (check/cameras.mjs, flight/run.mjs): `--camera focus` reads that one, so `--why flight-1 --camera focus` says why
@@ -77,7 +79,7 @@ async function mapWhy(run, key, map, {all}) {
 
 /** Every key the intent decider's steps write (footprint-story/human · HUMAN_STEPS), and the per-move ones (`duration-<i>`). */
 export const MOTION_KEYS = Object.freeze([...new Set(HUMAN_STEPS.flatMap(s => [...(s.decides?.writes ?? []), ...s.writes]))]);
-const MOTION_LISTED = `${MOTION_KEYS.join(', ')}, and for motion[i] alone ${Object.keys(PER_INTENT).map(k => `${k}-<i>`).join(', ')} (duration-0: why motion[0] takes its time)`;
+const MOTION_LISTED = `${MOTION_KEYS.join(', ')}, and for motion[i] alone ${Object.keys(PER_INTENT).map(k => `${k}-<i>`).join(', ')} (duration-0: why motion[0] takes its time; on a whiteboard, i counts its drawings — each draw item and each eureka, in order — and the record names each by its item)`;
 
 /**
  * Why `key` is what it is in one of a run's worlds' moves (`motion`: its world's recipe path, `story` or `stages[1]`).
