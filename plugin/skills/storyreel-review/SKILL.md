@@ -27,9 +27,8 @@ before (fixed, new, the round). Fix what it lists and call it again; the tools b
 from: `npx storyreel log --run 1 --why errors` (or `verdict`, `round`): read from the check's record, nothing run again.
 A camera flight the check flags (`a move that reads wrong: travel-speed …` at `focus.keys[1]`) says why from its own
 record: `npx storyreel log --run 1 --why flight-1 --camera focus` (footprint-story's reason and the limit that set its seconds).
-A whiteboard drawing it flags (`pen-lifts` at `story.items[3]`) is footprint-story's hand: give lines that meet the
-same corner point, or `"accept": ["pen-lifts"]`; `npx storyreel log --run 1 --why duration-0 --motion story` says its
-strokes, lifts and seconds (k counts the drawings in order).
+A whiteboard drawing's critics cannot fire today, and a too-short `dur` is squeezed with no finding: look at fast
+drawings yourself (`npx storyreel log --run 1 --why duration-0 --motion story`: its strokes and seconds).
 
 After an edit to the narration, recipe or pacing, `npx storyreel anchors` lists each phrase not said, or said twice,
 with its fix (`check` counts them). Then:

@@ -66,7 +66,7 @@ test('the record holds small values only, and survives structuredClone and JSON'
 test('record off (the default): the same film, no record, the same pixels as recorded', async () => {
   const off = await compileExample('hello'), on = await compileExample('hello', {record: true});
   // (a whiteboard that draws hands out its drawings' run, 0.48.0: motionRuns, last)
-  assert.deepEqual(Object.keys(off), [...FILM_KEYS, 'motionRuns'], 'the return keys are unchanged');
+  assert.deepEqual(Object.keys(off), [...FILM_KEYS, 'motionRuns'], 'the return keys: every film key, then the board\'s motionRuns, in order');
   assert.deepEqual(Object.keys(on), [...FILM_KEYS, 'motionRuns', 'record']);
   assert.deepEqual(on.beats, off.beats);
   assert.deepEqual(on.notes, off.notes);

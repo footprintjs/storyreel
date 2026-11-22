@@ -167,8 +167,7 @@ handwriting (`write`), a eureka, erasers and spotlights. `node_modules/footprint
 smallest whole film with it.
 
 Write what to draw, `at` and `dur`; footprint-story decides the stroke order (top left first, a shared corner once,
-the fewest strokes the corners allow), the pen's pace and its lifts, and the drawing lands on its `dur`. Its critics
-(`pen-lifts`, `stroke-order`, `hatch-gaps`) show in `storyreel check`'s `motion` check on the item (`story.items[3]`)
-with the fix; `"accept": ["pen-lifts"]` keeps one as written. Lines that meet should share the corner point, so the
-pen runs on. Ask why with `storyreel log --run 1 --why duration-0 --motion story` (k counts the drawings: each draw
+the fewest strokes the corners allow), the pen's pace and its lifts, and the drawing lands on its `dur`. The critics
+(`pen-lifts`, `stroke-order`, `hatch-gaps`) are wired into `storyreel check`'s `motion` check, but they check order and lifts only, and today they cannot fire on a board's drawings: footprint-story always draws a board's lines in the fewest strokes, outline first, and a board sends no fills. A `dur` too short is squeezed with no finding yet (a figure at 0.05 s runs about 34× its natural pace of 1.71 s); a pace critic is to come from footprint-story: give a drawing the seconds a hand needs. Lines that meet should share the corner point, so the pen
+runs on. Ask why with `storyreel log --run 1 --why duration-0 --motion story` (k counts the drawings: each draw
 item and each eureka, in order; words have none). `size` is the marker's width, 0.25 to 20.

@@ -9,7 +9,7 @@ them. The author still writes what to draw, when and for how long; StoryReel dra
 ```json
 {"story": {"kit": "whiteboard", "items": [
   {"at": ["story", "a shepherd"], "dur": 1.2, "draw": [["figure", 300, 620, 1.1]]},
-  {"at": ["story", "his bag"], "dur": 0.9, "draw": [["rect", 1240, 430, 240, 280]], "accept": ["pen-lifts"]}]}}
+  {"at": ["story", "his bag"], "dur": 0.9, "draw": [["rect", 1240, 430, 240, 280]]}]}}
 ```
 
 - **Before:** each item's strokes were drawn in the order its shapes were written, one after another along their
@@ -29,10 +29,10 @@ them. The author still writes what to draw, when and for how long; StoryReel dra
   figure's head and a robot's eyes are closed rings (`board.mjs · shapes.ring`): the rect was skewed by a pixel or three
   and the ellipse ran 4% past its start to look hand-drawn, and the hand's wobble and hooks are footprint-story's now.
 - **New item key `accept`** (a drawing only): the critics whose findings it keeps as written, as for motion. A name its
-  drawing is not checked by is refused, naming them (`pen-lifts, stroke-order, hatch-gaps`).
-- **The critics reach `storyreel check`** in the review's `motion` check, on the item (`story.items[3]`), at their own
-  level, the fix in the recipe's words (`give the lines that meet the same corner points …`). A board drawn well finds
-  nothing: every example board's findings are empty.
+  drawing is not checked by is refused, naming them (`pen-lifts, stroke-order, hatch-gaps`). Nothing needs it today
+  (below).
+- **What is checked:** footprint-story's `hand-sketch` critics `pen-lifts`, `stroke-order` and `hatch-gaps` are wired
+  into the review's `motion` check (on the item, at their own level, the fix in the recipe's words), but they check order and lifts only, and today they cannot fire on a board's drawings: footprint-story always draws a board's lines in the fewest strokes, outline first, and a board sends no fills. A `dur` too short is squeezed with no finding yet (a figure at 0.05 s runs about 34× its natural pace of 1.71 s); a pace critic is to come from footprint-story; StoryReel adds no pace rule of its own.
 - **`storyreel log --run 1 --why duration-0 --motion story`**: the check runs a board's drawings again through the intent
   decider as a chart and keeps its record, as for a world's moves; `duration-<k>` is the k-th drawing (each draw item
   and each eureka, in order): its strokes, lifts, the fewest its corners allow and its seconds; `model-<k>`,

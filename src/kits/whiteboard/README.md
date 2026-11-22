@@ -13,7 +13,7 @@ width, its lifts) is footprint-story's, so a film and a deck draw by the same ru
 ```json
 {"story": {"kit": "whiteboard", "items": [
   {"at": ["story", "a shepherd"], "dur": 1.2, "draw": [["figure", 300, 620, 1.1]]},
-  {"at": ["story", "a box"], "dur": 0.9, "draw": [["rect", 1240, 430, 240, 280]], "accept": ["pen-lifts"]}]}}
+  {"at": ["story", "a box"], "dur": 0.9, "draw": [["rect", 1240, 430, 240, 280]]}]}}
 ```
 
 **How a drawing is drawn.** Each `draw` item, and each eureka's bulb, is one `do: 'sketch'` intent (footprint-story ·
@@ -25,9 +25,9 @@ marker is at the plan's own sample: on the ink's end while drawing, in the air b
 width (0.25 to 20 px); `seed` names the hand's wobble.
 
 **Its record.** The drawings run again through the intent decider as a chart in `storyreel check`
-(`log --run 1 --why duration-<k> --motion story`, k counting the drawings in order); its critics `pen-lifts`,
-`stroke-order` and `hatch-gaps` land in the review's `motion` check on the item, the fix in recipe words; `accept`
-keeps one as written. The film's record keeps each drawing's strokes, lifts and seconds (`world.story.summary`).
+(`log --run 1 --why duration-<k> --motion story`, k counting the drawings in order). Its critics `pen-lifts`,
+`stroke-order` and `hatch-gaps` are wired into the review's `motion` check (on the item, the fix in recipe words;
+`accept` keeps one as written), but they check order and lifts only, and today they cannot fire on a board's drawings: footprint-story always draws a board's lines in the fewest strokes, outline first, and a board sends no fills. A `dur` too short is squeezed with no finding yet (a figure at 0.05 s runs about 34× its natural pace of 1.71 s); a pace critic is to come from footprint-story; StoryReel adds no pace rule of its own. The film's record keeps each drawing's strokes, lifts and seconds (`world.story.summary`).
 The stroke budget is the isometric world's (`STROKE_BUDGET`: a note from 2,000, refused past 20,000).
 
 **What is not footprint-story's, and why.**

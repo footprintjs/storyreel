@@ -197,3 +197,9 @@ test('a drawing too big for one sketch is drawn in parts, one after another, end
   assert.deepEqual(cut[1].shapes[0].points[0], cut[0].shapes[0].points.at(-1), 'the pieces share their ends');
   assert.deepEqual(planSketches(cut).sketches.map(s => s.plan.strokes.length), [1, 1, 1], 'each piece one stroke');
 });
+
+test('what the docs say is not checked yet: a dur too short is squeezed with no finding (a pace critic is to come from footprint-story)', () => {
+  const {sketch} = compileWhiteboard({items: [{at: 0, dur: 0.05, draw: [['figure', 300, 620, 1.1]]}]}, clock), {plan} = sketch.sketches[0];
+  assert.ok(Math.abs(plan.natural / plan.seconds - 34.29) < 0.01, `squeezed ${plan.natural / plan.seconds}×`);
+  assert.deepEqual(sketch.findings, [], 'no finding yet: when footprint-story adds a pace critic, this test is the one to change');
+});
