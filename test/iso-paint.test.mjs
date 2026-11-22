@@ -130,3 +130,13 @@ test('ISO_LOOK\'s edge width and tile-line alpha are the ones the paint list car
   assert.ok(strokes('top').length && strokes('top').every((s) => s.width === ISO_LOOK.line && s.alpha === 1));
   assert.ok(strokes('grid').length && strokes('grid').every((s) => s.alpha === ISO_LOOK.grid));
 });
+
+test('the kit\'s colour mix is footprint-story\'s mixColour for every #rrggbb (one rule; the kit keeps its own only to read #rgb until mixColour does)', async () => {
+  const {mixColour} = await import('footprint-story/isometric');
+  const hex = (n) => `#${(n & 0xffffff).toString(16).padStart(6, '0')}`;
+  // a fixed walk over the colour cube (no Math.random: the same cases every run)
+  for (let k = 0; k < 4000; k++) {
+    const a = hex(k * 2654435761), b = hex(k * 40503 + 7), share = (k % 101) / 100;
+    assert.equal(mix(a, b, share), mixColour(a, b, share), `${a} toward ${b} by ${share}`);
+  }
+});
