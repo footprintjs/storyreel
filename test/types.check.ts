@@ -816,3 +816,8 @@ const isoWorld = compileIsometric(isoSpec, {clock: isoClock});
 const isoNotes: readonly {level: 'warn' | 'info'}[] = isoWorld.notes;
 const isoKits: import('footprint-storyreel').ContextKit[] = [isometricKit];
 void isoNotes; void isoKits; void ISO_LIMITS.packets;
+// a world's style (footprint-story's row) and the style its record says it was built in
+const isoStyled: IsometricSpec = {...isoSpec, style: {line: {name: 'ink', width: 5}, shading: 'tones', effects: []}}, isoLine: string = compileIsometric(isoStyled, {clock: isoClock}).map.style.row.line;
+// @ts-expect-error a column footprint-story's style has not
+const isoBadColumn: IsometricSpec = {...isoSpec, style: {colour: 'red'}};
+void isoLine; void isoBadColumn;

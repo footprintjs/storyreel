@@ -46,12 +46,16 @@ function floorLabelBox(f) {
   return boxOf([[0, -h], [w, -h], [w, 0], [0, 0]].map(([u, v]) => [x + a * u + c * v, y + b * u + d * v]));
 }
 
+/** A plain value frozen at every level. */
+const frozen = (v) => { if (v && typeof v === 'object' && !Object.isFrozen(v)) { Object.freeze(v); Object.values(v).forEach(frozen); } return v; };
+
 /**
  * The style the map was built in, as footprint-story's record of it (`{row, options}`: a name per column, the options
  * written): the built map's own `style`, so the usual row when the world wrote none. WHY from the built map, not the
- * recipe: the record says what drew the map, with every column the world left out filled in. A copy: the record is plain.
+ * recipe: the record says what drew the map, with every column the world left out filled in. A copy (the record is
+ * plain data), frozen at every level: it sits in the frozen summary, whose other values are numbers and words.
  */
-const styleOf = (map) => structuredClone(map.built.style);
+const styleOf = (map) => frozen(structuredClone(map.built.style));
 
 /** What the kit made, for the record and for whoever checks it (a test, an agent): plain numbers, rounded to a tenth of a px. */
 function recordOf(map) {

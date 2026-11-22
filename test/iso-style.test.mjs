@@ -83,7 +83,13 @@ test('a wrong style is refused, naming the entry, the words there are and the fi
   refused({colour: 'red'}, /^Error: stage map: isometric style takes the columns shape, shading, line, palette, texture, effects \(a column left out keeps today's look\) — not "colour"$/);
   refused({line: 'dashed'}, /^Error: stage map: isometric style: line has no choice "dashed" — the line choices are "ink" or "none"$/);
   refused({shading: 'flat'}, /^Error: stage map: isometric style: shading has no choice "flat" — the shading choices are "tones"$/);
-  refused({line: {width: 5}}, /^Error: stage map: isometric style: line is a choice's name, or \{"name": …, its options\} — the line choices are "ink" or "none"; not \{"width":5\}$/);
+  refused({line: {width: 5}}, /^Error: stage map: isometric style: line names its choice, \{"name": …, its options\} — the line choices are "ink" or "none"; this one has no name$/);
+  // a function is said as one, never its source (a refusal stays one line); an entry's bad name is quoted, not the entry
+  refused({line: function line() {
+ return 'ink';
+}}, /^Error: stage map: isometric style: line is a choice's name, or \{"name": …, its options\} — the line choices are "ink" or "none"; not a function$/);
+  refused({line: {name: () => 'ink'}}, /^Error: stage map: isometric style: line's name is a choice's name — the line choices are "ink" or "none"; not a function$/);
+  refused({line: {name: 7}}, /line's name is a choice's name — the line choices are "ink" or "none"; not 7$/);
   refused({line: 5}, /stage map: isometric style: line is a choice's name/);
   refused({effects: ['glow']}, /^Error: stage map: isometric style: effects\[0\] has no choice "glow" — there are no effects yet: leave effects out$/);
   refused({effects: 'glow'}, /^Error: stage map: isometric style: effects is a list of effects, each adding to the whole — not "glow"$/);
@@ -131,6 +137,8 @@ test('the record says the style each world was built in: the world\'s record, it
   assert.deepEqual(outlined.map.style, {row: USUAL_ROW, options: {line: {width: 5}}});
   assert.deepEqual(usual.map.style, {row: USUAL_ROW, options: {}}, 'no style written: the usual row, every column filled in');
   assert.deepEqual(world(NONE).summary.style, {row: {...USUAL_ROW, line: 'none'}, options: {}});
+  // frozen at every level, as the summary holding it is: no reader edits what the record says
+  for (const style of [outlined.map.style, outlined.summary.style]) for (const v of [style, style.row, style.row.effects, style.options, style.options.line]) assert.ok(Object.isFrozen(v));
   // the compile's record keeps the summary beside the world's entry
   const sb = {scenes: [{id: 'one', narration: 'A map drawn with a heavy outline.'}]};
   const film = await compileFilm({storyboard: sb, timings: evenTimings(sb), recipe: {story: {kit: 'isometric', ...WORLD, style: OUTLINED}}, kits: [isometricKit], record: true});

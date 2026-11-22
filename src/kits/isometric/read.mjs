@@ -48,8 +48,12 @@ const FOLD = /[\t\n\r\p{Zl}\p{Zp}]+/gu;
 const own = (o, k) => Object.hasOwn(o, k) && o[k] !== undefined;
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const nums = (v, lengths) => Array.isArray(v) && lengths.includes(v.length) && v.every(Number.isFinite);
-/** A value as a refusal quotes it: JSON, at most 60 characters, one line (a value thousands of letters long gives a short refusal). */
+/**
+ * A value as a refusal quotes it: JSON, at most 60 characters, one line (a value thousands of letters long gives a short
+ * refusal). A function is "a function", as footprint-story says it: its source would run the refusal over several lines.
+ */
 export const shown = (v) => {
+  if (typeof v === 'function') return 'a function';
   let s; try { s = JSON.stringify(v) ?? String(v); } catch { s = Object.prototype.toString.call(v); }
   s = s.replace(/[\p{Zl}\p{Zp}]/gu, ' ');
   return s.length > 60 ? `${s.slice(0, 59)}…` : s;
@@ -267,8 +271,11 @@ function readStyle(s, where) {
   // one entry: a choice's name, or {name, …its options}; its name one of the column's choices
   const entry = (v, column, at) => {
     const names = ISO_STYLE_CHOICES[column];
-    const name = typeof v === 'string' ? v : isObject(v) ? v.name : undefined;
-    if (typeof name !== 'string') throw new Error(`${who}: ${at} is a choice's name, or {"name": …, its options} — the ${column} choices are ${names.length ? either(names) : 'none yet'}; not ${shown(v)}`);
+    const name = typeof v === 'string' ? v : isObject(v) ? v.name : undefined, choices = names.length ? either(names) : 'none yet';
+    // an entry written as an object is quoted by its name: the object itself would quote as "{}" when its name is a function
+    if (isObject(v) && !own(v, 'name')) throw new Error(`${who}: ${at} names its choice, {"name": …, its options} — the ${column} choices are ${choices}; this one has no name`);
+    if (isObject(v) && typeof name !== 'string') throw new Error(`${who}: ${at}'s name is a choice's name — the ${column} choices are ${choices}; not ${shown(name)}`);
+    if (typeof name !== 'string') throw new Error(`${who}: ${at} is a choice's name, or {"name": …, its options} — the ${column} choices are ${choices}; not ${shown(v)}`);
     if (!names.includes(name)) throw new Error(`${who}: ${at} has no choice ${shown(name)} — ${names.length ? `the ${column} choices are ${either(names)}` : `there are no ${column} yet: leave ${column} out`}`);
   };
   for (const column of ISO_STYLE_COLUMNS) {
