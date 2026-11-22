@@ -112,12 +112,31 @@ that row as it is:
 
 ## The painter: the map's paint list on a canvas (from 0.41.0)
 
-`paint.mjs` · `paintItems(c, items, {base, ink})` draws one piece's paint list (footprint-story's `paint.js` format)
-item by item, in the list's order: a `polygon`, a whole `ellipse`, a `path` (moves, lines, arcs of at most half a
-turn counted the way they turn, a close) or loose `lines`, each filled when its fill comes to a colour and stroked
-with its stroke's colour, alpha, width, join and cap. It decides no shape and no colour, and refuses an item or a path
-step it does not know. `draw.mjs` hands it each floor's list (`floorPaints`) and then each block's (`paints`), back to
-front.
+`paint.mjs` · `paintItems(c, items, {base, ink, now})` draws one piece's paint list (footprint-story's `paint.js`
+format) item by item, in the list's order: a `polygon`, a whole `ellipse`, a `path` (moves, lines, arcs of at most half
+a turn counted the way they turn, a close), loose `lines` or a `stroke` (below), each filled when its fill comes to a
+colour and stroked with its stroke's colour, alpha, width, join and cap. It decides no shape and no colour, and refuses
+an item or a path step it does not know. `draw.mjs` hands it each floor's list (`floorPaints`) and then each block's
+(`paints`), back to front.
+
+**A hand-drawn line (from 0.46.0).** A `stroke` item (`{item: 'stroke', points: [[x, y, width, t], …], stroke:
+{colour, alpha, width, join, cap}}`, footprint-story/human · `strokeItems`) has a width and a time per point. A canvas
+line has one width, so the painter fills the ring round it instead — footprint-story's `strokeOutline(points)`, the one
+geometry for a line of changing width — and, for a round cap, a circle of each end's width, as one path filled once in
+the stroke's colour (its ink when it names none). Each point's `t` is seconds from its piece's start: in a film the
+line is drawn as far as the pen has come (`now`, the frame's time less the piece's `appear` moment, else the film's
+start: `draw.mjs` · `sinceStart`) — the ring of the points reached by then, so the line grows point by point (a couple
+of px apart) and is whole once its last point is reached; with no `now` (a still) it is whole. footprint-story gives
+no point between two of a stroke's at a time, so the cut is at the last point reached; a `square` cap is refused (no
+ring footprint-story gives has one; its `strokeItems` writes round caps). `test/iso-strokes.test.mjs` checks the ring
+to 1e-6, the cut by time, a faint line covered once over its ends whichever way it runs, and pins a hand-drawn block's
+pictures.
+
+**Not yet in a world:** footprint-story's two hand-drawn choices, `human:sketchy` (line) and `human:hatch` (texture),
+are a tool's own choices, handed to `isoStyle` in `choices`, and its map build (`buildIsoMap`, `runMapFlow`) reads a
+world's style with its own choices only. So a world that writes them is refused in footprint-story's words (`stage map:
+isometric style: line has no choice "human:sketchy" — the line choices are "ink" or "none"`) until the map build
+takes a tool's choices; the painter draws their lists already.
 
 **What it paints:** a block's `left`, `right` and `top` faces, a cylinder's `side` and `top`, a floor's `ground` and
 `grid` tile lines. **What stays drawn by hand in `draw.mjs`:** block names and small lines, floor names, cables and
@@ -378,7 +397,7 @@ entry's name.
 | `ride.mjs` | the packets at t, from the shared ride numbers |
 | `notes.mjs` | what the kit says, in words |
 | `draw.mjs` | the canvas drawing, StoryDeck's look in the film's theme: the paint lists through `paint.mjs`, the rest by hand |
-| `paint.mjs` | the one canvas painter: a piece's paint list traced, filled and stroked as the list says |
+| `paint.mjs` | the one canvas painter: a piece's paint list traced, filled and stroked as the list says; a hand-drawn `stroke` filled as far as its pen has come |
 | `motion-read.mjs` | the `motion` entries checked, every refusal naming the entry and the fix; what a block can do (`MOTION_DOS`) |
 | `motion.mjs` | each entry made a footprint-story intent on the frame, planned (`planIntents`), timed on the clock and sampled at t (with its place for the paint order); its record, findings and run |
 | `motion-cover.mjs` | which names a moved block covers, and when (footprint-story's rule at each sample): not drawn, not listed to read, said (`reel:covers`) |

@@ -43,9 +43,16 @@ export function lookOf(theme) {
 /** How far a piece has come in at t: 0 before its moment, 1 once in (over ISO_LOOK.appear seconds). */
 export const inAt = (from, t) => (from === null ? 1 : Math.max(0, Math.min(1, (t - from) / ISO_LOOK.appear)));
 
+/**
+ * The seconds since a piece's start at film time t: what its paint list's `stroke` items are timed from (a hand-drawn
+ * line's points say when the pen is there, from the piece's start: footprint-story's strokeItems). A piece starts at its
+ * moment (`appear`), else at the film's start. WHY its moment: a piece drawn by hand is drawn as it comes in, not before.
+ */
+export const sinceStart = (from, t) => t - (from ?? 0);
+
 /** A floor's ground (filled when it has a colour) and its tile lines: its paint list. Then its name, flat on it. */
-function drawFloor(c, f, look) {
-  paintItems(c, f.paint, {base: f.color, ink: look.ink});
+function drawFloor(c, f, look, t) {
+  paintItems(c, f.paint, {base: f.color, ink: look.ink, now: sinceStart(f.appearAt, t)});
   if (!f.place) return;
   // flat on the floor along its front edge: the label's lines, their block's foot on the edge (CSS: matrix, then translateY(-100%))
   const {x, y, matrix: [a, b, cc, d], size, lines: words} = f.place, lh = size * 1.15;
@@ -84,11 +91,11 @@ function drawName(c, b, look, [cx, cy]) {
 }
 
 /** A block's faces (or a cylinder's side and top): its paint list, in the kit's colours. Then its name on its top. A ball is drawBall's. */
-function drawBlock(c, b, look, named = true, grid = null) {
+function drawBlock(c, b, look, t, named = true, grid = null) {
   if (b.kind === 'ball') { drawBall(c, b, look, grid, UNTURNED, null, named); return; }
   // the list holds each face's recipe (top 20% toward white, sides toward black) and no colour: the kit picks the base
   // and the ink here, so the built map stays the deck's (paint.mjs says why)
-  paintItems(c, b.paint, {base: toneOf(b, look), ink: look.ink});
+  paintItems(c, b.paint, {base: toneOf(b, look), ink: look.ink, now: sinceStart(b.appearAt, t)});
   // a name a moved block covers is not drawn (motion-cover.mjs): under that block it is no word to read, and a few
   // letters left peeking out past it read as a word too faint to read
   if (!named || !b.fitted?.lines.length) return;
@@ -161,7 +168,7 @@ function drawLabel(c, w, look) {
  * under that transform: its faces, names and colours are the built map's. A ball is drawn turned as its pose says, and a
  * block turned off its faces as its turned corners (turn.mjs); a block turned onto a face again is the built block.
  */
-function drawPosed(c, b, pose, look, named, grid) {
+function drawPosed(c, b, pose, look, t, named, grid) {
   if (pose.rope) {
     c.strokeStyle = look.ink; c.lineWidth = ISO_LOOK.rope; c.lineCap = 'round'; c.lineJoin = 'round';
     c.beginPath(); pose.rope.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.stroke();
@@ -170,7 +177,7 @@ function drawPosed(c, b, pose, look, named, grid) {
   if (pose.turn && !onFace(pose.turn)) { drawTurnedBlock(c, b, look, grid, pose.turn, pose); return; }
   const [px, py] = pose.pivot;
   c.save(); c.translate(px + pose.dx, py + pose.dy); c.scale(pose.sx, pose.sy); c.translate(-px, -py);
-  drawBlock(c, b, look, named, grid);
+  drawBlock(c, b, look, t, named, grid);
   c.restore();
 }
 
@@ -186,7 +193,7 @@ export function drawMap(c, map, t, look, moved = null) {
   c.save();
   c.fillStyle = look.bg; c.fillRect(0, 0, 1600, 900);
   const faded = (alpha, paint) => { if (alpha <= 0) return; c.save(); c.globalAlpha *= alpha; paint(); c.restore(); };
-  for (const f of map.floors) faded(inAt(f.appearAt, t), () => drawFloor(c, f, look));
+  for (const f of map.floors) faded(inAt(f.appearAt, t), () => drawFloor(c, f, look, t));
   const riding = map.wires.map((w) => packetsAt(w.riding, w.packets, t));
   // the cables, under every block: their lines, heads at a foot, packets on the floor stretch; then their labels over them all
   map.wires.forEach((w, i) => faded(inAt(w.appearAt, t), () => {
@@ -200,8 +207,8 @@ export function drawMap(c, map, t, look, moved = null) {
   for (const b of order) {
     const pose = poseOf?.(b) ?? null;
     // a moving block is joined by no wire (motion-read.mjs): it has no lead to draw, only itself at its pose, in its place in the order
-    if (pose) { faded(inAt(b.appearAt, t), () => drawPosed(c, b, pose, look, named(b), map.grid)); continue; }
-    faded(inAt(b.appearAt, t), () => drawBlock(c, b, look, named(b), map.grid));
+    if (pose) { faded(inAt(b.appearAt, t), () => drawPosed(c, b, pose, look, t, named(b), map.grid)); continue; }
+    faded(inAt(b.appearAt, t), () => drawBlock(c, b, look, t, named(b), map.grid));
     map.wires.forEach((w, i) => {
       for (const [k, end] of [[0, 'from'], [1, 'to']]) {
         if (w.arrow[end].block !== b || w.cable.leads[k] === null) continue;

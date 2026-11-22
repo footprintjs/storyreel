@@ -59,7 +59,7 @@ test('the painter draws every kind of item, each traced, filled and stroked as t
   assert.equal(mix('#abc', '#000000', 0.5), mix('#aabbcc', '#000000', 0.5));
   assert.equal(rgba('#abc', 0.5), 'rgba(170,187,204,0.5)');
   // what footprint-story's list never holds is refused, never skipped
-  assert.throws(() => paintItems(recorder(), [{...items[0], item: 'star'}], {base: null, ink: '#000000'}), /a paint item is a polygon, an ellipse, a path or lines — not "star"/);
+  assert.throws(() => paintItems(recorder(), [{...items[0], item: 'star'}], {base: null, ink: '#000000'}), /a paint item is a polygon, an ellipse, a path, lines or a stroke — not "star"/);
   assert.throws(() => paintItems(recorder(), [{...items[2], segments: [['move', 0, 0], ['curve', 1, 1]]}], {base: null, ink: '#000000'}), /path has no step "curve"/);
 });
 
