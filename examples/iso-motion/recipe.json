@@ -1,0 +1,128 @@
+{
+ "story": {
+  "kit": "isometric",
+  "blocks": [
+   {
+    "name": "box",
+    "label": "Box",
+    "at": [
+     1,
+     1,
+     3
+    ],
+    "tone": "warn"
+   },
+   {
+    "name": "ball",
+    "kind": "cylinder",
+    "label": "Ball",
+    "at": [
+     1,
+     6
+    ],
+    "size": [
+     1.2,
+     1.2,
+     0.6
+    ]
+   },
+   {
+    "name": "you",
+    "label": "You",
+    "at": [
+     5,
+     7
+    ]
+   },
+   {
+    "name": "server",
+    "label": "Server",
+    "at": [
+     8,
+     2
+    ],
+    "size": [
+     2,
+     2,
+     1.6
+    ]
+   }
+  ],
+  "floors": [
+   {
+    "name": "room",
+    "label": "The room"
+   }
+  ],
+  "wires": [
+   {
+    "name": "w1",
+    "arrow": "you to server",
+    "packets": 1,
+    "speed": "200px"
+   }
+  ],
+  "motion": [
+   {
+    "piece": "box",
+    "do": "fall",
+    "at": [
+     "drop",
+     "It falls to the floor"
+    ]
+   },
+   {
+    "piece": "ball",
+    "do": "throw",
+    "to": "server",
+    "at": [
+     "drop",
+     "the ball is thrown"
+    ],
+    "wrap": [
+     {
+      "wrapper": "anticipate"
+     }
+    ],
+    "accept": [
+     "reel:covers"
+    ]
+   },
+   {
+    "piece": "box",
+    "do": "settle",
+    "to": [
+     4,
+     3
+    ],
+    "at": [
+     "drop",
+     "Nothing here"
+    ]
+   }
+  ]
+ },
+ "focus": {
+  "strategy": "camera",
+  "keys": [
+   {
+    "at": [
+     "drop",
+     "lands on top"
+    ],
+    "on": [
+     "ball",
+     "server"
+    ],
+    "size": "medium"
+   },
+   {
+    "at": [
+     "drop",
+     "Nothing here"
+    ],
+    "on": "wide"
+   }
+  ]
+ }
+}

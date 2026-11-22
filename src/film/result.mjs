@@ -46,7 +46,9 @@ export function filmOf(state) {
     // entry and the fix): only when a world says anything at all, so a film whose kits keep no notes is as it was.
     ...kitNotesOf(storyPathName, storyWorld, stages),
     // The worlds whose map can be built again as a footprintjs run, for its record (a world's `mapRun`): only when one can.
-    ...mapRunsOf(storyPathName, storyWorld, stages)};
+    ...mapRunsOf(storyPathName, storyWorld, stages),
+    // The worlds whose pieces move by intent (a world's `motionRun`, `motionFindings`): only when one does.
+    ...motionRunsOf(storyPathName, storyWorld, stages)};
 }
 
 /** The recipe's worlds as [path, world]: the story's (its path `story`), then each stage's (`stages[1]`). */
@@ -62,6 +64,23 @@ function mapRunsOf(storyPath, storyWorld, stages) {
   const runs = worldsOf(storyPath, storyWorld, stages).filter(([, w]) => typeof w?.instance?.mapRun === 'function')
     .map(([name, w]) => Object.freeze({name, kit: w.kit, run: w.instance.mapRun}));
   return runs.length ? {mapRuns: Object.freeze(runs)} : {};
+}
+
+/**
+ * Every world whose pieces move by intent (optional kit fields: `motionRun(options)`, the moves run again through
+ * footprint-story's intent decider as a chart, and `motionFindings`, what its critics found: the isometric kit's,
+ * kits/isometric/motion.mjs), named by its recipe path: {motionRuns: [{name, kit, run, findings}]} when any has one,
+ * else {}. Each finding's path is made the recipe's (`story.motion[1]`, `stages[0].world.motion[0]`), as a kit's note's
+ * is. WHY on the film: `storyreel check` runs each for its record (check/motions.mjs), and the review's `motion` check
+ * reads the findings (review.mjs). A film whose worlds move nothing is as it was.
+ */
+function motionRunsOf(storyPath, storyWorld, stages) {
+  const runs = worldsOf(storyPath, storyWorld, stages).filter(([, w]) => typeof w?.instance?.motionRun === 'function')
+    .map(([name, w]) => {
+      const at = name === storyPath ? name : `${name}.world`, findings = Array.isArray(w.instance.motionFindings) ? w.instance.motionFindings : [];
+      return Object.freeze({name, kit: w.kit, run: w.instance.motionRun, findings: Object.freeze(findings.map((f) => Object.freeze({...f, path: `${at}.${f.path}`})))});
+    });
+  return runs.length ? {motionRuns: Object.freeze(runs)} : {};
 }
 
 /**

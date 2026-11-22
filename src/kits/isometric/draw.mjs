@@ -23,11 +23,12 @@ import {HEX} from './read.mjs';
 import {paintItems, mix, rgba as withAlpha} from './paint.mjs';
 
 /**
- * StoryDeck's colours where the theme has none: a block's tone, the glow of a packet. And how long a piece takes to come in.
+ * StoryDeck's colours where the theme has none: a block's tone, the glow of a packet. And how long a piece takes to come in,
+ * and how wide a hanging block's rope is drawn (the ink, as wide as an edge).
  * `line` and `grid` are the usual style's edge width and tile-line alpha (footprint-story's `ink` line choice): the paint
  * list carries them, and test/iso-paint.test.mjs pins that the two still agree.
  */
-export const ISO_LOOK = Object.freeze({tone: '#d9e4f3', glow: '#e8a33d', line: 2.5, grid: 0.16, cable: 4, label: 1, smallInk: 0.68, appear: 0.35});
+export const ISO_LOOK = Object.freeze({tone: '#d9e4f3', glow: '#e8a33d', line: 2.5, grid: 0.16, cable: 4, label: 1, smallInk: 0.68, appear: 0.35, rope: 2.5});
 
 /** The colours a world draws with, from the film's theme (its palette), StoryDeck's tokens where the theme has none. */
 export function lookOf(theme) {
@@ -63,14 +64,16 @@ function drawFloor(c, f, look) {
 }
 
 /** A block's faces (or a cylinder's side and top): its paint list, in the kit's colours. Then its name on its top. */
-function drawBlock(c, b, look) {
+function drawBlock(c, b, look, named = true) {
   // the list holds each face's recipe (top 20% toward white, sides toward black) and no colour: the kit picks the base
   // and the ink here, so the built map stays the deck's (paint.mjs says why). A tone is the theme's ok / warn / bad
   // colour as a pale tint (60% white): a block's name is ink on its top, and the theme's tones are ink-dark — on the
   // tone itself the name would fail the film's contrast check (StoryDeck colours the block the tone)
   const tone = b.color ?? (b.tone ? mix(look.tones[b.tone], '#ffffff', 0.6) : ISO_LOOK.tone), s = b.shape;
   paintItems(c, b.paint, {base: tone, ink: look.ink});
-  if (!b.fitted?.lines.length) return;
+  // a name a moved block covers is not drawn (motion-cover.mjs): under that block it is no word to read, and a few
+  // letters left peeking out past it read as a word too faint to read
+  if (!named || !b.fitted?.lines.length) return;
   // the name upright on the top's middle, its lines as wordsToFit broke them; the small line beneath it
   const {lines, size} = b.fitted, lh = size * 1.15, sf = b.smallFitted, small = sf ? sf.size * 1.15 + 2 : 0, height = lines.length * lh + small;
   const [cx, cy] = s.centre, top = cy - height / 2;
@@ -119,8 +122,32 @@ function drawLabel(c, w, look) {
   c.fillStyle = look.muted; c.fillText(w.label.toUpperCase(), x, y);
 }
 
-/** The whole map at t on the 1600×900 sheet. `appearAt`: each piece's moment (seconds, or null: from the start). */
-export function drawMap(c, map, t, look) {
+
+/**
+ * A block that moves by intent, at its pose: its rope first when it hangs (the ink, from the pin to its top), then the
+ * block itself, scaled about its pivot (a bounce's squash) and moved there. The block is drawn as it always is, only
+ * under that transform: its faces, names and colours are the built map's.
+ */
+function drawPosed(c, b, pose, look, named = true) {
+  if (pose.rope) {
+    c.strokeStyle = look.ink; c.lineWidth = ISO_LOOK.rope; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.beginPath(); pose.rope.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.stroke();
+  }
+  const [px, py] = pose.pivot;
+  c.save(); c.translate(px + pose.dx, py + pose.dy); c.scale(pose.sx, pose.sy); c.translate(-px, -py);
+  drawBlock(c, b, look, named);
+  c.restore();
+}
+
+/**
+ * The whole map at t on the 1600×900 sheet. `appearAt`: each piece's moment (seconds, or null: from the start).
+ * `moved`, for a world whose pieces move (index.mjs · movedAt): `poseOf(block)`, where a moving block is at t
+ * (motion.mjs · poseAt) or null while it stands as built; `order`, the blocks back to front at t, a moved one where it
+ * is now; `hidden(block)`, whether a moved block covers its name at t (motion-cover.mjs). Absent for a world with no
+ * motion, which is then drawn exactly as before worlds took one: in the built map's order, every name drawn.
+ */
+export function drawMap(c, map, t, look, moved = null) {
+  const poseOf = moved?.poseOf ?? null, order = moved?.order ?? map.order, named = (b) => !moved?.hidden(b);
   c.save();
   c.fillStyle = look.bg; c.fillRect(0, 0, 1600, 900);
   const faded = (alpha, paint) => { if (alpha <= 0) return; c.save(); c.globalAlpha *= alpha; paint(); c.restore(); };
@@ -135,8 +162,11 @@ export function drawMap(c, map, t, look) {
   }));
   map.wires.forEach((w) => { if (w.label) faded(inAt(w.appearAt, t), () => drawLabel(c, w, look)); });
   // the blocks back to front; after each, the leads into its seen ports and the packets on them
-  for (const b of map.order) {
-    faded(inAt(b.appearAt, t), () => drawBlock(c, b, look));
+  for (const b of order) {
+    const pose = poseOf?.(b) ?? null;
+    // a moving block is joined by no wire (motion-read.mjs): it has no lead to draw, only itself at its pose, in its place in the order
+    if (pose) { faded(inAt(b.appearAt, t), () => drawPosed(c, b, pose, look, named(b))); continue; }
+    faded(inAt(b.appearAt, t), () => drawBlock(c, b, look, named(b)));
     map.wires.forEach((w, i) => {
       for (const [k, end] of [[0, 'from'], [1, 'to']]) {
         if (w.arrow[end].block !== b || w.cable.leads[k] === null) continue;

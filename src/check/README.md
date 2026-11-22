@@ -25,7 +25,8 @@ had to work out itself what its last edit did. Each of those tools is still ther
    fixing (1 after a clean check; one more each check that still has something to fix).
 
 What counts as an error: a phrase the film is keyed to and cannot place, a verdict that failed, and every review
-finding but the four that are advice (`still`, `stale`, `slideshow`, `hook`: a held title can be right). A phrase the
+finding but the six that are advice (`still`, `stale`, `slideshow`, `hook`: a held title can be right; `motion-note`, a
+critic's note on a move; `motion-accepted`, a finding its entry accepts). A phrase the
 film still places (said twice: the first place is used) is advice.
 
 ## The chart
@@ -67,6 +68,8 @@ default["clean"]
 | `problems.mjs` | the problems as one list (`problemsOf`), and one check beside the one before (`sinceLast`) |
 | `text.mjs` | the reply (`checkText`) |
 | `maps.mjs` | each isometric world's map built again by the map flow, its run's record kept (`runMaps`), and what the reply says of them (`mapLines`) |
+| `motions.mjs` | each world's moves run again through footprint-story's intent decider, its run's record kept (`runMotions`), and what the reply says of them (`motionLines`) |
+| `flowrun.mjs` | one kit run, recorded and trusted for nothing (`runRecorded`, `runAll`): the rules maps and motions share |
 
 The work itself is given by the caller (`does`: `anchors`, `review`, `changes`, `before`), so this folder knows
 nothing of a project's files: `tools.mjs · check` gives the project's, and a test gives fakes.
@@ -163,6 +166,50 @@ already keeps a record per run that `log --why` reads; the make pipeline keeps a
   `--why` with no key and `--map` lists what a map's steps write.
 - **Refusals name what there is**: an unknown map names the run's maps; a run with none names its film's worlds and
   their kits (`run 1 kept no map: its film has no isometric world — its worlds are story (whiteboard)`).
+
+## Asking why a move is so
+
+A film whose isometric worlds move blocks by intent (`../kits/isometric/` · A world's pieces move by intent) has each
+world's moves planned twice: by the compile, with footprint-story's `planIntents`, to draw them; and by the check, with
+footprint-story's intent decider as a chart (`runHumanFlow`), so a run's record holds a real run of the same steps. Each
+world's run keeps its own record beside the check's: `.storyreel/runs/<run>.motion-<k>.record.jsonl`, k its place in
+the run's list (never a world's name). `--motion` picks which record `--why` reads, by the world's place in the recipe,
+as `--map` does; each move is asked by its own key, `duration-<i>` for `motion[i]`:
+
+```
+$ storyreel log --run 1 --why duration-1 --motion story
+duration-1 = {"seconds":0.9166615798967729,"across":616,"apex":154,"apexDefaulted":true,"angle":45.461012927386605,"speed":1101.811262836181,"gravity":1960,"secondsGiven":false,"wrappers":"anticipate","planned":0.7970970259971938}
+wrap (wrap#3) [wrote: moves, durations, duration-0, duration-1, duration-2]
+  plan: ours (ours#2) ← via plans [wrote: plans]
+    read (read#0) ← via intents [wrote: intents, wraps, frame]
+      ⚠ also consumed args — slice may be incomplete here
+    choose (choose#1) ← via choices ← [control: this package's models plan every move — isometric motion[0] ("box"): fall → ballistic (usual); isometric motion[1] ("ball"): throw → ballistic (usual); isometric motion[2] ("box"): settle → spring (u…] [wrote: choices, chose, choseWhy, model-0, model-1, model-2]
+      ↳ read#0 (see above)
+  ↳ read#0 (see above)
+(a stage also uses what it is given from outside the run's own state: the record holds what stages read and wrote, and no more)
+```
+
+The ball's 0.92 s is a 45° throw over 616 px (the usual apex, a quarter of the way across, 154 px) taking 0.80 s,
+and the wind-up `anticipate` adds the rest; its model was chosen by the rule the control edge names. `model-<i>` says
+why a move's model (`{"model":"ballistic","family":"throw","by":"usual","rule":"the intent names none: its family's
+usual","own":false}`, written by `choose`), `findings-<i>` what the critics found (each critic, level and fix). From a
+real run of `test/fixtures/iso-motion`, pinned by `test/iso-motion.test.mjs`. The ⚠ line means here what it means for
+a map: `read` takes the intents as the run's input; what it took is the recipe's `motion` entries, placed by the kit.
+
+- **The same intents.** The kit keeps the intents it handed `planIntents` (`motionIntents`) and hands those very ones to
+  the chart; the two plans must be equal, and a difference is a `drift` line in the reply that heads every answer.
+- **The critics' findings are the review's.** What footprint-story's critics find (`jerk`, `arc`, `spacing`, `contact`,
+  `volume`, `stretch`) and the kit's own `reel:contact` (a block passing through another) and `reel:covers` (a block
+  come to rest over another's name) are the review's `motion`
+  check, at the critic's own level: a `warn` is a `fix`, so the verdict never reads `clean` over it; a `note` is advice;
+  a critic the entry accepts (`"accept": ["arc"]`) is shown as `a move accepted as written`, advice with no fix. Each
+  names the entry and the fix, over the time the move runs, and is keyed without its numbers (a small edit that moves
+  "bows 0.0%" to "0.4%" has not fixed it, nor added one).
+- **The same safety rules as a map's** (`flowrun.mjs`): a record named by place; a run that throws, returns nothing or
+  does not finish within 30 s (`motions.mjs` · `MOTION_RUN_MS`) is a `drift` line and the check goes on; a record that
+  cannot be written costs nothing; at most 32 worlds a check (`MOTIONS_MOST`).
+- **Nothing new for a film that moves nothing**: no run, no record, no line in the reply. From 0.43.0 a check's run file
+  always carries `motions`, empty when there are none; a check kept before says so when asked with `--motion`.
 
 **Broken, never thrown.** Whatever stops the film from compiling, as every other tool compiles it, is the `broken`
 line. Only what is no film at all (no config, a config that throws) is an error of the command.

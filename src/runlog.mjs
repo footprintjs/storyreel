@@ -7,8 +7,8 @@
  * back through the record instead of re-running it or looking at pictures. The render's own making-of.json in that
  * folder is listed beside them. A run that failed leaves its record too, with what it failed on.
  *
- *   saveRun(out, {feature, summary, record, verdicts?, failure?, maps?, worlds?})  → the file written (a feature keeps its newest RUNS_KEPT)
- *                                                         maps: a check's map runs, each record moved beside the run (mapRecordBeside)
+ *   saveRun(out, {feature, summary, record, verdicts?, failure?, maps?, motions?, worlds?})  → the file written (a feature keeps its newest RUNS_KEPT)
+ *                                                         maps, motions: a check's map and motion runs, each record moved beside the run (mapRecordBeside, motionRecordBeside)
  *   keepRun(out, run, {saved?})                           → null, or why it was not saved (saved(id): told the id once saved): what a feature calls, for its answer is the result and the run a record beside it
  *   keepFailedRun(out, feature, error, summary?)          → the same, for an error carrying its record (withRecord)
  *   withRecord(error, trace)                              → the error, carrying the record so far (error.record)
@@ -113,7 +113,9 @@ const readControl = control => (control && typeof control === 'object' && !Array
  * by number: a world's name is the recipe's; a file's name is never made from it.
  */
 export const mapRecordBeside = (runFile, k) => runFile.replace(/\.json$/, `.map-${k}.record.jsonl`);
-const MAP_RECORD = /\.map-\d{1,3}\.record\.jsonl$/;
+/** A world's moves' record file (check/motions.mjs), the same way: `<run>.motion-<k>.record.jsonl`, by place, never by name. */
+export const motionRecordBeside = (runFile, k) => runFile.replace(/\.json$/, `.motion-${k}.record.jsonl`);
+const MAP_RECORD = /\.(?:map|motion)-\d{1,3}\.record\.jsonl$/;
 /** How many maps a run keeps (check/maps.mjs · MAPS_MOST runs no more), and the most worlds it names. */
 export const MAPS_KEPT = 32, WORLDS_KEPT = 300;
 /** A world's name as a run keeps it: its recipe path, made by the compile (`story`, `whiteboard`, `stages[3]`), never other text. */
@@ -124,9 +126,12 @@ const keptMaps = maps => (maps ?? []).filter(m => m && WORLD_NAME.test(m.name)).
   .map(m => ({name: m.name, kit: kitName(m.kit), control: keptControl(m.control), ...(typeof m.differs === 'string' ? {differs: cut(oneLine(m.differs), SAID_CHARS)} : {})}));
 /** The worlds a run's film has, {name: kit} (film.drawnBy): what a question about a map it does not keep is answered with. */
 const keptWorlds = worlds => Object.fromEntries(Object.entries(worlds ?? {}).filter(([name]) => WORLD_NAME.test(name)).slice(0, WORLDS_KEPT).map(([name, kit]) => [name, kitName(kit)]));
-/** The same, read back from a file: only what keptMaps writes, each with its record file when it is there. */
-const readMaps = (maps, file) => (Array.isArray(maps) && maps.length <= MAPS_KEPT ? keptMaps(maps.filter(m => m && typeof m === 'object' && typeof m.name === 'string')) : [])
-  .map((m, k) => ({...m, ...(existsSync(mapRecordBeside(file, k)) ? {recordFile: mapRecordBeside(file, k)} : {})}));
+/**
+ * The same, read back from a file: only what keptMaps writes, each with its record file when it is there (`beside`:
+ * where the k-th one's record lies). A world's moves are kept in the same shape (check/motions.mjs), so read the same way.
+ */
+const readMaps = (maps, file, beside = mapRecordBeside) => (Array.isArray(maps) && maps.length <= MAPS_KEPT ? keptMaps(maps.filter(m => m && typeof m === 'object' && typeof m.name === 'string')) : [])
+  .map((m, k) => ({...m, ...(existsSync(beside(file, k)) ? {recordFile: beside(file, k)} : {})}));
 const readWorlds = worlds => (worlds && typeof worlds === 'object' && !Array.isArray(worlds) ? keptWorlds(Object.fromEntries(Object.entries(worlds).slice(0, WORLDS_KEPT))) : {});
 
 /** What a check keeps for the check after it (check/problems.mjs · sinceLast): its verdict, its round and its problems' keys, bounded. */
@@ -140,17 +145,19 @@ const readCheck = c => (c && typeof c === 'object' && typeof c.verdict === 'stri
  * Save one run of a feature into the out folder's runs: {feature, summary, record, verdicts?, failure?} — `failure` what
  * it failed on, said in its summary and as its last entry. Returns the file written.
  */
-export function saveRun(out, {feature, summary = '', record = [], verdicts = null, failure = null, check = null, kept = null, maps = null, worlds = null, at = new Date()}) {
+export function saveRun(out, {feature, summary = '', record = [], verdicts = null, failure = null, check = null, kept = null, maps = null, motions = null, worlds = null, at = new Date()}) {
   if (!FEATURE.test(feature)) throw new Error(`saveRun: feature is a short lowercase name (review, render, breakdown), not ${JSON.stringify(feature)}`);
   const dir = outputFolder(out, RUNS), stamp = at.toISOString().replace(/[:.]/g, '-');
   const file = path.join(dir, `${stamp}-${feature}.${randomBytes(3).toString('hex')}.json`);   // two saves in one millisecond: two runs
   const fail = failure === null ? null : cut(String(failure), SAID_CHARS), said = cut(String(summary), SAID_CHARS);
   writeOutput(file, runText({feature, at: at.toISOString(), summary: fail === null ? said : `${said ? `${said} — ` : ''}failed: ${fail}`, ...(verdicts ? {verdicts: keptVerdicts(verdicts)} : {}), ...(check ? {check: keptCheck(check)} : {}), ...(kept ? {control: keptControl(kept.control)} : {}),
-    ...(worlds ? {worlds: keptWorlds(worlds)} : {}), ...(maps ? {maps: keptMaps(maps)} : {})}, plainEntries(record), fail));
+    ...(worlds ? {worlds: keptWorlds(worlds)} : {}), ...(maps ? {maps: keptMaps(maps)} : {}), ...(motions ? {motions: keptMaps(motions)} : {})}, plainEntries(record), fail));
   // the run's own record, written as it ran (a file beside the run's, under its name): what `log --why` walks back over
   if (kept?.file) try { writeOutput(recordBeside(file), {move: kept.file}); } catch { /* the run is saved; it says it kept no record */ }
   // each map's record (check/maps.mjs), by its place in the list keptMaps wrote: a map whose file is not there kept none
   keptMaps(maps).forEach((m, k) => { const from = maps.find(x => x?.name === m.name)?.file; if (from) try { writeOutput(mapRecordBeside(file, k), {move: from}); } catch { /* that map says it kept no record */ } });
+  // each world's moves' record (check/motions.mjs), the same way
+  keptMaps(motions).forEach((m, k) => { const from = motions.find(x => x?.name === m.name)?.file; if (from) try { writeOutput(motionRecordBeside(file, k), {move: from}); } catch { /* those moves say they kept no record */ } });
   dropOldRuns(dir, feature, path.basename(file));
   return file;
 }
@@ -163,7 +170,7 @@ function dropOldRuns(dir, feature, kept) {
     const maps = readdirSync(dir).filter(n => MAP_RECORD.test(n));
     for (const name of runs.slice(0, Math.max(0, runs.length - (RUNS_KEPT - 1)))) {
       rmSync(path.join(dir, name), {force: true}); rmSync(recordBeside(path.join(dir, name)), {force: true});
-      for (const map of maps.filter(n => n.startsWith(`${name.slice(0, -'.json'.length)}.map-`))) rmSync(path.join(dir, map), {force: true});
+      for (const map of maps.filter(n => n.startsWith(`${name.slice(0, -'.json'.length)}.map-`) || n.startsWith(`${name.slice(0, -'.json'.length)}.motion-`))) rmSync(path.join(dir, map), {force: true});
     }
   } catch { /* the next run drops what this one could not */ }
 }
@@ -224,7 +231,7 @@ function savedRun(file) {
   return {id: path.basename(file, '.json'), feature: r.feature, at: new Date(r.at).toISOString(), summary: oneLine(r.summary ?? ''), file, entries: readEntries(r.entries),
     ...(Number.isInteger(r.omitted) ? {omitted: r.omitted} : {}), ...(readCheck(r.check) ? {check: readCheck(r.check)} : {}),
     ...(existsSync(recordBeside(file)) ? {recordFile: recordBeside(file), control: readControl(r.control)} : {}),
-    ...(r.maps !== undefined ? {maps: readMaps(r.maps, file)} : {}), ...(r.worlds !== undefined ? {worlds: readWorlds(r.worlds)} : {}),
+    ...(r.maps !== undefined ? {maps: readMaps(r.maps, file)} : {}), ...(r.motions !== undefined ? {motions: readMaps(r.motions, file, motionRecordBeside)} : {}), ...(r.worlds !== undefined ? {worlds: readWorlds(r.worlds)} : {}),
     ...(r.verdicts ? {verdicts: r.verdicts.map(v => ({check: oneLine(v.check), label: oneLine(v.label ?? v.check), verdict: oneLine(v.verdict ?? ''), why: oneLine(v.why ?? ''), measured: v.measured, ...(v.dropped === true ? {dropped: true} : {}), ...(v.summary ? {summary: oneLine(v.summary)} : {})}))} : {})};
 }
 

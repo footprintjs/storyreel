@@ -10,7 +10,8 @@
  * `behind`. WHY the same words: a map written for a deck is written for a film by moving its attributes into keys.
  *
  * What a film adds: `appear` (when a piece comes in: an anchor, [scene, phrase, plus?]) and a wire's `start` (when its
- * packets begin to ride) — a deck has clicks for both; a film has its voice.
+ * packets begin to ride) — a deck has clicks for both; a film has its voice. And `motion`: blocks that move by intent,
+ * read by motion-read.mjs.
  *
  * `style` is footprint-story's style row as it is (`isoStyle`: a named choice per column), checked here only so a
  * refusal names the recipe entry; the choices and their options are footprint-story's, never listed again here.
@@ -18,9 +19,11 @@
 import {readPorts, readThing, isoStyle, ISO_STYLE_COLUMNS, ISO_STYLE_CHOICES, MOST_FLOOR_LABEL, MOST_ROUTES} from 'footprint-story/isometric';
 import {MOST_EASE} from 'footprint-story/motion';
 import {BREAK_RULES} from 'footprint-story/layout';
+import {readMotions} from './motion-read.mjs';
+import {shown, anchorLike, keysOf} from './words.mjs';
 
 /** The keys an isometric world takes (beside `kit`), each piece's keys, and the limits. */
-export const WORLD_KEYS = Object.freeze(['kit', 'blocks', 'floors', 'wires', 'grid', 'area', 'style', 'strict']);
+export const WORLD_KEYS = Object.freeze(['kit', 'blocks', 'floors', 'wires', 'grid', 'area', 'style', 'strict', 'motion']);
 const BLOCK_KEYS = Object.freeze(['name', 'kind', 'at', 'size', 'label', 'small', 'break', 'color', 'tone', 'group', 'ports', 'appear']);
 const FLOOR_KEYS = Object.freeze(['name', 'at', 'size', 'label', 'color', 'group', 'appear']);
 const WIRE_KEYS = Object.freeze(['name', 'arrow', 'label', 'head', 'packets', 'speed', 'ride', 'rest', 'trail', 'behind', 'appear', 'start']);
@@ -48,17 +51,6 @@ const FOLD = /[\t\n\r\p{Zl}\p{Zp}]+/gu;
 const own = (o, k) => Object.hasOwn(o, k) && o[k] !== undefined;
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const nums = (v, lengths) => Array.isArray(v) && lengths.includes(v.length) && v.every(Number.isFinite);
-/**
- * A value as a refusal quotes it: JSON, at most 60 characters, one line (a value thousands of letters long gives a short
- * refusal). A function is "a function", as footprint-story says it: its source would run the refusal over several lines.
- */
-export const shown = (v) => {
-  if (typeof v === 'function') return 'a function';
-  let s; try { s = JSON.stringify(v) ?? String(v); } catch { s = Object.prototype.toString.call(v); }
-  s = s.replace(/[\p{Zl}\p{Zp}]/gu, ' ');
-  return s.length > 60 ? `${s.slice(0, 59)}…` : s;
-};
-
 /** A refusal raised while a value is copied as plain data: passed on as it is, never wrapped twice. */
 class PlainRefusal extends Error {}
 /** One own field's value, never through a getter. */
@@ -93,14 +85,6 @@ function plain(v, who, depth = 0) {
     if (e instanceof PlainRefusal) throw e;
     throw new PlainRefusal(`${who} could not be read as plain data (${shown(String(e?.message ?? e))}) — write it as JSON`, {cause: e});
   }
-}
-/** An at as an anchor is written: [scene, phrase, plus?] or {scene, phrase, …} (the clock checks the phrase). */
-export const anchorLike = (a) => (Array.isArray(a) ? a.length >= 2 && a.length <= 3 && typeof a[0] === 'string' && typeof a[1] === 'string' && (a.length === 2 || Number.isFinite(a[2]))
-  : isObject(a) && typeof a.scene === 'string' && typeof a.phrase === 'string');
-
-function keysOf(o, keys, who) {
-  if (!isObject(o)) throw new Error(`${who} is an object of ${keys.join(', ')} — not ${shown(o)}`);
-  for (const k of Object.keys(o)) if (!keys.includes(k)) throw new Error(`${who} takes ${keys.join(', ')} — not "${k}"`);
 }
 function words(v, who, key, most) {
   if (v === undefined) return null;
@@ -290,7 +274,7 @@ function readStyle(s, where) {
   return structuredClone(s);
 }
 
-/** The world's entry, checked: {blocks, floors, wires, grid, area, style, strict}. `where` names the recipe entry (`stage map`, `the story`). */
+/** The world's entry, checked: {blocks, floors, wires, grid, area, style, strict, motion}. `where` names the recipe entry (`stage map`, `the story`). */
 export function readMap(given, where) {
   const top = `${where}: the isometric world`;
   if (!isObject(given)) throw new Error(`${top} is an object of ${WORLD_KEYS.join(', ')} — not ${shown(given)}`);
@@ -331,5 +315,7 @@ export function readMap(given, where) {
   if (own(spec, 'strict') && typeof spec.strict !== 'boolean') throw new Error(`${where}: isometric strict is true (a warning about the map refuses the film) or false`);
   const grid = readGrid(spec.grid, where), style = readStyle(spec.style, where);
   if (grid && own(spec, 'area')) throw new Error(`${where}: isometric area is where a fitted picture goes; this grid is written in numbers — give one or the other`);
-  return {blocks, floors, wires, grid, area, style, strict: spec.strict === true, placed: unplaced.length ? 'build' : 'hand'};
+  // the pieces that move by intent (motion-read.mjs): [] when the world moves none, and then nothing else changes
+  const motion = readMotions(spec.motion, where, {blocks, floors, wires});
+  return {blocks, floors, wires, grid, area, style, strict: spec.strict === true, placed: unplaced.length ? 'build' : 'hand', motion};
 }

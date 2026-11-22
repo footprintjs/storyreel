@@ -23,6 +23,8 @@ export const FILMS = {
   recap: {tail: 2.6, kits: []},
   // StoryDeck's isometric maps in a film: blocks placed from their wires, a labelled group floor, ports, packets riding.
   'iso-world': {tail: 1.5, kits: [isometricKit]},
+  // An isometric world whose pieces move by intent: a box falls, a ball is thrown onto the server (kits/isometric, motion).
+  'iso-motion': {tail: 1.5, kits: [isometricKit]},
 };
 
 /** An example compiled as pinned; `recipe` replaces its recipe (e.g. one with an extra note); `record` as compileFilm's. */
