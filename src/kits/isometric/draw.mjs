@@ -64,14 +64,16 @@ function drawFloor(c, f, look) {
 }
 
 /** A block's faces (or a cylinder's side and top): its paint list, in the kit's colours. Then its name on its top. */
-function drawBlock(c, b, look) {
+function drawBlock(c, b, look, named = true) {
   // the list holds each face's recipe (top 20% toward white, sides toward black) and no colour: the kit picks the base
   // and the ink here, so the built map stays the deck's (paint.mjs says why). A tone is the theme's ok / warn / bad
   // colour as a pale tint (60% white): a block's name is ink on its top, and the theme's tones are ink-dark — on the
   // tone itself the name would fail the film's contrast check (StoryDeck colours the block the tone)
   const tone = b.color ?? (b.tone ? mix(look.tones[b.tone], '#ffffff', 0.6) : ISO_LOOK.tone), s = b.shape;
   paintItems(c, b.paint, {base: tone, ink: look.ink});
-  if (!b.fitted?.lines.length) return;
+  // a name a moved block covers is not drawn (motion-cover.mjs): under that block it is no word to read, and a few
+  // letters left peeking out past it read as a word too faint to read
+  if (!named || !b.fitted?.lines.length) return;
   // the name upright on the top's middle, its lines as wordsToFit broke them; the small line beneath it
   const {lines, size} = b.fitted, lh = size * 1.15, sf = b.smallFitted, small = sf ? sf.size * 1.15 + 2 : 0, height = lines.length * lh + small;
   const [cx, cy] = s.centre, top = cy - height / 2;
@@ -126,24 +128,26 @@ function drawLabel(c, w, look) {
  * block itself, scaled about its pivot (a bounce's squash) and moved there. The block is drawn as it always is, only
  * under that transform: its faces, names and colours are the built map's.
  */
-function drawPosed(c, b, pose, look) {
+function drawPosed(c, b, pose, look, named = true) {
   if (pose.rope) {
     c.strokeStyle = look.ink; c.lineWidth = ISO_LOOK.rope; c.lineCap = 'round'; c.lineJoin = 'round';
     c.beginPath(); pose.rope.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.stroke();
   }
   const [px, py] = pose.pivot;
   c.save(); c.translate(px + pose.dx, py + pose.dy); c.scale(pose.sx, pose.sy); c.translate(-px, -py);
-  drawBlock(c, b, look);
+  drawBlock(c, b, look, named);
   c.restore();
 }
 
 /**
  * The whole map at t on the 1600×900 sheet. `appearAt`: each piece's moment (seconds, or null: from the start).
- * `poseOf(block)`: where a block that moves by intent is at t (motion.mjs · poseAt), or null while it stands as built;
- * `order`: the blocks back to front at t, a moved one where it is now (index.mjs · movedAt). Both absent for a world
- * with no motion, which is then drawn exactly as before worlds took one: in the built map's order.
+ * `moved`, for a world whose pieces move (index.mjs · movedAt): `poseOf(block)`, where a moving block is at t
+ * (motion.mjs · poseAt) or null while it stands as built; `order`, the blocks back to front at t, a moved one where it
+ * is now; `hidden(block)`, whether a moved block covers its name at t (motion-cover.mjs). Absent for a world with no
+ * motion, which is then drawn exactly as before worlds took one: in the built map's order, every name drawn.
  */
-export function drawMap(c, map, t, look, poseOf = null, order = map.order) {
+export function drawMap(c, map, t, look, moved = null) {
+  const poseOf = moved?.poseOf ?? null, order = moved?.order ?? map.order, named = (b) => !moved?.hidden(b);
   c.save();
   c.fillStyle = look.bg; c.fillRect(0, 0, 1600, 900);
   const faded = (alpha, paint) => { if (alpha <= 0) return; c.save(); c.globalAlpha *= alpha; paint(); c.restore(); };
@@ -161,8 +165,8 @@ export function drawMap(c, map, t, look, poseOf = null, order = map.order) {
   for (const b of order) {
     const pose = poseOf?.(b) ?? null;
     // a moving block is joined by no wire (motion-read.mjs): it has no lead to draw, only itself at its pose, in its place in the order
-    if (pose) { faded(inAt(b.appearAt, t), () => drawPosed(c, b, pose, look)); continue; }
-    faded(inAt(b.appearAt, t), () => drawBlock(c, b, look));
+    if (pose) { faded(inAt(b.appearAt, t), () => drawPosed(c, b, pose, look, named(b))); continue; }
+    faded(inAt(b.appearAt, t), () => drawBlock(c, b, look, named(b)));
     map.wires.forEach((w, i) => {
       for (const [k, end] of [[0, 'from'], [1, 'to']]) {
         if (w.arrow[end].block !== b || w.cable.leads[k] === null) continue;

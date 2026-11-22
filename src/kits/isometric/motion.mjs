@@ -22,6 +22,7 @@
  */
 import {planIntents, sampleMove} from 'footprint-story/human';
 import {firstDifference} from './flow.mjs';
+import {coversOf} from './motion-cover.mjs';
 import {MOTION_DOS, REEL_CRITICS} from './motion-read.mjs';
 import {footOf, topOf, cornerOf, landingUnder, offFrame, drawnOff, footTiles, sweptThrough, posed, FRAME} from './motion-place.mjs';
 
@@ -160,8 +161,8 @@ export function planMotions(map, motions, clock, where) {
   }
   const poseAt = poseAtOf(moves, map);
   keepOnFrame(map, moves, motions, poseAt);
-  const through = throughFindings(map, moves, poseAt);
-  return {intents: frozen(intents), planned, moves, ...recordsOf(motions, moves, planned, through), poseAt, run: runOf(intents, planned)};
+  const through = throughFindings(map, moves, poseAt), covers = coversOf(map, moves.map((m) => ({...m, times: samplesOf(m)})), poseAt);
+  return {intents: frozen(intents), planned, moves, ...recordsOf(motions, moves, planned, [...through, ...covers.findings]), hidden: covers.hidden, poseAt, run: runOf(intents, planned)};
 }
 
 /**

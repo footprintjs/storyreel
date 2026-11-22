@@ -22,9 +22,10 @@ export const MOTION_KEYS = Object.freeze(['piece', 'do', 'at', 'to', 'from', 'wr
 
 /**
  * The kit's own critics, beside footprint-story's: `reel:contact`, a move whose block passes through another block on
- * its way (motion.mjs · throughFindings). Named under the kit's prefix, as footprint-story names a tool's own.
+ * its way (motion.mjs · throughFindings), and `reel:covers`, a move that comes to rest over another block's name
+ * (motion-cover.mjs). Named under the kit's prefix, as footprint-story names a tool's own.
  */
-export const REEL_CRITICS = Object.freeze(['reel:contact']);
+export const REEL_CRITICS = Object.freeze(['reel:contact', 'reel:covers']);
 /** Every critic a motion entry may accept by name: footprint-story's and the kit's. */
 const CRITIC_NAMES = Object.freeze([...HUMAN_CRITICS, ...REEL_CRITICS]);
 

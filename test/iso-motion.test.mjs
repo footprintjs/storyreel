@@ -44,8 +44,9 @@ test('the record names each move\'s model, how it was chosen, its reason and its
   const again = planIntents(story.motionIntents, {frame: [...MOTION_FRAME]});
   assert.deepEqual(again.durations.map(d => +d.seconds.toFixed(3)), story.map.motions.map(m => m.seconds));
   assert.deepEqual(again.moves.map(m => m.reason), story.map.motions.map(m => m.reason));
-  assert.deepEqual(story.motionFindings, [], 'the example moves well: no critic finds fault');
-  assert.deepEqual(film.motionRuns.map(m => [m.name, m.kit, m.findings.length]), [['story', 'isometric', 0]]);
+  // the ball comes to rest on the server's top, over its name: meant in this film, so its entry accepts reel:covers
+  assert.deepEqual(story.motionFindings.map(f => [f.path, f.critic, f.level]), [['motion[1]', 'reel:covers', 'accepted']], 'the example moves well: only the cover it means');
+  assert.deepEqual(film.motionRuns.map(m => [m.name, m.kit, m.findings.length]), [['story', 'isometric', 1]]);
 });
 
 test('placed from the built map: a fall drops the box\'s foot straight to the floor under it, a throw lands the ball on the server\'s top', () => {
@@ -209,7 +210,7 @@ test('paint order: a moving block takes its place in the back-to-front order whe
   assert.deepEqual(labels(front, end(front)), ['Wall', 'Ball'], 'landed in front: drawn after it');
   // high in the air over the wall, mid-flight, it is in front
   const mid = behind.map.motions[0].seconds * 0.5;
-  assert.deepEqual(labels(behind, mid), ['Wall', 'Ball'], 'in flight above the wall: drawn after it');
+  assert.deepEqual(labels(behind, mid), ['Ball'], 'in flight above the wall it is in front: the wall\'s name under it is hidden (were it behind, the name would be drawn)');
   assert.deepEqual(labels(behind, 0), ['Wall', 'Ball'], 'before its move: the built order');
 });
 
@@ -266,7 +267,7 @@ test('refusals of --motion name what there is', async t => {
 test('a critic\'s finding reaches the check\'s reply at its own level, naming the entry and the fix', async t => {
   const out = tempDir('motion-finding', t);
   const said = await check(await readInputs({cwd: project, out, straight: 'true'}));
-  assert.match(said, /^fix 1 — 1 error\n/, 'a critic\'s warn is a finding to fix: the check does not read clean over it');
+  assert.match(said, /^fix 1 — 1 error, 1 piece of advice\n/, 'a critic\'s warn is a finding to fix: the check does not read clean over it (the advice: the cover the example accepts)');
   assert.match(said, /\nfix  0:\d\d\.\d–0:\d\d\.\d drop · a move that reads wrong: arc: its move runs straight \(it bows 0\.0% of its length\) — .* · at story\.motion\[3\] · fix: bow it: model: \{name: 'min-jerk', bend: 0\.06\}\n/);
   assert.match(await ask(out, 'findings-3', 'story', {straight: 'true'}), /^findings-3 = \[\{"critic":"arc","level":"warn","fix":"bow it: model: \{name: 'min-jerk', bend: 0\.06\}"\}\]\nfindings \(findings#6\)/);
 });
@@ -345,7 +346,7 @@ test('a hang\'s pin must be above the block\'s top; tiles off the frame are refu
 test('an entry accepts a critic it means: the finding is shown as accepted, the record says so, and the check reads clean', async t => {
   const out = tempDir('motion-accept', t);
   const said = await check(await readInputs({cwd: project, out, accept: 'true'}));
-  assert.match(said, /^clean — nothing to fix · 1 piece of advice\n/);
+  assert.match(said, /^clean — nothing to fix · 2 pieces of advice\n/);
   assert.match(said, /\nnote 0:\d\d\.\d–0:\d\d\.\d drop · a move accepted as written: accepted: arc: its move runs straight .* · at story\.motion\[3\]\n/);
   assert.doesNotMatch(said.split('\n').find(l => l.includes('accepted as written')), /fix:/, 'nothing to fix in an accepted finding');
   const w = worldOf({...recipe.story, motion: [...recipe.story.motion, {piece: 'box', do: 'reach', to: [1, 1], at: ['drop', 'timed by hand'], model: {name: 'min-jerk', bend: 0}, accept: ['arc']}]});
@@ -414,4 +415,25 @@ test('sweptThrough finds a thin block anywhere on a stretch, not only at its end
   assert.ok(Math.abs(hit.depth - 0.1) < 1e-9 && hit.share > 0.2 && hit.share < 0.31, `deepest a fifth to a third of the way (${hit.share})`);
   assert.equal(sweptThrough([1, 1, 1], [0, 0, 2], [10, 0, 2], [{...wall, block: {name: 'low', size: [0.1, 3, 1]}}]), null, 'over a low wall: nothing');
   assert.equal(sweptThrough([1, 1, 1], [0, 0, 1], [0, 0, 1], [{block: {name: 'under', size: [1, 1, 1]}, from: [0, 0, 0], to: [0, 0, 0]}]), null, 'resting on a top: touching is not passing through');
+});
+
+test('a moved block that comes to rest over another\'s name hides it: not drawn, not listed to read, and said (reel:covers)', () => {
+  const grid = {tile: 100, at: [800, 250]}, server = {name: 'server', label: 'Server', at: [6, 1], size: [2, 2, 1.6]}, ball = {name: 'ball', label: 'Ball', at: [1, 5], size: [1, 1, 0.6]};
+  const w = worldOf({grid, blocks: [server, ball], motion: [{piece: 'ball', do: 'throw', to: 'server'}]});
+  const [f] = w.motionFindings, end = w.map.motions[0].seconds;
+  assert.deepEqual([f.critic, f.level], ['reel:covers', 'warn']);
+  assert.equal(f.what, 'it comes to rest over "server"\'s name ("Server"), which is hidden from then');
+  assert.match(f.fix, /land it clear of the name .* or accept it when it is meant \("accept": \["reel:covers"\]\)/);
+  // what the canvas is asked to write, at rest: the ball's name and not the server's — a word under a block is no word
+  // to read, and the decision is the kit's numbers, never a font's width, so every host draws the same words
+  const written = (t) => { const said = []; w.draw(new Proxy({}, {get: (_, k) => (k === 'fillText' ? (x) => said.push(x) : typeof k === 'string' ? () => ({width: 10}) : undefined), set: () => true}), t); return said; };
+  assert.ok(written(0).includes('Server'), 'before the throw, the server\'s name is drawn');
+  assert.deepEqual(written(end + 0.5).filter(x => x === 'Server' || x === 'Ball'), ['Ball'], 'at rest over it, the name is not drawn');
+  const spans = w.texts().filter(x => x.path === 'blocks[0].label');
+  assert.equal(spans.length, 1);
+  assert.ok(spans[0].to <= end + 1e-9 && spans[0].to > 0, `the server\'s name is listed to read until the ball covers it (${spans[0].to} s)`);
+  // landed beside the server: nothing hidden, nothing said
+  const beside = worldOf({grid, blocks: [server, ball], motion: [{piece: 'ball', do: 'throw', to: [4, 4]}]});
+  assert.deepEqual(beside.motionFindings, []);
+  assert.deepEqual(beside.texts().filter(x => x.path === 'blocks[0].label').map(x => x.to), [Infinity]);
 });

@@ -34,7 +34,9 @@ every pin it had, and gains the new example's.
   (`jerk`, `arc`, `spacing`, `contact`, …) is the review's new `motion` check, at the critic's own level: a `warn` (a
   body through the floor, a straight slide) is a fix, so a check never reads clean over it; a `note` is advice
   (`motion-note`). The kit's own critic `reel:contact` finds a move whose block passes through another block, in tiles,
-  swept between samples so a thin block is never skipped. A block moved from under another resting on it, and a way
+  swept between samples so a thin block is never skipped. `reel:covers`: a moved block come to rest over another's name
+  hides it — the name is not drawn or listed to read while covered (decided from the kit's numbers, never a font's
+  width, so every host reads the same words) — and is said, naming the move and the fix. A block moved from under another resting on it, and a way
   drawn off the frame (a throw's top, a rope), are refused.
   An entry's `accept: ["arc"]` keeps a critic's finding it means: recorded, shown as accepted, the check can read clean.
   Each finding names the entry and the fix, and is keyed without its numbers.

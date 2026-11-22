@@ -83,6 +83,9 @@
      {
       "wrapper": "anticipate"
      }
+    ],
+    "accept": [
+     "reel:covers"
     ]
    },
    {

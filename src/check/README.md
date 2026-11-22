@@ -199,7 +199,8 @@ a map: `read` takes the intents as the run's input; what it took is the recipe's
 - **The same intents.** The kit keeps the intents it handed `planIntents` (`motionIntents`) and hands those very ones to
   the chart; the two plans must be equal, and a difference is a `drift` line in the reply that heads every answer.
 - **The critics' findings are the review's.** What footprint-story's critics find (`jerk`, `arc`, `spacing`, `contact`,
-  `volume`, `stretch`) and the kit's own `reel:contact` (a block passing through another) are the review's `motion`
+  `volume`, `stretch`) and the kit's own `reel:contact` (a block passing through another) and `reel:covers` (a block
+  come to rest over another's name) are the review's `motion`
   check, at the critic's own level: a `warn` is a `fix`, so the verdict never reads `clean` over it; a `note` is advice;
   a critic the entry accepts (`"accept": ["arc"]`) is shown as `a move accepted as written`, advice with no fix. Each
   names the entry and the fix, over the time the move runs, and is keyed without its numbers (a small edit that moves

@@ -54,6 +54,19 @@ function floorLabelBox(f) {
   return boxOf([[0, -h], [w, -h], [w, 0], [0, 0]].map(([u, v]) => [x + a * u + c * v, y + b * u + d * v]));
 }
 
+/** [from, Infinity) less the hidden spans ([[from, to], …], in order): the stretches a word is on screen to be read. */
+function shownSpans(from, hidden) {
+  const out = [];
+  let at = from;
+  for (const [h0, h1] of hidden) {
+    if (h1 <= at) continue;
+    if (h0 > at) out.push([at, h0]);
+    at = Math.max(at, h1);
+  }
+  if (at < Infinity) out.push([at, Infinity]);
+  return out;
+}
+
 /** A plain value frozen at every level. */
 const frozen = (v) => { if (v && typeof v === 'object' && !Object.isFrozen(v)) { Object.freeze(v); Object.values(v).forEach(frozen); } return v; };
 
@@ -103,6 +116,8 @@ export function compileIsometric(spec, context) {
     const poses = new Map(map.blocks.map((b) => [b, motion.poseAt(b, t)]).filter(([, p]) => p));
     return {poses, order: poses.size ? map.grid.backToFront(map.blocks, (b) => ({at: poses.get(b)?.at ?? b.at, size: b.size})) : map.order};
   };
+  // whether a moved block covers a block's name at t (motion-cover.mjs): its name is then neither drawn nor listed to read
+  const hiddenAt = (b, t) => (motion?.hidden.get(b) ?? []).some(([from, to]) => t >= from && t < to);
   // a block's outline where it is drawn at t: as built, or where its move has put it
   // (and a hanging block's rope with it: a camera that frames the block frames what it hangs from)
   const outlineAt = (b, t) => { const pose = motion?.poseAt(b, t) ?? null; return pose ? [...b.shape.outline.map((p) => posed(p, pose)), ...(pose.rope ?? [])] : b.shape.outline; };
@@ -121,7 +136,7 @@ export function compileIsometric(spec, context) {
     // built in, never the map itself
     summary: Object.freeze({placed: map.placed, tile: map.grid.tile[0], style: styleOf(map), blocks: map.blocks.length, floors: map.floors.length, wires: map.wires.length,
       along: map.wires.filter((w) => w.route?.points).length, packets: map.wires.reduce((n, w) => n + w.packets, 0), ...(motion ? {motions: motion.summary} : {})}),
-    draw: motion ? (c, t) => { const {poses, order} = movedAt(t); drawMap(c, map, t, look, (b) => poses.get(b) ?? null, order); } : (c, t) => drawMap(c, map, t, look),
+    draw: motion ? (c, t) => { const {poses, order} = movedAt(t); drawMap(c, map, t, look, {poseOf: (b) => poses.get(b) ?? null, order, hidden: (b) => hiddenAt(b, t)}); } : (c, t) => drawMap(c, map, t, look),
     // every piece by its name, once it has come in: a push or a camera move frames "server"; a label by its own path
     regionsAt: (t) => [
       ...map.floors.flatMap((f) => (shownAt(f, t) ? [{box: boxOf(f.shape.outline), path: f.path, label: f.label ?? `floor ${f.name ?? f.path}`, ...(f.name ? {name: f.name} : {})},
@@ -131,8 +146,10 @@ export function compileIsometric(spec, context) {
       ...map.order.filter((b) => shownAt(b, t)).map((b) => ({box: boxOf(outlineAt(b, t)), path: b.path, label: b.label ?? b.name, name: b.name})),
     ],
     // every label, from when it has come in: the block's name and its small line, a floor's name, a cable's label
+    // (a block's name is on screen from when it has come in, less the stretches a moved block covers it: motion-cover.mjs)
     texts: () => [
-      ...map.blocks.flatMap((b) => [...(b.fitted?.lines.length ? [{text: b.fitted.lines.join(' '), path: `${b.path}.label`}] : []), ...(b.small ? [{text: b.small, path: `${b.path}.small`}] : [])].map((l) => ({...l, from: (b.appearAt ?? 0) + 0.35, to: Infinity}))),
+      ...map.blocks.flatMap((b) => [...(b.fitted?.lines.length ? [{text: b.fitted.lines.join(' '), path: `${b.path}.label`}] : []), ...(b.small ? [{text: b.small, path: `${b.path}.small`}] : [])]
+        .flatMap((l) => shownSpans((b.appearAt ?? 0) + 0.35, motion?.hidden.get(b) ?? []).map(([from, to]) => ({...l, from, to})))),
       ...map.floors.filter((f) => f.place).map((f) => ({text: f.place.lines.join(' '), path: `${f.path}.label`, from: (f.appearAt ?? 0) + 0.35, to: Infinity})),
       ...map.wires.filter((w) => w.label).map((w) => ({text: w.label.toUpperCase(), path: `${w.path}.label`, from: (w.appearAt ?? 0) + 0.35, to: Infinity})),
     ],

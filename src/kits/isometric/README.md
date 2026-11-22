@@ -240,6 +240,15 @@ moves, the built order is used as it was.
 **A block a wire joins cannot move**, and is refused saying so: its cable is laid on the floor to where it stands, and
 would not follow it.
 
+**What a move covers** (`reel:covers`, `motion-cover.mjs`): a moved block drawn in front of another block's name (a
+ball come to rest on a server's top sits on its name) hides that name: the name is not drawn while it is covered, is
+not listed to read then (`texts()`), and a move that comes to rest over one is a finding naming the move, the name and
+the fix (land it clear, or `"accept": ["reel:covers"]` when it is meant — the example accepts its ball on the server).
+WHY not drawn: a few letters peeking past a block read as a word too faint to read, and how many peek depends on how
+wide the host's font draws them (CI's DejaVu Sans showed "Server" at 1.56:1 where macOS hid it whole). The cover is
+decided from the kit's own numbers — a name's fitted lines at 0.7 of its size a letter, wider than its fonts draw —
+so every host draws and says the same words.
+
 **A world with no motion is exactly as it was**: nothing is planned, its record and summary have no `motions`, no run
 is handed out, and every frame is the same (`test/golden.json` is unchanged; the example `examples/iso-motion` adds its
 own pins).
@@ -309,6 +318,7 @@ entry's name.
 | `motion-read.mjs` | the `motion` entries checked, every refusal naming the entry and the fix; what a block can do (`MOTION_DOS`) |
 | `motion.mjs` | each entry made a footprint-story intent on the frame, planned (`planIntents`), timed on the clock and sampled at t (with its place for the paint order); its record, findings and run |
 | `motion-place.mjs` | where things are while pieces move: a block's foot and top, what a fall lands on, the frame, a moving foot's place in tiles, what a block passes through |
+| `motion-cover.mjs` | which names a moved block covers, and when: not drawn, not listed to read, said (`reel:covers`) |
 | `words.mjs` | how both readers quote a value and check keys and anchors (`shown`, `keysOf`, `anchorLike`): its own module, so the kit's modules import no cycle (a test pins it) |
 
 **From footprint-story, as StoryDeck has them** (they were carried here from StoryDeck until 0.35.0; both tools now
