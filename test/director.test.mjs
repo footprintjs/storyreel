@@ -370,6 +370,23 @@ test('the focus over two pictures: back to wide as the second comes, a key no ga
   assert.ok(!f.director.dropped.some(d => d.rule === 'picture'), 'never left out');
 });
 
+test('the focus over two pictures at a brisk voice: a close-up with no time to arrive and fly back before the change is left out, saying why and the fix', async () => {
+  const board = {scenes: [{id: 'a', narration: 'Night falls here. {@sam}"Is it late?"'}, {id: 'b', narration: 'The yard is dark. The lamp is on.'}]};
+  const kit = (name, names) => ({name, story: {compile: () => ({hang: 1, regionsAt: () => regions.filter(r => names.includes(r.name)), draw: c => { c.fillStyle = '#ddd'; c.fillRect(0, 0, 1600, 900); }})}});
+  // footprint-story's planner flies 3.31 s to Sam's face and 3.31 s back: from 0.3 to 1.2 s a word the voice leaves less
+  for (const wordSeconds of [.3, .6, .9, 1.2]) {
+    const f = await compileFilm({storyboard: board, timings: evenTimings(board, {wordSeconds, tail: .3}), recipe: {story: {kit: 'ka'}, stages: [{type: 'world', scene: 'b', world: {kit: 'kb'}}], director: 'on'}, kits: [kit('ka', ['sam', 'sam.face']), kit('kb', ['lamp'])]});
+    const b = f.clock.start('b'), drop = f.director.dropped.find(d => d.on === 'sam.face');
+    assert.deepEqual(f.attention.focus.keys.map(k => k.on), ['lamp'], `${wordSeconds} s a word: the close-up is left out, so no wide key is needed`);
+    // the entry it would have been, in the record (film.director.dropped, the making-of's director)
+    assert.deepEqual([drop.kind, drop.path, drop.scene, drop.rule, drop.said], ['camera', 'focus', 'a', 'line', '"Is it late?"'], `${wordSeconds}: the entry`);
+    const has = b - drop.t, needs = 3.31 * 2;
+    assert.equal(drop.why, `the picture changes at ${b.toFixed(2)} s (b): no time to arrive on "sam.face" and fly back to wide before it — the flights take ${needs.toFixed(2)} s and the voice leaves ${has.toFixed(2)} s: give the line ${(needs - has).toFixed(2)} s more before the change, or frame it in a scene of its own`, `${wordSeconds}: the words and the fix`);
+    assert.equal(f.director.proposals.find(p => p.on === 'sam.face'), undefined, 'not proposed as placed');
+    for (const t of [b, b + .5]) assert.equal(f.focusAt(t).z, 1, `${wordSeconds}: the second picture opens wide`);
+  }
+});
+
 test('a key lands only where the picture names what it frames: a thing drawn on its own sentence is framed on its words', async () => {
   const board = {scenes: [{id: 's1', narration: 'The farmer walks out early. The lamp glows on the table.'}]};
   const t = evenTimings(board, {wordSeconds: .5});

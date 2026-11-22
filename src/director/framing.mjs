@@ -174,8 +174,10 @@ export function planFraming(scenes, {names = null, people = new Set(), table, gr
   const backBefore = (start, scene) => {
     const back = () => (flight ? flight(last(), WIDE) : 0);
     while (flight && keys.length && last().on !== 'wide' && last().t !== null && start - back() < lands(keys.length - 1)) {
-      const k = keys.pop();
-      dropped.push({...k, why: `the picture changes at ${start.toFixed(2)} s (${scene}): no time to arrive on "${[k.on].flat().join('" + "')}" and fly back to wide before it`});
+      // said with the numbers a writer changes: the flights' seconds, against the time the voice leaves before the change
+      const k = keys.at(-1), needs = lands(keys.length - 1) - k.t + back(), has = start - k.t;
+      keys.pop();
+      dropped.push({...k, why: `the picture changes at ${start.toFixed(2)} s (${scene}): no time to arrive on "${[k.on].flat().join('" + "')}" and fly back to wide before it — the flights take ${needs.toFixed(2)} s and the voice leaves ${has.toFixed(2)} s: give the line ${(needs - has).toFixed(2)} s more before the change, or frame it in a scene of its own`});
     }
     return start - back();
   };

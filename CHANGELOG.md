@@ -41,10 +41,14 @@ draws the flight.
 - **The director spaces its focus keys by the flights:** no key before the flight to the one above it has arrived
   (left out, with why: `the camera is still flying to the insert key on "red" (it arrives at 3.61 s)`), and the wide
   key for a new picture lands the flight back's seconds before it (was 0.78 s), leaving out a key with no time to land
-  and fly back. Director films keep fewer keys than before at a brisk voice.
-- **Golden pins:** only the two examples whose focus flies move — `iso-world` (from 6.76 s, where its first key lands,
-  to the end: the flight in takes 2.12 s where the spring took 0.78 s, and the flight back now starts at "to the logs")
-  and `iso-motion` (from 8.66 s to the end: in over 2.01 s, back from "was timed"). Their wide keys moved later in the
+  and fly back, with the numbers and the fix in `film.director.dropped` (`… no time to arrive on "sam.face" and fly back
+  to wide before it — the flights take 6.62 s and the voice leaves 1.40 s: give the line 5.22 s more before the change,
+  or frame it in a scene of its own`). Director films keep fewer keys than before at a brisk voice: a close-up on the
+  last line before a change is left out from 0.3 to 1.2 s a word in `test/director.test.mjs`.
+- **Golden pins:** only the two examples whose focus flies move — `iso-world` from 6.76 s, where its first key lands,
+  to 11.54 s, where the flight back ends (the flight in takes 2.12 s where the spring took 0.78 s, and the flight back
+  sets off at "to the logs", 9.42 s, for 2.12 s), and `iso-motion` from 8.66 s to 13.33 s (in over 2.01 s, back from
+  "was timed", 11.32 s, over 2.01 s). Every pin after those ends is unchanged. Their wide keys moved later in the
   recipes, because footprint-story's flights in took longer than the 1.52 s and 1.9 s between their keys (each would
   have been cut short). Every film without a camera focus draws exactly what it drew.
 
