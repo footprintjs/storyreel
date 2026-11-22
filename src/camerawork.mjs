@@ -12,7 +12,7 @@
  * act inside a world, on the picture's clock (a freeze stops them too).
  *
  * ONE CAMERA. A camera move (view, follow or depth) cannot run while something else moves the camera: a moving
- * focus (a camera-strategy focus, from each key until its spring settles: motion.mjs · settleTime), a director's
+ * focus (a camera-strategy focus, from each key until its flight arrives: flight/steps.mjs · movingOf), a director's
  * push (while it eases in or out), a world's spotlight, or a world's own camera (StoryWorld · cameraMoves: the
  * cartoon kit's camera keys) — as a push never runs over a spotlight or a kit's camera either. They take turns, and they compose: the camera frames a held push or focus, and a
  * focus that moves later frames inside the camera's held view. Two moves may run at once when they move different

@@ -22,7 +22,9 @@ test('a check keeps a record for each map, and log --why --map answers from it: 
   const out = tempDir('map-why', t);
   const said = await check(await readInputs({cwd: project, out}));
   // the call offered names the run by its id (a run's number moves when another is saved)
-  assert.ok(said.endsWith(`\nmaps: story, stages[0] — why a block stands where it does: storyreel log --run ${listRuns(out)[0].id} --why at --map story`), said.split('\n').at(-1));
+  // (the example's focus flies its camera between shots since 0.47.0, so the flights' line comes after: test/flight.test.mjs)
+  const id = listRuns(out)[0].id;
+  assert.ok(said.endsWith(`\nmaps: story, stages[0] — why a block stands where it does: storyreel log --run ${id} --why at --map story\ncameras: focus — why a flight takes its time: storyreel log --run ${id} --why flight-0 --camera focus (findings-<k>: what its critics found)`), said.split('\n').slice(-2).join('\n'));
   assert.doesNotMatch(said, /drift|not kept/);
   assert.equal(mapFiles(out).length, 2, 'one record a map, beside the run');
   assert.deepEqual(readdirSync(path.join(out, ...RUNS)).filter(n => n.startsWith('pending-')), [], 'nothing left pending');

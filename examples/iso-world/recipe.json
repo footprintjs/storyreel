@@ -267,7 +267,7 @@
    {
     "at": [
      "map",
-     "writes a line"
+     "to the logs"
     ],
     "on": "wide"
    }

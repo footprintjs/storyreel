@@ -115,7 +115,12 @@ The plan is a footprintjs flowchart, so `film.camera` says how the film was play
   (`medium`, `close` or `insert`). A `speed` note needs every world's kit to follow it (`motion: ['cameraSpeed']`
   beside its `compile`); one that does not refuses the note.
 - **Focus** (`"focus": {"strategy": "camera", "keys": [{"at": [scene, phrase], "on": "walker", "size": "medium"}]}`)
-  moves the camera to whatever the voice is about; `spotlight`, `dim` and `none` show it other ways.
+  moves the camera to whatever the voice is about; `spotlight`, `dim` and `none` show it other ways. Each key is a
+  shot: write what it frames, and nothing about the path — footprint-story's planner (`planCameraMove`) flies the
+  camera between two shots and sets the seconds (a framing ×3 takes 3.31 s). A key may say `"do": "cut"` (there at
+  once), `"seconds"` (its own length) or `"accept": ["travel-speed"]` (a critic kept as written); no `feel` on a camera
+  focus. A key that comes before the flight above it lands is a `reel:cut-short` finding: move it later, or cut.
+  `storyreel log --run 1 --why flight-0 --camera focus` says why a flight takes its time.
 - **The automatic director** (`"director": "on"`) proposes the framing and the moods from the script itself, so you
   write only the exceptions — restrained: the establishing shot first, a close-up for the first question or exclamation
   of a turn (two a scene: `closeUps`), a two-shot when the other answers, an insert on a thing the narrator names

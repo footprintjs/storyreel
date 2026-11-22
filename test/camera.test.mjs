@@ -116,8 +116,10 @@ test('a framing holds until the picture changes, then eases back to the whole fr
 });
 
 test('one camera: no move while the focus or a push moves the camera, nor two on the same thing; they take turns, and the camera frames what the focus framed', async () => {
-  const focus = {strategy: 'camera', keys: [{at: ['a', 'red square'], on: 'red', size: 'medium'}]};
-  await assert.rejects(make({focus, camera: [{move: 'dolly-in', at: ['a', 'square']}]}), /camera\[0\] \(dolly-in, .*\) would move the camera while the focus \(focus\.keys\[0\], on "red"\) is moving the camera \(.*\); a film has one camera: start the move after it settles, or show the focus with "spotlight" or "dim"/);
+  // The focus key flies over 0.8 s of its own (seconds), about the spring's 0.78 s these turns were written for: the
+  // focus's own pace (footprint-story's planner, 0.47.0) is pinned in attention.test.mjs.
+  const focus = {strategy: 'camera', keys: [{at: ['a', 'red square'], on: 'red', size: 'medium', seconds: .8}]};
+  await assert.rejects(make({focus, camera: [{move: 'dolly-in', at: ['a', 'square']}]}), /camera\[0\] \(dolly-in, .*\) would move the camera while the focus \(focus\.keys\[0\], on "red"\) is moving the camera \(.*\); a film has one camera: start the move after it arrives, or show the focus with "spotlight" or "dim"/);
   const turns = await make({focus, camera: [{move: 'dolly-in', at: ['a', 'corner'], amount: 1.5}]}), c = at(turns, 'a', 'corner');
   // The focus put red in the middle of the frame (500–1100 on its row); the camera, the outer lens, dollies in on it there.
   assert.ok(near(picture(turns, c - .1), 800, 275 + 175, RED), 'the focus framed red');
@@ -307,7 +309,9 @@ test('a dolly on a thing stays on it when the push under the camera eases out; i
 });
 
 test('clicks and boxes through the focus, the camera and handheld: a click on a thing reads back exactly where the recipe placed it', async () => {
-  const focus = {strategy: 'camera', keys: [{at: ['a', 'red square'], on: 'red', size: 'medium'}]};
+  // The focus key flies over 0.8 s of its own (seconds), about the spring's 0.78 s these turns were written for: the
+  // focus's own pace (footprint-story's planner, 0.47.0) is pinned in attention.test.mjs.
+  const focus = {strategy: 'camera', keys: [{at: ['a', 'red square'], on: 'red', size: 'medium', seconds: .8}]};
   const film = await make({focus, camera: [{move: 'dutch', at: ['a', 'corner'], amount: 8}, {move: 'handheld', at: ['a', 'corner'], seconds: 4}]});
   for (const t of [at(film, 'a', 'quietly'), at(film, 'a', 'corner') + 1.3]) {
     const box = boxOf(film, t, 'red'), [fx, fy] = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
@@ -376,7 +380,7 @@ test('a dolly on a thing keeps the thing on its framing under a later dutch, whi
   const FAR = [1440, 400, 1560, 500], farKit = {name: 'far', story: {compile: () => ({hang: 1, regionsAt: () => [{box: FAR, path: 'far', label: 'far', name: 'far'}],
     draw: c => { fill(c, GROUND, [0, 0, 1600, 900]); fill(c, RED, FAR); }})}};
   await assert.rejects(compileFilm({storyboard, timings, kits: [farKit], recipe: {story: {kit: 'far'},
-    focus: {strategy: 'camera', keys: [{at: ['a', 'First'], on: 'far'}, {at: ['b', 'Then'], on: 'wide'}]},
+    focus: {strategy: 'camera', keys: [{at: ['a', 'First'], on: 'far', seconds: .8}, {at: ['b', 'Then'], on: 'wide', seconds: .8}]},
     camera: [{move: 'pan', at: ['a', 'red square'], seconds: .8, amount: 133}, {move: 'dolly-in', at: ['a', 'sits'], seconds: 1, on: 'far', amount: 3},
       {move: 'dutch', at: ['a', 'quietly'], seconds: 1, amount: 30}]}}),
     /camera\[2\] \(dutch\) rolls the frame while camera\[1\] \(dolly-in\) holds on "far": at .* the picture would need ×4\.\d\d to keep the frame covered \(a camera goes to ×4\): roll less, or dolly in less before it/);
@@ -401,7 +405,7 @@ test('a held dolly is checked until moves have taken over both where it looks ac
   const TOP = [700, 30, 900, 110], topKit = {name: 'top', story: {compile: () => ({hang: 1, regionsAt: () => [{box: TOP, path: 'top', label: 'top', name: 'top'}],
     draw: c => { fill(c, GROUND, [0, 0, 1600, 900]); fill(c, RED, TOP); }})}};
   const film = camera => compileFilm({storyboard, timings, kits: [topKit], recipe: {story: {kit: 'top'}, camera,
-    focus: {strategy: 'camera', keys: [{at: ['a', 'First'], on: 'top'}, {at: ['b', 'blue'], on: 'wide'}]}}});
+    focus: {strategy: 'camera', keys: [{at: ['a', 'First'], on: 'top', seconds: .8}, {at: ['b', 'blue'], on: 'wide', seconds: .8}]}}});
   const dolly = {move: 'dolly-in', at: ['a', 'sits'], seconds: 1, on: 'top', amount: 3}, dutch = {move: 'dutch', at: ['a', 'corner'], seconds: 1, amount: 30};
   await assert.rejects(film([dolly, {move: 'pan', at: ['a', 'quietly'], seconds: .5, amount: 10}, dutch]),
     /camera\[2\] \(dutch\) rolls the frame while camera\[0\] \(dolly-in\) holds on "top": at [\d.]+ s the picture would need ×5\.26 to keep the frame covered/);
@@ -460,7 +464,7 @@ test('a move that starts where a hold has already taken the camera past ×4 is n
   const TOP = [700, 30, 900, 110], topKit = {name: 'top', story: {compile: () => ({hang: 1, regionsAt: () => [{box: TOP, path: 'top', label: 'top', name: 'top'}],
     draw: c => { fill(c, GROUND, [0, 0, 1600, 900]); fill(c, RED, TOP); }})}};
   await assert.rejects(compileFilm({storyboard, timings, kits: [topKit], recipe: {story: {kit: 'top'},
-    focus: {strategy: 'camera', keys: [{at: ['a', 'First'], on: 'top'}, {at: ['b', 'blue'], on: 'wide'}]},
+    focus: {strategy: 'camera', keys: [{at: ['a', 'First'], on: 'top', seconds: .8}, {at: ['b', 'blue'], on: 'wide', seconds: .8}]},
     camera: [{move: 'dolly-in', at: ['a', 'sits'], seconds: 1, on: 'top', amount: 3}, {move: 'truck', at: ['a', 'quietly'], seconds: 1, on: 'top'},
       {move: 'dutch', at: ['a', 'corner'], seconds: 1, amount: 30}, {move: 'tilt', at: ['b', 'back'], seconds: .5, amount: 20}]}}),
     /^Error: camera\[2\] \(dutch\) rolls the frame while camera\[0\] \(dolly-in\) holds on "top": at [\d.]+ s the picture would need ×5\.26 to keep the frame covered/);

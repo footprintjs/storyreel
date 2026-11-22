@@ -175,7 +175,10 @@ test('the review\'s motion check: a finding is held over its move however short,
   assert.deepEqual(r.ran, ['motion']);
   assert.deepEqual(r.findings.map(f => [f.kind, f.what, f.where, f.fix]), [['motion', 'jerk: its move has 3 speed peaks', 'story.motion[0]', "use do: 'reach'"]]);
   assert.deepEqual((await reviewPart(moved, {from: 6, to: 9, checks: {motion: REVIEW_CHECKS.motion}})).findings, [], 'a move outside the window is not said');
-  assert.deepEqual((await reviewPart(await compileExample('iso-world'), {checks: {motion: REVIEW_CHECKS.motion}})).ran, [], 'not picked for a film that moves nothing');
+  const {focus, ...still} = JSON.parse(readFileSync(new URL('../examples/iso-world/recipe.json', import.meta.url), 'utf8'));
+  assert.ok(focus, 'iso-world flies its focus camera');
+  assert.deepEqual((await reviewPart(await compileExample('iso-world', {recipe: still}), {checks: {motion: REVIEW_CHECKS.motion}})).ran, [], 'not picked for a film that moves nothing');
+  assert.deepEqual((await reviewPart(await compileExample('iso-world'), {checks: {motion: REVIEW_CHECKS.motion}})).ran, ['motion'], 'picked for one whose focus flies the camera between shots');
 });
 
 test('a critic\'s level is kept: a warn (a body through the floor) asks for a fix, only a note is advice', async () => {
@@ -229,7 +232,9 @@ test('the kit\'s modules import no cycle', () => {
 test('a check runs the moves through footprint-story\'s chart, keeps its record, and log --why --motion answers from it', async t => {
   const out = tempDir('motion-why', t);
   const said = await check(await readInputs({cwd: project, out}));
-  assert.ok(said.endsWith(`\nmotions: story — why a move takes its time: storyreel log --run ${listRuns(out)[0].id} --why duration-0 --motion story (model-<i>: why its model; findings-<i>: what its critics found)`), said.split('\n').at(-1));
+  // (the example's focus flies its camera between shots since 0.47.0, so the flights' line comes after: test/flight.test.mjs)
+  const id = listRuns(out)[0].id;
+  assert.ok(said.endsWith(`\nmotions: story — why a move takes its time: storyreel log --run ${id} --why duration-0 --motion story (model-<i>: why its model; findings-<i>: what its critics found)\ncameras: focus — why a flight takes its time: storyreel log --run ${id} --why flight-0 --camera focus (findings-<k>: what its critics found)`), said.split('\n').slice(-2).join('\n'));
   assert.match(said, /^clean/);
   assert.doesNotMatch(said, /drift|not kept/);
   assert.equal(motionFiles(out).length, 1, 'one record a world that moves, beside the run');
@@ -252,7 +257,7 @@ test('refusals of --motion name what there is', async t => {
   await assert.rejects(log({cwd: project, out, run: '1', motion: 'story'}), /--motion picks the record --why reads: ask with --why/);
   await assert.rejects(ask(out, 'duration-0', true), /--motion names one of the run's worlds that move by its place in the recipe/);
   await assert.rejects(ask(out, true, 'story'), /^Error: --why names a value of the moves, one of what their steps write: intents, wraps, frame, /);
-  await assert.rejects(ask(out, 'duration-0', 'story', {map: 'story'}), /--map and --motion each pick the record --why reads: give one of them/);
+  await assert.rejects(ask(out, 'duration-0', 'story', {map: 'story'}), /--map, --motion and --camera each pick the record --why reads: give one of them/);
   // a check kept before 0.43.0 (no motions in its file) is told apart
   const {writeFileSync} = await import('node:fs');
   const run = listRuns(out)[0], saved = JSON.parse(readFileSync(run.file, 'utf8')), {motions: _motions, ...old} = saved;

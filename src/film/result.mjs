@@ -48,7 +48,11 @@ export function filmOf(state) {
     // The worlds whose map can be built again as a footprintjs run, for its record (a world's `mapRun`): only when one can.
     ...mapRunsOf(storyPathName, storyWorld, stages),
     // The worlds whose pieces move by intent (a world's `motionRun`, `motionFindings`): only when one does.
-    ...motionRunsOf(storyPathName, storyWorld, stages)};
+    ...motionRunsOf(storyPathName, storyWorld, stages),
+    // The focus's flights between its shots (attention.mjs, flight/): when the focus moves the camera. WHY on the film:
+    // `storyreel check` runs them again as a chart for its record (check/cameras.mjs), and the review's `motion` check
+    // reads their critics' findings, as it reads a world's moves'. A film whose focus moves no camera is as it was.
+    ...(attention?.focus?.run ? {cameraRuns: Object.freeze([attention.focus.run])} : {})};
 }
 
 /** The recipe's worlds as [path, world]: the story's (its path `story`), then each stage's (`stages[1]`). */

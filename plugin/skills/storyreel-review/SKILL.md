@@ -25,6 +25,8 @@ lines it does not list are never requests.
 `fix <n>`, `broken`), then what to fix, worst first, each with where it is, then what changed since the check
 before (fixed, new, the round). Fix what it lists and call it again; the tools below are for a closer look. To ask where a number of a check came
 from: `npx storyreel log --run 1 --why errors` (or `verdict`, `round`): read from the check's record, nothing run again.
+A camera flight the check flags (`a move that reads wrong: travel-speed …` at `focus.keys[1]`) says why from its own
+record: `npx storyreel log --run 1 --why flight-1 --camera focus` (footprint-story's reason and the limit that set its seconds).
 
 After an edit to the narration, recipe or pacing, `npx storyreel anchors` lists each phrase not said, or said twice,
 with its fix (`check` counts them). Then:

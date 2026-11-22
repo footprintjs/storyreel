@@ -40,9 +40,13 @@ test('springs with a feel: 0 before they start, home after; playful overshoots, 
   assert.throws(() => readFeel('bouncy'), /no feel called "bouncy" \(the feels are snappy, default, heavy, playful, or \{k, d\} of your own\)/);
 });
 
-test('a camera focus: wide before the first key, then it eases to frame each named thing, and back to wide', async () => {
+test('a camera focus: wide before the first key, then it flies to frame each named thing, and back to wide', async () => {
   const film = await make({focus: focus()}), red = at(film, 'a', 'red square'), blue = at(film, 'b', 'the blue one');
-  assert.deepEqual(film.attention.focus, {strategy: 'camera', keys: [{t: +red.toFixed(3), on: 'red', size: 'medium'}, {t: +blue.toFixed(3), on: 'blue', size: 'close'}, {t: +at(film, 'b', 'back to all').toFixed(3), on: 'wide'}]});
+  assert.deepEqual({...film.attention.focus, keys: film.attention.focus.keys.map(({flight, ...k}) => k)}, {strategy: 'camera', keys: [{t: +red.toFixed(3), on: 'red', size: 'medium'}, {t: +blue.toFixed(3), on: 'blue', size: 'close'}, {t: +at(film, 'b', 'back to all').toFixed(3), on: 'wide'}]});
+  // each key's flight is footprint-story's: a front view never turns, so a slerp of 0°, timed by its slide or its zoom
+  assert.deepEqual(film.attention.focus.keys.map(k => [k.flight.kind, k.flight.rule, k.flight.limitedBy]), [['slerp', 'small-turn', 'slide'], ['slerp', 'small-turn', 'slide'], ['slerp', 'small-turn', 'zoom']]);
+  assert.deepEqual(film.attention.focus.keys.map(k => k.flight.seconds), [3.68, 6.74, 3.31]);
+  assert.match(film.attention.focus.keys[0].flight.reason, /^do: 'fly' → slerp: the look turns 0°, .* over 3\.68 s of minimum jerk, set by its slide/);
   const before = film.focusAt(red - .2), framed = film.focusAt(blue - .05), back = film.focusAt(film.total - .01);
   assert.deepEqual([before.z, before.cx, before.cy], [1, 800, 450]);
   assert.ok(framed.z > 2.9 && Math.abs(framed.cx - 300) < 2 && Math.abs(framed.cy - 275) < 2, `framed on red: ${JSON.stringify(framed)}`);

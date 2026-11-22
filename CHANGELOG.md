@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.47.0 — the camera flies between shots by footprint-story's plan
+
+Each key of a `camera` focus is a shot, and the camera's flight from one shot to the next is footprint-story's now
+(`footprint-story/shot` · `planCameraMove`, `^0.33.1`): its path, its seconds by minimum jerk under its limits, and its
+critics. The author writes what a shot frames and, when it matters, how to get there; StoryReel frames each shot and
+draws the flight.
+
+```json
+"focus": {"strategy": "camera", "keys": [
+  {"at": ["map", "reads the database"], "on": ["api", "db"], "size": "medium"},
+  {"at": ["map", "to the logs"], "on": "wide"},
+  {"at": ["desk", "Under the desk"], "on": "switch", "size": "close", "seconds": 2.5, "accept": ["travel-speed"]},
+  {"at": ["desk", "up to the router"], "on": "wide", "do": "cut"}]}
+```
+
+- **Before:** the focus eased its camera to each key on a spring (`feel`, `heavy` by default), every key arriving in
+  about 0.78 s whatever the distance. **Now** (`src/flight/`): each flight is planned between the two framings, handed
+  to footprint-story as cameras seen from the front (a point of the picture lands exactly where the framing puts it),
+  so it never turns: a slerp of 0°, the target sliding in a line, the zoom growing by equal ratios, over the fewest
+  seconds that keep the slide under 1 frame height a second and the growth under 2× a second. A framing ×3 takes
+  3.31 s, a ×2 about 2.1 s, a two-shot ×1.3 under a second. The record keeps each flight with footprint-story's reason
+  (`film.attention.focus.keys[k].flight`: `kind`, `rule`, `seconds`, `limitedBy`, `reason`).
+- **A key's new words** (camera focus only): `do` — `"fly"` (the default) or `"cut"` (there at once; footprint-story
+  has no asked-for cut, so it is the reel's); `seconds` (0.2–60) to fly over a length of its own; `accept`, the
+  critics kept as written. `"do": "orbit"` is refused, naming why: it circles the subject in 3D and a StoryReel picture
+  is drawn flat (a layered world's camera move `orbit` stays the way to slide layers).
+- **Breaking:** a camera focus takes no `feel` (refused, with the fix: its pace is the planner's). `spotlight`, `dim`
+  and `circle` keep their springs and their `feel`, unchanged.
+- **The critics reach `storyreel check`** in the review's `motion` check, at their own level, naming the key and the
+  fix in the recipe's words (`give focus.keys[1] "seconds": 2.3`, a wider size, or a cut — never a lift or a turn, which
+  a flat picture cannot take): footprint-story's `in-sight`, `turn-speed`, `travel-speed`, `line-of-action`, `horizon`,
+  and the reel's own `reel:cut-short` — a key that lands before the flight above it arrives, so the camera stops where
+  it is and sets off again (a warn, with the seconds to move the key by). An accepted critic is advice.
+- **`storyreel log --run 1 --why flight-0 --camera focus`**: a check runs the same steps as a footprintjs chart
+  (read → plan → check) and keeps its record beside the run (`<run>.camera-<k>.record.jsonl`); `flight-<k>` says why
+  `focus.keys[k]`'s flight takes its time, `findings-<k>` what its critics found. A run file always carries `cameras`
+  from 0.47.0 (empty when the focus flies nothing).
+- **The camera list's moves take turns** with a flight from its key until it arrives (was: until the spring settled).
+- **The director spaces its focus keys by the flights:** no key before the flight to the one above it has arrived
+  (left out, with why: `the camera is still flying to the insert key on "red" (it arrives at 3.61 s)`), and the wide
+  key for a new picture lands the flight back's seconds before it (was 0.78 s), leaving out a key with no time to land
+  and fly back, with the numbers and the fix in `film.director.dropped` (`… no time to arrive on "sam.face" and fly back
+  to wide before it — the flights take 6.62 s and the voice leaves 1.40 s: give the line 5.22 s more before the change,
+  or frame it in a scene of its own`). Director films keep fewer keys than before at a brisk voice: a close-up on the
+  last line before a change is left out from 0.3 to 1.2 s a word in `test/director.test.mjs`.
+- **Golden pins:** only the two examples whose focus flies move — `iso-world` from 6.76 s, where its first key lands,
+  to 11.54 s, where the flight back ends (the flight in takes 2.12 s where the spring took 0.78 s, and the flight back
+  sets off at "to the logs", 9.42 s, for 2.12 s), and `iso-motion` from 8.66 s to 13.33 s (in over 2.01 s, back from
+  "was timed", 11.32 s, over 2.01 s). Every pin after those ends is unchanged. Their wide keys moved later in the
+  recipes, because footprint-story's flights in took longer than the 1.52 s and 1.9 s between their keys (each would
+  have been cut short). Every film without a camera focus draws exactly what it drew.
+
 ## 0.46.0 — maps drawn by hand, each line as its pen goes
 
 An isometric world can be drawn by hand: footprint-story's `human:sketchy` line and `human:hatch` texture (now

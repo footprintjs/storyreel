@@ -694,6 +694,12 @@ export const hits = matchLine('Oh, look!', readRules({lang: 'en', tables: appRul
 export const why = (film: Film) => film.director?.proposals.filter(p => p.placed === false).map(p => p.why) ?? [];
 export const restrained: Recipe = {director: {closeUps: {perScene: 1, perTurn: null}, exchange: 3, rules: {shots: [{name: 'found', when: 'I know!', shot: 'close', key: true}], aliases: {sacks: 'row', clay: {on: 'tablet', size: 'close'}}}}};
 export const twoShot: Recipe = {focus: {strategy: 'camera', keys: [{at: ['talk', 'Is it late'], on: ['mia', 'sam']}]}};
+// a camera focus's keys say how each shot is reached: a fly (planned by footprint-story), its own seconds, a cut, the critics kept
+export const flights: Recipe = {focus: {strategy: 'camera', keys: [{at: ['talk', 'Is it late'], on: 'mia', size: 'close', seconds: 2.5, accept: ['travel-speed']}, {at: ['talk', 'late'], on: 'wide', do: 'cut'}]}};
+// @ts-expect-error an orbit circles in 3D, and a picture here is drawn flat: fly or cut
+export const orbitShot: Recipe = {focus: {strategy: 'camera', keys: [{at: ['talk', 'late'], on: 'mia', do: 'orbit'}]}};
+export const flightSeconds = (film: Film): number[] => (film.attention?.focus?.keys ?? []).map(k => k.flight?.seconds ?? 0);
+export const cameraRunNames = (film: Film): string[] => (film.cameraRuns ?? []).map(r => r.name);
 export const groupKit: KitDirection = {camera: 'camera', groups: true};
 // @ts-expect-error the close-up budget is counts
 export const looseBudget: Recipe = {director: {closeUps: {perScene: 'few'}}};
