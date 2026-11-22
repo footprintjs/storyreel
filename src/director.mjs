@@ -30,7 +30,7 @@ import {readRules, NEUTRAL_RULES, RULE_SHOTS, matchLine, wordsOf, endOf} from '.
 import {planFraming, FRAMING} from './director/framing.mjs';
 import {planMoods} from './director/moods.mjs';
 import {cameraKey, actingKeys} from './director/land.mjs';
-import {readScript, offsetsOf, speakersOf, listenersOf, recordKey} from './director/record.mjs';
+import {readScript, offsetsOf, speakersOf, listenersOf, recordKey, droppedKey} from './director/record.mjs';
 import {grammar} from './director/film.mjs';
 
 export {readDirector, readRules, NEUTRAL_RULES, RULE_SHOTS, matchLine, wordsOf, endOf, FRAMING};
@@ -68,6 +68,6 @@ export function direct({storyboard, timings = null, guesses = [], names = null, 
   const framing = planFraming(scenes, {names: known, people, groups, ...grammar(settings)}), acted = planMoods(scenes, {table, guesses, moods, rest, present});
   return {lang: settings.lang, rules: table.source, focus: {strategy: 'camera', keys: framing.keys.map(cameraKey)}, acting: actingKeys(acted.keys),
     proposals: [...framing.keys.map(k => recordKey('camera', null, k)), ...acted.keys.map(k => recordKey('mood', null, k))],
-    dropped: [...framing.dropped.map(k => recordKey('camera', null, k, {why: k.why})), ...acted.dropped.map(k => recordKey('mood', null, k, {why: k.why}))],
+    dropped: [...framing.dropped.map(k => droppedKey('camera', null, k)), ...acted.dropped.map(k => droppedKey('mood', null, k))],
     listeners: {by: 'reactionAt', scenes: listenersOf(ids, reads, people, known)}};
 }

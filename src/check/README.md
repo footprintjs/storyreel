@@ -25,9 +25,17 @@ had to work out itself what its last edit did. Each of those tools is still ther
    fixing (1 after a clean check; one more each check that still has something to fix).
 
 What counts as an error: a phrase the film is keyed to and cannot place, a verdict that failed, and every review
-finding but the six that are advice (`still`, `stale`, `slideshow`, `hook`: a held title can be right; `motion-note`, a
-critic's note on a move; `motion-accepted`, a finding its entry accepts). A phrase the
-film still places (said twice: the first place is used) is advice.
+finding but the seven that are advice (`still`, `stale`, `slideshow`, `hook`: a held title can be right; `motion-note`, a
+critic's note on a move; `motion-accepted`, a finding its entry accepts; `director-note`, a key the director's own
+grammar held back). A phrase the film still places (said twice: the first place is used) is advice.
+
+**What the film knows is said** (`../fix/told.mjs`, from 0.51.0). A key the recipe's `director` left out
+(`film.director.dropped`) is a review finding at the moment it would have landed, `at director`, with its why and its
+fix: lost to the voice's timing (`director`: too soon after the key before, the camera still flying, no time to fly in
+and back before a change of picture) it is a fix, its seconds in the fix — `give the line 4.32 s more before the change,
+or frame it in a scene of its own`; held back by the director's own grammar (`director-note`: the close-up budget, a new
+picture's establishing shot, a better key in its place, nothing there to frame) it is advice, its fix the setting that
+would frame it. A director that leaves nothing out adds nothing to the reply.
 
 ## The chart
 

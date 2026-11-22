@@ -32,3 +32,6 @@ export function listenersOf(scenes, reads, people, names) {
 /** A proposal as the record keeps it: where it lands, its beat and time, what it frames or acts, the rule and the sentence. */
 export const recordKey = (kind, path, k, extra = {}) => ({kind, path, scene: k.scene, at: k.at, t: round(k.t),
   ...(kind === 'camera' ? {on: k.on, ...(k.size ? {size: k.size} : {})} : {who: k.who, mood: k.mood}), rule: k.rule, name: k.name ?? k.rule, said: k.said, ...extra});
+
+/** A key left out as the record keeps it: a proposal's fields, then its level (framing.mjs · DROP_LEVELS), why, and the fix when there is one. */
+export const droppedKey = (kind, path, k) => recordKey(kind, path, k, {level: k.level, why: k.why, ...(k.fix ? {fix: k.fix} : {})});

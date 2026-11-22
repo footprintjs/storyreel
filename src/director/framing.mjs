@@ -82,11 +82,14 @@ function namedIn(s, names, people, aliases) {
   return {thing, person};
 }
 
-/** The close-up budget's word on a line: null (it may close), or why it is held back. */
+/**
+ * The close-up budget's word on a line: null (it may close), or why it is held back, {why, fix?} — the fix the setting
+ * that would let it close (none for a line that goes on its speaker's turn: that is the grammar, not a number).
+ */
 function budgetSays(turn, closes, {perScene, perTurn}) {
-  if (!turn.follows) return `${turn.speaker} speaks again after the narrator, still their turn: a turn that follows someone else gets the close-up`;
-  if (perTurn !== null && turn.closes >= perTurn) return `${turn.speaker}'s turn has had its close-up${perTurn === 1 ? '' : 's'} (closeUps.perTurn ${perTurn})`;
-  if (perScene !== null && closes >= perScene) return `the scene has had its close-ups (closeUps.perScene ${perScene})`;
+  if (!turn.follows) return {why: `${turn.speaker} speaks again after the narrator, still their turn: a turn that follows someone else gets the close-up`};
+  if (perTurn !== null && turn.closes >= perTurn) return {why: `${turn.speaker}'s turn has had its close-up${perTurn === 1 ? '' : 's'} (closeUps.perTurn ${perTurn})`, fix: `to frame it too, give a turn more: "director": {"closeUps": {"perTurn": ${perTurn + 1}}}`};
+  if (perScene !== null && closes >= perScene) return {why: `the scene has had its close-ups (closeUps.perScene ${perScene})`, fix: `to frame it too, give the scene more: "director": {"closeUps": {"perScene": ${perScene + 1}}}`};
   return null;
 }
 
@@ -107,9 +110,9 @@ function framingOf(s, c) {
     }
     if (held.length > 1 && held.includes(s.speaker)) return {hold: true};
     if (close) {
-      const why = budgetSays(c.turn, c.closes, c.closeUps);
-      if (!why) return already ? {hold: true} : close;
-      c.held(close, why);
+      const said = budgetSays(c.turn, c.closes, c.closeUps);
+      if (!said) return already ? {hold: true} : close;
+      c.held(close, said);
       if (held.includes(s.speaker)) return {hold: true};
     }
   }
@@ -123,6 +126,17 @@ function framingOf(s, c) {
   if (last.size === 'close' && held.length === 1) return {frame: has(c.names, held[0]) ? {on: held[0], size: 'medium', who: held[0]} : WIDE, rule: 'after', name: 'after'};
   return null;
 }
+
+/**
+ * How much a key left out weighs, said with it (`level`), for `storyreel check` and the review: `warn` — a key the rules
+ * asked for is lost to the voice's timing (too soon after the one before, the camera still flying, no time to fly back
+ * before a change), and its fix gives the seconds; `note` — the director's own grammar held it back (the close-up
+ * budget, the establishing shot, a better key in its place) or the picture has nothing there to frame. WHY two: a warn
+ * is a shot the film was asked for and does not get; a note is the director doing as it is told.
+ */
+export const DROP_LEVELS = Object.freeze(['warn', 'note']);
+/** A sentence's words as a fix quotes them: a quoted line as it is, narration in quotes. */
+export const quoted = said => (/^".*"$/.test(said) ? said : `"${said}"`);
 
 /** A key as proposed: the beat, what it frames, and why (its rule, the sentence). */
 const keyOf = (s, frame, rule, name, at, t) => ({scene: s.scene, at, t, on: frame.on, ...(frame.size ? {size: frame.size} : {}), who: frame.who ?? null, rule, name, said: s.text, speaker: s.speaker});
@@ -155,6 +169,8 @@ function turnAt(read, n, turn, exchange) {
  */
 export function planFraming(scenes, {names = null, people = new Set(), table, groups = true, starts = null, changes = new Map(), flight = null, skip = new Set(), gap = FRAMING.gap, lead = FRAMING.lead, closeUps = FRAMING.closeUps, exchange = FRAMING.exchange}) {
   const keys = [], dropped = [], aliases = table.aliases ?? {}, fresh = starts ?? new Set(scenes.slice(0, 1).map(r => r.scene));
+  // A key left out, with its level (DROP_LEVELS), why, and the change that would keep it when there is one.
+  const leftOut = (key, level, why, fix = null) => dropped.push({...key, level, why, ...(fix ? {fix} : {})});
   const last = () => keys.at(-1) ?? WIDE;
   // When the flight to the k-th key arrives: its key's time and the flight from the one before (0 when flights are not known).
   const lands = k => keys[k].t + (flight && keys[k].t !== null ? flight(keys[k - 1] ?? null, keys[k]) : 0);
@@ -163,10 +179,16 @@ export function planFraming(scenes, {names = null, people = new Set(), table, gr
     if (rank === RANK.picture) { keys.push(key); return true; }
     const arrives = prev ? lands(keys.length - 1) : -Infinity;
     if (prev && key.t !== null && prev.t !== null && (key.t - prev.t < gap || key.t < arrives)) {
-      const on = `"${[prev.on].flat().join('" + "')}"`, why = key.t - prev.t < gap ? `${(key.t - prev.t).toFixed(2)} s after the ${prev.rule} key on ${on}: one camera move at a time (gap ${gap} s)`
+      const after = key.t - prev.t, soon = after < gap, flying = key.t < arrives, on = `"${[prev.on].flat().join('" + "')}"`;
+      const why = soon ? `${after.toFixed(2)} s after the ${prev.rule} key on ${on}: one camera move at a time (gap ${gap} s)`
         : `the camera is still flying to the ${prev.rule} key on ${on} (it arrives at ${arrives.toFixed(2)} s): one camera move at a time`;
-      if (!(rank >= RANK.line && RANK[prev.rule] < RANK.line)) { dropped.push({...key, why}); return false; }
-      keys.pop(); dropped.push({...prev, why: `the ${key.rule} key on "${[key.on].flat().join('" + "')}" ${(key.t - prev.t).toFixed(2)} s later takes its place`});
+      // the seconds that keep both: past the gap and past the flight's arrival, said with the two lines' words
+      const more = `${Math.max(soon ? gap - after : 0, flying ? arrives - key.t : 0).toFixed(2)} s more after ${quoted(prev.said)}`;
+      if (!(rank >= RANK.line && RANK[prev.rule] < RANK.line)) {
+        leftOut(key, 'warn', why, `give ${quoted(key.said)} ${more} (a pause in the voice before it)${flying ? ', so the camera has arrived' : `, or let the camera's keys come closer ("director": {"gap": ${Math.floor(after * 100) / 100}})`}`);
+        return false;
+      }
+      keys.pop(); leftOut(prev, 'note', `the ${key.rule} key on "${[key.on].flat().join('" + "')}" ${after.toFixed(2)} s later takes its place`, `to keep both, give ${quoted(key.said)} ${more}`);
     }
     keys.push(key); return true;
   };
@@ -177,7 +199,8 @@ export function planFraming(scenes, {names = null, people = new Set(), table, gr
       // said with the numbers a writer changes: the flights' seconds, against the time the voice leaves before the change
       const k = keys.at(-1), needs = lands(keys.length - 1) - k.t + back(), has = start - k.t;
       keys.pop();
-      dropped.push({...k, why: `the picture changes at ${start.toFixed(2)} s (${scene}): no time to arrive on "${[k.on].flat().join('" + "')}" and fly back to wide before it — the flights take ${needs.toFixed(2)} s and the voice leaves ${has.toFixed(2)} s: give the line ${(needs - has).toFixed(2)} s more before the change, or frame it in a scene of its own`});
+      leftOut(k, 'warn', `the picture changes at ${start.toFixed(2)} s (${scene}): no time to arrive on "${[k.on].flat().join('" + "')}" and fly back to wide before it — the flights take ${needs.toFixed(2)} s and the voice leaves ${has.toFixed(2)} s`,
+        `give the line ${(needs - has).toFixed(2)} s more before the change, or frame it in a scene of its own`);
     }
     return start - back();
   };
@@ -195,17 +218,17 @@ export function planFraming(scenes, {names = null, people = new Set(), table, gr
       const opens = n === 0, at = opens || !lead ? s.at : withPlus(s.at, -lead), t = s.t === null ? null : s.t - (opens ? 0 : lead);
       if (opens && j > 0 && !changes.has(read.scene) && last().on !== 'wide') place(keyOf(s, WIDE, 'scene', 'scene', s.at, s.t), RANK.scene);
       const who = turnAt(read, n, turn, exchange); turn = who.turn;
-      const held = (frame, why) => dropped.push({...keyOf(s, frame.frame, 'line', frame.name, at, t), why: `held: ${why}`});
+      const held = (frame, said) => leftOut(keyOf(s, frame.frame, 'line', frame.name, at, t), 'note', `held: ${said.why}`, said.fix);
       const want = framingOf(s, {last: last(), names: known(names, s.t, read.scene), people, table, aliases, groups, closeUps, closes, turn, reply: who.reply, before: read.sentences[n - 1] ?? null, shown, held});
       if (!want || want.hold) return;
       if (opens && fresh.has(read.scene) && !want.key) {
-        dropped.push({...keyOf(s, want.frame, want.rule, want.name, at, t), why: 'held: a new picture keeps its establishing wide shot through its first sentence'});
+        leftOut(keyOf(s, want.frame, want.rule, want.name, at, t), 'note', 'held: a new picture keeps its establishing wide shot through its first sentence');
         if (want.rule === 'line') turn.closes++;   // the turn's close-up was this line: it is not handed on to the next
         return;
       }
       // Framed only where the picture names it when the key lands: on its words when it is first drawn there.
       const [kAt, kT] = t === null || shows(want.frame, read.scene, t) ? [at, t] : [s.at, s.t];
-      if (kT !== t && !shows(want.frame, read.scene, kT)) { dropped.push({...keyOf(s, want.frame, want.rule, want.name, at, t), why: `"${[want.frame.on].flat().join('" + "')}" is not in the picture at ${t.toFixed(2)} s`}); return; }
+      if (kT !== t && !shows(want.frame, read.scene, kT)) { leftOut(keyOf(s, want.frame, want.rule, want.name, at, t), 'note', `"${[want.frame.on].flat().join('" + "')}" is not in the picture at ${t.toFixed(2)} s`); return; }
       if (!place(keyOf(s, want.frame, want.rule, want.name, kAt, kT), RANK[want.rule])) return;
       if (want.rule === 'person') shown.add(want.frame.on);
       if (want.rule === 'line' && !want.key) { closes++; turn.closes++; }

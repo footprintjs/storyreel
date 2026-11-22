@@ -17,7 +17,7 @@
 import {planFraming} from './framing.mjs';
 import {planMoods} from './moods.mjs';
 import {kitDirection, pictures, landWorld, cameraTaken, cameraKey, specPath} from './land.mjs';
-import {readScript, speakersOf, listenersOf, recordKey} from './record.mjs';
+import {readScript, speakersOf, listenersOf, recordKey, droppedKey} from './record.mjs';
 
 /** The shot grammar's settings, as the planner takes them. */
 export const grammar = ({table, gap, lead, closeUps, exchange}) => ({table, gap, lead, closeUps, exchange});
@@ -57,7 +57,7 @@ export function directWorlds(settings, {storyboard, timings, clock, recipe, stor
     const why = new Map(landed.kept.map(x => [x.key, x.why])), placed = k => (why.has(k) ? {placed: false, why: why.get(k)} : {placed: true});
     out.placements.push(...landed.placements);
     out.proposals.push(...framing.keys.map(k => recordKey('camera', p.path, k, placed(k))), ...moods.keys.map(k => recordKey('mood', p.path, k, placed(k))));
-    out.dropped.push(...framing.dropped.map(k => recordKey('camera', p.path, k, {why: k.why})), ...moods.dropped.map(k => recordKey('mood', p.path, k, {why: k.why})));
+    out.dropped.push(...framing.dropped.map(k => droppedKey('camera', p.path, k)), ...moods.dropped.map(k => droppedKey('mood', p.path, k)));
     out.listeners.push(...listenersOf(p.scenes, reads, people, names));
   }
   return out;
@@ -85,7 +85,7 @@ export function directFocus(direction, {recipe, storyboard, names, ownCamera = (
   const whyNot = k => (k.rule === 'picture' ? null : takenIn.get(pictureOf.get(k.scene)?.path) ?? null);
   const kept = framing.keys.filter(k => !whyNot(k));
   direction.proposals.push(...framing.keys.map(k => recordKey('camera', 'focus', k, whyNot(k) ? {placed: false, why: whyNot(k)} : {placed: true})));
-  direction.dropped.push(...framing.dropped.map(k => recordKey('camera', 'focus', k, {why: k.why})));
+  direction.dropped.push(...framing.dropped.map(k => droppedKey('camera', 'focus', k)));
   direction.listeners.push(...listenersOf(focusPictures.flatMap(p => p.scenes), direction.reads, direction.people, at));
   if (!kept.some(k => k.rule !== 'picture')) return null;
   const placement = {path: 'focus', key: 'focus', value: {strategy: 'camera', keys: kept.map(cameraKey)}};

@@ -17,6 +17,7 @@ import {ACTING} from '../acting.mjs';
 import {momentOf} from '../script.mjs';
 import {normSpeech} from 'footprint-story';
 import {matchLine} from './rules.mjs';
+import {quoted} from './framing.mjs';
 
 /** The least seconds between two of one person's changes: what a change takes to act (moodAt refuses closer). */
 const SPACING = Math.max(ACTING.fade, ACTING.settle) + .05;
@@ -67,7 +68,8 @@ export function planMoods(scenes, {table, guesses = [], moods = null, rest = nul
   const key = (who, s, mood, rule, name) => {
     const k = {who, scene: s.scene, at: s.at, t: s.t, mood, rule, name, said: s.text};
     const before = lastAt.get(who);
-    if (s.t !== null && before !== undefined && s.t - before < SPACING) { dropped.push({...k, why: `${(s.t - before).toFixed(2)} s after ${who}'s last change: a change takes ${SPACING.toFixed(2)} s to act`}); return; }
+    // lost to the voice's timing: a warn, with the seconds (framing.mjs · DROP_LEVELS)
+    if (s.t !== null && before !== undefined && s.t - before < SPACING) { dropped.push({...k, level: 'warn', why: `${(s.t - before).toFixed(2)} s after ${who}'s last change: a change takes ${SPACING.toFixed(2)} s to act`, fix: `give ${quoted(s.text)} ${(SPACING - (s.t - before)).toFixed(2)} s more after ${who}'s last change (a pause in the voice before it)`}); return; }
     keys.push(k); if (s.t !== null) lastAt.set(who, s.t);
     if (mood === rest) held.delete(who); else held.set(who, {mood, rule});
   };
@@ -83,7 +85,8 @@ export function planMoods(scenes, {table, guesses = [], moods = null, rest = nul
       if (!s.speaker) return;
       for (const who of [...held.keys()]) if (who !== s.speaker) toRest(who, s, 'rest');
       const rule = matchLine(s, table).mood, mood = rule?.mood && present(s.speaker, s.scene, s.t) ? pick(rule.mood, can(s.speaker)) : null;
-      if (rule?.mood && !mood) dropped.push({who: s.speaker, scene: s.scene, at: s.at, t: s.t, mood: rule.mood[0], rule: 'line', name: rule.name, said: s.text, why: present(s.speaker, s.scene, s.t) ? `the picture's kit acts none of ${rule.mood.join(', ')} for ${s.speaker}` : `${s.speaker} is not in the picture`});
+      // nothing there to act it on (a kit without the face, a person not drawn): a note
+      if (rule?.mood && !mood) dropped.push({who: s.speaker, scene: s.scene, at: s.at, t: s.t, mood: rule.mood[0], rule: 'line', name: rule.name, said: s.text, level: 'note', why: present(s.speaker, s.scene, s.t) ? `the picture's kit acts none of ${rule.mood.join(', ')} for ${s.speaker}` : `${s.speaker} is not in the picture`});
       if (mood && held.get(s.speaker)?.mood !== mood) key(s.speaker, s, mood, 'line', rule.name);
       else if (!mood && held.get(s.speaker)?.rule === 'guess') toRest(s.speaker, s, 'rest');
     });
