@@ -361,7 +361,9 @@ takes it, and a piece hung there always rested inside the block (`reel:contact`,
 where the piece starts, so a piece hung from one tile away swings past its rest and back into the block — and that is
 still a `reel:contact` warn: the rule picks where the rope is tied, never what the swing may do. The record names the
 block, the rule and the pin (`map.motions[i].hung`: `{on, rule: "under" | "beside", pin}`). A block whose top is not
-above the piece's is refused, naming a pin of tiles above it. Tiles off the 1600×900 frame are refused in tiles,
+above the piece's is refused, naming a pin of tiles above it. **A known limit:** the rope and the arm are checked only
+for leaving the frame, not for passing through a block — `reel:contact` sweeps the hanging block's own box, and a line
+has none (a rope down through a crate between the beam and the piece is drawn, and said by nothing). Tiles off the 1600×900 frame are refused in tiles,
 naming where the blocks stand, and so is a way that leaves the frame as it is drawn — a throw's top, a swinging rope —
 checked at each sample, saying the moment, how far off and where its foot is then in tiles (a block the map itself
 draws off the frame is the map's to say).

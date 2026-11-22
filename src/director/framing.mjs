@@ -128,13 +128,17 @@ function framingOf(s, c) {
 }
 
 /**
- * How much a key left out weighs, said with it (`level`), for `storyreel check` and the review: `warn` — a key the rules
- * asked for is lost to the voice's timing (too soon after the one before, the camera still flying, no time to fly back
- * before a change), and its fix gives the seconds; `note` — the director's own grammar held it back (the close-up
- * budget, the establishing shot, a better key in its place) or the picture has nothing there to frame. WHY two: a warn
- * is a shot the film was asked for and does not get; a note is the director doing as it is told.
+ * How much a key left out weighs, said with it (`level`), for `storyreel check` and the review: `warn` — a key the
+ * AUTHOR asked for (a line's own close-up, a rule's key moment: `asked`) lost to the voice's timing (too soon after the
+ * one before, the camera still flying), any key with no time to fly in and back before a change of picture, or a key
+ * moment with nothing there to frame — its fix gives the seconds; `note` — a key of the director's own (scene, insert,
+ * person, after, turn, exchange) lost to the timing, or one its grammar held back (the close-up budget, the establishing
+ * shot, a better key in its place), or nothing there to frame. WHY: a warn is a shot the author asked for and does not
+ * get; a note is the director's own choice, so a film whose director has no rules of its own can read clean.
  */
 export const DROP_LEVELS = Object.freeze(['warn', 'note']);
+/** Whether the author asked for a key: a line's own framing (a shot rule the line matched) or a rule's key moment (`key: true`). */
+const asked = k => k.rule === 'line' || k.key === true;
 /** A sentence's words as a fix quotes them: a quoted line as it is, narration in quotes. */
 export const quoted = said => (/^".*"$/.test(said) ? said : `"${said}"`);
 
@@ -171,6 +175,9 @@ export function planFraming(scenes, {names = null, people = new Set(), table, gr
   const keys = [], dropped = [], aliases = table.aliases ?? {}, fresh = starts ?? new Set(scenes.slice(0, 1).map(r => r.scene));
   // A key left out, with its level (DROP_LEVELS), why, and the change that would keep it when there is one.
   const leftOut = (key, level, why, fix = null) => dropped.push({...key, level, why, ...(fix ? {fix} : {})});
+  // a key the author asked for (asked: a line rule's close-up, a key moment) lost to the voice's timing is a warn; the
+  // director's own keys (scene, insert, person, after, turn, exchange) lost so are notes (DROP_LEVELS)
+  const lostLevel = k => (asked(k) ? 'warn' : 'note');
   const last = () => keys.at(-1) ?? WIDE;
   // When the flight to the k-th key arrives: its key's time and the flight from the one before (0 when flights are not known).
   const lands = k => keys[k].t + (flight && keys[k].t !== null ? flight(keys[k - 1] ?? null, keys[k]) : 0);
@@ -185,7 +192,7 @@ export function planFraming(scenes, {names = null, people = new Set(), table, gr
       // the seconds that keep both: past the gap and past the flight's arrival, said with the two lines' words
       const more = `${Math.max(soon ? gap - after : 0, flying ? arrives - key.t : 0).toFixed(2)} s more after ${quoted(prev.said)}`;
       if (!(rank >= RANK.line && RANK[prev.rule] < RANK.line)) {
-        leftOut(key, 'warn', why, `give ${quoted(key.said)} ${more} (a pause in the voice before it)${flying ? ', so the camera has arrived' : `, or let the camera's keys come closer ("director": {"gap": ${Math.floor(after * 100) / 100}})`}`);
+        leftOut(key, lostLevel(key), why, `give ${quoted(key.said)} ${more} (a pause in the voice before it)${flying ? ', so the camera has arrived' : `, or let the camera's keys come closer ("director": {"gap": ${Math.floor(after * 100) / 100}})`}`);
         return false;
       }
       keys.pop(); leftOut(prev, 'note', `the ${key.rule} key on "${[key.on].flat().join('" + "')}" ${after.toFixed(2)} s later takes its place`, `to keep both, give ${quoted(key.said)} ${more}`);
@@ -228,8 +235,10 @@ export function planFraming(scenes, {names = null, people = new Set(), table, gr
       }
       // Framed only where the picture names it when the key lands: on its words when it is first drawn there.
       const [kAt, kT] = t === null || shows(want.frame, read.scene, t) ? [at, t] : [s.at, s.t];
-      if (kT !== t && !shows(want.frame, read.scene, kT)) { leftOut(keyOf(s, want.frame, want.rule, want.name, at, t), 'note', `"${[want.frame.on].flat().join('" + "')}" is not in the picture at ${t.toFixed(2)} s`); return; }
-      if (!place(keyOf(s, want.frame, want.rule, want.name, kAt, kT), RANK[want.rule])) return;
+      const moment = want.key ? {key: true} : {}, on = `"${[want.frame.on].flat().join('" + "')}"`;
+      // a key moment is the author's: never filed as a note, so its fix says how to have it framed
+      if (kT !== t && !shows(want.frame, read.scene, kT)) { leftOut({...keyOf(s, want.frame, want.rule, want.name, at, t), ...moment}, want.key ? 'warn' : 'note', `${on} is not in the picture at ${t.toFixed(2)} s`, want.key ? `draw ${on} before ${t.toFixed(2)} s, or say the line once it is drawn` : null); return; }
+      if (!place({...keyOf(s, want.frame, want.rule, want.name, kAt, kT), ...moment}, RANK[want.rule])) return;
       if (want.rule === 'person') shown.add(want.frame.on);
       if (want.rule === 'line' && !want.key) { closes++; turn.closes++; }
     });

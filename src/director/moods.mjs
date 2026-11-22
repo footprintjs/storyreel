@@ -68,8 +68,9 @@ export function planMoods(scenes, {table, guesses = [], moods = null, rest = nul
   const key = (who, s, mood, rule, name) => {
     const k = {who, scene: s.scene, at: s.at, t: s.t, mood, rule, name, said: s.text};
     const before = lastAt.get(who);
-    // lost to the voice's timing: a warn, with the seconds (framing.mjs · DROP_LEVELS)
-    if (s.t !== null && before !== undefined && s.t - before < SPACING) { dropped.push({...k, level: 'warn', why: `${(s.t - before).toFixed(2)} s after ${who}'s last change: a change takes ${SPACING.toFixed(2)} s to act`, fix: `give ${quoted(s.text)} ${(SPACING - (s.t - before)).toFixed(2)} s more after ${who}'s last change (a pause in the voice before it)`}); return; }
+    // lost to the voice's timing: a line's own mood (the author's line, a rule it matched) a warn, the director's own
+    // (guess, rest, scene) a note, each with the seconds (framing.mjs · DROP_LEVELS)
+    if (s.t !== null && before !== undefined && s.t - before < SPACING) { dropped.push({...k, level: rule === 'line' ? 'warn' : 'note', why: `${(s.t - before).toFixed(2)} s after ${who}'s last change: a change takes ${SPACING.toFixed(2)} s to act`, fix: `give ${quoted(s.text)} ${(SPACING - (s.t - before)).toFixed(2)} s more after ${who}'s last change (a pause in the voice before it)`}); return; }
     keys.push(k); if (s.t !== null) lastAt.set(who, s.t);
     if (mood === rest) held.delete(who); else held.set(who, {mood, rule});
   };

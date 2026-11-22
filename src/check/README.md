@@ -32,11 +32,14 @@ is used) is advice.
 
 **What the film knows is said** (`../fix/told.mjs`, from 0.51.0). A key the recipe's `director` left out
 (`film.director.dropped`) is a review finding at the moment it would have landed, `at director`, with its why and its
-fix: lost to the voice's timing (`director`: too soon after the key before, the camera still flying, no time to fly in
-and back before a change of picture) it is a fix, its seconds in the fix — `give the line 4.32 s more before the change,
-or frame it in a scene of its own`; held back by the director's own grammar (`director-note`: the close-up budget, a new
-picture's establishing shot, a better key in its place, nothing there to frame) it is advice, its fix the setting that
-would frame it. A director that leaves nothing out adds nothing to the reply.
+fix. A key the **author** asked for (a line's own close-up, a rule's key moment, `key: true`) lost to the voice's timing
+— too soon after the key before, the camera still flying — or any key with no time to fly in and back before a change
+of picture is a fix (`director`), its seconds in the fix: `give the line 4.32 s more before the change, or frame it in a
+scene of its own`. A key moment is never advice. The director's **own** keys (a new scene's wide key, an insert on a
+thing the narration names, a person, back to medium) lost to the timing, and whatever its grammar held back (the
+close-up budget, a new picture's establishing shot, a better key in its place, nothing there to frame), are advice
+(`director-note`), its fix the change that would frame it — so a director film with no rules of its own can read
+`clean`. A director that leaves nothing out adds nothing to the reply.
 
 So is what a world's kit says of the world it built (`film.kitNotes`: an isometric map's wire behind a block, a name
 that does not fit its top, a face whose paper grain footprint-story thinned — its paint item's role `grain-thinned`; a

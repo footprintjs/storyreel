@@ -50,13 +50,14 @@ test('a close-up with no time to fly in and back is a fix: named at the director
   assert.ok(!(await reviewPart(slow)).ran.includes('director'), 'nothing left out: the check is not run');
 });
 
-test('what the director\'s own grammar holds back is advice, its fix the setting that would frame it; a key too soon is a fix whose seconds keep it', async () => {
+test('what the director\'s own grammar holds back, and its own keys lost to the timing, are advice, each with the change that would frame it', async () => {
   const run = {scenes: [{id: 'run', narration: 'The race starts. {@ann}"Go!" {@ann}"Go on!" {@bo}"Faster!" They run. {@ann}"Look!" They run on. {@bo}"Yes!"'}]};
   const times = evenTimings({scenes: [{id: 'run', narration: 'The race starts. Go! Go on! Faster! They run. Look! They run on. Yes!'}]}, {wordSeconds: 1});
   const names = ['ann', 'ann.face', 'bo', 'bo.face'], d = direct({storyboard: run, timings: times, names, groups: false});
   assert.deepEqual(d.dropped.map(x => [x.said, x.level, x.fix ?? null]), [
     ['"Go on!"', 'note', 'to frame it too, give a turn more: "director": {"closeUps": {"perTurn": 2}}'],
-    ['They run.', 'warn', 'give "They run." 1.00 s more after "Faster!" (a pause in the voice before it), or let the camera\'s keys come closer ("director": {"gap": 1})'],
+    // the director's own way back to medium, too soon after Bo's close-up: its key, not the author's — a note
+    ['They run.', 'note', 'give "They run." 1.00 s more after "Faster!" (a pause in the voice before it), or let the camera\'s keys come closer ("director": {"gap": 1})'],
     ['"Look!"', 'note', 'to frame it too, give the scene more: "director": {"closeUps": {"perScene": 3}}'],
     ['"Yes!"', 'note', 'to frame it too, give the scene more: "director": {"closeUps": {"perScene": 3}}']]);
   // each fix, followed, frames what it was about
@@ -65,9 +66,9 @@ test('what the director\'s own grammar holds back is advice, its fix the setting
   // through the check: advice asks for no fix, so a film whose director only held keys back reads clean
   const notes = d.dropped.filter(x => x.level === 'note'), film = {director: {dropped: notes.map(x => ({...x, kind: 'camera', path: 'focus'}))}, clock: {start: () => 0}};
   const hits = REVIEW_CHECKS.director.find({film, window: {from: 0, to: 30}});
-  assert.deepEqual(hits.map(h => h.kind), ['director-note', 'director-note', 'director-note']);
+  assert.deepEqual(hits.map(h => h.kind), ['director-note', 'director-note', 'director-note', 'director-note']);
   const problems = problemsOf({review: {findings: hits.map(h => ({...h, scene: 'run', from: h.t, to: h.t})), lines: hits.map(h => h.what), verdicts: []}});
-  assert.deepEqual(problems.map(p => p.level), ['advice', 'advice', 'advice']);
+  assert.deepEqual(problems.map(p => p.level), ['advice', 'advice', 'advice', 'advice']);
   assert.match(hits[0].what, /^the exclamation key on "ann\.face" \(close\) at "Go on!" in the focus: held: ann's turn has had its close-up \(closeUps\.perTurn 1\)$/);
 });
 
@@ -119,4 +120,34 @@ test('the fix a world\'s note names can be followed: the grain written out at th
   const quiet = await compileFilm({storyboard: sb, timings: evenTimings(sb), recipe: {story: {kit: 'isometric', blocks: [{name: 'a', label: 'A'}, {name: 'b', label: 'B'}], wires: [{arrow: 'a to b'}]}}, kits: [isometricKit]});
   assert.deepEqual(quiet.kitNotes, []);
   assert.ok(!(await reviewPart(quiet)).ran.includes('world'));
+});
+
+// The reviewer's probe: the director's default rules, a new scene in the same picture opening on a thing it names. The
+// scene's wide key and the sentence's insert land at once, so the insert is lost to the gap however slow the voice.
+const desk = {scenes: [{id: 'a', narration: 'Night falls. The lamp glows.'}, {id: 'b', narration: 'The desk is bare.'}]};
+const deskFilm = wordSeconds => compileFilm({storyboard: desk, timings: evenTimings(desk, {wordSeconds, tail: .3}), kits: [kit('room', ['lamp', 'desk'])], recipe: {story: {kit: 'room'}, director: 'on'}});
+BOXES.desk = [200, 500, 500, 700]; regions.push({box: BOXES.desk, path: 'names.desk', label: 'desk', name: 'desk'});
+
+test('the director\'s own keys lost to the timing are notes: a director film with no rules of its own reads clean', async () => {
+  for (const wordSeconds of [1, 3]) {
+    const f = await deskFilm(wordSeconds), lost = f.director.dropped.find(d => d.said === 'The desk is bare.' && d.rule === 'insert');
+    assert.ok(lost, `${wordSeconds} s a word: the insert on the desk is left out`);
+    assert.equal(lost.level, 'note', 'the director\'s own insert: advice, never a fix the author cannot follow');
+    assert.ok(f.director.dropped.every(d => d.level === 'note'), 'the author asked for nothing here');
+    const r = await reviewPart(f, {checks: {director: REVIEW_CHECKS.director}});
+    assert.ok(r.findings.length && r.findings.every(x => x.kind === 'director-note'));
+    assert.equal((await checkOf(r)).verdict, 'clean', `${wordSeconds} s a word: what the director left out asks for no fix`);
+  }
+});
+
+test('a key the author asked for and the timing lost is a fix, a key moment too — never filed as a note', () => {
+  const board1 = {scenes: [{id: 'race', narration: 'The race starts. {@ann}"Go!" {@bo}"Yes!"'}]};
+  const quick = evenTimings({scenes: [{id: 'race', narration: 'The race starts. Go! Yes!'}]}, {wordSeconds: .5});
+  const rules = {shots: [{name: 'win', when: ['Yes!'], shot: 'close', key: true}]};
+  const d = direct({storyboard: board1, timings: quick, names: ['ann', 'ann.face', 'bo', 'bo.face'], groups: false, director: {rules}});
+  const win = d.dropped.find(x => x.said === '"Yes!"');
+  assert.deepEqual([win.rule, win.name, win.level], ['line', 'win', 'warn']);
+  assert.match(win.fix, /^give "Yes!" \d\.\d\d s more after "Go!" \(a pause in the voice before it\)/);
+  const go = d.dropped.find(x => x.said === '"Go!"');
+  assert.ok(!go || go.level === 'warn', 'a line\'s own close-up is the author\'s too');
 });

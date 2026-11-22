@@ -12,15 +12,18 @@ fix  0:00.0–0:00.0 one · its world warns: the story: isometric wires[0] (app 
 
 - **What the director leaves out is a finding** (`src/fix/told.mjs`, the review's new `director` check). Each key in
   `film.director.dropped` now carries a `level` and a `fix`, and the check says it at the moment it would have landed,
-  `at director`. **A warn (a fix):** a key the rules asked for and the voice's timing lost — too soon after the key
-  before (`give "They run." 1.00 s more after "Faster!" (a pause in the voice before it), or let the camera's keys come
-  closer ("director": {"gap": 1})`), the camera still flying to it (the seconds until it arrives), no time to fly in and
-  back before a change of picture (0.47.0's words, its seconds), a mood changing too soon after the last. **A note
-  (advice):** the director's own grammar held it back — the close-up budget (its fix the setting: `"director":
-  {"closeUps": {"perTurn": 2}}`), a new picture's establishing shot, a better key taking its place (`to keep both, give
-  … s more`), or nothing there to frame or act (a person not in the picture, a face the kit cannot act). WHY two
-  levels: a warn is a shot the film was asked for and does not get; a note is the director doing as its settings say,
-  and a film whose director only held keys back still reads `clean`. Each fix, followed, frames what it was about
+  `at director`. The level keys on WHO asked for the key. **A warn (a fix):** a key the author asked for — a line's own
+  close-up, a rule's key moment (`key: true`, never filed as a note) — lost to the voice's timing: too soon after the
+  key before (`give "Yes!" 1.50 s more after "Go!" (a pause in the voice before it), …`), the camera still flying to it
+  (the seconds until it arrives); any key with no time to fly in and back before a change of picture (0.47.0's words,
+  its seconds); a line's mood changing too soon after the last. **A note (advice):** the director's own keys lost to
+  the timing — a new scene's wide key, an insert, a person, back to medium (`give "They run." 1.00 s more after
+  "Faster!" …, or let the camera's keys come closer ("director": {"gap": 1})`) — and what its grammar held back: the
+  close-up budget (its fix the setting: `"director": {"closeUps": {"perTurn": 2}}`), a new picture's establishing shot,
+  a better key taking its place (`to keep both, give … s more`), nothing there to frame or act. WHY: a warn is a shot
+  the author asked for and does not get; a note is the director's own choice, so a director film with no rules of its
+  own reads `clean` (pinned: a new scene opening on "The desk is bare." loses its insert to the scene's wide key however
+  slow the voice, and reads clean). Each fix, followed, frames what it was about
   (pinned, `test/told.test.mjs`). **Changed words:** the fly-back drop's `why` no longer ends with its fix; the fix is
   its `fix` field (`test/director.test.mjs` pins the two apart, and the level).
 - **A world's own notes reach the check** (the review's new `world` check). `film.kitNotes` — an isometric map's wire
