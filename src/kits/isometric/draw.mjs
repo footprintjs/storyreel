@@ -120,8 +120,6 @@ function drawLabel(c, w, look) {
   c.fillStyle = look.muted; c.fillText(w.label.toUpperCase(), x, y);
 }
 
-/** A point of a block as built, where its pose puts it (motion.mjs · poseAt): scaled about the pivot, then moved. */
-export const posed = ([x, y], {dx, dy, pivot: [px, py], sx, sy}) => [px + (x - px) * sx + dx, py + (y - py) * sy + dy];
 
 /**
  * A block that moves by intent, at its pose: its rope first when it hangs (the ink, from the pin to its top), then the

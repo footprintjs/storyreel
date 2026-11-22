@@ -23,7 +23,7 @@
 import {planIntents, sampleMove} from 'footprint-story/human';
 import {firstDifference} from './flow.mjs';
 import {MOTION_DOS, REEL_CRITICS} from './motion-read.mjs';
-import {footOf, topOf, cornerOf, landingUnder, offFrame, footTiles, passesThrough, FRAME} from './motion-place.mjs';
+import {footOf, topOf, cornerOf, landingUnder, offFrame, drawnOff, footTiles, sweptThrough, posed, FRAME} from './motion-place.mjs';
 
 /** The frame the moves are planned on: the film's 1600×900 sheet, the size every world draws on. */
 export const MOTION_FRAME = FRAME;
@@ -104,6 +104,13 @@ function placeMoves(map, motions, starts, where) {
       return topOf(there, place.block.size);
     };
     const others = map.blocks.filter((b) => b !== piece && now.get(b) !== null).map((b) => ({block: b, at: now.get(b)}));
+    // a block resting on this one's top when it moves would be left in the air: refused, naming both entries — a
+    // picture with a block floating on nothing is wrong, and only the author knows whether the rider goes too
+    const rider = others.find((o) => landingUnder(o.at, o.block.size, [{block: piece, at}]).block === piece && Math.abs(o.at[2] - (at[2] + piece.size[2])) < 1e-6);
+    if (rider) {
+      const since = lastOf.has(rider.block) ? `since ${motions[lastOf.get(rider.block)].path}` : 'as built';
+      throw new Error(`${m.who}: it moves "${piece.name}" from under "${rider.block.name}", which rests on its top ${since}, and would leave it on nothing — move "${rider.block.name}" off first (a motion for it before ${round3(starts[i])} s), or anchor this move before "${rider.block.name}" lands there`);
+    }
     const made = INTENT_OF[m.do](m, {px, foot, at, piece, target, others, topWidth});
     intents[i] = {do: m.do, name: piece.name, who: m.who.slice(where.length + 2), ...made.intent, ...(m.wrap.length ? {wrap: m.wrap} : {}), ...(m.model !== null ? {model: m.model} : {})};
     // the foot's way in tiles, for its place in the paint order and the pass-through check (poseAt · footTiles); a hang
@@ -135,7 +142,7 @@ export function planMotions(map, motions, clock, where) {
     const culprit = motions.find((m, i) => { try { planIntents([intents[i]], {frame: [...MOTION_FRAME]}); return false; } catch { return true; } });
     throw refusal(e, where, culprit);
   }
-  const moves = motions.map((m, i) => ({path: m.path, piece: m.piece, start: starts[i], seconds: planned.durations[i].seconds, move: planned.moves[i], ...spans[i]}));
+  const moves = motions.map((m, i) => ({path: m.path, piece: m.piece, do: m.do, start: starts[i], seconds: planned.durations[i].seconds, move: planned.moves[i], ...spans[i]}));
   const until = (m) => m.start + m.seconds;
   for (const [i, m] of moves.entries()) {
     // one move at a time a piece, and the blocks a move relies on (its target, what it lands on) stand still meanwhile:
@@ -152,16 +159,43 @@ export function planMotions(map, motions, clock, where) {
     for (const name of motions[i].accept) if (!checks.includes(name)) throw new Error(`${motions[i].who}: accept names "${name}", which its move (${planned.choices[i].model}) is not checked by — its critics are ${checks.join(', ')}`);
   }
   const poseAt = poseAtOf(moves, map);
+  keepOnFrame(map, moves, motions, poseAt);
   const through = throughFindings(map, moves, poseAt);
   return {intents: frozen(intents), planned, moves, ...recordsOf(motions, moves, planned, through), poseAt, run: runOf(intents, planned)};
 }
 
-/** How often a move is sampled for the pass-through check, and the most samples a move takes (a 30 s bounce: 900). */
-const THROUGH_RATE = 30, THROUGH_SAMPLES = 900;
+/**
+ * How often a move is sampled for the pass-through and frame checks, and the most samples a move takes (a 30 s bounce:
+ * 900). The pass-through check sweeps each block between two samples (motion-place · sweptThrough), so a fast move skips
+ * nothing however thin a block; only the bend of the way between two samples (a thirtieth of a second) is taken straight.
+ */
+const SAMPLE_RATE = 30, SAMPLES_MOST = 900;
+/** The moments a move is checked at: its start, its end, and SAMPLE_RATE a second between. */
+const samplesOf = (m) => { const n = Math.min(SAMPLES_MOST, Math.max(2, Math.ceil(m.seconds * SAMPLE_RATE))); return Array.from({length: n + 1}, (_, k) => m.start + (k / n) * m.seconds); };
 
 /**
- * The kit's own critic, `reel:contact`: a move whose block goes into another block on its way (motion-place ·
- * passesThrough), each other block where it stands at that moment. WHY the kit's, not footprint-story's contact critic:
+ * Every move kept on the frame as it is drawn, not only at its written ends: its block's outline and a hang's rope at
+ * each sample (a 50-tile throw's top, a long rope swinging out). Refused naming the entry, the moment, how far off,
+ * and where its foot is then in tiles; the fix is a nearer `to`, or a lower pin. WHY a refusal, as for written tiles:
+ * a block drawn off the frame is a picture nobody sees.
+ */
+function keepOnFrame(map, moves, motions, poseAt) {
+  for (const [i, m] of moves.entries()) {
+    // a block the map itself draws off the frame (a grid written in numbers can) is the map's to say, not its move's
+    if (m.piece.shape.outline.some((p) => offFrame(p))) continue;
+    for (const t of samplesOf(m)) {
+      const pose = poseAt(m.piece, t);
+      const off = drawnOff(m.piece.shape.outline.map((p) => posed(p, pose)), pose.rope ?? []);
+      if (!off) continue;
+      const foot = footOf(pose.at, m.piece.size);
+      throw new Error(`${motions[i].who}: its way leaves the frame — at ${round3(t - m.start)} s ${off.part === 'block' ? 'the block' : 'its rope'} is ${off.off} (its foot at tiles ${tilesText(foot)}) — ${m.tie === 'top' ? 'a pin nearer the blocks, or lower (from)' : 'a nearer to, or one lower on the frame'}`);
+    }
+  }
+}
+
+/**
+ * The kit's own critic, `reel:contact`: a move whose block goes into another block on its way, swept between each
+ * two samples (motion-place · sweptThrough), each other block where it stands then (moving too, when it moves). WHY the kit's, not footprint-story's contact critic:
  * that one reads boxes on the frame, and on an isometric frame a block's picture overlaps blocks it is nowhere near (a
  * ball resting on a top is inside its box on the frame) — only the world's tiles can say what a block passes through.
  * One finding a move, at its deepest. Its record is the world's, not the intent decider's run (that run has no tiles).
@@ -169,12 +203,12 @@ const THROUGH_RATE = 30, THROUGH_SAMPLES = 900;
 function throughFindings(map, moves, poseAt) {
   const placeAt = (b, t) => poseAt(b, t)?.at ?? [b.at[0], b.at[1], b.at[2] ?? 0];
   return moves.flatMap((m, i) => {
-    const n = Math.min(THROUGH_SAMPLES, Math.max(2, Math.ceil(m.seconds * THROUGH_RATE)));
+    const times = samplesOf(m), rest = map.blocks.filter((b) => b !== m.piece);
     let worst = null;
-    for (let k = 0; k <= n; k += 1) {
-      const t = m.start + (k / n) * m.seconds, others = map.blocks.filter((b) => b !== m.piece).map((b) => ({block: b, at: placeAt(b, t)}));
-      const hit = passesThrough(m.piece, placeAt(m.piece, t), others);
-      if (hit && (!worst || hit.depth > worst.depth)) worst = {...hit, t};
+    for (let k = 1; k < times.length; k += 1) {
+      const [t0, t1] = [times[k - 1], times[k]];
+      const hit = sweptThrough(m.piece.size, placeAt(m.piece, t0), placeAt(m.piece, t1), rest.map((b) => ({block: b, from: placeAt(b, t0), to: placeAt(b, t1)})));
+      if (hit && (!worst || hit.depth > worst.depth)) worst = {...hit, t: t0 + hit.share * (t1 - t0)};
     }
     if (!worst) return [];
     const fix = m.tie === 'top' ? `move "${worst.block.name}" out of its swing, or the pin (from) so it swings clear` : m.do === 'throw' ? `throw it to a place clear of "${worst.block.name}", or move "${worst.block.name}" out of its way`

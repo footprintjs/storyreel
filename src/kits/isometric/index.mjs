@@ -33,7 +33,8 @@ import {walkWay} from 'footprint-story/isometric';
 import {layCables} from './cables.mjs';
 import {notesOf} from './notes.mjs';
 import {rideOf, packetsAt} from './ride.mjs';
-import {drawMap, lookOf, inAt, posed} from './draw.mjs';
+import {drawMap, lookOf, inAt} from './draw.mjs';
+import {posed} from './motion-place.mjs';
 import {planMotions} from './motion.mjs';
 
 export {ISO_LIMITS, readArrow} from './read.mjs';

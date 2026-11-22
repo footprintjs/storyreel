@@ -201,12 +201,19 @@ its lift), in the built map's tiles put on the frame by its grid. Moves are plac
 what the world is then: a fall lands on the highest top under it, else the floor (a block already resting there cannot
 fall); a target block is aimed at **where it stands when the move begins** (a box that fell earlier is caught where it
 fell), and a move that relies on a block that moves meanwhile — its target, what it lands on — is refused with both
-times. A hang ties the rope to its **top**; its pin must be above it. Tiles off the 1600×900 frame are refused in tiles,
-naming where the blocks stand.
+times. A block that moves from under another resting on its top is refused, naming both entries: the rider would be
+left on nothing, and only the author knows whether it goes too (move it off first, or anchor the move before it lands).
+A hang ties the rope to its **top**; its pin must be above it. Tiles off the 1600×900 frame are refused in tiles,
+naming where the blocks stand, and so is a way that leaves the frame as it is drawn — a throw's top, a swinging rope —
+checked at each sample, saying the moment, how far off and where its foot is then in tiles (a block the map itself
+draws off the frame is the map's to say).
 
-**What a move passes through** (`reel:contact`, the kit's own critic): each move is sampled 30 times a second and its
-block, placed in tiles where it is drawn, is checked against every other block where that one stands then; going a
-twentieth of a tile or more into one is a finding naming the block, the moment and the fix (a settle onto a top from
+**What a move passes through** (`reel:contact`, the kit's own critic): each move is sampled 30 times a second, its
+block placed in tiles where it is drawn, and the box is **swept** along each stretch between two samples against every
+other block (moving too, when it moves): `motion-place.mjs` · `sweptThrough` finds the deepest point of each stretch,
+so a fast move skips nothing — a 30-tile reach or a 50-tile throw covers more than a tile between samples, and a wall a
+tenth of a tile thin is still found. Going a twentieth of a tile or more into a block is a finding naming the block,
+the moment and the fix (a settle onto a top from
 beside it rises through its side; a throw onto the same top does not). WHY the kit's and not footprint-story's
 `contact`: that critic reads boxes on the frame, and on an isometric frame a block's picture overlaps blocks it is
 nowhere near (a ball resting on a top is inside that block's box on the frame). This finding is the world's record,

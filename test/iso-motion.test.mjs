@@ -362,3 +362,56 @@ test('a move\'s finding is the same finding after a small edit: its numbers are 
   const keyOf = (what) => problemsOf({review: {findings: [{kind: 'motion', scene: 'drop', what}], lines: [what], verdicts: []}})[0].key;
   assert.equal(keyOf('arc: its move runs straight (it bows 0.0% of its length)'), keyOf('arc: its move runs straight (it bows 0.4% of its length)'));
 });
+
+test('reel:contact sweeps each stretch between samples: a block a tenth of a tile thin is not skipped by a fast move', () => {
+  // a 30-tile reach along the floor and a 50-tile throw, each across a wall 0.1 tiles thin: more than a tile between
+  // two samples, and each wall placed where a check of the samples alone stands it between two of them (found by
+  // running that check: it says nothing for walls at 14 and 25.4)
+  const reach = worldOf({grid: {tile: 20, at: [400, 300]}, blocks: [{name: 'box', at: [0, 0], size: [1, 1, 1]}, {name: 'wall', at: [14, -1.5], size: [0.1, 3, 3]}],
+    motion: [{piece: 'box', do: 'reach', to: [30.5, 0.5]}]});
+  assert.deepEqual(reach.motionFindings.map(f => [f.critic, f.level]), [['reel:contact', 'warn']]);
+  assert.match(reach.motionFindings[0].what, /tiles into "wall" — it passes through a block$/);
+  const toss = worldOf({grid: {tile: 16, at: [400, 500]}, blocks: [{name: 'ball', at: [0, 0], size: [1, 1, 1]}, {name: 'wall', at: [25.4, -1.5], size: [0.1, 3, 40]}],
+    motion: [{piece: 'ball', do: 'throw', to: [50.5, 0.5]}]});
+  assert.deepEqual(toss.motionFindings.map(f => f.critic), ['reel:contact']);
+  assert.match(toss.motionFindings[0].fix, /throw it to a place clear of "wall"/);
+  // the same throw with the wall low enough to clear: nothing
+  assert.deepEqual(worldOf({grid: {tile: 16, at: [400, 500]}, blocks: [{name: 'ball', at: [0, 0], size: [1, 1, 1]}, {name: 'wall', at: [25, -1.5], size: [0.1, 3, 1]}],
+    motion: [{piece: 'ball', do: 'throw', to: [50.5, 0.5]}]}).motionFindings, []);
+});
+
+test('a block resting on one that moves would be left on nothing: refused, naming both entries', () => {
+  const grid = {tile: 100, at: [800, 250]}, box = {name: 'box', at: [2, 2], size: [2, 2, 1]}, ball = {name: 'ball', at: [6, 6], size: [1, 1, 1]};
+  assert.throws(() => worldOf({grid, blocks: [box, ball], motion: [{piece: 'ball', do: 'throw', to: 'box'}, {piece: 'box', do: 'settle', to: [0, 4], at: ['drop', 'the ball is thrown']}]}, 'stage s'),
+    /^Error: stage s: isometric motion\[1\] \("box"\): it moves "box" from under "ball", which rests on its top since motion\[0\], and would leave it on nothing — move "ball" off first \(a motion for it before [\d.]+ s\), or anchor this move before "ball" lands there$/);
+  // resting as built
+  assert.throws(() => worldOf({grid, blocks: [box, {...ball, at: [2.5, 2.5, 1]}], motion: [{piece: 'box', do: 'settle', to: [0, 4]}]}, 'stage s'), /which rests on its top as built, and would leave it on nothing/);
+  // the rider moved off first: the box may go
+  assert.doesNotThrow(() => worldOf({grid, blocks: [box, {...ball, at: [2.5, 2.5, 1]}], motion: [{piece: 'ball', do: 'throw', to: [6, 6]}, {piece: 'box', do: 'settle', to: [0, 4], at: ['drop', 'the ball is thrown']}]}));
+});
+
+test('the drawn way stays on the frame: a throw\'s top or a swinging rope off the frame is refused, in tiles', () => {
+  assert.throws(() => worldOf({grid: {tile: 40, at: [400, 120]}, blocks: [{name: 'ball', at: [0, 0], size: [1, 1, 1]}], motion: [{piece: 'ball', do: 'throw', to: [30.5, 0.5]}]}, 'stage s'),
+    /^Error: stage s: isometric motion\[0\] \("ball"\): its way leaves the frame — at [\d.]+ s the block is \d+ px above \(its foot at tiles \[[\d., ]+\]\) — a nearer to, or one lower on the frame$/);
+  assert.throws(() => worldOf({grid: {tile: 40, at: [800, 300]}, blocks: [{name: 'sign', at: [0, 0], size: [1, 1, 1]}], motion: [{piece: 'sign', do: 'hang', from: [-20, 20, 6]}]}, 'stage s'),
+    /its way leaves the frame — at [\d.]+ s (the block|its rope) is [1-9]\d* px [a-z ]+ \(its foot at tiles \[[-\d., ]+\]\) — a pin nearer the blocks, or lower \(from\)$/);
+});
+
+test('what of a drawn block is off the frame: its outline first, then its rope', async () => {
+  const {drawnOff} = await import('../src/kits/isometric/motion-place.mjs');
+  const inside = [[100, 100], [200, 100], [200, 200]];
+  assert.equal(drawnOff(inside, [[150, 50], [150, 100]]), null);
+  assert.deepEqual(drawnOff(inside, [[150, -20], [150, 100]]), {part: 'rope', off: '20 px above'});
+  assert.deepEqual(drawnOff([[1700, 100], ...inside], [[150, -20]]), {part: 'block', off: '100 px to the right'});
+  assert.deepEqual(drawnOff([[-0.2, 950]]), {part: 'block', off: '1 px to the left and 50 px below'}, 'a fraction of a pixel off is said as one');
+});
+
+test('sweptThrough finds a thin block anywhere on a stretch, not only at its ends or middle', async () => {
+  const {sweptThrough} = await import('../src/kits/isometric/motion-place.mjs');
+  const wall = {block: {name: 'wall', size: [0.1, 3, 3]}, from: [3, -1, 0], to: [3, -1, 0]};
+  const hit = sweptThrough([1, 1, 1], [0, 0, 0], [10, 0, 0], [wall]);
+  assert.equal(hit.block.name, 'wall');
+  assert.ok(Math.abs(hit.depth - 0.1) < 1e-9 && hit.share > 0.2 && hit.share < 0.31, `deepest a fifth to a third of the way (${hit.share})`);
+  assert.equal(sweptThrough([1, 1, 1], [0, 0, 2], [10, 0, 2], [{...wall, block: {name: 'low', size: [0.1, 3, 1]}}]), null, 'over a low wall: nothing');
+  assert.equal(sweptThrough([1, 1, 1], [0, 0, 1], [0, 0, 1], [{block: {name: 'under', size: [1, 1, 1]}, from: [0, 0, 0], to: [0, 0, 0]}]), null, 'resting on a top: touching is not passing through');
+});
