@@ -56,14 +56,25 @@ export interface IsometricSpec {
   grid?: 'fit' | {tile: number | [number, number]; at: [number, number]; rise?: number};
   /** where a fitted picture goes on the 1600×900 frame, [x0, y0, x1, y1] */
   area?: [number, number, number, number];
+  /** the look: footprint-story's style row, a named choice per column (`{line: {name: 'ink', width: 5}}`, `{line: 'none'}`); a column left out, or no style, is today's look */
+  style?: IsoStyleRow;
   /** a warning about the map refuses the film */
   strict?: boolean;
+}
+/** One column's choice: its name, or {name, …its options} (footprint-story's isoStyle). */
+export type IsoStyleEntry = string | {name: string; [option: string]: string | number | boolean};
+/** A style row as a world writes it: footprint-story's columns, each left out its usual choice. */
+export interface IsoStyleRow { shape?: IsoStyleEntry; shading?: IsoStyleEntry; line?: IsoStyleEntry; palette?: IsoStyleEntry; texture?: IsoStyleEntry; effects?: IsoStyleEntry[] }
+/** The style a map was built in, as footprint-story records it: every column's name, and the options written. */
+export interface IsoStyleRecord {
+  readonly row: {readonly shape: string; readonly shading: string; readonly line: string; readonly palette: string; readonly texture: string; readonly effects: readonly string[]};
+  readonly options: Readonly<Record<string, unknown>>;
 }
 /** What the kit says of the map it built, each naming the recipe entry and the fix. */
 export interface IsoNote { readonly level: 'warn' | 'info'; readonly path: string; readonly message: string }
 /** The map as built: who placed it, the tile, every block, floor and cable (frame px, rounded to a tenth). */
 export interface IsoRecord {
-  readonly placed: 'build' | 'hand'; readonly tile: number; readonly fitted: boolean;
+  readonly placed: 'build' | 'hand'; readonly tile: number; readonly fitted: boolean; readonly style: IsoStyleRecord;
   readonly blocks: readonly {name: string; kind: 'block' | 'cylinder'; at: number[]; size: number[]; lines?: string[]; nameSize?: number; fits?: boolean}[];
   readonly floors: readonly {name: string | null; at: number[]; size: number[]; lines?: string[]; fits?: boolean; covered?: boolean}[];
   readonly cables: readonly {name: string | null; from: string; to: string; along: boolean; ports?: (string | null)[]; points: [number, number][]; length: number; unseen: [number, number][]; behind?: string[]; crosses?: number; shared?: number; bends?: number; period?: number}[];

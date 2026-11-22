@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.42.0 — an isometric world takes a style
+
+An isometric world's recipe takes `style`: a row of footprint-story's named style choices (`isoStyle`, 0.25.0), a
+choice per column — `shape`, `shading`, `line`, `palette`, `texture`, `effects`. The kit hands it to the map build
+(the spec's `style`), so the paint list the kit's painter draws follows it. **No frame changes** for a world with no
+`style`: the spec then has no `style` key, and `test/golden.json` is the same.
+
+```json
+{"kit": "isometric", "style": {"line": {"name": "ink", "width": 5}}, "blocks": [{"name": "you"}, {"name": "db"}]}
+```
+
+- **The looks there are** are footprint-story's: `line: {"name": "ink", "width": 5}` for an outlined look (0.5 to
+  20 px; 2.5 is today's), `line: "none"` for no outline on the faces (a floor keeps its tile lines). A column left out
+  is today's look.
+- **Drawn as it asks**: the painter strokes each face at the width its list gives and leaves a face with no stroke
+  unoutlined. `test/iso-style.test.mjs` pins an outlined world's and a no-outline world's pictures (with today's):
+  three different pictures, the ink on the frame least with no outline and most outlined. They are pinned in the
+  test, not in `golden.json`, which pins the example films.
+- **Refusals name the entry, in the kit's words** (`read.mjs` · `readStyle`): a column there is not (`stage map:
+  isometric style takes the columns shape, shading, line, palette, texture, effects … — not "colour"`), a choice there
+  is not, listing those there are (`… style: line has no choice "dashed" — the line choices are "ink" or "none"`), and
+  an option the choice does not take or a value out of its range, in footprint-story's words (`… style: line "ink"
+  takes a width from 0.5 to 20 px — not 50`).
+- **The record says the style each world was built in**, footprint-story's `{row, options}` with every column filled
+  in (the usual row for a world that wrote none): the world's `map.style` and `summary.style` (so the compile's record
+  keeps it beside the world's entry), and the map flow's record, whose `read` step writes `style`. A recorded film's
+  `world.<path>` summary gains the `style` key.
+- Types: `IsometricSpec.style` (`IsoStyleRow`), `IsoRecord.style` (`IsoStyleRecord`).
+
 ## 0.41.0 — the isometric kit paints the map's paint list
 
 The isometric kit no longer draws a block's faces, a cylinder's side and top, or a floor's ground and tile lines face by
