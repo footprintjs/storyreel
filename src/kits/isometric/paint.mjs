@@ -1,12 +1,21 @@
 /**
  * paint — the kit's one canvas painter: a piece's paint list drawn on a 2D canvas, item by item, in the list's order.
  *
- *   paintItems(c, items, {base, ink})   items: footprint-story/isometric's paint list (the map's `style` step:
- *                                       `paints[i]` for a block, `floorPaints[i]` for a floor); base, ink: the kit's colours
+ *   paintItems(c, items, {base, ink, now})   items: footprint-story/isometric's paint list (the map's `style` step:
+ *                                       `paints[i]` for a block, `floorPaints[i]` for a floor); base, ink: the kit's colours;
+ *                                       now: seconds since the piece's start (Infinity, the usual: every stroke whole)
  *
  * The list says what to draw (footprint-story · src/isometric/paint.js): a `polygon`, an `ellipse`, a `path` (moves,
- * lines, arcs, a close) or `lines` (loose segments), each with a fill and a stroke or null. This module only traces
- * each item and fills and strokes it as the list says. It decides no shape and no colour of its own.
+ * lines, arcs, a close), `lines` (loose segments) or a `stroke` (a line drawn by hand: a width and a time per point),
+ * each with a fill and a stroke or null. This module only traces each item and fills and strokes it as the list says.
+ * It decides no shape and no colour of its own.
+ *
+ * WHY a `stroke` is filled, not stroked: a canvas line has one width, and a hand's line thins and tapers along it. The
+ * geometry is all footprint-story's (human · strokeAt, strokeOutline: the one rule a deck's SVG and a film's canvas paint
+ * by): `strokeAt(points, now)` is the line as far as the pen has come (each point says when the pen is there, seconds
+ * from the piece's start; the pen's place between two points at `now`, so the line grows smoothly), and
+ * `strokeOutline(…, {cap})` the one ring round it, both ends capped. This painter only fills that ring — by the
+ * non-zero rule, a canvas's default, because the ring can cross itself at a round cap and even-odd would leave a hole.
  *
  * WHY one painter: a deck and a film paint the same list, so they draw the same picture; a new look (a style) needs a
  * new list, never new drawing code here. It was proven call for call equal to the kit's old face-by-face drawing
@@ -20,14 +29,21 @@
  * (a style's own palette, later) is drawn as given.
  */
 
-/** A hex colour's three channels, 0 to 255 (`#rgb` or `#rrggbb`: a recipe may write either). */
-const channels = (hex) => { const h = hex.length === 4 ? `#${[...hex.slice(1)].map((ch) => ch + ch).join('')}` : hex; return [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); };
+import {mixColour} from 'footprint-story/isometric';
+import {strokeAt, strokeOutline} from 'footprint-story/human';
 
-/** `hex` mixed with `other` by `share` of the other (CSS color-mix in srgb; footprint-story's mixColour, which takes `#rrggbb` only). */
-export const mix = (hex, other, share) => { const a = channels(hex), b = channels(other); return `#${a.map((v, i) => Math.round(v + (b[i] - v) * share).toString(16).padStart(2, '0')).join('')}`; };
+/**
+ * `hex` mixed with `other` by `share` of the other: footprint-story's mixColour (CSS color-mix in srgb, `#rgb` or
+ * `#rrggbb` either side, since 0.32.4), the one mix a deck and a film colour a face by.
+ */
+export const mix = mixColour;
 
-/** A hex colour at an alpha, as a canvas takes it. */
-export const rgba = (hex, alpha) => `rgba(${channels(hex).join(',')},${alpha})`;
+/**
+ * A hex colour at an alpha, as a canvas takes it: `rgba(r,g,b,alpha)`. WHY its own three channels here: footprint-story
+ * has no colour-at-an-alpha (its paint list keeps alpha beside the colour, and an SVG writes it as an opacity); the
+ * colour is read as `#rrggbb` through mixColour first (no mix: `#rgb` written out), so the one colour reader decides it.
+ */
+export const rgba = (hex, alpha) => { const h = mixColour(hex, hex, 0); return `rgba(${[1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(',')},${alpha})`; };
 
 /** An item traced as the canvas's current path. */
 function trace(c, it) {
@@ -35,7 +51,7 @@ function trace(c, it) {
   if (it.item === 'polygon') { it.points.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.closePath(); return; }
   if (it.item === 'ellipse') { c.ellipse(it.cx, it.cy, it.rx, it.ry, 0, 0, 2 * Math.PI); return; }
   if (it.item === 'lines') { for (const [x1, y1, x2, y2] of it.segments) { c.moveTo(x1, y1); c.lineTo(x2, y2); } return; }
-  if (it.item !== 'path') throw new Error(`isometric kit: a paint item is a polygon, an ellipse, a path or lines — not "${it.item}"`);   // refusal: internal (footprint-story's checkPaint lets only these through)
+  if (it.item !== 'path') throw new Error(`isometric kit: a paint item is a polygon, an ellipse, a path, lines or a stroke — not "${it.item}"`);   // refusal: internal (footprint-story's checkPaint lets only these through)
   for (const [op, ...n] of it.segments) {
     if (op === 'move') c.moveTo(n[0], n[1]);
     else if (op === 'line') c.lineTo(n[0], n[1]);
@@ -54,20 +70,62 @@ function fillColour(fill, base) {
   return fill.mix === null ? base : mix(base, fill.mix[0], fill.mix[1]);
 }
 
+/** A stroke's colour as the canvas takes it: its own, else the kit's ink; a whole one as the hex itself, a faint one as rgba. */
+const strokeColour = (s, ink) => { const colour = s.colour ?? ink; return s.alpha === 1 ? colour : rgba(colour, s.alpha); };
+
+/**
+ * Each finished stroke's ring, by its paint item: footprint-story's strokeOutline of the whole stroke, built once.
+ * WHY: a stroke is finished once `now` reaches its last point, and from then on its ring never changes — but a film
+ * draws every frame, and a hatched world holds thousands of strokes, so building every finished ring again each frame
+ * made a frame of a 64-block hatched world tens of times slower than a plain one. The items are the built map's own
+ * (frozen, one object per stroke for the film's life), so the item is the key; a WeakMap lets a ring go with its map.
+ * Only a stroke still being drawn has its ring built at its frame (strokeAt, then strokeOutline). No geometry here.
+ */
+const finished = new WeakMap();
+
+/**
+ * The ring a `stroke` item is filled with `now` seconds after its piece's start: [] before its first point; the
+ * finished ring (built once, `finished`) from its last point on; else footprint-story's ring of the part drawn so far.
+ * Exported for the test that pins a finished ring as built once.
+ */
+export function strokeRing(it, now) {
+  const {points} = it;
+  if (now < points[0][3]) return [];
+  if (now < points.at(-1)[3]) return strokeOutline(strokeAt(points, now), {cap: it.stroke.cap});
+  let ring = finished.get(it);
+  if (!ring) { ring = strokeOutline(points, {cap: it.stroke.cap}); finished.set(it, ring); }
+  return ring;
+}
+
+/**
+ * A `stroke` item drawn as far as the pen has come `now` (seconds from its piece's start): footprint-story's ring round
+ * the part drawn (strokeRing), one path filled once in the stroke's colour, so it never darkens itself at an alpha
+ * under 1. Nothing drawn yet, nothing filled.
+ */
+function paintStroke(c, it, ink, now) {
+  const ring = strokeRing(it, now);
+  if (!ring.length) return;
+  c.beginPath();
+  ring.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y)));
+  c.closePath();
+  c.fillStyle = strokeColour(it.stroke, ink); c.fill('nonzero');
+}
+
 /**
  * The items drawn in order: each traced, filled when its fill comes to a colour, stroked when it has a stroke (its own
- * colour, else the kit's ink, at its alpha; its width, join and cap). `colours`: {base, ink}, the kit's, base null for none.
+ * colour, else the kit's ink, at its alpha; its width, join and cap); a `stroke` item filled as far as the pen has come
+ * `now` (paintStroke). `colours`: {base, ink}, the kit's, base null for none; `now`: seconds since the piece's start.
  */
-export function paintItems(c, items, {base, ink}) {
+export function paintItems(c, items, {base, ink, now = Infinity}) {
   for (const it of items) {
+    if (it.item === 'stroke') { paintStroke(c, it, ink, now); continue; }
     trace(c, it);
     const fill = fillColour(it.fill, base);
     if (fill !== null) { c.fillStyle = fill; c.fill(); }
     const s = it.stroke;
     if (s === null) continue;
-    const colour = s.colour ?? ink;
     // a whole stroke as the hex itself, a faint one as rgba: what the kit drew before the painter, byte for byte
-    c.strokeStyle = s.alpha === 1 ? colour : rgba(colour, s.alpha);
+    c.strokeStyle = strokeColour(s, ink);
     c.lineWidth = s.width; c.lineJoin = s.join; c.lineCap = s.cap;
     c.stroke();
   }

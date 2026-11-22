@@ -95,8 +95,9 @@ that row as it is:
   so the map, its record and every frame are what they were (`test/golden.json` is the same).
 - **The choices are footprint-story's** (0.25.0: `ISO_STYLE_CHOICES`): `line` is `"ink"` (the usual: the ink round
   every face, 2.5 px; option `width`, 0.5 to 20 px, for an outlined look) or `"none"` (no outline on the faces; a floor
-  keeps its tile lines); `shape` `"box"`, `shading` `"tones"`, `palette` `"theme"`, `texture` `"none"` and no
-  `effects` yet. A choice is written as its name (`"none"`) or as `{"name": "ink", …its options}`.
+  keeps its tile lines) or `"human:sketchy"` (drawn by hand, below); `shape` `"box"`, `shading` `"tones"`, `palette`
+  `"theme"`, `texture` `"none"` or `"human:hatch"` (below) and no `effects` yet. A choice is written as its name
+  (`"none"`) or as `{"name": "ink", …its options}`.
 - **Drawn as it asks.** The painter draws each item's stroke at the width the list gives (an outlined 5 px line at
   5 px) and draws no stroke where the list has none (`line: "none"`); the kit still picks the colours (below).
   `test/iso-style.test.mjs` pins an outlined world's and a no-outline world's pictures, different from today's and
@@ -104,7 +105,7 @@ that row as it is:
 - **Refused in the kit's words** (`read.mjs` · `readStyle`), naming the entry: a column there is not
   (`stage map: isometric style takes the columns shape, shading, line, palette, texture, effects (a column left out
   keeps today's look) — not "colour"`), a choice there is not, listing those there are (`… style: line has no choice
-  "dashed" — the line choices are "ink" or "none"`), and an option the choice does not take or a value out of its
+  "dashed" — the line choices are "ink", "none" or "human:sketchy"`), and an option the choice does not take or a value out of its
   range, in footprint-story's words (`… style: line "ink" takes a width from 0.5 to 20 px — not 50`).
 - **The record says the style the map was built in**, as footprint-story records it (`{row, options}`, every column
   filled in): on the world's `map.style`, in its `summary` (so the compile's record keeps it beside the world's entry),
@@ -112,12 +113,45 @@ that row as it is:
 
 ## The painter: the map's paint list on a canvas (from 0.41.0)
 
-`paint.mjs` · `paintItems(c, items, {base, ink})` draws one piece's paint list (footprint-story's `paint.js` format)
-item by item, in the list's order: a `polygon`, a whole `ellipse`, a `path` (moves, lines, arcs of at most half a
-turn counted the way they turn, a close) or loose `lines`, each filled when its fill comes to a colour and stroked
-with its stroke's colour, alpha, width, join and cap. It decides no shape and no colour, and refuses an item or a path
-step it does not know. `draw.mjs` hands it each floor's list (`floorPaints`) and then each block's (`paints`), back to
-front.
+`paint.mjs` · `paintItems(c, items, {base, ink, now})` draws one piece's paint list (footprint-story's `paint.js`
+format) item by item, in the list's order: a `polygon`, a whole `ellipse`, a `path` (moves, lines, arcs of at most half
+a turn counted the way they turn, a close), loose `lines` or a `stroke` (below), each filled when its fill comes to a
+colour and stroked with its stroke's colour, alpha, width, join and cap. It decides no shape and no colour, and refuses
+an item or a path step it does not know. `draw.mjs` hands it each floor's list (`floorPaints`) and then each block's
+(`paints`), back to front.
+
+**A hand-drawn line (from 0.46.0).** A `stroke` item (`{item: 'stroke', points: [[x, y, width, t], …], stroke:
+{colour, alpha, width, join, cap}}`, footprint-story/human · `strokeItems`) has a width and a time per point. A canvas
+line has one width, so the painter fills a ring instead, and every number of it is footprint-story's:
+`strokeOutline(strokeAt(points, now), {cap})` — `strokeAt` the line as far as the pen has come (the pen's place
+between two points included, so it grows smoothly), `strokeOutline` the one ring round it, both ends capped. The
+painter only fills it, once, in the stroke's colour (its ink when it names none), by the non-zero rule (the ring can
+cross itself at a round cap; even-odd would leave a hole). `now` is the frame's time less the piece's `appear` moment
+(else the film's start: `draw.mjs` · `sinceStart`); with no `now` (a still) the line is whole.
+`test/iso-strokes.test.mjs` checks the ring to 1e-6 at every cap and time, a faint line covered once over its ends
+whichever way it runs, and pins a hand-drawn block's pictures.
+
+**A world drawn by hand (from 0.46.0).** footprint-story's two hand-drawn choices, `human:sketchy` (line: each piece's
+edges drawn as a hand would, outline first) and `human:hatch` (texture: the shaded faces hatched, after the line), are
+a tool's own choices. The kit hands them in (`read.mjs` · `STYLE_CHOICES`) to the style check, to the map build
+(`buildIsoMap(spec, ISO_FIT, {choices})`) and to the map flow `storyreel check` runs (`runMapFlow(…, {choices})`), so
+a world writes them as any other choice and the record names them (`style.row`):
+
+```json
+{"kit": "isometric", "style": {"line": {"name": "human:sketchy", "speed": 900}, "texture": {"name": "human:hatch", "spacing": 16}},
+ "blocks": [{"name": "you", "label": "You", "appear": ["sketch", "First the browser"]}]}
+```
+
+Their options are footprint-story's (`human:sketchy`: `width`, `tremor`, `overshoot`, `speed`; `human:hatch`:
+`spacing`, `angle`, `width`, `tremor`). Each piece is drawn as its pen goes from its moment: a hatch is slow (each
+line a stroke), so a wider `spacing` and a faster `speed` finish a piece sooner. `examples/iso-sketch` is pinned in
+`test/golden.json`.
+
+**What it costs a frame.** A finished stroke's ring is built once and kept by its paint item (`paint.mjs` ·
+`strokeRing`); only a stroke still being drawn has its ring built at its frame. Filling still costs per stroke:
+`bench/strokes.mjs` measures a 64-block world drawn whole. So a world's strokes have a budget (ours, `notes.mjs` ·
+`STROKE_BUDGET`): from 2,000 its notes say so with the fix, past 20,000 it is refused naming its style and the fix;
+its summary keeps the count (`strokes`).
 
 **What it paints:** a block's `left`, `right` and `top` faces, a cylinder's `side` and `top`, a floor's `ground` and
 `grid` tile lines. **What stays drawn by hand in `draw.mjs`:** block names and small lines, floor names, cables and
@@ -313,7 +347,7 @@ the same words.
 
 **A world with no motion is exactly as it was**: nothing is planned, its record and summary have no `motions`, no run
 is handed out, and every frame is the same (`test/golden.json` is unchanged; the examples `examples/iso-motion` and
-`examples/iso-roll` add their own pins).
+`examples/iso-roll` add their own pins, as `examples/iso-sketch` does for a world drawn by hand).
 
 **The record keeps footprint-story's decisions, as its data**: the world's `map.motions` has each move's `path`,
 `piece`, `do`, `at` (its start on the film's clock), `seconds`, `model`, `by` (`usual` or `named`), `reason`
@@ -378,7 +412,7 @@ entry's name.
 | `ride.mjs` | the packets at t, from the shared ride numbers |
 | `notes.mjs` | what the kit says, in words |
 | `draw.mjs` | the canvas drawing, StoryDeck's look in the film's theme: the paint lists through `paint.mjs`, the rest by hand |
-| `paint.mjs` | the one canvas painter: a piece's paint list traced, filled and stroked as the list says |
+| `paint.mjs` | the one canvas painter: a piece's paint list traced, filled and stroked as the list says; a hand-drawn `stroke` filled as footprint-story's ring of the part drawn by now |
 | `motion-read.mjs` | the `motion` entries checked, every refusal naming the entry and the fix; what a block can do (`MOTION_DOS`) |
 | `motion.mjs` | each entry made a footprint-story intent on the frame, planned (`planIntents`), timed on the clock and sampled at t (with its place for the paint order); its record, findings and run |
 | `motion-cover.mjs` | which names a moved block covers, and when (footprint-story's rule at each sample): not drawn, not listed to read, said (`reel:covers`) |

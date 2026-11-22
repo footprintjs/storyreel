@@ -436,5 +436,16 @@
    }
   ],
   "pushes": []
+ },
+ "iso-sketch": {
+  "reading": [],
+  "moments": [
+   {
+    "t": 10.04,
+    "kind": "settled",
+    "label": "Drawn by hand"
+   }
+  ],
+  "pushes": []
  }
 }

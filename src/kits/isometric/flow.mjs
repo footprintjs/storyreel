@@ -8,13 +8,15 @@
  * functions buildIsoMap runs, its record kept as a file, so `storyreel log --why at --map story` walks a block's place
  * back through the place step and the decision that let it run (footprint-story/mapflow, docs/design/2026-11-map-flow.md).
  *
- * It is handed the very spec and policy buildIsoMap was handed (`map.spec`, ISO_FIT): never made again here. Its map is
+ * It is handed the very spec, policy and style choices buildIsoMap was handed (`map.spec`, ISO_FIT, read.mjs ·
+ * STYLE_CHOICES): never made again here. Its map is
  * compared with the kit's built map: they must be equal (footprint-story pins it with a property test). `differs` is
  * null, or where they first part ("at[2][0]: 3 here, 4 in the kit's"), for the check to say aloud: the film draws the
  * kit's map, so a difference is a fault of the two compositions, never of the film, and never a silent one.
  */
 import {isDeepStrictEqual} from 'node:util';
 import {ISO_FIT} from './build.mjs';
+import {STYLE_CHOICES} from './read.mjs';
 
 /** The most characters a value is shown with in `differs`. */
 const SHOWN = 60;
@@ -42,7 +44,7 @@ export function firstDifference(here, kit, at = '') {
 export function mapRun(map) {
   return async ({sink, recorders = []} = {}) => {
     const {runMapFlow} = await import('footprint-story/mapflow');
-    const {map: flowed, snapshot} = await runMapFlow(map.spec, ISO_FIT, {...(sink ? {sink} : {}), recorders});
+    const {map: flowed, snapshot} = await runMapFlow(map.spec, ISO_FIT, {choices: STYLE_CHOICES, ...(sink ? {sink} : {}), recorders});
     return {snapshot, differs: firstDifference(flowed, map.built)};
   };
 }

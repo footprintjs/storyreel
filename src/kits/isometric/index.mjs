@@ -32,7 +32,7 @@ import {buildMap} from './build.mjs';
 import {mapRun} from './flow.mjs';
 import {walkWay} from 'footprint-story/isometric';
 import {layCables} from './cables.mjs';
-import {notesOf} from './notes.mjs';
+import {notesOf, strokeNotes, strokeCount} from './notes.mjs';
 import {rideOf, packetsAt} from './ride.mjs';
 import {drawMap, lookOf, inAt} from './draw.mjs';
 import {drawnOutline} from './turn.mjs';
@@ -42,7 +42,7 @@ export {ISO_LIMITS, readArrow} from './read.mjs';
 export {ISO_FIT} from './build.mjs';
 export {ISO_LOOK} from './draw.mjs';
 export {PACKET_RADIUS} from './ride.mjs';
-export {NOTE_FROM} from './notes.mjs';
+export {NOTE_FROM, STROKE_BUDGET} from './notes.mjs';
 export {MOTION_DOS, MOTION_KEYS, MOST_MOTIONS, REEL_CRITICS} from './motion-read.mjs';
 export {MOTION_FRAME} from './motion.mjs';
 
@@ -104,7 +104,9 @@ export function compileIsometric(spec, context) {
     const start = at(w, 'start') ?? w.appearAt ?? 0;
     w.riding = rideOf(w, w.cable.length, start);
   }
-  const notes = Object.freeze(notesOf(map).map((n) => Object.freeze(n)));
+  // a hand-drawn world's strokes against the budget: said in the notes from its note on, refused past its cap (notes.mjs)
+  const strokes = strokeCount(map);
+  const notes = Object.freeze([...notesOf(map), ...strokeNotes(strokes, where)].map((n) => Object.freeze(n)));
   const warned = notes.filter((n) => n.level === 'warn');
   if (map.strict && warned.length) throw new Error(`${where}: the isometric map has ${warned.length} warning${warned.length === 1 ? '' : 's'} (strict: true): ${warned.slice(0, 3).map((n) => n.message.slice(where.length + 2)).join('; ')}${warned.length > 3 ? `; and ${warned.length - 3} more` : ''}`);
   // the blocks that move by intent: every move decided by footprint-story (motion.mjs), timed on the film's clock; none
@@ -136,7 +138,9 @@ export function compileIsometric(spec, context) {
     // what the film's record keeps of this world (film/summaries.mjs · buildSummary): a few counts and the style it was
     // built in, never the map itself
     summary: Object.freeze({placed: map.placed, tile: map.grid.tile[0], style: styleOf(map), blocks: map.blocks.length, floors: map.floors.length, wires: map.wires.length,
-      along: map.wires.filter((w) => w.route?.points).length, packets: map.wires.reduce((n, w) => n + w.packets, 0), ...(motion ? {motions: motion.summary} : {})}),
+      along: map.wires.filter((w) => w.route?.points).length, packets: map.wires.reduce((n, w) => n + w.packets, 0), ...(motion ? {motions: motion.summary} : {}),
+      // how many hand-drawn strokes it holds, for a world that has any (a world with none keeps its summary as it was)
+      ...(strokes ? {strokes} : {})}),
     draw: motion ? (c, t) => { const {poses, order} = movedAt(t); drawMap(c, map, t, look, {poseOf: (b) => poses.get(b) ?? null, order, hidden: (b) => hiddenAt(b, t)}); } : (c, t) => drawMap(c, map, t, look),
     // every piece by its name, once it has come in: a push or a camera move frames "server"; a label by its own path
     regionsAt: (t) => [

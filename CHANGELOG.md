@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.46.0 — maps drawn by hand, each line as its pen goes
+
+An isometric world can be drawn by hand: footprint-story's `human:sketchy` line and `human:hatch` texture (now
+`^0.33.1`, which lets a tool hand its own choices to the map build). Each piece is drawn as its pen goes, from the
+moment it comes in.
+
+```json
+{"type": "world", "scene": "sketch", "world": {"kit": "isometric",
+  "style": {"line": {"name": "human:sketchy", "speed": 900}, "texture": {"name": "human:hatch", "spacing": 16}},
+  "blocks": [{"name": "you", "label": "You", "appear": ["sketch", "First the browser"]},
+             {"name": "db", "kind": "cylinder", "label": "Database", "appear": ["sketch", "Then the database"]}],
+  "wires":  [{"arrow": "you to db"}]}}
+```
+
+- **The painter draws footprint-story's `stroke` item** (a width and a time per point), which it refused before. A
+  canvas line has one width, so it fills a ring, and every number of it is footprint-story's:
+  `strokeOutline(strokeAt(points, now), {cap})` — the line as far as the pen has come (between two points too, so it
+  grows smoothly), capped at both ends. One fill, by the non-zero rule (the ring can cross itself at a round cap).
+  `now` is the frame's time less the piece's `appear` moment, else the film's start; a still draws the line whole.
+- **The two hand-drawn choices are handed in** (`kits/isometric/read.mjs` · `STYLE_CHOICES`) to the style check, the
+  map build and the map flow `storyreel check` runs, so the record names them (`style.row`) as it names the rest. Their
+  options are footprint-story's, and refused in its words naming the entry. Changed words: a refusal listing a
+  column's choices now lists these too (`the line choices are "ink", "none" or "human:sketchy"`).
+- **A finished stroke's ring is built once** (kept by its paint item; only a stroke still being drawn has its ring
+  built at its frame). A 64-block world drawn whole, `bench/strokes.mjs` on one machine (node 24): plain 0.6 ms a
+  frame; `human:sketchy` + `human:hatch` (2,496 strokes) 22.7 ms; hatch spacing 4 (4,672 strokes) 40.1 ms.
+- **A stroke budget (ours):** from 2,000 strokes the world's notes say so (`storyreel check` shows it), with the fix;
+  past 20,000 the world is refused (`stage map: isometric style: the map's hand-drawn lines come to … strokes, and a
+  world draws at most 20000 — give the hatch a wider spacing …`). A world's summary keeps its `strokes` count (none
+  for a world with no strokes, so its record is as it was).
+- **One colour mix:** the kit's own `mix` is footprint-story's `mixColour` (it reads `#rgb` since 0.32.4).
+- **New example** `examples/iso-sketch`, pinned in `test/golden.json` (and the behaviour pins). Every existing pin is
+  unchanged. `test/iso-strokes.test.mjs` checks the ring to 1e-6 at every cap and time, a faint line covered once
+  over, the record of a hand-drawn world, and pins one hand-drawn block's pictures.
+- **`storyreel check`'s map record stays small** (footprint-story 0.33.1): a hand-drawn world's paint is kept as counts and
+  a digest, not every stroke point — a 64-block hatched world's record was 15 MB, and now is about 90 KB.
+
 ## 0.45.0 — one copy of the moving-piece rules, and a hidden name fixed
 
 The rules a moving block is placed by now live once, in footprint-story (now `^0.32.0`, `footprint-story/isometric`),
