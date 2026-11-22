@@ -1,5 +1,71 @@
 # Changelog
 
+## 0.49.0 — a world names a look; a drawing too fast for a hand says so
+
+A world names one of footprint-story's looks (now `^0.36.0`) as its style, and a whiteboard drawing given too short a
+`dur` gets a finding whose fix names the seconds it needs.
+
+```json
+{"type": "world", "scene": "map", "world": {"kit": "isometric", "style": {"look": "duotone"},
+  "blocks": [{"name": "you", "label": "You"}, {"name": "db", "kind": "cylinder", "label": "Database", "tone": "ok"}],
+  "wires":  [{"arrow": "you to db"}]}}
+```
+
+- **Named looks** (`kits/isometric/read.mjs` · `readStyle`): `"style": {"look": …}` takes footprint-story's
+  `outlined` and `line-art` (0.34) and `paper-grain` and `duotone` (0.35), each a style row under a name; a column
+  written beside the look replaces its entry, whole. Refused in footprint-story's words, naming the entry and the fix:
+  a look that is none (`stage map: isometric style: look is one of "outlined", "line-art", "paper-grain", "duotone" (a
+  row of choices under a name), or none — not "glitter"`), a look the row overrides whole (`… look "duotone" sets
+  palette, and the row writes it itself, so the look draws nothing — drop the look, or the palette written beside
+  it`), the grain or hatch beside a duotone. The record keeps footprint-story's `style.look`, and the world's record
+  and summary a `look: {name, ground}` (absent for a world that names none, so every other record is as it was).
+- **The choices handed in are footprint-story's list** (`STYLE_CHOICES` is `HUMAN_STYLE_CHOICES`: `human:sketchy`,
+  `human:hatch` and now `human:grain`), no list of StoryReel's, so its next choice is taken without a change.
+  **Changed words:** a refusal listing a column's choices lists footprint-story's new ones (`the line choices are
+  "ink", "none", "contour" or "human:sketchy"`; shading `"tones" or "paper"`), and the column refusal names the looks.
+- **On a dark ground** (`kits/isometric/looks.mjs`): a film's world is drawn on one ground, the theme's (`lookOf(theme)
+  .bg`), dark when it is darker than the theme's ink. There line-art's paper is the ground (`shading: {name: 'paper',
+  colour}`) and the duotone's paper and ink the ground and the theme's ink (`palette: {name: 'duotone', paper, ink,
+  accent}`), as footprint-story's 0.35.0 notes ask; a column the recipe writes is left as written. The duotone's row
+  is then written out without the look's name (footprint-story refuses a look that draws nothing; the `look` record
+  above keeps it). A dark ground whose colours make no readable duotone is refused, naming the entry and the fix.
+- **A duotone tints the untoned blocks** (`build.mjs` · `specOf`): the kit builds with no colours and the duotone
+  leaves a page-coloured face as it is (where the ok / warn / bad tones live), so it printed only its lines. A world
+  in the duotone now hands each block with no tone its colour (its own, else the kit's tone), and the duotone prints
+  it as a tint of its accent; toned blocks and floors stay the page's. No other world hands a colour.
+- **A block's name is written in the ink that reads on its face** (`looks.mjs` · `nameInk`): the theme's ink when it
+  stands 4.5 : 1 on the block's top, else the ground when that reads better. On the paper and storybook themes that is
+  the ink on every tone (no pinned picture moved); a block given a dark `color` of its own now has its name in the
+  ground's colour, where it was ink on a dark face. **Fixed:** on a dark theme a name on a pale tone was drawn light on light,
+  and the contrast check counted it unseen instead of failing it (4 of 7 words of a test world).
+- **StoryReel's own contrast check reads each look clean on a light ground and a dark one**, each look's scene read
+  alone (`test/iso-looks.test.mjs`, on the paper theme and a night one: ground `#161b22`, ink `#e8e4da`). The word
+  read nearest its threshold, every one the small line "a browser" (needs 4.5 : 1): outlined 5.08 light / 5.43 dark,
+  line-art 5.55 / 6.91, paper-grain 5.08 / 5.43, duotone 5.09 / 5.65; 7 words read, none unseen, in each.
+- **The grain's marks count against the 0.46 stroke budget** (`notes.mjs` · `MARKS_PER_STROKE`: 32 marks a stroke). A
+  grain mark is one segment of a path stroked once a face, a stroke a ring filled: `bench/strokes.mjs` (one machine,
+  node 24) draws the 64-block world in each look at 0.5 to 2.0 ms a frame (plain 0.6, paper-grain 2.0 with 4,462
+  marks), and fine grain over 256 big blocks (264,278 marks, spacing 4) at 68 ms, which now gets the budget's note.
+  A world's summary keeps `marks` beside `strokes` (absent when none; the floors' tile lines are not marks).
+- **The `pace` critic reaches `storyreel check`** (footprint-story 0.36.0, `hand-sketch`): a whiteboard drawing whose
+  pen runs past 2× a hand's pace is a `motion` warning on its item, the fix in the recipe's words — the stick figure
+  0.48.0 squeezed 34× with no finding now reads `its pen draws at 34.3× a hand's pace (13717 px a second along its
+  lines, where a hand draws 400) …` with `give it "dur": 0.86 or more (1.72 draws it at a hand's own pace)`. For a
+  drawing in parts the fix is the item's `dur` that gives that part its seconds. `accept: ["pace"]` keeps a fast
+  drawing as written (advice, not a fault). The docs that said "squeezed with no finding yet" say this now.
+- **The example films, given the seconds the fix named** (none accepted, the critic as footprint-story ships it):
+  `hello`'s pebble bag (`items[5]`, 2.9×) `dur` 0.9 → 1.33; `recap`'s stall (`items[1]`, 4.9×) 1.0 → 2.44; and every
+  eureka's bulb (2.1×, in hello, worlds and recap), which an author cannot time, 0.7 → 0.75 s, the kit's own number
+  (`EUREKA.seconds`). **Golden pins moved:** `hello` 8.28 s (the bag drawn slower) and 15.18 s (the bulb); `worlds`
+  33.82 s (stage `again`'s bulb); `recap` 2.37 s (the stall) and 35.53–52.12 s (the recap strip's recalled board
+  frames and the teaser's rewind of the board, 7 pins). Every other pin, and every behaviour and unmarked pin, is
+  unchanged. The slideshow check's still share moved for recap (0.590 → 0.567); no dead share and no verdict moved.
+  hello's recipe hash (pinned in `test/music.test.mjs`) moved with its `dur`.
+- **New example** `examples/iso-looks`: one map in each look, a stage each, pinned in `test/golden.json`,
+  `test/behaviour.json` and the unmarked fixture.
+- Types: `IsoStyleRow.look`, `IsoLookName`, `IsoLookRecord`, `IsoStyleRecord.look`, `IsoRecord.look`,
+  `STROKE_BUDGET`, `MARKS_PER_STROKE`.
+
 ## 0.48.0 — the whiteboard draws with footprint-story's hand
 
 A whiteboard drawing is now drawn as a hand draws it, by footprint-story's plan (`footprint-story/human`, the

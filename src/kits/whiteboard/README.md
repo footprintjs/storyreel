@@ -26,8 +26,15 @@ width (0.25 to 20 px); `seed` names the hand's wobble.
 
 **Its record.** The drawings run again through the intent decider as a chart in `storyreel check`
 (`log --run 1 --why duration-<k> --motion story`, k counting the drawings in order). Its critics `pen-lifts`,
-`stroke-order` and `hatch-gaps` are wired into the review's `motion` check (on the item, the fix in recipe words;
-`accept` keeps one as written), but they check order and lifts only, and today they cannot fire on a board's drawings: footprint-story always draws a board's lines in the fewest strokes, outline first, and a board sends no fills. A `dur` too short is squeezed with no finding yet (a figure at 0.05 s runs about 34× its natural pace of 1.71 s); a pace critic is to come from footprint-story; StoryReel adds no pace rule of its own. The film's record keeps each drawing's strokes, lifts and seconds (`world.story.summary`).
+`stroke-order`, `hatch-gaps` and `pace` (footprint-story 0.36.0) are wired into the review's `motion` check (on the
+item, the fix in recipe words; `accept` keeps one as written). The order critics cannot fire on a board's drawings:
+footprint-story always draws a board's lines in the fewest strokes, outline first, and a board sends no fills. `pace`
+can: a `dur` too short for the drawing (its pen past 2× a hand's own pace, 400 px a second along a line) is a warning
+whose fix names the dur it needs — a stick figure at 0.05 s runs 34.3× and is told `give it "dur": 0.86 or more (1.72
+draws it at a hand's own pace)`. For a drawing in parts the fix is the item's dur that gives that part its seconds; a
+eureka's bulb is drawn in its own 0.75 s, at a hand's pace. `accept: ["pace"]` keeps a fast drawing meant to be fast.
+StoryReel adds no pace rule of its own. The film's record keeps each drawing's strokes, lifts and seconds
+(`world.story.summary`).
 The stroke budget is the isometric world's (`STROKE_BUDGET`: a note from 2,000, refused past 20,000).
 
 **What is not footprint-story's, and why.**

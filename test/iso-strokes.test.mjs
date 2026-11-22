@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {createCanvas} from '@napi-rs/canvas';
 import {isoStyle, paintPiece, isometric, USUAL_STYLE} from 'footprint-story/isometric';
-import {strokeAt, strokeOutline, sketchyLine, hatchTexture} from 'footprint-story/human';
+import {strokeAt, strokeOutline, sketchyLine, hatchTexture, grainTexture, HUMAN_STYLE_CHOICES} from 'footprint-story/human';
 import {paintItems, rgba, strokeRing} from '../src/kits/isometric/paint.mjs';
 import {strokeNotes, STROKE_BUDGET} from '../src/kits/isometric/notes.mjs';
 import {sinceStart, ISO_LOOK} from '../src/kits/isometric/draw.mjs';
@@ -105,8 +105,10 @@ test('a world styled by hand builds, and its record names the style: the world\'
   const run = await world.mapRun();
   assert.equal(run.differs, null);
   assert.deepEqual(run.snapshot.sharedState.style, {row, options: {}});
-  // the choices the kit hands are footprint-story's own two, nothing of the kit's
-  assert.deepEqual(STYLE_CHOICES, [sketchyLine, hatchTexture]);
+  // the choices the kit hands are footprint-story's own list, nothing of the kit's (0.49.0: HUMAN_STYLE_CHOICES, which
+  // holds the grain too, so the next choice footprint-story ships is taken without a change)
+  assert.equal(STYLE_CHOICES, HUMAN_STYLE_CHOICES);
+  assert.deepEqual(STYLE_CHOICES, [sketchyLine, hatchTexture, grainTexture]);
   // an option is taken in footprint-story's words, and refused in them, naming the entry
   assert.doesNotThrow(() => sketched({...WORLD, style: {line: {name: 'human:sketchy', width: 4}, texture: {name: 'human:hatch', spacing: 12}}}));
   assert.throws(() => sketched({...WORLD, style: {line: {name: 'human:sketchy', width: 50}}}), /^Error: stage map: isometric style: line "human:sketchy" takes a width from 0\.5 to 20 — not 50$/);

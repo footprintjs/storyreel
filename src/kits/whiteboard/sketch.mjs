@@ -4,7 +4,7 @@
  * model: planSketch); its plan says the order of the strokes and why, the pen's pace, width and tremor along each, and
  * its lifts between them. The board only paints what the plan says.
  *
- *   planSketches(drawings)   drawings: [{path, who, at, seconds, shapes, size, seed, accept}] (index.mjs reads them)
+ *   planSketches(drawings)   drawings: [{path, who, at, seconds, shapes, size, seed, accept, eureka?}] (index.mjs reads them)
  *                            → {intents, planned, sketches (one a part), byDrawing, findings, notes, summary, strokes, run}
  *   partsOf(drawing)         → the drawing in parts footprint-story plans one at a time (one part, unless it is too big)
  *   sketchDraw(parts, ink)   → a timeline item's draw(ctx, s) (board.mjs · renderTimeline): the ink so far, and the pen's tip
@@ -49,13 +49,37 @@ export function shapeOf(points, extra = {}) {
 
 /**
  * Each critic's fix in the recipe's words (a whiteboard item has no `layer`, `group`, `fill` or `model`, which
- * footprint-story's fixes name). A critic footprint-story adds later keeps its own fix until it is worded here.
+ * footprint-story's fixes name, and its time is `dur`, not `seconds`). A critic footprint-story adds later keeps its own
+ * fix until it is worded here. `pace` (footprint-story 0.36.0) names the seconds a drawing needs, so its fix is worded
+ * from its own numbers (paceFix).
  */
 const FIXES = Object.freeze({
   'pen-lifts': 'give the lines that meet the same corner points (a line that starts on a shape\'s corner, not beside it), so the pen runs on without a lift — or draw the parts that never meet as items of their own',
   'stroke-order': 'draw what goes inside a shape after it: put it in an item of its own, at a later phrase',
   'hatch-gaps': 'a board\'s drawing is lines, not fills: report it to footprint-story',
 });
+
+const up2 = n => Math.ceil(n * 100 - 1e-9) / 100;
+/** footprint-story's pace fix: the seconds that bring the drawing to its limit, and the seconds a hand's own pace takes. */
+const PACE_FIX = /^slow it: seconds: ([\d.]+) \(or more; ([\d.]+) draws it at a hand's own pace\)$/;
+
+/**
+ * The `pace` critic's fix in the recipe's words: footprint-story's seconds as the item's `dur`. A drawing in parts
+ * (partsOf) gives each part its length's share of `dur`, so the dur a part's seconds need is those seconds over its
+ * share, rounded up to the hundredth as footprint-story rounds. A eureka's bulb has no `dur` (it is drawn in its own
+ * 0.75 s, at a hand's pace since 0.49.0): its fix says so, should one be found. A fix not in those words (too much to
+ * draw in one move) is footprint-story's, with "draw it in parts" said as the board says it.
+ */
+function paceFix(fix, d) {
+  const m = PACE_FIX.exec(fix);
+  if (!m) return fix.replace(/draw it in parts$/, 'draw it in items of their own, one after another');
+  if (d.eureka) return `a eureka's bulb is drawn in its ${d.seconds} s — accept it (accept: ["pace"]), or draw the bulb as a draw item of its own, its dur ${m[1]} or more`;
+  const share = d.seconds / (d.dur ?? d.seconds), dur = n => up2(Number(n) / share);
+  return `give it "dur": ${dur(m[1])} or more (${dur(m[2])} draws it at a hand's own pace)`;
+}
+
+/** A finding's fix in the recipe's words (FIXES, paceFix), else footprint-story's own. */
+const fixOf = (f, d) => (f.critic === 'pace' ? paceFix(f.fix, d) : FIXES[f.critic] ?? f.fix);
 
 const round3 = n => +n.toFixed(3);
 const lengthOf = points => points.reduce((n, p, i) => (i ? n + Math.hypot(p[0] - points[i - 1][0], p[1] - points[i - 1][1]) : n), 0);
@@ -123,7 +147,8 @@ export function planSketches(drawings) {
     if (!(Number.isFinite(d.size) && d.size >= MARKER_SIZE.least && d.size <= MARKER_SIZE.most)) throw new Error(`whiteboard ${d.who}: size is the marker's width in px, from ${MARKER_SIZE.least} to ${MARKER_SIZE.most} — not ${JSON.stringify(d.size)}`);
   }
   if (drawings.length > MOST_INTENTS) throw new Error(`whiteboard: the board has ${drawings.length} drawings (each draw item, and each eureka's bulb), and footprint-story plans at most ${MOST_INTENTS} in one list — draw some on a world stage of their own ({"type": "world", "world": {"kit": "whiteboard", …}})`);
-  const parts = drawings.flatMap((d, drawing) => partsOf(d).map(p => ({...p, drawing})));
+  // each part knows its drawing and that drawing's whole `dur` (a pace fix is worded in it: paceFix)
+  const parts = drawings.flatMap((d, drawing) => partsOf(d).map(p => ({...p, drawing, dur: d.seconds})));
   if (parts.length > MOST_INTENTS) throw new Error(`whiteboard: the board's drawings come to ${parts.length} parts to plan (a drawing past ${MOST_SHAPES} shapes or ${PART_POINTS} corners is drawn in parts), and footprint-story plans at most ${MOST_INTENTS} in one list — draw some on a world stage of their own ({"type": "world", "world": {"kit": "whiteboard", …}})`);
   // the seed names the piece (footprint-story seeds a sketch's tremor by its name and its shapes, never its timing), so
   // the same drawing with the same seed wobbles the same way whenever it is drawn, and another seed differently
@@ -156,7 +181,7 @@ export function planSketches(drawings) {
 export function sketchFindings(drawings, findings) {
   return Object.freeze(findings.map(f => {
     const d = drawings[f.intent], what = f.message.startsWith(`${d.who}: `) ? f.message.slice(d.who.length + 2) : f.message;
-    return Object.freeze({path: d.path, from: d.at, to: d.at + d.seconds, critic: f.critic, level: d.accept.includes(f.critic) ? 'accepted' : f.level, what, fix: FIXES[f.critic] ?? f.fix});
+    return Object.freeze({path: d.path, from: d.at, to: d.at + d.seconds, critic: f.critic, level: d.accept.includes(f.critic) ? 'accepted' : f.level, what, fix: fixOf(f, d)});
   }));
 }
 

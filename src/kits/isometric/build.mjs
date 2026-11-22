@@ -13,6 +13,8 @@
 import {buildIsoMap, isometric, ISO_MAP_POLICIES} from 'footprint-story/isometric';
 import {ballPicture, centreOf, UNTURNED} from './turn.mjs';
 import {STYLE_CHOICES} from './read.mjs';
+import {ISO_LOOK} from './draw.mjs';
+import {inDuotone} from './looks.mjs';
 
 /**
  * The kit's numbers: footprint-story's film policy, StoryReel 0.38.0's own numbers moved there — a fitted tile 96 to
@@ -34,13 +36,17 @@ const MAP_WHO = 'the isometric map';
  * entry's name is the film's, of any length. A wire names its ends' blocks by name (one name, one piece: read.mjs).
  * A ball (the film's own kind, read.mjs · KINDS) is handed on as the cylinder round it: placed, ordered, routed to and
  * named on its top as that cylinder, which holds the whole ball.
+ * A world printed in the duotone palette hands each block with no tone its colour (`colours: {base}`: its own, else the
+ * kit's tone), so the duotone tints it; a toned block keeps the page's colour (looks.mjs says why). No other world hands
+ * any colour: its spec is as it was.
  */
 export function specOf(map, where) {
   const who = (p) => p.who.slice(where.length + 2);   // read.mjs words every piece `${where}: isometric <path>…`
+  const tinted = inDuotone(map.style), colours = (b) => (tinted && !b.tone ? {colours: {base: b.color ?? ISO_LOOK.tone}} : {});
   return {
     who: MAP_WHO,
     blocks: map.blocks.map((b) => ({name: b.name, kind: b.kind === 'ball' ? 'cylinder' : b.kind, at: b.at, size: b.size, label: b.label, small: b.small, rule: b.rule, group: b.group,
-      ports: b.ports.map(({name, at, face}) => ({name, at, face})), who: who(b)})),
+      ports: b.ports.map(({name, at, face}) => ({name, at, face})), ...colours(b), who: who(b)})),
     // a floor with a size and no at was put at [0, 0] by read.mjs: the spec takes a floor's at and size together
     floors: map.floors.map((f) => ({name: f.name, at: f.at, size: f.size, label: f.label, group: f.group, who: who(f)})),
     wires: map.wires.map((w) => ({name: w.name, from: {block: w.arrow.from.block.name, port: w.arrow.from.port}, to: {block: w.arrow.to.block.name, port: w.arrow.to.port},

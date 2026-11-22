@@ -37,6 +37,29 @@ export const STROKE_BUDGET = Object.freeze({note: 2000, most: 20000});
 export const strokeCount = (map) => [...map.blocks, ...map.floors].reduce((n, p) => n + p.paint.filter((it) => it.item === 'stroke').length, 0);
 
 /**
+ * How many marks of a texture's `lines` cost a frame what one stroke does (ours, measured by `bench/strokes.mjs` on one
+ * machine, node 24): a stroke is a ring filled, about 9 µs a frame; a grain mark is one segment of a path stroked once a
+ * face, about 0.25 to 0.3 µs — so 32 marks count as one stroke against STROKE_BUDGET. WHY counted at all: the grain
+ * (`human:grain`, the `paper-grain` look) is one `lines` item a face but up to 2,048 marks in it, and a big world of
+ * fine grain (256 blocks, spacing 4: 264,156 marks) draws about 67 ms a frame.
+ */
+export const MARKS_PER_STROKE = 32;
+
+/** The marks (segments) of the `lines` items a texture lays over a map's faces: every `lines` item but the floors' tile lines (role `grid`, the map's own). */
+export const markCount = (map) => [...map.blocks, ...map.floors].reduce((n, p) => n + p.paint.reduce((k, it) => k + (it.item === 'lines' && it.role !== 'grid' ? it.segments.length : 0), 0), 0);
+
+/**
+ * A world's hand-drawn strokes and texture marks against STROKE_BUDGET (strokeNotes): with no marks, exactly the
+ * strokes' notes; with marks, the two counted together, a stroke for every MARKS_PER_STROKE marks, worded so.
+ */
+export function drawnNotes(strokes, marks, where) {
+  if (!marks) return strokeNotes(strokes, where);
+  const load = strokes + Math.ceil(marks / MARKS_PER_STROKE);
+  return strokeNotes(load, where, {what: `the map's hand-drawn lines (${strokes} strokes) and its texture's ${marks} marks (${MARKS_PER_STROKE} marks a stroke)`,
+    fix: 'give the grain or the hatch a wider spacing (texture: {"name": "human:grain", "spacing": 32}), take the texture out, or draw fewer blocks'});
+}
+
+/**
  * A world's strokes against STROKE_BUDGET: [] under `note`, one note from it, a refusal past `most` — each naming the
  * world's style (`${where}: isometric style`) and the fix. `count`: strokeCount of the built map.
  * The options are another kit's own words for the same budget (the whiteboard's drawings, kits/whiteboard/sketch.mjs) — who it

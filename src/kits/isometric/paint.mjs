@@ -63,7 +63,7 @@ function trace(c, it) {
 }
 
 /** The colour a fill comes to: its own, else its recipe over the kit's base; null when there is nothing to fill with. */
-function fillColour(fill, base) {
+export function fillColour(fill, base) {
   if (fill === null) return null;
   if (fill.colour !== null) return fill.colour;
   if (base === null) return null;   // a floor with no colour of its own: its ground is the frame's, left unpainted

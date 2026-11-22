@@ -20,7 +20,8 @@
 import {packetsAt, PACKET_RADIUS} from './ride.mjs';
 import {arrowHead, headingOf, walkWay, CABLE} from 'footprint-story/isometric';
 import {HEX} from './read.mjs';
-import {paintItems, mix, rgba as withAlpha} from './paint.mjs';
+import {paintItems, fillColour, mix, rgba as withAlpha} from './paint.mjs';
+import {nameInk} from './looks.mjs';
 import {ballPicture, ballPaint, boxPicture, boxPaint, centreOf, onFace, UNTURNED} from './turn.mjs';
 import {posed} from 'footprint-story/isometric';
 
@@ -80,26 +81,34 @@ function drawFloor(c, f, look, t) {
  */
 const toneOf = (b, look) => b.color ?? (b.tone ? mix(look.tones[b.tone], '#ffffff', 0.6) : ISO_LOOK.tone);
 
-/** A block's name upright at `[cx, cy]` (its top's middle; a ball's middle), its lines as wordsToFit broke them, the small line beneath. */
-function drawName(c, b, look, [cx, cy]) {
+/**
+ * A block's name upright at `[cx, cy]` (its top's middle; a ball's middle), its lines as wordsToFit broke them, the small
+ * line beneath, in the ink that reads on `face`, the colour of what it stands on (looks.mjs · nameInk: the theme's ink,
+ * unless the ground reads better there).
+ */
+function drawName(c, b, look, [cx, cy], face) {
   const {lines, size} = b.fitted, lh = size * 1.15, sf = b.smallFitted, small = sf ? sf.size * 1.15 + 2 : 0, height = lines.length * lh + small;
-  const top = cy - height / 2;
-  c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = look.ink;
+  const top = cy - height / 2, ink = nameInk(face, look);
+  c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = ink;
   c.font = `700 ${size}px ${look.sans}`;
   lines.forEach((line, i) => c.fillText(line, cx, top + (i + 0.5) * lh));
-  if (sf) { c.font = `500 ${sf.size}px ${look.sans}`; c.fillStyle = withAlpha(look.ink, ISO_LOOK.smallInk); c.fillText(sf.lines.join(' '), cx, top + lines.length * lh + 2 + (small - 2) / 2); }
+  if (sf) { c.font = `500 ${sf.size}px ${look.sans}`; c.fillStyle = withAlpha(ink, ISO_LOOK.smallInk); c.fillText(sf.lines.join(' '), cx, top + lines.length * lh + 2 + (small - 2) / 2); }
 }
+
+/** The colour of a block's top as its paint list fills it in the kit's base (null: none of its own, the ground shows). */
+const topColour = (b, base) => { const top = b.paint.find((it) => it.role === 'top'); return top ? fillColour(top.fill, base) : null; };
 
 /** A block's faces (or a cylinder's side and top): its paint list, in the kit's colours. Then its name on its top. A ball is drawBall's. */
 function drawBlock(c, b, look, t, named = true, grid = null) {
   if (b.kind === 'ball') { drawBall(c, b, look, grid, UNTURNED, null, named); return; }
   // the list holds each face's recipe (top 20% toward white, sides toward black) and no colour: the kit picks the base
   // and the ink here, so the built map stays the deck's (paint.mjs says why)
-  paintItems(c, b.paint, {base: toneOf(b, look), ink: look.ink, now: sinceStart(b.appearAt, t)});
+  const base = toneOf(b, look);
+  paintItems(c, b.paint, {base, ink: look.ink, now: sinceStart(b.appearAt, t)});
   // a name a moved block covers is not drawn (motion-cover.mjs): under that block it is no word to read, and a few
   // letters left peeking out past it read as a word too faint to read
   if (!named || !b.fitted?.lines.length) return;
-  drawName(c, b, look, b.shape.centre);
+  drawName(c, b, look, b.shape.centre, topColour(b, base));
 }
 
 /**
@@ -109,8 +118,9 @@ function drawBlock(c, b, look, t, named = true, grid = null) {
  */
 function drawBall(c, b, look, grid, turn, pose, named) {
   const ball = ballPicture(grid, centreOf(b), b.size[0] / 2, turn), at = (p) => (pose ? posed(p, pose) : p);
-  paintItems(c, ballPaint(ball, at, ISO_LOOK), {base: toneOf(b, look), ink: look.ink});
-  if (named && b.fitted?.lines.length) drawName(c, b, look, at(ball.centre));
+  const base = toneOf(b, look);
+  paintItems(c, ballPaint(ball, at, ISO_LOOK), {base, ink: look.ink});
+  if (named && b.fitted?.lines.length) drawName(c, b, look, at(ball.centre), base);
 }
 
 /**

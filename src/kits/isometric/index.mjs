@@ -32,9 +32,10 @@ import {buildMap} from './build.mjs';
 import {mapRun} from './flow.mjs';
 import {walkWay} from 'footprint-story/isometric';
 import {layCables} from './cables.mjs';
-import {notesOf, strokeNotes, strokeCount} from './notes.mjs';
+import {notesOf, drawnNotes, strokeCount, markCount} from './notes.mjs';
 import {rideOf, packetsAt} from './ride.mjs';
 import {drawMap, lookOf, inAt} from './draw.mjs';
+import {groundedStyle} from './looks.mjs';
 import {drawnOutline} from './turn.mjs';
 import {planMotions} from './motion.mjs';
 
@@ -42,7 +43,7 @@ export {ISO_LIMITS, readArrow} from './read.mjs';
 export {ISO_FIT} from './build.mjs';
 export {ISO_LOOK} from './draw.mjs';
 export {PACKET_RADIUS} from './ride.mjs';
-export {NOTE_FROM, STROKE_BUDGET} from './notes.mjs';
+export {NOTE_FROM, STROKE_BUDGET, MARKS_PER_STROKE} from './notes.mjs';
 export {MOTION_DOS, MOTION_KEYS, MOST_MOTIONS, REEL_CRITICS} from './motion-read.mjs';
 export {MOTION_FRAME} from './motion.mjs';
 
@@ -79,9 +80,16 @@ const frozen = (v) => { if (v && typeof v === 'object' && !Object.isFrozen(v)) {
  */
 const styleOf = (map) => frozen(structuredClone(map.built.style));
 
+/**
+ * The look the world named, on which ground (looks.mjs · groundedStyle: `{name, ground}`), for a world that names one;
+ * none, no key, so every other record is as it was. WHY beside the style: on a dark ground a duotone's row is written
+ * out with the ground's colours, and footprint-story's record of it (`style`) then names no look.
+ */
+const lookRecord = (map) => (map.look ? {look: map.look} : {});
+
 /** What the kit made, for the record and for whoever checks it (a test, an agent): plain numbers, rounded to a tenth of a px. */
 function recordOf(map) {
-  return {placed: map.placed, tile: map.grid.tile[0], fitted: map.built.grid === 'fitted', style: styleOf(map),
+  return {placed: map.placed, tile: map.grid.tile[0], fitted: map.built.grid === 'fitted', style: styleOf(map), ...lookRecord(map),
     blocks: map.blocks.map((b) => ({name: b.name, kind: b.kind, at: [...b.at], size: [...b.size], ...(b.fitted ? {lines: [...b.fitted.lines], nameSize: b.fitted.size, fits: b.fitted.fits} : {}), ...(b.rule ? {break: b.rule} : {})})),
     floors: map.floors.map((f) => ({name: f.name, at: [...f.at], size: [...f.size], ...(f.place ? {lines: [...f.place.lines], fits: f.place.fits, covered: f.place.covered} : {})})),
     cables: map.wires.map((w) => ({name: w.name, from: w.arrow.from.block.name, to: w.arrow.to.block.name, along: Boolean(w.route?.points), ...(w.route?.ports?.some(Boolean) ? {ports: [...w.route.ports]} : {}),
@@ -92,7 +100,9 @@ function recordOf(map) {
 /** The world, compiled: `spec` the recipe's world entry; `context` the kit context (clock, theme, where). */
 export function compileIsometric(spec, context) {
   const {clock, theme, where = 'the isometric world'} = context;
-  const map = buildMap(readMap(spec ?? {}, where), where);
+  // the world's look on the film's ground (looks.mjs): a named look takes a dark ground's colours where it has its own
+  const look = lookOf(theme), read = readMap(spec ?? {}, where), grounded = groundedStyle(read.style, look, `${where}: isometric style`);
+  const map = buildMap(Object.assign(read, {style: grounded.style, look: grounded.look}), where);
   layCables(map);
   // each anchor resolved in the name of the piece that wrote it: a phrase the voice never says names blocks[2].appear
   const at = (p, key) => {
@@ -104,15 +114,16 @@ export function compileIsometric(spec, context) {
     const start = at(w, 'start') ?? w.appearAt ?? 0;
     w.riding = rideOf(w, w.cable.length, start);
   }
-  // a hand-drawn world's strokes against the budget: said in the notes from its note on, refused past its cap (notes.mjs)
-  const strokes = strokeCount(map);
-  const notes = Object.freeze([...notesOf(map), ...strokeNotes(strokes, where)].map((n) => Object.freeze(n)));
+  // a hand-drawn world's strokes (and a texture's marks: the grain's) against the budget: said in the notes from its note
+  // on, refused past its cap (notes.mjs)
+  const strokes = strokeCount(map), marks = markCount(map);
+  const notes = Object.freeze([...notesOf(map), ...drawnNotes(strokes, marks, where)].map((n) => Object.freeze(n)));
   const warned = notes.filter((n) => n.level === 'warn');
   if (map.strict && warned.length) throw new Error(`${where}: the isometric map has ${warned.length} warning${warned.length === 1 ? '' : 's'} (strict: true): ${warned.slice(0, 3).map((n) => n.message.slice(where.length + 2)).join('; ')}${warned.length > 3 ? `; and ${warned.length - 3} more` : ''}`);
   // the blocks that move by intent: every move decided by footprint-story (motion.mjs), timed on the film's clock; none
   // written, nothing planned, and the world is drawn, framed and recorded exactly as before worlds took a motion
   const motion = map.motion.length ? planMotions(map, map.motion, clock, where) : null;
-  const look = lookOf(theme), shownAt = (p, t) => p.appearAt === null || t >= p.appearAt;   // named from its moment on, as it starts to come in
+  const shownAt = (p, t) => p.appearAt === null || t >= p.appearAt;   // named from its moment on, as it starts to come in
   // the moving blocks' poses at t, and the paint order with each where it is now: footprint-story's back-to-front order
   // (grid.backToFront) of every block, a moved one at its pose's place; the built order while nothing has moved yet
   const movedAt = (t) => {
@@ -137,10 +148,11 @@ export function compileIsometric(spec, context) {
     ...(motion ? {motionRun: motion.run, motionFindings: motion.findings, motionIntents: motion.intents} : {}),
     // what the film's record keeps of this world (film/summaries.mjs · buildSummary): a few counts and the style it was
     // built in, never the map itself
-    summary: Object.freeze({placed: map.placed, tile: map.grid.tile[0], style: styleOf(map), blocks: map.blocks.length, floors: map.floors.length, wires: map.wires.length,
+    summary: Object.freeze({placed: map.placed, tile: map.grid.tile[0], style: styleOf(map), ...lookRecord(map), blocks: map.blocks.length, floors: map.floors.length, wires: map.wires.length,
       along: map.wires.filter((w) => w.route?.points).length, packets: map.wires.reduce((n, w) => n + w.packets, 0), ...(motion ? {motions: motion.summary} : {}),
-      // how many hand-drawn strokes it holds, for a world that has any (a world with none keeps its summary as it was)
-      ...(strokes ? {strokes} : {})}),
+      // how many hand-drawn strokes and texture marks it holds, for a world that has any (a world with none keeps its
+      // summary as it was)
+      ...(strokes ? {strokes} : {}), ...(marks ? {marks} : {})}),
     draw: motion ? (c, t) => { const {poses, order} = movedAt(t); drawMap(c, map, t, look, {poseOf: (b) => poses.get(b) ?? null, order, hidden: (b) => hiddenAt(b, t)}); } : (c, t) => drawMap(c, map, t, look),
     // every piece by its name, once it has come in: a push or a camera move frames "server"; a label by its own path
     regionsAt: (t) => [

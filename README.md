@@ -343,9 +343,10 @@ A phrase that is not in the narration refuses the recipe.
   `ellipse`, `bubble`, `tick`, `arrow`, `poly`), handwriting (`write`), a eureka (`eureka: [x, y]`:
   light bulb + chime), named erasers, spotlights with a camera push. A drawing's stroke order, the pen's pace and
   its lifts are footprint-story's (`hand-sketch`): the item says what, when (`at`) and for how long (`dur`); the
-  marker sits on the pen's tip, and goes through the air between strokes. Its critics (`pen-lifts`, `stroke-order`,
-  `hatch-gaps`) cannot fire on a board's drawings today, and a `dur` too short is squeezed with no finding yet (a pace
-  critic is to come from footprint-story); `storyreel log --run 1 --why duration-0 --motion story` says why the first drawing takes its
+  marker sits on the pen's tip, and goes through the air between strokes. Its critics reach `storyreel check`: the
+  order ones (`pen-lifts`, `stroke-order`, `hatch-gaps`) cannot fire on a board's drawings, and `pace` warns of a
+  `dur` too short for a hand, its fix naming the dur it needs (`give it "dur": 0.86 or more`; `accept: ["pace"]` keeps
+  a fast drawing); `storyreel log --run 1 --why duration-0 --motion story` says why the first drawing takes its
   strokes ([src/kits/whiteboard/README.md](src/kits/whiteboard/README.md)).
 - `pushIn` — after the story, the camera pushes into `card.prop` and it becomes a typed card.
 - `card` — rows of `{value, tone, note, source, tags}`; tones: `available` (known), `unknown`, `dim`.
@@ -3537,7 +3538,9 @@ A studio whose recipe file is not known (no `--recipe`, no `recipe.json` beside 
   `at` the blocks are placed from the wires; `appear` brings a piece in on a phrase; every block and wire is named for
   the camera (`"focus": {"keys": [{"on": "db", …}]}`); `style` names the look, footprint-story's style row
   (`{"line": {"name": "ink", "width": 5}}` outlined, `{"line": "none"}` no outline; left out, today's look; `{"line":
-  "human:sketchy", "texture": "human:hatch"}` drawn by hand, each piece as its pen goes from its moment). A wrong
+  "human:sketchy", "texture": "human:hatch"}` drawn by hand, each piece as its pen goes from its moment), or one of its
+  named looks (`{"look": "outlined"}`, `"line-art"`, `"paper-grain"`, `"duotone"`; on a dark theme line-art and the
+  duotone take the theme's ground and ink, and names keep their contrast). A wrong
   map is refused naming the entry and the fix, and what does not lie well is said in the world's `notes` (`strict:
   true` refuses it). `motion` moves a block by intent in footprint-story's words (`{"piece": "box", "do": "fall"}`,
   `{"piece": "ball", "do": "throw", "to": "server"}`) — `fall`, `throw`, `hang`, `settle`, `reach`, and `roll` (a
@@ -3545,7 +3548,7 @@ A studio whose recipe file is not known (no `--recipe`, no `recipe.json` beside 
   duration and the curve, and a roll's or a tumble's turn is drawn as the grid sees it. A turn the kit cannot draw truly
   (a block or a cylinder rolling) is refused with the fix.
   `import {isometricKit} from 'footprint-storyreel/kits/isometric'`; the keys: src/kits/isometric/README.md;
-  `node examples/iso-world/make.mjs`, `node examples/iso-motion/make.mjs`, `node examples/iso-roll/make.mjs`, `node examples/iso-sketch/make.mjs`.
+  `node examples/iso-world/make.mjs`, `node examples/iso-motion/make.mjs`, `node examples/iso-roll/make.mjs`, `node examples/iso-sketch/make.mjs`, `node examples/iso-looks/make.mjs`.
 
 ```json
 {"type": "world", "scene": "map", "world": {"kit": "isometric",

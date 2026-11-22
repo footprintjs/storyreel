@@ -93,23 +93,69 @@ that row as it is:
 
 - **A column left out is today's look**, and a world with no `style` is exactly today's: the spec has no `style` key,
   so the map, its record and every frame are what they were (`test/golden.json` is the same).
-- **The choices are footprint-story's** (0.25.0: `ISO_STYLE_CHOICES`): `line` is `"ink"` (the usual: the ink round
-  every face, 2.5 px; option `width`, 0.5 to 20 px, for an outlined look) or `"none"` (no outline on the faces; a floor
-  keeps its tile lines) or `"human:sketchy"` (drawn by hand, below); `shape` `"box"`, `shading` `"tones"`, `palette`
-  `"theme"`, `texture` `"none"` or `"human:hatch"` (below) and no `effects` yet. A choice is written as its name
-  (`"none"`) or as `{"name": "ink", …its options}`.
+- **The choices are footprint-story's** (`ISO_STYLE_CHOICES`, and the human door's `HUMAN_STYLE_CHOICES`, handed in
+  whole): `line` is `"ink"` (the usual: the ink round every face, 2.5 px; option `width`, 0.5 to 20 px, for an
+  outlined look), `"none"` (no outline on the faces; a floor keeps its tile lines), `"contour"` (a bold even contour)
+  or `"human:sketchy"` (drawn by hand, below); `shape` `"box"`, `shading` `"tones"` or `"paper"`, `palette` `"theme"`
+  or `"duotone"`, `texture` `"none"`, `"human:hatch"` or `"human:grain"` (below) and no `effects` yet. A choice is
+  written as its name (`"none"`) or as `{"name": "ink", …its options}`.
 - **Drawn as it asks.** The painter draws each item's stroke at the width the list gives (an outlined 5 px line at
   5 px) and draws no stroke where the list has none (`line: "none"`); the kit still picks the colours (below).
   `test/iso-style.test.mjs` pins an outlined world's and a no-outline world's pictures, different from today's and
   from each other.
 - **Refused in the kit's words** (`read.mjs` · `readStyle`), naming the entry: a column there is not
   (`stage map: isometric style takes the columns shape, shading, line, palette, texture, effects (a column left out
-  keeps today's look) — not "colour"`), a choice there is not, listing those there are (`… style: line has no choice
-  "dashed" — the line choices are "ink", "none" or "human:sketchy"`), and an option the choice does not take or a value out of its
-  range, in footprint-story's words (`… style: line "ink" takes a width from 0.5 to 20 px — not 50`).
+  keeps today's look), or a look ({"look": "outlined", "line-art", "paper-grain" or "duotone"}) — not "colour"`), a
+  choice there is not, listing those there are (`… style: line has no choice "dashed" — the line choices are "ink",
+  "none", "contour" or "human:sketchy"`), and an option the choice does not take or a value out of its range, in
+  footprint-story's words (`… style: line "ink" takes a width from 0.5 to 20 px — not 50`).
 - **The record says the style the map was built in**, as footprint-story records it (`{row, options}`, every column
   filled in): on the world's `map.style`, in its `summary` (so the compile's record keeps it beside the world's entry),
   and in the map flow's record (its `read` step writes `style`), the usual row for a world that wrote none.
+
+## Named looks (from 0.49.0)
+
+A world can name one of footprint-story's looks — a style row under a name (`ISO_LOOKS`, footprint-story 0.34 and
+0.35) — in place of writing its columns:
+
+```json
+{"kit": "isometric", "style": {"look": "duotone"}, "blocks": [{"name": "you", "label": "You"}, {"name": "db", "kind": "cylinder", "tone": "ok"}]}
+```
+
+| look | its row | what it draws |
+|---|---|---|
+| `outlined` | `line: "contour"` | today's tones, a bold even contour round each piece and lighter inner lines (the sticker look) |
+| `line-art` | `shading: "paper"`, `line: {"name": "contour", "width": 3, "inner": 1.25}` | ink lines on paper, nothing else |
+| `paper-grain` | `texture: "human:grain"` | today's look printed on paper, a fine seeded grain over every face |
+| `duotone` | `palette: "duotone"` | two inks on paper: lines in the ink, faces tints of the accent; a toned block (ok / warn / bad) keeps its colour |
+
+- **A column written beside the look replaces its entry**, whole (`{"look": "line-art", "line": {"name": "contour",
+  "width": 4}}`). Refused in footprint-story's words, naming the entry: a look that is none (`stage map: isometric
+  style: look is one of "outlined", "line-art", "paper-grain", "duotone" (a row of choices under a name), or none —
+  not "glitter"`), and a look whose every column the row writes (`… look "duotone" sets palette, and the row writes it
+  itself, so the look draws nothing — drop the look, or the palette written beside it`).
+- **On the film's ground** (`looks.mjs` · `groundedStyle`). The ground is the theme's (`lookOf(theme).bg`), dark when
+  it is darker than the theme's ink. On a dark ground line-art's paper is the ground (`shading: {"name": "paper",
+  "colour": <ground>}`) and the duotone's paper and ink are the ground and the theme's ink (`palette: {"name":
+  "duotone", "paper", "ink", "accent"}`), as footprint-story's 0.35.0 notes ask of a dark page — white paper under a
+  light ink, or a navy line on a dark ground, would not be seen. A column the recipe writes is left as written. The
+  duotone's one column then holds the ground's colours, so its row is written out without the look's name
+  (footprint-story refuses a look that draws nothing); the world's record keeps `look: {name, ground}` beside
+  footprint-story's `style` for every world that names a look. On a light ground every look is handed in as written.
+- **A duotone tints the untoned blocks** (`build.mjs` · `specOf`): the kit builds with no colours, and the duotone
+  leaves a face the page colours as it is (where the kit's ok / warn / bad tones live), so a world in the duotone
+  hands each block with no tone its colour (its own, else the kit's tone) and the duotone prints it as a tint. Toned
+  blocks and floors stay the page's. No other world hands a colour: its spec is as it was.
+- **A name is written in the ink that reads on its face** (`looks.mjs` · `nameInk`): the theme's ink when it stands
+  4.5 : 1 on the block's top (every light theme, every tone: no pinned picture moved), else the ground when it reads
+  better — on a dark theme a name on a pale tone was drawn light on light, where the contrast check could not even see
+  it. StoryReel's contrast check reads each look clean on the paper theme and on a dark one, each look's scene alone
+  (`test/iso-looks.test.mjs` pins the closest word: 5.08 to 6.91 : 1, against 4.5 : 1 needed).
+- **The grain's marks count against the stroke budget** (`notes.mjs` · `MARKS_PER_STROKE`, 32 marks a stroke: a mark is
+  one segment of a path stroked once a face, a stroke a ring filled). A world's summary keeps `marks` beside `strokes`
+  (absent when none: the floor's tile lines are the map's own). `bench/strokes.mjs`: the 64-block world in each look
+  0.5 to 2.0 ms a frame (plain 0.6); fine grain on 256 big blocks (264,278 marks) 68 ms, a note.
+- `examples/iso-looks` names each look on a stage of its own, pinned in `test/golden.json`.
 
 ## The painter: the map's paint list on a canvas (from 0.41.0)
 
@@ -131,9 +177,10 @@ cross itself at a round cap; even-odd would leave a hole). `now` is the frame's 
 `test/iso-strokes.test.mjs` checks the ring to 1e-6 at every cap and time, a faint line covered once over its ends
 whichever way it runs, and pins a hand-drawn block's pictures.
 
-**A world drawn by hand (from 0.46.0).** footprint-story's two hand-drawn choices, `human:sketchy` (line: each piece's
-edges drawn as a hand would, outline first) and `human:hatch` (texture: the shaded faces hatched, after the line), are
-a tool's own choices. The kit hands them in (`read.mjs` · `STYLE_CHOICES`) to the style check, to the map build
+**A world drawn by hand (from 0.46.0).** footprint-story's hand-drawn choices, `human:sketchy` (line: each piece's
+edges drawn as a hand would, outline first), `human:hatch` (texture: the shaded faces hatched, after the line) and
+`human:grain` (texture, 0.49.0: the `paper-grain` look's marks), are a tool's own choices. The kit hands in
+footprint-story's whole list (`read.mjs` · `STYLE_CHOICES` = `HUMAN_STYLE_CHOICES`) to the style check, to the map build
 (`buildIsoMap(spec, ISO_FIT, {choices})`) and to the map flow `storyreel check` runs (`runMapFlow(…, {choices})`), so
 a world writes them as any other choice and the record names them (`style.row`):
 
@@ -151,7 +198,7 @@ line a stroke), so a wider `spacing` and a faster `speed` finish a piece sooner.
 `strokeRing`); only a stroke still being drawn has its ring built at its frame. Filling still costs per stroke:
 `bench/strokes.mjs` measures a 64-block world drawn whole. So a world's strokes have a budget (ours, `notes.mjs` ·
 `STROKE_BUDGET`): from 2,000 its notes say so with the fix, past 20,000 it is refused naming its style and the fix;
-its summary keeps the count (`strokes`).
+its summary keeps the count (`strokes`). A texture's marks (the grain's) count too, 32 to a stroke (0.49.0, above).
 
 **What it paints:** a block's `left`, `right` and `top` faces, a cylinder's `side` and `top`, a floor's `ground` and
 `grid` tile lines. **What stays drawn by hand in `draw.mjs`:** block names and small lines, floor names, cables and

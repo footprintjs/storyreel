@@ -813,7 +813,7 @@ export const storyRun = async (make: typeof StoryFrom, driver: typeof InProcess)
 };
 
 // the isometric kit: StoryDeck's maps in a film
-import {isometricKit, compileIsometric, ISO_LIMITS} from 'footprint-storyreel/kits/isometric';
+import {isometricKit, compileIsometric, ISO_LIMITS, MARKS_PER_STROKE, STROKE_BUDGET} from 'footprint-storyreel/kits/isometric';
 import type {IsometricSpec} from 'footprint-storyreel/kits/isometric';
 const isoSpec: IsometricSpec = {blocks: [{name: 'you', label: 'You'}, {name: 'db', kind: 'cylinder', size: [2, 2, 1.2]}],
   floors: [{label: 'Production'}], wires: [{arrow: 'you to db', packets: 1, speed: '260px', ride: [0.15, 0.2], rest: 1, behind: 'fade'}], strict: true};
@@ -827,6 +827,12 @@ const isoStyled: IsometricSpec = {...isoSpec, style: {line: {name: 'ink', width:
 // @ts-expect-error a column footprint-story's style has not
 const isoBadColumn: IsometricSpec = {...isoSpec, style: {colour: 'red'}};
 void isoLine; void isoBadColumn;
+// a named look (footprint-story's), the record naming it and its ground; the grain's marks against the stroke budget
+const isoLooked: IsometricSpec = {...isoSpec, style: {look: 'duotone'}}, isoLookGround: 'light' | 'dark' | undefined = compileIsometric(isoLooked, {clock: isoClock}).map.look?.ground;
+// @ts-expect-error a look footprint-story has not
+const isoBadLook: IsometricSpec = {...isoSpec, style: {look: 'neon'}};
+const isoMarks: number = MARKS_PER_STROKE + STROKE_BUDGET.most;
+void isoLookGround; void isoBadLook; void isoMarks;
 // a world's pieces moved by intent (footprint-story's words), and the record of each move
 const isoMoving: IsometricSpec = {...isoSpec, motion: [{piece: 'you', do: 'fall', at: ['map', 'drops']}, {piece: 'you', do: 'throw', to: 'db', wrap: [{wrapper: 'anticipate'}]},
   {piece: 'you', do: 'hang', from: [2, 2, 4]}, {piece: 'you', do: 'settle', to: [3, 4], model: {name: 'spring', feel: 'heavy'}, accept: ['arc']}]};
