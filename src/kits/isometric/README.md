@@ -147,6 +147,12 @@ Their options are footprint-story's (`human:sketchy`: `width`, `tremor`, `oversh
 line a stroke), so a wider `spacing` and a faster `speed` finish a piece sooner. `examples/iso-sketch` is pinned in
 `test/golden.json`.
 
+**What it costs a frame.** A finished stroke's ring is built once and kept by its paint item (`paint.mjs` ·
+`strokeRing`); only a stroke still being drawn has its ring built at its frame. Filling still costs per stroke:
+`bench/strokes.mjs` measures a 64-block world drawn whole. So a world's strokes have a budget (ours, `notes.mjs` ·
+`STROKE_BUDGET`): from 2,000 its notes say so with the fix, past 20,000 it is refused naming its style and the fix;
+its summary keeps the count (`strokes`).
+
 **What it paints:** a block's `left`, `right` and `top` faces, a cylinder's `side` and `top`, a floor's `ground` and
 `grid` tile lines. **What stays drawn by hand in `draw.mjs`:** block names and small lines, floor names, cables and
 their leads, arrow heads, wire labels on their plates, packets and their trails.

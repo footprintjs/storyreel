@@ -74,12 +74,36 @@ function fillColour(fill, base) {
 const strokeColour = (s, ink) => { const colour = s.colour ?? ink; return s.alpha === 1 ? colour : rgba(colour, s.alpha); };
 
 /**
+ * Each finished stroke's ring, by its paint item: footprint-story's strokeOutline of the whole stroke, built once.
+ * WHY: a stroke is finished once `now` reaches its last point, and from then on its ring never changes — but a film
+ * draws every frame, and a hatched world holds thousands of strokes, so building every finished ring again each frame
+ * made a frame of a 64-block hatched world tens of times slower than a plain one. The items are the built map's own
+ * (frozen, one object per stroke for the film's life), so the item is the key; a WeakMap lets a ring go with its map.
+ * Only a stroke still being drawn has its ring built at its frame (strokeAt, then strokeOutline). No geometry here.
+ */
+const finished = new WeakMap();
+
+/**
+ * The ring a `stroke` item is filled with `now` seconds after its piece's start: [] before its first point; the
+ * finished ring (built once, `finished`) from its last point on; else footprint-story's ring of the part drawn so far.
+ * Exported for the test that pins a finished ring as built once.
+ */
+export function strokeRing(it, now) {
+  const {points} = it;
+  if (now < points[0][3]) return [];
+  if (now < points.at(-1)[3]) return strokeOutline(strokeAt(points, now), {cap: it.stroke.cap});
+  let ring = finished.get(it);
+  if (!ring) { ring = strokeOutline(points, {cap: it.stroke.cap}); finished.set(it, ring); }
+  return ring;
+}
+
+/**
  * A `stroke` item drawn as far as the pen has come `now` (seconds from its piece's start): footprint-story's ring round
- * the part drawn (strokeAt, then strokeOutline with the item's cap), one path filled once in the stroke's colour, so it
- * never darkens itself at an alpha under 1. Nothing drawn yet, nothing filled.
+ * the part drawn (strokeRing), one path filled once in the stroke's colour, so it never darkens itself at an alpha
+ * under 1. Nothing drawn yet, nothing filled.
  */
 function paintStroke(c, it, ink, now) {
-  const ring = strokeOutline(strokeAt(it.points, now), {cap: it.stroke.cap});
+  const ring = strokeRing(it, now);
   if (!ring.length) return;
   c.beginPath();
   ring.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y)));

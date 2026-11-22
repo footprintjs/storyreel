@@ -23,6 +23,13 @@ moment it comes in.
   map build and the map flow `storyreel check` runs, so the record names them (`style.row`) as it names the rest. Their
   options are footprint-story's, and refused in its words naming the entry. Changed words: a refusal listing a
   column's choices now lists these too (`the line choices are "ink", "none" or "human:sketchy"`).
+- **A finished stroke's ring is built once** (kept by its paint item; only a stroke still being drawn has its ring
+  built at its frame). A 64-block world drawn whole, `bench/strokes.mjs` on one machine (node 24): plain 0.6 ms a
+  frame; `human:sketchy` + `human:hatch` (2,496 strokes) 22.7 ms; hatch spacing 4 (4,672 strokes) 40.1 ms.
+- **A stroke budget (ours):** from 2,000 strokes the world's notes say so (`storyreel check` shows it), with the fix;
+  past 20,000 the world is refused (`stage map: isometric style: the map's hand-drawn lines come to … strokes, and a
+  world draws at most 20000 — give the hatch a wider spacing …`). A world's summary keeps its `strokes` count (none
+  for a world with no strokes, so its record is as it was).
 - **One colour mix:** the kit's own `mix` is footprint-story's `mixColour` (it reads `#rgb` since 0.32.4).
 - **New example** `examples/iso-sketch`, pinned in `test/golden.json` (and the behaviour pins). Every existing pin is
   unchanged. `test/iso-strokes.test.mjs` checks the ring to 1e-6 at every cap and time, a faint line covered once

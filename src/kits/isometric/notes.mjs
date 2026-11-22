@@ -25,6 +25,28 @@ const STRAIGHT = {
 const SHOWN = 80;
 const cut = (text) => ([...text].length > SHOWN ? `${[...text].slice(0, SHOWN).join('')}…` : text);
 
+/**
+ * How many hand-drawn strokes a world may hold (ours): from `note` on, the world's notes say so (a frame of every stroke
+ * finished cost about 23 ms at 2,496 strokes, 40 ms at 4,672, on the machine `bench/strokes.mjs` was run on, against
+ * under 1 ms plain); past `most` the world is refused. WHY a budget: a hatch is a stroke per line, so a fine spacing
+ * over many blocks multiplies into a film that draws for minutes; said once, with the fix, before anything renders.
+ */
+export const STROKE_BUDGET = Object.freeze({note: 2000, most: 20000});
+
+/** The `stroke` items in a built map's paint lists (its blocks' and its floors'). */
+export const strokeCount = (map) => [...map.blocks, ...map.floors].reduce((n, p) => n + p.paint.filter((it) => it.item === 'stroke').length, 0);
+
+/**
+ * A world's strokes against STROKE_BUDGET: [] under `note`, one note from it, a refusal past `most` — each naming the
+ * world's style (`${where}: isometric style`) and the fix. `count`: strokeCount of the built map.
+ */
+export function strokeNotes(count, where) {
+  const who = `${where}: isometric style`, fix = `give the hatch a wider spacing (texture: {"name": "human:hatch", "spacing": 16}), take the texture out, or draw fewer blocks`;
+  if (count > STROKE_BUDGET.most) throw new Error(`${who}: the map's hand-drawn lines come to ${count} strokes, and a world draws at most ${STROKE_BUDGET.most} — ${fix}`);
+  if (count < STROKE_BUDGET.note) return [];
+  return [{level: 'info', path: 'style', message: `${who}: the map's hand-drawn lines come to ${count} strokes (a note from ${STROKE_BUDGET.note}, refused past ${STROKE_BUDGET.most}): each frame fills every stroke drawn so far, so the film renders slower — to lighten it, ${fix}`}];
+}
+
 /** What there is to say of one wire's way: [{level, message}] (the entry is added by notesOf). */
 function wireNotes(w) {
   const out = [], said = (level, message) => out.push({level, message}), r = w.route, {from, to} = w.arrow, plain = `${from.block.name} to ${to.block.name}`;

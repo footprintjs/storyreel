@@ -12,7 +12,8 @@ import {createHash} from 'node:crypto';
 import {createCanvas} from '@napi-rs/canvas';
 import {isoStyle, paintPiece, isometric, USUAL_STYLE} from 'footprint-story/isometric';
 import {strokeAt, strokeOutline, sketchyLine, hatchTexture} from 'footprint-story/human';
-import {paintItems, rgba} from '../src/kits/isometric/paint.mjs';
+import {paintItems, rgba, strokeRing} from '../src/kits/isometric/paint.mjs';
+import {strokeNotes, STROKE_BUDGET} from '../src/kits/isometric/notes.mjs';
 import {sinceStart, ISO_LOOK} from '../src/kits/isometric/draw.mjs';
 import {compileIsometric} from '../src/kits/isometric/index.mjs';
 import {STYLE_CHOICES} from '../src/kits/isometric/read.mjs';
@@ -143,4 +144,38 @@ test('pixels: one hand-drawn block, partly drawn and whole, pinned', () => {
       whole: 'e7b1d0625e01bc89e9cd738538d7b734ed51f45fa48400be56b5898e16972ae8',
     });
   }
+});
+
+test('a finished stroke\'s ring is built once (footprint-story\'s ring of the whole stroke); a stroke being drawn has its ring built at its frame', () => {
+  // WHY pinned: a film draws every frame, and a hatched world holds thousands of strokes (bench/strokes.mjs)
+  const item = {...LINE, points: LINE.points.map((p) => [...p]), stroke: {...LINE.stroke}};
+  const whole = strokeRing(item, 0.4);
+  assert.equal(strokeRing(item, 7), whole, 'the same ring, not built again');
+  assert.equal(strokeRing(item, Infinity), whole);
+  close(whole.flat(), strokeOutline(strokeAt(item.points, Infinity), {cap: 'round'}).flat(), 'the finished ring is footprint-story\'s whole ring');
+  // a stroke being drawn: built at each frame, footprint-story's ring of the part drawn
+  const part = strokeRing(item, 0.25);
+  assert.notEqual(strokeRing(item, 0.25), part, 'a partial ring is not kept');
+  close(part.flat(), strokeOutline(strokeAt(item.points, 0.25), {cap: 'round'}).flat(), 'the partial ring');
+  assert.deepEqual(strokeRing(item, -1), []);
+  // each item its own: an equal stroke in another item has its own ring
+  const twin = {...item};
+  assert.notEqual(strokeRing(twin, 1), whole);
+});
+
+test('a world\'s strokes have a budget (ours): a note from its note on, a refusal naming the style and the fix past its cap', () => {
+  assert.deepEqual(STROKE_BUDGET, {note: 2000, most: 20000});
+  assert.deepEqual(strokeNotes(STROKE_BUDGET.note - 1, 'stage map'), []);
+  const [note] = strokeNotes(STROKE_BUDGET.note, 'stage map');
+  assert.equal(note.level, 'info'); assert.equal(note.path, 'style');
+  assert.match(note.message, /^stage map: isometric style: the map's hand-drawn lines come to 2000 strokes \(a note from 2000, refused past 20000\): each frame fills every stroke drawn so far, so the film renders slower — to lighten it, give the hatch a wider spacing/);
+  assert.equal(strokeNotes(STROKE_BUDGET.most, 'stage map').length, 1);
+  assert.throws(() => strokeNotes(STROKE_BUDGET.most + 1, 'stage map'), /^Error: stage map: isometric style: the map's hand-drawn lines come to 20001 strokes, and a world draws at most 20000 — give the hatch a wider spacing \(texture: \{"name": "human:hatch", "spacing": 16\}\), take the texture out, or draw fewer blocks$/);
+  // a world counts its own: the summary keeps the count (none for a world with no strokes), and a big one is noted
+  assert.equal(sketched().summary.strokes > 0, true);
+  assert.ok(!('strokes' in compileIsometric({blocks: [{name: 'a'}]}, {clock: {at: () => 0}, theme, where: 'stage map'}).summary));
+  const blocks = Array.from({length: 64}, (_, i) => ({name: `b${i}`, at: [(i % 8) * 2, Math.floor(i / 8) * 2], size: [1.2, 1.2, 1]}));
+  const big = compileIsometric({blocks, style: SKETCH_STYLE}, {clock: {at: () => 0}, theme, where: 'stage map'});
+  assert.equal(big.summary.strokes, 2496);
+  assert.ok(big.notes.some((n) => n.path === 'style' && /come to 2496 strokes/.test(n.message)));
 });
