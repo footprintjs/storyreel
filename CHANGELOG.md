@@ -22,13 +22,16 @@ every pin it had, and gains the new example's.
 - **Placed from the built map, timed on the film's clock** (`motion.mjs`): a block moves by its foot, a fall's floor is
   the grid's lift 0 under it, a throw lands on its target's top, and a move begins at its anchor (else when the block
   appears). A piece's moves run one after another; two that overlap are refused, and a hang is a piece's last. No angle
-  is drawn yet: none of these models gives a body's turn. A moving block is drawn in front of the others from its start.
+  is drawn yet: none of these models gives a body's turn. A moving block takes its place in the back-to-front order at
+  each frame from where it is now (footprint-story's `grid.backToFront`): landed behind a block, it is drawn behind it.
 - **The record** names each move's model, how it was chosen, footprint-story's reason, its seconds and its start
   (`map.motions`; `summary.motions` beside the world's entry in the compile's record).
 - **`storyreel check`** runs each moving world's intents through footprint-story's chart (`runHumanFlow`) and keeps its
   record (`<run>.motion-<k>.record.jsonl`), under the map runs' safety rules, now one module (`check/flowrun.mjs`):
   `storyreel log --run <id> --why duration-1 --motion story` says why `motion[1]` takes its time. What the critics find
-  (`jerk`, `arc`, `spacing`, `contact`, …) is the review's new `motion` check: advice naming the entry and the fix.
+  (`jerk`, `arc`, `spacing`, `contact`, …) is the review's new `motion` check, at the critic's own level: a `warn` (a
+  body through the floor, a straight slide) is a fix, so a check never reads clean over it; a `note` is advice
+  (`motion-note`). Each names the entry and the fix.
 - **Refusals name the entry and the fix**, footprint-story's own in the entry's name: a block a wire joins, one on the
   floor asked to fall, a missing `to`, a pen's word, overlapping moves, a model or wrapper footprint-story refuses.
 - A new example, `examples/iso-motion` (a box falls, a ball is thrown onto the server, the box settles), pinned in

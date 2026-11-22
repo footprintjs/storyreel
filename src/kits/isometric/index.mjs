@@ -96,6 +96,12 @@ export function compileIsometric(spec, context) {
   // written, nothing planned, and the world is drawn, framed and recorded exactly as before worlds took a motion
   const motion = map.motion.length ? planMotions(map, map.motion, clock, where) : null;
   const look = lookOf(theme), shownAt = (p, t) => p.appearAt === null || t >= p.appearAt;   // named from its moment on, as it starts to come in
+  // the moving blocks' poses at t, and the paint order with each where it is now: footprint-story's back-to-front order
+  // (grid.backToFront) of every block, a moved one at its pose's place; the built order while nothing has moved yet
+  const movedAt = (t) => {
+    const poses = new Map(map.blocks.map((b) => [b, motion.poseAt(b, t)]).filter(([, p]) => p));
+    return {poses, order: poses.size ? map.grid.backToFront(map.blocks, (b) => ({at: poses.get(b)?.at ?? b.at, size: b.size})) : map.order};
+  };
   // a block's outline where it is drawn at t: as built, or where its move has put it
   const outlineAt = (b, t) => { const pose = motion?.poseAt(b, t) ?? null; return pose ? b.shape.outline.map((p) => posed(p, pose)) : b.shape.outline; };
   const walks = map.wires.map((w) => walkWay(w.cable.way));
@@ -113,7 +119,7 @@ export function compileIsometric(spec, context) {
     // built in, never the map itself
     summary: Object.freeze({placed: map.placed, tile: map.grid.tile[0], style: styleOf(map), blocks: map.blocks.length, floors: map.floors.length, wires: map.wires.length,
       along: map.wires.filter((w) => w.route?.points).length, packets: map.wires.reduce((n, w) => n + w.packets, 0), ...(motion ? {motions: motion.summary} : {})}),
-    draw: motion ? (c, t) => drawMap(c, map, t, look, (b) => motion.poseAt(b, t)) : (c, t) => drawMap(c, map, t, look),
+    draw: motion ? (c, t) => { const {poses, order} = movedAt(t); drawMap(c, map, t, look, (b) => poses.get(b) ?? null, order); } : (c, t) => drawMap(c, map, t, look),
     // every piece by its name, once it has come in: a push or a camera move frames "server"; a label by its own path
     regionsAt: (t) => [
       ...map.floors.flatMap((f) => (shownAt(f, t) ? [{box: boxOf(f.shape.outline), path: f.path, label: f.label ?? `floor ${f.name ?? f.path}`, ...(f.name ? {name: f.name} : {})},

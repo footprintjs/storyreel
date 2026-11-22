@@ -467,15 +467,19 @@ export const REVIEW_CHECKS = Object.freeze({
   'drawing-off-frame': {label: 'A drawing off the frame', why: 'a kit says where its drawings are', when: s => (s.facts.drawings ?? 0) > 0,
     find: drawingsOffFrame},
   // What footprint-story's critics found in a world's moves (kits/isometric/motion.mjs): each names its motion entry and
-  // the fix in footprint-story's words, over the samples the move spans (held: spans · held). Advice: the model chose the move from a
-  // law, and the fix is a change of intent the author may decline.
+  // the fix in footprint-story's words, over the samples the move spans (held: spans · held). Its level is the critic's
+  // own, mapped onto the reel's (MOTION_KINDS): a critic's `warn` (a body through the floor, a straight slide) is a
+  // finding to fix, so a check never reads clean over it; only its `note` is advice.
   motion: {label: 'Moves that read wrong', why: 'a world moves its pieces by intent', when: s => (s.facts.motions ?? 0) > 0,
     find: ({film, window, samples}) => motionsIn(film, window).flatMap(f => {
       const at = samples.filter(x => x.t >= f.from - 1e-9 && x.t <= f.to + 1e-9).map(x => x.t);
-      return (at.length ? at : [Math.max(window.from, f.from)]).map(t => ({kind: 'motion', t, what: `${f.critic}: ${f.what}`, where: f.path, fix: f.fix}));
+      const kind = MOTION_KINDS[f.level] ?? 'motion';   // a level footprint-story adds later is a finding to fix until it is mapped
+      return (at.length ? at : [Math.max(window.from, f.from)]).map(t => ({kind, t, what: `${f.critic}: ${f.what}`, where: f.path, fix: f.fix}));
     })},
 });
 
+/** A critic's level (footprint-story/human · FINDING_LEVELS) as the kind of finding the reel gives it: `motion` asks for a fix, `motion-note` is advice. */
+export const MOTION_KINDS = Object.freeze({warn: 'motion', note: 'motion-note'});
 /** The critics' findings of the film's moving worlds (film.motionRuns) whose moves reach the window. */
 const motionsIn = (film, window) => (film.motionRuns ?? []).flatMap(m => m.findings ?? []).filter(f => f.to >= window.from - 1e-9 && f.from <= window.to + 1e-9);
 
@@ -498,7 +502,7 @@ function frozenWords(film, f) {
 
 const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes', hook: 'no hook', 'text-density': 'too much to read', silences: 'no breath', stale: 'nothing new', loop: 'the loop jumps', 'frozen-voice': 'a freeze over the voice',
   slideshow: 'held still', geometry: 'the drawing breaks', pure: 'drawn differently twice', contrast: 'too faint to read', differs: 'does not say how it differs', claims: 'no source', 'example-lingers': 'example data over real numbers',
-  'words-over-drawing': 'words over a drawing', 'drawing-off-frame': 'a drawing off the frame', motion: 'a move that reads wrong'};
+  'words-over-drawing': 'words over a drawing', 'drawing-off-frame': 'a drawing off the frame', motion: 'a move that reads wrong', 'motion-note': 'a note on a move'};
 /** How many faint words the contrast verdict keeps as evidence, each with its ratio (low counts them all). */
 export const FAINT_KEPT = 50;
 
@@ -535,7 +539,7 @@ function findingLine(f) {
 }
 
 /** The findings that are advice, not errors (a held title can be right): listed after the rest in a summary. */
-const ADVICE = new Set(['still', 'stale', 'slideshow', 'hook', 'motion']);
+const ADVICE = new Set(['still', 'stale', 'slideshow', 'hook', 'motion-note']);
 /** How many findings a summary lists in full (the rest are counted). */
 export const SUMMARY_TOP = 5;
 /**
@@ -587,7 +591,7 @@ const SAYS = Object.freeze({find: {promise: 'find returned a promise', list: 'fi
  */
 function spans(film, hits, every, lasting) {
   // a move's finding is held too: it is the record's (a critic measured the whole move), not a word seen for a while
-  const held = new Set(['still', 'hook', 'silences', 'stale', 'loop', 'example-lingers', 'motion', ...hits.filter(h => h.held).map(h => h.kind)]);
+  const held = new Set(['still', 'hook', 'silences', 'stale', 'loop', 'example-lingers', 'motion', 'motion-note', ...hits.filter(h => h.held).map(h => h.kind)]);
   const groups = new Map();
   for (const h of hits) { const k = `${h.kind}\u0000${h.what}`; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(h); }
   const sceneAt = t => { let id = null; film.timings.scenes.forEach((s, i) => { if (film.clock.offsets[i] <= t + 1e-6) id = s.id; }); return id; };

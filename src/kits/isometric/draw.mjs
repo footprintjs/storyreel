@@ -142,13 +142,10 @@ function drawPosed(c, b, pose, look) {
 /**
  * The whole map at t on the 1600×900 sheet. `appearAt`: each piece's moment (seconds, or null: from the start).
  * `poseOf(block)`: where a block that moves by intent is at t (motion.mjs · poseAt), or null while it stands as built;
- * absent for a world with no motion, which is then drawn exactly as before worlds took one.
- *
- * WHY a moving block is drawn after every other: the back-to-front order is the built map's, worked out once for blocks
- * standing still; a block in flight, or come to rest on another's top, is in front of what it passes. A block that
- * lands on the floor behind another is drawn in front of it too — a known limit, said in the README.
+ * `order`: the blocks back to front at t, a moved one where it is now (index.mjs · movedAt). Both absent for a world
+ * with no motion, which is then drawn exactly as before worlds took one: in the built map's order.
  */
-export function drawMap(c, map, t, look, poseOf = null) {
+export function drawMap(c, map, t, look, poseOf = null, order = map.order) {
   c.save();
   c.fillStyle = look.bg; c.fillRect(0, 0, 1600, 900);
   const faded = (alpha, paint) => { if (alpha <= 0) return; c.save(); c.globalAlpha *= alpha; paint(); c.restore(); };
@@ -163,11 +160,10 @@ export function drawMap(c, map, t, look, poseOf = null) {
   }));
   map.wires.forEach((w) => { if (w.label) faded(inAt(w.appearAt, t), () => drawLabel(c, w, look)); });
   // the blocks back to front; after each, the leads into its seen ports and the packets on them
-  const moving = [];
-  for (const b of map.order) {
+  for (const b of order) {
     const pose = poseOf?.(b) ?? null;
-    // a moving block is joined by no wire (motion-read.mjs): it has no lead to draw, and it is drawn last, at its pose
-    if (pose) { moving.push([b, pose]); continue; }
+    // a moving block is joined by no wire (motion-read.mjs): it has no lead to draw, only itself at its pose, in its place in the order
+    if (pose) { faded(inAt(b.appearAt, t), () => drawPosed(c, b, pose, look)); continue; }
     faded(inAt(b.appearAt, t), () => drawBlock(c, b, look));
     map.wires.forEach((w, i) => {
       for (const [k, end] of [[0, 'from'], [1, 'to']]) {
@@ -181,6 +177,5 @@ export function drawMap(c, map, t, look, poseOf = null) {
       }
     });
   }
-  for (const [b, pose] of moving) faded(inAt(b.appearAt, t), () => drawPosed(c, b, pose, look));
   c.restore();
 }

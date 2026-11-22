@@ -174,6 +174,54 @@ test('the review\'s motion check: a finding is held over its move however short,
   assert.deepEqual((await reviewPart(await compileExample('iso-world'), {checks: {motion: REVIEW_CHECKS.motion}})).ran, [], 'not picked for a film that moves nothing');
 });
 
+test('a critic\'s level is kept: a warn (a body through the floor) asks for a fix, only a note is advice', async () => {
+  const {reviewPart, REVIEW_CHECKS, MOTION_KINDS} = await import('../src/review.mjs');
+  const {problemsOf} = await import('../src/check/index.mjs');
+  const {FINDING_LEVELS} = await import('footprint-story/human');
+  assert.deepEqual(Object.keys(MOTION_KINDS).sort(), [...FINDING_LEVELS].sort(), 'every level footprint-story gives is mapped');
+  const contact = {path: 'story.motion[0]', from: 3, to: 3.5, critic: 'contact', level: 'warn', what: 'at 0.39 s it goes 49.7 px into the floor — it passes through something solid', fix: 'raise its path'};
+  const note = {...contact, critic: 'reel:hint', level: 'note', what: 'it could ease in', fix: 'wrap it: [{"wrapper": "anticipate"}]', from: 5, to: 5.5};
+  const moved = {...film, motionRuns: [{name: 'story', kit: 'isometric', run: film.motionRuns[0].run, findings: [contact, note]}]};
+  const r = await reviewPart(moved, {checks: {motion: REVIEW_CHECKS.motion}});
+  assert.deepEqual(r.findings.map(f => f.kind), ['motion', 'motion-note']);
+  const problems = problemsOf({review: {findings: r.findings, lines: r.findings.map(f => f.what), verdicts: []}});
+  assert.deepEqual(problems.map(p => [p.level, p.kind]), [['error', 'motion'], ['advice', 'motion-note']], 'the contact is an error; the note is advice');
+});
+
+test('paint order: a moving block takes its place in the back-to-front order where it is now — landed behind a block, it is drawn behind it', () => {
+  const grid = {tile: 100, at: [800, 150]}, wall = {name: 'wall', label: 'Wall', at: [4, 4], size: [2, 2, 2]}, ball = {name: 'ball', label: 'Ball', at: [9, 9], size: [1, 1, 1]};
+  const labels = (w, t) => {
+    const said = [];
+    const rec = new Proxy({}, {get: (_, k) => (k === 'fillText' ? (text) => said.push(text) : typeof k === 'string' ? () => ({width: 10}) : undefined), set: () => true});
+    w.draw(rec, t);
+    return said.filter(x => x === 'Ball' || x === 'Wall');
+  };
+  const behind = worldOf({grid, blocks: [wall, ball], motion: [{piece: 'ball', do: 'throw', to: [3, 3]}]});
+  const front = worldOf({grid, blocks: [wall, ball], motion: [{piece: 'ball', do: 'throw', to: [7, 7]}]});
+  const end = (w) => w.map.motions[0].seconds + 0.5;
+  // the ball behind the wall's footprint really is behind it on the frame: their outlines meet there
+  const [a, b] = ['ball', 'wall'].map(n => behind.regionsAt(end(behind)).find(r => r.name === n).box);
+  assert.ok(a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3], 'the two overlap on the frame, so the order shows');
+  assert.deepEqual(labels(behind, end(behind)), ['Ball', 'Wall'], 'landed behind the wall: drawn before it, so the wall covers it');
+  assert.deepEqual(labels(front, end(front)), ['Wall', 'Ball'], 'landed in front: drawn after it');
+  // high in the air over the wall, mid-flight, it is in front
+  const mid = behind.map.motions[0].seconds * 0.5;
+  assert.deepEqual(labels(behind, mid), ['Wall', 'Ball'], 'in flight above the wall: drawn after it');
+  assert.deepEqual(labels(behind, 0), ['Wall', 'Ball'], 'before its move: the built order');
+});
+
+test('the kit\'s modules import no cycle', () => {
+  const kit = fileURLToPath(new URL('../src/kits/isometric/', import.meta.url)), files = readdirSync(kit).filter(f => f.endsWith('.mjs'));
+  const edges = Object.fromEntries(files.map(f => [f, [...readFileSync(kit + f, 'utf8').matchAll(/^(?:import|export)\b[^;]*?from '\.\/([\w-]+\.mjs)'/gms)].map(m => m[1])]));
+  assert.ok(edges['read.mjs'].includes('motion-read.mjs') && edges['motion-read.mjs'].includes('words.mjs'), 'the scan reads the imports');
+  const cycles = [], walk = (f, path) => {
+    if (path.includes(f)) { cycles.push([...path.slice(path.indexOf(f)), f].join(' → ')); return; }
+    for (const g of edges[f] ?? []) walk(g, [...path, f]);
+  };
+  for (const f of files) walk(f, []);
+  assert.deepEqual(cycles, []);
+});
+
 test('a check runs the moves through footprint-story\'s chart, keeps its record, and log --why --motion answers from it', async t => {
   const out = tempDir('motion-why', t);
   const said = await check(await readInputs({cwd: project, out}));
@@ -212,11 +260,11 @@ test('refusals of --motion name what there is', async t => {
   await assert.rejects(ask(out, 'duration-0', 'story'), /run 1's moves for story kept no record \(it could not be written when the check ran\)/);
 });
 
-test('a critic\'s finding reaches the check\'s reply as advice naming the entry and the fix', async t => {
+test('a critic\'s finding reaches the check\'s reply at its own level, naming the entry and the fix', async t => {
   const out = tempDir('motion-finding', t);
   const said = await check(await readInputs({cwd: project, out, straight: 'true'}));
-  assert.match(said, /^clean — nothing to fix · 1 piece of advice\n/, 'advice: the film still draws; the move is the author\'s');
-  assert.match(said, /\nnote 0:\d\d\.\d–0:\d\d\.\d drop · a move that reads wrong: arc: its move runs straight \(it bows 0\.0% of its length\) — .* · at story\.motion\[3\] · fix: bow it: model: \{name: 'min-jerk', bend: 0\.06\}\n/);
+  assert.match(said, /^fix 1 — 1 error\n/, 'a critic\'s warn is a finding to fix: the check does not read clean over it');
+  assert.match(said, /\nfix  0:\d\d\.\d–0:\d\d\.\d drop · a move that reads wrong: arc: its move runs straight \(it bows 0\.0% of its length\) — .* · at story\.motion\[3\] · fix: bow it: model: \{name: 'min-jerk', bend: 0\.06\}\n/);
   assert.match(await ask(out, 'findings-3', 'story', {straight: 'true'}), /^findings-3 = \[\{"critic":"arc","level":"warn","fix":"bow it: model: \{name: 'min-jerk', bend: 0\.06\}"\}\]\nfindings \(findings#6\)/);
 });
 

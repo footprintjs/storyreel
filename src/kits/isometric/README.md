@@ -209,9 +209,16 @@ is a piece's last move.
 transform: moved by the sample, and scaled about its foot by a bounce's squash. A camera frames it where it is
 (`regionsAt`). **No angle is drawn yet:** footprint-story 0.30's block moves give an angle, but none is a body's turn —
 a throw's and a fall's is the heading of the flight, a hang's the heading of its rope's last link — and a block that
-stood upright would jump to it. tumble (0.31) turns a body; its row will say so. **A moving block is drawn in front of
-every other** from the moment it starts (in flight, or come to rest on another's top, it is in front); one that lands on
-the floor behind another is drawn in front of it too — a known limit.
+stood upright would jump to it. tumble (0.31) turns a body; its row will say so.
+
+**Painted in its place.** At each frame a moving block takes its place in the back-to-front order where it is now:
+footprint-story's `grid.backToFront` over every block, the moved one at its current place (`motion.mjs` · `footTiles`
+works that place back from where it is drawn, on the move's way; once a move ends, its planned end exactly). So a ball
+high over a wall is drawn in front of it, and one that lands behind the wall is drawn behind it. Until a block first
+moves, the built order is used as it was.
+
+**A block a wire joins cannot move**, and is refused saying so: its cable is laid on the floor to where it stands, and
+would not follow it.
 
 **A world with no motion is exactly as it was**: nothing is planned, its record and summary have no `motions`, no run
 is handed out, and every frame is the same (`test/golden.json` is unchanged; the example `examples/iso-motion` adds its
@@ -228,10 +235,12 @@ chart (`motionRun`: `footprint-story/humanflow` · `runHumanFlow`, the very inte
 that run's record, so `storyreel log --run <id> --why duration-1 --motion story` says why `motion[1]` takes its time,
 from the record alone (`../../check/README.md` · Asking why a move is so). The two plans must be equal; a difference is
 a `drift` line. **What footprint-story's critics find** (`jerk`, `arc`, `spacing`, `contact`, `volume`, `stretch`)
-reaches the check's reply as advice, naming the entry and the fix in footprint-story's words:
+reaches the check's reply at the critic's own level, naming the entry and the fix in footprint-story's words: a `warn`
+(a body through the floor, a straight slide) is a finding to fix, so a check never reads clean over it; a `note` is
+advice (`review.mjs` · `MOTION_KINDS`):
 
 ```
-note 0:11.8–0:12.5 drop · a move that reads wrong: arc: its move runs straight (it bows 0.0% of its length) — … · at story.motion[3] · fix: bow it: model: {name: 'min-jerk', bend: 0.06}
+fix  0:11.8–0:12.5 drop · a move that reads wrong: arc: its move runs straight (it bows 0.0% of its length) — … · at story.motion[3] · fix: bow it: model: {name: 'min-jerk', bend: 0.06}
 ```
 
 Every refusal names the entry and the fix (`stage drop: isometric motion[0] ("ball"): a fall drops the block from
@@ -277,7 +286,8 @@ entry's name.
 | `draw.mjs` | the canvas drawing, StoryDeck's look in the film's theme: the paint lists through `paint.mjs`, the rest by hand |
 | `paint.mjs` | the one canvas painter: a piece's paint list traced, filled and stroked as the list says |
 | `motion-read.mjs` | the `motion` entries checked, every refusal naming the entry and the fix; what a block can do (`MOTION_DOS`) |
-| `motion.mjs` | each entry made a footprint-story intent on the frame, planned (`planIntents`), timed on the clock and sampled at t; its record, findings and run |
+| `motion.mjs` | each entry made a footprint-story intent on the frame, planned (`planIntents`), timed on the clock and sampled at t (with its place for the paint order); its record, findings and run |
+| `words.mjs` | how both readers quote a value and check keys and anchors (`shown`, `keysOf`, `anchorLike`): its own module, so the kit's modules import no cycle (a test pins it) |
 
 **From footprint-story, as StoryDeck has them** (they were carried here from StoryDeck until 0.35.0; both tools now
 import the one copy, so a deck and a film draw the same cable):

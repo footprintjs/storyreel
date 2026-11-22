@@ -15,7 +15,7 @@
  * from the built map (motion.mjs).
  */
 import {HUMAN_DOS, MOST_INTENTS, MOST_WRAPPERS} from 'footprint-story/human';
-import {anchorLike, keysOf, shown} from './read.mjs';
+import {anchorLike, keysOf, shown} from './words.mjs';
 
 /** The keys a motion entry takes. */
 export const MOTION_KEYS = Object.freeze(['piece', 'do', 'at', 'to', 'from', 'wrap', 'model']);

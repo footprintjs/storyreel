@@ -8,8 +8,8 @@
 import {createHash} from 'node:crypto';
 import {oneLine} from '../oneline.mjs';
 
-/** The kinds of finding that are advice, not errors (a held title can be right; a move's critic speaks of a move the author chose): review.mjs lists them after the rest too. */
-export const ADVICE_KINDS = Object.freeze(['still', 'stale', 'slideshow', 'hook', 'motion']);
+/** The kinds of finding that are advice, not errors (a held title can be right; a critic's note on a move is the author's to keep): review.mjs lists them after the rest too. */
+export const ADVICE_KINDS = Object.freeze(['still', 'stale', 'slideshow', 'hook', 'motion-note']);
 /** A phrase the film still places (said more than once: the first place is used; a moment named with nth or edge: the moment is used): advice. */
 const SOFT_PHRASES = Object.freeze(['ambiguous', 'moment']);
 /** The most a row of the reply holds, and the most keys a run keeps: a reply and a run's file are small whatever the film. */

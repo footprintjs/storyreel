@@ -76,7 +76,7 @@ export function planMotions(map, motions, clock, where) {
     try { return clock.at(m.at); } catch (e) { throw new Error(`${m.who}: at: ${e.message}`, {cause: e}); }
   });
   // each piece's moves in time order, each from where the one before left it
-  const intents = new Array(motions.length), ties = new Array(motions.length), byPiece = new Map();
+  const intents = new Array(motions.length), ties = new Array(motions.length), spans = new Array(motions.length), byPiece = new Map();
   for (const [i, m] of motions.entries()) byPiece.set(m.piece, [...(byPiece.get(m.piece) ?? []), i]);
   for (const [piece, list] of byPiece) {
     list.sort((a, b) => starts[a] - starts[b] || a - b);
@@ -87,6 +87,9 @@ export function planMotions(map, motions, clock, where) {
       if (last !== null && place === null) throw new Error(`${m.who}: it follows ${motions[last].path}, a hang, which ends wherever its swing settles — a hang is a piece's last move: take this one out, or move it before the hang`);
       const made = INTENT_OF[m.do](m, {px, place, piece});
       intents[i] = {do: m.do, name: piece.name, who: m.who.slice(where.length + 2), ...made.intent, ...(m.wrap.length ? {wrap: m.wrap} : {}), ...(m.model !== null ? {model: m.model} : {})};
+      // where the piece's foot goes over this move, in tiles, for its place in the paint order (poseAt · footAt); a hang
+      // swings towards below its pin, which is all that is known of its end before it is planned
+      spans[i] = {from: place, to: made.end ?? [...tilesOf(m.from).slice(0, 2), 0], end: made.end};
       ties[i] = made.tie; place = made.end; last = i;
     }
   }
@@ -97,12 +100,12 @@ export function planMotions(map, motions, clock, where) {
     const culprit = motions.find((m, i) => { try { planIntents([intents[i]], {frame: [...MOTION_FRAME]}); return false; } catch { return true; } });
     throw refusal(e, where, culprit);
   }
-  const moves = motions.map((m, i) => ({path: m.path, piece: m.piece, start: starts[i], seconds: planned.durations[i].seconds, move: planned.moves[i], tie: ties[i]}));
+  const moves = motions.map((m, i) => ({path: m.path, piece: m.piece, start: starts[i], seconds: planned.durations[i].seconds, move: planned.moves[i], tie: ties[i], ...spans[i]}));
   for (const list of byPiece.values()) for (let k = 1; k < list.length; k += 1) {
     const before = moves[list[k - 1]], m = moves[list[k]];
     if (m.start < before.start + before.seconds - 1e-9) throw new Error(`${motions[list[k]].who}: it begins at ${round3(m.start)} s, while ${before.path} still moves "${m.piece.name}" until ${round3(before.start + before.seconds)} s (footprint-story planned it ${round3(before.seconds)} s) — anchor it at ${round3(before.start + before.seconds)} s or later: a later phrase, or ["scene", "phrase", ${round3(before.start + before.seconds - m.start)}] after this one`);
   }
-  return {intents: frozen(intents), planned, moves, ...recordsOf(motions, moves, planned), poseAt: poseAtOf(moves, px), run: runOf(intents, planned)};
+  return {intents: frozen(intents), planned, moves, ...recordsOf(motions, moves, planned), poseAt: poseAtOf(moves, px, map.grid), run: runOf(intents, planned)};
 }
 
 /**
@@ -125,13 +128,16 @@ function recordsOf(motions, moves, planned) {
 /**
  * Where a piece is drawn at t: null before its first move begins (drawn as built), else its pose — `dx`, `dy` (how far
  * the tie point has come from where the block was built), `pivot` (that point, as built), `sx`, `sy` (a bounce's squash,
- * its area kept: 1 when none) and `rope` (a hang's points, the pin first). After its last move it stays where that ended.
+ * its area kept: 1 when none), `rope` (a hang's points, the pin first) and `at` (where the block stands now in tiles,
+ * its corner as a built block's `at`: what the paint order is worked out from). After its last move it stays where that
+ * ended.
  *
  * WHY no angle: footprint-story 0.30's block moves give one, but none is a body's turn — a throw's and a fall's is the
  * heading of its flight, a hang's the heading of its rope's last link — and a block that stood upright would jump to
  * it. tumble (0.31) turns a body: its row in INTENT_OF will say so, and the pose will carry its angle.
  */
-function poseAtOf(moves, px) {
+function poseAtOf(moves, px, grid) {
+  const footAt = footTiles(grid);
   const tracks = new Map();
   for (const m of moves) tracks.set(m.piece, [...(tracks.get(m.piece) ?? []), m].sort((a, b) => a.start - b.start));
   // each piece's foot and top on the frame where it was built: what its samples are measured from
@@ -140,8 +146,32 @@ function poseAtOf(moves, px) {
     const list = tracks.get(piece);
     if (!list || t < list[0].start) return null;
     const m = list.findLast((x) => x.start <= t), s = sampleMove(m.move, Math.min(m.seconds, t - m.start));
-    const pivot = built.get(piece)[m.tie];
-    return {dx: s.x - pivot[0], dy: s.y - pivot[1], pivot, sx: s.sx ?? 1, sy: s.sy ?? 1, ...(m.tie === 'top' ? {rope: s.points} : {})};
+    const pivot = built.get(piece)[m.tie], {foot, top} = built.get(piece);
+    // the foot on the frame now: the sample itself, or for a hang (tied at its top, drawn upright) as far below it as built
+    // once the move has ended its place is the one it was planned to end on, exactly (worked back from the frame, a
+    // ball resting on a top could come out a billionth under it, inside the block it stands on, and be ordered behind it)
+    const ended = t >= m.start + m.seconds && m.end !== null;
+    const [c, r, lift] = ended ? m.end : footAt([s.x, s.y + (m.tie === 'top' ? foot[1] - top[1] : 0)], m, Math.min(1, (t - m.start) / m.seconds));
+    return {dx: s.x - pivot[0], dy: s.y - pivot[1], pivot, sx: s.sx ?? 1, sy: s.sy ?? 1, ...(m.tie === 'top' ? {rope: s.points} : {}),
+      at: [c - piece.size[0] / 2, r - piece.size[1] / 2, lift]};
+  };
+}
+
+/**
+ * A foot's place in tiles from where it is on the frame, during a move from `m.from` to `m.to` (tiles): a point on the
+ * frame is a whole line of places, so the one taken is on the move's way — its column and row where the frame's
+ * across-position puts them between the two ends (by `share` of the move's time when both ends stand on one such line),
+ * its lift what then brings it to the point's height. WHY: the place projects to exactly where the block is drawn, so
+ * the paint order (grid.backToFront) puts it among the others where it is seen. A lift under the floor (a wind-up's dip)
+ * is ordered as on the floor. Only the grid's own numbers are read: `grid.at` and `grid.tileAt`.
+ */
+function footTiles(grid) {
+  const o = grid.at(0, 0, 0), half = grid.at(1, 0, 0).y - o.y, up = o.y - grid.at(0, 0, 1).y;
+  return ([x, y], m, share) => {
+    const ground = grid.tileAt(x, y), u = ground.col - ground.row, u0 = m.from[0] - m.from[1], u1 = m.to[0] - m.to[1];
+    const f = Math.abs(u1 - u0) > 1e-9 ? (u - u0) / (u1 - u0) : share;
+    const c = m.from[0] + f * (m.to[0] - m.from[0]), r = m.from[1] + f * (m.to[1] - m.from[1]);
+    return [c, r, Math.max(0, ((c + r) - (ground.col + ground.row)) * half / up)];
   };
 }
 
