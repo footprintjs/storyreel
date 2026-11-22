@@ -403,7 +403,11 @@ would not follow it.
 block that comes to rest over another block's name (a ball on a server's top sits on its name), and is painted after
 that block, hides the name. "Painted after" is read from the order of every block, the order the film paints by
 (`orderAt`); 0.44.0 ordered the two blocks alone and so hid a name the picture draws over a block behind it, fixed in
-0.45.0. From that moment until the block moves on, the name is not drawn and not listed to read (`texts()`), and the move is a finding naming the move, the name and the fix. A
+0.45.0. What the resting block covers with is its outline **as drawn** (`turn.mjs` · `drawnOutline`, the outline a
+camera frames and the frame check reads): a body left turned off its faces covers by its turned corners — before 0.51.0
+the check moved its outline as built, so a turned block could hide a name it was not drawn over, or leave one it was
+(both pinned, `test/iso-covers.test.mjs`). A block a tumble lands on a face is the block built there, so it covers as
+built: no film moved. From that moment until the block moves on, the name is not drawn and not listed to read (`texts()`), and the move is a finding naming the move, the name and the fix. A
 block passing over a name in flight hides nothing: it is a moment of natural occlusion, drawn as it is, and the
 contrast check judges a word by its best moment, so it reads no faint word (pinned on CI's fonts and macOS's). The fix:
 land it clear, or `"accept": ["reel:covers"]` when it is meant (the example accepts its ball on the server).

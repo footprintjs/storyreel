@@ -20,13 +20,15 @@
  * reads as a faint word. A name is hidden from the moment a moved block comes to rest over it until that block moves on.
  */
 import {posed, nameBox, hiddenNames, coverFinding} from 'footprint-story/isometric';
+import {drawnOutline} from './turn.mjs';
 
 /** A block's name on its top as a box on the frame, as built, or null when it has none: draw.mjs · drawBlock's layout (the small line drawn joined on one line). */
 const boxOf = (b) => (b.fitted ? nameBox(b.fitted, b.smallFitted ? {text: b.smallFitted.lines.join(' '), size: b.smallFitted.size} : null, b.shape.centre) : null);
 
 /**
  * Which names the moving blocks hide, and when. `moves` (motion.mjs, each with its samples' moments `times`), `poseAt`
- * (motion.mjs · poseAt). A name is hidden at a moment when a resting moved block's outline there overlaps its box and
+ * (motion.mjs · poseAt). A name is hidden at a moment when a resting moved block's outline there — as it is drawn, turned
+ * when its pose is (turn.mjs · drawnOutline, the outline a camera frames and the frame check reads) — overlaps its box and
  * that block is painted after the named one in the order of every block where each stands (footprint-story ·
  * hiddenNames). The moments read are every move's samples; between them nothing moves, so a state holds until the next
  * one (after the last, for good).
@@ -42,7 +44,9 @@ export function coversOf(map, moves, poseAt) {
     const own = poseAt(n.block, t), box = own ? [posed([n.box[0], n.box[1]], own), posed([n.box[2], n.box[3]], own)].flat() : n.box;
     const covers = movers.flatMap((p) => {
       const pose = p !== n.block && resting(p, t) ? poseAt(p, t) : null;
-      return pose ? [{piece: index.get(p), outline: p.shape.outline.map((q) => posed(q, pose))}] : [];
+      // its outline as drawn at rest (turn.mjs · drawnOutline): a body left turned is drawn by its turned corners, and
+      // what it covers is what is drawn — never its outline as built, moved
+      return pose ? [{piece: index.get(p), outline: drawnOutline(p, pose, map.grid)}] : [];
     });
     if (!covers.length) return null;
     const things = map.blocks.map((b) => ({at: placeOf(b, t), size: b.size}));
