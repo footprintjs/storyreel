@@ -4,7 +4,8 @@
  * copy a deck builds its maps with too; the kit's numbers are its film policy (ISO_MAP_POLICIES.film). Nothing is
  * placed, fitted or drawn here. WHY: the kit carried its own copy of these steps until 0.38.0; one copy cannot drift.
  *
- *   specOf(map, where)   the read map (read.mjs · readMap) → buildIsoMap's spec: plain data, each piece's `who` the kit's words
+ *   specOf(map, where)   the read map (read.mjs · readMap) → buildIsoMap's spec: plain data, each piece's `who` the kit's words,
+ *                        and the world's style row (the style step paints each piece's list by it: paint.mjs draws it)
  *   buildMap(map, where) builds it, and puts on each piece the built map's own entries (frozen plain data, never a copy)
  *
  * Tiles in, frame px out (the 1600×900 sheet). The cables are put on the frame by cables.mjs.
@@ -42,6 +43,9 @@ export function specOf(map, where) {
       straight: w.arrow.straight, who: who(w)})),
     grid: map.grid,   // {tile, origin, rise?} as read.mjs · readGrid wrote it, or null: fitted into the area
     area: map.area,
+    // the style row as the recipe wrote it (read.mjs · readStyle); none written, no key: the spec is today's, byte for
+    // byte, so a world with no style builds (and its map flow records) exactly what it did before worlds took one
+    ...(map.style ? {style: map.style} : {}),
   };
 }
 

@@ -11,13 +11,16 @@
  *
  * What a film adds: `appear` (when a piece comes in: an anchor, [scene, phrase, plus?]) and a wire's `start` (when its
  * packets begin to ride) — a deck has clicks for both; a film has its voice.
+ *
+ * `style` is footprint-story's style row as it is (`isoStyle`: a named choice per column), checked here only so a
+ * refusal names the recipe entry; the choices and their options are footprint-story's, never listed again here.
  */
-import {readPorts, readThing, MOST_FLOOR_LABEL, MOST_ROUTES} from 'footprint-story/isometric';
+import {readPorts, readThing, isoStyle, ISO_STYLE_COLUMNS, ISO_STYLE_CHOICES, MOST_FLOOR_LABEL, MOST_ROUTES} from 'footprint-story/isometric';
 import {MOST_EASE} from 'footprint-story/motion';
 import {BREAK_RULES} from 'footprint-story/layout';
 
 /** The keys an isometric world takes (beside `kit`), each piece's keys, and the limits. */
-export const WORLD_KEYS = Object.freeze(['kit', 'blocks', 'floors', 'wires', 'grid', 'area', 'strict']);
+export const WORLD_KEYS = Object.freeze(['kit', 'blocks', 'floors', 'wires', 'grid', 'area', 'style', 'strict']);
 const BLOCK_KEYS = Object.freeze(['name', 'kind', 'at', 'size', 'label', 'small', 'break', 'color', 'tone', 'group', 'ports', 'appear']);
 const FLOOR_KEYS = Object.freeze(['name', 'at', 'size', 'label', 'color', 'group', 'appear']);
 const WIRE_KEYS = Object.freeze(['name', 'arrow', 'label', 'head', 'packets', 'speed', 'ride', 'rest', 'trail', 'behind', 'appear', 'start']);
@@ -243,7 +246,44 @@ function readGrid(g, where) {
   return {tile, origin: [...g.at], ...(own(g, 'rise') ? {rise: g.rise} : {})};
 }
 
-/** The world's entry, checked: {blocks, floors, wires, grid, area, strict}. `where` names the recipe entry (`stage map`, `the story`). */
+/** A choice's names as a refusal lists them: "ink" or "none"; "a", "b" or "c". */
+const either = (names) => names.map((n) => `"${n}"`).join(', ').replace(/, ([^,]*)$/, ' or $1');
+
+/**
+ * The world's style as written, or null (today's look): a row of footprint-story's named choices, one per column —
+ * `{"line": {"name": "ink", "width": 5}}`, `{"line": "none"}` — a column left out its usual choice. Handed to the map
+ * build as it is (build.mjs · specOf); footprint-story's `isoStyle` makes the style from it.
+ *
+ * WHY the columns and the choices' names are checked here, from footprint-story's own lists (ISO_STYLE_COLUMNS,
+ * ISO_STYLE_CHOICES): a wrong word is the commonest mistake, and its refusal should name this entry and list the words
+ * there are, in the kit's words. What only a choice knows (its options, their ranges, a pairing that cannot work) is
+ * left to `isoStyle`, run once here so its refusal too comes back in the entry's name, before anything is built.
+ */
+function readStyle(s, where) {
+  if (s === undefined) return null;
+  const who = `${where}: isometric style`, columns = ISO_STYLE_COLUMNS.join(', ');
+  if (!isObject(s)) throw new Error(`${who} is a row of style choices, a column each ({"line": {"name": "ink", "width": 5}} for an outlined look, {"line": "none"} for none): the columns are ${columns} — not ${shown(s)}`);
+  for (const k of Object.keys(s)) if (!ISO_STYLE_COLUMNS.includes(k)) throw new Error(`${who} takes the columns ${columns} (a column left out keeps today's look) — not ${shown(k)}`);
+  // one entry: a choice's name, or {name, …its options}; its name one of the column's choices
+  const entry = (v, column, at) => {
+    const names = ISO_STYLE_CHOICES[column];
+    const name = typeof v === 'string' ? v : isObject(v) ? v.name : undefined;
+    if (typeof name !== 'string') throw new Error(`${who}: ${at} is a choice's name, or {"name": …, its options} — the ${column} choices are ${names.length ? either(names) : 'none yet'}; not ${shown(v)}`);
+    if (!names.includes(name)) throw new Error(`${who}: ${at} has no choice ${shown(name)} — ${names.length ? `the ${column} choices are ${either(names)}` : `there are no ${column} yet: leave ${column} out`}`);
+  };
+  for (const column of ISO_STYLE_COLUMNS) {
+    if (!own(s, column)) continue;
+    if (column !== 'effects') { entry(s[column], column, column); continue; }
+    if (!Array.isArray(s.effects)) throw new Error(`${who}: effects is a list of effects, each adding to the whole — not ${shown(s.effects)}`);
+    s.effects.forEach((e, i) => entry(e, 'effects', `effects[${i}]`));
+  }
+  // footprint-story's own check: each choice's options (a width from 0.5 to 20 px …) and the pairings that cannot work
+  try { isoStyle(s); } catch (e) { throw new Error(`${who}: ${String(e?.message ?? e).replace(/^isometric: /, '').replace(/^the style's /, '')}`, {cause: e}); }
+  // a copy: the spec is frozen at every level (build.mjs), and a list the recipe wrote is handed on as itself by plain()
+  return structuredClone(s);
+}
+
+/** The world's entry, checked: {blocks, floors, wires, grid, area, style, strict}. `where` names the recipe entry (`stage map`, `the story`). */
 export function readMap(given, where) {
   const top = `${where}: the isometric world`;
   if (!isObject(given)) throw new Error(`${top} is an object of ${WORLD_KEYS.join(', ')} — not ${shown(given)}`);
@@ -282,7 +322,7 @@ export function readMap(given, where) {
     area = [...a];
   }
   if (own(spec, 'strict') && typeof spec.strict !== 'boolean') throw new Error(`${where}: isometric strict is true (a warning about the map refuses the film) or false`);
-  const grid = readGrid(spec.grid, where);
+  const grid = readGrid(spec.grid, where), style = readStyle(spec.style, where);
   if (grid && own(spec, 'area')) throw new Error(`${where}: isometric area is where a fitted picture goes; this grid is written in numbers — give one or the other`);
-  return {blocks, floors, wires, grid, area, strict: spec.strict === true, placed: unplaced.length ? 'build' : 'hand'};
+  return {blocks, floors, wires, grid, area, style, strict: spec.strict === true, placed: unplaced.length ? 'build' : 'hand'};
 }

@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
-import {arrange, arrangeByGroup, routes, wordsToFit, isometric, CABLE} from 'footprint-story/isometric';
+import {arrange, arrangeByGroup, routes, wordsToFit, isometric, CABLE, USUAL_STYLE} from 'footprint-story/isometric';
 import {rideProfile} from 'footprint-story/motion';
 import {compileFilm, evenTimings, frameHashes, loadTheme} from '../src/index.mjs';
 import {geometryOf} from '../src/geometry.mjs';
@@ -21,6 +21,7 @@ const recipe = JSON.parse(readFileSync(dir + 'recipe.json', 'utf8'));
 const film = await compileExample('iso-world');
 const theme = loadTheme('paper');
 const worldOf = (spec, where = 'the story') => compileIsometric(spec, {clock: film.clock, theme, where});
+const USUAL_ROW = {...USUAL_STYLE, effects: [...USUAL_STYLE.effects]};
 const story = worldOf(recipe.story), desk = worldOf(recipe.stages[0].world, 'stage desk');
 
 test('the example builds: the story placed from its wires, the desk by hand on its grid, every wire along the floor, nothing to say', () => {
@@ -104,7 +105,7 @@ test('refusals name the recipe entry and the fix', () => {
   assert.throws(() => worldOf(two({wires: [{arrow: 'a.p9 to b'}]})), /a has no port "p9" — give it ports/);
   assert.throws(() => worldOf({blocks: [{name: 'a', at: [0, 0]}, {name: 'b'}]}), /"b" has no at and "a" has one: the blocks are placed from the wires only when none has an at/);
   assert.throws(() => worldOf({blocks: [{name: 'a'}, {name: 'a'}]}), /blocks\[1\] \("a"\): "a" is the name of blocks\[0\] too/);
-  assert.throws(() => worldOf(two({wire: []})), /the isometric world takes kit, blocks, floors, wires, grid, area, strict — not "wire"/);
+  assert.throws(() => worldOf(two({wire: []})), /the isometric world takes kit, blocks, floors, wires, grid, area, style, strict — not "wire"/);
   assert.throws(() => worldOf(two({wires: [{arrow: 'a to b', speed: 2}]})), /speed says how its packets ride — give it packets too/);
   assert.throws(() => worldOf({blocks: [{name: 'a', at: [0, 0]}, {name: 'b', at: [3, 0]}], wires: [{arrow: 'a to b', packets: 1, speed: '9000px'}]}), /a run takes 0.5 to 60 s — give it \d+(\.\d)?px to \d+(\.\d)?px, or its seconds/);
   assert.throws(() => worldOf({blocks: [{name: 'a', kind: 'cylinder', size: [2, 1, 1]}]}), /a cylinder is round/);
@@ -137,7 +138,7 @@ test('notes reach the film and its record: film.kitNotes with recipe paths, and 
   assert.ok(one.kitNotes.length && one.kitNotes.every((n) => n.kit === 'isometric' && n.path.startsWith('story.')), 'each note names its recipe entry from the top');
   assert.ok(one.kitNotes.some((n) => n.level === 'warn' && n.path === 'story.wires[0]'));
   const said = one.record.snapshot.sharedState['world.story'];
-  assert.deepEqual(said.summary, {placed: 'hand', tile: said.summary.tile, blocks: 3, floors: 0, wires: 1, along: 1, packets: 0});
+  assert.deepEqual(said.summary, {placed: 'hand', tile: said.summary.tile, style: {row: USUAL_ROW, options: {}}, blocks: 3, floors: 0, wires: 1, along: 1, packets: 0}, 'a world with no style says the usual row it was built in');
   assert.ok(said.notes.some((line) => line.startsWith('warn: the story: isometric wires[0]')));
   assert.equal(film.kitNotes.length, 0, 'the example says nothing: the list is there, and empty');
   const plain = await compileFilm({storyboard: sb, timings: evenTimings(sb), recipe: {story: {kit: 'whiteboard', items: []}}});
