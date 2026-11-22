@@ -9,67 +9,45 @@
  * says so itself (`reel:covers`, a finding naming the move, the name and the fix) rather than leaving a check to find a
  * word "too faint" behind a block, which depends on how wide the host's font draws it.
  *
- * A name's place is worked out from the built map's numbers only (its fitted lines and size, as draw.mjs lays them
- * out), never from a font: a line is taken as wide as NAME_WIDTH of its size per letter — wider than any letter of any
- * font the kit meets draws, a wide capital or a full-width character — so a word that could peek out from under a
- * block on any host is counted covered, and every host decides the same.
+ * The rules are footprint-story's (`/isometric`, 0.32.0 — one copy, StoryDeck reads it too): a name's box from the
+ * built map's numbers only (`nameBox`: its fitted lines and size, NAME_WIDTH of its size a letter, never a font's width,
+ * so every host decides the same), whether an outline meets it (`overlapsBox`), which resting block hides it at a
+ * moment (`hiddenNames`: read from the paint order of EVERY block, `orderAt` — the order the film paints by), and the
+ * finding's words (`coverFinding`). The kit keeps when (every move's samples), its `reel:` prefix and its fix.
  *
  * Only a block at REST hides a name: one passing over it in flight is a moment of natural occlusion, drawn as it is
  * (the name, then the block in front of it), and the contrast check judges a word by its best moment, so a pass never
  * reads as a faint word. A name is hidden from the moment a moved block comes to rest over it until that block moves on.
  */
-import {posed} from './motion-place.mjs';
+import {posed, nameBox, hiddenNames, coverFinding} from 'footprint-story/isometric';
 
-/**
- * How wide a letter of a name is taken, as a share of its size. Ours: the widest letters a sans font draws — a bold "W",
- * a full-width character — are about one em (DejaVu Sans Bold's "W" 1.03, Avenir Next's 0.95, a full-width form 1.0), so
- * 1.2 holds for any font the kit may meet, with room; test/iso-motion.test.mjs measures "MW" in the host's own fonts.
- */
-export const NAME_WIDTH = 1.2;
-
-/** A block's name on its top as a box on the frame, as built ([x0, y0, x1, y1]), or null when it has none: draw.mjs · drawBlock's layout. */
-function nameBox(b) {
-  if (!b.fitted?.lines.length) return null;
-  const {lines, size} = b.fitted, lh = size * 1.15, sf = b.smallFitted, small = sf ? sf.size * 1.15 + 2 : 0, height = lines.length * lh + small;
-  const wide = Math.max(...lines.map((l) => [...l].length * size), sf ? [...sf.lines.join(' ')].length * sf.size : 0) * NAME_WIDTH;
-  const [cx, cy] = b.shape.centre;
-  return [cx - wide / 2, cy - height / 2, cx + wide / 2, cy + height / 2];
-}
-
-/** Whether a polygon (frame points) and a box overlap: their bounds meet, and the box is not wholly outside the polygon's convex hull's sides. */
-function overlaps(points, [x0, y0, x1, y1]) {
-  const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
-  if (Math.max(...xs) <= x0 || Math.min(...xs) >= x1 || Math.max(...ys) <= y0 || Math.min(...ys) >= y1) return false;
-  // a separating side of the outline (it is convex, its points in order round it): every box corner beyond it
-  const corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], n = points.length, turn = Math.sign(area(points));
-  for (let i = 0; i < n; i += 1) {
-    const [ax, ay] = points[i], [bx, by] = points[(i + 1) % n];
-    if (corners.every(([x, y]) => turn * ((bx - ax) * (y - ay) - (by - ay) * (x - ax)) < 0)) return false;
-  }
-  return true;
-}
-const area = (p) => p.reduce((s, [x, y], i) => { const [x2, y2] = p[(i + 1) % p.length]; return s + x * y2 - x2 * y; }, 0);
+/** A block's name on its top as a box on the frame, as built, or null when it has none: draw.mjs · drawBlock's layout (the small line drawn joined on one line). */
+const boxOf = (b) => (b.fitted ? nameBox(b.fitted, b.smallFitted ? {text: b.smallFitted.lines.join(' '), size: b.smallFitted.size} : null, b.shape.centre) : null);
 
 /**
  * Which names the moving blocks hide, and when. `moves` (motion.mjs, each with its samples' moments `times`), `poseAt`
- * (motion.mjs · poseAt). A name is hidden at a moment when a moved block's outline there overlaps its box and the moved
- * block is drawn in front of the named one (grid.backToFront of the two, where each stands). The moments read are every
- * move's samples; between them nothing moves, so a state holds until the next one (after the last, for good).
+ * (motion.mjs · poseAt). A name is hidden at a moment when a resting moved block's outline there overlaps its box and
+ * that block is painted after the named one in the order of every block where each stands (footprint-story ·
+ * hiddenNames). The moments read are every move's samples; between them nothing moves, so a state holds until the next
+ * one (after the last, for good).
  * `findings`: a move that comes to rest over a name — its last moment hides one — names the move, the name and the fix.
  */
 export function coversOf(map, moves, poseAt) {
-  const named = map.blocks.map((b) => ({block: b, box: nameBox(b)})).filter((n) => n.box), movers = [...new Set(moves.map((m) => m.piece))];
+  const named = map.blocks.map((b) => ({block: b, box: boxOf(b)})).filter((n) => n.box), movers = [...new Set(moves.map((m) => m.piece))];
+  const index = new Map(map.blocks.map((b, i) => [b, i]));
   const placeOf = (b, t) => poseAt(b, t)?.at ?? [b.at[0], b.at[1], b.at[2] ?? 0];
   // a block at rest at t: none of its moves runs then (the moment one ends, it rests)
   const resting = (b, t) => !moves.some((m) => m.piece === b && t >= m.start && t < m.start + m.seconds);
   const hiddenAt = (n, t) => {
     const own = poseAt(n.block, t), box = own ? [posed([n.box[0], n.box[1]], own), posed([n.box[2], n.box[3]], own)].flat() : n.box;
-    return movers.find((p) => {
+    const covers = movers.flatMap((p) => {
       const pose = p !== n.block && resting(p, t) ? poseAt(p, t) : null;
-      if (!pose || !overlaps(p.shape.outline.map((q) => posed(q, pose)), box)) return false;
-      const both = [{b: n.block, at: placeOf(n.block, t)}, {b: p, at: placeOf(p, t)}];
-      return map.grid.backToFront(both, (x) => ({at: x.at, size: x.b.size}))[1].b === p;
-    }) ?? null;
+      return pose ? [{piece: index.get(p), outline: p.shape.outline.map((q) => posed(q, pose))}] : [];
+    });
+    if (!covers.length) return null;
+    const things = map.blocks.map((b) => ({at: placeOf(b, t), size: b.size}));
+    const [by] = hiddenNames(map.grid, things, [{piece: index.get(n.block), box}], covers);
+    return by === null ? null : map.blocks[by];
   };
   const times = [...new Set(moves.flatMap((m) => m.times))].sort((a, b) => a - b), hidden = new Map();
   for (const n of named) {
@@ -85,9 +63,11 @@ export function coversOf(map, moves, poseAt) {
   }
   const findings = moves.flatMap((m, i) => {
     const end = m.times.at(-1), over = named.filter((n) => n.block !== m.piece && hiddenAt(n, end) === m.piece);
-    return over.map((n) => ({intent: i, critic: 'reel:covers', level: 'warn',
-      what: `it comes to rest over "${n.block.name}"'s name ("${n.block.fitted.lines.join(' ')}"), which is hidden from then`,
-      fix: `land it clear of the name (to: tiles beside "${n.block.name}", or a corner of its top), or accept it when it is meant ("accept": ["reel:covers"])`}));
+    return over.map((n) => {
+      const said = coverFinding(n.block.name, n.block.fitted.lines.join(' '));
+      return {intent: i, critic: `reel:${said.critic}`, level: said.level, what: said.message,
+        fix: `land it clear of the name (to: tiles beside "${n.block.name}", or a corner of its top), or accept it when it is meant ("accept": ["reel:covers"])`};
+    });
   });
   return {hidden, findings};
 }

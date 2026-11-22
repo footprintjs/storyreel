@@ -399,16 +399,17 @@ test('the drawn way stays on the frame: a throw\'s top or a swinging rope off th
 });
 
 test('what of a drawn block is off the frame: its outline first, then its rope', async () => {
-  const {drawnOff} = await import('../src/kits/isometric/motion-place.mjs');
+  // footprint-story's rule (/isometric · drawnOff), on the film's frame
+  const {drawnOff} = await import('footprint-story/isometric');
   const inside = [[100, 100], [200, 100], [200, 200]];
-  assert.equal(drawnOff(inside, [[150, 50], [150, 100]]), null);
-  assert.deepEqual(drawnOff(inside, [[150, -20], [150, 100]]), {part: 'rope', off: '20 px above'});
-  assert.deepEqual(drawnOff([[1700, 100], ...inside], [[150, -20]]), {part: 'block', off: '100 px to the right'});
-  assert.deepEqual(drawnOff([[-0.2, 950]]), {part: 'block', off: '1 px to the left and 50 px below'}, 'a fraction of a pixel off is said as one');
+  assert.equal(drawnOff(inside, [[150, 50], [150, 100]], MOTION_FRAME), null);
+  assert.deepEqual(drawnOff(inside, [[150, -20], [150, 100]], MOTION_FRAME), {part: 'rope', off: '20 px above'});
+  assert.deepEqual(drawnOff([[1700, 100], ...inside], [[150, -20]], MOTION_FRAME), {part: 'block', off: '100 px to the right'});
+  assert.deepEqual(drawnOff([[-0.2, 950]], [], MOTION_FRAME), {part: 'block', off: '1 px to the left and 50 px below'}, 'a fraction of a pixel off is said as one');
 });
 
 test('sweptThrough finds a thin block anywhere on a stretch, not only at its ends or middle', async () => {
-  const {sweptThrough} = await import('../src/kits/isometric/motion-place.mjs');
+  const {sweptThrough} = await import('footprint-story/isometric');
   const wall = {block: {name: 'wall', size: [0.1, 3, 3]}, from: [3, -1, 0], to: [3, -1, 0]};
   const hit = sweptThrough([1, 1, 1], [0, 0, 0], [10, 0, 0], [wall]);
   assert.equal(hit.block.name, 'wall');
@@ -438,6 +439,23 @@ test('a moved block that comes to rest over another\'s name hides it: not drawn,
   assert.deepEqual(beside.texts().filter(x => x.path === 'blocks[0].label').map(x => x.to), [Infinity]);
 });
 
+// 0.45.0: which block hides a name is footprint-story's rule (`/isometric` · hiddenNames), read from the paint order of
+// EVERY block — the order the film paints by. 0.44.0 ordered the two blocks alone: two blocks that do not meet on the
+// frame get no rule between them, so a block wholly behind the named one (at smaller rows, painted before it through a
+// third) came out in front, and the name was hidden where the picture draws it over that block. footprint-story's test
+// pins the same three blocks.
+test('a block come to rest behind a named one, painted before it through a third, hides nothing: the name is drawn', () => {
+  const grid = {tile: 100, at: [800, 150]};
+  const payments = {name: 'payments', label: 'Payments', at: [5, 5, 0], size: [1, 2, 1]}, crate = {name: 'crate', at: [9, 3, 0], size: [3, 1, 2]}, third = {name: 'third', at: [2, 3, 0], size: [2, 1, 2]};
+  const w = worldOf({grid, blocks: [payments, crate, third], motion: [{piece: 'crate', do: 'settle', to: [6.5, 3.5]}]});
+  const [move] = w.map.motions, end = move.seconds;
+  assert.equal(move.do, 'settle');
+  assert.deepEqual(w.motionFindings, [], 'no reel:covers: the name is not hidden');
+  const written = (t) => { const said = []; w.draw(new Proxy({}, {get: (_, k) => (k === 'fillText' ? (x) => said.push(x) : typeof k === 'string' ? () => ({width: 10}) : undefined), set: () => true}), t); return said; };
+  assert.ok(written(end + 0.5).includes('Payments'), 'at rest behind it, the name is drawn');
+  assert.deepEqual(w.texts().filter(x => x.path === 'blocks[0].label').map(x => x.to), [Infinity], 'and listed to read throughout');
+});
+
 test('only a block at rest hides a name: one passing over it in flight leaves it drawn, and the check reads no faint word', async t => {
   const over = {piece: 'ball', do: 'throw', to: [7, 11], at: ['drop', 'timed by hand']};
   const w = worldOf({...recipe.story, motion: [...recipe.story.motion, over]}), m = w.map.motions[3];
@@ -456,7 +474,7 @@ test('only a block at rest hides a name: one passing over it in flight leaves it
 });
 
 test('a name\'s cover box holds the widest letters in any font: "MW" measured in the host\'s own fonts fits it', async () => {
-  const {NAME_WIDTH} = await import('../src/kits/isometric/motion-cover.mjs');
+  const {NAME_WIDTH} = await import('footprint-story/isometric');
   const {createCanvas} = await import('@napi-rs/canvas');
   const c = createCanvas(10, 10).getContext('2d'), size = 26;
   for (const family of [theme.type?.sans ?? 'sans-serif', 'sans-serif', 'serif', 'monospace']) for (const word of ['MW', 'WWW', 'Ｗ']) {

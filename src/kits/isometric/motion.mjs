@@ -7,7 +7,8 @@
  *
  * WHY nothing is decided here: the author writes intent, and footprint-story knows how bodies move. The kit only says
  * where things are — a block's place, a target by its block's name, what it lands on — in frame pixels, and draws the
- * block where the samples put it (draw.mjs). The facts about places are motion-place.mjs's.
+ * block where the samples put it (draw.mjs). The facts about places are footprint-story's (`/isometric`, 0.32.0: one copy
+ * StoryDeck reads too); the kit keeps its own words for them, under its `reel:` prefix.
  *
  * The places, in the built map's tiles and then frame px (`map.grid.at`): a block moves by its FOOT (the middle of its
  * footprint, at its lift). A fall drops it straight down onto the highest top under it, else the floor; a throw, a
@@ -25,14 +26,14 @@
  */
 import {planIntents, sampleMove} from 'footprint-story/human';
 import {firstDifference} from './flow.mjs';
+import {footOf, topOf, cornerOf, landingUnder, ridesOn, offFrame, drawnOff, footTiles, sideFoot, worldPx, checkMoments, deepestPass, passFinding} from 'footprint-story/isometric';
 import {coversOf} from './motion-cover.mjs';
 import {MOTION_DOS, REEL_CRITICS} from './motion-read.mjs';
-import {footOf, topOf, cornerOf, landingUnder, offFrame, drawnOff, footTiles, sweptThrough, FRAME} from './motion-place.mjs';
-import {SIDE_ROWS, sideFoot, worldPx} from './motion-side.mjs';
+import {SIDE_ROWS} from './motion-side.mjs';
 import {UNTURNED, turnAxis, turning, compose, isUnturned, reachOver, drawnOutline} from './turn.mjs';
 
-/** The frame the moves are planned on: the film's 1600×900 sheet, the size every world draws on. */
-export const MOTION_FRAME = FRAME;
+/** The frame the moves are planned and drawn on: the film's 1600×900 sheet, the size every world draws on. */
+export const MOTION_FRAME = Object.freeze([1600, 900]);
 
 const named = (model, name) => model === name || model?.name === name;
 /** A plain value frozen at every level: the intents are handed out (motionIntents) and run again later (runOf), so nothing may change them in between. */
@@ -47,9 +48,9 @@ const tilesText = (t) => `[${t.map((v) => round3(v)).join(', ')}]`;
  * `others` the other blocks where they stand ({block, at}). `end` is where the foot stands after (tiles), null when only
  * the swing knows (a hang: the piece's last move); `tie` the point the samples move (its foot, or its top for a hang);
  * `leans` the blocks the move relies on standing still (its target, what it lands on). A side-on row (motion-side.mjs:
- * roll, slide, tumble) adds `side` (how its samples lie back on the floor: motion-side · sideFoot) and `turns` (whether it
+ * roll, slide, tumble) adds `side` (how its samples lie back on the floor: footprint-story · sideFoot) and `turns` (whether it
  * turns the body), and a tumble `endOf(sample)` in place of `end`: where it rests is its plan's last sample. `unit` in
- * `place` is the world's own px in a tile (motion-side · worldPx). WHY one row a word: each family is its row, nothing else.
+ * `place` is the world's own px in a tile (footprint-story · worldPx). WHY one row a word: each family is its row, nothing else.
  */
 export const INTENT_OF = Object.freeze({
   fall: (e, {px, foot, at, piece, others}) => {
@@ -86,7 +87,7 @@ function refusal(e, where, entry) {
 
 /**
  * The moves placed in the order they begin: each made into an intent from what the world knows then (where every block
- * stands once the moves begun before it have ended — motion-place's facts), its ends checked to be on the frame.
+ * stands once the moves begun before it have ended — footprint-story's place rules), its ends checked to be on the frame.
  * Returns {intents, spans}: `spans[i]` the foot's way in tiles ({from, to, end}) and the move's tie and leans.
  */
 function placeMoves(map, motions, starts, where) {
@@ -104,7 +105,7 @@ function placeMoves(map, motions, starts, where) {
     const at = now.get(piece), foot = footOf(at, piece.size);
     const target = (place, key) => {
       if (place.tiles) {
-        const off = offFrame(px(place.tiles));
+        const off = offFrame(px(place.tiles), MOTION_FRAME);
         if (off) throw new Error(`${m.who}: ${key} ${tilesText(place.tiles)} is off the frame (${off}) — ${key === 'from' ? 'give a pin the frame shows (a lower lift, or tiles nearer the blocks)' : 'give tiles on the floor'}: the blocks stand between columns ${round3(Math.min(...map.blocks.map((b) => b.at[0])))} and ${round3(Math.max(...map.blocks.map((b) => b.at[0] + b.size[0])))}, rows ${round3(Math.min(...map.blocks.map((b) => b.at[1])))} and ${round3(Math.max(...map.blocks.map((b) => b.at[1] + b.size[1])))}`);
         return place.tiles;
       }
@@ -115,7 +116,7 @@ function placeMoves(map, motions, starts, where) {
     const others = map.blocks.filter((b) => b !== piece && now.get(b) !== null).map((b) => ({block: b, at: now.get(b)}));
     // a block resting on this one's top when it moves would be left in the air: refused, naming both entries — a
     // picture with a block floating on nothing is wrong, and only the author knows whether the rider goes too
-    const rider = others.find((o) => landingUnder(o.at, o.block.size, [{block: piece, at}]).block === piece && Math.abs(o.at[2] - (at[2] + piece.size[2])) < 1e-6);
+    const rider = others.find((o) => ridesOn(o, {block: piece, at}));
     if (rider) {
       const since = lastOf.has(rider.block) ? `since ${motions[lastOf.get(rider.block)].path}` : 'as built';
       throw new Error(`${m.who}: it moves "${piece.name}" from under "${rider.block.name}", which rests on its top ${since}, and would leave it on nothing — move "${rider.block.name}" off first (a motion for it before ${round3(starts[i])} s), or anchor this move before "${rider.block.name}" lands there`);
@@ -209,13 +210,11 @@ function turningHidden(covered, moves) {
 }
 
 /**
- * How often a move is sampled for the pass-through and frame checks, and the most samples a move takes (a 30 s bounce:
- * 900). The pass-through check sweeps each block between two samples (motion-place · sweptThrough), so a fast move skips
- * nothing however thin a block; only the bend of the way between two samples (a thirtieth of a second) is taken straight.
+ * The moments a move is checked at for the pass-through and frame checks: footprint-story's (`/isometric` ·
+ * checkMoments: its start, its end, and 30 a second between, at most 900). The pass-through check sweeps each block
+ * between two of them, so a fast move skips nothing however thin a block.
  */
-const SAMPLE_RATE = 30, SAMPLES_MOST = 900;
-/** The moments a move is checked at: its start, its end, and SAMPLE_RATE a second between. */
-const samplesOf = (m) => { const n = Math.min(SAMPLES_MOST, Math.max(2, Math.ceil(m.seconds * SAMPLE_RATE))); return Array.from({length: n + 1}, (_, k) => m.start + (k / n) * m.seconds); };
+const samplesOf = (m) => checkMoments(m.seconds, m.start);
 
 /**
  * Every move kept on the frame as it is drawn, not only at its written ends: its block's outline and a hang's rope at
@@ -226,10 +225,10 @@ const samplesOf = (m) => { const n = Math.min(SAMPLES_MOST, Math.max(2, Math.cei
 function keepOnFrame(map, moves, motions, poseAt) {
   for (const [i, m] of moves.entries()) {
     // a block the map itself draws off the frame (a grid written in numbers can) is the map's to say, not its move's
-    if (m.piece.shape.outline.some((p) => offFrame(p))) continue;
+    if (m.piece.shape.outline.some((p) => offFrame(p, MOTION_FRAME))) continue;
     for (const t of samplesOf(m)) {
       const pose = poseAt(m.piece, t);
-      const off = drawnOff(drawnOutline(m.piece, pose, map.grid), pose.rope ?? []);
+      const off = drawnOff(drawnOutline(m.piece, pose, map.grid), pose.rope ?? [], MOTION_FRAME);
       if (!off) continue;
       const foot = footOf(pose.at, m.piece.size);
       // a tumble rests where it rolls or slides on to: the fix may be to slow it once it lands (footprint-story's option)
@@ -241,32 +240,32 @@ function keepOnFrame(map, moves, motions, poseAt) {
 
 /**
  * The kit's own critic, `reel:contact`: a move whose block goes into another block on its way, swept between each
- * two samples (motion-place · sweptThrough), each other block where it stands then (moving too, when it moves). WHY the kit's, not footprint-story's contact critic:
- * that one reads boxes on the frame, and on an isometric frame a block's picture overlaps blocks it is nowhere near (a
- * ball resting on a top is inside its box on the frame) — only the world's tiles can say what a block passes through.
- * One finding a move, at its deepest. Its record is the world's, not the intent decider's run (that run has no tiles).
+ * two samples, each other block where it stands then (moving too, when it moves) — footprint-story's rule
+ * (`/isometric` · deepestPass over sweptThrough, said by passFinding as critic `contact`), under the kit's prefix and
+ * with its fix in the recipe's words. WHY not footprint-story/human's contact critic: that one reads boxes on the frame,
+ * and on an isometric frame a block's picture overlaps blocks it is nowhere near (a ball resting on a top is inside its
+ * box on the frame) — only the world's tiles can say what a block passes through. One finding a move, at its deepest.
+ * Its record is the world's, not the intent decider's run (that run has no tiles).
  */
 function throughFindings(map, moves, poseAt) {
   const placeAt = (b, t) => poseAt(b, t)?.at ?? [b.at[0], b.at[1], b.at[2] ?? 0];
   return moves.flatMap((m, i) => {
-    const times = samplesOf(m), rest = map.blocks.filter((b) => b !== m.piece);
-    let worst = null;
+    const times = samplesOf(m), rest = map.blocks.filter((b) => b !== m.piece), stretches = [];
     for (let k = 1; k < times.length; k += 1) {
-      for (const [t0, t1, size, from, to] of stretchesOf(m, times[k - 1], times[k], poseAt, placeAt)) {
-        const hit = sweptThrough(size, from, to, rest.map((b) => ({block: b, from: placeAt(b, t0), to: placeAt(b, t1)})));
-        if (hit && (!worst || hit.depth > worst.depth)) worst = {...hit, t: t0 + hit.share * (t1 - t0)};
-      }
+      for (const [t0, t1, size, from, to] of stretchesOf(m, times[k - 1], times[k], poseAt, placeAt)) stretches.push({t0, t1, size, from, to, others: rest.map((b) => ({block: b, from: placeAt(b, t0), to: placeAt(b, t1)}))});
     }
+    const worst = deepestPass(stretches);
     if (!worst) return [];
+    const said = passFinding({...worst, t: worst.t - m.start}, {do: m.do, tie: m.tie});
     const fix = m.tie === 'top' ? `move "${worst.block.name}" out of its swing, or the pin (from) so it swings clear` : m.do === 'throw' || m.do === 'tumble' ? `${m.do} it to a place clear of "${worst.block.name}", or move "${worst.block.name}" out of its way`
       : `move it round "${worst.block.name}": a to clear of it, or throw it over (do: "throw")`;
-    return [{intent: i, critic: 'reel:contact', level: 'warn', what: `at ${round3(worst.t - m.start)} s it goes ${round3(worst.depth)} tiles into "${worst.block.name}" — it passes through a block`, fix}];
+    return [{intent: i, critic: `reel:${said.critic}`, level: said.level, what: said.message, fix}];
   });
 }
 
 /**
  * How far a corner of a turning block may swing between two of the stretches it is swept on, beyond the box it fills
- * over each (tiles): a tenth of THROUGH_MOST (motion-place.mjs), so the box never reads as passing through what it misses.
+ * over each (tiles): a tenth of THROUGH_MOST (footprint-story/isometric), so the box never reads as passing through what it misses.
  */
 const TURN_STEP = 0.005;
 
@@ -348,7 +347,7 @@ function poseAtOf(moves, map) {
     const m = list.findLast((x) => x.start <= t), s = sampleMove(m.move, Math.min(m.seconds, t - m.start));
     const pivot = built.get(piece)[m.tie], {foot, top} = built.get(piece);
     // the foot on the frame now: the sample itself, or for a hang (tied at its top, drawn upright) as far below it as built;
-    // a side-on move's sample laid back on the floor along its way (motion-side · sideFoot). Once the move has ended its
+    // a side-on move's sample laid back on the floor along its way (footprint-story · sideFoot). Once the move has ended its
     // place is the one it was planned to end on, exactly (worked back from the frame, a ball resting on a top could come
     // out a billionth under it, inside the block it stands on, and be ordered behind it)
     const ended = t >= m.start + m.seconds && m.end !== null;

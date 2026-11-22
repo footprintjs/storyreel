@@ -3485,7 +3485,7 @@ A studio whose recipe file is not known (no `--recipe`, no `recipe.json` beside 
   corner, floors with their names, groups, cables between blocks and ports, packets riding the cables. The recipe uses
   StoryDeck's words as keys (`name`, `kind`, `at`, `size`, `label`, `group`, `ports`; a wire's `arrow: "lap.rj45 to
   sw.p1"`, `packets`, `speed: "260px"`, `ride`, `rest`, `trail`, `behind`), and every number is footprint-story's
-  (`/isometric` places, lays, fits and orders; `/motion` rides), so a deck and a film draw one map the same way. With no
+  (`/isometric` places, lays, fits and orders, and places a moving piece; `/motion` rides), so a deck and a film draw one map the same way. With no
   `at` the blocks are placed from the wires; `appear` brings a piece in on a phrase; every block and wire is named for
   the camera (`"focus": {"keys": [{"on": "db", …}]}`); `style` names the look, footprint-story's style row
   (`{"line": {"name": "ink", "width": 5}}` outlined, `{"line": "none"}` no outline; left out, today's look). A wrong
