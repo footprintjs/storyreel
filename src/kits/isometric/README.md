@@ -440,10 +440,13 @@ footprint-story's own refusals come back in the entry's name. At most 64 moves a
   its own path — a focus, a push or a camera move frames `"db"`.
 - `texts()`: every label, for the reading check.
 - `parts(t)`: each packet's centre mounted on the stretch of its cable it rides, for the geometry audit.
-- `notes`: what the kit says of the map, each `{level, path, message}` with the fix — a wire that passes behind a block,
-  shares a lane, crosses three or more, turns four or more times, doubles back at a port, or is drawn straight and why; a
-  name that does not fit its top; a floor's name that does not fit or finds its edge covered. The film carries every
-  world's notes as `film.kitNotes` (each path from the recipe's top: `story.wires[2]`), and the compile's record keeps
+- `notes`: what the kit says of the map, each `{level, path, message, fix?}` with the fix (`fix`: the words after " — "
+  in the message, said apart) — a wire that passes behind a block, shares a lane, crosses three or more, turns four or
+  more times, doubles back at a port, or is drawn straight and why; a name that does not fit its top; a floor's name
+  that does not fit or finds its edge covered; a block whose paper grain footprint-story thinned on a face too big for
+  it (`grain-thinned`, an `info`, its fix twice the spacing). The film carries every world's notes as `film.kitNotes`
+  (each path from the recipe's top: `story.wires[2]`), `storyreel check` says each (a `warn` a fix, an `info` advice:
+  `../../check/README.md`), and the compile's record keeps
   them, with the world's `summary` (placed by whom, the tile, the style, how many blocks, floors, wires, cables along
   the floor, packets), beside the world's entry (`world.story`, `stage.stages[1]`). `strict: true` refuses the film on a warning.
 - `map`: the whole record on the world (every block's place and fitted name, every cable's corners, length and hidden

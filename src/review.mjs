@@ -47,7 +47,7 @@ import {claimsCount, unsourcedClaims, claimFix, drawnClaims, drawnLines, lingeri
 import {placesOf} from './fix/places.mjs';
 import {wordClear, wordInto} from './fix/words.mjs';
 import {wordsOverDrawings, drawingsOffFrame} from './fix/drawings.mjs';
-import {droppedShots, dropsIn} from './fix/told.mjs';
+import {droppedShots, dropsIn, worldNotes, notesIn} from './fix/told.mjs';
 import {cutText, quote, unmarked, LINE_MOST, WHERE_MOST, FIX_MOST} from './fix/text.mjs';
 import {beatFix, holdsFix, geometryFix} from './fix/say.mjs';
 import {wordsIn, readingPace} from './reading.mjs';
@@ -485,6 +485,11 @@ export const REVIEW_CHECKS = Object.freeze({
   // that keep it), or one the director's own grammar held back (`director-note`, advice). WHY: the reason lived only in
   // the film's record, and the author asked for a director and does not get that shot.
   director: {label: 'What the director left out', why: 'the recipe has a director, and it left a key out', when: s => (s.facts.dropped ?? 0) > 0, find: droppedShots},
+  // What a world's kit says of the world it built (film.kitNotes: kits/isometric/notes.mjs — a wire behind a block, a name
+  // that does not fit its top, a face whose grain was thinned; a whiteboard's strokes past its budget), at the first
+  // moment the world is on screen (fix/told.mjs), named by its entry with the kit's own fix: a `warn` asks for a fix
+  // (`world`), an `info` is advice (`world-note`). WHY: a map's warning that lives only on the film is one nobody reads.
+  world: {label: 'What a world says of itself', why: 'a world\'s kit says something of the world it built', when: s => (s.facts.worldNotes ?? 0) > 0, find: worldNotes},
 });
 
 /**
@@ -515,7 +520,7 @@ function frozenWords(film, f) {
 const LABEL = {'under-captions': 'under the captions', 'words-overlap': 'words over words', 'cut-off': 'cut off at the edge', still: 'nothing changes', hook: 'no hook', 'text-density': 'too much to read', silences: 'no breath', stale: 'nothing new', loop: 'the loop jumps', 'frozen-voice': 'a freeze over the voice',
   slideshow: 'held still', geometry: 'the drawing breaks', pure: 'drawn differently twice', contrast: 'too faint to read', differs: 'does not say how it differs', claims: 'no source', 'example-lingers': 'example data over real numbers',
   'words-over-drawing': 'words over a drawing', 'drawing-off-frame': 'a drawing off the frame', motion: 'a move that reads wrong', 'motion-note': 'a note on a move', 'motion-accepted': 'a move accepted as written',
-  director: 'left out by the director', 'director-note': 'held back by the director'};
+  director: 'left out by the director', 'director-note': 'held back by the director', world: 'its world warns', 'world-note': 'its world notes'};
 /** How many faint words the contrast verdict keeps as evidence, each with its ratio (low counts them all). */
 export const FAINT_KEPT = 50;
 
@@ -552,7 +557,7 @@ function findingLine(f) {
 }
 
 /** The findings that are advice, not errors (a held title can be right): listed after the rest in a summary. */
-const ADVICE = new Set(['still', 'stale', 'slideshow', 'hook', 'motion-note', 'motion-accepted', 'director-note']);
+const ADVICE = new Set(['still', 'stale', 'slideshow', 'hook', 'motion-note', 'motion-accepted', 'director-note', 'world-note']);
 /** How many findings a summary lists in full (the rest are counted). */
 export const SUMMARY_TOP = 5;
 /**
@@ -604,8 +609,8 @@ const SAYS = Object.freeze({find: {promise: 'find returned a promise', list: 'fi
  */
 function spans(film, hits, every, lasting) {
   // a move's finding is held too: it is the record's (a critic measured the whole move), not a word seen for a while
-  // and so is a key the director left out: a moment the record names, not a word seen for a while
-  const held = new Set(['still', 'hook', 'silences', 'stale', 'loop', 'example-lingers', 'motion', 'motion-note', 'motion-accepted', 'director', 'director-note', ...hits.filter(h => h.held).map(h => h.kind)]);
+  // and so is a key the director left out and a world's note: a moment the record names, not a word seen for a while
+  const held = new Set(['still', 'hook', 'silences', 'stale', 'loop', 'example-lingers', 'motion', 'motion-note', 'motion-accepted', 'director', 'director-note', 'world', 'world-note', ...hits.filter(h => h.held).map(h => h.kind)]);
   const groups = new Map();
   for (const h of hits) { const k = `${h.kind}\u0000${h.what}`; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(h); }
   const sceneAt = t => { let id = null; film.timings.scenes.forEach((s, i) => { if (film.clock.offsets[i] <= t + 1e-6) id = s.id; }); return id; };
@@ -718,7 +723,7 @@ export async function reviewPart(film, {part = null, from = 0, to = film.total, 
       parts: times.filter(drawsParts).length, claims: Boolean(film.claims), ...(drawings ? {drawings} : {}),
       ...(freezesIn(film, window).length ? {freezes: freezesIn(film, window).length} : {}), ...(film.differs?.length ? {differs: differsReached(film, own).length} : {}), ...(review.lingers.length ? {lingers: review.lingers.length} : {}),
       ...(film.motionRuns?.length ? {motions: film.motionRuns.length} : {}), ...(film.cameraRuns?.length ? {flights: film.cameraRuns.length} : {}),
-      ...(dropsIn(film, window).length ? {dropped: dropsIn(film, window).length} : {})};
+      ...(dropsIn(film, window).length ? {dropped: dropsIn(film, window).length} : {}), ...(notesIn(film, window).length ? {worldNotes: notesIn(film, window).length} : {})};
     s.ran = []; s.hits = []; s.failed = []; s.verdicts = [];
   };
   // The picks go on the review too, so a check can leave a finding to another that runs. A when() that throws is a

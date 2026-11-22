@@ -1,12 +1,14 @@
 // What the film already knows and `storyreel check` must say (src/fix/told.mjs): a key the director left out
-// (film.director.dropped) is a finding at its own level, naming its recipe entry, the reason with its seconds and the fix.
+// (film.director.dropped) is a finding at its own level, naming its recipe entry, the reason with its seconds and the fix;
+// and so is what a world's kit says of the world it built (film.kitNotes), naming the world and the entry.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {compileFilm, evenTimings} from '../src/index.mjs';
 import {direct} from '../src/director.mjs';
 import {reviewPart, REVIEW_CHECKS, findingsText} from '../src/review.mjs';
 import {checkFilm, problemsOf} from '../src/check/index.mjs';
-import {DROP_KINDS} from '../src/fix/told.mjs';
+import {DROP_KINDS, NOTE_KINDS} from '../src/fix/told.mjs';
+import {isometricKit} from '../src/kits/isometric/index.mjs';
 import {DROP_LEVELS} from '../src/director/framing.mjs';
 
 const BOXES = {sam: [1100, 300, 1400, 850], 'sam.face': [1190, 300, 1310, 420], lamp: [700, 200, 820, 500]};
@@ -79,4 +81,42 @@ test('a mood left out is said too: lost to the timing a fix, nothing there to ac
   assert.match(soon.fix, /^give "Wow!" \d\.\d\d s more after mia's last change \(a pause in the voice before it\)$/);
   const none = direct({storyboard: board1, lang: 'en', rules, moods: ['calm'], rest: 'calm', names: ['mia']}).dropped.filter(x => x.kind === 'mood');
   assert.deepEqual(none.map(x => [x.level, x.why]), [['note', 'the picture\'s kit acts none of surprised for mia'], ['note', 'the picture\'s kit acts none of happy for mia']]);
+});
+
+// A map whose wire passes behind a tall block (a warn), then from scene two a slab too big for its paper grain (an info).
+const sb = {scenes: [{id: 'one', narration: 'A map with a wire behind a tall block.'}, {id: 'two', narration: 'A slab of paper.'}]};
+const behind = {kit: 'isometric', blocks: [{name: 'app', at: [0, 0]}, {name: 'logs', at: [3, 3], size: [2, 2, 3]}, {name: 'db', at: [5, 6]}], wires: [{arrow: 'app to db'}]};
+const slab = style => ({kit: 'isometric', style, blocks: [{name: 'slab', at: [0, 0], size: [10, 10, 1], label: 'Slab'}, {name: 'a', at: [12, 0], label: 'A'}]});
+const mapFilm = (style = {look: 'paper-grain'}) => compileFilm({storyboard: sb, timings: evenTimings(sb), recipe: {story: behind, stages: [{type: 'world', scene: 'two', world: slab(style)}]}, kits: [isometricKit]});
+
+test('a world\'s warning is a fix and its note advice, each at the world\'s first moment on screen, naming the world, the entry and the kit\'s fix', async () => {
+  const f = await mapFilm(), two = f.clock.start('two');
+  assert.deepEqual(f.kitNotes.map(n => [n.level, n.path]), [['warn', 'story.wires[0]'], ['info', 'stages[0].world.blocks[0]']]);
+  for (const n of f.kitNotes) assert.ok(n.fix && n.message.endsWith(` — ${n.fix}`), `${n.path}: its fix is the words after " — "`);
+  const r = await reviewPart(f), found = r.findings.filter(x => x.kind.startsWith('world'));
+  assert.ok(r.ran.includes('world'));
+  assert.deepEqual(found.map(x => [x.kind, x.from, x.scene, x.where]), [['world', 0, 'one', 'story.wires[0]'], ['world-note', two, 'two', 'stages[0].world.blocks[0]']]);
+  assert.equal(found[0].what, 'the story: isometric wires[0] (app to db): passes behind logs: that stretch of it is hidden', 'the world and its entry named, the fix said apart');
+  assert.equal(found[0].fix, 'move it or the two blocks (at) so there is floor to see between, or draw the wire straight ("arrow": "app to db 0")');
+  assert.match(found[1].what, /^stage two: isometric blocks\[0\] \("slab"\): its paper grain is laid wider than the style's spacing on 1 face/);
+  assert.equal(found[1].fix, 'make the block smaller (size), or write the grain out wider on every face: "style": {"texture": {"name": "human:grain", "spacing": 32}} in place of "look": "paper-grain"');
+  // through the check: the warning asks for a fix, the note is advice
+  const done = await checkOf(r);
+  assert.ok(done.said.problems.some(p => p.level === 'error' && p.kind === 'world' && / · its world warns: the story: isometric wires\[0\].* · at story\.wires\[0\] · fix: move it or the two blocks/.test(p.line)));
+  assert.ok(done.said.problems.some(p => p.level === 'advice' && p.kind === 'world-note'));
+  // a part that shows only the first world says only its note
+  const part = await reviewPart(f, {part: {scenes: ['one'], handles: 0}});
+  assert.deepEqual(part.findings.filter(x => x.kind.startsWith('world')).map(x => x.where), ['story.wires[0]']);
+});
+
+test('the fix a world\'s note names can be followed: the grain written out at the spacing it gives lays every face alike', async () => {
+  const followed = await mapFilm({texture: {name: 'human:grain', spacing: 32}});
+  assert.deepEqual(followed.kitNotes.map(n => n.path), ['story.wires[0]'], 'the slab says nothing now');
+  const plain = await mapFilm({texture: {name: 'human:grain', spacing: 16}});
+  assert.equal(plain.kitNotes[1].fix, 'make the block smaller (size), or give the grain a wider spacing on every face (texture: {"name": "human:grain", "spacing": 32}, or wider)', 'a world with no look is told its own texture');
+  assert.deepEqual(Object.keys(NOTE_KINDS), ['warn', 'info']);
+  // a world that says nothing adds nothing: the review does not read worlds' notes
+  const quiet = await compileFilm({storyboard: sb, timings: evenTimings(sb), recipe: {story: {kit: 'isometric', blocks: [{name: 'a', label: 'A'}, {name: 'b', label: 'B'}], wires: [{arrow: 'a to b'}]}}, kits: [isometricKit]});
+  assert.deepEqual(quiet.kitNotes, []);
+  assert.ok(!(await reviewPart(quiet)).ran.includes('world'));
 });
