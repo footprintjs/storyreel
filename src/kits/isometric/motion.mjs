@@ -145,7 +145,7 @@ export function planMotions(map, motions, clock, where) {
       if (other.piece === m.piece && m.start < until(other) - 1e-9) throw new Error(`${motions[i].who}: it begins at ${round3(m.start)} s, while ${other.path} still moves "${m.piece.name}" until ${round3(until(other))} s (footprint-story planned it ${round3(other.seconds)} s) — anchor it at ${round3(until(other))} s or later: a later phrase, or ["scene", "phrase", ${round3(until(other) - m.start)}] after this one`);
     }
     for (const b of m.leans) for (const other of moves.filter((o) => o.piece === b)) {
-      if (other.start < until(m) - 1e-9 && until(other) > m.start + 1e-9) throw new Error(`${motions[i].who}: it relies on "${b.name}" standing still from ${round3(m.start)} s to ${round3(until(m))} s, and ${other.path} moves it from ${round3(other.start)} s to ${round3(until(other))} s — anchor one so the two do not overlap`);
+      if (other.start < until(m) - 1e-9 && until(other) > m.start + 1e-9) throw new Error(`${motions[i].who}: it relies on "${b.name}" standing still from ${round3(m.start)} s to ${round3(until(m))} s, and ${other.path} moves it from ${round3(other.start)} s to ${round3(until(other))} s — anchor this one at ${round3(until(other))} s or later (["scene", "phrase", seconds after]), or that one after ${round3(until(m))} s`);
     }
     // an accepted critic is one this move is checked by: a name it is not would accept nothing, silently
     const checks = [...planned.moves[i].checks, ...REEL_CRITICS];

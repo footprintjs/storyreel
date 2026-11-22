@@ -328,7 +328,7 @@ test('a target that moved is aimed at where it went; one that moves meanwhile is
   const resting = worldOf({grid, blocks: [{...box, at: [2, 2]}, {...ball, at: [2, 2, 1]}]}).regionsAt(0).find(r => r.name === 'ball').box;
   assert.deepEqual(ballBox.map(v => +v.toFixed(6)), resting.map(v => +v.toFixed(6)), 'it rests on the box, not in the air where the box was');
   assert.throws(() => worldOf({grid, blocks: [box, ball], motion: [{piece: 'box', do: 'fall', at: ['drop', 'It falls to the floor']}, {piece: 'ball', do: 'throw', to: 'box', at: ['drop', 'It falls to the floor', 0.1]}]}, 'stage s'),
-    /motion\[1\] \("ball"\): it relies on "box" standing still from [\d.]+ s to [\d.]+ s, and motion\[0\] moves it from [\d.]+ s to [\d.]+ s — anchor one so the two do not overlap/);
+    /motion\[1\] \("ball"\): it relies on "box" standing still from [\d.]+ s to [\d.]+ s, and motion\[0\] moves it from [\d.]+ s to [\d.]+ s — anchor this one at [\d.]+ s or later \(\["scene", "phrase", seconds after\]\), or that one after [\d.]+ s/);
   assert.throws(() => worldOf({grid: {tile: 100, at: [800, 450]}, blocks: [box, ball], motion: [{piece: 'box', do: 'hang', from: [2.5, 2.5, 7]}, {piece: 'ball', do: 'throw', to: 'box', at: ['drop', 'timed by hand']}]}, 'stage s'),
     /motion\[1\] \("ball"\): to names "box", which hangs from motion\[0\] — where its swing rests is not known before it is planned: aim at tiles instead/);
 });
