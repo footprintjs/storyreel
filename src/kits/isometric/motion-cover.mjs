@@ -10,13 +10,22 @@
  * word "too faint" behind a block, which depends on how wide the host's font draws it.
  *
  * A name's place is worked out from the built map's numbers only (its fitted lines and size, as draw.mjs lays them
- * out), never from a font: a line is taken as wide as NAME_WIDTH of its size per letter, a little wider than the
- * widest the kit's fonts draw, so a word that peeks out from under a block on any host is counted covered.
+ * out), never from a font: a line is taken as wide as NAME_WIDTH of its size per letter — wider than any letter of any
+ * font the kit meets draws, a wide capital or a full-width character — so a word that could peek out from under a
+ * block on any host is counted covered, and every host decides the same.
+ *
+ * Only a block at REST hides a name: one passing over it in flight is a moment of natural occlusion, drawn as it is
+ * (the name, then the block in front of it), and the contrast check judges a word by its best moment, so a pass never
+ * reads as a faint word. A name is hidden from the moment a moved block comes to rest over it until that block moves on.
  */
 import {posed} from './motion-place.mjs';
 
-/** How wide a letter of a name is taken, as a share of its size: wider than the fonts draw a name, so any host's word is inside. Ours. */
-export const NAME_WIDTH = 0.7;
+/**
+ * How wide a letter of a name is taken, as a share of its size. Ours: the widest letters a sans font draws — a bold "W",
+ * a full-width character — are about one em (DejaVu Sans Bold's "W" 1.03, Avenir Next's 0.95, a full-width form 1.0), so
+ * 1.2 holds for any font the kit may meet, with room; test/iso-motion.test.mjs measures "MW" in the host's own fonts.
+ */
+export const NAME_WIDTH = 1.2;
 
 /** A block's name on its top as a box on the frame, as built ([x0, y0, x1, y1]), or null when it has none: draw.mjs · drawBlock's layout. */
 function nameBox(b) {
@@ -51,10 +60,12 @@ const area = (p) => p.reduce((s, [x, y], i) => { const [x2, y2] = p[(i + 1) % p.
 export function coversOf(map, moves, poseAt) {
   const named = map.blocks.map((b) => ({block: b, box: nameBox(b)})).filter((n) => n.box), movers = [...new Set(moves.map((m) => m.piece))];
   const placeOf = (b, t) => poseAt(b, t)?.at ?? [b.at[0], b.at[1], b.at[2] ?? 0];
+  // a block at rest at t: none of its moves runs then (the moment one ends, it rests)
+  const resting = (b, t) => !moves.some((m) => m.piece === b && t >= m.start && t < m.start + m.seconds);
   const hiddenAt = (n, t) => {
     const own = poseAt(n.block, t), box = own ? [posed([n.box[0], n.box[1]], own), posed([n.box[2], n.box[3]], own)].flat() : n.box;
     return movers.find((p) => {
-      const pose = p !== n.block ? poseAt(p, t) : null;
+      const pose = p !== n.block && resting(p, t) ? poseAt(p, t) : null;
       if (!pose || !overlaps(p.shape.outline.map((q) => posed(q, pose)), box)) return false;
       const both = [{b: n.block, at: placeOf(n.block, t)}, {b: p, at: placeOf(p, t)}];
       return map.grid.backToFront(both, (x) => ({at: x.at, size: x.b.size}))[1].b === p;

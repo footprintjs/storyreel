@@ -10,6 +10,8 @@ import {isometricKit} from '../../../src/kits/isometric/index.mjs';
 
 const example = fileURLToPath(new URL('../../../examples/iso-motion/', import.meta.url));
 const read = (file) => JSON.parse(readFileSync(example + file, 'utf8'));
+// --over: the ball thrown back off the server, across "You" and its name: a pass in flight, which hides no name
+const over = {piece: 'ball', do: 'throw', to: [7, 11], at: ['drop', 'timed by hand']};
 const straight = {piece: 'box', do: 'reach', to: [1, 1], at: ['drop', 'timed by hand'], model: {name: 'min-jerk', bend: 0}};
 
 export default {
@@ -17,6 +19,7 @@ export default {
     const recipe = read('recipe.json');
     if (flags.straight) recipe.story.motion.push(straight);
     if (flags.accept) recipe.story.motion.push({...straight, accept: ['arc']});
+    if (flags.over) recipe.story.motion.push(over);
     if (flags.plain) delete recipe.story.motion;
     return {storyboard: read('storyboard.json'), recipe, kits: [isometricKit], root: example, out: flags.out ?? 'out'};
   },

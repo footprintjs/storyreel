@@ -240,14 +240,17 @@ moves, the built order is used as it was.
 **A block a wire joins cannot move**, and is refused saying so: its cable is laid on the floor to where it stands, and
 would not follow it.
 
-**What a move covers** (`reel:covers`, `motion-cover.mjs`): a moved block drawn in front of another block's name (a
-ball come to rest on a server's top sits on its name) hides that name: the name is not drawn while it is covered, is
-not listed to read then (`texts()`), and a move that comes to rest over one is a finding naming the move, the name and
-the fix (land it clear, or `"accept": ["reel:covers"]` when it is meant — the example accepts its ball on the server).
+**What a move covers** (`reel:covers`, `motion-cover.mjs`): a moved block that comes to rest in front of another
+block's name (a ball on a server's top sits on its name) hides that name: from that moment until it moves on, the name
+is not drawn and not listed to read (`texts()`), and the move is a finding naming the move, the name and the fix. A
+block passing over a name in flight hides nothing: it is a moment of natural occlusion, drawn as it is, and the
+contrast check judges a word by its best moment, so it reads no faint word (pinned on CI's fonts and macOS's). The fix:
+land it clear, or `"accept": ["reel:covers"]` when it is meant (the example accepts its ball on the server).
 WHY not drawn: a few letters peeking past a block read as a word too faint to read, and how many peek depends on how
 wide the host's font draws them (CI's DejaVu Sans showed "Server" at 1.56:1 where macOS hid it whole). The cover is
-decided from the kit's own numbers — a name's fitted lines at 0.7 of its size a letter, wider than its fonts draw —
-so every host draws and says the same words.
+decided from the kit's own numbers — a name's fitted lines at 1.2 of its size a letter, wider than any font draws its
+widest letters (a test measures "MW", "WWW" and a full-width "Ｗ" in the host's fonts) — so every host draws and says
+the same words.
 
 **A world with no motion is exactly as it was**: nothing is planned, its record and summary have no `motions`, no run
 is handed out, and every frame is the same (`test/golden.json` is unchanged; the example `examples/iso-motion` adds its

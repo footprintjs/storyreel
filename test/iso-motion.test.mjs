@@ -210,7 +210,7 @@ test('paint order: a moving block takes its place in the back-to-front order whe
   assert.deepEqual(labels(front, end(front)), ['Wall', 'Ball'], 'landed in front: drawn after it');
   // high in the air over the wall, mid-flight, it is in front
   const mid = behind.map.motions[0].seconds * 0.5;
-  assert.deepEqual(labels(behind, mid), ['Ball'], 'in flight above the wall it is in front: the wall\'s name under it is hidden (were it behind, the name would be drawn)');
+  assert.deepEqual(labels(behind, mid), ['Wall', 'Ball'], 'in flight above the wall: drawn after it (its name stays drawn: a pass is no rest)');
   assert.deepEqual(labels(behind, 0), ['Wall', 'Ball'], 'before its move: the built order');
 });
 
@@ -431,9 +431,40 @@ test('a moved block that comes to rest over another\'s name hides it: not drawn,
   assert.deepEqual(written(end + 0.5).filter(x => x === 'Server' || x === 'Ball'), ['Ball'], 'at rest over it, the name is not drawn');
   const spans = w.texts().filter(x => x.path === 'blocks[0].label');
   assert.equal(spans.length, 1);
-  assert.ok(spans[0].to <= end + 1e-9 && spans[0].to > 0, `the server\'s name is listed to read until the ball covers it (${spans[0].to} s)`);
+  assert.ok(Math.abs(spans[0].to - end) < 1e-3, `the server\'s name is listed to read until the ball comes to rest over it, at the throw's end (${spans[0].to} s)`);
   // landed beside the server: nothing hidden, nothing said
   const beside = worldOf({grid, blocks: [server, ball], motion: [{piece: 'ball', do: 'throw', to: [4, 4]}]});
   assert.deepEqual(beside.motionFindings, []);
   assert.deepEqual(beside.texts().filter(x => x.path === 'blocks[0].label').map(x => x.to), [Infinity]);
+});
+
+test('only a block at rest hides a name: one passing over it in flight leaves it drawn, and the check reads no faint word', async t => {
+  const over = {piece: 'ball', do: 'throw', to: [7, 11], at: ['drop', 'timed by hand']};
+  const w = worldOf({...recipe.story, motion: [...recipe.story.motion, over]}), m = w.map.motions[3];
+  const said = (at) => { const s = []; w.draw(new Proxy({}, {get: (_, k) => (k === 'fillText' ? (x) => s.push(x) : typeof k === 'string' ? () => ({width: 10}) : undefined), set: () => true}), at); return s; };
+  let crossing = 0;
+  for (let at = m.at; at <= m.at + m.seconds; at += 0.02) {
+    const b = w.regionsAt(at).find(x => x.name === 'ball').box, you = w.regionsAt(at).find(x => x.name === 'you').box, cx = (you[0] + you[2]) / 2, ny = you[1] + 56;
+    if (b[0] < cx + 20 && b[2] > cx - 20 && b[1] < ny + 15 && b[3] > ny - 15) crossing += 1;
+    assert.ok(said(at).includes('You'), `at ${at.toFixed(2)} s the name "You" is drawn: a pass is no rest`);
+  }
+  assert.ok(crossing > 0, 'the ball does pass over the name of "You"');
+  assert.deepEqual(w.motionFindings.filter(f => f.path === 'motion[3]'), [], 'a pass is said nowhere');
+  // the whole film read as text: no word too faint (on CI this reads DejaVu Sans, the font that showed the peeking name)
+  const out = tempDir('motion-over', t);
+  assert.match(await check(await readInputs({cwd: project, out, over: 'true'})), /^clean — nothing to fix · 1 piece of advice\n/);
+});
+
+test('a name\'s cover box holds the widest letters in any font: "MW" measured in the host\'s own fonts fits it', async () => {
+  const {NAME_WIDTH} = await import('../src/kits/isometric/motion-cover.mjs');
+  const {createCanvas} = await import('@napi-rs/canvas');
+  const c = createCanvas(10, 10).getContext('2d'), size = 26;
+  for (const family of [theme.type?.sans ?? 'sans-serif', 'sans-serif', 'serif', 'monospace']) for (const word of ['MW', 'WWW', 'Ｗ']) {
+    c.font = `700 ${size}px ${family}`;
+    assert.ok(c.measureText(word).width <= [...word].length * size * NAME_WIDTH, `"${word}" in ${family}: ${c.measureText(word).width.toFixed(1)} px, the box ${[...word].length * size * NAME_WIDTH} px`);
+  }
+  // and a block named "MW" with a ball come to rest on its top: its name is hidden, as any name is
+  const grid = {tile: 100, at: [800, 250]}, mw = {name: 'mw', label: 'MW', at: [6, 1], size: [2, 2, 1]}, ball = {name: 'ball', at: [1, 5], size: [1, 1, 0.6]};
+  const w = worldOf({grid, blocks: [mw, ball], motion: [{piece: 'ball', do: 'throw', to: 'mw', accept: ['reel:covers']}]});
+  assert.deepEqual(w.motionFindings.map(f => [f.critic, f.level]), [['reel:covers', 'accepted']]);
 });
