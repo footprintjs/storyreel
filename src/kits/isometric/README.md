@@ -263,7 +263,7 @@ The box falls under gravity onto the floor under it (0.46 s: `ballistic`, the us
 | `do` | `fall` · `throw` · `hang` · `settle` · `reach` | footprint-story's word for the move (below) |
 | `at` | an anchor | when the move begins; left out, when the block appears, else the film's start |
 | `to` | a block's name or tiles | where it ends: a block's name is the middle of its top (it ends standing on it), tiles `[col, row]` or `[col, row, lift]` a place in the world. A throw, a settle and a reach need one; a fall and a hang take none |
-| `from` | a block's name or tiles | a hang's pin (only a hang takes one) |
+| `from` | a block's name or tiles | a hang's pin (only a hang takes one). A block's name is never the middle of its top (the piece would rest inside the block): under a block in the air above the piece, the middle of its underside; beside any other, its top edge that faces the piece, on an arm out from it by half the piece's depth (below) |
 | `wrap` | `[{"wrapper": "anticipate"}]` | footprint-story's wrappers, innermost first: `anticipate`, `follow-through`, `hold`, `overshoot`, with their options (at most 4) |
 | `model` | `"bounce"`, `{"name": "bounce", "squash": 0.2}` | one of footprint-story's models for the family, when the usual is not wanted (a fix footprint-story gives is written here as it says it) |
 | `accept` | `["arc"]` | critics whose findings this move keeps, when what they find is meant (a straight slide): shown as accepted and recorded, never a fault. Each must be one the move's model is checked by, or `reel:contact` |
@@ -351,7 +351,19 @@ fall); a target block is aimed at **where it stands when the move begins** (a bo
 fell), and a move that relies on a block that moves meanwhile — its target, what it lands on — is refused with both
 times. A block that moves from under another resting on its top is refused, naming both entries: the rider would be
 left on nothing, and only the author knows whether it goes too (move it off first, or anchor the move before it lands).
-A hang ties the rope to its **top**; its pin must be above it. Tiles off the 1600×900 frame are refused in tiles,
+A hang ties the rope to its **top**; its pin must be above it. **A hang from a block** (`"from": "shelf"`, from 0.51.0;
+`motion-hang.mjs` · `hangPin`) is tied where a real one would be: to the middle of its **underside** when the block is
+in the air above the piece's top (a beam, a shelf on nothing), the piece hanging beneath it; else **beside** it — at its
+top, the middle of the edge that faces the piece, on an arm held out by half the piece's own depth across that edge,
+so at rest the piece hangs flush against that side, touching it and not inside it. The arm is drawn from the edge to
+the pin in the rope's ink, and framed with the rope. Before 0.51.0 a block's name was the middle of its top, as `to`
+takes it, and a piece hung there always rested inside the block (`reel:contact`, every time). The rope's length is
+where the piece starts, so a piece hung from one tile away swings past its rest and back into the block — and that is
+still a `reel:contact` warn: the rule picks where the rope is tied, never what the swing may do. The record names the
+block, the rule and the pin (`map.motions[i].hung`: `{on, rule: "under" | "beside", pin}`). A block whose top is not
+above the piece's is refused, naming a pin of tiles above it. **A known limit:** the rope and the arm are checked only
+for leaving the frame, not for passing through a block — `reel:contact` sweeps the hanging block's own box, and a line
+has none (a rope down through a crate between the beam and the piece is drawn, and said by nothing). Tiles off the 1600×900 frame are refused in tiles,
 naming where the blocks stand, and so is a way that leaves the frame as it is drawn — a throw's top, a swinging rope —
 checked at each sample, saying the moment, how far off and where its foot is then in tiles (a block the map itself
 draws off the frame is the map's to say).
@@ -393,7 +405,11 @@ would not follow it.
 block that comes to rest over another block's name (a ball on a server's top sits on its name), and is painted after
 that block, hides the name. "Painted after" is read from the order of every block, the order the film paints by
 (`orderAt`); 0.44.0 ordered the two blocks alone and so hid a name the picture draws over a block behind it, fixed in
-0.45.0. From that moment until the block moves on, the name is not drawn and not listed to read (`texts()`), and the move is a finding naming the move, the name and the fix. A
+0.45.0. What the resting block covers with is its outline **as drawn** (`turn.mjs` · `drawnOutline`, the outline a
+camera frames and the frame check reads): a body left turned off its faces covers by its turned corners — before 0.51.0
+the check moved its outline as built, so a turned block could hide a name it was not drawn over, or leave one it was
+(both pinned, `test/iso-covers.test.mjs`). A block a tumble lands on a face is the block built there, so it covers as
+built: no film moved. From that moment until the block moves on, the name is not drawn and not listed to read (`texts()`), and the move is a finding naming the move, the name and the fix. A
 block passing over a name in flight hides nothing: it is a moment of natural occlusion, drawn as it is, and the
 contrast check judges a word by its best moment, so it reads no faint word (pinned on CI's fonts and macOS's). The fix:
 land it clear, or `"accept": ["reel:covers"]` when it is meant (the example accepts its ball on the server).
@@ -440,10 +456,13 @@ footprint-story's own refusals come back in the entry's name. At most 64 moves a
   its own path — a focus, a push or a camera move frames `"db"`.
 - `texts()`: every label, for the reading check.
 - `parts(t)`: each packet's centre mounted on the stretch of its cable it rides, for the geometry audit.
-- `notes`: what the kit says of the map, each `{level, path, message}` with the fix — a wire that passes behind a block,
-  shares a lane, crosses three or more, turns four or more times, doubles back at a port, or is drawn straight and why; a
-  name that does not fit its top; a floor's name that does not fit or finds its edge covered. The film carries every
-  world's notes as `film.kitNotes` (each path from the recipe's top: `story.wires[2]`), and the compile's record keeps
+- `notes`: what the kit says of the map, each `{level, path, message, fix?}` with the fix (`fix`: the words after " — "
+  in the message, said apart) — a wire that passes behind a block, shares a lane, crosses three or more, turns four or
+  more times, doubles back at a port, or is drawn straight and why; a name that does not fit its top; a floor's name
+  that does not fit or finds its edge covered; a block whose paper grain footprint-story thinned on a face too big for
+  it (`grain-thinned`, an `info`, its fix twice the spacing). The film carries every world's notes as `film.kitNotes`
+  (each path from the recipe's top: `story.wires[2]`), `storyreel check` says each (a `warn` a fix, an `info` advice:
+  `../../check/README.md`), and the compile's record keeps
   them, with the world's `summary` (placed by whom, the tile, the style, how many blocks, floors, wires, cables along
   the floor, packets), beside the world's entry (`world.story`, `stage.stages[1]`). `strict: true` refuses the film on a warning.
 - `map`: the whole record on the world (every block's place and fitted name, every cable's corners, length and hidden

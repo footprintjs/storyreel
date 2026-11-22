@@ -80,6 +80,14 @@ export interface DirectorProposal {
   /** In a film: whether it landed, and why not (an explicit key won; the kit takes no such key; one camera). */
   placed?: boolean; why?: string;
 }
+/** A key left out (film.director.dropped): a proposal with its level, why, and the change that would keep it. */
+export interface DirectorDropped extends DirectorProposal {
+  /** warn: a key the rules asked for, lost to the voice's timing (a `storyreel check` fix); note: held back by the director's own grammar, or nothing there to frame or act (advice). */
+  level: 'warn' | 'note';
+  why: string;
+  /** The change that keeps it: the seconds to give the line, or the setting that frames it. Absent where there is none. */
+  fix?: string;
+}
 /** Who is on screen in each scene: each reacts through acting · reactionAt, read from the voice (no keys). */
 export interface DirectorListeners { by: 'reactionAt'; scenes: {scene: string; people: string[]}[] }
 /** What a film keeps of its direction (film.director; the making-of record's `director`). */
@@ -91,8 +99,8 @@ export interface DirectorRecord {
   /** What landed where, in recipe shape: {path: 'stages[3].world.camera', keys: [...]}. */
   placed: {path: string; keys: unknown}[];
   proposals: DirectorProposal[];
-  /** Left out by the grammar itself (a key too soon after the last, a mood too soon after the last change), with why. */
-  dropped: DirectorProposal[];
+  /** Left out by the grammar itself (a key too soon after the last, a mood too soon after the last change), with its level, why and fix: what `storyreel check` says. */
+  dropped: DirectorDropped[];
   listeners: DirectorListeners;
 }
 
@@ -126,5 +134,5 @@ export function direct(options: {
   lang: string | null; rules: readonly string[];
   focus: {strategy: 'camera'; keys: DirectedFraming[]};
   acting: Record<string, {at: Beat; mood: string}[]>;
-  proposals: DirectorProposal[]; dropped: DirectorProposal[]; listeners: DirectorListeners;
+  proposals: DirectorProposal[]; dropped: DirectorDropped[]; listeners: DirectorListeners;
 };

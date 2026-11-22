@@ -28,6 +28,7 @@ import {planIntents, sampleMove} from 'footprint-story/human';
 import {firstDifference} from './flow.mjs';
 import {footOf, topOf, cornerOf, landingUnder, ridesOn, offFrame, drawnOff, footTiles, sideFoot, worldPx, checkMoments, deepestPass, passFinding} from 'footprint-story/isometric';
 import {coversOf} from './motion-cover.mjs';
+import {hangPin} from './motion-hang.mjs';
 import {MOTION_DOS, REEL_CRITICS} from './motion-read.mjs';
 import {SIDE_ROWS} from './motion-side.mjs';
 import {UNTURNED, turnAxis, turning, compose, isUnturned, reachOver, drawnOutline} from './turn.mjs';
@@ -64,11 +65,18 @@ export const INTENT_OF = Object.freeze({
     // a bouncing throw lands on a floor: the line its target stands on (footprint-story refuses one that starts below it)
     return {intent: {from: px(foot), to: end, ...(named(e.model, 'bounce') ? {floor: end[1]} : {})}, end: to, tie: 'foot', leans: e.to.block ? [e.to.block] : []};
   },
-  hang: (e, {px, foot, piece, target}) => {
-    const pin = target(e.from, 'from'), top = [foot[0], foot[1], foot[2] + piece.size[2]];
+  hang: (e, {px, foot, piece, target, others}) => {
+    const written = target(e.from, 'from'), top = [foot[0], foot[1], foot[2] + piece.size[2]];
+    // a block's name is a pin under it or beside its top edge (motion-hang.mjs), never the middle of its top: the piece
+    // would rest inside it
+    const by = e.from.block ? hangPin(e.from.block, others.find((o) => o.block === e.from.block).at, piece, foot) : null, pin = by?.pin ?? written;
     // a rope hangs down from its pin: a pin at or under the block's top would stand the rope up from below it
-    if (!(pin[2] > top[2] + 1e-6)) throw new Error(`${e.who}: from is its pin, at lift ${round3(pin[2])} — a block hangs below its pin, and its top is at lift ${round3(top[2])}: lift the pin above it (from: [${round3(pin[0])}, ${round3(pin[1])}, ${round3(top[2] + 3)}])`);
-    return {intent: {from: px(pin), to: px(top)}, end: null, tie: 'top', leans: e.from.block ? [e.from.block] : []};
+    if (!(pin[2] > top[2] + 1e-6)) {
+      throw new Error(by ? `${e.who}: from names "${e.from.block.name}", whose top is at lift ${round3(pin[2])} — a block hangs below its pin, and its top is at lift ${round3(top[2])}: hang it from a block that stands higher than it, or from tiles above it (from: [${round3(foot[0])}, ${round3(foot[1])}, ${round3(top[2] + 3)}])`
+        : `${e.who}: from is its pin, at lift ${round3(pin[2])} — a block hangs below its pin, and its top is at lift ${round3(top[2])}: lift the pin above it (from: [${round3(pin[0])}, ${round3(pin[1])}, ${round3(top[2] + 3)}])`);
+    }
+    if (by && offFrame(px(pin), MOTION_FRAME)) throw new Error(`${e.who}: from names "${e.from.block.name}", and the pin ${by.rule === 'under' ? 'under it' : 'beside its top edge'}, at tiles ${tilesText(pin)}, is off the frame (${offFrame(px(pin), MOTION_FRAME)}) — hang it from a block the frame shows round it, or from tiles`);
+    return {intent: {from: px(pin), to: px(top)}, end: null, tie: 'top', leans: e.from.block ? [e.from.block] : [], pin, ...(by ? {hung: {on: e.from.block.name, rule: by.rule, pin: pin.map(round3), ...(by.arm ? {arm: by.arm} : {})}} : {})};
   },
   settle: (e, {px, foot, target}) => { const to = target(e.to, 'to'); return {intent: {from: px(foot), to: px(to)}, end: to, tie: 'foot', leans: e.to.block ? [e.to.block] : []}; },
   // a reach to a block aims at its top: Fitts's law reads the target's width, the top face's width across the frame
@@ -129,7 +137,7 @@ function placeMoves(map, motions, starts, where) {
     const end = made.endOf ? made.endOf(lastSample(intents[i], m, where)) : made.end;
     // the foot's way in tiles, for its place in the paint order and the pass-through check (poseAt · footTiles); a hang
     // swings towards below its pin, which is all that is known of its end before it is planned
-    spans[i] = {from: foot, to: end ?? [...target(m.from, 'from').slice(0, 2), 0], end, tie: made.tie, leans: made.leans, ...(made.side ? {side: made.side, turns: made.turns} : {})};
+    spans[i] = {from: foot, to: end ?? [...made.pin.slice(0, 2), 0], end, tie: made.tie, leans: made.leans, ...(made.side ? {side: made.side, turns: made.turns} : {}), ...(made.hung ? {hung: made.hung} : {})};
     now.set(piece, end ? cornerOf(end, piece.size) : null);
     lastOf.set(piece, i);
   }
@@ -300,7 +308,9 @@ function stretchesOf(m, t0, t1, poseAt, placeAt) {
 function recordsOf(motions, moves, planned, through) {
   const record = moves.map((m, i) => Object.freeze({path: m.path, piece: m.piece.name, do: motions[i].do, at: round3(m.start), seconds: round3(m.seconds),
     model: planned.choices[i].model, by: planned.choices[i].by, reason: planned.moves[i].reason, wrappers: Object.freeze([...planned.durations[i].wrappers]),
-    ...(motions[i].accept.length ? {accepted: Object.freeze([...motions[i].accept])} : {})}));
+    ...(motions[i].accept.length ? {accepted: Object.freeze([...motions[i].accept])} : {}),
+    // a hang from a block: which block, by which rule (motion-hang.mjs: under it, or beside its top edge), and the pin in tiles
+    ...(m.hung ? {hung: Object.freeze({on: m.hung.on, rule: m.hung.rule, pin: Object.freeze([...m.hung.pin])})} : {})}));
   const summary = record.map((r) => Object.freeze({piece: r.piece, do: r.do, model: r.model, at: r.at, seconds: r.seconds}));
   const said = [...planned.findings.map((f) => {
     const who = planned.intents[f.intent].who;
@@ -354,7 +364,8 @@ function poseAtOf(moves, map) {
     const place = ended ? m.end : m.side ? sideFoot(m.side, s) : footAt([s.x, s.y + (m.tie === 'top' ? foot[1] - top[1] : 0)], m, Math.min(1, (t - m.start) / m.seconds));
     const [dx, dy] = m.side ? [px(place)[0] - foot[0], px(place)[1] - foot[1]] : [s.x - pivot[0], s.y - pivot[1]];
     const turn = m.turns ? turnOf(m, s) : before.get(m);
-    return {dx, dy, pivot, sx: s.sx ?? 1, sy: s.sy ?? 1, ...(m.tie === 'top' ? {rope: s.points} : {}),
+    // a hang from beside a block's top edge: its arm from the edge to the pin, drawn and framed with the rope
+    return {dx, dy, pivot, sx: s.sx ?? 1, sy: s.sy ?? 1, ...(m.tie === 'top' ? {rope: m.hung?.arm ? [px(m.hung.arm), ...s.points] : s.points} : {}),
       at: cornerOf(place, piece.size), ...(isUnturned(turn) ? {} : {turn}), ...(m.turns ? {angle: s.angle} : {})};
   };
 }

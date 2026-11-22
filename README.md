@@ -844,6 +844,13 @@ fix, worst first (`fix` an error, `note` advice; the first 8, `--full` for all),
 changed since the check before. `anchors`, `timeline`, `review` and `changes` give a closer look at each part.
 How it decides, and its chart: [src/check/README.md](src/check/README.md).
 
+What the film knows of itself is said too (0.51.0): a key the `director` left out, at the moment it would have landed
+(`at director`) — a fix when the voice's timing lost a shot the author asked for (a line's close-up, a key moment) or a
+change of picture left it no time, its seconds in the fix (`give the line 4.32 s more before the change, or frame it in
+a scene of its own`), advice when it was the director's own key or its grammar held it back — and what a world's kit says of
+the world it built (`at story.wires[0]`: a wire hidden behind a block, a name that does not fit, a face whose paper
+grain was thinned), a kit's `warn` a fix and its `info` advice.
+
 A check keeps its record, so the log can say where a value came from without running anything again:
 `npx storyreel log --run 1 --why verdict` gives the value, the stage that wrote it, the rule that chose that stage
 and what the rule read, walked back (`--why errors`, `--why round`, any value a stage wrote).

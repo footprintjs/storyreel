@@ -381,7 +381,10 @@ test('the focus over two pictures at a brisk voice: a close-up with no time to a
     // the entry it would have been, in the record (film.director.dropped, the making-of's director)
     assert.deepEqual([drop.kind, drop.path, drop.scene, drop.rule, drop.said], ['camera', 'focus', 'a', 'line', '"Is it late?"'], `${wordSeconds}: the entry`);
     const has = b - drop.t, needs = 3.31 * 2;
-    assert.equal(drop.why, `the picture changes at ${b.toFixed(2)} s (b): no time to arrive on "sam.face" and fly back to wide before it — the flights take ${needs.toFixed(2)} s and the voice leaves ${has.toFixed(2)} s: give the line ${(needs - has).toFixed(2)} s more before the change, or frame it in a scene of its own`, `${wordSeconds}: the words and the fix`);
+    // the reason with its seconds, and the fix apart from it (0.51.0: what `storyreel check` says), at the level of a shot lost to the voice's timing
+    assert.equal(drop.why, `the picture changes at ${b.toFixed(2)} s (b): no time to arrive on "sam.face" and fly back to wide before it — the flights take ${needs.toFixed(2)} s and the voice leaves ${has.toFixed(2)} s`, `${wordSeconds}: the words`);
+    assert.equal(drop.fix, `give the line ${(needs - has).toFixed(2)} s more before the change, or frame it in a scene of its own`, `${wordSeconds}: the fix`);
+    assert.equal(drop.level, 'warn', `${wordSeconds}: a shot the film was asked for and does not get`);
     assert.equal(f.director.proposals.find(p => p.on === 'sam.face'), undefined, 'not proposed as placed');
     for (const t of [b, b + .5]) assert.equal(f.focusAt(t).z, 1, `${wordSeconds}: the second picture opens wide`);
   }

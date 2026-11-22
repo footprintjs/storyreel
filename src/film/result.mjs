@@ -88,13 +88,14 @@ function motionRunsOf(storyPath, storyWorld, stages) {
 }
 
 /**
- * Every world's `notes` (an optional kit field: what it found and how to fix it, worded), with each note's path
- * made the recipe's (`story.wires[2]`, `stages[1].world.blocks[0]`): {kitNotes} when any world has a notes list, else {}.
+ * Every world's `notes` (an optional kit field: what it found and how to fix it, worded, the fix apart as `fix` when it
+ * names one), with each note's path made the recipe's (`story.wires[2]`, `stages[1].world.blocks[0]`): {kitNotes} when
+ * any world has a notes list, else {}. `storyreel check` says each (fix/told.mjs).
  * WHY on the film: a warning that lives only on the world is a warning nobody reads; a kit that refuses would lose a
  * film over something a person may choose to keep.
  */
 function kitNotesOf(storyPath, storyWorld, stages) {
   const worlds = worldsOf(storyPath, storyWorld, stages).map(([at, w]) => [at === storyPath ? at : `${at}.world`, w]).filter(([, w]) => Array.isArray(w?.instance?.notes));
   if (!worlds.length) return {};
-  return {kitNotes: Object.freeze(worlds.flatMap(([at, w]) => w.instance.notes.map((n) => Object.freeze({level: n.level, path: `${at}.${n.path}`, message: n.message, kit: w.kit}))))};
+  return {kitNotes: Object.freeze(worlds.flatMap(([at, w]) => w.instance.notes.map((n) => Object.freeze({level: n.level, path: `${at}.${n.path}`, message: n.message, ...(typeof n.fix === 'string' ? {fix: n.fix} : {}), kit: w.kit}))))};
 }
