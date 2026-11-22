@@ -58,7 +58,8 @@ a wire's `start` (when its packets begin; else when it appears, else the film's 
 what it built back onto the kit's pieces. The steps are footprint-story's, in its order: `place` (by the map, or from
 the wires: `arrange` / `arrangeByGroup`), `route` (`routes`, with ports), `fitFloors`, `grid` (written, or `gridFor`
 into the area), `shape` (each piece's faces, box, centre and outline: the style's `shape` column), `names`
-(`wordsToFit` in the room a top has), `order` (`backToFront`) and `floorLabels` (`floorLabelPlace`). Until 0.38.0 the
+(`wordsToFit` in the room a top has), `order` (`backToFront`), `floorLabels` (`floorLabelPlace`) and `style` (each
+piece's paint list: the style's other columns, painted by `paint.mjs`). Until 0.38.0 the
 kit carried its own copy of them; footprint-story took that copy over in 0.24.0 and pinned it, so the frames did not
 change when the kit moved onto it (`test/golden.json` is the same), and `test/iso-map-steps.test.mjs` checks the kit's
 built map against `buildIsoMap`'s and that no kit file runs a step itself.
@@ -68,12 +69,36 @@ built map against `buildIsoMap`'s and that no kit file runs a step itself.
   so it reads as the kit's always did. A floor with a size and no `at` is handed at `[0, 0]` (read.mjs): the spec takes
   a floor's place and size together. A written grid is handed as `{tile, origin, rise?}`.
 - **The built map** (`map.built`, frozen plain data, no function): each block's `at`, `shape` (`faces`: a block's
-  `left`, `right` and `top` polygons; a cylinder's `side` path and `top` ellipse), `fitted` and `smallFitted`; each
-  floor's `at`, `size`, `shape` (its `ground` polygon and `grid` lines) and label `place`; each wire's `route` (null:
-  written straight); the paint `order`. The kit's grid is made again from its numbers (`isometric(built.view)`).
+  `left`, `right` and `top` polygons; a cylinder's `side` path and `top` ellipse), `paint` (its paint list, from
+  `paints`), `fitted` and `smallFitted`; each floor's `at`, `size`, `shape` (its `ground` polygon and `grid` lines),
+  `paint` (from `floorPaints`) and label `place`; each wire's `route` (null: written straight); the paint `order`.
+  The kit's grid is made again from its numbers (`isometric(built.view)`).
 - **The policy** (`ISO_FIT` = `ISO_MAP_POLICIES.film`): StoryDeck's tile range and names, a film's small line fitted
-  down to 12 px, and every labelled floor held in a fitted picture (below). The style's paint list is built too; the
-  kit paints its own look (`draw.mjs`) until a world's recipe takes a style.
+  down to 12 px, and every labelled floor held in a fitted picture (below). The spec names no style, so every map is
+  built in the usual one (today's look); a world's recipe does not take a style yet.
+
+## The painter: the map's paint list on a canvas (from 0.41.0)
+
+`paint.mjs` · `paintItems(c, items, {base, ink})` draws one piece's paint list (footprint-story's `paint.js` format)
+item by item, in the list's order: a `polygon`, a whole `ellipse`, a `path` (moves, lines, arcs of at most half a
+turn counted the way they turn, a close) or loose `lines`, each filled when its fill comes to a colour and stroked
+with its stroke's colour, alpha, width, join and cap. It decides no shape and no colour, and refuses an item or a path
+step it does not know. `draw.mjs` hands it each floor's list (`floorPaints`) and then each block's (`paints`), back to
+front.
+
+**What it paints:** a block's `left`, `right` and `top` faces, a cylinder's `side` and `top`, a floor's `ground` and
+`grid` tile lines. **What stays drawn by hand in `draw.mjs`:** block names and small lines, floor names, cables and
+their leads, arrow heads, wire labels on their plates, packets and their trails.
+
+**Why the colours come in at draw time, not through the style step:** the kit builds its map with no colours, so the
+built map (and the map flow's run of the same spec) is the deck's, colour for colour. Each fill then carries its
+recipe (`{mix: [toward, share], colour: null}`: the top 20% toward white, the sides 6% and 18% toward black) and each
+stroke `colour: null` — the page decides. The kit is that page: it picks a block's base (its `color`, its `tone`'s pale
+tint, or StoryDeck's `#d9e4f3`), a floor's (its `color`, or none: its ground is then left unpainted) and the theme's
+ink, and the painter applies the recipe to them with the kit's own `mix`, as it always did. A colour the list does
+give (a style's own palette, later) is drawn as given. footprint-story proved this painter call for call equal to the
+kit's 0.38.0 face-by-face drawing; `test/golden.json` pins it here, and `test/iso-paint.test.mjs` checks every item
+kind on a recording canvas and that the kit paints the built map's lists and traces no face itself.
 
 ## Why a map is so: its own record (from 0.40.0)
 
@@ -128,7 +153,8 @@ entry's name.
 | `cables.mjs` | each wire on the frame: the cable's rounded line, a straight wire, a lead's share, a label's place (footprint-story's rules) |
 | `ride.mjs` | the packets at t, from the shared ride numbers |
 | `notes.mjs` | what the kit says, in words |
-| `draw.mjs` | the canvas painting, StoryDeck's look in the film's theme |
+| `draw.mjs` | the canvas drawing, StoryDeck's look in the film's theme: the paint lists through `paint.mjs`, the rest by hand |
+| `paint.mjs` | the one canvas painter: a piece's paint list traced, filled and stroked as the list says |
 
 **From footprint-story, as StoryDeck has them** (they were carried here from StoryDeck until 0.35.0; both tools now
 import the one copy, so a deck and a film draw the same cable):

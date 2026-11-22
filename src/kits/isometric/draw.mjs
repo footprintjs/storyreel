@@ -4,10 +4,14 @@
  * over it. Only drawing: every number was worked out once (footprint-story's map steps through build.mjs, then
  * cables.mjs and ride.mjs), so any moment draws the same pixels whatever was drawn before.
  *
- * The look is StoryDeck's (deck/iso.js · ISO_CSS, deck.css): one colour a block, its top 20% lighter and its sides 6%
- * and 18% darker, edges in ink 2.5 px wide; the floor's tile lines ink at 16%; a cable 4 px in the muted ink with an
- * 18 px head; its label in 18 px capitals on a plate of the ground; a packet a 7 px dot in the glow colour. The colours
- * are the film's theme where it has one (ground, ink, muted ink, the ok / warn / bad tones).
+ * A block's faces, a cylinder's side and top, a floor's ground and tile lines are not drawn here: they are the built
+ * map's paint list (the style step: `paints`, `floorPaints`), painted by paint.mjs · paintItems with the kit's colours.
+ * Names, labels, cables, packets and heads are still drawn here by hand.
+ *
+ * The look is StoryDeck's (deck/iso.js · ISO_CSS, deck.css): one colour a block (the paint list's tones: its top 20%
+ * lighter and its sides 6% and 18% darker, edges in ink 2.5 px wide; the floor's tile lines ink at 16%); a cable 4 px
+ * in the muted ink with an 18 px head; its label in 18 px capitals on a plate of the ground; a packet a 7 px dot in the
+ * glow colour. The colours are the film's theme where it has one (ground, ink, muted ink, the ok / warn / bad tones).
  *
  * WHY the leads are drawn again over their block: a cable lies on the floor, under every block standing on it, so the
  * stretch out of a port on a side the viewer sees would be covered by that very block (StoryDeck draws it a level above
@@ -16,14 +20,14 @@
 import {packetsAt, PACKET_RADIUS} from './ride.mjs';
 import {arrowHead, headingOf, walkWay, CABLE} from 'footprint-story/isometric';
 import {HEX} from './read.mjs';
+import {paintItems, mix, rgba as withAlpha} from './paint.mjs';
 
-/** StoryDeck's colours where the theme has none: a block's tone, the glow of a packet. And how long a piece takes to come in. */
+/**
+ * StoryDeck's colours where the theme has none: a block's tone, the glow of a packet. And how long a piece takes to come in.
+ * `line` and `grid` are the usual style's edge width and tile-line alpha (footprint-story's `ink` line choice): the paint
+ * list carries them, and test/iso-paint.test.mjs pins that the two still agree.
+ */
 export const ISO_LOOK = Object.freeze({tone: '#d9e4f3', glow: '#e8a33d', line: 2.5, grid: 0.16, cable: 4, label: 1, smallInk: 0.68, appear: 0.35});
-
-const channels = (hex) => { const h = hex.length === 4 ? `#${[...hex.slice(1)].map((c) => c + c).join('')}` : hex; return [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); };
-/** `hex` mixed with `other` by `share` of the other (CSS color-mix in srgb). */
-export const mix = (hex, other, share) => { const a = channels(hex), b = channels(other); return `#${a.map((v, i) => Math.round(v + (b[i] - v) * share).toString(16).padStart(2, '0')).join('')}`; };
-const withAlpha = (hex, alpha) => `rgba(${channels(hex).join(',')},${alpha})`;
 
 /** The colours a world draws with, from the film's theme (its palette), StoryDeck's tokens where the theme has none. */
 export function lookOf(theme) {
@@ -35,31 +39,9 @@ export function lookOf(theme) {
 /** How far a piece has come in at t: 0 before its moment, 1 once in (over ISO_LOOK.appear seconds). */
 export const inAt = (from, t) => (from === null ? 1 : Math.max(0, Math.min(1, (t - from) / ISO_LOOK.appear)));
 
-const polygon = (c, points) => { c.beginPath(); points.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.closePath(); };
-
-/** A piece's face (an item of its shape: footprint-story's style shape column) traced as the canvas's current path. */
-function trace(c, face) {
-  if (face.item === 'polygon') return polygon(c, face.points);
-  c.beginPath();
-  if (face.item === 'ellipse') return c.ellipse(face.cx, face.cy, face.rx, face.ry, 0, 0, 2 * Math.PI);
-  // a path: a cylinder's side, down its left edge, round the front half of its foot, up its right edge
-  for (const [op, ...n] of face.segments) {
-    if (op === 'move') c.moveTo(n[0], n[1]);
-    else if (op === 'line') c.lineTo(n[0], n[1]);
-    else if (op === 'arc') c.ellipse(n[0], n[1], n[2], n[3], 0, n[4], n[5], n[6]);
-    else if (op === 'close') c.closePath();
-    else throw new Error(`isometric kit: a face's path has no step "${op}"`);   // refusal: internal (footprint-story's box shape gives only these four)
-  }
-}
-
-/** Each face's fill: the block's colour toward white or black by a share (StoryDeck's tones; footprint-story names the faces). */
-const FACE_TONES = Object.freeze({top: ['#ffffff', 0.2], left: ['#000000', 0.06], right: ['#000000', 0.18], side: ['#000000', 0.18]});
-
+/** A floor's ground (filled when it has a colour) and its tile lines: its paint list. Then its name, flat on it. */
 function drawFloor(c, f, look) {
-  const face = (role) => f.shape.faces.find((x) => x.role === role);
-  if (f.color) { c.fillStyle = f.color; trace(c, face('ground')); c.fill(); }
-  c.strokeStyle = withAlpha(look.ink, ISO_LOOK.grid); c.lineWidth = 1.5; c.lineCap = 'butt';
-  c.beginPath(); for (const [x1, y1, x2, y2] of face('grid').segments) { c.moveTo(x1, y1); c.lineTo(x2, y2); } c.stroke();
+  paintItems(c, f.paint, {base: f.color, ink: look.ink});
   if (!f.place) return;
   // flat on the floor along its front edge: the label's lines, their block's foot on the edge (CSS: matrix, then translateY(-100%))
   const {x, y, matrix: [a, b, cc, d], size, lines: words} = f.place, lh = size * 1.15;
@@ -80,14 +62,14 @@ function drawFloor(c, f, look) {
   c.restore();
 }
 
-/** A block's faces (or a cylinder's side and top) and its name on its top. */
+/** A block's faces (or a cylinder's side and top): its paint list, in the kit's colours. Then its name on its top. */
 function drawBlock(c, b, look) {
-  // a tone is the theme's ok / warn / bad colour as a pale tint (60% white): a block's name is ink on its top, and the theme's
-  // tones are ink-dark — on the tone itself the name would fail the film's contrast check (StoryDeck colours the block the tone)
+  // the list holds each face's recipe (top 20% toward white, sides toward black) and no colour: the kit picks the base
+  // and the ink here, so the built map stays the deck's (paint.mjs says why). A tone is the theme's ok / warn / bad
+  // colour as a pale tint (60% white): a block's name is ink on its top, and the theme's tones are ink-dark — on the
+  // tone itself the name would fail the film's contrast check (StoryDeck colours the block the tone)
   const tone = b.color ?? (b.tone ? mix(look.tones[b.tone], '#ffffff', 0.6) : ISO_LOOK.tone), s = b.shape;
-  c.strokeStyle = look.ink; c.lineWidth = ISO_LOOK.line; c.lineJoin = 'round';
-  // the faces in the order the shape gives them, back to front: a block's left, right and top; a cylinder's side and top
-  for (const face of s.faces) { trace(c, face); c.fillStyle = mix(tone, ...FACE_TONES[face.role]); c.fill(); c.stroke(); }
+  paintItems(c, b.paint, {base: tone, ink: look.ink});
   if (!b.fitted?.lines.length) return;
   // the name upright on the top's middle, its lines as wordsToFit broke them; the small line beneath it
   const {lines, size} = b.fitted, lh = size * 1.15, sf = b.smallFitted, small = sf ? sf.size * 1.15 + 2 : 0, height = lines.length * lh + small;
