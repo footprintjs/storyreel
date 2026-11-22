@@ -180,24 +180,37 @@ The box falls under gravity onto the floor under it (0.46 s: `ballistic`, the us
 | `from` | a block's name or tiles | a hang's pin (only a hang takes one) |
 | `wrap` | `[{"wrapper": "anticipate"}]` | footprint-story's wrappers, innermost first: `anticipate`, `follow-through`, `hold`, `overshoot`, with their options (at most 4) |
 | `model` | `"bounce"`, `{"name": "bounce", "squash": 0.2}` | one of footprint-story's models for the family, when the usual is not wanted (a fix footprint-story gives is written here as it says it) |
+| `accept` | `["arc"]` | critics whose findings this move keeps, when what they find is meant (a straight slide): shown as accepted and recorded, never a fault. Each must be one the move's model is checked by, or `reel:contact` |
 
 **What a block can do in a film now** (`motion-read.mjs` · `MOTION_DOS`, footprint-story 0.30):
 
 | do | it moves | the usual model | also |
 |---|---|---|---|
-| `fall` | straight down from where it stands to the floor under its foot (lift 0) | `ballistic` | `bounce` (and its `squash`, drawn: the block flattens at a landing, its area kept) |
+| `fall` | straight down from where it stands onto the highest top under it (a block its footprint overlaps), else the floor | `ballistic` | `bounce` (and its `squash`, drawn: the block flattens at a landing, its area kept) |
 | `throw` | through the air, its foot landing on `to` | `ballistic` (the usual apex: a 45° throw) | `bounce` (lands on the line its target stands on and bounces to rest) |
-| `hang` | on a rope from the pin `from` to its top, swinging until it rests below the pin; the rope is drawn | `verlet` | |
+| `hang` | on a rope from the pin `from` (above its top: a lower pin is refused) to its top, swinging until it rests below the pin; the rope is drawn and framed with the block | `verlet` | |
 | `settle` | to `to` on the motion spring | `spring` | its `feel` |
-| `reach` | to `to` on one smooth push, its seconds from Fitts's law (a block's top's width is the target) | `min-jerk` | its `bend` |
+| `reach` | to `to` on one smooth push, its seconds from Fitts's law (a block's top face's width across the frame is the target) | `min-jerk` | its `bend` |
 
 `draw`, `write` and `sketch` move a pen's point along a line, not a block: refused, saying so. **roll, slide and
 tumble** arrive with footprint-story 0.31: each is one row in `MOTION_DOS` and one in `motion.mjs` · `INTENT_OF`, and
 a test pins that the two tables agree.
 
-**Where things are** (`motion.mjs`): a block moves by its **foot** (the middle of its footprint, at its lift), in the
-built map's tiles put on the frame by its grid. A fall's floor is the grid's lift 0 under its foot; a block already on
-the floor cannot fall (lift it). A hang ties the rope to its **top**. The intents are planned on the 1600×900 frame.
+**Where things are** (`motion.mjs`, `motion-place.mjs`): a block moves by its **foot** (the middle of its footprint, at
+its lift), in the built map's tiles put on the frame by its grid. Moves are placed in the order they begin, each from
+what the world is then: a fall lands on the highest top under it, else the floor (a block already resting there cannot
+fall); a target block is aimed at **where it stands when the move begins** (a box that fell earlier is caught where it
+fell), and a move that relies on a block that moves meanwhile — its target, what it lands on — is refused with both
+times. A hang ties the rope to its **top**; its pin must be above it. Tiles off the 1600×900 frame are refused in tiles,
+naming where the blocks stand.
+
+**What a move passes through** (`reel:contact`, the kit's own critic): each move is sampled 30 times a second and its
+block, placed in tiles where it is drawn, is checked against every other block where that one stands then; going a
+twentieth of a tile or more into one is a finding naming the block, the moment and the fix (a settle onto a top from
+beside it rises through its side; a throw onto the same top does not). WHY the kit's and not footprint-story's
+`contact`: that critic reads boxes on the frame, and on an isometric frame a block's picture overlaps blocks it is
+nowhere near (a ball resting on a top is inside that block's box on the frame). This finding is the world's record,
+not the intent decider's run (that run holds no tiles).
 
 **Timed on the film's clock.** A move begins at its anchor and lasts what footprint-story planned. A block is drawn as
 built until its first move begins, moves along the samples, and stays where its last move ended. A piece's moves run
@@ -236,8 +249,9 @@ that run's record, so `storyreel log --run <id> --why duration-1 --motion story`
 from the record alone (`../../check/README.md` · Asking why a move is so). The two plans must be equal; a difference is
 a `drift` line. **What footprint-story's critics find** (`jerk`, `arc`, `spacing`, `contact`, `volume`, `stretch`)
 reaches the check's reply at the critic's own level, naming the entry and the fix in footprint-story's words: a `warn`
-(a body through the floor, a straight slide) is a finding to fix, so a check never reads clean over it; a `note` is
-advice (`review.mjs` · `MOTION_KINDS`):
+(a body through a block, a straight slide) is a finding to fix, so a check never reads clean over it; a `note` is
+advice; a critic the entry names in `accept` is shown as accepted, with no fix, and the check can read clean
+(`review.mjs` · `MOTION_KINDS`):
 
 ```
 fix  0:11.8–0:12.5 drop · a move that reads wrong: arc: its move runs straight (it bows 0.0% of its length) — … · at story.motion[3] · fix: bow it: model: {name: 'min-jerk', bend: 0.06}
@@ -287,6 +301,7 @@ entry's name.
 | `paint.mjs` | the one canvas painter: a piece's paint list traced, filled and stroked as the list says |
 | `motion-read.mjs` | the `motion` entries checked, every refusal naming the entry and the fix; what a block can do (`MOTION_DOS`) |
 | `motion.mjs` | each entry made a footprint-story intent on the frame, planned (`planIntents`), timed on the clock and sampled at t (with its place for the paint order); its record, findings and run |
+| `motion-place.mjs` | where things are while pieces move: a block's foot and top, what a fall lands on, the frame, a moving foot's place in tiles, what a block passes through |
 | `words.mjs` | how both readers quote a value and check keys and anchors (`shown`, `keysOf`, `anchorLike`): its own module, so the kit's modules import no cycle (a test pins it) |
 
 **From footprint-story, as StoryDeck has them** (they were carried here from StoryDeck until 0.35.0; both tools now

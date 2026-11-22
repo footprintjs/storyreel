@@ -19,9 +19,11 @@ every pin it had, and gains the new example's.
   tiles. `wrap` takes footprint-story's wrappers and `model` one of its models (`"bounce"`, its squash drawn). `draw`,
   `write` and `sketch` move a pen, not a block, and are refused saying so; roll, slide and tumble arrive with
   footprint-story 0.31 as one row in each of two tables.
-- **Placed from the built map, timed on the film's clock** (`motion.mjs`): a block moves by its foot, a fall's floor is
-  the grid's lift 0 under it, a throw lands on its target's top, and a move begins at its anchor (else when the block
-  appears). A piece's moves run one after another; two that overlap are refused, and a hang is a piece's last. No angle
+- **Placed from the built map, timed on the film's clock** (`motion.mjs`, `motion-place.mjs`): a block moves by its
+  foot; moves are placed in the order they begin, so a fall lands on the highest top under it (else the floor) and a
+  target block is aimed at where it stands when the move begins; a move relying on a block that moves meanwhile, a hang
+  pinned at or below its block's top and tiles off the frame are refused. A move begins at its anchor (else when the
+  block appears). A piece's moves run one after another; two that overlap are refused, and a hang is a piece's last. No angle
   is drawn yet: none of these models gives a body's turn. A moving block takes its place in the back-to-front order at
   each frame from where it is now (footprint-story's `grid.backToFront`): landed behind a block, it is drawn behind it.
 - **The record** names each move's model, how it was chosen, footprint-story's reason, its seconds and its start
@@ -31,7 +33,9 @@ every pin it had, and gains the new example's.
   `storyreel log --run <id> --why duration-1 --motion story` says why `motion[1]` takes its time. What the critics find
   (`jerk`, `arc`, `spacing`, `contact`, …) is the review's new `motion` check, at the critic's own level: a `warn` (a
   body through the floor, a straight slide) is a fix, so a check never reads clean over it; a `note` is advice
-  (`motion-note`). Each names the entry and the fix.
+  (`motion-note`). The kit's own critic `reel:contact` finds a move whose block passes through another block, in tiles.
+  An entry's `accept: ["arc"]` keeps a critic's finding it means: recorded, shown as accepted, the check can read clean.
+  Each finding names the entry and the fix, and is keyed without its numbers.
 - **Refusals name the entry and the fix**, footprint-story's own in the entry's name: a block a wire joins, one on the
   floor asked to fall, a missing `to`, a pen's word, overlapping moves, a model or wrapper footprint-story refuses.
 - A new example, `examples/iso-motion` (a box falls, a ball is thrown onto the server, the box settles), pinned in

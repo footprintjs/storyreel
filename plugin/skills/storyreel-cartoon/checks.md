@@ -48,9 +48,9 @@ drawing: "over the figure" over "figure" (story.items[0]) · at story.items[1] �
 | `claims` | no source | a number on screen has no source (the verdict below) | a fact, or an example scene |
 | `words-over-drawing` | words over a drawing | 30 % or more of a word lies on a drawing the whiteboard or the paper marks as ink (a word wholly inside a box, a ring or a bubble is its label) | move the words clear: the fix gives the item's new `x`, `y` |
 | `drawing-off-frame` | a drawing off the frame | a quarter or more of a drawing lies outside its world's sheet (or the frame, on the page) | move it in (its box's corner, every point shifted by the same), or shrink it |
-| `motion` | a move that reads wrong | footprint-story's critics find fault with an isometric world's move (`jerk`, `arc`, `spacing`, `contact`, `volume`, `stretch`), at the critic's level: a `warn` is a fix, a `note` is advice ("a note on a move"), over the time the move runs | what its fix says, in footprint-story's words, written in that `motion` entry (`model: {name: 'min-jerk', bend: 0.06}`) |
+| `motion` | a move that reads wrong | footprint-story's critics (`jerk`, `arc`, `spacing`, `contact`, `volume`, `stretch`) or the kit's `reel:contact` (a block through another) find fault with an isometric world's move, at the critic's level: a `warn` is a fix, a `note` is advice ("a note on a move"), a critic the entry accepts is advice ("a move accepted as written") | what its fix says, written in that `motion` entry (`model: {name: 'min-jerk', bend: 0.06}`), or, when it is meant, `"accept": ["arc"]` |
 
-"Nothing changes", "nothing new", the slideshow's "held still" and "a note on a move" are advice: a held title can
+"Nothing changes", "nothing new", the slideshow's "held still", "a note on a move" and "a move accepted as written" are advice: a held title can
 be right, and a critic's note is the author's to weigh — then say why you keep it. "A move that reads wrong" (a
 critic's warning: a body through the floor, a straight slide) is a fix. Every other finding names something to fix: most are facts about the drawing (where a word
 landed, when), while `silences` is about the voice's pauses, `claims` about sources and `hook` about the opening.

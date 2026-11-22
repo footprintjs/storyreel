@@ -9,7 +9,7 @@ import {createHash} from 'node:crypto';
 import {oneLine} from '../oneline.mjs';
 
 /** The kinds of finding that are advice, not errors (a held title can be right; a critic's note on a move is the author's to keep): review.mjs lists them after the rest too. */
-export const ADVICE_KINDS = Object.freeze(['still', 'stale', 'slideshow', 'hook', 'motion-note']);
+export const ADVICE_KINDS = Object.freeze(['still', 'stale', 'slideshow', 'hook', 'motion-note', 'motion-accepted']);
 /** A phrase the film still places (said more than once: the first place is used; a moment named with nth or edge: the moment is used): advice. */
 const SOFT_PHRASES = Object.freeze(['ambiguous', 'moment']);
 /** The most a row of the reply holds, and the most keys a run keeps: a reply and a run's file are small whatever the film. */
@@ -21,7 +21,8 @@ export const row = text => { const said = [...String(text).slice(0, 2 * ROW_MOST
 /** A problem's key: its parts as a list (so a "|" in a phrase joins nothing), hashed short. */
 const keyOf = parts => createHash('sha256').update(JSON.stringify(parts.map(p => String(p ?? '')))).digest('hex').slice(0, 16);
 /** The kinds whose words are a measurement ("still for 72 % of 41.3 s"): the numbers move with every edit, so they are no part of what the finding is. */
-const MEASURED = Object.freeze(['still', 'stale', 'slideshow', 'hook', 'frozen-voice', 'silences', 'text-density']);
+// A move's finding is one too: its words carry the critic's measure (bows 0.0%, 0.31 s, 4.2 tiles), which a small edit moves.
+const MEASURED = Object.freeze(['still', 'stale', 'slideshow', 'hook', 'frozen-voice', 'silences', 'text-density', 'motion', 'motion-note', 'motion-accepted']);
 const whatOf = f => (MEASURED.includes(f.kind) ? String(f.what).replace(/\d+(\.\d+)?/g, '#') : f.what);
 
 /**

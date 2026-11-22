@@ -823,7 +823,7 @@ const isoBadColumn: IsometricSpec = {...isoSpec, style: {colour: 'red'}};
 void isoLine; void isoBadColumn;
 // a world's pieces moved by intent (footprint-story's words), and the record of each move
 const isoMoving: IsometricSpec = {...isoSpec, motion: [{piece: 'you', do: 'fall', at: ['map', 'drops']}, {piece: 'you', do: 'throw', to: 'db', wrap: [{wrapper: 'anticipate'}]},
-  {piece: 'you', do: 'hang', from: [2, 2, 4]}, {piece: 'you', do: 'settle', to: [3, 4], model: {name: 'spring', feel: 'heavy'}}]};
+  {piece: 'you', do: 'hang', from: [2, 2, 4]}, {piece: 'you', do: 'settle', to: [3, 4], model: {name: 'spring', feel: 'heavy'}, accept: ['arc']}]};
 const isoMoved = compileIsometric(isoMoving, {clock: isoClock}), isoModel: string | undefined = isoMoved.map.motions?.[0]?.model;
 // @ts-expect-error a pen's move is not a block's
 const isoBadDo: IsometricSpec = {...isoSpec, motion: [{piece: 'you', do: 'draw'}]};

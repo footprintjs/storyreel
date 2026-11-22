@@ -41,7 +41,7 @@ export {ISO_FIT} from './build.mjs';
 export {ISO_LOOK} from './draw.mjs';
 export {PACKET_RADIUS} from './ride.mjs';
 export {NOTE_FROM} from './notes.mjs';
-export {MOTION_DOS, MOTION_KEYS, MOST_MOTIONS} from './motion-read.mjs';
+export {MOTION_DOS, MOTION_KEYS, MOST_MOTIONS, REEL_CRITICS} from './motion-read.mjs';
 export {MOTION_FRAME} from './motion.mjs';
 
 const boxOf = (points) => { const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; };
@@ -103,7 +103,8 @@ export function compileIsometric(spec, context) {
     return {poses, order: poses.size ? map.grid.backToFront(map.blocks, (b) => ({at: poses.get(b)?.at ?? b.at, size: b.size})) : map.order};
   };
   // a block's outline where it is drawn at t: as built, or where its move has put it
-  const outlineAt = (b, t) => { const pose = motion?.poseAt(b, t) ?? null; return pose ? b.shape.outline.map((p) => posed(p, pose)) : b.shape.outline; };
+  // (and a hanging block's rope with it: a camera that frames the block frames what it hangs from)
+  const outlineAt = (b, t) => { const pose = motion?.poseAt(b, t) ?? null; return pose ? [...b.shape.outline.map((p) => posed(p, pose)), ...(pose.rope ?? [])] : b.shape.outline; };
   const walks = map.wires.map((w) => walkWay(w.cable.way));
   return {
     hang: 1,

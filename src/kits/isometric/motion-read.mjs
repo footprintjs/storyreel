@@ -14,11 +14,19 @@
  * and `to` / `from` as the world's own places — a block's name or tiles — never pixels: the kit works the pixels out
  * from the built map (motion.mjs).
  */
-import {HUMAN_DOS, MOST_INTENTS, MOST_WRAPPERS} from 'footprint-story/human';
+import {HUMAN_DOS, HUMAN_CRITICS, MOST_INTENTS, MOST_WRAPPERS} from 'footprint-story/human';
 import {anchorLike, keysOf, shown} from './words.mjs';
 
 /** The keys a motion entry takes. */
-export const MOTION_KEYS = Object.freeze(['piece', 'do', 'at', 'to', 'from', 'wrap', 'model']);
+export const MOTION_KEYS = Object.freeze(['piece', 'do', 'at', 'to', 'from', 'wrap', 'model', 'accept']);
+
+/**
+ * The kit's own critics, beside footprint-story's: `reel:contact`, a move whose block passes through another block on
+ * its way (motion.mjs · throughFindings). Named under the kit's prefix, as footprint-story names a tool's own.
+ */
+export const REEL_CRITICS = Object.freeze(['reel:contact']);
+/** Every critic a motion entry may accept by name: footprint-story's and the kit's. */
+const CRITIC_NAMES = Object.freeze([...HUMAN_CRITICS, ...REEL_CRITICS]);
 
 /**
  * What a film's world lets a block do (footprint-story 0.30): each `do` word and the places it takes — `to` where it
@@ -62,7 +70,7 @@ function placeOf(v, key, who, {blocks, self}) {
   return {tiles: [v[0], v[1], v[2] ?? 0]};
 }
 
-/** One motion entry, checked: {index, path, who, piece, do, at, to, from, wrap, model}. `blocks`, `wires`: the read map's. */
+/** One motion entry, checked: {index, path, who, piece, do, at, to, from, wrap, model, accept}. `blocks`, `wires`: the read map's. */
 function readMotion(m, i, where, {blocks, floors, wires}) {
   const path = `motion[${i}]`, first = `${where}: isometric ${path}`;
   keysOf(m, MOTION_KEYS, first);
@@ -98,7 +106,16 @@ function readMotion(m, i, where, {blocks, floors, wires}) {
   }
   // a model is footprint-story's to check (its name, its options, the family it serves): its refusal comes back in this entry's name
   if (own(m, 'model') && !(typeof m.model === 'string' || isObject(m.model))) throw new Error(`${who}: model names one of footprint-story's models, "bounce" or {"name": "bounce", …its options} — or leave it out and the usual is chosen; not ${shown(m.model)}`);
-  return {index: i, path, who, piece, do: doWord, at, to, from, wrap, model: own(m, 'model') ? structuredClone(m.model) : null};
+  // a critic the author means to keep (a straight slide is wanted): its finding is shown as accepted, never as a fault;
+  // motion.mjs checks, once the move is planned, that its model is checked by it
+  let accept = [];
+  if (own(m, 'accept')) {
+    if (!Array.isArray(m.accept) || m.accept.length > CRITIC_NAMES.length || !m.accept.every((c) => typeof c === 'string')) throw new Error(`${who}: accept is a list of the critics whose findings this move keeps, ["arc"] — not ${shown(m.accept)}`);
+    for (const c of m.accept) if (!CRITIC_NAMES.includes(c)) throw new Error(`${who}: accept names ${shown(c)}, which is no critic — the critics are ${CRITIC_NAMES.join(', ')}`);
+    if (new Set(m.accept).size !== m.accept.length) throw new Error(`${who}: accept names a critic twice — name each once`);
+    accept = [...m.accept];
+  }
+  return {index: i, path, who, piece, do: doWord, at, to, from, wrap, model: own(m, 'model') ? structuredClone(m.model) : null, accept};
 }
 
 /**

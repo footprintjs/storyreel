@@ -84,14 +84,18 @@ export interface IsoMotionSpec {
   wrap?: {wrapper: string; [option: string]: unknown}[];
   /** one of footprint-story's models for the family ("bounce", or {name: 'bounce', squash: 0.2}); left out, its family's usual */
   model?: string | {name: string; [option: string]: unknown};
+  /** critics whose findings this move keeps (["arc"]: a straight slide is meant): shown as accepted, never a fault; each must be one its model is checked by, or "reel:contact" */
+  accept?: string[];
 }
 /** One move as the world's record keeps it: footprint-story's choice, reason and seconds, and when it begins on the film's clock. */
 export interface IsoMotionRecord {
   readonly path: string; readonly piece: string; readonly do: string; readonly at: number; readonly seconds: number;
   readonly model: string; readonly by: 'usual' | 'named'; readonly reason: string; readonly wrappers: readonly string[];
+  /** the critics its entry accepts (absent when none) */
+  readonly accepted?: readonly string[];
 }
 /** What a critic found in a move: its entry, when the move runs, the critic, and the fix in footprint-story's words. */
-export interface IsoMotionFinding { readonly path: string; readonly from: number; readonly to: number; readonly critic: string; readonly level: string; readonly what: string; readonly fix: string }
+export interface IsoMotionFinding { readonly path: string; readonly from: number; readonly to: number; readonly critic: string; readonly level: 'warn' | 'note' | 'accepted' | string; readonly what: string; readonly fix: string }
 /** One column's choice: its name, or {name, …its options} (footprint-story's isoStyle). */
 export type IsoStyleEntry = string | {name: string; [option: string]: string | number | boolean};
 /** A style row as a world writes it: footprint-story's columns, each left out its usual choice. */
@@ -132,6 +136,8 @@ export const MOTION_KEYS: readonly string[];
 export const MOST_MOTIONS: number;
 /** The frame the moves are planned on: [1600, 900]. */
 export const MOTION_FRAME: readonly [number, number];
+/** The kit's own critics beside footprint-story's: "reel:contact", a move that passes through another block. */
+export const REEL_CRITICS: readonly string[];
 /** A running packet's radius, px. */
 export const PACKET_RADIUS: number;
 /** When a crossing count and a turn count are said. */

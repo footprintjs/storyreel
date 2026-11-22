@@ -108,12 +108,12 @@ test('a film with no motion hands out no motion run, and its check says nothing 
 test('refusals name the entry and the fix', () => {
   const blocks = [{name: 'box', at: [2, 2, 3]}, {name: 'ball', at: [0, 6]}, {name: 'server', at: [8, 2], size: [2, 2, 1.6]}];
   const cases = [
-    [[{piece: 'box', do: 'fall', speed: 2}], /^Error: stage s: isometric motion\[0\] takes piece, do, at, to, from, wrap, model — not "speed"$/],
+    [[{piece: 'box', do: 'fall', speed: 2}], /^Error: stage s: isometric motion\[0\] takes piece, do, at, to, from, wrap, model, accept — not "speed"$/],
     [[{do: 'fall'}], /isometric motion\[0\]: piece names the block that moves \("box"\) — the blocks are box, ball, server; not undefined/],
     [[{piece: 'crate', do: 'fall'}], /piece names "crate", which is no block here — the blocks are box, ball, server/],
     [[{piece: 'box', do: 'roll'}], /motion\[0\] \("box"\): do says what the block does, "fall", "throw", "hang", "settle" or "reach" \(footprint-story's words\) — not "roll"/],
     [[{piece: 'box', do: 'draw'}], /do "draw" moves a pen's point along a line, not a block — a block takes do "fall", "throw", "hang", "settle" or "reach"/],
-    [[{piece: 'ball', do: 'fall'}], /motion\[0\] \("ball"\): a fall drops the block from where it stands, and it stands on the floor \(lift 0\) — lift it first \(its at: \[col, row, 3\]\), or throw it/],
+    [[{piece: 'ball', do: 'fall'}], /motion\[0\] \("ball"\): a fall drops the block from where it stands, and it stands on the floor already — lift it first \(its at: \[col, row, 3\]\), or throw it/],
     [[{piece: 'box', do: 'fall', to: 'server'}], /a fall takes no to — it falls straight down to the floor below it: take to out/],
     [[{piece: 'ball', do: 'throw'}], /a throw needs to, where it ends: a block's name \("box"\) or tiles \(\[col, row\]\)/],
     [[{piece: 'ball', do: 'throw', to: 'ball'}], /to names the piece itself — name another block, or give tiles/],
@@ -153,8 +153,11 @@ test('a hang draws its rope from the pin to the block\'s top and leaves it hangi
   w.draw(rec, 1);
   assert.ok(calls.some(([k, x, y]) => k === 'moveTo' && Math.abs(x - hang.from[0]) < 1e-9 && Math.abs(y - hang.from[1]) < 1e-9), 'the rope is drawn from the pin');
   // at rest its top is where the swing left the rope's end: footprint-story's last sample of the very same intent
+  // (the region frames the rope too: its top is the pin; its bottom is the block's near foot, 50 px and a unit of height
+  // under its top's middle on this grid)
   const move = planIntents([hang]).moves[0], rest = sampleMove(move, move.plan.seconds), box = w.regionsAt(move.plan.seconds + 1).find(r => r.name === 'sign').box;
-  near([(box[0] + box[2]) / 2, box[1] + 50], [rest.x, rest.y], 'the sign\'s top is the rope\'s end');
+  near([(box[0] + box[2]) / 2, box[3] - 50 - Math.sqrt((100 ** 2 - 50 ** 2) / 2)], [rest.x, rest.y], 'the sign\'s top is the rope\'s end');
+  assert.ok(Math.abs(box[1] - hang.from[1]) < 1e-6, 'a camera framing the sign frames its rope up to the pin');
   // a bounce squashes the box at a landing, wider for a moment
   const squash = w.map.motions[1], widths = Array.from({length: 200}, (_, k) => w.regionsAt(k * squash.seconds / 200).find(r => r.name === 'box').box).map(b => b[2] - b[0]);
   assert.ok(Math.max(...widths) > Math.min(...widths) + 1, 'at a landing it is wider: squashed');
@@ -178,7 +181,7 @@ test('a critic\'s level is kept: a warn (a body through the floor) asks for a fi
   const {reviewPart, REVIEW_CHECKS, MOTION_KINDS} = await import('../src/review.mjs');
   const {problemsOf} = await import('../src/check/index.mjs');
   const {FINDING_LEVELS} = await import('footprint-story/human');
-  assert.deepEqual(Object.keys(MOTION_KINDS).sort(), [...FINDING_LEVELS].sort(), 'every level footprint-story gives is mapped');
+  assert.deepEqual(Object.keys(MOTION_KINDS).sort(), [...FINDING_LEVELS, 'accepted'].sort(), 'every level footprint-story gives is mapped, and an accepted finding');
   const contact = {path: 'story.motion[0]', from: 3, to: 3.5, critic: 'contact', level: 'warn', what: 'at 0.39 s it goes 49.7 px into the floor — it passes through something solid', fix: 'raise its path'};
   const note = {...contact, critic: 'reel:hint', level: 'note', what: 'it could ease in', fix: 'wrap it: [{"wrapper": "anticipate"}]', from: 5, to: 5.5};
   const moved = {...film, motionRuns: [{name: 'story', kit: 'isometric', run: film.motionRuns[0].run, findings: [contact, note]}]};
@@ -295,4 +298,67 @@ test('the intents are footprint-story\'s words on the frame: the box falls from 
   // the samples the kit draws are footprint-story's: the fall's last sample is its floor
   const move = planIntents([fall]).moves[0];
   near([sampleMove(move, move.plan.seconds).x, sampleMove(move, move.plan.seconds).y], [fall.from[0], fall.floor], 'the fall ends on its floor');
+});
+
+test('a fall lands on the highest top under it; a settle up a block\'s side is found passing through it', () => {
+  const grid = {tile: 100, at: [800, 150]}, srv = {name: 'srv', at: [2, 2], size: [2, 2, 1.6]}, box = {name: 'box', at: [2.5, 2.5, 4], size: [1, 1, 1]};
+  const w = worldOf({grid, blocks: [srv, box], motion: [{piece: 'box', do: 'fall'}]});
+  assert.match(w.map.motions[0].reason, /a fall of [\d.]+ px/);
+  const landed = worldOf({grid, blocks: [srv, {...box, at: [2.5, 2.5, 1.6]}]});
+  const region = (world, t) => world.regionsAt(t).find(r => r.name === 'box').box.map(v => +v.toFixed(6));
+  assert.deepEqual(region(w, w.map.motions[0].seconds + 0.1), region(landed, 0), 'on srv\'s top, not inside it');
+  assert.deepEqual(w.motionFindings, [], 'a fall onto a top passes through nothing');
+  assert.throws(() => worldOf({grid, blocks: [srv, {...box, at: [2.5, 2.5, 1.6]}], motion: [{piece: 'box', do: 'fall'}]}, 'stage s'),
+    /^Error: stage s: isometric motion\[0\] \("box"\): a fall drops the block from where it stands, and it stands on "srv"'s top \(lift 1\.6\) already — lift it first \(its at: \[col, row, 4\.6\]\)/);
+  // beside srv on the floor, settled onto its top: the straight way rises through srv's side — a finding, with the fix
+  const up = worldOf({grid, blocks: [srv, {...box, at: [5, 2.5]}], motion: [{piece: 'box', do: 'settle', to: 'srv'}]});
+  assert.deepEqual(up.motionFindings.map(f => [f.path, f.critic, f.level]), [['motion[0]', 'reel:contact', 'warn']]);
+  assert.match(up.motionFindings[0].what, /^at [\d.]+ s it goes [\d.]+ tiles into "srv" — it passes through a block$/);
+  assert.equal(up.motionFindings[0].fix, 'move it round "srv": a to clear of it, or throw it over (do: "throw")');
+  // thrown onto the same top from the same place: over srv, through nothing
+  assert.deepEqual(worldOf({grid, blocks: [srv, {...box, at: [5, 2.5]}], motion: [{piece: 'box', do: 'throw', to: 'srv'}]}).motionFindings, []);
+});
+
+test('a target that moved is aimed at where it went; one that moves meanwhile is refused', () => {
+  const grid = {tile: 100, at: [800, 150]}, box = {name: 'box', at: [2, 2, 4], size: [1, 1, 1]}, ball = {name: 'ball', at: [6, 6], size: [1, 1, 1]};
+  const w = worldOf({grid, blocks: [box, ball], motion: [{piece: 'box', do: 'fall'}, {piece: 'ball', do: 'throw', to: 'box', at: ['drop', 'It falls to the floor']}]});
+  const [, toss] = w.motionIntents, onFloor = worldOf({grid, blocks: [{...box, at: [2, 2]}, ball]}).regionsAt(0).find(r => r.name === 'box').box;
+  assert.ok(Math.abs(toss.to[0] - (onFloor[0] + onFloor[2]) / 2) < 1e-6 && toss.to[1] > onFloor[1], 'aimed at the box\'s top where it fell, on the floor');
+  const end = w.map.motions[1].at + w.map.motions[1].seconds + 0.1, ballBox = w.regionsAt(end).find(r => r.name === 'ball').box;
+  const resting = worldOf({grid, blocks: [{...box, at: [2, 2]}, {...ball, at: [2, 2, 1]}]}).regionsAt(0).find(r => r.name === 'ball').box;
+  assert.deepEqual(ballBox.map(v => +v.toFixed(6)), resting.map(v => +v.toFixed(6)), 'it rests on the box, not in the air where the box was');
+  assert.throws(() => worldOf({grid, blocks: [box, ball], motion: [{piece: 'box', do: 'fall', at: ['drop', 'It falls to the floor']}, {piece: 'ball', do: 'throw', to: 'box', at: ['drop', 'It falls to the floor', 0.1]}]}, 'stage s'),
+    /motion\[1\] \("ball"\): it relies on "box" standing still from [\d.]+ s to [\d.]+ s, and motion\[0\] moves it from [\d.]+ s to [\d.]+ s — anchor one so the two do not overlap/);
+  assert.throws(() => worldOf({grid: {tile: 100, at: [800, 450]}, blocks: [box, ball], motion: [{piece: 'box', do: 'hang', from: [2.5, 2.5, 7]}, {piece: 'ball', do: 'throw', to: 'box', at: ['drop', 'timed by hand']}]}, 'stage s'),
+    /motion\[1\] \("ball"\): to names "box", which hangs from motion\[0\] — where its swing rests is not known before it is planned: aim at tiles instead/);
+});
+
+test('a hang\'s pin must be above the block\'s top; tiles off the frame are refused in tiles', () => {
+  const blocks = [{name: 'box', at: [2, 2, 3]}, {name: 'ball', at: [0, 6]}];
+  assert.throws(() => worldOf({blocks, motion: [{piece: 'box', do: 'hang', from: [2.5, 2.5, 0]}]}, 'stage s'),
+    /^Error: stage s: isometric motion\[0\] \("box"\): from is its pin, at lift 0 — a block hangs below its pin, and its top is at lift 4: lift the pin above it \(from: \[2\.5, 2\.5, 7\]\)$/);
+  assert.throws(() => worldOf({blocks, motion: [{piece: 'ball', do: 'throw', to: [500, 500]}]}, 'stage s'),
+    /^Error: stage s: isometric motion\[0\] \("ball"\): to \[500, 500, 0\] is off the frame \([\d]+ px below\) — give tiles on the floor: the blocks stand between columns 0 and 4, rows 2 and 8$/);
+  assert.throws(() => worldOf({blocks, motion: [{piece: 'ball', do: 'throw', to: [1e6, -1e6]}]}, 'stage s'), /to \[1000000, -1000000, 0\] is off the frame \(\d+ px to the right(?: and \d+ px (?:above|below))?\)/);
+});
+
+test('an entry accepts a critic it means: the finding is shown as accepted, the record says so, and the check reads clean', async t => {
+  const out = tempDir('motion-accept', t);
+  const said = await check(await readInputs({cwd: project, out, accept: 'true'}));
+  assert.match(said, /^clean — nothing to fix · 1 piece of advice\n/);
+  assert.match(said, /\nnote 0:\d\d\.\d–0:\d\d\.\d drop · a move accepted as written: accepted: arc: its move runs straight .* · at story\.motion\[3\]\n/);
+  assert.doesNotMatch(said.split('\n').find(l => l.includes('accepted as written')), /fix:/, 'nothing to fix in an accepted finding');
+  const w = worldOf({...recipe.story, motion: [...recipe.story.motion, {piece: 'box', do: 'reach', to: [1, 1], at: ['drop', 'timed by hand'], model: {name: 'min-jerk', bend: 0}, accept: ['arc']}]});
+  assert.deepEqual(w.map.motions[3].accepted, ['arc']);
+  assert.ok(!('accepted' in w.map.motions[0]), 'only an entry that accepts one says so');
+  const blocks = [{name: 'box', at: [2, 2, 3]}];
+  assert.throws(() => worldOf({blocks, motion: [{piece: 'box', do: 'fall', accept: ['wobble']}]}, 'stage s'), /accept names "wobble", which is no critic — the critics are jerk, pen-speed, arc, spacing, volume, contact, stretch, pen-lifts, stroke-order, hatch-gaps, reel:contact/);
+  assert.throws(() => worldOf({blocks, motion: [{piece: 'box', do: 'fall', accept: ['arc']}]}, 'stage s'), /accept names "arc", which its move \(ballistic\) is not checked by — its critics are spacing, contact, reel:contact/);
+  assert.throws(() => worldOf({blocks, motion: [{piece: 'box', do: 'fall', accept: 'arc'}]}, 'stage s'), /accept is a list of the critics whose findings this move keeps, \["arc"\]/);
+});
+
+test('a move\'s finding is the same finding after a small edit: its numbers are no part of its key', async () => {
+  const {problemsOf} = await import('../src/check/index.mjs');
+  const keyOf = (what) => problemsOf({review: {findings: [{kind: 'motion', scene: 'drop', what}], lines: [what], verdicts: []}})[0].key;
+  assert.equal(keyOf('arc: its move runs straight (it bows 0.0% of its length)'), keyOf('arc: its move runs straight (it bows 0.4% of its length)'));
 });

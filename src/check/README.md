@@ -25,8 +25,8 @@ had to work out itself what its last edit did. Each of those tools is still ther
    fixing (1 after a clean check; one more each check that still has something to fix).
 
 What counts as an error: a phrase the film is keyed to and cannot place, a verdict that failed, and every review
-finding but the five that are advice (`still`, `stale`, `slideshow`, `hook`: a held title can be right; `motion-note`, a
-critic's note on a move). A phrase the
+finding but the six that are advice (`still`, `stale`, `slideshow`, `hook`: a held title can be right; `motion-note`, a
+critic's note on a move; `motion-accepted`, a finding its entry accepts). A phrase the
 film still places (said twice: the first place is used) is advice.
 
 ## The chart
@@ -199,9 +199,11 @@ a map: `read` takes the intents as the run's input; what it took is the recipe's
 - **The same intents.** The kit keeps the intents it handed `planIntents` (`motionIntents`) and hands those very ones to
   the chart; the two plans must be equal, and a difference is a `drift` line in the reply that heads every answer.
 - **The critics' findings are the review's.** What footprint-story's critics find (`jerk`, `arc`, `spacing`, `contact`,
-  `volume`, `stretch`) is the review's `motion` check, at the critic's own level: a `warn` (a body through the floor or
-  a box, a straight slide) is a `fix`, so the verdict never reads `clean` over it; a `note` is advice. Each names the
-  entry and the fix in footprint-story's words, over the time the move runs.
+  `volume`, `stretch`) and the kit's own `reel:contact` (a block passing through another) are the review's `motion`
+  check, at the critic's own level: a `warn` is a `fix`, so the verdict never reads `clean` over it; a `note` is advice;
+  a critic the entry accepts (`"accept": ["arc"]`) is shown as `a move accepted as written`, advice with no fix. Each
+  names the entry and the fix, over the time the move runs, and is keyed without its numbers (a small edit that moves
+  "bows 0.0%" to "0.4%" has not fixed it, nor added one).
 - **The same safety rules as a map's** (`flowrun.mjs`): a record named by place; a run that throws, returns nothing or
   does not finish within 30 s (`motions.mjs` · `MOTION_RUN_MS`) is a `drift` line and the check goes on; a record that
   cannot be written costs nothing; at most 32 worlds a check (`MOTIONS_MOST`).

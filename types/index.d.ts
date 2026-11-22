@@ -598,7 +598,7 @@ export interface StoryWorld {
   /** What the kit found in the world it built, each naming its entry (relative to the world) and the fix: the film carries them as film.kitNotes, and its record beside the world. */
   notes?: readonly {level: 'warn' | 'info'; path: string; message: string}[];
   /** A few plain counts the film's record keeps beside the world's entry (film/summaries.mjs · buildSummary). */
-  summary?: Readonly<Record<string, string | number | boolean | null>>;
+  summary?: Readonly<Record<string, string | number | boolean | null | Readonly<Record<string, unknown>> | readonly Readonly<Record<string, unknown>>[]>>;
   /** The world's map built again as a footprintjs run, for its record (the isometric kit's: footprint-story's map flow); `differs`: null, or where its map parts from the one drawn. The film hands it out as film.mapRuns. */
   mapRun?(options?: {sink?: unknown; recorders?: readonly unknown[]}): Promise<{snapshot: unknown; differs: string | null}>;
   /** The world's moves run again as a footprintjs run, for its record (the isometric kit's: footprint-story's intent decider); `differs`: null, or where its plan parts from the one drawn. The film hands it out as film.motionRuns. */
