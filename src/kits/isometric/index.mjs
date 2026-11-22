@@ -11,7 +11,8 @@
  *
  * Placed when no block has an `at` (arrange across the frame; arrangeByGroup when any has a group), the grid fitted to
  * the frame (or `area`) unless written in numbers, cables laid by routes (ports, keep-clear of hidden floor), floors
- * with no size fitted round their blocks, each name fitted to its top. See README.md beside this file for every key.
+ * with no size fitted round their blocks, each name fitted to its top, each piece painted in the world's `style`
+ * (footprint-story's style row; today's look when left out). See README.md beside this file for every key.
  *
  * What a film reads of it: `regionsAt(t)` (every block, floor and wire by its name, so a push or a camera move frames
  * "server"; each label by its own path), `texts()` (every label, for the reading check), `parts(t)` (each packet
@@ -45,9 +46,20 @@ function floorLabelBox(f) {
   return boxOf([[0, -h], [w, -h], [w, 0], [0, 0]].map(([u, v]) => [x + a * u + c * v, y + b * u + d * v]));
 }
 
+/** A plain value frozen at every level. */
+const frozen = (v) => { if (v && typeof v === 'object' && !Object.isFrozen(v)) { Object.freeze(v); Object.values(v).forEach(frozen); } return v; };
+
+/**
+ * The style the map was built in, as footprint-story's record of it (`{row, options}`: a name per column, the options
+ * written): the built map's own `style`, so the usual row when the world wrote none. WHY from the built map, not the
+ * recipe: the record says what drew the map, with every column the world left out filled in. A copy (the record is
+ * plain data), frozen at every level: it sits in the frozen summary, whose other values are numbers and words.
+ */
+const styleOf = (map) => frozen(structuredClone(map.built.style));
+
 /** What the kit made, for the record and for whoever checks it (a test, an agent): plain numbers, rounded to a tenth of a px. */
 function recordOf(map) {
-  return {placed: map.placed, tile: map.grid.tile[0], fitted: map.built.grid === 'fitted',
+  return {placed: map.placed, tile: map.grid.tile[0], fitted: map.built.grid === 'fitted', style: styleOf(map),
     blocks: map.blocks.map((b) => ({name: b.name, kind: b.kind, at: [...b.at], size: [...b.size], ...(b.fitted ? {lines: [...b.fitted.lines], nameSize: b.fitted.size, fits: b.fitted.fits} : {}), ...(b.rule ? {break: b.rule} : {})})),
     floors: map.floors.map((f) => ({name: f.name, at: [...f.at], size: [...f.size], ...(f.place ? {lines: [...f.place.lines], fits: f.place.fits, covered: f.place.covered} : {})})),
     cables: map.wires.map((w) => ({name: w.name, from: w.arrow.from.block.name, to: w.arrow.to.block.name, along: Boolean(w.route?.points), ...(w.route?.ports?.some(Boolean) ? {ports: [...w.route.ports]} : {}),
@@ -82,8 +94,9 @@ export function compileIsometric(spec, context) {
     map: Object.freeze(recordOf(map)),
     // the map built again by footprint-story's map flow, its run recorded: `storyreel check` runs it (flow.mjs, check/maps.mjs)
     mapRun: mapRun(map),
-    // what the film's record keeps of this world (film/summaries.mjs · buildSummary): a few counts, never the map itself
-    summary: Object.freeze({placed: map.placed, tile: map.grid.tile[0], blocks: map.blocks.length, floors: map.floors.length, wires: map.wires.length,
+    // what the film's record keeps of this world (film/summaries.mjs · buildSummary): a few counts and the style it was
+    // built in, never the map itself
+    summary: Object.freeze({placed: map.placed, tile: map.grid.tile[0], style: styleOf(map), blocks: map.blocks.length, floors: map.floors.length, wires: map.wires.length,
       along: map.wires.filter((w) => w.route?.points).length, packets: map.wires.reduce((n, w) => n + w.packets, 0)}),
     draw: (c, t) => drawMap(c, map, t, look),
     // every piece by its name, once it has come in: a push or a camera move frames "server"; a label by its own path

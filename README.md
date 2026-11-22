@@ -3484,8 +3484,10 @@ A studio whose recipe file is not known (no `--recipe`, no `recipe.json` beside 
   sw.p1"`, `packets`, `speed: "260px"`, `ride`, `rest`, `trail`, `behind`), and every number is footprint-story's
   (`/isometric` places, lays, fits and orders; `/motion` rides), so a deck and a film draw one map the same way. With no
   `at` the blocks are placed from the wires; `appear` brings a piece in on a phrase; every block and wire is named for
-  the camera (`"focus": {"keys": [{"on": "db", …}]}`). A wrong map is refused naming the entry and the fix, and what does
-  not lie well is said in the world's `notes` (`strict: true` refuses it). `import {isometricKit} from
+  the camera (`"focus": {"keys": [{"on": "db", …}]}`); `style` names the look, footprint-story's style row
+  (`{"line": {"name": "ink", "width": 5}}` outlined, `{"line": "none"}` no outline; left out, today's look). A wrong
+  map is refused naming the entry and the fix, and what does not lie well is said in the world's `notes` (`strict:
+  true` refuses it). `import {isometricKit} from
   'footprint-storyreel/kits/isometric'`; the keys: src/kits/isometric/README.md; `node examples/iso-world/make.mjs`.
 
 ```json

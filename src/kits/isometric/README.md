@@ -74,8 +74,41 @@ built map against `buildIsoMap`'s and that no kit file runs a step itself.
   `paint` (from `floorPaints`) and label `place`; each wire's `route` (null: written straight); the paint `order`.
   The kit's grid is made again from its numbers (`isometric(built.view)`).
 - **The policy** (`ISO_FIT` = `ISO_MAP_POLICIES.film`): StoryDeck's tile range and names, a film's small line fitted
-  down to 12 px, and every labelled floor held in a fitted picture (below). The spec names no style, so every map is
-  built in the usual one (today's look); a world's recipe does not take a style yet.
+  down to 12 px, and every labelled floor held in a fitted picture (below). The spec carries the world's `style` when
+  it writes one (below); with none it has no `style` key, and the map is built in the usual style (today's look).
+
+## A world's style (from 0.42.0)
+
+**Why:** one map can be drawn in more than one look — a heavy outline for a slide seen from the back of a room, no
+outline for a soft explainer — and the look should be a word in the recipe, never new drawing code. footprint-story
+names the looks: a style is a row of named choices, one per column (`isoStyle`; `shape`, `shading`, `line`,
+`palette`, `texture`, `effects`), and the map's `style` step paints each piece's list by it. A world's `style` is
+that row as it is:
+
+```json
+{"type": "world", "scene": "map", "world": {"kit": "isometric", "style": {"line": {"name": "ink", "width": 5}},
+  "blocks": [{"name": "you", "label": "You"}, {"name": "db", "kind": "cylinder", "label": "Database"}],
+  "wires":  [{"arrow": "you to db"}]}}
+```
+
+- **A column left out is today's look**, and a world with no `style` is exactly today's: the spec has no `style` key,
+  so the map, its record and every frame are what they were (`test/golden.json` is the same).
+- **The choices are footprint-story's** (0.25.0: `ISO_STYLE_CHOICES`): `line` is `"ink"` (the usual: the ink round
+  every face, 2.5 px; option `width`, 0.5 to 20 px, for an outlined look) or `"none"` (no outline on the faces; a floor
+  keeps its tile lines); `shape` `"box"`, `shading` `"tones"`, `palette` `"theme"`, `texture` `"none"` and no
+  `effects` yet. A choice is written as its name (`"none"`) or as `{"name": "ink", …its options}`.
+- **Drawn as it asks.** The painter draws each item's stroke at the width the list gives (an outlined 5 px line at
+  5 px) and draws no stroke where the list has none (`line: "none"`); the kit still picks the colours (below).
+  `test/iso-style.test.mjs` pins an outlined world's and a no-outline world's pictures, different from today's and
+  from each other.
+- **Refused in the kit's words** (`read.mjs` · `readStyle`), naming the entry: a column there is not
+  (`stage map: isometric style takes the columns shape, shading, line, palette, texture, effects (a column left out
+  keeps today's look) — not "colour"`), a choice there is not, listing those there are (`… style: line has no choice
+  "dashed" — the line choices are "ink" or "none"`), and an option the choice does not take or a value out of its
+  range, in footprint-story's words (`… style: line "ink" takes a width from 0.5 to 20 px — not 50`).
+- **The record says the style the map was built in**, as footprint-story records it (`{row, options}`, every column
+  filled in): on the world's `map.style`, in its `summary` (so the compile's record keeps it beside the world's entry),
+  and in the map flow's record (its `read` step writes `style`), the usual row for a world that wrote none.
 
 ## The painter: the map's paint list on a canvas (from 0.41.0)
 
@@ -96,7 +129,7 @@ recipe (`{mix: [toward, share], colour: null}`: the top 20% toward white, the si
 stroke `colour: null` — the page decides. The kit is that page: it picks a block's base (its `color`, its `tone`'s pale
 tint, or StoryDeck's `#d9e4f3`), a floor's (its `color`, or none: its ground is then left unpainted) and the theme's
 ink, and the painter applies the recipe to them with the kit's own `mix`, as it always did. A colour the list does
-give (a style's own palette, later) is drawn as given. footprint-story proved this painter call for call equal to the
+give (a style's own palette, when footprint-story ships one) is drawn as given. footprint-story proved this painter call for call equal to the
 kit's 0.38.0 face-by-face drawing; `test/golden.json` pins it here, and `test/iso-paint.test.mjs` checks every item
 kind on a recording canvas and that the kit paints the built map's lists and traces no face itself.
 
@@ -130,8 +163,8 @@ a difference aloud (`drift`). See `../../check/README.md` · Asking why a map is
   shares a lane, crosses three or more, turns four or more times, doubles back at a port, or is drawn straight and why; a
   name that does not fit its top; a floor's name that does not fit or finds its edge covered. The film carries every
   world's notes as `film.kitNotes` (each path from the recipe's top: `story.wires[2]`), and the compile's record keeps
-  them, with the world's `summary` (placed by whom, the tile, how many blocks, floors, wires, cables along the floor,
-  packets), beside the world's entry (`world.story`, `stage.stages[1]`). `strict: true` refuses the film on a warning.
+  them, with the world's `summary` (placed by whom, the tile, the style, how many blocks, floors, wires, cables along
+  the floor, packets), beside the world's entry (`world.story`, `stage.stages[1]`). `strict: true` refuses the film on a warning.
 - `map`: the whole record on the world (every block's place and fitted name, every cable's corners, length and hidden
   stretches), for a test or a tool that reads the world itself.
 - `mapRun({sink, recorders})`: the map built again by the map flow, a run whose record says why (`flow.mjs`); the film
@@ -147,7 +180,7 @@ entry's name.
 | file | one job |
 |---|---|
 | `index.mjs` | the kit: compile, regions, texts, parts, the record |
-| `read.mjs` | the recipe entry checked, every refusal naming the entry and the fix |
+| `read.mjs` | the recipe entry checked (its `style` too), every refusal naming the entry and the fix |
 | `build.mjs` | the read map handed to footprint-story's `buildIsoMap`, and what it built joined onto the pieces |
 | `flow.mjs` | the same spec run through footprint-story's map flow, for its record; where its map parts from the kit's |
 | `cables.mjs` | each wire on the frame: the cable's rounded line, a straight wire, a lead's share, a label's place (footprint-story's rules) |
