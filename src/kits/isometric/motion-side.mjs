@@ -4,8 +4,9 @@
  * starts, y down, in the world's own px — and the kit lays the samples back on the floor along that way.
  *
  *   SIDE_ROWS                 roll, slide and tumble: their rows of motion.mjs · INTENT_OF
- *   sideFoot(side, sample)    where a sample puts the body's foot, in tiles
- *   worldPx(grid)             the world's own px in a tile: a tile's true length on the frame
+ *
+ * Where a sample puts the body's foot (`sideFoot`) and the world's own px in a tile (`worldPx`) are footprint-story's
+ * (`/isometric`, 0.32.0), as are the place rules these rows check a way by (`landingUnder`, `overTop`, `cornerOf`).
  *
  * WHY side on, not on the frame: these models move a body along a level floor under gravity, and a floor seen from a
  * corner is no level line on the frame — a roll planned on the frame would run down a 27° slope. In the upright plane
@@ -21,7 +22,7 @@
  * What a film adds to footprint-story's words: `to` as the world's places (a block's name or tiles, motion-read.mjs);
  * the radius, shape and floor from the block itself — the author writes intent only.
  */
-import {landingUnder, overTop, cornerOf} from './motion-place.mjs';
+import {landingUnder, overTop, cornerOf} from 'footprint-story/isometric';
 
 const round3 = (v) => Math.round(v * 1000) / 1000;
 const tilesText = (t) => `[${t.map((v) => round3(v)).join(', ')}]`;
@@ -29,9 +30,6 @@ const tilesText = (t) => `[${t.map((v) => round3(v)).join(', ')}]`;
 const LEVEL = 1e-6;
 /** How near a heading must lie to a row or a column to run along it (a unit vector's part): floats, not a slant. */
 const ALONG = 1e-9;
-
-/** The world's own px in one tile: a tile's width over √2 (a level line across the frame, drawn at its true length). */
-export const worldPx = (grid) => grid.tile[0] / Math.SQRT2;
 
 const onWords = (u) => (u.block ? `"${u.block.name}"'s top (lift ${round3(u.lift)})` : 'the floor');
 /** Tiles written for a fix, with a lift only when it is above the floor. */
@@ -111,14 +109,3 @@ export const SIDE_ROWS = Object.freeze({
   slide: (e, place) => alongLevel(e, place, false),
   tumble,
 });
-
-/**
- * Where a sample of a side-on move puts the body's foot, in tiles: `x` along the way from its start, `y` its tie point's
- * height (its middle for a roll and a tumble, its foot for a slide), both in the world's px. A lift within a billionth
- * of a level it stands on (where it starts or lands) is that level exactly — worked back through floats, a ball rolling
- * on a top could come out a hair under it and be ordered behind it — and a lift under the floor is the floor.
- */
-export function sideFoot({origin, heading, unit, offset, levels}, sample) {
-  const along = sample.x / unit, lift = -sample.y / unit - offset;
-  return [origin[0] + along * heading[0], origin[1] + along * heading[1], levels.find((l) => Math.abs(l - lift) < 1e-9) ?? Math.max(0, lift)];
-}

@@ -27,7 +27,7 @@
  * body is handed to it as a list in footprint-story's paint-item shape (`polygon` and `path` items, each fill a recipe
  * over the kit's base colour and each stroke in the kit's ink), as a built block is.
  */
-import {posed} from './motion-place.mjs';
+import {posed} from 'footprint-story/isometric';
 
 /** The turn that leaves a body as it was built. */
 export const UNTURNED = Object.freeze([1, 0, 0, 0, 1, 0, 0, 0, 1]);
@@ -183,7 +183,7 @@ export function reachOver(a0, a1) {
 
 /**
  * A block's outline on the frame at its pose (motion.mjs · poseAt): as built under the pose's move and squash
- * (motion-place · posed), or, for a block turned off its faces, the outline of its turned corners. A ball's outline is
+ * (footprint-story · posed), or, for a block turned off its faces, the outline of its turned corners. A ball's outline is
  * the same however it turns, so it is moved as built. What a camera frames and what must stay on the frame.
  */
 export function drawnOutline(b, pose, grid) {

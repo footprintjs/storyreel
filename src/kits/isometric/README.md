@@ -252,7 +252,7 @@ its name on its middle; its shape (what a camera frames, what hides a cable) is 
 wire joins it at its foot), and is drawn in today's look only: a world with a `style` and a ball is refused (footprint-
 story's styles paint blocks and cylinders). Everything is a paint list painted by `paint.mjs`, as a built block is.
 
-**Where things are** (`motion.mjs`, `motion-place.mjs`): a block moves by its **foot** (the middle of its footprint, at
+**Where things are** (`motion.mjs`, by footprint-story's place rules — `/isometric` · `footOf`, `landingUnder`, `ridesOn`, `offFrame`, `drawnOff`): a block moves by its **foot** (the middle of its footprint, at
 its lift), in the built map's tiles put on the frame by its grid. Moves are placed in the order they begin, each from
 what the world is then: a fall lands on the highest top under it, else the floor (a block already resting there cannot
 fall); a target block is aimed at **where it stands when the move begins** (a box that fell earlier is caught where it
@@ -266,7 +266,8 @@ draws off the frame is the map's to say).
 
 **What a move passes through** (`reel:contact`, the kit's own critic): each move is sampled 30 times a second, its
 block placed in tiles where it is drawn, and the box is **swept** along each stretch between two samples against every
-other block (moving too, when it moves): `motion-place.mjs` · `sweptThrough` finds the deepest point of each stretch,
+other block (moving too, when it moves): footprint-story's `/isometric` · `sweptThrough` finds the deepest point of each stretch
+(`checkMoments` the samples, `deepestPass` the deepest of them, `passFinding` its words; the kit adds `reel:` and its fix),
 so a fast move skips nothing — a 30-tile reach or a 50-tile throw covers more than a tile between samples, and a wall a
 tenth of a tile thin is still found. Going a twentieth of a tile or more into a block is a finding naming the block,
 the moment and the fix (a settle onto a top from
@@ -288,7 +289,7 @@ moves give an angle too, but none is a body's turn — a throw's and a fall's is
 heading of its rope's last link — and a block that stood upright would jump to it.
 
 **Painted in its place.** At each frame a moving block takes its place in the back-to-front order where it is now:
-footprint-story's `grid.backToFront` over every block, the moved one at its current place (`motion.mjs` · `footTiles`
+footprint-story's `grid.backToFront` over every block, the moved one at its current place (footprint-story's `footTiles`
 works that place back from where it is drawn, on the move's way; once a move ends, its planned end exactly). So a ball
 high over a wall is drawn in front of it, and one that lands behind the wall is drawn behind it. Until a block first
 moves, the built order is used as it was.
@@ -296,9 +297,11 @@ moves, the built order is used as it was.
 **A block a wire joins cannot move**, and is refused saying so: its cable is laid on the floor to where it stands, and
 would not follow it.
 
-**What a move covers** (`reel:covers`, `motion-cover.mjs`): a moved block that comes to rest in front of another
-block's name (a ball on a server's top sits on its name) hides that name: from that moment until it moves on, the name
-is not drawn and not listed to read (`texts()`), and the move is a finding naming the move, the name and the fix. A
+**What a move covers** (`reel:covers`, `motion-cover.mjs`, by footprint-story's `/isometric` · `hiddenNames`): a moved
+block that comes to rest over another block's name (a ball on a server's top sits on its name), and is painted after
+that block, hides the name. "Painted after" is read from the order of every block, the order the film paints by
+(`orderAt`); 0.44.0 ordered the two blocks alone and so hid a name the picture draws over a block behind it, fixed in
+0.45.0. From that moment until the block moves on, the name is not drawn and not listed to read (`texts()`), and the move is a finding naming the move, the name and the fix. A
 block passing over a name in flight hides nothing: it is a moment of natural occlusion, drawn as it is, and the
 contrast check judges a word by its best moment, so it reads no faint word (pinned on CI's fonts and macOS's). The fix:
 land it clear, or `"accept": ["reel:covers"]` when it is meant (the example accepts its ball on the server).
@@ -378,9 +381,8 @@ entry's name.
 | `paint.mjs` | the one canvas painter: a piece's paint list traced, filled and stroked as the list says |
 | `motion-read.mjs` | the `motion` entries checked, every refusal naming the entry and the fix; what a block can do (`MOTION_DOS`) |
 | `motion.mjs` | each entry made a footprint-story intent on the frame, planned (`planIntents`), timed on the clock and sampled at t (with its place for the paint order); its record, findings and run |
-| `motion-place.mjs` | where things are while pieces move: a block's foot and top, what a fall lands on, the frame, a moving foot's place in tiles, what a block passes through |
-| `motion-cover.mjs` | which names a moved block covers, and when: not drawn, not listed to read, said (`reel:covers`) |
-| `motion-side.mjs` | roll, slide and tumble: each a footprint-story intent side on along its way in the world's px, its checks of levels and edges, and its samples laid back on the floor |
+| `motion-cover.mjs` | which names a moved block covers, and when (footprint-story's rule at each sample): not drawn, not listed to read, said (`reel:covers`) |
+| `motion-side.mjs` | roll, slide and tumble: each a footprint-story intent side on along its way in the world's px, its checks of levels and edges (footprint-story's `sideFoot` lays its samples back on the floor) |
 | `turn.mjs` | a body turned where it is, as the grid sees it: a turn as a matrix in tiles, a turned block's faces and a ball's outline and marks, their paint lists, a turning block's reach |
 | `words.mjs` | how both readers quote a value and check keys and anchors (`shown`, `keysOf`, `anchorLike`): its own module, so the kit's modules import no cycle (a test pins it) |
 
@@ -396,6 +398,17 @@ import the one copy, so a deck and a film draw the same cable):
 | `cables.mjs` · a lead into a port on a seen side: the share of the line drawn again over its block, where a packet passes onto it (from 0.37.0: through its floor corner, from where the head begins — before, the straight run of its points to the floor point) | `/isometric` · `cableLead` |
 | `ride.mjs` · a packet's share at t (CSS's `linear()` read at a moment) and how much of it shows past a block | `/motion` · `onStops`, `seenAt` |
 | `draw.mjs` · the arrow head's corners (only the painting is here) | `/isometric` · `arrowHead`, `headingOf` |
+
+**Moving pieces, from footprint-story** (0.45.0: StoryReel 0.44.0 and StoryDeck each held these; now one copy, and the
+kit keeps only the drawing, its `reel:` prefix and its words). `turn.mjs` · `reachOver` stays here, not shared yet.
+
+| here | footprint-story |
+|---|---|
+| `motion.mjs`, `motion-side.mjs` · a block's foot, top and corner; what a fall lands on; a block resting on one that moves | `/isometric` · `footOf`, `topOf`, `cornerOf`, `landingUnder`, `overTop`, `ridesOn` |
+| `motion.mjs` · a moving foot's place in tiles, a side-on sample laid back on the floor, the world's px in a tile | `/isometric` · `footTiles`, `sideFoot`, `worldPx` |
+| `motion.mjs` · what a move passes through (`reel:contact`) | `/isometric` · `sweptThrough`, `checkMoments`, `deepestPass`, `passFinding` |
+| `motion.mjs`, `draw.mjs`, `turn.mjs` · off the 1600×900 frame (`MOTION_FRAME`, handed in), a point where its pose puts it | `/isometric` · `offFrame`, `drawnOff`, `posed` |
+| `motion-cover.mjs` · a name's box, an outline over it, which resting block hides it (`reel:covers`) | `/isometric` · `nameBox`, `NAME_WIDTH`, `overlapsBox`, `orderAt`, `hiddenNames`, `coverFinding` |
 
 What the film does otherwise, each said where it is done: a tone is a pale tint of the theme's colour; a floor's name
 is whole ink on a halo of the ground, a little heavier (the film's contrast check reads slanted words); the small line

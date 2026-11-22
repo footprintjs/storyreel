@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.45.0 — one copy of the moving-piece rules, and a hidden name fixed
+
+The rules a moving block is placed by now live once, in footprint-story (now `^0.32.0`, `footprint-story/isometric`),
+and StoryDeck reads the same copy. StoryReel 0.44.0 and StoryDeck each wrote them. The kit keeps only what is its
+own: the drawing, its `reel:` critic prefix and its words for each refusal and fix.
+
+- **Moved to footprint-story** (`kits/isometric/motion-place.mjs` is deleted; parts of `motion.mjs`, `motion-side.mjs`
+  and `motion-cover.mjs` too): a block's foot, top and corner (`footOf`, `topOf`, `cornerOf`), what a fall lands on
+  (`landingUnder`, `overTop`), a block resting on one that moves (`ridesOn`), a moving foot's place in tiles
+  (`footTiles`, `sideFoot`, `worldPx`), what a move passes through (`sweptThrough`, `checkMoments`, `deepestPass`,
+  `passFinding` — `reel:contact`), what is off the frame (`offFrame`, `drawnOff`, `posed`; the film's 1600 × 900 frame
+  is handed in), and which names a resting block covers (`nameBox`, `NAME_WIDTH`, `overlapsBox`, `orderAt`,
+  `hiddenNames`, `coverFinding` — `reel:covers`). Tests that read those rules import them from footprint-story.
+  `turn.mjs` · `reachOver` stays here: it is not shared yet.
+- **Fixed: a name hidden that the picture draws.** To ask whether a resting block hides another block's name, 0.44.0
+  ordered the two blocks alone. Two blocks that do not meet on the frame have no order between them, so a block wholly
+  behind the named one — painted before it, through a third block — came out in front: its name was not drawn and
+  `reel:covers` said it was hidden. The shared rule reads the order of every block, the order the film paints by, so
+  that name is drawn now (`test/iso-motion.test.mjs` pins the three-block case; footprint-story's test pins it too).
+- **No other frame changes**: every pin in `test/golden.json` is unchanged.
+
 ## 0.44.0 — pieces roll, slide and tumble
 
 An isometric world's `motion` entry can now `roll`, `slide` and `tumble`, with footprint-story (now `^0.31.0`). As

@@ -22,7 +22,7 @@ import {arrowHead, headingOf, walkWay, CABLE} from 'footprint-story/isometric';
 import {HEX} from './read.mjs';
 import {paintItems, mix, rgba as withAlpha} from './paint.mjs';
 import {ballPicture, ballPaint, boxPicture, boxPaint, centreOf, onFace, UNTURNED} from './turn.mjs';
-import {posed} from './motion-place.mjs';
+import {posed} from 'footprint-story/isometric';
 
 /**
  * StoryDeck's colours where the theme has none: a block's tone, the glow of a packet. And how long a piece takes to come in,
@@ -98,7 +98,7 @@ function drawBlock(c, b, look, named = true, grid = null) {
 /**
  * A ball, turned by `turn` (turn.mjs) and moved by `pose` (null: as built): its paint list (turn.mjs · ballPaint: its
  * fill, the marks that show its turn, its edge), painted as every list is, then its name on its middle. Every point is
- * turn.mjs's, put where the pose moves the ball (motion-place · posed: a bounce's squash too).
+ * turn.mjs's, put where the pose moves the ball (footprint-story · posed: a bounce's squash too).
  */
 function drawBall(c, b, look, grid, turn, pose, named) {
   const ball = ballPicture(grid, centreOf(b), b.size[0] / 2, turn), at = (p) => (pose ? posed(p, pose) : p);
